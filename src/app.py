@@ -8,6 +8,7 @@ os.environ['USE_CPU_ONLY'] = 'true'
 import hashlib
 import tempfile
 import asyncio
+import time
 
 from starlette.applications import Starlette
 from starlette.requests     import Request
@@ -25,14 +26,19 @@ from openai import OpenAI
 converter = DocumentConverter()  # basic converter; tweak via PipelineOptions if you need OCR, etc.
 
 # Initialize Async OpenSearch (adjust hosts/auth as needed)
+opensearch_host = os.getenv("OPENSEARCH_HOST", "localhost")
+opensearch_port = int(os.getenv("OPENSEARCH_PORT", "9200"))
+opensearch_username = os.getenv("OPENSEARCH_USERNAME", "admin")
+opensearch_password = os.getenv("OPENSEARCH_PASSWORD", "OSisgendb1!")
+
 es = AsyncOpenSearch(
-    hosts=[{"host": "localhost", "port": 9200}],
+    hosts=[{"host": opensearch_host, "port": opensearch_port}],
     connection_class=AIOHttpConnection,
     scheme="https",
     use_ssl=True,
     verify_certs=False,
     ssl_assert_fingerprint=None,
-    http_auth=("admin","OSisgendb1!"),
+    http_auth=(opensearch_username, opensearch_password),
     http_compress=True,
 )
 
@@ -71,7 +77,26 @@ index_body = {
 
 client = patch_openai_with_mcp(OpenAI())  # Get the patched client back
 
+async def wait_for_opensearch():
+    """Wait for OpenSearch to be ready with retries"""
+    max_retries = 30
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            await es.info()
+            print("OpenSearch is ready!")
+            return
+        except Exception as e:
+            print(f"Attempt {attempt + 1}/{max_retries}: OpenSearch not ready yet ({e})")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+            else:
+                raise Exception("OpenSearch failed to become ready")
+
 async def init_index():
+    await wait_for_opensearch()
+    
     if not await es.indices.exists(index=INDEX_NAME):
         await es.indices.create(index=INDEX_NAME, body=index_body)
         print(f"Created index '{INDEX_NAME}'")
@@ -133,9 +158,9 @@ async def process_file_common(file_path: str, file_hash: str = None):
                 sha256.update(chunk)
         file_hash = sha256.hexdigest()
 
-    #exists = await es.exists(index=INDEX_NAME, id=file_hash)
-    #if exists:
-    #    return {"status": "unchanged", "id": file_hash}
+    exists = await es.exists(index=INDEX_NAME, id=file_hash)
+    if exists:
+        return {"status": "unchanged", "id": file_hash}
 
     # convert and extract
     # TODO: Check if docling can handle in-memory bytes instead of file path
@@ -186,9 +211,9 @@ async def upload(request: Request):
         tmp.flush()
 
         file_hash = sha256.hexdigest()
-        #exists = await es.exists(index=INDEX_NAME, id=file_hash)
-        #if exists:
-        #    return JSONResponse({"status": "unchanged", "id": file_hash})
+        exists = await es.exists(index=INDEX_NAME, id=file_hash)
+        if exists:
+            return JSONResponse({"status": "unchanged", "id": file_hash})
 
         result = await process_file_common(tmp.name, file_hash)
         return JSONResponse(result)
