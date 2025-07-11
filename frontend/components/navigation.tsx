@@ -2,38 +2,55 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Button } from "@/components/ui/button"
 import { Search, Settings } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 export function Navigation() {
   const pathname = usePathname()
 
+  const routes = [
+    {
+      label: "Search",
+      icon: Search,
+      href: "/",
+      active: pathname === "/",
+    },
+    {
+      label: "Admin",
+      icon: Settings,
+      href: "/admin",
+      active: pathname === "/admin",
+    },
+  ]
+
   return (
-    <aside className="h-screen w-56 bg-card border-r flex flex-col items-center py-8 gap-4">
-      <nav className="flex flex-col gap-2 w-full px-4">
-        <Button
-          variant={pathname === "/" ? "default" : "ghost"}
-          size="sm"
-          asChild
-          className="justify-start w-full"
-        >
-          <Link href="/">
-            <Search className="h-4 w-4 mr-2" />
-            Search
-          </Link>
-        </Button>
-        <Button
-          variant={pathname === "/admin" ? "default" : "ghost"}
-          size="sm"
-          asChild
-          className="justify-start w-full"
-        >
-          <Link href="/admin">
-            <Settings className="h-4 w-4 mr-2" />
-            Admin
-          </Link>
-        </Button>
-      </nav>
-    </aside>
+    <div className="space-y-4 py-4 flex flex-col h-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="px-3 py-2 flex-1">
+        <Link href="/" className="flex items-center pl-3 mb-8">
+          <h1 className="text-2xl font-bold tracking-tight">
+            GenDB
+          </h1>
+        </Link>
+        <div className="space-y-1">
+          {routes.map((route) => (
+            <Link
+              key={route.href}
+              href={route.href}
+              className={cn(
+                "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-lg transition-all",
+                route.active 
+                  ? "bg-accent text-accent-foreground shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <div className="flex items-center flex-1">
+                <route.icon className={cn("h-4 w-4 mr-3 shrink-0", route.active ? "text-accent-foreground" : "text-muted-foreground group-hover:text-foreground")} />
+                {route.label}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
