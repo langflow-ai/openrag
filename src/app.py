@@ -47,31 +47,21 @@ index_body = {
     },
     "mappings": {
         "properties": {
-            "id":        { "type": "keyword" },
-            "origin": {
-                "properties": {
-                    "binary_hash": { "type": "keyword" }
-                }
-            },
-            "filename":  { "type": "keyword" },
-            "mimetype":  { "type": "keyword" },
-            "chunks": {
-                "type": "nested",
-                "properties": {
-                    "page":  { "type": "integer" },
-                    "text":  { "type": "text" },
-                    "chunk_embedding": {
-                        "type": "knn_vector",
-                        "dimension": VECTOR_DIM,
-                        "method": {
-                            "name":       "disk_ann",
-                            "engine":     "jvector",
-                            "space_type": "l2",
-                            "parameters": {
-                                "ef_construction": 100,
-                                "m":               16
-                            }
-                        }
+            "document_id": { "type": "keyword" },
+            "filename":    { "type": "keyword" },
+            "mimetype":    { "type": "keyword" },
+            "page":        { "type": "integer" },
+            "text":        { "type": "text" },
+            "chunk_embedding": {
+                "type": "knn_vector",
+                "dimension": VECTOR_DIM,
+                "method": {
+                    "name":       "disk_ann",
+                    "engine":     "jvector",
+                    "space_type": "l2",
+                    "parameters": {
+                        "ef_construction": 100,
+                        "m":               16
                     }
                 }
             }
@@ -148,6 +138,8 @@ async def process_file_common(file_path: str, file_hash: str = None):
     #    return {"status": "unchanged", "id": file_hash}
 
     # convert and extract
+    # TODO: Check if docling can handle in-memory bytes instead of file path
+    # This would eliminate the need for temp files in upload flow
     result = converter.convert(file_path)
     full_doc = result.document.export_to_dict()
     slim_doc = extract_relevant(full_doc)
@@ -156,11 +148,18 @@ async def process_file_common(file_path: str, file_hash: str = None):
     resp = client.embeddings.create(model=EMBED_MODEL, input=texts)
     embeddings = [d.embedding for d in resp.data]
 
-    # attach embeddings
-    for chunk, vect in zip(slim_doc["chunks"], embeddings):
-        chunk["chunk_embedding"] = vect
-
-    await es.index(index=INDEX_NAME, id=file_hash, body=slim_doc)
+    # Index each chunk as a separate document
+    for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings)):
+        chunk_doc = {
+            "document_id": file_hash,
+            "filename": slim_doc["filename"],
+            "mimetype": slim_doc["mimetype"],
+            "page": chunk["page"],
+            "text": chunk["text"],
+            "chunk_embedding": vect
+        }
+        chunk_id = f"{file_hash}_{i}"
+        await es.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
     return {"status": "indexed", "id": file_hash}
 
 async def process_file_on_disk(path: str):
@@ -221,27 +220,34 @@ async def search(request: Request):
     resp = client.embeddings.create(model=EMBED_MODEL, input=[query])
     query_embedding = resp.data[0].embedding
 
-    # Search using vector similarity
+    # Search using vector similarity on individual chunks
     search_body = {
         "query": {
-            "nested": {
-                "path": "chunks",
-                "query": {
-                    "knn": {
-                        "chunks.chunk_embedding": {
-                            "vector": query_embedding,
-                            "k": 10
-                        }
-                    }
+            "knn": {
+                "chunk_embedding": {
+                    "vector": query_embedding,
+                    "k": 10
                 }
             }
         },
-        "_source": ["chunks.text", "chunks.page", "filename", "mimetype"],
+        "_source": ["filename", "mimetype", "page", "text"],
         "size": 10
     }
 
     results = await es.search(index=INDEX_NAME, body=search_body)
-    return JSONResponse({"results": results["hits"]["hits"]})
+    
+    # Transform results to match expected format
+    chunks = []
+    for hit in results["hits"]["hits"]:
+        chunks.append({
+            "filename": hit["_source"]["filename"],
+            "mimetype": hit["_source"]["mimetype"],
+            "page": hit["_source"]["page"],
+            "text": hit["_source"]["text"],
+            "score": hit["_score"]
+        })
+    
+    return JSONResponse({"results": chunks})
 
 app = Starlette(debug=True, routes=[
     Route("/upload",      upload,       methods=["POST"]),
