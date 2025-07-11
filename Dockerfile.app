@@ -18,9 +18,6 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync
 
-# Copy Python source
-COPY src/ ./src/
-
 # Copy sample document and warmup script
 COPY documents/2506.08231v1.pdf ./
 COPY warm_up_docling.py ./
@@ -35,6 +32,9 @@ COPY frontend/ ./frontend/
 
 # Build frontend
 RUN cd frontend && npm run build
+
+# Copy Python source
+COPY src/ ./src/
 
 # Create startup script
 RUN echo '#!/bin/bash\n\
