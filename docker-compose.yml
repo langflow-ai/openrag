@@ -1,0 +1,25 @@
+services:
+  opensearch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: os
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=OSisgendb1!
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+
+  dashboards:
+    image: opensearchproject/opensearch-dashboards:3.0.0
+    container_name: osdash
+    depends_on:
+      - opensearch
+    environment:
+      OPENSEARCH_HOSTS: '["https://opensearch:9200"]'
+      OPENSEARCH_USERNAME: "admin"
+      OPENSEARCH_PASSWORD: "OSisgendb1!"
+    ports:
+      - "5601:5601"
+
