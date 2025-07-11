@@ -2,6 +2,9 @@
 
 import os
 from collections import defaultdict
+from typing import Any
+
+from agent import async_chat
 
 os.environ['USE_CPU_ONLY'] = 'true'
 
@@ -20,7 +23,8 @@ from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 from docling.document_converter import DocumentConverter
 from agentd.patch import patch_openai_with_mcp
-from openai import OpenAI
+from openai import AsyncOpenAI
+from agentd.tool_decorator import tool
 
 # Initialize Docling converter
 converter = DocumentConverter()  # basic converter; tweak via PipelineOptions if you need OCR, etc.
@@ -75,7 +79,7 @@ index_body = {
     }
 }
 
-client = patch_openai_with_mcp(OpenAI())  # Get the patched client back
+async_client = patch_openai_with_mcp(AsyncOpenAI())  # Get the patched client back
 
 async def wait_for_opensearch():
     """Wait for OpenSearch to be ready with retries"""
@@ -170,7 +174,7 @@ async def process_file_common(file_path: str, file_hash: str = None):
     slim_doc = extract_relevant(full_doc)
 
     texts = [c["text"] for c in slim_doc["chunks"]]
-    resp = client.embeddings.create(model=EMBED_MODEL, input=texts)
+    resp = await async_client.embeddings.create(model=EMBED_MODEL, input=texts)
     embeddings = [d.embedding for d in resp.data]
 
     # Index each chunk as a separate document
@@ -236,15 +240,31 @@ async def upload_path(request: Request):
     return JSONResponse({"results": results})
 
 async def search(request: Request):
+
     payload = await request.json()
     query = payload.get("query")
     if not query:
         return JSONResponse({"error": "Query is required"}, status_code=400)
+    return JSONResponse(await search_tool(query))
 
+
+@tool
+async def search_tool(query: str)-> dict[str, Any]:
+    """
+    Use this tool to search for documents relevant to the query.
+
+    This endpoint accepts POST requests with a query string,
+
+    Args:
+        query (str): query string to search the corpus
+
+    Returns:
+        dict (str, Any)
+                     - {"results": [chunks]} on success
+    """
     # Embed the query
-    resp = client.embeddings.create(model=EMBED_MODEL, input=[query])
+    resp = await async_client.embeddings.create(model=EMBED_MODEL, input=[query])
     query_embedding = resp.data[0].embedding
-
     # Search using vector similarity on individual chunks
     search_body = {
         "query": {
@@ -258,9 +278,7 @@ async def search(request: Request):
         "_source": ["filename", "mimetype", "page", "text"],
         "size": 10
     }
-
     results = await es.search(index=INDEX_NAME, body=search_body)
-    
     # Transform results to match expected format
     chunks = []
     for hit in results["hits"]["hits"]:
@@ -271,13 +289,23 @@ async def search(request: Request):
             "text": hit["_source"]["text"],
             "score": hit["_score"]
         })
-    
-    return JSONResponse({"results": chunks})
+    return {"results": chunks}
+
+async def chat_endpoint(request):
+    data = await request.json()
+    prompt = data.get("prompt", "")
+
+    if not prompt:
+        return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+    response = await async_chat(async_client, prompt)
+    return JSONResponse({"response": response})
 
 app = Starlette(debug=True, routes=[
-    Route("/upload",      upload,       methods=["POST"]),
-    Route("/upload_path", upload_path,  methods=["POST"]),
-    Route("/search",      search,       methods=["POST"]),
+    Route("/upload",      upload,           methods=["POST"]),
+    Route("/upload_path", upload_path,      methods=["POST"]),
+    Route("/search",      search,           methods=["POST"]),
+    Route("/chat",        chat_endpoint,    methods=["POST"]),
 ])
 
 if __name__ == "__main__":
