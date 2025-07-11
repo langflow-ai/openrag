@@ -57,10 +57,10 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">Document Search</h1>
-        <p className="text-muted-foreground">Search through your indexed documents</p>
+    <div className="max-w-4xl mx-auto space-y-8">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold tracking-tight">Document Search</h1>
+        <p className="text-muted-foreground mt-2">Search through your indexed documents</p>
       </div>
 
       <Card className="max-w-2xl w-full mx-auto">
