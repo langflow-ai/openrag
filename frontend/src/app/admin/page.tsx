@@ -11,7 +11,7 @@ export default function AdminPage() {
   const [fileUploadLoading, setFileUploadLoading] = useState(false)
   const [pathUploadLoading, setPathUploadLoading] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [folderPath, setFolderPath] = useState("")
+  const [folderPath, setFolderPath] = useState("/app/documents/")
   const [uploadStatus, setUploadStatus] = useState<string>("")
 
   const handleFileUpload = async (e: React.FormEvent) => {
