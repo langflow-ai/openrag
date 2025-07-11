@@ -63,7 +63,7 @@ export default function SearchPage() {
         <p className="text-muted-foreground">Search through your indexed documents</p>
       </div>
 
-      <Card>
+      <Card className="max-w-2xl w-full mx-auto">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="h-5 w-5" />
@@ -104,57 +104,60 @@ export default function SearchPage() {
               )}
             </Button>
           </form>
+          {/* Always render the results area, but show it empty if no search has been performed */}
+          <div className="mt-8">
+            {searchPerformed ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">Search Results</h2>
+                  <span className="text-sm text-muted-foreground">
+                    {results.length} result{results.length !== 1 ? 's' : ''} found
+                  </span>
+                </div>
+                {results.length === 0 ? (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <p className="text-center text-muted-foreground">
+                        No documents found matching your search query.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {results.map((result, index) => (
+                      <Card key={index}>
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="text-lg flex items-center gap-2">
+                              <FileText className="h-4 w-4" />
+                              {result.filename}
+                            </CardTitle>
+                            <div className="text-sm text-muted-foreground">
+                              Score: {result.score.toFixed(2)}
+                            </div>
+                          </div>
+                          <CardDescription>
+                            Type: {result.mimetype} • Page {result.page}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="border-l-2 border-primary pl-4">
+                            <p className="text-sm leading-relaxed">
+                              {result.text}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ minHeight: 120 }} />
+            )}
+          </div>
         </CardContent>
       </Card>
-
-      {searchPerformed && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Search Results</h2>
-            <span className="text-sm text-muted-foreground">
-              {results.length} result{results.length !== 1 ? 's' : ''} found
-            </span>
-          </div>
-
-          {results.length === 0 ? (
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-center text-muted-foreground">
-                  No documents found matching your search query.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {results.map((result, index) => (
-                <Card key={index}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        {result.filename}
-                      </CardTitle>
-                      <div className="text-sm text-muted-foreground">
-                        Score: {result.score.toFixed(2)}
-                      </div>
-                    </div>
-                    <CardDescription>
-                      Type: {result.mimetype} • Page {result.page}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="border-l-2 border-primary pl-4">
-                      <p className="text-sm leading-relaxed">
-                        {result.text}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
