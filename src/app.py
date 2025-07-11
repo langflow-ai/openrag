@@ -211,9 +211,42 @@ async def upload_path(request: Request):
     results = await asyncio.gather(*tasks)
     return JSONResponse({"results": results})
 
+async def search(request: Request):
+    payload = await request.json()
+    query = payload.get("query")
+    if not query:
+        return JSONResponse({"error": "Query is required"}, status_code=400)
+
+    # Embed the query
+    resp = client.embeddings.create(model=EMBED_MODEL, input=[query])
+    query_embedding = resp.data[0].embedding
+
+    # Search using vector similarity
+    search_body = {
+        "query": {
+            "nested": {
+                "path": "chunks",
+                "query": {
+                    "knn": {
+                        "chunks.chunk_embedding": {
+                            "vector": query_embedding,
+                            "k": 10
+                        }
+                    }
+                }
+            }
+        },
+        "_source": ["chunks.text", "chunks.page", "filename", "mimetype"],
+        "size": 10
+    }
+
+    results = await es.search(index=INDEX_NAME, body=search_body)
+    return JSONResponse({"results": results["hits"]["hits"]})
+
 app = Starlette(debug=True, routes=[
     Route("/upload",      upload,       methods=["POST"]),
     Route("/upload_path", upload_path,  methods=["POST"]),
+    Route("/search",      search,       methods=["POST"]),
 ])
 
 if __name__ == "__main__":
