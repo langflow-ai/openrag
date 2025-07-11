@@ -42,7 +42,7 @@ export default function RootLayout({
             </div>
             <main className="md:pl-72">
               <div className="flex flex-col min-h-screen">
-                <header className="sticky top-0 z-40 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                <header className="sticky top-0 z-40 w-full border-b border-border/40 bg-background">
                   <div className="container flex h-14 max-w-screen-2xl items-center">
                     <div className="mr-4 hidden md:flex">
                       <h1 className="text-lg font-semibold tracking-tight">
