@@ -1,0 +1,28 @@
+[project]
+name = "gendb"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiofiles>=24.1.0",
+    "docling>=2.41.0",
+    "opensearch-py[async]>=3.0.0",
+    "python-multipart>=0.0.20",
+    "starlette>=0.47.1",
+    "torch>=2.7.1",
+    "uvicorn>=0.35.0",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu128" },
+]
+torchvision = [
+  { index = "pytorch-cu128" },
+]
+
+[[tool.uv.index]]
+name     = "pytorch-cu128"
+url      = "https://download.pytorch.org/whl/cu128"
+explicit = true
