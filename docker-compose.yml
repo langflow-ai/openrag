@@ -30,6 +30,7 @@ services:
     container_name: gendb-app
     depends_on:
       - opensearch
+      - langflow
     environment:
       - OPENSEARCH_HOST=opensearch
       - OPENSEARCH_PORT=9200
@@ -45,3 +46,10 @@ services:
       - ./uv.lock:/app/uv.lock
       - ./documents:/app/documents
 
+  langflow:
+    image: langflow:1.5.0.post1
+    container_name: langflow
+    ports:
+      - "7860:7860"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
