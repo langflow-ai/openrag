@@ -1,4 +1,4 @@
-messages = [{"role": "system", "content": "You are a helpful assistant. use your tools to answer questions."}]
+messages = [{"role": "system", "content": "You are a helpful assistant. Always use the search_tools to answer questions."}]
 
 # Async version for web server
 async def async_chat(async_client, prompt: str, model: str = "gpt-4.1-mini", previous_response_id: str = None) -> str:
