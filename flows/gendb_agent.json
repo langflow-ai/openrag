@@ -805,7 +805,7 @@
             ],
             "frozen": false,
             "icon": "bot",
-            "last_updated": "2025-07-16T06:52:39.221Z",
+            "last_updated": "2025-07-16T07:49:33.622Z",
             "legacy": false,
             "lf_version": "1.5.0.post1",
             "metadata": {},
@@ -1347,7 +1347,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2025-07-16T06:52:31.045Z",
+            "last_updated": "2025-07-16T07:49:33.625Z",
             "legacy": false,
             "lf_version": "1.5.0.post1",
             "metadata": {},
@@ -1518,7 +1518,7 @@
               },
               "password": {
                 "_input_type": "SecretStrInput",
-                "advanced": true,
+                "advanced": false,
                 "display_name": "Password",
                 "dynamic": false,
                 "info": "",
@@ -1531,7 +1531,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "str",
-                "value": ""
+                "value": "OSisgendb1!"
               },
               "search_query": {
                 "_input_type": "QueryInput",
@@ -1689,7 +1689,7 @@
               },
               "username": {
                 "_input_type": "StrInput",
-                "advanced": true,
+                "advanced": false,
                 "display_name": "Username",
                 "dynamic": false,
                 "info": "",
@@ -1753,14 +1753,14 @@
         "dragging": false,
         "id": "OpenSearch-iYfjf",
         "measured": {
-          "height": 529,
+          "height": 695,
           "width": 320
         },
         "position": {
           "x": 1198.2703951948477,
           "y": 176.45431894575557
         },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       },
       {
@@ -1793,7 +1793,7 @@
             "frozen": false,
             "icon": "binary",
             "key": "EmbeddingModel",
-            "last_updated": "2025-07-16T06:52:43.485Z",
+            "last_updated": "2025-07-16T07:49:33.625Z",
             "legacy": false,
             "lf_version": "1.5.0.post1",
             "metadata": {},
@@ -2057,7 +2057,7 @@
           "x": 692.1919187941104,
           "y": 354.58450527794975
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       }
     ],
