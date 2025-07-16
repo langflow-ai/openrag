@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "agentd>=0.1.8",
+    "agentd>=0.2.0.post2",
     "aiofiles>=24.1.0",
     "docling>=2.41.0",
     "opensearch-py[async]>=3.0.0",
