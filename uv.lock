@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "agentd"
-version = "0.2.0.post2"
+version = "0.2.0.post3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "litellm" },
@@ -18,9 +18,9 @@ dependencies = [
     { name = "openai-agents" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/fb/177ce5c7e8f8e8c4a4771b1da26e09e62780bf6f4042622654d05b101534/agentd-0.2.0.post2.tar.gz", hash = "sha256:b4cf8f5b727c1f0c0c9685762415e5affbc501758c0641eb9bd9c7d972c3ef30", size = 114513, upload-time = "2025-07-16T05:13:30.646Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6e/89/2bc397c80764d6acfeb6de7ac6d3ce8914f6f37f57307d1e2b6f7e8b0923/agentd-0.2.0.post3.tar.gz", hash = "sha256:765cb51798791eed32687b44305b20dd4130990471f0f1914afa2b292d09cb5e", size = 114530, upload-time = "2025-07-16T06:13:11.423Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/5d/232b01286225d5e6eff6e4e741411950d60002eeeceb7b2ab1e84d96cc66/agentd-0.2.0.post2-py3-none-any.whl", hash = "sha256:000a058758843739061c93503db5977c9734f2e690545dd21923bf9ae8a8a161", size = 13266, upload-time = "2025-07-16T05:13:29.389Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/f8/ced474722557f11e0a2f7e691371cf25c6a823507cc297971baa71bfbaac/agentd-0.2.0.post3-py3-none-any.whl", hash = "sha256:d05c6123a33d9f0b466fba4f7b378618c352ca367c65cd2c5a54f867af7b3cff", size = 13299, upload-time = "2025-07-16T06:13:10.034Z" },
 ]
 
 [[package]]
@@ -434,7 +434,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agentd", specifier = ">=0.2.0.post2" },
+    { name = "agentd", specifier = ">=0.2.0.post3" },
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "docling", specifier = ">=2.41.0" },
     { name = "opensearch-py", extras = ["async"], specifier = ">=3.0.0" },
