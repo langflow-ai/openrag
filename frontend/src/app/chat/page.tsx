@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { MessageCircle, Send, Loader2, User, Bot, Settings } from "lucide-react"
+import { MessageCircle, Send, Loader2, User, Bot } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Message {
