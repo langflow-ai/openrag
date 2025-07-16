@@ -33,6 +33,7 @@ services:
       - langflow
     environment:
       - OPENSEARCH_HOST=opensearch
+      - LANGFLOW_URL=http://langflow:7860
       - OPENSEARCH_PORT=9200
       - OPENSEARCH_USERNAME=admin
       - OPENSEARCH_PASSWORD=OSisgendb1!
@@ -47,9 +48,12 @@ services:
       - ./documents:/app/documents
 
   langflow:
+    volumes:
+      - ./flows:/app/flows
     image: langflow:1.5.0.post1
     container_name: langflow
     ports:
       - "7860:7860"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
