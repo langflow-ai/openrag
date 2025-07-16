@@ -89,7 +89,7 @@ export default function ChatPage() {
       </div>
 
       <Card className="h-[600px] flex flex-col">
-        <CardHeader>
+        <CardHeader className="flex-shrink-0">
           <CardTitle className="flex items-center gap-2">
             <MessageCircle className="h-5 w-5" />
             Chat
@@ -98,9 +98,9 @@ export default function ChatPage() {
             Chat with AI about your indexed documents
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 flex flex-col gap-4">
+        <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto space-y-4 p-4 rounded-lg bg-muted/20">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-4 p-4 rounded-lg bg-muted/20 min-h-0">
             {messages.length === 0 ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 <div className="text-center">
@@ -121,7 +121,7 @@ export default function ChatPage() {
                   >
                     <div
                       className={cn(
-                        "flex items-start gap-3 max-w-[80%]",
+                        "flex items-start gap-3 max-w-[80%] min-w-0",
                         message.role === "user" ? "flex-row-reverse" : "flex-row"
                       )}
                     >
@@ -141,13 +141,13 @@ export default function ChatPage() {
                       </div>
                       <div
                         className={cn(
-                          "rounded-lg px-3 py-2 text-sm",
+                          "rounded-lg px-3 py-2 text-sm min-w-0 overflow-hidden",
                           message.role === "user"
                             ? "bg-primary text-primary-foreground"
                             : "bg-card border border-border/40"
                         )}
                       >
-                        <p className="whitespace-pre-wrap">{message.content}</p>
+                        <p className="whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
                         <p className="text-xs opacity-70 mt-1">
                           {message.timestamp.toLocaleTimeString()}
                         </p>
@@ -157,11 +157,11 @@ export default function ChatPage() {
                 ))}
                 {loading && (
                   <div className="flex w-full justify-start">
-                    <div className="flex items-start gap-3 max-w-[80%]">
+                    <div className="flex items-start gap-3 max-w-[80%] min-w-0">
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
                         <Bot className="h-4 w-4" />
                       </div>
-                      <div className="rounded-lg px-3 py-2 text-sm bg-card border border-border/40">
+                      <div className="rounded-lg px-3 py-2 text-sm bg-card border border-border/40 min-w-0 overflow-hidden">
                         <div className="flex items-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           <span>Thinking...</span>
@@ -176,7 +176,7 @@ export default function ChatPage() {
           </div>
 
           {/* Input Area */}
-          <form onSubmit={handleSubmit} className="flex gap-2">
+          <form onSubmit={handleSubmit} className="flex gap-2 flex-shrink-0">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
