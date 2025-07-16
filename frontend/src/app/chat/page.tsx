@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { MessageCircle, Send, Loader2, User, Bot } from "lucide-react"
+import { MessageCircle, Send, Loader2, User, Bot, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Message {
@@ -13,10 +13,13 @@ interface Message {
   timestamp: Date
 }
 
+type EndpointType = "chat" | "langflow"
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
+  const [endpoint, setEndpoint] = useState<EndpointType>("chat")
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -42,7 +45,8 @@ export default function ChatPage() {
     setLoading(true)
 
     try {
-      const response = await fetch("/api/chat", {
+      const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
+      const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -90,12 +94,32 @@ export default function ChatPage() {
 
       <Card className="h-[600px] flex flex-col">
         <CardHeader className="flex-shrink-0">
-          <CardTitle className="flex items-center gap-2">
-            <MessageCircle className="h-5 w-5" />
-            Chat
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5" />
+              <CardTitle>Chat</CardTitle>
+            </div>
+            <div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
+              <Button
+                variant={endpoint === "chat" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setEndpoint("chat")}
+                className="h-7 text-xs"
+              >
+                Chat
+              </Button>
+              <Button
+                variant={endpoint === "langflow" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setEndpoint("langflow")}
+                className="h-7 text-xs"
+              >
+                Langflow
+              </Button>
+            </div>
+          </div>
           <CardDescription>
-            Chat with AI about your indexed documents
+            Chat with AI about your indexed documents using {endpoint === "chat" ? "Chat" : "Langflow"} endpoint
           </CardDescription>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
