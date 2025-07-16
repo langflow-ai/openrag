@@ -805,7 +805,7 @@
             ],
             "frozen": false,
             "icon": "bot",
-            "last_updated": "2025-07-14T17:31:57.316Z",
+            "last_updated": "2025-07-16T06:52:39.221Z",
             "legacy": false,
             "lf_version": "1.5.0.post1",
             "metadata": {},
@@ -937,7 +937,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "str",
-                "value": ""
+                "value": "OPENAI_API_KEY"
               },
               "code": {
                 "advanced": true,
@@ -1347,6 +1347,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
+            "last_updated": "2025-07-16T06:52:31.045Z",
             "legacy": false,
             "lf_version": "1.5.0.post1",
             "metadata": {},
@@ -1759,7 +1760,7 @@
           "x": 1198.2703951948477,
           "y": 176.45431894575557
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
@@ -1792,7 +1793,7 @@
             "frozen": false,
             "icon": "binary",
             "key": "EmbeddingModel",
-            "last_updated": "2025-07-14T17:32:41.253Z",
+            "last_updated": "2025-07-16T06:52:43.485Z",
             "legacy": false,
             "lf_version": "1.5.0.post1",
             "metadata": {},
@@ -1859,7 +1860,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "str",
-                "value": ""
+                "value": "OPENAI_API_KEY"
               },
               "chunk_size": {
                 "_input_type": "IntInput",
@@ -2056,14 +2057,14 @@
           "x": 692.1919187941104,
           "y": 354.58450527794975
         },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -223.90381397078158,
-      "y": 41.89352023382139,
-      "zoom": 0.7177814428841313
+      "x": -553.8850126293473,
+      "y": -52.405541430494566,
+      "zoom": 0.9070967105816634
     }
   },
   "description": "GenDB Open Search Agent",
