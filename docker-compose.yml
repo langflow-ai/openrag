@@ -6,7 +6,7 @@ services:
     container_name: os
     environment:
       - discovery.type=single-node
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=OSisgendb1!
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
     ports:
       - "9200:9200"
       - "9600:9600"
@@ -19,7 +19,7 @@ services:
     environment:
       OPENSEARCH_HOSTS: '["https://opensearch:9200"]'
       OPENSEARCH_USERNAME: "admin"
-      OPENSEARCH_PASSWORD: "OSisgendb1!"
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
     ports:
       - "5601:5601"
 
@@ -34,9 +34,11 @@ services:
     environment:
       - OPENSEARCH_HOST=opensearch
       - LANGFLOW_URL=http://langflow:7860
+      - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
+      - FLOW_ID=${FLOW_ID}
       - OPENSEARCH_PORT=9200
       - OPENSEARCH_USERNAME=admin
-      - OPENSEARCH_PASSWORD=OSisgendb1!
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     ports:
       - "3000:3000"
@@ -57,3 +59,4 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
+      - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
