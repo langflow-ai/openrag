@@ -11,9 +11,6 @@ os.environ['USE_CPU_ONLY'] = 'true'
 import hashlib
 import tempfile
 import asyncio
-import time
-import json
-import httpx
 
 from starlette.applications import Starlette
 from starlette.requests     import Request
@@ -27,6 +24,10 @@ from docling.document_converter import DocumentConverter
 from agentd.patch import patch_openai_with_mcp
 from openai import AsyncOpenAI
 from agentd.tool_decorator import tool
+from dotenv import load_dotenv
+
+load_dotenv()
+load_dotenv("../")
 
 # Initialize Docling converter
 converter = DocumentConverter()  # basic converter; tweak via PipelineOptions if you need OCR, etc.
@@ -35,7 +36,12 @@ converter = DocumentConverter()  # basic converter; tweak via PipelineOptions if
 opensearch_host = os.getenv("OPENSEARCH_HOST", "localhost")
 opensearch_port = int(os.getenv("OPENSEARCH_PORT", "9200"))
 opensearch_username = os.getenv("OPENSEARCH_USERNAME", "admin")
-opensearch_password = os.getenv("OPENSEARCH_PASSWORD", "OSisgendb1!")
+opensearch_password = os.getenv("OPENSEARCH_PASSWORD")
+langflow_url = os.getenv("LANGFLOW_URL", "http://localhost:7860")
+flow_id = os.getenv("FLOW_ID")
+langflow_key = os.getenv("LANGFLOW_SECRET_KEY")
+
+
 
 es = AsyncOpenSearch(
     hosts=[{"host": opensearch_host, "port": opensearch_port}],
@@ -81,7 +87,11 @@ index_body = {
     }
 }
 
-async_client = patch_openai_with_mcp(AsyncOpenAI())  # Get the patched client back
+langflow_client = AsyncOpenAI(
+    base_url=f"{langflow_url}/api/v1",
+    api_key=langflow_key
+)
+patched_async_client = patch_openai_with_mcp(AsyncOpenAI())  # Get the patched client back
 
 async def wait_for_opensearch():
     """Wait for OpenSearch to be ready with retries"""
@@ -175,7 +185,7 @@ async def process_file_common(file_path: str, file_hash: str = None):
     slim_doc = extract_relevant(full_doc)
 
     texts = [c["text"] for c in slim_doc["chunks"]]
-    resp = await async_client.embeddings.create(model=EMBED_MODEL, input=texts)
+    resp = await patched_async_client.embeddings.create(model=EMBED_MODEL, input=texts)
     embeddings = [d.embedding for d in resp.data]
 
     # Index each chunk as a separate document
@@ -264,7 +274,7 @@ async def search_tool(query: str)-> dict[str, Any]:
                      - {"results": [chunks]} on success
     """
     # Embed the query
-    resp = await async_client.embeddings.create(model=EMBED_MODEL, input=[query])
+    resp = await patched_async_client.embeddings.create(model=EMBED_MODEL, input=[query])
     query_embedding = resp.data[0].embedding
     # Search using vector similarity on individual chunks
     search_body = {
@@ -299,14 +309,38 @@ async def chat_endpoint(request):
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
-    response = await async_chat(async_client, prompt)
+    response = await async_chat(patched_async_client, prompt)
     return JSONResponse({"response": response})
+
+async def langflow_endpoint(request):
+    data = await request.json()
+    prompt = data.get("prompt", "")
+    
+    if not prompt:
+        return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+    if not langflow_url or not flow_id or not langflow_key:
+        return JSONResponse({"error": "LANGFLOW_URL, FLOW_ID, and LANGFLOW_KEY environment variables are required"}, status_code=500)
+
+    try:
+        response = await langflow_client.responses.create(
+            model=flow_id,
+            input=prompt
+        )
+        
+        response_text = response.output_text
+        
+        return JSONResponse({"response": response_text})
+        
+    except Exception as e:
+        return JSONResponse({"error": f"Langflow request failed: {str(e)}"}, status_code=500)
 
 app = Starlette(debug=True, routes=[
     Route("/upload",      upload,           methods=["POST"]),
     Route("/upload_path", upload_path,      methods=["POST"]),
     Route("/search",      search,           methods=["POST"]),
     Route("/chat",        chat_endpoint,    methods=["POST"]),
+    Route("/langflow",    langflow_endpoint, methods=["POST"]),
 ])
 
 if __name__ == "__main__":
