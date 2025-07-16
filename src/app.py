@@ -12,6 +12,8 @@ import hashlib
 import tempfile
 import asyncio
 import time
+import json
+import httpx
 
 from starlette.applications import Starlette
 from starlette.requests     import Request
@@ -106,7 +108,6 @@ async def init_index():
         print(f"Created index '{INDEX_NAME}'")
     else:
         print(f"Index '{INDEX_NAME}' already exists, skipping creation.")
-
 
 def extract_relevant(doc_dict: dict) -> dict:
     """
@@ -310,11 +311,14 @@ app = Starlette(debug=True, routes=[
 
 if __name__ == "__main__":
     import uvicorn
-    asyncio.run(init_index())
+
+    async def main():
+        await init_index()
+
+    asyncio.run(main())
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
         port=8000,
         reload=True,
     )
-
