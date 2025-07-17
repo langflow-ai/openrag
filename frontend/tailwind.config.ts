@@ -52,6 +52,38 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Custom colors from the screenshot
+        teal: {
+          50: "#f0fdfa",
+          100: "#ccfbf1",
+          200: "#99f6e4",
+          300: "#5eead4",
+          400: "#2dd4bf",
+          500: "#14b8a6",
+          600: "#0d9488",
+          700: "#0f766e",
+          800: "#115e59",
+          900: "#134e4a",
+          DEFAULT: "#00D4AA", // Primary teal from screenshot
+        },
+        success: {
+          DEFAULT: "#10B981", // Success green from screenshot
+          foreground: "#ffffff",
+        },
+        // Additional grays matching the screenshot
+        gray: {
+          850: "#1a1a1a", // Very dark background
+          800: "#2a2a2a",  // Card background
+          750: "#333333",  // Slightly lighter card
+          700: "#374151",  // Input background
+          600: "#4b5563",  // Border color
+          500: "#6b7280",  // Muted text
+          400: "#9ca3af",  // Secondary text
+          300: "#d1d5db",
+          200: "#e5e7eb",
+          100: "#f3f4f6",
+          50: "#f8f9fa",   // Primary text
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

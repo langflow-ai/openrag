@@ -10,6 +10,12 @@ export function Navigation() {
 
   const routes = [
     {
+      label: "Ingest",
+      icon: Settings,
+      href: "/admin",
+      active: pathname === "/admin",
+    },
+    {
       label: "Search",
       icon: Search,
       href: "/",
@@ -21,22 +27,11 @@ export function Navigation() {
       href: "/chat",
       active: pathname === "/chat",
     },
-    {
-      label: "Admin",
-      icon: Settings,
-      href: "/admin",
-      active: pathname === "/admin",
-    },
   ]
 
   return (
     <div className="space-y-4 py-4 flex flex-col h-full bg-card">
       <div className="px-3 py-2 flex-1">
-        <Link href="/" className="flex items-center pl-3 mb-8">
-          <h1 className="text-2xl font-bold tracking-tight">
-            GenDB
-          </h1>
-        </Link>
         <div className="space-y-1">
           {routes.map((route) => (
             <Link

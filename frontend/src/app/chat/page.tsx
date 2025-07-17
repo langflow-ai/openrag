@@ -86,8 +86,8 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      <div className="text-center">
+    <div className="space-y-8">
+      <div>
         <h1 className="text-3xl font-bold tracking-tight">Chat Assistant</h1>
         <p className="text-muted-foreground mt-2">Ask questions about your documents and get AI-powered answers</p>
       </div>
@@ -124,7 +124,7 @@ export default function ChatPage() {
         </CardHeader>
         <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-4 p-4 rounded-lg bg-muted/20 min-h-0">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 p-4 rounded-lg bg-muted/20 min-h-0">
             {messages.length === 0 ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 <div className="text-center">
@@ -136,59 +136,60 @@ export default function ChatPage() {
             ) : (
               <>
                 {messages.map((message, index) => (
-                  <div
-                    key={index}
-                    className={cn(
-                      "flex w-full",
-                      message.role === "user" ? "justify-end" : "justify-start"
+                  <div key={index} className="space-y-2">
+                    {message.role === "user" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                            <User className="h-4 w-4 text-primary" />
+                          </div>
+                          <span className="font-medium text-foreground">User</span>
+                        </div>
+                        <div className="pl-10">
+                          <p className="text-foreground whitespace-pre-wrap break-words">{message.content}</p>
+                        </div>
+                      </div>
                     )}
-                  >
-                    <div
-                      className={cn(
-                        "flex items-start gap-3 max-w-[80%] min-w-0",
-                        message.role === "user" ? "flex-row-reverse" : "flex-row"
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                          message.role === "user"
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary text-secondary-foreground"
-                        )}
-                      >
-                        {message.role === "user" ? (
-                          <User className="h-4 w-4" />
-                        ) : (
-                          <Bot className="h-4 w-4" />
-                        )}
+                    
+                    {message.role === "assistant" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
+                            <Bot className="h-4 w-4 text-accent-foreground" />
+                          </div>
+                          <span className="font-medium text-foreground">AI</span>
+                          <span className="text-sm text-muted-foreground">gpt-4.1</span>
+                        </div>
+                        <div className="pl-10">
+                          <div className="rounded-lg bg-card border border-border/40 p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                              <span className="text-sm text-green-400 font-medium">Finished</span>
+                              <span className="text-xs text-muted-foreground ml-auto">
+                                {message.timestamp.toLocaleTimeString()}
+                              </span>
+                            </div>
+                            <p className="text-foreground whitespace-pre-wrap break-words">{message.content}</p>
+                          </div>
+                        </div>
                       </div>
-                      <div
-                        className={cn(
-                          "rounded-lg px-3 py-2 text-sm min-w-0 overflow-hidden",
-                          message.role === "user"
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-card border border-border/40"
-                        )}
-                      >
-                        <p className="whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
-                        <p className="text-xs opacity-70 mt-1">
-                          {message.timestamp.toLocaleTimeString()}
-                        </p>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 ))}
                 {loading && (
-                  <div className="flex w-full justify-start">
-                    <div className="flex items-start gap-3 max-w-[80%] min-w-0">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-                        <Bot className="h-4 w-4" />
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
+                        <Bot className="h-4 w-4 text-accent-foreground" />
                       </div>
-                      <div className="rounded-lg px-3 py-2 text-sm bg-card border border-border/40 min-w-0 overflow-hidden">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span>Thinking...</span>
+                      <span className="font-medium text-foreground">AI</span>
+                      <span className="text-sm text-muted-foreground">gpt-4.1</span>
+                    </div>
+                    <div className="pl-10">
+                      <div className="rounded-lg bg-card border border-border/40 p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                          <span className="text-sm text-white font-medium">Thinking...</span>
                         </div>
                       </div>
                     </div>
