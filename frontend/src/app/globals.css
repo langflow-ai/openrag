@@ -32,29 +32,52 @@
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    /* Main backgrounds - very dark charcoal */
+    --background: 0 0% 10%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    
+    /* Card backgrounds - slightly lighter dark gray */
+    --card: 0 0% 16%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    
+    /* Popover backgrounds */
+    --popover: 0 0% 16%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    
+    /* Primary accent - bright teal/cyan */
+    --primary: 162 100% 42%;
+    --primary-foreground: 0 0% 10%;
+    
+    /* Secondary elements - medium gray */
+    --secondary: 215 25% 27%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+    
+    /* Muted elements - darker gray */
+    --muted: 215 25% 27%;
+    --muted-foreground: 215 20% 65%;
+    
+    /* Accent elements - bright blue */
+    --accent: 0 0% 100%;
+    --accent-foreground: 0 0% 10%;
+    
+    /* Destructive/error - red */
+    --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 217.2 91.2% 59.8%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
+    
+    /* Borders - subtle gray */
+    --border: 215 25% 35%;
+    
+    /* Input backgrounds - darker gray */
+    --input: 215 25% 27%;
+    
+    /* Ring/focus colors - teal accent */
+    --ring: 162 100% 42%;
+    
+    /* Chart colors - adjusted for dark theme */
+    --chart-1: 162 100% 42%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 217 91% 60%;
+    --chart-4: 45 93% 58%;
     --chart-5: 340 75% 55%;
   }
 }
