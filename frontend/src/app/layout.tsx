@@ -55,8 +55,8 @@ export default function RootLayout({
               <Navigation />
             </div>
             <main className="md:pl-72">
-              <div className="flex flex-col min-h-screen">
-                <div className="flex-1">
+              <div className="flex flex-col h-[calc(100vh-3.6rem)]">
+                <div className="flex-1 overflow-y-auto">
                   <div className="container py-6 lg:py-8">
                     {children}
                   </div>
