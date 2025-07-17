@@ -74,7 +74,7 @@ export default function SearchPage() {
       </div>
 
       {/* Search Interface */}
-      <Card className="max-w-4xl w-full mx-auto bg-card/50 backdrop-blur-sm border-border/50">
+      <Card className="w-full bg-card/50 backdrop-blur-sm border-border/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="h-5 w-5" />
