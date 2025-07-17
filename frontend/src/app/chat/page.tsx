@@ -92,7 +92,7 @@ export default function ChatPage() {
         <p className="text-muted-foreground mt-2">Ask questions about your documents and get AI-powered answers</p>
       </div>
 
-      <Card className="h-[600px] flex flex-col">
+      <Card className="h-[600px] flex flex-col max-w-full overflow-hidden">
         <CardHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -145,8 +145,8 @@ export default function ChatPage() {
                           </div>
                           <span className="font-medium text-foreground">User</span>
                         </div>
-                        <div className="pl-10">
-                          <p className="text-foreground whitespace-pre-wrap break-words">{message.content}</p>
+                        <div className="pl-10 max-w-full">
+                          <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
                         </div>
                       </div>
                     )}
@@ -160,8 +160,8 @@ export default function ChatPage() {
                           <span className="font-medium text-foreground">AI</span>
                           <span className="text-sm text-muted-foreground">gpt-4.1</span>
                         </div>
-                        <div className="pl-10">
-                          <div className="rounded-lg bg-card border border-border/40 p-4">
+                        <div className="pl-10 max-w-full">
+                          <div className="rounded-lg bg-card border border-border/40 p-4 max-w-full overflow-hidden">
                             <div className="flex items-center gap-2 mb-2">
                               <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                               <span className="text-sm text-green-400 font-medium">Finished</span>
@@ -169,7 +169,7 @@ export default function ChatPage() {
                                 {message.timestamp.toLocaleTimeString()}
                               </span>
                             </div>
-                            <p className="text-foreground whitespace-pre-wrap break-words">{message.content}</p>
+                            <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
                           </div>
                         </div>
                       </div>
@@ -185,8 +185,8 @@ export default function ChatPage() {
                       <span className="font-medium text-foreground">AI</span>
                       <span className="text-sm text-muted-foreground">gpt-4.1</span>
                     </div>
-                    <div className="pl-10">
-                      <div className="rounded-lg bg-card border border-border/40 p-4">
+                    <div className="pl-10 max-w-full">
+                      <div className="rounded-lg bg-card border border-border/40 p-4 max-w-full overflow-hidden">
                         <div className="flex items-center gap-2 mb-2">
                           <Loader2 className="w-4 h-4 animate-spin text-white" />
                           <span className="text-sm text-white font-medium">Thinking...</span>
@@ -201,13 +201,13 @@ export default function ChatPage() {
           </div>
 
           {/* Input Area */}
-          <form onSubmit={handleSubmit} className="flex gap-2 flex-shrink-0">
+          <form onSubmit={handleSubmit} className="flex gap-2 flex-shrink-0 w-full">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask a question about your documents..."
               disabled={loading}
-              className="flex-1"
+              className="flex-1 min-w-0"
             />
             <Button type="submit" disabled={!input.trim() || loading}>
               {loading ? (
