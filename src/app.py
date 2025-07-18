@@ -4,7 +4,7 @@ import os
 from collections import defaultdict
 from typing import Any
 
-from agent import async_chat
+from agent import async_chat, async_langflow
 
 os.environ['USE_CPU_ONLY'] = 'true'
 
@@ -14,7 +14,7 @@ import asyncio
 
 from starlette.applications import Starlette
 from starlette.requests     import Request
-from starlette.responses    import JSONResponse
+from starlette.responses    import JSONResponse, StreamingResponse
 from starlette.routing      import Route
 
 import aiofiles
@@ -305,16 +305,31 @@ async def search_tool(query: str)-> dict[str, Any]:
 async def chat_endpoint(request):
     data = await request.json()
     prompt = data.get("prompt", "")
+    stream = data.get("stream", False)
 
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
-    response = await async_chat(patched_async_client, prompt)
-    return JSONResponse({"response": response})
+    if stream:
+        from agent import async_chat_stream
+        return StreamingResponse(
+            async_chat_stream(patched_async_client, prompt),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Cache-Control"
+            }
+        )
+    else:
+        response = await async_chat(patched_async_client, prompt)
+        return JSONResponse({"response": response})
 
 async def langflow_endpoint(request):
     data = await request.json()
     prompt = data.get("prompt", "")
+    stream = data.get("stream", False)
     
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
@@ -323,14 +338,21 @@ async def langflow_endpoint(request):
         return JSONResponse({"error": "LANGFLOW_URL, FLOW_ID, and LANGFLOW_KEY environment variables are required"}, status_code=500)
 
     try:
-        response = await langflow_client.responses.create(
-            model=flow_id,
-            input=prompt
-        )
-        
-        response_text = response.output_text
-        
-        return JSONResponse({"response": response_text})
+        if stream:
+            from agent import async_langflow_stream
+            return StreamingResponse(
+                async_langflow_stream(langflow_client, flow_id, prompt),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Cache-Control"
+                }
+            )
+        else:
+            response = await async_langflow(langflow_client, flow_id, prompt)
+            return JSONResponse({"response": response})
         
     except Exception as e:
         return JSONResponse({"error": f"Langflow request failed: {str(e)}"}, status_code=500)
