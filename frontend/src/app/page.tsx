@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Search, Loader2, FileText, Database, Zap } from "lucide-react"
+import { Search, Loader2, FileText, Zap } from "lucide-react"
 
 interface SearchResult {
   filename: string
