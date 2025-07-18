@@ -28,8 +28,8 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
-  const [endpoint, setEndpoint] = useState<EndpointType>("chat")
-  const [asyncMode, setAsyncMode] = useState(false)
+  const [endpoint, setEndpoint] = useState<EndpointType>("langflow")
+  const [asyncMode, setAsyncMode] = useState(true)
   const [streamingMessage, setStreamingMessage] = useState<{
     content: string
     functionCalls: FunctionCall[]
@@ -509,7 +509,7 @@ export default function ChatPage() {
                   onClick={() => setAsyncMode(false)}
                   className="h-7 text-xs"
                 >
-                  Sync
+                  Streaming Off 
                 </Button>
                 <Button
                   variant={asyncMode ? "default" : "ghost"}
@@ -518,7 +518,7 @@ export default function ChatPage() {
                   className="h-7 text-xs"
                 >
                   <Zap className="h-3 w-3 mr-1" />
-                  Async
+                  Streaming On
                 </Button>
               </div>
               {/* Endpoint Toggle */}
