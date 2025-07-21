@@ -36,10 +36,21 @@ export default function ChatPage() {
     timestamp: Date
   } | null>(null)
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<Set<string>>(new Set())
+  const [previousResponseIds, setPreviousResponseIds] = useState<{
+    chat: string | null
+    langflow: string | null
+  }>({ chat: null, langflow: null })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  const handleEndpointChange = (newEndpoint: EndpointType) => {
+    setEndpoint(newEndpoint)
+    // Clear the conversation when switching endpoints to avoid response ID conflicts
+    setMessages([])
+    setPreviousResponseIds({ chat: null, langflow: null })
   }
 
   useEffect(() => {
@@ -50,15 +61,23 @@ export default function ChatPage() {
     const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
     
     try {
+      const requestBody: any = { 
+        prompt: userMessage.content,
+        stream: true 
+      }
+      
+      // Add previous_response_id if we have one for this endpoint
+      const currentResponseId = previousResponseIds[endpoint]
+      if (currentResponseId) {
+        requestBody.previous_response_id = currentResponseId
+      }
+      
       const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ 
-          prompt: userMessage.content,
-          stream: true 
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
@@ -74,6 +93,7 @@ export default function ChatPage() {
       let buffer = ""
       let currentContent = ""
       const currentFunctionCalls: FunctionCall[] = []
+      let newResponseId: string | null = null
       
       // Initialize streaming message
       setStreamingMessage({
@@ -99,6 +119,13 @@ export default function ChatPage() {
               try {
                 const chunk = JSON.parse(line)
                 console.log("Received chunk:", chunk.type || chunk.object, chunk)
+                
+                // Extract response ID if present
+                if (chunk.id) {
+                  newResponseId = chunk.id
+                } else if (chunk.response_id) {
+                  newResponseId = chunk.response_id
+                }
                 
                 // Handle OpenAI Chat Completions streaming format
                 if (chunk.object === "response.chunk" && chunk.delta) {
@@ -336,6 +363,14 @@ export default function ChatPage() {
       setMessages(prev => [...prev, finalMessage])
       setStreamingMessage(null)
       
+      // Store the response ID for the next request for this endpoint
+      if (newResponseId) {
+        setPreviousResponseIds(prev => ({
+          ...prev,
+          [endpoint]: newResponseId
+        }))
+      }
+      
     } catch (error) {
       console.error("SSE Stream error:", error)
       setStreamingMessage(null)
@@ -369,12 +404,21 @@ export default function ChatPage() {
       // Original non-streaming logic
       try {
         const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
+        
+        const requestBody: any = { prompt: userMessage.content }
+        
+        // Add previous_response_id if we have one for this endpoint
+        const currentResponseId = previousResponseIds[endpoint]
+        if (currentResponseId) {
+          requestBody.previous_response_id = currentResponseId
+        }
+        
         const response = await fetch(apiEndpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ prompt: userMessage.content }),
+          body: JSON.stringify(requestBody),
         })
 
         const result = await response.json()
@@ -386,6 +430,14 @@ export default function ChatPage() {
             timestamp: new Date()
           }
           setMessages(prev => [...prev, assistantMessage])
+          
+          // Store the response ID if present for this endpoint
+          if (result.response_id) {
+            setPreviousResponseIds(prev => ({
+              ...prev,
+              [endpoint]: result.response_id
+            }))
+          }
         } else {
           console.error("Chat failed:", result.error)
           const errorMessage: Message = {
@@ -526,7 +578,7 @@ export default function ChatPage() {
                 <Button
                   variant={endpoint === "chat" ? "default" : "ghost"}
                   size="sm"
-                  onClick={() => setEndpoint("chat")}
+                  onClick={() => handleEndpointChange("chat")}
                   className="h-7 text-xs"
                 >
                   Chat
@@ -534,7 +586,7 @@ export default function ChatPage() {
                 <Button
                   variant={endpoint === "langflow" ? "default" : "ghost"}
                   size="sm"
-                  onClick={() => setEndpoint("langflow")}
+                  onClick={() => handleEndpointChange("langflow")}
                   className="h-7 text-xs"
                 >
                   Langflow
