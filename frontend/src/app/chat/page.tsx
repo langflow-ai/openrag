@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { MessageCircle, Send, Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload, FileText } from "lucide-react"
+import { MessageCircle, Send, Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload } from "lucide-react"
 
 interface Message {
   role: "user" | "assistant"
@@ -23,6 +23,12 @@ interface FunctionCall {
 }
 
 type EndpointType = "chat" | "langflow"
+
+interface RequestBody {
+  prompt: string
+  stream?: boolean
+  previous_response_id?: string
+}
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -162,7 +168,7 @@ export default function ChatPage() {
     const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
     
     try {
-      const requestBody: any = { 
+      const requestBody: RequestBody = { 
         prompt: userMessage.content,
         stream: true 
       }
@@ -506,7 +512,7 @@ export default function ChatPage() {
       try {
         const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
         
-        const requestBody: any = { prompt: userMessage.content }
+        const requestBody: RequestBody = { prompt: userMessage.content }
         
         // Add previous_response_id if we have one for this endpoint
         const currentResponseId = previousResponseIds[endpoint]
@@ -720,7 +726,7 @@ export default function ChatPage() {
                     <>
                       <Upload className="h-12 w-12 mx-auto mb-4 text-primary" />
                       <p className="text-primary font-medium">Drop your document here</p>
-                      <p className="text-sm mt-2">I'll process it and add it to our conversation context</p>
+                      <p className="text-sm mt-2">I&apos;ll process it and add it to our conversation context</p>
                     </>
                   ) : isUploading ? (
                     <>
