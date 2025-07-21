@@ -305,6 +305,7 @@ async def search_tool(query: str)-> dict[str, Any]:
 async def chat_endpoint(request):
     data = await request.json()
     prompt = data.get("prompt", "")
+    previous_response_id = data.get("previous_response_id")
     stream = data.get("stream", False)
 
     if not prompt:
@@ -313,7 +314,7 @@ async def chat_endpoint(request):
     if stream:
         from agent import async_chat_stream
         return StreamingResponse(
-            async_chat_stream(patched_async_client, prompt),
+            async_chat_stream(patched_async_client, prompt, previous_response_id=previous_response_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -323,12 +324,16 @@ async def chat_endpoint(request):
             }
         )
     else:
-        response = await async_chat(patched_async_client, prompt)
-        return JSONResponse({"response": response})
+        response_text, response_id = await async_chat(patched_async_client, prompt, previous_response_id=previous_response_id)
+        response_data = {"response": response_text}
+        if response_id:
+            response_data["response_id"] = response_id
+        return JSONResponse(response_data)
 
 async def langflow_endpoint(request):
     data = await request.json()
     prompt = data.get("prompt", "")
+    previous_response_id = data.get("previous_response_id")
     stream = data.get("stream", False)
     
     if not prompt:
@@ -341,7 +346,7 @@ async def langflow_endpoint(request):
         if stream:
             from agent import async_langflow_stream
             return StreamingResponse(
-                async_langflow_stream(langflow_client, flow_id, prompt),
+                async_langflow_stream(langflow_client, flow_id, prompt, previous_response_id=previous_response_id),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -351,8 +356,11 @@ async def langflow_endpoint(request):
                 }
             )
         else:
-            response = await async_langflow(langflow_client, flow_id, prompt)
-            return JSONResponse({"response": response})
+            response_text, response_id = await async_langflow(langflow_client, flow_id, prompt, previous_response_id=previous_response_id)
+            response_data = {"response": response_text}
+            if response_id:
+                response_data["response_id"] = response_id
+            return JSONResponse(response_data)
         
     except Exception as e:
         return JSONResponse({"error": f"Langflow request failed: {str(e)}"}, status_code=500)
