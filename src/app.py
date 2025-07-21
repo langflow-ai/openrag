@@ -250,6 +250,62 @@ async def upload_path(request: Request):
     results = await asyncio.gather(*tasks)
     return JSONResponse({"results": results})
 
+async def upload_context(request: Request):
+    """Upload a file and add its content as context to the current conversation"""
+    import io
+    from docling_core.types.io import DocumentStream
+    
+    form = await request.form()
+    upload_file = form["file"]
+    filename = upload_file.filename or "uploaded_document"
+    
+    # Get optional parameters
+    previous_response_id = form.get("previous_response_id")
+    endpoint = form.get("endpoint", "langflow")  # default to langflow
+
+    # Stream file content into BytesIO
+    content = io.BytesIO()
+    while True:
+        chunk = await upload_file.read(1 << 20)  # 1MB chunks
+        if not chunk:
+            break
+        content.write(chunk)
+    content.seek(0)  # Reset to beginning for reading
+
+    # Create DocumentStream and process with docling
+    doc_stream = DocumentStream(name=filename, stream=content)
+    result = converter.convert(doc_stream)
+    full_doc = result.document.export_to_dict()
+    slim_doc = extract_relevant(full_doc)
+    
+    # Extract all text content
+    all_text = []
+    for chunk in slim_doc["chunks"]:
+        all_text.append(f"Page {chunk['page']}:\n{chunk['text']}")
+    
+    full_content = "\n\n".join(all_text)
+    
+    # Send document content as user message to get proper response_id
+    document_prompt = f"I'm uploading a document called '{filename}'. Here is its content:\n\n{full_content}\n\nPlease confirm you've received this document and are ready to answer questions about it."
+    
+    if endpoint == "langflow":
+        from agent import async_langflow
+        response_text, response_id = await async_langflow(langflow_client, flow_id, document_prompt, previous_response_id=previous_response_id)
+    else:  # chat
+        from agent import async_chat
+        response_text, response_id = await async_chat(patched_async_client, document_prompt, previous_response_id=previous_response_id)
+    
+    response_data = {
+        "status": "context_added",
+        "filename": filename,
+        "pages": len(slim_doc["chunks"]),
+        "content_length": len(full_content),
+        "response_id": response_id,
+        "confirmation": response_text
+    }
+    
+    return JSONResponse(response_data)
+
 async def search(request: Request):
 
     payload = await request.json()
@@ -366,11 +422,12 @@ async def langflow_endpoint(request):
         return JSONResponse({"error": f"Langflow request failed: {str(e)}"}, status_code=500)
 
 app = Starlette(debug=True, routes=[
-    Route("/upload",      upload,           methods=["POST"]),
-    Route("/upload_path", upload_path,      methods=["POST"]),
-    Route("/search",      search,           methods=["POST"]),
-    Route("/chat",        chat_endpoint,    methods=["POST"]),
-    Route("/langflow",    langflow_endpoint, methods=["POST"]),
+    Route("/upload",         upload,           methods=["POST"]),
+    Route("/upload_context", upload_context,   methods=["POST"]),
+    Route("/upload_path",    upload_path,      methods=["POST"]),
+    Route("/search",         search,           methods=["POST"]),
+    Route("/chat",           chat_endpoint,    methods=["POST"]),
+    Route("/langflow",       langflow_endpoint, methods=["POST"]),
 ])
 
 if __name__ == "__main__":
