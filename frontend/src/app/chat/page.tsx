@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { MessageCircle, Send, Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight } from "lucide-react"
+import { MessageCircle, Send, Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload, FileText } from "lucide-react"
 
 interface Message {
   role: "user" | "assistant"
@@ -40,6 +40,9 @@ export default function ChatPage() {
     chat: string | null
     langflow: string | null
   }>({ chat: null, langflow: null })
+  const [isUploading, setIsUploading] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const dragCounterRef = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -51,6 +54,98 @@ export default function ChatPage() {
     // Clear the conversation when switching endpoints to avoid response ID conflicts
     setMessages([])
     setPreviousResponseIds({ chat: null, langflow: null })
+  }
+
+  const handleFileUpload = async (file: File) => {
+    if (isUploading) return
+    
+    setIsUploading(true)
+    
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('endpoint', endpoint)
+      
+      // Add previous_response_id if we have one for this endpoint
+      const currentResponseId = previousResponseIds[endpoint]
+      if (currentResponseId) {
+        formData.append('previous_response_id', currentResponseId)
+      }
+      
+      const response = await fetch('/api/upload_context', {
+        method: 'POST',
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      
+      // Add upload confirmation as a system message in the UI
+      const uploadMessage: Message = {
+        role: "assistant",
+        content: `📄 Document uploaded: **${result.filename}** (${result.pages} pages, ${result.content_length.toLocaleString()} characters)\n\n${result.confirmation}`,
+        timestamp: new Date()
+      }
+      
+      setMessages(prev => [...prev, uploadMessage])
+      
+      // Update the response ID for this endpoint
+      if (result.response_id) {
+        setPreviousResponseIds(prev => ({
+          ...prev,
+          [endpoint]: result.response_id
+        }))
+      }
+      
+    } catch (error) {
+      console.error('Upload failed:', error)
+      const errorMessage: Message = {
+        role: "assistant",
+        content: `❌ Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, errorMessage])
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current++
+    if (dragCounterRef.current === 1) {
+      setIsDragOver(true)
+    }
+  }
+  
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current--
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false)
+    }
+  }
+  
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+    
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      handleFileUpload(files[0]) // Upload first file only
+    }
   }
 
   useEffect(() => {
@@ -601,13 +696,40 @@ export default function ChatPage() {
         </CardHeader>
         <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 p-4 rounded-lg bg-muted/20 min-h-0">
+          <div 
+            className={`flex-1 overflow-y-auto overflow-x-hidden space-y-6 p-4 rounded-lg min-h-0 transition-all relative ${
+              isDragOver 
+                ? 'bg-primary/10 border-2 border-dashed border-primary' 
+                : 'bg-muted/20'
+            }`}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             {messages.length === 0 && !streamingMessage ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 <div className="text-center">
-                  <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Start a conversation by asking a question!</p>
-                  <p className="text-sm mt-2">I can help you find information in your documents.</p>
+                  {isDragOver ? (
+                    <>
+                      <Upload className="h-12 w-12 mx-auto mb-4 text-primary" />
+                      <p className="text-primary font-medium">Drop your document here</p>
+                      <p className="text-sm mt-2">I'll process it and add it to our conversation context</p>
+                    </>
+                  ) : isUploading ? (
+                    <>
+                      <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin" />
+                      <p>Processing your document...</p>
+                      <p className="text-sm mt-2">This may take a few moments</p>
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>Start a conversation by asking a question!</p>
+                      <p className="text-sm mt-2">I can help you find information in your documents.</p>
+                      <p className="text-xs mt-3 opacity-75">💡 Tip: Drag & drop a document here to add context</p>
+                    </>
+                  )}
                 </div>
               </div>
             ) : (
@@ -705,6 +827,16 @@ export default function ChatPage() {
                 )}
                 <div ref={messagesEndRef} />
               </>
+            )}
+            
+            {/* Drag overlay for existing messages */}
+            {isDragOver && messages.length > 0 && (
+              <div className="absolute inset-0 bg-primary/20 backdrop-blur-sm flex items-center justify-center rounded-lg">
+                <div className="text-center">
+                  <Upload className="h-8 w-8 mx-auto mb-2 text-primary" />
+                  <p className="text-primary font-medium">Drop document to add context</p>
+                </div>
+              </div>
             )}
           </div>
 
