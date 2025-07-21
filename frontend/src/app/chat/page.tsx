@@ -44,6 +44,7 @@ export default function ChatPage() {
   const [isDragOver, setIsDragOver] = useState(false)
   const dragCounterRef = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -151,6 +152,11 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom()
   }, [messages, streamingMessage])
+
+  // Auto-focus the input on component mount
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
 
   const handleSSEStream = async (userMessage: Message) => {
     const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
@@ -843,6 +849,7 @@ export default function ChatPage() {
           {/* Input Area */}
           <form onSubmit={handleSubmit} className="flex gap-2 flex-shrink-0 w-full">
             <Input
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask a question about your documents..."
