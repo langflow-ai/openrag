@@ -17,9 +17,22 @@ interface Message {
 interface FunctionCall {
   name: string
   arguments?: Record<string, unknown>
-  result?: Record<string, unknown>
+  result?: Record<string, unknown> | ToolCallResult[]
   status: "pending" | "completed" | "error"
   argumentsString?: string
+  id?: string
+  type?: string
+}
+
+interface ToolCallResult {
+  text_key?: string
+  data?: {
+    file_path?: string
+    text?: string
+    [key: string]: unknown
+  }
+  default_value?: string
+  [key: string]: unknown
 }
 
 type EndpointType = "chat" | "langflow"
@@ -538,6 +551,56 @@ export default function ChatPage() {
                   }
                 }
                 
+                // Handle tool call completion with results (new format)
+                else if (chunk.type === "response.output_item.done" && chunk.item?.type?.includes("_call")) {
+                  console.log("Tool call done with results (new format):", chunk.item)
+                  
+                  // Find existing function call by ID, or by name/type if ID not available
+                  let functionCall = currentFunctionCalls.find(fc => 
+                    fc.id === chunk.item.id || 
+                    (fc.name === chunk.item.type) ||
+                    (fc.name.includes(chunk.item.type.replace('_call', '')) || chunk.item.type.includes(fc.name))
+                  )
+                  
+                  if (functionCall) {
+                    // Update existing function call
+                    functionCall.arguments = chunk.item.inputs || functionCall.arguments
+                    functionCall.status = chunk.item.status === "completed" ? "completed" : "error"
+                    functionCall.id = chunk.item.id
+                    functionCall.type = chunk.item.type
+                    
+                    // Set the results
+                    if (chunk.item.results) {
+                      functionCall.result = chunk.item.results
+                    }
+                  } else {
+                    // Only create new if we really can't find an existing one
+                    console.log("Creating new function call for:", chunk.item.type)
+                    functionCall = {
+                      name: chunk.item.type || "unknown",
+                      arguments: chunk.item.inputs || {},
+                      status: "completed" as const,
+                      id: chunk.item.id,
+                      type: chunk.item.type,
+                      result: chunk.item.results
+                    }
+                    currentFunctionCalls.push(functionCall)
+                  }
+                }
+                
+                // Handle function call output item added (new format)
+                else if (chunk.type === "response.output_item.added" && chunk.item?.type?.includes("_call")) {
+                  console.log("Tool call started (new format):", chunk.item)
+                  const functionCall = {
+                    name: chunk.item.type || "unknown",
+                    arguments: chunk.item.inputs || {},
+                    status: "pending" as const,
+                    id: chunk.item.id,
+                    type: chunk.item.type
+                  }
+                  currentFunctionCalls.push(functionCall)
+                }
+                
                 // Handle function call results
                 else if (chunk.type === "response.function_call.result" || chunk.type === "function_call_result") {
                   console.log("Function call result:", chunk.result || chunk)
@@ -768,9 +831,39 @@ export default function ChatPage() {
                   {fc.result && (
                     <div className="text-xs text-muted-foreground">
                       <span className="font-medium">Result:</span>
-                      <pre className="mt-1 p-2 bg-muted/30 rounded text-xs overflow-x-auto">
-                        {JSON.stringify(fc.result, null, 2)}
-                      </pre>
+                      {Array.isArray(fc.result) ? (
+                        <div className="mt-1 space-y-2">
+                          {fc.result.map((result, idx) => (
+                            <div key={idx} className="p-2 bg-muted/30 rounded border border-muted/50">
+                              {result.data?.file_path && (
+                                <div className="font-medium text-blue-400 mb-1 text-xs">
+                                  📄 {result.data.file_path || "Unknown file"}
+                                </div>
+                              )}
+                              {result.data?.text && (
+                                <div className="text-xs text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
+                                  {result.data.text.length > 300 
+                                    ? result.data.text.substring(0, 300) + "..." 
+                                    : result.data.text
+                                  }
+                                </div>
+                              )}
+                              {result.text_key && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  Key: {result.text_key}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          <div className="text-xs text-muted-foreground">
+                            Found {fc.result.length} result{fc.result.length !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      ) : (
+                        <pre className="mt-1 p-2 bg-muted/30 rounded text-xs overflow-x-auto">
+                          {JSON.stringify(fc.result, null, 2)}
+                        </pre>
+                      )}
                     </div>
                   )}
                 </div>
