@@ -51,6 +51,7 @@ services:
       - ./uv.lock:/app/uv.lock
       - ./documents:/app/documents
     gpus: all
+    platform: linux/amd64
 
   langflow:
     volumes:
