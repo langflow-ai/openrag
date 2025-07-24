@@ -64,9 +64,19 @@ export default function ChatPage() {
   }
 
   const handleFileUpload = async (file: File) => {
+    console.log("handleFileUpload called with file:", file.name)
+    
     if (isUploading) return
     
     setIsUploading(true)
+    
+    // Add initial upload message
+    const uploadStartMessage: Message = {
+      role: "assistant", 
+      content: `🔄 Starting upload of **${file.name}**...`,
+      timestamp: new Date()
+    }
+    setMessages(prev => [...prev, uploadStartMessage])
     
     try {
       const formData = new FormData()
@@ -84,27 +94,58 @@ export default function ChatPage() {
         body: formData,
       })
       
+      console.log("Upload response status:", response.status)
+      
       if (!response.ok) {
-        throw new Error(`Upload failed: ${response.status}`)
+        const errorText = await response.text()
+        console.error("Upload failed with status:", response.status, "Response:", errorText)
+        throw new Error(`Upload failed: ${response.status} - ${errorText}`)
       }
       
       const result = await response.json()
+      console.log("Upload result:", result)
       
-      // Add upload confirmation as a system message in the UI
-      const uploadMessage: Message = {
-        role: "assistant",
-        content: `📄 Document uploaded: **${result.filename}** (${result.pages} pages, ${result.content_length.toLocaleString()} characters)\n\n${result.confirmation}`,
-        timestamp: new Date()
-      }
-      
-      setMessages(prev => [...prev, uploadMessage])
-      
-      // Update the response ID for this endpoint
-      if (result.response_id) {
-        setPreviousResponseIds(prev => ({
-          ...prev,
-          [endpoint]: result.response_id
-        }))
+      if (response.status === 201) {
+        // New flow: Got task ID, start polling
+        const taskId = result.task_id || result.id
+        
+        if (!taskId) {
+          console.error("No task ID in 201 response:", result)
+          throw new Error("No task ID received from server")
+        }
+        
+        // Update message to show polling started
+        const pollingMessage: Message = {
+          role: "assistant",
+          content: `⏳ Upload initiated for **${file.name}**. Processing... (Task ID: ${taskId})`,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev.slice(0, -1), pollingMessage])
+        
+        // Start polling the task status
+        await pollTaskStatus(taskId, file.name)
+        
+      } else if (response.ok) {
+        // Original flow: Direct response  
+        
+        const uploadMessage: Message = {
+          role: "assistant",
+          content: `📄 Document uploaded: **${result.filename}** (${result.pages} pages, ${result.content_length.toLocaleString()} characters)\n\n${result.confirmation}`,
+          timestamp: new Date()
+        }
+        
+        setMessages(prev => [...prev.slice(0, -1), uploadMessage])
+        
+        // Update the response ID for this endpoint
+        if (result.response_id) {
+          setPreviousResponseIds(prev => ({
+            ...prev,
+            [endpoint]: result.response_id
+          }))
+        }
+        
+      } else {
+        throw new Error(`Upload failed: ${response.status}`)
       }
       
     } catch (error) {
@@ -114,10 +155,106 @@ export default function ChatPage() {
         content: `❌ Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp: new Date()
       }
-      setMessages(prev => [...prev, errorMessage])
+      setMessages(prev => [...prev.slice(0, -1), errorMessage])
     } finally {
       setIsUploading(false)
     }
+  }
+
+  const pollTaskStatus = async (taskId: string, filename: string) => {
+    const maxAttempts = 60 // Poll for up to 5 minutes (60 * 5s intervals)
+    let attempts = 0
+    
+    const poll = async (): Promise<void> => {
+      try {
+        attempts++
+        
+        const response = await fetch(`/api/tasks/${taskId}`)
+        console.log("Task polling response status:", response.status)
+        
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error("Task polling failed:", response.status, errorText)
+          throw new Error(`Failed to check task status: ${response.status} - ${errorText}`)
+        }
+        
+        const task = await response.json()
+        console.log("Task polling result:", task)
+        
+        // Safety check to ensure task object exists
+        if (!task) {
+          throw new Error("No task data received from server")
+        }
+        
+        // Update the message based on task status
+        if (task.status === 'completed') {
+          const successMessage: Message = {
+            role: "assistant",
+            content: `✅ **${filename}** processed successfully!\n\n${task.result?.confirmation || 'Document has been added to the knowledge base.'}`,
+            timestamp: new Date()
+          }
+          setMessages(prev => [...prev.slice(0, -1), successMessage])
+          
+          // Update response ID if available
+          if (task.result?.response_id) {
+            setPreviousResponseIds(prev => ({
+              ...prev,
+              [endpoint]: task.result.response_id
+            }))
+          }
+          
+        } else if (task.status === 'failed' || task.status === 'error') {
+          const errorMessage: Message = {
+            role: "assistant",
+            content: `❌ Processing failed for **${filename}**: ${task.error || 'Unknown error occurred'}`,
+            timestamp: new Date()
+          }
+          setMessages(prev => [...prev.slice(0, -1), errorMessage])
+          
+        } else if (task.status === 'pending' || task.status === 'running' || task.status === 'processing') {
+          // Still in progress, update message and continue polling
+          const progressMessage: Message = {
+            role: "assistant", 
+            content: `⏳ Processing **${filename}**... (${task.status}) - Attempt ${attempts}/${maxAttempts}`,
+            timestamp: new Date()
+          }
+          setMessages(prev => [...prev.slice(0, -1), progressMessage])
+          
+          // Continue polling if we haven't exceeded max attempts
+          if (attempts < maxAttempts) {
+            setTimeout(poll, 5000) // Poll every 5 seconds
+          } else {
+            const timeoutMessage: Message = {
+              role: "assistant",
+              content: `⚠️ Processing timeout for **${filename}**. The task may still be running in the background.`,
+              timestamp: new Date()
+            }
+            setMessages(prev => [...prev.slice(0, -1), timeoutMessage])
+          }
+          
+        } else {
+          // Unknown status
+          const unknownMessage: Message = {
+            role: "assistant",
+            content: `❓ Unknown status for **${filename}**: ${task.status}`,
+            timestamp: new Date()
+          }
+          setMessages(prev => [...prev.slice(0, -1), unknownMessage])
+        }
+        
+      } catch (error) {
+        console.error('Task polling error:', error)
+        const errorMessage: Message = {
+          role: "assistant",
+          content: `❌ Failed to check processing status for **${filename}**: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev.slice(0, -1), errorMessage])
+      }
+    }
+    
+    // Start polling immediately
+    poll()
   }
 
   const handleDragEnter = (e: React.DragEvent) => {
