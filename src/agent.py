@@ -15,7 +15,8 @@ async def async_response_stream(client, prompt: str, model: str, previous_respon
         request_params = {
             "model": model,
             "input": prompt,
-            "stream": True
+            "stream": True,
+            "include": ["tool_call.results"]
         }
         if previous_response_id is not None:
             request_params["previous_response_id"] = previous_response_id
@@ -76,7 +77,8 @@ async def async_response(client, prompt: str, model: str, previous_response_id: 
     request_params = {
         "model": model,
         "input": prompt,
-        "stream": False
+        "stream": False,
+        "include": ["tool_call.results"]
     }
     if previous_response_id is not None:
         request_params["previous_response_id"] = previous_response_id
