@@ -40,6 +40,8 @@ services:
       - OPENSEARCH_USERNAME=admin
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
     ports:
       - "3000:3000"
     volumes:
@@ -48,6 +50,7 @@ services:
       - ./pyproject.toml:/app/pyproject.toml
       - ./uv.lock:/app/uv.lock
       - ./documents:/app/documents
+    gpus: all
 
   langflow:
     volumes:
