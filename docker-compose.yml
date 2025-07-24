@@ -24,9 +24,10 @@ services:
       - "5601:5601"
 
   gendb:
-    build:
-      context: .
-      dockerfile: Dockerfile.app
+    image: phact/gendb:latest
+    #build:
+      #context: .
+      #dockerfile: Dockerfile.app
     container_name: gendb-app
     depends_on:
       - opensearch
