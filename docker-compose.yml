@@ -57,7 +57,8 @@ services:
   langflow:
     volumes:
       - ./flows:/app/flows
-    image: langflow:1.5.0.post1
+    #image: langflow:1.5.0.post1
+    image: phact/langflow:responses
     container_name: langflow
     ports:
       - "7860:7860"
