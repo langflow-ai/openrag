@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Search, Loader2, FileText, Zap } from "lucide-react"
+import { ProtectedRoute } from "@/components/protected-route"
 
 interface SearchResult {
   filename: string
@@ -15,7 +16,7 @@ interface SearchResult {
   score: number
 }
 
-export default function SearchPage() {
+function SearchPage() {
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<SearchResult[]>([])
@@ -202,5 +203,13 @@ export default function SearchPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function ProtectedSearchPage() {
+  return (
+    <ProtectedRoute>
+      <SearchPage />
+    </ProtectedRoute>
   )
 }
