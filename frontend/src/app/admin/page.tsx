@@ -6,8 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Upload, FolderOpen, Loader2 } from "lucide-react"
+import { ProtectedRoute } from "@/components/protected-route"
 
-export default function AdminPage() {
+function AdminPage() {
   const [fileUploadLoading, setFileUploadLoading] = useState(false)
   const [pathUploadLoading, setPathUploadLoading] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -258,5 +259,13 @@ export default function AdminPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function ProtectedAdminPage() {
+  return (
+    <ProtectedRoute>
+      <AdminPage />
+    </ProtectedRoute>
   )
 }

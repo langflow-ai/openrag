@@ -1,10 +1,14 @@
-messages = [{"role": "system", "content": "You are a helpful assistant. Always use the search_tools to answer questions."}]
+# User-scoped conversation state - keyed by user_id
+user_conversations = {}  # user_id -> {"messages": [...], "previous_response_id": None}
 
-# Simple session store for conversation state
-conversation_state = {
-    "messages": messages,
-    "previous_response_id": None
-}
+def get_user_conversation(user_id: str):
+    """Get or create conversation state for a user"""
+    if user_id not in user_conversations:
+        user_conversations[user_id] = {
+            "messages": [{"role": "system", "content": "You are a helpful assistant. Always use the search_tools to answer questions."}],
+            "previous_response_id": None
+        }
+    return user_conversations[user_id]
 
 # Generic async response function for streaming
 async def async_response_stream(client, prompt: str, model: str, previous_response_id: str = None, log_prefix: str = "response"):
@@ -90,10 +94,6 @@ async def async_response(client, prompt: str, model: str, previous_response_id: 
     
     # Extract and store response_id if available
     response_id = getattr(response, 'id', None) or getattr(response, 'response_id', None)
-    if response_id:
-        global conversation_state
-        conversation_state["previous_response_id"] = response_id
-        print(f"Stored response_id: {response_id}")
     
     return response_text, response_id
 
@@ -122,8 +122,8 @@ async def async_langflow_stream(langflow_client, flow_id: str, prompt: str, prev
         raise
 
 # Async chat function (non-streaming only)
-async def async_chat(async_client, prompt: str, model: str = "gpt-4.1-mini", previous_response_id: str = None):
-    global conversation_state
+async def async_chat(async_client, prompt: str, user_id: str, model: str = "gpt-4.1-mini", previous_response_id: str = None):
+    conversation_state = get_user_conversation(user_id)
     
     # If no previous_response_id is provided, reset conversation state
     if previous_response_id is None:
@@ -138,11 +138,16 @@ async def async_chat(async_client, prompt: str, model: str = "gpt-4.1-mini", pre
     # Add assistant response to conversation
     conversation_state["messages"].append({"role": "assistant", "content": response_text})
     
+    # Store response_id for this user's conversation
+    if response_id:
+        conversation_state["previous_response_id"] = response_id
+        print(f"Stored response_id for user {user_id}: {response_id}")
+    
     return response_text, response_id
 
 # Async chat function for streaming (alias for compatibility)
-async def async_chat_stream(async_client, prompt: str, model: str = "gpt-4.1-mini", previous_response_id: str = None):
-    global conversation_state
+async def async_chat_stream(async_client, prompt: str, user_id: str, model: str = "gpt-4.1-mini", previous_response_id: str = None):
+    conversation_state = get_user_conversation(user_id)
     
     # If no previous_response_id is provided, reset conversation state
     if previous_response_id is None:

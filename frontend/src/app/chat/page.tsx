@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { MessageCircle, Send, Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload } from "lucide-react"
+import { ProtectedRoute } from "@/components/protected-route"
 
 interface Message {
   role: "user" | "assistant"
@@ -43,7 +44,7 @@ interface RequestBody {
   previous_response_id?: string
 }
 
-export default function ChatPage() {
+function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -1103,5 +1104,13 @@ export default function ChatPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function ProtectedChatPage() {
+  return (
+    <ProtectedRoute>
+      <ChatPage />
+    </ProtectedRoute>
   )
 } 
