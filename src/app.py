@@ -1,5 +1,5 @@
 # app.py
-
+import datetime
 import os
 from collections import defaultdict
 from typing import Any
@@ -12,6 +12,12 @@ from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 
 from agent import async_chat, async_langflow
+
+# Import connector components
+from connectors.service import ConnectorService
+from connectors.google_drive import GoogleDriveConnector
+from session_manager import SessionManager
+from auth_middleware import require_auth, optional_auth
 
 import hashlib
 import tempfile
@@ -91,7 +97,22 @@ index_body = {
                         "m":               16
                     }
                 }
-            }
+            },
+            # Connector and source information
+            "source_url": { "type": "keyword" },
+            "connector_type": { "type": "keyword" },
+            # ACL fields
+            "owner": { "type": "keyword" },
+            "allowed_users": { "type": "keyword" },
+            "allowed_groups": { "type": "keyword" },
+            "user_permissions": { "type": "object" },
+            "group_permissions": { "type": "object" },
+            # Timestamps
+            "created_time": { "type": "date" },
+            "modified_time": { "type": "date" },
+            "indexed_time": { "type": "date" },
+            # Additional metadata
+            "metadata": { "type": "object" }
         }
     }
 }
@@ -101,6 +122,22 @@ langflow_client = AsyncOpenAI(
     api_key=langflow_key
 )
 patched_async_client = patch_openai_with_mcp(AsyncOpenAI())  # Get the patched client back
+
+# Initialize connector service
+connector_service = ConnectorService(
+    opensearch_client=opensearch,
+    patched_async_client=patched_async_client,
+    process_pool=None,  # Will be set after process_pool is initialized
+    embed_model=EMBED_MODEL,
+    index_name=INDEX_NAME
+)
+
+# Initialize session manager
+session_secret = os.getenv("SESSION_SECRET", "your-secret-key-change-in-production")
+session_manager = SessionManager(session_secret)
+
+# Track used authorization codes to prevent duplicate usage
+used_auth_codes = set()
 
 class TaskStatus(Enum):
     PENDING = "pending"
@@ -130,7 +167,7 @@ class UploadTask:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
-task_store = {}
+task_store = {}  # user_id -> {task_id -> UploadTask}
 background_tasks = set()
 
 # GPU device detection
@@ -171,6 +208,7 @@ else:
 
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", DEFAULT_WORKERS))
 process_pool = ProcessPoolExecutor(max_workers=MAX_WORKERS)
+connector_service.process_pool = process_pool  # Set the process pool for connector service
 
 print(f"Process pool initialized with {MAX_WORKERS} workers")
 
@@ -305,33 +343,60 @@ async def init_index():
     else:
         print(f"Index '{INDEX_NAME}' already exists, skipping creation.")
 
+from collections import defaultdict
+
+
 def extract_relevant(doc_dict: dict) -> dict:
     """
     Given the full export_to_dict() result:
       - Grabs origin metadata (hash, filename, mimetype)
       - Finds every text fragment in `texts`, groups them by page_no
-      - Concatenates each page’s fragments into one string chunk
-    Returns a slimmed dict ready for indexing.
+      - Flattens tables in `tables` into tab-separated text, grouping by row
+      - Concatenates each page’s fragments and each table into its own chunk
+    Returns a slimmed dict ready for indexing, with each chunk under "text".
     """
     origin = doc_dict.get("origin", {})
-    texts = doc_dict.get("texts", [])
+    chunks = []
 
-    # Group all text fragments by page number
+    # 1) process free-text fragments
     page_texts = defaultdict(list)
-    for txt in texts:
-        # Each txt['prov'][0]['page_no'] tells you which page it came from
+    for txt in doc_dict.get("texts", []):
         prov = txt.get("prov", [])
         page_no = prov[0].get("page_no") if prov else None
         if page_no is not None:
             page_texts[page_no].append(txt.get("text", "").strip())
 
-    # Build an ordered list of {page, text}
-    chunks = []
     for page in sorted(page_texts):
-        joined = "\n".join(page_texts[page])
         chunks.append({
             "page": page,
-            "text": joined
+            "type": "text",
+            "text": "\n".join(page_texts[page])
+        })
+
+    # 2) process tables
+    for t_idx, table in enumerate(doc_dict.get("tables", [])):
+        prov = table.get("prov", [])
+        page_no = prov[0].get("page_no") if prov else None
+
+        # group cells by their row index
+        rows = defaultdict(list)
+        for cell in table.get("data").get("table_cells", []):
+            r = cell.get("start_row_offset_idx")
+            c = cell.get("start_col_offset_idx")
+            text = cell.get("text", "").strip()
+            rows[r].append((c, text))
+
+        # build a tab‑separated line for each row, in order
+        flat_rows = []
+        for r in sorted(rows):
+            cells = [txt for _, txt in sorted(rows[r], key=lambda x: x[0])]
+            flat_rows.append("\t".join(cells))
+
+        chunks.append({
+            "page": page_no,
+            "type": "table",
+            "table_index": t_idx,
+            "text": "\n".join(flat_rows)
         })
 
     return {
@@ -361,7 +426,7 @@ async def process_file_with_retry(file_path: str, max_retries: int = 3) -> dict:
             else:
                 raise last_error
 
-async def process_file_common(file_path: str, file_hash: str = None):
+async def process_file_common(file_path: str, file_hash: str = None, owner_user_id: str = None):
     """
     Common processing logic for both upload and upload_path.
     1. Optionally compute SHA256 hash if not provided.
@@ -402,7 +467,9 @@ async def process_file_common(file_path: str, file_hash: str = None):
             "mimetype": slim_doc["mimetype"],
             "page": chunk["page"],
             "text": chunk["text"],
-            "chunk_embedding": vect
+            "chunk_embedding": vect,
+            "owner": owner_user_id,  # User who uploaded/owns this document
+            "indexed_time": datetime.datetime.now().isoformat()
         }
         chunk_id = f"{file_hash}_{i}"
         await opensearch.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
@@ -475,10 +542,10 @@ async def process_single_file_task(upload_task: UploadTask, file_path: str) -> N
         if upload_task.processed_files >= upload_task.total_files:
             upload_task.status = TaskStatus.COMPLETED
 
-async def background_upload_processor(task_id: str) -> None:
+async def background_upload_processor(user_id: str, task_id: str) -> None:
     """Background task to process all files in an upload job with concurrency control"""
     try:
-        upload_task = task_store[task_id]
+        upload_task = task_store[user_id][task_id]
         upload_task.status = TaskStatus.RUNNING
         upload_task.updated_at = time.time()
         
@@ -500,10 +567,11 @@ async def background_upload_processor(task_id: str) -> None:
         print(f"[ERROR] Background upload processor failed for task {task_id}: {e}")
         import traceback
         traceback.print_exc()
-        if task_id in task_store:
-            task_store[task_id].status = TaskStatus.FAILED
-            task_store[task_id].updated_at = time.time()
+        if user_id in task_store and task_id in task_store[user_id]:
+            task_store[user_id][task_id].status = TaskStatus.FAILED
+            task_store[user_id][task_id].updated_at = time.time()
 
+@require_auth(session_manager)
 async def upload(request: Request):
     form = await request.form()
     upload_file = form["file"]
@@ -524,13 +592,15 @@ async def upload(request: Request):
         if exists:
             return JSONResponse({"status": "unchanged", "id": file_hash})
 
-        result = await process_file_common(tmp.name, file_hash)
+        user = request.state.user
+        result = await process_file_common(tmp.name, file_hash, owner_user_id=user.user_id)
         return JSONResponse(result)
 
     finally:
         tmp.close()
         os.remove(tmp.name)
 
+@require_auth(session_manager)
 async def upload_path(request: Request):
     payload = await request.json()
     base_dir = payload.get("path")
@@ -551,9 +621,12 @@ async def upload_path(request: Request):
         file_tasks={path: FileTask(file_path=path) for path in file_paths}
     )
     
-    task_store[task_id] = upload_task
+    user = request.state.user
+    if user.user_id not in task_store:
+        task_store[user.user_id] = {}
+    task_store[user.user_id][task_id] = upload_task
     
-    background_task = asyncio.create_task(background_upload_processor(task_id))
+    background_task = asyncio.create_task(background_upload_processor(user.user_id, task_id))
     background_tasks.add(background_task)
     background_task.add_done_callback(background_tasks.discard)
     
@@ -563,6 +636,7 @@ async def upload_path(request: Request):
         "status": "accepted"
     }, status_code=201)
 
+@require_auth(session_manager)
 async def upload_context(request: Request):
     """Upload a file and add its content as context to the current conversation"""
     import io
@@ -619,14 +693,19 @@ async def upload_context(request: Request):
     
     return JSONResponse(response_data)
 
+@require_auth(session_manager)
 async def task_status(request: Request):
     """Get the status of an upload task"""
     task_id = request.path_params.get("task_id")
     
-    if not task_id or task_id not in task_store:
+    user = request.state.user
+    
+    if (not task_id or 
+        user.user_id not in task_store or 
+        task_id not in task_store[user.user_id]):
         return JSONResponse({"error": "Task not found"}, status_code=404)
     
-    upload_task = task_store[task_id]
+    upload_task = task_store[user.user_id][task_id]
     
     file_statuses = {}
     for file_path, file_task in upload_task.file_tasks.items():
@@ -651,63 +730,98 @@ async def task_status(request: Request):
         "files": file_statuses
     })
 
+@require_auth(session_manager)
 async def search(request: Request):
-
     payload = await request.json()
     query = payload.get("query")
     if not query:
         return JSONResponse({"error": "Query is required"}, status_code=400)
-    return JSONResponse(await search_tool(query))
+    
+    user = request.state.user
+    return JSONResponse(await search_tool(query, user_id=user.user_id))
 
 
 @tool
-async def search_tool(query: str)-> dict[str, Any]:
+async def search_tool(query: str, user_id: str = None)-> dict[str, Any]:
     """
     Use this tool to search for documents relevant to the query.
 
-    This endpoint accepts POST requests with a query string,
-
     Args:
-        query (str): query string to search the corpus
+        query (str): query string to search the corpus  
+        user_id (str): user ID for access control (optional)
 
     Returns:
-        dict (str, Any)
-                     - {"results": [chunks]} on success
+        dict (str, Any): {"results": [chunks]} on success
     """
     # Embed the query
     resp = await patched_async_client.embeddings.create(model=EMBED_MODEL, input=[query])
     query_embedding = resp.data[0].embedding
-    # Search using vector similarity on individual chunks
+    
+    # Base query structure
     search_body = {
         "query": {
-            "knn": {
-                "chunk_embedding": {
-                    "vector": query_embedding,
-                    "k": 10
-                }
+            "bool": {
+                "must": [
+                    {
+                        "knn": {
+                            "chunk_embedding": {
+                                "vector": query_embedding,
+                                "k": 10
+                            }
+                        }
+                    }
+                ]
             }
         },
-        "_source": ["filename", "mimetype", "page", "text"],
+        "_source": ["filename", "mimetype", "page", "text", "source_url", "owner", "allowed_users", "allowed_groups"],
         "size": 10
     }
+    
+    # Require authentication - no anonymous access to search
+    if not user_id:
+        return {"results": [], "error": "Authentication required"}
+    
+    # Authenticated user access control
+    # User can access documents if:
+    # 1. They own the document (owner field matches user_id)
+    # 2. They're in allowed_users list
+    # 3. Document has no ACL (public documents)
+    # TODO: Add group access control later
+    should_clauses = [
+        {"term": {"owner": user_id}},
+        {"term": {"allowed_users": user_id}},
+        {"bool": {"must_not": {"exists": {"field": "owner"}}}}  # Public docs
+    ]
+    
+    search_body["query"]["bool"]["should"] = should_clauses
+    search_body["query"]["bool"]["minimum_should_match"] = 1
+    
     results = await opensearch.search(index=INDEX_NAME, body=search_body)
-    # Transform results to match expected format
+    
+    # Transform results
     chunks = []
     for hit in results["hits"]["hits"]:
         chunks.append({
             "filename": hit["_source"]["filename"],
-            "mimetype": hit["_source"]["mimetype"],
+            "mimetype": hit["_source"]["mimetype"], 
             "page": hit["_source"]["page"],
             "text": hit["_source"]["text"],
-            "score": hit["_score"]
+            "score": hit["_score"],
+            "source_url": hit["_source"].get("source_url"),
+            "owner": hit["_source"].get("owner")
         })
     return {"results": chunks}
 
+@require_auth(session_manager)
 async def chat_endpoint(request):
     data = await request.json()
     prompt = data.get("prompt", "")
     previous_response_id = data.get("previous_response_id")
     stream = data.get("stream", False)
+    
+    # Get authenticated user
+    user = request.state.user
+    user_id = user.user_id
 
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
@@ -715,7 +829,7 @@ async def chat_endpoint(request):
     if stream:
         from agent import async_chat_stream
         return StreamingResponse(
-            async_chat_stream(patched_async_client, prompt, previous_response_id=previous_response_id),
+            async_chat_stream(patched_async_client, prompt, user_id, previous_response_id=previous_response_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -725,12 +839,13 @@ async def chat_endpoint(request):
             }
         )
     else:
-        response_text, response_id = await async_chat(patched_async_client, prompt, previous_response_id=previous_response_id)
+        response_text, response_id = await async_chat(patched_async_client, prompt, user_id, previous_response_id=previous_response_id)
         response_data = {"response": response_text}
         if response_id:
             response_data["response_id"] = response_id
         return JSONResponse(response_data)
 
+@require_auth(session_manager)
 async def langflow_endpoint(request):
     data = await request.json()
     prompt = data.get("prompt", "")
@@ -766,6 +881,362 @@ async def langflow_endpoint(request):
     except Exception as e:
         return JSONResponse({"error": f"Langflow request failed: {str(e)}"}, status_code=500)
 
+
+# Authentication endpoints
+@optional_auth(session_manager)  # Allow both authenticated and non-authenticated users
+async def auth_init(request: Request):
+    """Initialize OAuth flow for authentication or data source connection"""
+    try:
+        data = await request.json()
+        provider = data.get("provider")  # "google", "microsoft", etc.
+        purpose = data.get("purpose", "data_source")  # "app_auth" or "data_source"
+        connection_name = data.get("name", f"{provider}_{purpose}")
+        redirect_uri = data.get("redirect_uri")  # Frontend provides this
+        
+        # Get user from authentication if available
+        user = getattr(request.state, 'user', None)
+        user_id = user.user_id if user else None
+        
+        if provider != "google":
+            return JSONResponse({"error": "Unsupported provider"}, status_code=400)
+        
+        if not redirect_uri:
+            return JSONResponse({"error": "redirect_uri is required"}, status_code=400)
+        
+        # Get OAuth client configuration from environment
+        google_client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+        if not google_client_id:
+            return JSONResponse({"error": "Google OAuth client ID not configured"}, status_code=500)
+        
+        # Create connection configuration
+        token_file = f"{provider}_{purpose}_{uuid.uuid4().hex[:8]}.json"
+        config = {
+            "client_id": google_client_id,
+            "token_file": token_file,
+            "provider": provider,
+            "purpose": purpose,
+            "redirect_uri": redirect_uri  # Store redirect_uri for use in callback
+        }
+        
+        # Create connection in manager
+        # For data sources, use provider name (e.g. "google_drive")
+        # For app auth, connector_type doesn't matter since it gets deleted
+        connector_type = f"{provider}_drive" if purpose == "data_source" else f"{provider}_auth"
+        connection_id = await connector_service.connection_manager.create_connection(
+            connector_type=connector_type,
+            name=connection_name,
+            config=config,
+            user_id=user_id
+        )
+        
+        # Return OAuth configuration for client-side flow
+        # Include both identity and data access scopes
+        scopes = [
+            # Identity scopes (for app auth)
+            'openid',
+            'email',
+            'profile',
+            # Data access scopes (for connectors)
+            'https://www.googleapis.com/auth/drive.readonly',
+            'https://www.googleapis.com/auth/drive.metadata.readonly'
+        ]
+
+        oauth_config = {
+            "client_id": google_client_id,
+            "scopes": scopes,
+            "redirect_uri": redirect_uri,  # Use the redirect_uri from frontend
+            "authorization_endpoint":
+                "https://accounts.google.com/o/oauth2/v2/auth",
+            "token_endpoint":
+                "https://oauth2.googleapis.com/token"
+        }
+        
+        return JSONResponse({
+            "connection_id": connection_id,
+            "oauth_config": oauth_config
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"error": f"Failed to initialize OAuth: {str(e)}"}, status_code=500)
+
+
+async def auth_callback(request: Request):
+    """Handle OAuth callback - exchange authorization code for tokens"""
+    try:
+        data = await request.json()
+        connection_id = data.get("connection_id")
+        authorization_code = data.get("authorization_code")
+        state = data.get("state")
+
+        if not all([connection_id, authorization_code]):
+            return JSONResponse({"error": "Missing required parameters (connection_id, authorization_code)"}, status_code=400)
+        
+        # Check if authorization code has already been used
+        if authorization_code in used_auth_codes:
+            return JSONResponse({"error": "Authorization code already used"}, status_code=400)
+        
+        # Mark code as used to prevent duplicate requests
+        used_auth_codes.add(authorization_code)
+
+        try:
+            # Get connection config
+            connection_config = await connector_service.connection_manager.get_connection(connection_id)
+            if not connection_config:
+                return JSONResponse({"error": "Connection not found"}, status_code=404)
+
+            # Exchange authorization code for tokens
+            import httpx
+
+            # Use the redirect_uri that was stored during auth_init
+            redirect_uri = connection_config.config.get("redirect_uri")
+            if not redirect_uri:
+                return JSONResponse({"error": "Redirect URI not found in connection config"}, status_code=400)
+
+            token_url = "https://oauth2.googleapis.com/token"
+
+            token_payload = {
+                "code": authorization_code,
+                "client_id": connection_config.config["client_id"],
+                "client_secret": os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),  # Need this for server-side
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code"
+            }
+
+            async with httpx.AsyncClient() as client:
+                token_response = await client.post(token_url, data=token_payload)
+
+            if token_response.status_code != 200:
+                raise Exception(f"Token exchange failed: {token_response.text}")
+
+            token_data = token_response.json()
+
+            # Store tokens in the token file
+            token_file_data = {
+                "token": token_data["access_token"],
+                "refresh_token": token_data.get("refresh_token"),
+                "scopes": [
+                    "openid",
+                    "email",
+                    "profile",
+                    "https://www.googleapis.com/auth/drive.readonly",
+                    "https://www.googleapis.com/auth/drive.metadata.readonly"
+                ]
+            }
+
+            # Add expiry if provided
+            if token_data.get("expires_in"):
+                from datetime import datetime, timedelta
+                expiry = datetime.now() + timedelta(seconds=int(token_data["expires_in"]))
+                token_file_data["expiry"] = expiry.isoformat()
+
+            # Save tokens to file
+            import json
+            token_file_path = connection_config.config["token_file"]
+            async with aiofiles.open(token_file_path, 'w') as f:
+                await f.write(json.dumps(token_file_data, indent=2))
+
+            # Route based on purpose
+            purpose = connection_config.config.get("purpose", "data_source")
+
+            if purpose == "app_auth":
+                # Handle app authentication - create user session
+                jwt_token = await session_manager.create_user_session(token_data["access_token"])
+
+                if jwt_token:
+                    # Get the user info to create a persistent Google Drive connection
+                    user_info = await session_manager.get_user_info_from_token(token_data["access_token"])
+                    user_id = user_info["id"] if user_info else None
+                    
+                    if user_id:
+                        # Convert the temporary auth connection to a persistent Google Drive connection
+                        # Update the connection to be a data source connection with the user_id
+                        await connector_service.connection_manager.update_connection(
+                            connection_id=connection_id,
+                            connector_type="google_drive",
+                            name=f"Google Drive ({user_info.get('email', 'Unknown')})",
+                            user_id=user_id,
+                            config={
+                                **connection_config.config,
+                                "purpose": "data_source",  # Convert to data source
+                                "user_email": user_info.get("email")
+                            }
+                        )
+                        
+                        response = JSONResponse({
+                            "status": "authenticated",
+                            "purpose": "app_auth",
+                            "redirect": "/",  # Redirect to home page instead of dashboard
+                            "google_drive_connection_id": connection_id  # Return connection ID for frontend
+                        })
+                    else:
+                        # Fallback: delete connection if we can't get user info
+                        await connector_service.connection_manager.delete_connection(connection_id)
+                        response = JSONResponse({
+                            "status": "authenticated",
+                            "purpose": "app_auth",
+                            "redirect": "/"
+                        })
+                    
+                    # Set JWT as HTTP-only cookie for security
+                    response.set_cookie(
+                        key="auth_token",
+                        value=jwt_token,
+                        httponly=True,
+                        secure=False,  # False for development/testing
+                        samesite="lax",
+                        max_age=7 * 24 * 60 * 60  # 7 days
+                    )
+                    return response
+                else:
+                    # Clean up connection if session creation failed
+                    await connector_service.connection_manager.delete_connection(connection_id)
+                    return JSONResponse({"error": "Failed to create user session"}, status_code=500)
+            else:
+                # Handle data source connection - keep the connection for syncing
+                return JSONResponse({
+                    "status": "authenticated",
+                    "connection_id": connection_id,
+                    "purpose": "data_source",
+                    "connector_type": connection_config.connector_type
+                })
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return JSONResponse({"error": f"OAuth callback failed: {str(e)}"}, status_code=500)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"error": f"Callback failed: {str(e)}"}, status_code=500)
+
+
+@optional_auth(session_manager)
+async def auth_me(request: Request):
+    """Get current user information"""
+    user = getattr(request.state, 'user', None)
+    
+    if user:
+        return JSONResponse({
+            "authenticated": True,
+            "user": {
+                "user_id": user.user_id,
+                "email": user.email,
+                "name": user.name,
+                "picture": user.picture,
+                "provider": user.provider,
+                "last_login": user.last_login.isoformat() if user.last_login else None
+            }
+        })
+    else:
+        return JSONResponse({
+            "authenticated": False,
+            "user": None
+        })
+
+@require_auth(session_manager)
+async def auth_logout(request: Request):
+    """Logout user by clearing auth cookie"""
+    response = JSONResponse({
+        "status": "logged_out",
+        "message": "Successfully logged out"
+    })
+    
+    # Clear the auth cookie
+    response.delete_cookie(
+        key="auth_token",
+        httponly=True,
+        secure=False,  # False for development/testing
+        samesite="lax"
+    )
+    
+    return response
+
+
+@require_auth(session_manager)
+async def connector_sync(request: Request):
+    """Sync files from a connector connection"""
+    data = await request.json()
+    connection_id = data.get("connection_id")
+    max_files = data.get("max_files")
+    
+    if not connection_id:
+        return JSONResponse({"error": "connection_id is required"}, status_code=400)
+    
+    try:
+        print(f"[DEBUG] Starting connector sync for connection_id={connection_id}, max_files={max_files}")
+        
+        # Verify user owns this connection
+        user = request.state.user
+        print(f"[DEBUG] User: {user.user_id}")
+        
+        connection_config = await connector_service.connection_manager.get_connection(connection_id)
+        print(f"[DEBUG] Got connection config: {connection_config is not None}")
+        
+        if not connection_config:
+            return JSONResponse({"error": "Connection not found"}, status_code=404)
+        
+        if connection_config.user_id != user.user_id:
+            return JSONResponse({"error": "Access denied"}, status_code=403)
+        
+        print(f"[DEBUG] About to call sync_connector_files")
+        task_id = await connector_service.sync_connector_files(connection_id, user.user_id, max_files)
+        print(f"[DEBUG] Got task_id: {task_id}")
+        
+        return JSONResponse({
+                "task_id": task_id,
+                "status": "sync_started",
+                "message": f"Started syncing files from connection {connection_id}"
+            },
+            status_code=201
+        )
+        
+    except Exception as e:
+        import sys
+        import traceback
+        
+        error_msg = f"[ERROR] Connector sync failed: {str(e)}"
+        print(error_msg, file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        
+        return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
+
+
+@require_auth(session_manager)
+async def connector_status(request: Request):
+    """Get connector status for authenticated user"""
+    connector_type = request.path_params.get("connector_type", "google_drive")
+    user = request.state.user
+    
+    # Get connections for this connector type and user
+    connections = await connector_service.connection_manager.list_connections(
+        user_id=user.user_id, 
+        connector_type=connector_type
+    )
+    
+    # Check if there are any active connections
+    active_connections = [conn for conn in connections if conn.is_active]
+    has_authenticated_connection = len(active_connections) > 0
+    
+    return JSONResponse({
+        "connector_type": connector_type,
+        "authenticated": has_authenticated_connection,  # For frontend compatibility
+        "status": "connected" if has_authenticated_connection else "not_connected",
+        "connections": [
+            {
+                "connection_id": conn.connection_id,
+                "name": conn.name,
+                "is_active": conn.is_active,
+                "created_at": conn.created_at.isoformat(),
+                "last_sync": conn.last_sync.isoformat() if conn.last_sync else None
+            }
+            for conn in connections
+        ]
+    })
+
+
 app = Starlette(debug=True, routes=[
     Route("/upload",         upload,           methods=["POST"]),
     Route("/upload_context", upload_context,   methods=["POST"]),
@@ -774,6 +1245,13 @@ app = Starlette(debug=True, routes=[
     Route("/search",         search,           methods=["POST"]),
     Route("/chat",           chat_endpoint,    methods=["POST"]),
     Route("/langflow",       langflow_endpoint, methods=["POST"]),
+    # Authentication endpoints  
+    Route("/auth/init", auth_init, methods=["POST"]),
+    Route("/auth/callback", auth_callback, methods=["POST"]),
+    Route("/auth/me", auth_me, methods=["GET"]),
+    Route("/auth/logout", auth_logout, methods=["POST"]),
+    Route("/connectors/sync", connector_sync, methods=["POST"]),
+    Route("/connectors/status/{connector_type}", connector_status, methods=["GET"]),
 ])
 
 if __name__ == "__main__":
@@ -782,6 +1260,7 @@ if __name__ == "__main__":
 
     async def main():
         await init_index()
+        await connector_service.initialize()
 
     # Cleanup process pool on exit
     def cleanup():
