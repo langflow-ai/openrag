@@ -1,9 +1,17 @@
 import asyncio
 import atexit
-import torch
+import multiprocessing
 from functools import partial
 from starlette.applications import Starlette
 from starlette.routing import Route
+
+# Set multiprocessing start method to 'spawn' for CUDA compatibility
+multiprocessing.set_start_method('spawn', force=True)
+
+# Create process pool FIRST, before any torch/CUDA imports
+from utils.process_pool import process_pool
+
+import torch
 
 # Configuration and setup
 from config.settings import clients, INDEX_NAME, INDEX_BODY, SESSION_SECRET
@@ -65,19 +73,20 @@ def initialize_services():
     # Initialize services
     document_service = DocumentService()
     search_service = SearchService()
-    task_service = TaskService(document_service)
+    task_service = TaskService(document_service, process_pool)
     chat_service = ChatService()
     
     # Set process pool for document service
-    document_service.process_pool = task_service.process_pool
+    document_service.process_pool = process_pool
     
     # Initialize connector service
     connector_service = ConnectorService(
         opensearch_client=clients.opensearch,
         patched_async_client=clients.patched_async_client,
-        process_pool=task_service.process_pool,
+        process_pool=process_pool,
         embed_model="text-embedding-3-small",
-        index_name=INDEX_NAME
+        index_name=INDEX_NAME,
+        task_service=task_service
     )
     
     # Initialize auth service

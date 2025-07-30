@@ -11,12 +11,13 @@ from .connection_manager import ConnectionManager
 class ConnectorService:
     """Service to manage document connectors and process files"""
     
-    def __init__(self, opensearch_client, patched_async_client, process_pool, embed_model: str, index_name: str):
+    def __init__(self, opensearch_client, patched_async_client, process_pool, embed_model: str, index_name: str, task_service=None):
         self.opensearch = opensearch_client
         self.openai_client = patched_async_client
         self.process_pool = process_pool
         self.embed_model = embed_model
         self.index_name = index_name
+        self.task_service = task_service
         self.connection_manager = ConnectionManager()
     
     async def initialize(self):
@@ -113,6 +114,9 @@ class ConnectorService:
     
     async def sync_connector_files(self, connection_id: str, user_id: str, max_files: int = None) -> str:
         """Sync files from a connector connection using existing task tracking system"""
+        if not self.task_service:
+            raise ValueError("TaskService not available - connector sync requires task service dependency")
+            
         print(f"[DEBUG] Starting sync for connection {connection_id}, max_files={max_files}")
         
         connector = await self.get_connector(connection_id)
@@ -155,104 +159,14 @@ class ConnectorService:
         if not files_to_process:
             raise ValueError("No files found to sync")
         
-        # Create upload task using existing task system
-        import uuid
-        from app import UploadTask, FileTask, TaskStatus, task_store, background_upload_processor
+        # Create custom processor for connector files
+        from models.processors import ConnectorFileProcessor
+        processor = ConnectorFileProcessor(self, connection_id, files_to_process)
         
-        task_id = str(uuid.uuid4())
-        upload_task = UploadTask(
-            task_id=task_id,
-            total_files=len(files_to_process),
-            file_tasks={f"connector_file_{file_info['id']}": FileTask(file_path=f"connector_file_{file_info['id']}") for file_info in files_to_process}
-        )
+        # Use file IDs as items (no more fake file paths!)
+        file_ids = [file_info['id'] for file_info in files_to_process]
         
-        # Store task for user
-        if user_id not in task_store:
-            task_store[user_id] = {}
-        task_store[user_id][task_id] = upload_task
-        
-        # Start background processing with connector-specific logic
-        import asyncio
-        from app import background_tasks
-        background_task = asyncio.create_task(self._background_connector_sync(user_id, task_id, connection_id, files_to_process))
-        background_tasks.add(background_task)
-        background_task.add_done_callback(background_tasks.discard)
+        # Create custom task using TaskService
+        task_id = await self.task_service.create_custom_task(user_id, file_ids, processor)
         
         return task_id
-    
-    async def _background_connector_sync(self, user_id: str, task_id: str, connection_id: str, files_to_process: List[Dict]):
-        """Background task to sync connector files"""
-        from app import task_store, TaskStatus
-        import datetime
-        
-        try:
-            upload_task = task_store[user_id][task_id]
-            upload_task.status = TaskStatus.RUNNING
-            upload_task.updated_at = datetime.datetime.now().timestamp()
-            
-            connector = await self.get_connector(connection_id)
-            if not connector:
-                raise ValueError(f"Connection '{connection_id}' not found")
-            
-            # Process files with limited concurrency
-            semaphore = asyncio.Semaphore(4)  # Limit concurrent file processing
-            
-            async def process_connector_file(file_info):
-                async with semaphore:
-                    file_key = f"connector_file_{file_info['id']}"
-                    file_task = upload_task.file_tasks[file_key]
-                    file_task.status = TaskStatus.RUNNING
-                    file_task.updated_at = datetime.datetime.now().timestamp()
-                    
-                    try:
-                        # Get file content from connector
-                        document = await connector.get_file_content(file_info['id'])
-                        
-                        # Process using existing pipeline
-                        result = await self.process_connector_document(document, user_id)
-                        
-                        file_task.status = TaskStatus.COMPLETED
-                        file_task.result = result
-                        upload_task.successful_files += 1
-                        
-                    except Exception as e:
-                        import sys
-                        import traceback
-                        
-                        error_msg = f"[ERROR] Failed to process connector file {file_info['id']}: {e}"
-                        print(error_msg, file=sys.stderr, flush=True)
-                        traceback.print_exc(file=sys.stderr)
-                        sys.stderr.flush()
-                        
-                        # Also store full traceback in task error
-                        full_error = f"{str(e)}\n{traceback.format_exc()}"
-                        file_task.status = TaskStatus.FAILED
-                        file_task.error = full_error
-                        upload_task.failed_files += 1
-                    finally:
-                        file_task.updated_at = datetime.datetime.now().timestamp()
-                        upload_task.processed_files += 1
-                        upload_task.updated_at = datetime.datetime.now().timestamp()
-            
-            # Process all files concurrently
-            tasks = [process_connector_file(file_info) for file_info in files_to_process]
-            await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Update connection last sync time
-            await self.connection_manager.update_last_sync(connection_id)
-            
-            upload_task.status = TaskStatus.COMPLETED
-            upload_task.updated_at = datetime.datetime.now().timestamp()
-            
-        except Exception as e:
-            import sys
-            import traceback
-            
-            error_msg = f"[ERROR] Background connector sync failed for task {task_id}: {e}"
-            print(error_msg, file=sys.stderr, flush=True)
-            traceback.print_exc(file=sys.stderr)
-            sys.stderr.flush()
-            
-            if user_id in task_store and task_id in task_store[user_id]:
-                task_store[user_id][task_id].status = TaskStatus.FAILED
-                task_store[user_id][task_id].updated_at = datetime.datetime.now().timestamp()

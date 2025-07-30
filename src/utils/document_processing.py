@@ -1,7 +1,6 @@
 import hashlib
 import os
 from collections import defaultdict
-from docling.document_converter import DocumentConverter
 from .gpu_detection import detect_gpu_devices
 
 # Global converter cache for worker processes
