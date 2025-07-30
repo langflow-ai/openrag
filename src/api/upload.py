@@ -66,13 +66,3 @@ async def upload_context(request: Request, document_service, chat_service, sessi
     
     return JSONResponse(response_data)
 
-async def task_status(request: Request, task_service, session_manager):
-    """Get the status of an upload task"""
-    task_id = request.path_params.get("task_id")
-    user = request.state.user
-    
-    task_status_result = task_service.get_task_status(user.user_id, task_id)
-    if not task_status_result:
-        return JSONResponse({"error": "Task not found"}, status_code=404)
-    
-    return JSONResponse(task_status_result)

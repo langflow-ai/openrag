@@ -30,7 +30,7 @@ from session_manager import SessionManager
 from auth_middleware import require_auth, optional_auth
 
 # API endpoints
-from api import upload, search, chat, auth, connectors
+from api import upload, search, chat, auth, connectors, tasks
 
 print("CUDA available:", torch.cuda.is_available())
 print("CUDA version PyTorch was built with:", torch.version.cuda)
@@ -133,7 +133,14 @@ def create_app():
         
         Route("/tasks/{task_id}", 
               require_auth(services['session_manager'])(
-                  partial(upload.task_status,
+                  partial(tasks.task_status,
+                         task_service=services['task_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["GET"]),
+        
+        Route("/tasks", 
+              require_auth(services['session_manager'])(
+                  partial(tasks.all_tasks,
                          task_service=services['task_service'],
                          session_manager=services['session_manager'])
               ), methods=["GET"]),
