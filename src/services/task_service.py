@@ -168,6 +168,28 @@ class TaskService:
             "files": file_statuses
         }
     
+    def get_all_tasks(self, user_id: str) -> list:
+        """Get all tasks for a user"""
+        if user_id not in self.task_store:
+            return []
+        
+        tasks = []
+        for task_id, upload_task in self.task_store[user_id].items():
+            tasks.append({
+                "task_id": upload_task.task_id,
+                "status": upload_task.status.value,
+                "total_files": upload_task.total_files,
+                "processed_files": upload_task.processed_files,
+                "successful_files": upload_task.successful_files,
+                "failed_files": upload_task.failed_files,
+                "created_at": upload_task.created_at,
+                "updated_at": upload_task.updated_at
+            })
+        
+        # Sort by creation time, most recent first
+        tasks.sort(key=lambda x: x["created_at"], reverse=True)
+        return tasks
+    
     def shutdown(self):
         """Cleanup process pool"""
         if hasattr(self, 'process_pool'):
