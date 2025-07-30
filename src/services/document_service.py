@@ -132,7 +132,7 @@ class DocumentService:
         file_task.updated_at = time.time()
         
         try:
-            # Check if file already exists in index
+            # Handle regular file processing
             loop = asyncio.get_event_loop()
             
             # Run CPU-intensive docling processing in separate process
