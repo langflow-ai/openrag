@@ -96,9 +96,6 @@ class AppClients:
         # Initialize patched OpenAI client
         self.patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
         
-        # Initialize Docling converter
-        self.converter = DocumentConverter()
-        
         return self
 
 # Global clients instance
