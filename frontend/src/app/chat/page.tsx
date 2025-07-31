@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { MessageCircle, Send, Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
+import { useAuth } from "@/contexts/auth-context"
+import { useTask } from "@/contexts/task-context"
 
 interface Message {
   role: "user" | "assistant"
@@ -65,6 +67,8 @@ function ChatPage() {
   const dragCounterRef = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { user } = useAuth()
+  const { addTask } = useTask()
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -120,7 +124,7 @@ function ChatPage() {
       console.log("Upload result:", result)
       
       if (response.status === 201) {
-        // New flow: Got task ID, start polling
+        // New flow: Got task ID, start tracking with centralized system
         const taskId = result.task_id || result.id
         
         if (!taskId) {
@@ -128,16 +132,16 @@ function ChatPage() {
           throw new Error("No task ID received from server")
         }
         
-        // Update message to show polling started
+        // Add task to centralized tracking
+        addTask(taskId)
+        
+        // Update message to show task is being tracked
         const pollingMessage: Message = {
           role: "assistant",
-          content: `⏳ Upload initiated for **${file.name}**. Processing... (Task ID: ${taskId})`,
+          content: `⏳ Upload initiated for **${file.name}**. Processing in background... (Task ID: ${taskId})`,
           timestamp: new Date()
         }
         setMessages(prev => [...prev.slice(0, -1), pollingMessage])
-        
-        // Start polling the task status
-        await pollTaskStatus(taskId, file.name)
         
       } else if (response.ok) {
         // Original flow: Direct response  
@@ -175,101 +179,7 @@ function ChatPage() {
     }
   }
 
-  const pollTaskStatus = async (taskId: string, filename: string) => {
-    const maxAttempts = 60 // Poll for up to 5 minutes (60 * 5s intervals)
-    let attempts = 0
-    
-    const poll = async (): Promise<void> => {
-      try {
-        attempts++
-        
-        const response = await fetch(`/api/tasks/${taskId}`)
-        console.log("Task polling response status:", response.status)
-        
-        if (!response.ok) {
-          const errorText = await response.text()
-          console.error("Task polling failed:", response.status, errorText)
-          throw new Error(`Failed to check task status: ${response.status} - ${errorText}`)
-        }
-        
-        const task = await response.json()
-        console.log("Task polling result:", task)
-        
-        // Safety check to ensure task object exists
-        if (!task) {
-          throw new Error("No task data received from server")
-        }
-        
-        // Update the message based on task status
-        if (task.status === 'completed') {
-          const successMessage: Message = {
-            role: "assistant",
-            content: `✅ **${filename}** processed successfully!\n\n${task.result?.confirmation || 'Document has been added to the knowledge base.'}`,
-            timestamp: new Date()
-          }
-          setMessages(prev => [...prev.slice(0, -1), successMessage])
-          
-          // Update response ID if available
-          if (task.result?.response_id) {
-            setPreviousResponseIds(prev => ({
-              ...prev,
-              [endpoint]: task.result.response_id
-            }))
-          }
-          
-        } else if (task.status === 'failed' || task.status === 'error') {
-          const errorMessage: Message = {
-            role: "assistant",
-            content: `❌ Processing failed for **${filename}**: ${task.error || 'Unknown error occurred'}`,
-            timestamp: new Date()
-          }
-          setMessages(prev => [...prev.slice(0, -1), errorMessage])
-          
-        } else if (task.status === 'pending' || task.status === 'running' || task.status === 'processing') {
-          // Still in progress, update message and continue polling
-          const progressMessage: Message = {
-            role: "assistant", 
-            content: `⏳ Processing **${filename}**... (${task.status}) - Attempt ${attempts}/${maxAttempts}`,
-            timestamp: new Date()
-          }
-          setMessages(prev => [...prev.slice(0, -1), progressMessage])
-          
-          // Continue polling if we haven't exceeded max attempts
-          if (attempts < maxAttempts) {
-            setTimeout(poll, 5000) // Poll every 5 seconds
-          } else {
-            const timeoutMessage: Message = {
-              role: "assistant",
-              content: `⚠️ Processing timeout for **${filename}**. The task may still be running in the background.`,
-              timestamp: new Date()
-            }
-            setMessages(prev => [...prev.slice(0, -1), timeoutMessage])
-          }
-          
-        } else {
-          // Unknown status
-          const unknownMessage: Message = {
-            role: "assistant",
-            content: `❓ Unknown status for **${filename}**: ${task.status}`,
-            timestamp: new Date()
-          }
-          setMessages(prev => [...prev.slice(0, -1), unknownMessage])
-        }
-        
-      } catch (error) {
-        console.error('Task polling error:', error)
-        const errorMessage: Message = {
-          role: "assistant",
-          content: `❌ Failed to check processing status for **${filename}**: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev.slice(0, -1), errorMessage])
-      }
-    }
-    
-    // Start polling immediately
-    poll()
-  }
+  // Remove the old pollTaskStatus function since we're using centralized system
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault()

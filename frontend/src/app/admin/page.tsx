@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Upload, FolderOpen, Loader2 } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
+import { useTask } from "@/contexts/task-context"
 
 function AdminPage() {
   const [fileUploadLoading, setFileUploadLoading] = useState(false)
@@ -14,6 +15,7 @@ function AdminPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [folderPath, setFolderPath] = useState("/app/documents/")
   const [uploadStatus, setUploadStatus] = useState<string>("")
+  const { addTask } = useTask()
 
   const handleFileUpload = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -68,7 +70,7 @@ function AdminPage() {
       const result = await response.json()
       
       if (response.status === 201) {
-        // New flow: Got task ID, start polling
+        // New flow: Got task ID, use centralized tracking
         const taskId = result.task_id || result.id
         const totalFiles = result.total_files || 0
         
@@ -76,10 +78,12 @@ function AdminPage() {
           throw new Error("No task ID received from server")
         }
         
-        setUploadStatus(`🔄 Processing started for ${totalFiles} files... (Task ID: ${taskId})`)
+        // Add task to centralized tracking
+        addTask(taskId)
         
-        // Start polling the task status
-        await pollPathTaskStatus(taskId, totalFiles)
+        setUploadStatus(`🔄 Processing started for ${totalFiles} files. Check the task notification panel for real-time progress. (Task ID: ${taskId})`)
+        setFolderPath("")
+        setPathUploadLoading(false)
         
       } else if (response.ok) {
         // Original flow: Direct response with results
@@ -87,72 +91,18 @@ function AdminPage() {
         const total = result.results?.length || 0
         setUploadStatus(`Path processed successfully! ${successful}/${total} files indexed.`)
         setFolderPath("")
+        setPathUploadLoading(false)
       } else {
         setUploadStatus(`Error: ${result.error || "Path upload failed"}`)
+        setPathUploadLoading(false)
       }
     } catch (error) {
       setUploadStatus(`Error: ${error instanceof Error ? error.message : "Path upload failed"}`)
-    } finally {
       setPathUploadLoading(false)
     }
   }
 
-  const pollPathTaskStatus = async (taskId: string, totalFiles: number) => {
-    const maxAttempts = 120 // Poll for up to 10 minutes (120 * 5s intervals) for large batches
-    let attempts = 0
-    
-    const poll = async (): Promise<void> => {
-      try {
-        attempts++
-        
-        const response = await fetch(`/api/tasks/${taskId}`)
-        
-        if (!response.ok) {
-          throw new Error(`Failed to check task status: ${response.status}`)
-        }
-        
-        const task = await response.json()
-        
-        if (task.status === 'completed') {
-          setUploadStatus(`✅ Path processing completed! ${task.successful_files}/${task.total_files} files processed successfully.`)
-          setFolderPath("")
-          setPathUploadLoading(false)
-          
-        } else if (task.status === 'failed' || task.status === 'error') {
-          setUploadStatus(`❌ Path processing failed: ${task.error || 'Unknown error occurred'}`)
-          setPathUploadLoading(false)
-          
-        } else if (task.status === 'pending' || task.status === 'running') {
-          // Still in progress, update status and continue polling
-          const processed = task.processed_files || 0
-          const successful = task.successful_files || 0
-          const failed = task.failed_files || 0
-          
-          setUploadStatus(`⏳ Processing files... ${processed}/${totalFiles} processed (${successful} successful, ${failed} failed)`)
-          
-          // Continue polling if we haven't exceeded max attempts
-          if (attempts < maxAttempts) {
-            setTimeout(poll, 5000) // Poll every 5 seconds
-          } else {
-            setUploadStatus(`⚠️ Processing timeout after ${attempts} attempts. The task may still be running in the background.`)
-            setPathUploadLoading(false)
-          }
-          
-        } else {
-          setUploadStatus(`❓ Unknown task status: ${task.status}`)
-          setPathUploadLoading(false)
-        }
-        
-      } catch (error) {
-        console.error('Task polling error:', error)
-        setUploadStatus(`❌ Failed to check processing status: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        setPathUploadLoading(false)
-      }
-    }
-    
-    // Start polling immediately
-    poll()
-  }
+  // Remove the old pollPathTaskStatus function since we're using centralized system
 
   return (
     <div className="space-y-8">

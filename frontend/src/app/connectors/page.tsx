@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, PlugZap, CheckCircle, XCircle, RefreshCw, FileText, Download, AlertCircle } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
+import { useTask } from "@/contexts/task-context"
 import { ProtectedRoute } from "@/components/protected-route"
 
 interface Connector {
@@ -19,6 +20,7 @@ interface Connector {
   status: "not_connected" | "connecting" | "connected" | "error"
   type: string
   connectionId?: string  // Store the active connection ID for syncing
+  access_token?: string // For connectors that use OAuth
 }
 
 interface ConnectorStatus {
@@ -33,88 +35,94 @@ interface ConnectorStatus {
   }>
 }
 
+interface SyncResult {
+  processed?: number;
+  added?: number;
+  skipped?: number;
+  errors?: number;
+  error?: string;
+  message?: string; // For sync started messages
+  isStarted?: boolean; // For sync started state
+}
+
 function ConnectorsPage() {
   const { user, isAuthenticated } = useAuth()
+  const { addTask, refreshTasks } = useTask()
   const searchParams = useSearchParams()
-  const [connectors, setConnectors] = useState<Connector[]>([
-    {
-      id: "google_drive",
-      name: "Google Drive",
-      description: "Connect your Google Drive to automatically sync documents",
-      icon: <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center text-white font-bold">G</div>,
-      status: "not_connected",
-      type: "google_drive"
-    },
-    // Future connectors can be added here
-    // {
-    //   id: "dropbox",
-    //   name: "Dropbox", 
-    //   description: "Connect your Dropbox to automatically sync documents",
-    //   icon: <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold">D</div>,
-    //   status: "not_connected",
-    //   type: "dropbox"
-    // }
-  ])
+  const [connectors, setConnectors] = useState<Connector[]>([])
   
   const [isConnecting, setIsConnecting] = useState<string | null>(null)
   const [isSyncing, setIsSyncing] = useState<string | null>(null)
-  const [syncResults, setSyncResults] = useState<{ [key: string]: any }>({})
-  const [syncProgress, setSyncProgress] = useState<{ [key: string]: any }>({})
+  const [syncResults, setSyncResults] = useState<{[key: string]: SyncResult | null}>({})
+  const [syncProgress, setSyncProgress] = useState<{[key: string]: number | null}>({})
   const [maxFiles, setMaxFiles] = useState<number>(10)
+  const [isLoading, setIsLoading] = useState(true)
 
   // Function definitions first
   const checkConnectorStatuses = async () => {
-    for (const connector of connectors) {
-      try {
-        const response = await fetch(`/api/connectors/status/${connector.type}`)
+    // Initialize connectors list
+    setConnectors([
+      {
+        id: "google_drive",
+        name: "Google Drive",
+        description: "Connect your Google Drive to automatically sync documents",
+        icon: <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center text-white font-bold">G</div>,
+        status: "not_connected",
+        type: "google_drive"
+      },
+    ])
+
+    try {
+      // Check status for each connector type
+      const connectorTypes = ["google_drive"]
+      
+      for (const connectorType of connectorTypes) {
+        const response = await fetch(`/api/connectors/${connectorType}/status`)
         if (response.ok) {
-          const status: ConnectorStatus = await response.json()
-          const isConnected = status.authenticated
-          
-          // Find the first active connection to use for syncing
-          const activeConnection = status.connections?.find(conn => conn.is_active)
+          const data = await response.json()
+          const connections = data.connections || []
+          const activeConnection = connections.find((conn: any) => conn.is_active)
+          const isConnected = activeConnection !== undefined
           
           setConnectors(prev => prev.map(c => 
-            c.id === connector.id 
+            c.type === connectorType 
               ? { 
                   ...c, 
                   status: isConnected ? "connected" : "not_connected",
-                  connectionId: activeConnection?.connection_id 
+                  connectionId: activeConnection?.connection_id
                 } 
               : c
           ))
         }
-      } catch (error) {
-        console.error(`Failed to check status for ${connector.name}:`, error)
       }
+    } catch (error) {
+      console.error('Failed to check connector statuses:', error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const refreshConnectorStatus = async (connectorId: string) => {
-    const connector = connectors.find(c => c.id === connectorId)
-    if (!connector) return
-
+  const refreshConnectorStatus = async (connector: Connector) => {
     try {
-      const response = await fetch(`/api/connectors/status/${connector.type}`)
+      const response = await fetch(`/api/connectors/${connector.type}/status`)
       if (response.ok) {
-        const status: ConnectorStatus = await response.json()
-        const isConnected = status.authenticated
-        
-        // Find the first active connection to use for syncing
-        const activeConnection = status.connections?.find(conn => conn.is_active)
+        const data = await response.json()
+        const connections = data.connections || []
+        const activeConnection = connections.find((conn: any) => conn.is_active)
+        const isConnected = activeConnection !== undefined
         
         setConnectors(prev => prev.map(c => 
-          c.id === connectorId 
+          c.id === connector.id 
             ? { 
                 ...c, 
                 status: isConnected ? "connected" : "not_connected",
-                connectionId: activeConnection?.connection_id 
+                connectionId: activeConnection?.connection_id
               } 
             : c
         ))
       }
     } catch (error) {
-      console.error(`Failed to refresh status for ${connector.name}:`, error)
+      console.error(`Failed to refresh connector status for ${connector.name}:`, error)
     }
   }
 
@@ -125,8 +133,8 @@ function ConnectorsPage() {
     ))
     
     try {
-      // Frontend determines the correct redirect URI using its own origin
-      const redirectUri = `${window.location.origin}/connectors/callback`
+      // Use the shared auth callback URL, not a separate connectors callback
+      const redirectUri = `${window.location.origin}/auth/callback`
       
       const response = await fetch('/api/auth/init', {
         method: 'POST',
@@ -175,169 +183,66 @@ function ConnectorsPage() {
     }
   }
 
-  const pollTaskStatus = async (taskId: string, connectorId: string) => {
-    const maxAttempts = 120 // Poll for up to 10 minutes (120 * 5s intervals)
-    let attempts = 0
-    
-    const poll = async (): Promise<void> => {
-      try {
-        attempts++
-        
-        const response = await fetch(`/api/tasks/${taskId}`)
-        
-        if (!response.ok) {
-          throw new Error(`Failed to check task status: ${response.status}`)
-        }
-        
-        const task = await response.json()
-        
-        if (task.status === 'completed') {
-          // Task completed successfully
-          setSyncResults(prev => ({ 
-            ...prev, 
-            [connectorId]: {
-              processed: task.total_files || 0,
-              added: task.successful_files || 0,
-              skipped: (task.total_files || 0) - (task.successful_files || 0),
-              errors: task.failed_files || 0
-            }
-          }))
-          setSyncProgress(prev => ({ ...prev, [connectorId]: null }))
-          setIsSyncing(null)
-          
-        } else if (task.status === 'failed' || task.status === 'error') {
-          // Task failed
-          setSyncResults(prev => ({ 
-            ...prev, 
-            [connectorId]: { 
-              error: task.error || 'Sync failed'
-            } 
-          }))
-          setSyncProgress(prev => ({ ...prev, [connectorId]: null }))
-          setIsSyncing(null)
-          
-        } else if (task.status === 'pending' || task.status === 'running') {
-          // Still in progress, update progress and continue polling
-          const processed = task.processed_files || 0
-          const total = task.total_files || 0
-          const successful = task.successful_files || 0
-          const failed = task.failed_files || 0
-          
-          setSyncProgress(prev => ({ 
-            ...prev, 
-            [connectorId]: {
-              status: task.status,
-              processed,
-              total,
-              successful,
-              failed
-            }
-          }))
-          
-          // Continue polling if we haven't exceeded max attempts
-          if (attempts < maxAttempts) {
-            setTimeout(poll, 5000) // Poll every 5 seconds
-          } else {
-            setSyncResults(prev => ({ 
-              ...prev, 
-              [connectorId]: { 
-                error: `Sync timeout after ${attempts} attempts. The task may still be running in the background.`
-              } 
-            }))
-            setSyncProgress(prev => ({ ...prev, [connectorId]: null }))
-            setIsSyncing(null)
-          }
-          
-        } else {
-          // Unknown status
-          setSyncResults(prev => ({ 
-            ...prev, 
-            [connectorId]: { 
-              error: `Unknown task status: ${task.status}`
-            } 
-          }))
-          setSyncProgress(prev => ({ ...prev, [connectorId]: null }))
-          setIsSyncing(null)
-        }
-        
-      } catch (error) {
-        console.error('Task polling error:', error)
-        setSyncResults(prev => ({ 
-          ...prev, 
-          [connectorId]: { 
-            error: error instanceof Error ? error.message : 'Failed to check sync status'
-          } 
-        }))
-        setSyncProgress(prev => ({ ...prev, [connectorId]: null }))
-        setIsSyncing(null)
-      }
-    }
-    
-    // Start polling
-    await poll()
-  }
-
   const handleSync = async (connector: Connector) => {
-    setIsSyncing(connector.id)
-    setSyncResults(prev => ({ ...prev, [connector.id]: null }))
-    setSyncProgress(prev => ({ ...prev, [connector.id]: null }))
-    
     if (!connector.connectionId) {
-      console.error('No connection ID available for syncing')
-      setSyncResults(prev => ({ 
-        ...prev, 
-        [connector.id]: { 
-          error: 'No active connection found. Please reconnect and try again.' 
-        } 
-      }))
-      setIsSyncing(null)
+      console.error('No connection ID available for connector')
       return
     }
-    
+
+    setIsSyncing(connector.id)
+    setSyncProgress(prev => ({ ...prev, [connector.id]: null })) // Clear any existing progress
+    setSyncResults(prev => ({ ...prev, [connector.id]: null }))
+
     try {
-      const response = await fetch('/api/connectors/sync', {
+      const response = await fetch(`/api/connectors/${connector.type}/sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          connection_id: connector.connectionId,
           max_files: maxFiles
         }),
       })
 
       const result = await response.json()
-      
+
       if (response.status === 201 && result.task_id) {
-        // Async sync started, begin polling for status
-        setSyncProgress(prev => ({ 
+        // Task-based sync, use centralized tracking
+        addTask(result.task_id)
+        console.log(`Sync task ${result.task_id} added to central tracking for connector ${connector.id}`)
+        
+        // Immediately refresh task notifications to show the new task
+        await refreshTasks()
+        
+        // Show sync started message
+        setSyncResults(prev => ({ 
           ...prev, 
           [connector.id]: {
-            status: 'pending',
-            processed: 0,
-            total: 0,
-            successful: 0,
-            failed: 0
+            message: "Check task notification panel for progress",
+            isStarted: true
           }
         }))
-        
-        // Start polling for task status
-        await pollTaskStatus(result.task_id, connector.id)
-        
+        setIsSyncing(null)
       } else if (response.ok) {
-        // Legacy synchronous response (fallback)
-        setSyncResults(prev => ({ ...prev, [connector.id]: result }))
+        // Direct sync result - still show "sync started" message
+        setSyncResults(prev => ({ 
+          ...prev, 
+          [connector.id]: {
+            message: "Check task notification panel for progress",
+            isStarted: true
+          }
+        }))
         setIsSyncing(null)
       } else {
-        throw new Error(result.error || 'Failed to sync')
+        throw new Error(result.error || 'Sync failed')
       }
     } catch (error) {
       console.error('Sync failed:', error)
       setSyncResults(prev => ({ 
         ...prev, 
         [connector.id]: { 
-          error: error instanceof Error ? error.message : 'Sync failed' 
-        } 
+          error: error instanceof Error ? error.message : 'Sync failed'
+        }
       }))
       setIsSyncing(null)
     }
@@ -522,58 +427,30 @@ function ConnectorsPage() {
                 )}
               </div>
               
-              {/* Sync Results and Progress */}
-              {(syncResults[connector.id] || syncProgress[connector.id]) && (
+              {/* Sync Results */}
+              {syncResults[connector.id] && (
                 <div className="mt-4 p-3 bg-muted/50 rounded-lg">
-                  {syncProgress[connector.id] && (
+                  {syncResults[connector.id]?.isStarted && (
                     <div className="text-sm">
                       <div className="font-medium text-blue-600 mb-1">
-                        <RefreshCw className="inline h-3 w-3 mr-1 animate-spin" />
-                        Sync in Progress
+                        <RefreshCw className="inline h-3 w-3 mr-1" />
+                        Task initiated:
                       </div>
-                      <div className="space-y-1 text-muted-foreground">
-                        <div>Status: {syncProgress[connector.id].status}</div>
-                        {syncProgress[connector.id].total > 0 && (
-                          <>
-                            <div>Progress: {syncProgress[connector.id].processed}/{syncProgress[connector.id].total} files</div>
-                            <div>Successful: {syncProgress[connector.id].successful}</div>
-                            {syncProgress[connector.id].failed > 0 && (
-                              <div className="text-red-500">
-                                Failed: {syncProgress[connector.id].failed}
-                              </div>
-                            )}
-                          </>
-                        )}
+                      <div className="text-blue-600">
+                        {syncResults[connector.id]?.message}
                       </div>
                     </div>
                   )}
-                  
-                  {syncResults[connector.id] && !syncProgress[connector.id] && (
-                    <>
-                      {syncResults[connector.id].error ? (
-                        <div className="text-sm text-red-500">
-                          <div className="font-medium">Sync Failed</div>
-                          <div>{syncResults[connector.id].error}</div>
-                        </div>
-                      ) : (
-                        <div className="text-sm">
-                          <div className="font-medium text-green-600 mb-1">
-                            <FileText className="inline h-3 w-3 mr-1" />
-                            Sync Completed
-                          </div>
-                          <div className="space-y-1 text-muted-foreground">
-                            <div>Processed: {syncResults[connector.id].processed || 0} files</div>
-                            <div>Added: {syncResults[connector.id].added || 0} documents</div>
-                            <div>Skipped: {syncResults[connector.id].skipped || 0} files</div>
-                            {syncResults[connector.id].errors > 0 && (
-                              <div className="text-red-500">
-                                Errors: {syncResults[connector.id].errors}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </>
+                  {syncResults[connector.id]?.error && (
+                    <div className="text-sm">
+                      <div className="font-medium text-red-600 mb-1">
+                        <XCircle className="h-4 w-4 inline mr-1" />
+                        Sync Failed
+                      </div>
+                      <div className="text-red-600">
+                        {syncResults[connector.id]?.error}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
