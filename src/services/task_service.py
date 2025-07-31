@@ -52,6 +52,9 @@ class TaskService:
         self.background_tasks.add(background_task)
         background_task.add_done_callback(self.background_tasks.discard)
         
+        # Store reference to background task for cancellation
+        upload_task.background_task = background_task
+        
         return task_id
 
     async def background_upload_processor(self, user_id: str, task_id: str) -> None:
@@ -128,6 +131,12 @@ class TaskService:
             upload_task.status = TaskStatus.COMPLETED
             upload_task.updated_at = time.time()
             
+        except asyncio.CancelledError:
+            print(f"[INFO] Background processor for task {task_id} was cancelled")
+            if user_id in self.task_store and task_id in self.task_store[user_id]:
+                # Task status and pending files already handled by cancel_task()
+                pass
+            raise  # Re-raise to properly handle cancellation
         except Exception as e:
             print(f"[ERROR] Background custom processor failed for task {task_id}: {e}")
             import traceback
@@ -189,6 +198,36 @@ class TaskService:
         # Sort by creation time, most recent first
         tasks.sort(key=lambda x: x["created_at"], reverse=True)
         return tasks
+    
+    def cancel_task(self, user_id: str, task_id: str) -> bool:
+        """Cancel a task if it exists and is not already completed"""
+        if (user_id not in self.task_store or 
+            task_id not in self.task_store[user_id]):
+            return False
+        
+        upload_task = self.task_store[user_id][task_id]
+        
+        # Can only cancel pending or running tasks
+        if upload_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+            return False
+        
+        # Cancel the background task to stop scheduling new work
+        if hasattr(upload_task, 'background_task') and not upload_task.background_task.done():
+            upload_task.background_task.cancel()
+        
+        # Mark task as failed (cancelled)
+        upload_task.status = TaskStatus.FAILED
+        upload_task.updated_at = time.time()
+        
+        # Mark all pending file tasks as failed
+        for file_task in upload_task.file_tasks.values():
+            if file_task.status == TaskStatus.PENDING:
+                file_task.status = TaskStatus.FAILED
+                file_task.error = "Task cancelled by user"
+                file_task.updated_at = time.time()
+                upload_task.failed_files += 1
+        
+        return True
     
     def shutdown(self):
         """Cleanup process pool"""
