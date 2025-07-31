@@ -163,7 +163,7 @@ class ConnectorService:
         
         # Create custom processor for connector files
         from models.processors import ConnectorFileProcessor
-        processor = ConnectorFileProcessor(self, connection_id, files_to_process)
+        processor = ConnectorFileProcessor(self, connection_id, files_to_process, user_id)
         
         # Use file IDs as items (no more fake file paths!)
         file_ids = [file_info['id'] for file_info in files_to_process]
@@ -191,7 +191,7 @@ class ConnectorService:
         # Create custom processor for specific connector files
         from models.processors import ConnectorFileProcessor
         # We'll pass file_ids as the files_info, the processor will handle ID-only files
-        processor = ConnectorFileProcessor(self, connection_id, file_ids)
+        processor = ConnectorFileProcessor(self, connection_id, file_ids, user_id)
         
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(user_id, file_ids, processor)
