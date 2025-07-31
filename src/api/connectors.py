@@ -81,3 +81,123 @@ async def connector_status(request: Request, connector_service, session_manager)
             for conn in connections
         ]
     })
+
+async def connector_webhook(request: Request, connector_service, session_manager):
+    """Handle webhook notifications from any connector type"""
+    connector_type = request.path_params.get("connector_type")
+    
+    try:
+        # Get the raw payload and headers
+        payload = {}
+        headers = dict(request.headers)
+        
+        if request.method == "POST":
+            content_type = headers.get('content-type', '').lower()
+            if 'application/json' in content_type:
+                payload = await request.json()
+            else:
+                # Some webhooks send form data or plain text
+                body = await request.body()
+                payload = {"raw_body": body.decode('utf-8') if body else ""}
+        else:
+            # GET webhooks use query params
+            payload = dict(request.query_params)
+        
+        # Add headers to payload for connector processing
+        payload["_headers"] = headers
+        payload["_method"] = request.method
+        
+        print(f"[WEBHOOK] {connector_type} notification received")
+        
+        # Extract channel/subscription ID from headers (Google Drive specific)
+        channel_id = headers.get('x-goog-channel-id')
+        if not channel_id:
+            print(f"[WEBHOOK] No channel ID found in {connector_type} webhook")
+            return JSONResponse({"status": "ignored", "reason": "no_channel_id"})
+        
+        # Find the specific connection for this webhook
+        connection = await connector_service.connection_manager.get_connection_by_webhook_id(channel_id)
+        if not connection or not connection.is_active:
+            print(f"[WEBHOOK] Unknown channel {channel_id} - attempting to cancel old subscription")
+            
+            # Try to cancel this unknown subscription using any active connection of this connector type
+            try:
+                all_connections = await connector_service.connection_manager.list_connections(
+                    connector_type=connector_type
+                )
+                active_connections = [c for c in all_connections if c.is_active]
+                
+                if active_connections:
+                    # Use the first active connection to cancel the unknown subscription
+                    connector = await connector_service._get_connector(active_connections[0].connection_id)
+                    if connector:
+                        print(f"[WEBHOOK] Cancelling unknown subscription {channel_id}")
+                        resource_id = headers.get('x-goog-resource-id')
+                        await connector.cleanup_subscription(channel_id, resource_id)
+                        print(f"[WEBHOOK] Successfully cancelled unknown subscription {channel_id}")
+                    
+            except Exception as e:
+                print(f"[WARNING] Failed to cancel unknown subscription {channel_id}: {e}")
+            
+            return JSONResponse({"status": "cancelled_unknown", "channel_id": channel_id})
+        
+        # Process webhook for the specific connection
+        results = []
+        try:
+            # Get the connector instance
+            connector = await connector_service._get_connector(connection.connection_id)
+            if not connector:
+                print(f"[WEBHOOK] Could not get connector for connection {connection.connection_id}")
+                return JSONResponse({"status": "error", "reason": "connector_not_found"})
+                
+            # Let the connector handle the webhook and return affected file IDs
+            affected_files = await connector.handle_webhook(payload)
+            
+            if affected_files:
+                print(f"[WEBHOOK] Connection {connection.connection_id}: {len(affected_files)} files affected")
+                
+                # Trigger incremental sync for affected files
+                task_id = await connector_service.sync_specific_files(
+                    connection.connection_id,
+                    connection.user_id, 
+                    affected_files
+                )
+                
+                result = {
+                    "connection_id": connection.connection_id,
+                    "task_id": task_id,
+                    "affected_files": len(affected_files)
+                }
+            else:
+                # No specific files identified - just log the webhook
+                print(f"[WEBHOOK] Connection {connection.connection_id}: general change detected, no specific files to sync")
+                
+                result = {
+                    "connection_id": connection.connection_id,
+                    "action": "logged_only",
+                    "reason": "no_specific_files"
+                }
+            
+            return JSONResponse({
+                "status": "processed",
+                "connector_type": connector_type,
+                "channel_id": channel_id,
+                **result
+            })
+                
+        except Exception as e:
+            print(f"[ERROR] Failed to process webhook for connection {connection.connection_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return JSONResponse({
+                "status": "error",
+                "connector_type": connector_type,
+                "channel_id": channel_id,
+                "error": str(e)
+            }, status_code=500)
+            
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Webhook processing failed: {str(e)}")
+        traceback.print_exc()
+        return JSONResponse({"error": f"Webhook processing failed: {str(e)}"}, status_code=500)

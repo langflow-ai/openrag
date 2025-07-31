@@ -21,6 +21,9 @@ SESSION_SECRET = os.getenv("SESSION_SECRET", "your-secret-key-change-in-producti
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
+# Webhook configuration - must be set to enable webhooks
+WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL")  # No default - must be explicitly configured
+
 # OpenSearch configuration
 INDEX_NAME = "documents"
 VECTOR_DIM = 1536
@@ -95,6 +98,9 @@ class AppClients:
         
         # Initialize patched OpenAI client
         self.patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
+        
+        # Initialize document converter
+        self.converter = DocumentConverter()
         
         return self
 
