@@ -34,10 +34,11 @@ class DocumentFileProcessor(TaskProcessor):
 class ConnectorFileProcessor(TaskProcessor):
     """Processor for connector file uploads"""
     
-    def __init__(self, connector_service, connection_id: str, files_to_process: list):
+    def __init__(self, connector_service, connection_id: str, files_to_process: list, user_id: str = None):
         self.connector_service = connector_service
         self.connection_id = connection_id
         self.files_to_process = files_to_process
+        self.user_id = user_id
         # Create lookup map for file info - handle both file objects and file IDs
         self.file_info_map = {}
         for f in files_to_process:
@@ -64,18 +65,12 @@ class ConnectorFileProcessor(TaskProcessor):
         # Get file content from connector (the connector will fetch metadata if needed)
         document = await connector.get_file_content(file_id)
         
-        # Get user_id from task store lookup
-        user_id = None
-        for uid, tasks in self.connector_service.task_service.task_store.items():
-            if upload_task.task_id in tasks:
-                user_id = uid
-                break
-        
-        if not user_id:
-            raise ValueError("Could not determine user_id for task")
+        # Use the user_id passed during initialization
+        if not self.user_id:
+            raise ValueError("user_id not provided to ConnectorFileProcessor")
         
         # Process using existing pipeline
-        result = await self.connector_service.process_connector_document(document, user_id)
+        result = await self.connector_service.process_connector_document(document, self.user_id)
         
         file_task.status = TaskStatus.COMPLETED
         file_task.result = result
