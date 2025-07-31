@@ -5,8 +5,10 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Navigation } from "@/components/navigation";
 import { ModeToggle } from "@/components/mode-toggle";
 import { AuthProvider } from "@/contexts/auth-context";
+import { TaskProvider } from "@/contexts/task-context";
 import { UserNav } from "@/components/user-nav";
 import { LayoutWrapper } from "@/components/layout-wrapper";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,11 +42,14 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <LayoutWrapper>
-              {children}
-            </LayoutWrapper>
+            <TaskProvider>
+              <LayoutWrapper>
+                {children}
+              </LayoutWrapper>
+            </TaskProvider>
           </AuthProvider>
         </ThemeProvider>
+        <Toaster />
       </body>
     </html>
   );
