@@ -145,6 +145,13 @@ def create_app():
                          session_manager=services['session_manager'])
               ), methods=["GET"]),
         
+        Route("/tasks/{task_id}/cancel", 
+              require_auth(services['session_manager'])(
+                  partial(tasks.cancel_task,
+                         task_service=services['task_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["POST"]),
+        
         # Search endpoint
         Route("/search", 
               require_auth(services['session_manager'])(
@@ -197,14 +204,14 @@ def create_app():
               ), methods=["POST"]),
         
         # Connector endpoints
-        Route("/connectors/sync", 
+        Route("/connectors/{connector_type}/sync", 
               require_auth(services['session_manager'])(
                   partial(connectors.connector_sync,
                          connector_service=services['connector_service'],
                          session_manager=services['session_manager'])
               ), methods=["POST"]),
         
-        Route("/connectors/status/{connector_type}", 
+        Route("/connectors/{connector_type}/status", 
               require_auth(services['session_manager'])(
                   partial(connectors.connector_status,
                          connector_service=services['connector_service'],

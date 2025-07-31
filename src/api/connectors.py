@@ -2,38 +2,40 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 async def connector_sync(request: Request, connector_service, session_manager):
-    """Sync files from a connector connection"""
+    """Sync files from all active connections of a connector type"""
+    connector_type = request.path_params.get("connector_type", "google_drive")
     data = await request.json()
-    connection_id = data.get("connection_id")
     max_files = data.get("max_files")
     
-    if not connection_id:
-        return JSONResponse({"error": "connection_id is required"}, status_code=400)
-    
     try:
-        print(f"[DEBUG] Starting connector sync for connection_id={connection_id}, max_files={max_files}")
+        print(f"[DEBUG] Starting connector sync for connector_type={connector_type}, max_files={max_files}")
         
-        # Verify user owns this connection
         user = request.state.user
         print(f"[DEBUG] User: {user.user_id}")
         
-        connection_config = await connector_service.connection_manager.get_connection(connection_id)
-        print(f"[DEBUG] Got connection config: {connection_config is not None}")
+        # Get all active connections for this connector type and user
+        connections = await connector_service.connection_manager.list_connections(
+            user_id=user.user_id, 
+            connector_type=connector_type
+        )
         
-        if not connection_config:
-            return JSONResponse({"error": "Connection not found"}, status_code=404)
+        active_connections = [conn for conn in connections if conn.is_active]
+        if not active_connections:
+            return JSONResponse({"error": f"No active {connector_type} connections found"}, status_code=404)
         
-        if connection_config.user_id != user.user_id:
-            return JSONResponse({"error": "Access denied"}, status_code=403)
-        
-        print(f"[DEBUG] About to call sync_connector_files")
-        task_id = await connector_service.sync_connector_files(connection_id, user.user_id, max_files)
-        print(f"[DEBUG] Got task_id: {task_id}")
+        # Start sync tasks for all active connections
+        task_ids = []
+        for connection in active_connections:
+            print(f"[DEBUG] About to call sync_connector_files for connection {connection.connection_id}")
+            task_id = await connector_service.sync_connector_files(connection.connection_id, user.user_id, max_files)
+            task_ids.append(task_id)
+            print(f"[DEBUG] Got task_id: {task_id}")
         
         return JSONResponse({
-                "task_id": task_id,
+                "task_ids": task_ids,
                 "status": "sync_started",
-                "message": f"Started syncing files from connection {connection_id}"
+                "message": f"Started syncing files from {len(active_connections)} {connector_type} connection(s)",
+                "connections_synced": len(active_connections)
             },
             status_code=201
         )
