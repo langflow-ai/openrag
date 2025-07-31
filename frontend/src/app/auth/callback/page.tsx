@@ -13,6 +13,7 @@ export default function AuthCallbackPage() {
   const { refreshAuth } = useAuth()
   const [status, setStatus] = useState<"processing" | "success" | "error">("processing")
   const [error, setError] = useState<string | null>(null)
+  const [purpose, setPurpose] = useState<string>("app_auth")
   const hasProcessed = useRef(false)
 
   useEffect(() => {
@@ -32,10 +33,15 @@ export default function AuthCallbackPage() {
         const storedConnectorType = localStorage.getItem('connecting_connector_type')
         const authPurpose = localStorage.getItem('auth_purpose')
         
+        // Determine purpose - default to app_auth for login, data_source for connectors
+        const detectedPurpose = authPurpose || (storedConnectorType?.includes('drive') ? 'data_source' : 'app_auth')
+        setPurpose(detectedPurpose)
+        
         // Debug logging
-        console.log('Auth Callback Debug:', {
+        console.log('OAuth Callback Debug:', {
           urlParams: { code: !!code, state: !!state, error: errorParam },
           localStorage: { connectorId, storedConnectorType, authPurpose },
+          detectedPurpose,
           fullUrl: window.location.href
         })
         
@@ -47,7 +53,7 @@ export default function AuthCallbackPage() {
         }
         
         if (!code || !state || !finalConnectorId) {
-          console.error('Missing auth callback parameters:', {
+          console.error('Missing OAuth callback parameters:', {
             code: !!code,
             state: !!state, 
             finalConnectorId: !!finalConnectorId
@@ -70,30 +76,44 @@ export default function AuthCallbackPage() {
         
         const result = await response.json()
         
-        if (response.ok && result.purpose === 'app_auth') {
+        if (response.ok) {
           setStatus("success")
           
-          // Refresh auth context to pick up the new user
-          await refreshAuth()
-          
-          // Clean up localStorage
-          localStorage.removeItem('connecting_connector_id')
-          localStorage.removeItem('connecting_connector_type')
-          localStorage.removeItem('auth_purpose')
-          
-          // Get redirect URL from login page
-          const redirectTo = searchParams.get('redirect') || '/'
-          
-          // Redirect to the original page or home
-          setTimeout(() => {
-            router.push(redirectTo)
-          }, 2000)
+          if (result.purpose === 'app_auth' || detectedPurpose === 'app_auth') {
+            // App authentication - refresh auth context and redirect to home/original page
+            await refreshAuth()
+            
+            // Get redirect URL from login page
+            const redirectTo = searchParams.get('redirect') || '/'
+            
+            // Clean up localStorage
+            localStorage.removeItem('connecting_connector_id')
+            localStorage.removeItem('connecting_connector_type')
+            localStorage.removeItem('auth_purpose')
+            
+            // Redirect to the original page or home
+            setTimeout(() => {
+              router.push(redirectTo)
+            }, 2000)
+          } else {
+            // Connector authentication - redirect to connectors page
+            
+            // Clean up localStorage
+            localStorage.removeItem('connecting_connector_id')
+            localStorage.removeItem('connecting_connector_type')
+            localStorage.removeItem('auth_purpose')
+            
+            // Redirect to connectors page with success indicator
+            setTimeout(() => {
+              router.push('/connectors?oauth_success=true')
+            }, 2000)
+          }
         } else {
           throw new Error(result.error || 'Authentication failed')
         }
         
       } catch (err) {
-        console.error('Auth callback error:', err)
+        console.error('OAuth callback error:', err)
         setError(err instanceof Error ? err.message : 'Unknown error occurred')
         setStatus("error")
         
@@ -107,6 +127,33 @@ export default function AuthCallbackPage() {
     handleCallback()
   }, [searchParams, router, refreshAuth])
 
+  // Dynamic UI content based on purpose
+  const isAppAuth = purpose === 'app_auth'
+  
+  const getTitle = () => {
+    if (status === "processing") {
+      return isAppAuth ? "Signing you in..." : "Connecting..."
+    }
+    if (status === "success") {
+      return isAppAuth ? "Welcome to GenDB!" : "Connection Successful!"
+    }
+    if (status === "error") {
+      return isAppAuth ? "Sign In Failed" : "Connection Failed"
+    }
+  }
+
+  const getDescription = () => {
+    if (status === "processing") {
+      return isAppAuth ? "Please wait while we complete your sign in..." : "Please wait while we complete the connection..."
+    }
+    if (status === "success") {
+      return "You will be redirected shortly."
+    }
+    if (status === "error") {
+      return isAppAuth ? "There was an issue signing you in." : "There was an issue with the connection."
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-full max-w-md">
@@ -115,26 +162,24 @@ export default function AuthCallbackPage() {
             {status === "processing" && (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Signing you in...
+                {getTitle()}
               </>
             )}
             {status === "success" && (
               <>
                 <CheckCircle className="h-5 w-5 text-green-500" />
-                Welcome to GenDB!
+                {getTitle()}
               </>
             )}
             {status === "error" && (
               <>
                 <XCircle className="h-5 w-5 text-red-500" />
-                Sign In Failed
+                {getTitle()}
               </>
             )}
           </CardTitle>
           <CardDescription>
-            {status === "processing" && "Please wait while we complete your sign in..."}
-            {status === "success" && "You will be redirected shortly."}
-            {status === "error" && "There was an issue signing you in."}
+            {getDescription()}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -144,12 +189,12 @@ export default function AuthCallbackPage() {
                 <p className="text-sm text-red-600">{error}</p>
               </div>
               <Button 
-                onClick={() => router.push('/login')} 
+                onClick={() => router.push(isAppAuth ? '/login' : '/connectors')} 
                 variant="outline" 
                 className="w-full"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Login
+                {isAppAuth ? 'Back to Login' : 'Back to Connectors'}
               </Button>
             </div>
           )}
@@ -157,7 +202,7 @@ export default function AuthCallbackPage() {
             <div className="text-center">
               <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
                 <p className="text-sm text-green-600">
-                  Redirecting you to the app...
+                  {isAppAuth ? 'Redirecting you to the app...' : 'Redirecting to connectors...'}
                 </p>
               </div>
             </div>
