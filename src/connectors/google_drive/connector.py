@@ -152,7 +152,8 @@ class GoogleDriveConnector(BaseConnector):
             token_file=config.get('token_file', 'gdrive_token.json')
         )
         self.service = None
-        self.webhook_channel_id = None
+        # Load existing webhook channel ID from config if available
+        self.webhook_channel_id = config.get('webhook_channel_id') or config.get('subscription_id')
         
     async def authenticate(self) -> bool:
         """Authenticate with Google Drive"""
@@ -224,7 +225,7 @@ class GoogleDriveConnector(BaseConnector):
             loop = asyncio.get_event_loop()
             
             # Use the same process pool as docling processing
-            from app import process_pool
+            from utils.process_pool import process_pool
             results = await loop.run_in_executor(
                 process_pool, 
                 _sync_list_files_worker, 
@@ -268,7 +269,7 @@ class GoogleDriveConnector(BaseConnector):
             loop = asyncio.get_event_loop()
             
             # Use the same process pool as docling processing
-            from app import process_pool
+            from utils.process_pool import process_pool
             file_metadata = await loop.run_in_executor(
                 process_pool, 
                 _sync_get_metadata_worker, 
@@ -313,7 +314,7 @@ class GoogleDriveConnector(BaseConnector):
         loop = asyncio.get_event_loop()
         
         # Use the same process pool as docling processing
-        from app import process_pool
+        from utils.process_pool import process_pool
         return await loop.run_in_executor(
             process_pool, 
             _sync_download_worker, 
@@ -359,46 +360,92 @@ class GoogleDriveConnector(BaseConnector):
         if not self._authenticated:
             raise ValueError("Not authenticated")
         
-        # Google Drive sends change notifications
-        # We need to query for actual changes
+        # Google Drive sends headers with the important info
+        headers = payload.get('_headers', {})
+        
+        # Extract Google Drive specific headers
+        channel_id = headers.get('x-goog-channel-id')
+        resource_state = headers.get('x-goog-resource-state')
+        
+        if not channel_id:
+            print("[WEBHOOK] No channel ID found in Google Drive webhook")
+            return []
+        
+        # Check if this webhook belongs to this connection
+        if self.webhook_channel_id != channel_id:
+            print(f"[WEBHOOK] Channel ID mismatch: expected {self.webhook_channel_id}, got {channel_id}")
+            return []
+        
+        # Only process certain states (ignore 'sync' which is just a ping)
+        if resource_state not in ['exists', 'not_exists', 'change']:
+            print(f"[WEBHOOK] Ignoring resource state: {resource_state}")
+            return []
+        
         try:
-            page_token = payload.get('pageToken')
+            # Extract page token from the resource URI if available
+            page_token = None
+            headers = payload.get('_headers', {})
+            resource_uri = headers.get('x-goog-resource-uri')
+            
+            if resource_uri and 'pageToken=' in resource_uri:
+                # Extract page token from URI like: 
+                # https://www.googleapis.com/drive/v3/changes?alt=json&pageToken=4337807
+                import urllib.parse
+                parsed = urllib.parse.urlparse(resource_uri)
+                query_params = urllib.parse.parse_qs(parsed.query)
+                page_token = query_params.get('pageToken', [None])[0]
+            
             if not page_token:
-                # Get current page token and return empty list
+                print("[WEBHOOK] No page token found, cannot identify specific changes")
                 return []
             
-            # Get list of changes
+            print(f"[WEBHOOK] Getting changes since page token: {page_token}")
+            
+            # Get list of changes since the page token
             changes = self.service.changes().list(
                 pageToken=page_token,
-                fields="changes(fileId, file(id, name, mimeType, trashed))"
+                fields="changes(fileId, file(id, name, mimeType, trashed, parents))"
             ).execute()
             
             affected_files = []
             for change in changes.get('changes', []):
                 file_info = change.get('file', {})
+                file_id = change.get('fileId')
+                
+                if not file_id:
+                    continue
+                
                 # Only include supported file types that aren't trashed
-                if (file_info.get('mimeType') in self.SUPPORTED_MIMETYPES and 
-                    not file_info.get('trashed', False)):
-                    affected_files.append(change['fileId'])
+                mime_type = file_info.get('mimeType', '')
+                is_trashed = file_info.get('trashed', False)
+                
+                if not is_trashed and mime_type in self.SUPPORTED_MIMETYPES:
+                    print(f"[WEBHOOK] File changed: {file_info.get('name', 'Unknown')} ({file_id})")
+                    affected_files.append(file_id)
+                elif is_trashed:
+                    print(f"[WEBHOOK] File deleted/trashed: {file_info.get('name', 'Unknown')} ({file_id})")
+                    # TODO: Handle file deletion (remove from index)
+                else:
+                    print(f"[WEBHOOK] Ignoring unsupported file type: {mime_type}")
             
+            print(f"[WEBHOOK] Found {len(affected_files)} affected supported files")
             return affected_files
             
         except HttpError as e:
             print(f"Failed to handle webhook: {e}")
             return []
     
-    async def cleanup_subscription(self, subscription_id: str) -> bool:
+    async def cleanup_subscription(self, subscription_id: str, resource_id: str = None) -> bool:
         """Clean up Google Drive subscription"""
         if not self._authenticated:
             return False
         
         try:
-            self.service.channels().stop(
-                body={
-                    'id': subscription_id,
-                    'resourceId': subscription_id  # This might need adjustment based on Google's response
-                }
-            ).execute()
+            body = {'id': subscription_id}
+            if resource_id:
+                body['resourceId'] = resource_id
+            
+            self.service.channels().stop(body=body).execute()
             return True
         except HttpError as e:
             print(f"Failed to cleanup subscription: {e}")

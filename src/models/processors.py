@@ -38,8 +38,15 @@ class ConnectorFileProcessor(TaskProcessor):
         self.connector_service = connector_service
         self.connection_id = connection_id
         self.files_to_process = files_to_process
-        # Create lookup map for file info
-        self.file_info_map = {f['id']: f for f in files_to_process}
+        # Create lookup map for file info - handle both file objects and file IDs
+        self.file_info_map = {}
+        for f in files_to_process:
+            if isinstance(f, dict):
+                # Full file info objects
+                self.file_info_map[f['id']] = f
+            else:
+                # Just file IDs - will need to fetch metadata during processing
+                self.file_info_map[f] = None
     
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a connector file using ConnectorService"""
@@ -49,16 +56,13 @@ class ConnectorFileProcessor(TaskProcessor):
         file_id = item  # item is the connector file ID
         file_info = self.file_info_map.get(file_id)
         
-        if not file_info:
-            raise ValueError(f"File info not found for {file_id}")
-        
         # Get the connector
         connector = await self.connector_service.get_connector(self.connection_id)
         if not connector:
             raise ValueError(f"Connection '{self.connection_id}' not found")
         
-        # Get file content from connector
-        document = await connector.get_file_content(file_info['id'])
+        # Get file content from connector (the connector will fetch metadata if needed)
+        document = await connector.get_file_content(file_id)
         
         # Get user_id from task store lookup
         user_id = None
