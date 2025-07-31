@@ -217,10 +217,21 @@ def create_app():
                          connector_service=services['connector_service'],
                          session_manager=services['session_manager'])
               ), methods=["GET"]),
+        
+        Route("/connectors/{connector_type}/webhook", 
+              partial(connectors.connector_webhook,
+                     connector_service=services['connector_service'],
+                     session_manager=services['session_manager']), 
+              methods=["POST", "GET"]),
     ]
     
     app = Starlette(debug=True, routes=routes)
     app.state.services = services  # Store services for cleanup
+    
+    # Add shutdown event handler
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        await cleanup_subscriptions_proper(services)
     
     return app
 
@@ -233,8 +244,38 @@ async def startup():
 
 def cleanup():
     """Cleanup on application shutdown"""
-    # This will be called on exit to cleanup process pools
+    # Cleanup process pools only (webhooks handled by Starlette shutdown)
+    print("[CLEANUP] Shutting down...")
     pass
+
+async def cleanup_subscriptions_proper(services):
+    """Cancel all active webhook subscriptions"""
+    print("[CLEANUP] Cancelling active webhook subscriptions...")
+    
+    try:
+        connector_service = services['connector_service']
+        await connector_service.connection_manager.load_connections()
+        
+        # Get all active connections with webhook subscriptions  
+        all_connections = await connector_service.connection_manager.list_connections()
+        active_connections = [c for c in all_connections if c.is_active and c.config.get('webhook_channel_id')]
+        
+        for connection in active_connections:
+            try:
+                print(f"[CLEANUP] Cancelling subscription for connection {connection.connection_id}")
+                connector = await connector_service.get_connector(connection.connection_id)
+                if connector:
+                    subscription_id = connection.config.get('webhook_channel_id')
+                    resource_id = connection.config.get('resource_id')  # If stored
+                    await connector.cleanup_subscription(subscription_id, resource_id)
+                    print(f"[CLEANUP] Cancelled subscription {subscription_id}")
+            except Exception as e:
+                print(f"[ERROR] Failed to cancel subscription for {connection.connection_id}: {e}")
+        
+        print(f"[CLEANUP] Finished cancelling {len(active_connections)} subscriptions")
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to cleanup subscriptions: {e}")
 
 if __name__ == "__main__":
     import uvicorn
