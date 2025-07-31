@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, PlugZap, CheckCircle, XCircle, RefreshCw, FileText, Download, AlertCircle } from "lucide-react"
+import { Loader2, PlugZap, CheckCircle, XCircle, RefreshCw, Download, AlertCircle } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { useTask } from "@/contexts/task-context"
 import { ProtectedRoute } from "@/components/protected-route"
@@ -23,18 +23,6 @@ interface Connector {
   access_token?: string // For connectors that use OAuth
 }
 
-interface ConnectorStatus {
-  authenticated: boolean
-  status: string
-  connections: Array<{
-    connection_id: string
-    name: string
-    is_active: boolean
-    created_at: string
-    last_sync?: string
-  }>
-}
-
 interface SyncResult {
   processed?: number;
   added?: number;
@@ -45,8 +33,16 @@ interface SyncResult {
   isStarted?: boolean; // For sync started state
 }
 
+interface Connection {
+  connection_id: string
+  name: string
+  is_active: boolean
+  created_at: string
+  last_sync?: string
+}
+
 function ConnectorsPage() {
-  const { user, isAuthenticated } = useAuth()
+  const { isAuthenticated } = useAuth()
   const { addTask, refreshTasks } = useTask()
   const searchParams = useSearchParams()
   const [connectors, setConnectors] = useState<Connector[]>([])
@@ -54,9 +50,7 @@ function ConnectorsPage() {
   const [isConnecting, setIsConnecting] = useState<string | null>(null)
   const [isSyncing, setIsSyncing] = useState<string | null>(null)
   const [syncResults, setSyncResults] = useState<{[key: string]: SyncResult | null}>({})
-  const [syncProgress, setSyncProgress] = useState<{[key: string]: number | null}>({})
   const [maxFiles, setMaxFiles] = useState<number>(10)
-  const [isLoading, setIsLoading] = useState(true)
 
   // Function definitions first
   const checkConnectorStatuses = async () => {
@@ -81,7 +75,7 @@ function ConnectorsPage() {
         if (response.ok) {
           const data = await response.json()
           const connections = data.connections || []
-          const activeConnection = connections.find((conn: any) => conn.is_active)
+          const activeConnection = connections.find((conn: Connection) => conn.is_active)
           const isConnected = activeConnection !== undefined
           
           setConnectors(prev => prev.map(c => 
@@ -97,32 +91,6 @@ function ConnectorsPage() {
       }
     } catch (error) {
       console.error('Failed to check connector statuses:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const refreshConnectorStatus = async (connector: Connector) => {
-    try {
-      const response = await fetch(`/api/connectors/${connector.type}/status`)
-      if (response.ok) {
-        const data = await response.json()
-        const connections = data.connections || []
-        const activeConnection = connections.find((conn: any) => conn.is_active)
-        const isConnected = activeConnection !== undefined
-        
-        setConnectors(prev => prev.map(c => 
-          c.id === connector.id 
-            ? { 
-                ...c, 
-                status: isConnected ? "connected" : "not_connected",
-                connectionId: activeConnection?.connection_id
-              } 
-            : c
-        ))
-      }
-    } catch (error) {
-      console.error(`Failed to refresh connector status for ${connector.name}:`, error)
     }
   }
 
@@ -190,8 +158,7 @@ function ConnectorsPage() {
     }
 
     setIsSyncing(connector.id)
-    setSyncProgress(prev => ({ ...prev, [connector.id]: null })) // Clear any existing progress
-    setSyncResults(prev => ({ ...prev, [connector.id]: null }))
+    setSyncResults(prev => ({ ...prev, [connector.id]: null })) // Clear any existing progress
 
     try {
       const response = await fetch(`/api/connectors/${connector.type}/sync`, {

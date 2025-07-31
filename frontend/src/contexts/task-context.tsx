@@ -13,9 +13,9 @@ export interface Task {
   failed_files?: number
   created_at: string
   updated_at: string
-  result?: any
+  result?: Record<string, unknown>
   error?: string
-  files?: { [key: string]: any }
+  files?: Record<string, Record<string, unknown>>
 }
 
 interface TaskContextType {
@@ -37,7 +37,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [isPolling, setIsPolling] = useState(false)
   const [isFetching, setIsFetching] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [trackedTaskIds, setTrackedTaskIds] = useState<Set<string>>(new Set())
   const { isAuthenticated } = useAuth()
 
   const fetchTasks = useCallback(async () => {
@@ -85,8 +84,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated]) // Removed 'tasks' from dependencies to prevent infinite loop!
 
   const addTask = useCallback((taskId: string) => {
-    setTrackedTaskIds(prev => new Set(prev).add(taskId))
-    
     // Immediately start aggressive polling for the new task
     let pollAttempts = 0
     const maxPollAttempts = 30 // Poll for up to 30 seconds
@@ -133,11 +130,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   }, [fetchTasks])
 
   const removeTask = useCallback((taskId: string) => {
-    setTrackedTaskIds(prev => {
-      const newSet = new Set(prev)
-      newSet.delete(taskId)
-      return newSet
-    })
+    setTasks(prev => prev.filter(task => task.task_id !== taskId))
   }, [])
 
   const cancelTask = useCallback(async (taskId: string) => {
