@@ -37,11 +37,13 @@ class ConnectorService:
             tmp_file.flush()
             
             try:
-                # Use existing process_file_common function from app.py with connector document ID
-                from app import process_file_common
+                # Use existing process_file_common function with connector document metadata
+                # We'll use the document service's process_file_common method
+                from services.document_service import DocumentService
+                doc_service = DocumentService()
                 
                 # Process using the existing pipeline but with connector document metadata
-                result = await process_file_common(
+                result = await doc_service.process_file_common(
                     file_path=tmp_file.name, 
                     file_hash=document.id,  # Use connector document ID as hash
                     owner_user_id=owner_user_id
@@ -170,3 +172,32 @@ class ConnectorService:
         task_id = await self.task_service.create_custom_task(user_id, file_ids, processor)
         
         return task_id
+    
+    async def sync_specific_files(self, connection_id: str, user_id: str, file_ids: List[str]) -> str:
+        """Sync specific files by their IDs (used for webhook-triggered syncs)"""
+        if not self.task_service:
+            raise ValueError("TaskService not available - connector sync requires task service dependency")
+            
+        connector = await self.get_connector(connection_id)
+        if not connector:
+            raise ValueError(f"Connection '{connection_id}' not found or not authenticated")
+        
+        if not connector.is_authenticated:
+            raise ValueError(f"Connection '{connection_id}' not authenticated")
+        
+        if not file_ids:
+            raise ValueError("No file IDs provided")
+        
+        # Create custom processor for specific connector files
+        from models.processors import ConnectorFileProcessor
+        # We'll pass file_ids as the files_info, the processor will handle ID-only files
+        processor = ConnectorFileProcessor(self, connection_id, file_ids)
+        
+        # Create custom task using TaskService
+        task_id = await self.task_service.create_custom_task(user_id, file_ids, processor)
+        
+        return task_id
+    
+    async def _get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+        """Get a connector by connection ID (alias for get_connector)"""
+        return await self.get_connector(connection_id)

@@ -99,6 +99,15 @@ class ConnectionManager:
         
         connection = self.connections[connection_id]
         
+        # Check if this update is adding authentication and webhooks are configured
+        should_setup_webhook = (
+            config is not None and 
+            config.get('token_file') and 
+            config.get('webhook_url') and  # Only if webhook URL is configured
+            not connection.config.get('webhook_channel_id') and
+            connection.is_active
+        )
+        
         # Update fields if provided
         if connector_type is not None:
             connection.connector_type = connector_type
@@ -110,6 +119,11 @@ class ConnectionManager:
             connection.user_id = user_id
         
         await self.save_connections()
+        
+        # Setup webhook subscription if this connection just got authenticated with webhook URL
+        if should_setup_webhook:
+            await self._setup_webhook_for_new_connection(connection_id, connection)
+        
         return True
     
     async def list_connections(self, user_id: Optional[str] = None, connector_type: Optional[str] = None) -> List[ConnectionConfig]:
@@ -164,6 +178,10 @@ class ConnectionManager:
         connector = self._create_connector(connection_config)
         if await connector.authenticate():
             self.active_connectors[connection_id] = connector
+            
+            # Setup webhook subscription if not already set up
+            await self._setup_webhook_if_needed(connection_id, connection_config, connector)
+            
             return connector
         
         return None
@@ -207,3 +225,71 @@ class ConnectionManager:
             
             return True
         return False
+    
+    async def get_connection_by_webhook_id(self, webhook_id: str) -> Optional[ConnectionConfig]:
+        """Find a connection by its webhook/subscription ID"""
+        for connection in self.connections.values():
+            # Check if the webhook ID is stored in the connection config
+            if connection.config.get('webhook_channel_id') == webhook_id:
+                return connection
+            # Also check for subscription_id (alternative field name)
+            if connection.config.get('subscription_id') == webhook_id:
+                return connection
+        return None
+    
+    async def _setup_webhook_if_needed(self, connection_id: str, connection_config: ConnectionConfig, connector: BaseConnector):
+        """Setup webhook subscription if not already configured"""
+        # Check if webhook is already set up
+        if connection_config.config.get('webhook_channel_id') or connection_config.config.get('subscription_id'):
+            print(f"[WEBHOOK] Subscription already exists for connection {connection_id}")
+            return
+        
+        # Check if webhook URL is configured
+        webhook_url = connection_config.config.get('webhook_url')
+        if not webhook_url:
+            print(f"[WEBHOOK] No webhook URL configured for connection {connection_id}, skipping subscription setup")
+            return
+        
+        try:
+            print(f"[WEBHOOK] Setting up subscription for connection {connection_id}")
+            subscription_id = await connector.setup_subscription()
+            
+            # Store the subscription ID in connection config
+            connection_config.config['webhook_channel_id'] = subscription_id
+            connection_config.config['subscription_id'] = subscription_id  # Alternative field
+            
+            # Save updated connection config
+            await self.save_connections()
+            
+            print(f"[WEBHOOK] Successfully set up subscription {subscription_id} for connection {connection_id}")
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to setup webhook subscription for connection {connection_id}: {e}")
+            # Don't fail the entire connection setup if webhook fails
+    
+    async def _setup_webhook_for_new_connection(self, connection_id: str, connection_config: ConnectionConfig):
+        """Setup webhook subscription for a newly authenticated connection"""
+        try:
+            print(f"[WEBHOOK] Setting up subscription for newly authenticated connection {connection_id}")
+            
+            # Create and authenticate connector
+            connector = self._create_connector(connection_config)
+            if not await connector.authenticate():
+                print(f"[ERROR] Failed to authenticate connector for webhook setup: {connection_id}")
+                return
+            
+            # Setup subscription
+            subscription_id = await connector.setup_subscription()
+            
+            # Store the subscription ID in connection config
+            connection_config.config['webhook_channel_id'] = subscription_id
+            connection_config.config['subscription_id'] = subscription_id
+            
+            # Save updated connection config
+            await self.save_connections()
+            
+            print(f"[WEBHOOK] Successfully set up subscription {subscription_id} for connection {connection_id}")
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to setup webhook subscription for new connection {connection_id}: {e}")
+            # Don't fail the connection setup if webhook fails

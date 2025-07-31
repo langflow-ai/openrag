@@ -6,7 +6,7 @@ import aiofiles
 from datetime import datetime, timedelta
 from typing import Optional
 
-from config.settings import GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET
+from config.settings import GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, WEBHOOK_BASE_URL
 from session_manager import SessionManager
 
 class AuthService:
@@ -36,6 +36,10 @@ class AuthService:
             "purpose": purpose,
             "redirect_uri": redirect_uri
         }
+        
+        # Only add webhook URL if WEBHOOK_BASE_URL is configured
+        if WEBHOOK_BASE_URL:
+            config["webhook_url"] = f"{WEBHOOK_BASE_URL}/connectors/{provider}_drive/webhook"
         
         # Create connection in manager
         connector_type = f"{provider}_drive" if purpose == "data_source" else f"{provider}_auth"
@@ -167,7 +171,8 @@ class AuthService:
                     config={
                         **connection_config.config,
                         "purpose": "data_source",
-                        "user_email": user_info.get("email")
+                        "user_email": user_info.get("email"),
+                        **({"webhook_url": f"{WEBHOOK_BASE_URL}/connectors/google_drive/webhook"} if WEBHOOK_BASE_URL else {})
                     }
                 )
                 response_data["google_drive_connection_id"] = connection_id
