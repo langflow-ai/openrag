@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -467,7 +467,9 @@ function ConnectorsPage() {
 export default function ProtectedConnectorsPage() {
   return (
     <ProtectedRoute>
-      <ConnectorsPage />
+      <Suspense fallback={<div>Loading connectors...</div>}>
+        <ConnectorsPage />
+      </Suspense>
     </ProtectedRoute>
   )
 } 

@@ -23,12 +23,11 @@ services:
     ports:
       - "5601:5601"
 
-  gendb:
-    image: phact/gendb:latest
-    #build:
-      #context: .
-      #dockerfile: Dockerfile.app
-    container_name: gendb-app
+  gendb-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: gendb-backend
     depends_on:
       - opensearch
       - langflow
@@ -43,16 +42,29 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NVIDIA_VISIBLE_DEVICES=all
-    ports:
-      - "3000:3000"
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
     volumes:
       - ./src:/app/src
-      - ./frontend/src:/app/frontend/src
       - ./pyproject.toml:/app/pyproject.toml
       - ./uv.lock:/app/uv.lock
       - ./documents:/app/documents
     gpus: all
     platform: linux/amd64
+
+  gendb-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: gendb-frontend
+    depends_on:
+      - gendb-backend
+    environment:
+      - GENDB_BACKEND_HOST=gendb-backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
 
   langflow:
     volumes:
