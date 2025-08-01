@@ -24,9 +24,10 @@ services:
       - "5601:5601"
 
   gendb-backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    image: phact/gendb-backend:latest
+    #build:
+      #context: .
+      #dockerfile: Dockerfile.backend
     container_name: gendb-backend
     depends_on:
       - opensearch
@@ -53,9 +54,10 @@ services:
     platform: linux/amd64
 
   gendb-frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    image: phact/gendb-frontend:latest
+    #build:
+      #context: .
+      #dockerfile: Dockerfile.frontend
     container_name: gendb-frontend
     depends_on:
       - gendb-backend
