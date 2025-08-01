@@ -1,0 +1,29 @@
+FROM python:3.13-slim
+
+# Install curl for uv installation
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# Set working directory
+WORKDIR /app
+
+# Copy Python dependencies
+COPY pyproject.toml uv.lock ./
+RUN uv sync
+
+# Copy sample document and warmup script for docling
+COPY documents/2506.08231v1.pdf ./
+COPY warm_up_docling.py ./
+RUN uv run python warm_up_docling.py && rm warm_up_docling.py 2506.08231v1.pdf
+
+# Copy Python source
+COPY src/ ./src/
+
+# Expose backend port
+EXPOSE 8000
+
+# Start backend in foreground
+CMD ["uv", "run", "python", "src/main.py"]
