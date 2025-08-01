@@ -46,7 +46,8 @@ class ConnectorService:
                 result = await doc_service.process_file_common(
                     file_path=tmp_file.name, 
                     file_hash=document.id,  # Use connector document ID as hash
-                    owner_user_id=owner_user_id
+                    owner_user_id=owner_user_id,
+                    original_filename=document.filename  # Pass the original Google Doc title
                 )
                 
                 # If successfully indexed, update the indexed documents with connector metadata
