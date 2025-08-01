@@ -40,10 +40,10 @@ COPY src/ ./src/
 RUN echo '#!/bin/bash\n\
 set -e\n\
 echo "Starting Python backend..."\n\
-uv run python src/app.py &\n\
+uv run python src/main.py &\n\
 BACKEND_PID=$!\n\
 echo "Waiting for backend to be ready..."\n\
-until curl -f http://localhost:8000/search -X POST -H "Content-Type: application/json" -d "{\"query\":\"test\"}" > /dev/null 2>&1; do\n\
+until curl -f http://localhost:8000/auth/me > /dev/null 2>&1; do\n\
   echo "Backend not ready yet, waiting..."\n\
   sleep 2\n\
 done\n\
