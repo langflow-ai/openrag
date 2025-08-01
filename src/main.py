@@ -228,6 +228,11 @@ def create_app():
     app = Starlette(debug=True, routes=routes)
     app.state.services = services  # Store services for cleanup
     
+    # Add startup event handler
+    @app.on_event("startup")
+    async def startup_event():
+        await init_index()
+    
     # Add shutdown event handler
     @app.on_event("shutdown")
     async def shutdown_event():
@@ -286,10 +291,7 @@ if __name__ == "__main__":
     # Create app
     app = create_app()
     
-    # Run startup tasks
-    asyncio.run(startup())
-    
-    # Run the server
+    # Run the server (startup tasks now handled by Starlette startup event)
     uvicorn.run(
         app,
         host="0.0.0.0",
