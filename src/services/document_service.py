@@ -80,7 +80,7 @@ class DocumentService:
     def __init__(self, process_pool=None):
         self.process_pool = process_pool
     
-    async def process_file_common(self, file_path: str, file_hash: str = None, owner_user_id: str = None):
+    async def process_file_common(self, file_path: str, file_hash: str = None, owner_user_id: str = None, original_filename: str = None):
         """
         Common processing logic for both upload and upload_path.
         1. Optionally compute SHA256 hash if not provided.
@@ -121,7 +121,7 @@ class DocumentService:
         for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings)):
             chunk_doc = {
                 "document_id": file_hash,
-                "filename": slim_doc["filename"],
+                "filename": original_filename if original_filename else slim_doc["filename"],
                 "mimetype": slim_doc["mimetype"],
                 "page": chunk["page"],
                 "text": chunk["text"],
