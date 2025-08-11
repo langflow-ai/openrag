@@ -1,0 +1,13 @@
+_meta:
+  type: "rolesmapping"
+  config_version: 2
+
+gendb_user_role:
+  users: []
+  hosts: []
+  backend_roles:
+    - "gendb_user"
+
+all_access:
+  users:
+    - "admin"

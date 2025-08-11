@@ -4,6 +4,8 @@ import httpx
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
 from dataclasses import dataclass, asdict
+from cryptography.hazmat.primitives import serialization
+import os
 
 
 @dataclass
@@ -27,9 +29,36 @@ class User:
 class SessionManager:
     """Manages user sessions and JWT tokens"""
     
-    def __init__(self, secret_key: str):
-        self.secret_key = secret_key
+    def __init__(self, secret_key: str = None, private_key_path: str = "keys/private_key.pem", 
+                 public_key_path: str = "keys/public_key.pem"):
+        self.secret_key = secret_key  # Keep for backward compatibility
         self.users: Dict[str, User] = {}  # user_id -> User
+        self.user_opensearch_clients: Dict[str, Any] = {}  # user_id -> OpenSearch client
+        
+        # Load RSA keys
+        self.private_key_path = private_key_path
+        self.public_key_path = public_key_path
+        self._load_rsa_keys()
+    
+    def _load_rsa_keys(self):
+        """Load RSA private and public keys"""
+        try:
+            with open(self.private_key_path, 'rb') as f:
+                self.private_key = serialization.load_pem_private_key(
+                    f.read(),
+                    password=None
+                )
+            
+            with open(self.public_key_path, 'rb') as f:
+                self.public_key = serialization.load_pem_public_key(f.read())
+                
+            # Also get public key in PEM format for JWKS
+            self.public_key_pem = open(self.public_key_path, 'r').read()
+            
+        except FileNotFoundError as e:
+            raise Exception(f"RSA key files not found: {e}")
+        except Exception as e:
+            raise Exception(f"Failed to load RSA keys: {e}")
         
     async def get_user_info_from_token(self, access_token: str) -> Optional[Dict[str, Any]]:
         """Get user info from Google using access token"""
@@ -50,7 +79,7 @@ class SessionManager:
             print(f"Error getting user info: {e}")
             return None
     
-    async def create_user_session(self, access_token: str) -> Optional[str]:
+    async def create_user_session(self, access_token: str, issuer: str) -> Optional[str]:
         """Create user session from OAuth access token"""
         user_info = await self.get_user_info_from_token(access_token)
         if not user_info:
@@ -72,22 +101,40 @@ class SessionManager:
         else:
             self.users[user_id] = user
         
-        # Create JWT token
+        # Use provided issuer
+        
+        # Create JWT token with OIDC-compliant claims
+        now = datetime.utcnow()
         token_payload = {
-            "user_id": user_id,
+            # OIDC standard claims
+            "iss": issuer,  # Issuer from request
+            "sub": user_id,  # Subject (user ID)
+            "aud": ["opensearch", "gendb"],  # Audience
+            "exp": now + timedelta(days=7),  # Expiration
+            "iat": now,  # Issued at
+            "auth_time": int(now.timestamp()),  # Authentication time
+            
+            # Custom claims
+            "user_id": user_id,  # Keep for backward compatibility
             "email": user.email,
             "name": user.name,
-            "exp": datetime.utcnow() + timedelta(days=7),  # 7 day expiry
-            "iat": datetime.utcnow()
+            "preferred_username": user.email,
+            "email_verified": True,
+            "roles": ["gendb_user"]  # Backend role for OpenSearch
         }
         
-        token = jwt.encode(token_payload, self.secret_key, algorithm="HS256")
+        token = jwt.encode(token_payload, self.private_key, algorithm="RS256")
         return token
     
     def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Verify JWT token and return user info"""
         try:
-            payload = jwt.decode(token, self.secret_key, algorithms=["HS256"])
+            payload = jwt.decode(
+                token, 
+                self.public_key, 
+                algorithms=["RS256"],
+                audience=["opensearch", "gendb"]
+            )
             return payload
         except jwt.ExpiredSignatureError:
             return None
@@ -104,3 +151,12 @@ class SessionManager:
         if payload:
             return self.get_user(payload["user_id"])
         return None
+    
+    def get_user_opensearch_client(self, user_id: str, jwt_token: str):
+        """Get or create OpenSearch client for user with their JWT"""
+        # Check if we have a cached client for this user
+        if user_id not in self.user_opensearch_clients:
+            from config.settings import clients
+            self.user_opensearch_clients[user_id] = clients.create_user_opensearch_client(jwt_token)
+        
+        return self.user_opensearch_clients[user_id]

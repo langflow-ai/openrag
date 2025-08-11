@@ -77,10 +77,11 @@ def chunk_texts_for_embeddings(texts: List[str], max_tokens: int = None, model: 
     return batches
 
 class DocumentService:
-    def __init__(self, process_pool=None):
+    def __init__(self, process_pool=None, session_manager=None):
         self.process_pool = process_pool
+        self.session_manager = session_manager
     
-    async def process_file_common(self, file_path: str, file_hash: str = None, owner_user_id: str = None, original_filename: str = None):
+    async def process_file_common(self, file_path: str, file_hash: str = None, owner_user_id: str = None, original_filename: str = None, jwt_token: str = None):
         """
         Common processing logic for both upload and upload_path.
         1. Optionally compute SHA256 hash if not provided.
@@ -98,7 +99,10 @@ class DocumentService:
                     sha256.update(chunk)
             file_hash = sha256.hexdigest()
 
-        exists = await clients.opensearch.exists(index=INDEX_NAME, id=file_hash)
+        # Get user's OpenSearch client with JWT for OIDC auth
+        opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
+        
+        exists = await opensearch_client.exists(index=INDEX_NAME, id=file_hash)
         if exists:
             return {"status": "unchanged", "id": file_hash}
 
@@ -130,10 +134,10 @@ class DocumentService:
                 "indexed_time": datetime.datetime.now().isoformat()
             }
             chunk_id = f"{file_hash}_{i}"
-            await clients.opensearch.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
+            await opensearch_client.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
         return {"status": "indexed", "id": file_hash}
 
-    async def process_upload_file(self, upload_file, owner_user_id: str = None):
+    async def process_upload_file(self, upload_file, owner_user_id: str = None, jwt_token: str = None):
         """Process an uploaded file from form data"""
         sha256 = hashlib.sha256()
         tmp = tempfile.NamedTemporaryFile(delete=False)
@@ -147,11 +151,13 @@ class DocumentService:
             tmp.flush()
 
             file_hash = sha256.hexdigest()
-            exists = await clients.opensearch.exists(index=INDEX_NAME, id=file_hash)
+            # Get user's OpenSearch client with JWT for OIDC auth
+            opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
+            exists = await opensearch_client.exists(index=INDEX_NAME, id=file_hash)
             if exists:
                 return {"status": "unchanged", "id": file_hash}
 
-            result = await self.process_file_common(tmp.name, file_hash, owner_user_id=owner_user_id)
+            result = await self.process_file_common(tmp.name, file_hash, owner_user_id=owner_user_id, jwt_token=jwt_token)
             return result
 
         finally:
@@ -194,7 +200,7 @@ class DocumentService:
             "content_length": len(full_content)
         }
 
-    async def process_single_file_task(self, upload_task, file_path: str):
+    async def process_single_file_task(self, upload_task, file_path: str, owner_user_id: str = None, jwt_token: str = None):
         """Process a single file and update task tracking - used by task service"""
         from models.tasks import TaskStatus
         import time
@@ -212,7 +218,8 @@ class DocumentService:
             slim_doc = await loop.run_in_executor(self.process_pool, process_document_sync, file_path)
             
             # Check if already indexed
-            exists = await clients.opensearch.exists(index=INDEX_NAME, id=slim_doc["id"])
+            opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
+            exists = await opensearch_client.exists(index=INDEX_NAME, id=slim_doc["id"])
             if exists:
                 result = {"status": "unchanged", "id": slim_doc["id"]}
             else:
@@ -235,10 +242,12 @@ class DocumentService:
                         "mimetype": slim_doc["mimetype"],
                         "page": chunk["page"],
                         "text": chunk["text"],
-                        "chunk_embedding": vect
+                        "chunk_embedding": vect,
+                        "owner": owner_user_id,
+                        "indexed_time": datetime.datetime.now().isoformat()
                     }
                     chunk_id = f"{slim_doc['id']}_{i}"
-                    await clients.opensearch.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
+                    await opensearch_client.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
                 
                 result = {"status": "indexed", "id": slim_doc["id"]}
             

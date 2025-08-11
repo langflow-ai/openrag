@@ -1,0 +1,5 @@
+_meta:
+  type: "tenants"
+  config_version: 2
+
+# Empty tenants - using global tenant only
