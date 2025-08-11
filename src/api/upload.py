@@ -7,8 +7,9 @@ async def upload(request: Request, document_service, session_manager):
     form = await request.form()
     upload_file = form["file"]
     user = request.state.user
+    jwt_token = request.cookies.get("auth_token")
     
-    result = await document_service.process_upload_file(upload_file, owner_user_id=user.user_id)
+    result = await document_service.process_upload_file(upload_file, owner_user_id=user.user_id, jwt_token=jwt_token)
     return JSONResponse(result)
 
 async def upload_path(request: Request, task_service, session_manager):
@@ -26,7 +27,8 @@ async def upload_path(request: Request, task_service, session_manager):
         return JSONResponse({"error": "No files found in directory"}, status_code=400)
 
     user = request.state.user
-    task_id = await task_service.create_upload_task(user.user_id, file_paths)
+    jwt_token = request.cookies.get("auth_token")
+    task_id = await task_service.create_upload_task(user.user_id, file_paths, jwt_token=jwt_token)
     
     return JSONResponse({
         "task_id": task_id,

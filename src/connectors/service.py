@@ -11,13 +11,13 @@ from .connection_manager import ConnectionManager
 class ConnectorService:
     """Service to manage document connectors and process files"""
     
-    def __init__(self, opensearch_client, patched_async_client, process_pool, embed_model: str, index_name: str, task_service=None):
-        self.opensearch = opensearch_client
+    def __init__(self, patched_async_client, process_pool, embed_model: str, index_name: str, task_service=None, session_manager=None):
         self.openai_client = patched_async_client
         self.process_pool = process_pool
         self.embed_model = embed_model
         self.index_name = index_name
         self.task_service = task_service
+        self.session_manager = session_manager
         self.connection_manager = ConnectionManager()
     
     async def initialize(self):
@@ -28,7 +28,7 @@ class ConnectorService:
         """Get a connector by connection ID"""
         return await self.connection_manager.get_connector(connection_id)
     
-    async def process_connector_document(self, document: ConnectorDocument, owner_user_id: str) -> Dict[str, Any]:
+    async def process_connector_document(self, document: ConnectorDocument, owner_user_id: str, jwt_token: str = None) -> Dict[str, Any]:
         """Process a document from a connector using existing processing pipeline"""
         
         # Create temporary file from document content
@@ -40,20 +40,21 @@ class ConnectorService:
                 # Use existing process_file_common function with connector document metadata
                 # We'll use the document service's process_file_common method
                 from services.document_service import DocumentService
-                doc_service = DocumentService()
+                doc_service = DocumentService(session_manager=self.session_manager)
                 
                 # Process using the existing pipeline but with connector document metadata
                 result = await doc_service.process_file_common(
                     file_path=tmp_file.name, 
                     file_hash=document.id,  # Use connector document ID as hash
                     owner_user_id=owner_user_id,
-                    original_filename=document.filename  # Pass the original Google Doc title
+                    original_filename=document.filename,  # Pass the original Google Doc title
+                    jwt_token=jwt_token
                 )
                 
                 # If successfully indexed, update the indexed documents with connector metadata
                 if result["status"] == "indexed":
                     # Update all chunks with connector-specific metadata
-                    await self._update_connector_metadata(document, owner_user_id)
+                    await self._update_connector_metadata(document, owner_user_id, jwt_token)
                 
                 return {
                     **result,
@@ -65,7 +66,7 @@ class ConnectorService:
                 # Clean up temporary file
                 os.unlink(tmp_file.name)
     
-    async def _update_connector_metadata(self, document: ConnectorDocument, owner_user_id: str):
+    async def _update_connector_metadata(self, document: ConnectorDocument, owner_user_id: str, jwt_token: str = None):
         """Update indexed chunks with connector-specific metadata"""
         # Find all chunks for this document
         query = {
@@ -74,7 +75,10 @@ class ConnectorService:
             }
         }
         
-        response = await self.opensearch.search(index=self.index_name, body=query)
+        # Get user's OpenSearch client
+        opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
+        
+        response = await opensearch_client.search(index=self.index_name, body=query)
         
         # Update each chunk with connector metadata
         for hit in response["hits"]["hits"]:
@@ -96,7 +100,7 @@ class ConnectorService:
                 }
             }
             
-            await self.opensearch.update(index=self.index_name, id=chunk_id, body=update_body)
+            await opensearch_client.update(index=self.index_name, id=chunk_id, body=update_body)
     
     def _get_file_extension(self, mimetype: str) -> str:
         """Get file extension based on MIME type"""

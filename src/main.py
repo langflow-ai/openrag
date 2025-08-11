@@ -30,7 +30,7 @@ from session_manager import SessionManager
 from auth_middleware import require_auth, optional_auth
 
 # API endpoints
-from api import upload, search, chat, auth, connectors, tasks
+from api import upload, search, chat, auth, connectors, tasks, oidc
 
 print("CUDA available:", torch.cuda.is_available())
 print("CUDA version PyTorch was built with:", torch.version.cuda)
@@ -53,7 +53,7 @@ async def wait_for_opensearch():
                 raise Exception("OpenSearch failed to become ready")
 
 async def init_index():
-    """Initialize OpenSearch index"""
+    """Initialize OpenSearch index and security roles"""
     await wait_for_opensearch()
     
     if not await clients.opensearch.indices.exists(index=INDEX_NAME):
@@ -61,6 +61,16 @@ async def init_index():
         print(f"Created index '{INDEX_NAME}'")
     else:
         print(f"Index '{INDEX_NAME}' already exists, skipping creation.")
+
+async def init_index_when_ready():
+    """Initialize OpenSearch index when it becomes available"""
+    try:
+        await init_index()
+        print("OpenSearch index initialization completed successfully")
+    except Exception as e:
+        print(f"OpenSearch index initialization failed: {e}")
+        print("OIDC endpoints will still work, but document operations may fail until OpenSearch is ready")
+    
 
 def initialize_services():
     """Initialize all services and their dependencies"""
@@ -71,8 +81,8 @@ def initialize_services():
     session_manager = SessionManager(SESSION_SECRET)
     
     # Initialize services
-    document_service = DocumentService()
-    search_service = SearchService()
+    document_service = DocumentService(session_manager=session_manager)
+    search_service = SearchService(session_manager)
     task_service = TaskService(document_service, process_pool)
     chat_service = ChatService()
     
@@ -81,12 +91,12 @@ def initialize_services():
     
     # Initialize connector service
     connector_service = ConnectorService(
-        opensearch_client=clients.opensearch,
         patched_async_client=clients.patched_async_client,
         process_pool=process_pool,
         embed_model="text-embedding-3-small",
         index_name=INDEX_NAME,
-        task_service=task_service
+        task_service=task_service,
+        session_manager=session_manager
     )
     
     # Initialize auth service
@@ -223,15 +233,32 @@ def create_app():
                      connector_service=services['connector_service'],
                      session_manager=services['session_manager']), 
               methods=["POST", "GET"]),
+        
+        # OIDC endpoints
+        Route("/.well-known/openid-configuration", 
+              partial(oidc.oidc_discovery,
+                     session_manager=services['session_manager']), 
+              methods=["GET"]),
+        
+        Route("/auth/jwks", 
+              partial(oidc.jwks_endpoint,
+                     session_manager=services['session_manager']), 
+              methods=["GET"]),
+        
+        Route("/auth/introspect", 
+              partial(oidc.token_introspection,
+                     session_manager=services['session_manager']), 
+              methods=["POST"]),
     ]
     
     app = Starlette(debug=True, routes=routes)
     app.state.services = services  # Store services for cleanup
     
     # Add startup event handler
-    @app.on_event("startup")
+    @app.on_event("startup")  
     async def startup_event():
-        await init_index()
+        # Start index initialization in background to avoid blocking OIDC endpoints
+        asyncio.create_task(init_index_when_ready())
     
     # Add shutdown event handler
     @app.on_event("shutdown")
