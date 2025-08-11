@@ -1,0 +1,31 @@
+_meta:
+  type: "config"
+  config_version: 2
+
+config:
+  dynamic:
+    authc:
+      openid_auth_domain:
+        order: 0
+        http_enabled: true
+        http_authenticator:
+          type: openid
+          challenge: false
+          config:
+            openid_connect_url: "http://gendb-backend:8000/.well-known/openid-configuration"
+            subject_key: "sub"
+            jwt_header: "Authorization"          # expects Bearer token
+            roles_key: "roles"
+        authentication_backend:
+          type: noop
+
+      basic_internal_auth_domain:
+        order: 1
+        http_enabled: true
+        http_authenticator:
+          type: basic
+          challenge: true
+        authentication_backend:
+          type: intern
+
+

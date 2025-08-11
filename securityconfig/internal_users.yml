@@ -1,0 +1,7 @@
+_meta:
+  type: "internalusers"
+  config_version: 2
+
+admin:
+  reserved: true
+  hash: "$2y$12$YA8.WOaVAWKEZqEbP48bIe4R70/8zo.ozDAlwjKxczVBumZ.Ol5fS"

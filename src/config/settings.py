@@ -103,6 +103,21 @@ class AppClients:
         self.converter = DocumentConverter()
         
         return self
+    
+    def create_user_opensearch_client(self, jwt_token: str):
+        """Create OpenSearch client with user's JWT token for OIDC auth"""
+        headers = {'Authorization': f'Bearer {jwt_token}'}
+        
+        return AsyncOpenSearch(
+            hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
+            connection_class=AIOHttpConnection,
+            scheme="https",
+            use_ssl=True,
+            verify_certs=False,
+            ssl_assert_fingerprint=None,
+            headers=headers,
+            http_compress=True,
+        )
 
 # Global clients instance
 clients = AppClients()
