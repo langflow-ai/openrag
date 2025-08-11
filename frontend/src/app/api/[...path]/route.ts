@@ -45,9 +45,19 @@ async function proxyRequest(
   const backendUrl = `http://${backendHost}:8000/${path}${searchParams ? `?${searchParams}` : ''}`;
 
   try {
-    const body = request.method !== 'GET' && request.method !== 'HEAD' 
-      ? await request.text() 
-      : undefined;
+    let body: string | ArrayBuffer | undefined = undefined;
+    
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      const contentType = request.headers.get('content-type') || '';
+      
+      // For file uploads (multipart/form-data), preserve binary data
+      if (contentType.includes('multipart/form-data')) {
+        body = await request.arrayBuffer();
+      } else {
+        // For JSON and other text-based content, use text
+        body = await request.text();
+      }
+    }
 
     const headers = new Headers();
     
