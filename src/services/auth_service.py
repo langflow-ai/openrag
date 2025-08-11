@@ -71,7 +71,7 @@ class AuthService:
         }
 
     async def handle_oauth_callback(self, connection_id: str, authorization_code: str, 
-                                   state: str = None) -> dict:
+                                   state: str = None, request=None) -> dict:
         """Handle OAuth callback - exchange authorization code for tokens"""
         if not all([connection_id, authorization_code]):
             raise ValueError("Missing required parameters (connection_id, authorization_code)")
@@ -136,7 +136,7 @@ class AuthService:
             purpose = connection_config.config.get("purpose", "data_source")
 
             if purpose == "app_auth":
-                return await self._handle_app_auth(connection_id, connection_config, token_data)
+                return await self._handle_app_auth(connection_id, connection_config, token_data, request)
             else:
                 return await self._handle_data_source_auth(connection_id, connection_config)
 
@@ -145,9 +145,18 @@ class AuthService:
             self.used_auth_codes.discard(authorization_code)
             raise e
 
-    async def _handle_app_auth(self, connection_id: str, connection_config, token_data: dict) -> dict:
+    async def _handle_app_auth(self, connection_id: str, connection_config, token_data: dict, request=None) -> dict:
         """Handle app authentication - create user session"""
-        jwt_token = await self.session_manager.create_user_session(token_data["access_token"])
+        # Extract issuer from redirect_uri in connection config
+        redirect_uri = connection_config.config.get("redirect_uri")
+        if not redirect_uri:
+            raise ValueError("redirect_uri not found in connection config")
+        # Get base URL from redirect_uri (remove path)
+        from urllib.parse import urlparse
+        parsed = urlparse(redirect_uri)
+        issuer = f"{parsed.scheme}://{parsed.netloc}"
+        
+        jwt_token = await self.session_manager.create_user_session(token_data["access_token"], issuer)
 
         if jwt_token:
             # Get the user info to create a persistent Google Drive connection

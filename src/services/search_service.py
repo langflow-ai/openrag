@@ -3,9 +3,11 @@ from agentd.tool_decorator import tool
 from config.settings import clients, INDEX_NAME, EMBED_MODEL
 
 class SearchService:
+    def __init__(self, session_manager=None):
+        self.session_manager = session_manager
     
-    @tool
-    async def search_tool(self, query: str, user_id: str = None) -> Dict[str, Any]:
+    @tool  # TODO: This will be broken until we figure out how to pass JWT through @tool decorator
+    async def search_tool(self, query: str, user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
 
@@ -40,26 +42,13 @@ class SearchService:
             "size": 10
         }
         
-        # Require authentication - no anonymous access to search
+        # Authentication required - DLS will handle document filtering automatically
         if not user_id:
             return {"results": [], "error": "Authentication required"}
         
-        # Authenticated user access control
-        # User can access documents if:
-        # 1. They own the document (owner field matches user_id)
-        # 2. They're in allowed_users list
-        # 3. Document has no ACL (public documents)
-        # TODO: Add group access control later
-        should_clauses = [
-            {"term": {"owner": user_id}},
-            {"term": {"allowed_users": user_id}},
-            {"bool": {"must_not": {"exists": {"field": "owner"}}}}  # Public docs
-        ]
-        
-        search_body["query"]["bool"]["should"] = should_clauses
-        search_body["query"]["bool"]["minimum_should_match"] = 1
-        
-        results = await clients.opensearch.search(index=INDEX_NAME, body=search_body)
+        # Get user's OpenSearch client with JWT for OIDC auth
+        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        results = await opensearch_client.search(index=INDEX_NAME, body=search_body)
         
         # Transform results
         chunks = []
@@ -75,6 +64,6 @@ class SearchService:
             })
         return {"results": chunks}
 
-    async def search(self, query: str, user_id: str = None) -> Dict[str, Any]:
+    async def search(self, query: str, user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
         """Public search method for API endpoints"""
-        return await self.search_tool(query, user_id)
+        return await self.search_tool(query, user_id, jwt_token)

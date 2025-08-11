@@ -32,7 +32,7 @@ async def auth_callback(request: Request, auth_service, session_manager):
         state = data.get("state")
 
         result = await auth_service.handle_oauth_callback(
-            connection_id, authorization_code, state
+            connection_id, authorization_code, state, request
         )
         
         # If this is app auth, set JWT cookie

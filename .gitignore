@@ -10,6 +10,9 @@ wheels/
 .venv
 .env
 
+# RSA keys for JWT signing
+keys/
+
 .idea/
 
 1001*.pdf

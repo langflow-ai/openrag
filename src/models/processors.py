@@ -22,13 +22,19 @@ class TaskProcessor(ABC):
 class DocumentFileProcessor(TaskProcessor):
     """Default processor for regular file uploads"""
     
-    def __init__(self, document_service):
+    def __init__(self, document_service, owner_user_id: str = None, jwt_token: str = None):
         self.document_service = document_service
+        self.owner_user_id = owner_user_id
+        self.jwt_token = jwt_token
     
     async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
         """Process a regular file path using DocumentService"""
-        # This calls the existing logic
-        await self.document_service.process_single_file_task(upload_task, item)
+        # This calls the existing logic with user context
+        await self.document_service.process_single_file_task(
+            upload_task, item, 
+            owner_user_id=self.owner_user_id, 
+            jwt_token=self.jwt_token
+        )
 
 
 class ConnectorFileProcessor(TaskProcessor):

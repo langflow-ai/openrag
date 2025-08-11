@@ -4,9 +4,23 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: os
+    depends_on:
+      - gendb-backend
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
+    # Run security setup in background after OpenSearch starts
+    command: >
+      bash -c "
+        # Start OpenSearch in background
+        /usr/share/opensearch/opensearch-docker-entrypoint.sh opensearch &
+        
+        # Wait a bit for OpenSearch to start, then apply security config
+        sleep 10 && /usr/share/opensearch/setup-security.sh &
+        
+        # Wait for background processes
+        wait
+      "
     ports:
       - "9200:9200"
       - "9600:9600"
@@ -30,7 +44,6 @@ services:
       #dockerfile: Dockerfile.backend
     container_name: gendb-backend
     depends_on:
-      - opensearch
       - langflow
     environment:
       - OPENSEARCH_HOST=opensearch
@@ -50,6 +63,7 @@ services:
       - ./pyproject.toml:/app/pyproject.toml
       - ./uv.lock:/app/uv.lock
       - ./documents:/app/documents
+      - ./keys:/app/keys
     gpus: all
     platform: linux/amd64
 
