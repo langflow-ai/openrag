@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.13"
 resolution-markers = [
     "sys_platform == 'darwin'",
@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "agentd"
-version = "0.2.1"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "litellm" },
@@ -18,9 +18,9 @@ dependencies = [
     { name = "openai-agents" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ea/ef/8c96f9699ec99b2e60b4f2fbbc8ae3693ff583eda2835b3244d3aaaf68b3/agentd-0.2.1.tar.gz", hash = "sha256:96c4a5efc1a4ee3ee0a1ce68ade05e8b51e6a0171b0d64fadac369744a847240", size = 118826, upload-time = "2025-07-17T19:47:58.91Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/59/27fea10f85828a2b4c3f763e6f0f2739d13a86ec84e2cfffaa088cabc59a/agentd-0.2.2.tar.gz", hash = "sha256:9cd2a4bd465dc9fd212af9260b5fb73dcd9c09866f05f9ffd87e06213f442724", size = 123467, upload-time = "2025-08-12T01:57:41.963Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/9b/1e695c083227550eb85a9544a6a7c28e11d1dfb893e9d22035a0ad1b7fa3/agentd-0.2.1-py3-none-any.whl", hash = "sha256:b35da9c3557b5784c301c327c2831c6dfcfc74bf84fa8428585f2dffecdb2904", size = 15833, upload-time = "2025-07-17T19:47:57.749Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/94/b07a64e0526b2c91b31d65c50ff6e500f4a1eba234ea29c0c642c2ca78d9/agentd-0.2.2-py3-none-any.whl", hash = "sha256:09c50f886d0558e89dd041ec0e0a18eee7f1447fcf401798fbf99432d7dc3c99", size = 16653, upload-time = "2025-08-12T01:57:40.758Z" },
 ]
 
 [[package]]
@@ -506,7 +506,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agentd", specifier = ">=0.2.1" },
+    { name = "agentd", specifier = ">=0.2.2" },
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "cryptography", specifier = ">=45.0.6" },
     { name = "docling", specifier = ">=2.41.0" },

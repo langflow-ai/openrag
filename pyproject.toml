@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-agentd = { path = "/home/tato/Desktop/agentd" }
+#agentd = { path = "/home/tato/Desktop/agentd" }
 torch = [
   { index = "pytorch-cu128" },
 ]
