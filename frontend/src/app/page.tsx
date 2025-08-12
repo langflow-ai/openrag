@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Search, Loader2, FileText, Zap, ChevronDown, ChevronUp, Filter, X, Settings, Save } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
+import { toast } from 'sonner'
 
 interface SearchResult {
   filename: string
@@ -329,12 +330,12 @@ function SearchPage() {
           setContextTitle("")
           setContextDescription("")
         }
-        console.log(contextId ? "Context updated successfully:" : "Context saved successfully:", result)
+        toast.success(contextId ? "Context updated successfully" : "Context saved successfully")
       } else {
-        console.error(contextId ? "Failed to update context:" : "Failed to save context:", result.error)
+        toast.error(contextId ? "Failed to update context" : "Failed to save context")
       }
     } catch (error) {
-      console.error(contextId ? "Error updating context:" : "Error saving context:", error)
+      toast.error(contextId ? "Error updating context" : "Error saving context")
     } finally {
       setSavingContext(false)
     }
