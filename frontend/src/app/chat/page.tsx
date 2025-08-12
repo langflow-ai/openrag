@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -39,13 +40,23 @@ interface ToolCallResult {
 
 type EndpointType = "chat" | "langflow"
 
+interface SelectedFilters {
+  data_sources: string[]
+  document_types: string[]
+  owners: string[]
+}
+
 interface RequestBody {
   prompt: string
   stream?: boolean
   previous_response_id?: string
+  filters?: SelectedFilters
+  limit?: number
+  scoreThreshold?: number
 }
 
 function ChatPage() {
+  const searchParams = useSearchParams()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -67,6 +78,51 @@ function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const { addTask } = useTask()
+
+  // Context-related state
+  const [selectedFilters, setSelectedFilters] = useState<SelectedFilters>({
+    data_sources: [],
+    document_types: [],
+    owners: []
+  })
+  const [resultLimit, setResultLimit] = useState(10)
+  const [scoreThreshold, setScoreThreshold] = useState(0)
+  const [loadedContextName, setLoadedContextName] = useState<string | null>(null)
+
+  // Load context if contextId is provided in URL
+  useEffect(() => {
+    const contextId = searchParams.get('contextId')
+    if (contextId) {
+      loadContext(contextId)
+    }
+  }, [searchParams])
+
+  const loadContext = async (contextId: string) => {
+    try {
+      const response = await fetch(`/api/contexts/${contextId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      const result = await response.json()
+      if (response.ok && result.success) {
+        const context = result.context
+        const parsedQueryData = JSON.parse(context.query_data)
+        
+        // Load the context data into state
+        setSelectedFilters(parsedQueryData.filters)
+        setResultLimit(parsedQueryData.limit)
+        setScoreThreshold(parsedQueryData.scoreThreshold)
+        setLoadedContextName(context.name)
+      } else {
+        console.error("Failed to load context:", result.error)
+      }
+    } catch (error) {
+      console.error("Error loading context:", error)
+    }
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -229,7 +285,10 @@ function ChatPage() {
     try {
       const requestBody: RequestBody = { 
         prompt: userMessage.content,
-        stream: true 
+        stream: true,
+        filters: selectedFilters,
+        limit: resultLimit,
+        scoreThreshold: scoreThreshold
       }
       
       // Add previous_response_id if we have one for this endpoint
@@ -685,7 +744,12 @@ function ChatPage() {
       try {
         const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
         
-        const requestBody: RequestBody = { prompt: userMessage.content }
+        const requestBody: RequestBody = { 
+          prompt: userMessage.content,
+          filters: selectedFilters,
+          limit: resultLimit,
+          scoreThreshold: scoreThreshold
+        }
         
         // Add previous_response_id if we have one for this endpoint
         const currentResponseId = previousResponseIds[endpoint]
@@ -970,6 +1034,11 @@ function ChatPage() {
             <div className="flex items-center gap-2">
               <MessageCircle className="h-5 w-5" />
               <CardTitle>Chat</CardTitle>
+              {loadedContextName && (
+                <span className="text-sm font-normal text-blue-400 bg-blue-400/10 px-2 py-1 rounded">
+                  Context: {loadedContextName}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-4">
               {/* Async Mode Toggle */}
@@ -1016,6 +1085,11 @@ function ChatPage() {
           <CardDescription>
             Chat with AI about your indexed documents using {endpoint === "chat" ? "Chat" : "Langflow"} endpoint 
             {asyncMode ? " with real-time streaming" : ""}
+            {loadedContextName && (
+              <span className="block text-blue-400 text-xs mt-1">
+                Using search context with configured filters and settings
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
