@@ -7,6 +7,9 @@ async def chat_endpoint(request: Request, chat_service, session_manager):
     prompt = data.get("prompt", "")
     previous_response_id = data.get("previous_response_id")
     stream = data.get("stream", False)
+    filters = data.get("filters")
+    limit = data.get("limit", 10)
+    score_threshold = data.get("scoreThreshold", 0)
     
     user = request.state.user
     user_id = user.user_id
@@ -16,6 +19,15 @@ async def chat_endpoint(request: Request, chat_service, session_manager):
 
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
+    
+    # Set context variables for search tool (similar to search endpoint)
+    if filters:
+        from auth_context import set_search_filters
+        set_search_filters(filters)
+    
+    from auth_context import set_search_limit, set_score_threshold
+    set_search_limit(limit)
+    set_score_threshold(score_threshold)
 
     if stream:
         return StreamingResponse(
@@ -38,12 +50,27 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
     prompt = data.get("prompt", "")
     previous_response_id = data.get("previous_response_id")
     stream = data.get("stream", False)
+    filters = data.get("filters")
+    limit = data.get("limit", 10)
+    score_threshold = data.get("scoreThreshold", 0)
+    
+    user = request.state.user
+    user_id = user.user_id
     
     # Get JWT token from request cookie
     jwt_token = request.cookies.get("auth_token")
     
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+    # Set context variables for search tool (similar to chat endpoint)
+    if filters:
+        from auth_context import set_search_filters
+        set_search_filters(filters)
+    
+    from auth_context import set_search_limit, set_score_threshold
+    set_search_limit(limit)
+    set_score_threshold(score_threshold)
 
     try:
         if stream:
