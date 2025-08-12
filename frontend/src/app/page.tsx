@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -31,9 +31,26 @@ interface Facets {
   owners?: FacetBucket[]
 }
 
+interface AggregationBucket {
+  key: string
+  doc_count: number
+}
+
+interface Aggregations {
+  data_sources?: {
+    buckets: AggregationBucket[]
+  }
+  document_types?: {
+    buckets: AggregationBucket[]
+  }
+  owners?: {
+    buckets: AggregationBucket[]
+  }
+}
+
 interface SearchResponse {
   results: SearchResult[]
-  aggregations: any
+  aggregations: Aggregations
   error?: string
 }
 
@@ -100,9 +117,9 @@ function SearchPage() {
         }
         
         if (aggs && Object.keys(aggs).length > 0) {
-          processedFacets.data_sources = aggs.data_sources?.buckets?.map((b: any) => ({ key: b.key, count: b.doc_count })).filter((b: any) => b.count > 0) || []
-          processedFacets.document_types = aggs.document_types?.buckets?.map((b: any) => ({ key: b.key, count: b.doc_count })).filter((b: any) => b.count > 0) || []
-          processedFacets.owners = aggs.owners?.buckets?.map((b: any) => ({ key: b.key, count: b.doc_count })).filter((b: any) => b.count > 0) || []
+          processedFacets.data_sources = aggs.data_sources?.buckets?.map((b: AggregationBucket) => ({ key: b.key, count: b.doc_count })).filter((b: FacetBucket) => b.count > 0) || []
+          processedFacets.document_types = aggs.document_types?.buckets?.map((b: AggregationBucket) => ({ key: b.key, count: b.doc_count })).filter((b: FacetBucket) => b.count > 0) || []
+          processedFacets.owners = aggs.owners?.buckets?.map((b: AggregationBucket) => ({ key: b.key, count: b.doc_count })).filter((b: FacetBucket) => b.count > 0) || []
           
           // Set all filters as checked by default
           newSelectedFilters.data_sources = processedFacets.data_sources?.map(f => f.key) || []
