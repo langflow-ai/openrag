@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Search, Settings, MessageCircle, PlugZap } from "lucide-react"
+import { Search, Settings, MessageCircle, PlugZap, BookOpenCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function Navigation() {
@@ -26,6 +26,12 @@ export function Navigation() {
       icon: MessageCircle,
       href: "/chat",
       active: pathname === "/chat",
+    },
+    {
+      label: "Contexts",
+      icon: BookOpenCheck,
+      href: "/contexts",
+      active: pathname.startsWith("/contexts"),
     },
     {
       label: "Connectors",
