@@ -1,6 +1,7 @@
 from config.settings import clients, LANGFLOW_URL, FLOW_ID, LANGFLOW_KEY
 from agent import async_chat, async_langflow, async_chat_stream, async_langflow_stream
 from auth_context import set_auth_context
+import json
 
 class ChatService:
     
@@ -34,6 +35,50 @@ class ChatService:
         extra_headers = {}
         if jwt_token:
             extra_headers['X-LANGFLOW-GLOBAL-VAR-JWT'] = jwt_token
+
+        # Get context variables for filters, limit, and threshold
+        from auth_context import get_search_filters, get_search_limit, get_score_threshold
+        filters = get_search_filters()
+        limit = get_search_limit()
+        score_threshold = get_score_threshold()
+
+        # Build the complete filter expression like the search service does
+        filter_expression = {}
+        if filters:
+            filter_clauses = []
+            # Map frontend filter names to backend field names
+            field_mapping = {
+                "data_sources": "filename",
+                "document_types": "mimetype", 
+                "owners": "owner"
+            }
+            
+            for filter_key, values in filters.items():
+                if values is not None and isinstance(values, list) and len(values) > 0:
+                    # Map frontend key to backend field name
+                    field_name = field_mapping.get(filter_key, filter_key)
+                    
+                    if len(values) == 1:
+                        # Single value filter
+                        filter_clauses.append({"term": {field_name: values[0]}})
+                    else:
+                        # Multiple values filter
+                        filter_clauses.append({"terms": {field_name: values}})
+            
+            if filter_clauses:
+                filter_expression["filter"] = filter_clauses
+        
+        # Add limit and score threshold to the filter expression (only if different from defaults)
+        if limit and limit != 10:  # 10 is the default limit
+            filter_expression["limit"] = limit
+            
+        if score_threshold and score_threshold != 0:  # 0 is the default threshold
+            filter_expression["score_threshold"] = score_threshold
+
+        # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
+        if filter_expression:
+            print(f"Sending GenDB query filter to Langflow: {json.dumps(filter_expression, indent=2)}")
+            extra_headers['X-LANGFLOW-GLOBAL-VAR-GENDB-QUERY-FILTER'] = json.dumps(filter_expression)
 
         if stream:
             return async_langflow_stream(clients.langflow_client, FLOW_ID, prompt, extra_headers=extra_headers, previous_response_id=previous_response_id)
