@@ -1,23 +1,25 @@
 from typing import Any, Dict, Optional
 from agentd.tool_decorator import tool
 from config.settings import clients, INDEX_NAME, EMBED_MODEL
+from auth_context import get_auth_context
 
 class SearchService:
     def __init__(self, session_manager=None):
         self.session_manager = session_manager
     
-    @tool  # TODO: This will be broken until we figure out how to pass JWT through @tool decorator
-    async def search_tool(self, query: str, user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
+    @tool
+    async def search_tool(self, query: str) -> Dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
 
         Args:
             query (str): query string to search the corpus  
-            user_id (str): user ID for access control (optional)
 
         Returns:
             dict (str, Any): {"results": [chunks]} on success
         """
+        # Get authentication context from the current async context
+        user_id, jwt_token = get_auth_context()
         # Embed the query
         resp = await clients.patched_async_client.embeddings.create(model=EMBED_MODEL, input=[query])
         query_embedding = resp.data[0].embedding
@@ -46,8 +48,8 @@ class SearchService:
         if not user_id:
             return {"results": [], "error": "Authentication required"}
         
-        # Get user's OpenSearch client with JWT for OIDC auth
-        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
+        # Get user's OpenSearch client with JWT for OIDC auth  
+        opensearch_client = clients.create_user_opensearch_client(jwt_token)
         results = await opensearch_client.search(index=INDEX_NAME, body=search_body)
         
         # Transform results
@@ -66,4 +68,9 @@ class SearchService:
 
     async def search(self, query: str, user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
         """Public search method for API endpoints"""
-        return await self.search_tool(query, user_id, jwt_token)
+        # Set auth context if provided (for direct API calls)
+        if user_id and jwt_token:
+            from auth_context import set_auth_context
+            set_auth_context(user_id, jwt_token)
+        
+        return await self.search_tool(query)
