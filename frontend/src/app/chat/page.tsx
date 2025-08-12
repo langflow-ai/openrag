@@ -411,14 +411,17 @@ function ChatPage() {
                 
                 // Handle Realtime API format (this is what you're actually getting!)
                 else if (chunk.type === "response.output_item.added" && chunk.item?.type === "function_call") {
-                  console.log("Function call started (Realtime API):", chunk.item.name)
+                  console.log("🟢 CREATING function call (added):", chunk.item.id, chunk.item.tool_name || chunk.item.name)
                   const functionCall: FunctionCall = {
-                    name: chunk.item.name || "unknown",
-                    arguments: undefined,
+                    name: chunk.item.tool_name || chunk.item.name || "unknown",
+                    arguments: chunk.item.inputs || undefined,
                     status: "pending",
-                    argumentsString: ""
+                    argumentsString: "",
+                    id: chunk.item.id,
+                    type: chunk.item.type
                   }
                   currentFunctionCalls.push(functionCall)
+                  console.log("🟢 Function calls now:", currentFunctionCalls.map(fc => ({ id: fc.id, name: fc.name })))
                 }
                 
                 // Handle function call arguments streaming (Realtime API)
@@ -453,20 +456,43 @@ function ChatPage() {
                 
                 // Handle function call completion (Realtime API)
                 else if (chunk.type === "response.output_item.done" && chunk.item?.type === "function_call") {
-                  console.log("Function call done (Realtime API):", chunk.item.status)
-                  const lastFunctionCall = currentFunctionCalls[currentFunctionCalls.length - 1]
-                  if (lastFunctionCall) {
-                    lastFunctionCall.status = chunk.item.status === "completed" ? "completed" : "error"
+                  console.log("🔵 UPDATING function call (done):", chunk.item.id, chunk.item.tool_name || chunk.item.name)
+                  console.log("🔵 Looking for existing function calls:", currentFunctionCalls.map(fc => ({ id: fc.id, name: fc.name })))
+                  
+                  // Find existing function call by ID or name
+                  let functionCall = currentFunctionCalls.find(fc => 
+                    fc.id === chunk.item.id || 
+                    fc.name === chunk.item.tool_name ||
+                    fc.name === chunk.item.name
+                  )
+                  
+                  if (functionCall) {
+                    console.log("🔵 FOUND existing function call, updating:", functionCall.id, functionCall.name)
+                    // Update existing function call with completion data
+                    functionCall.status = chunk.item.status === "completed" ? "completed" : "error"
+                    functionCall.id = chunk.item.id
+                    functionCall.type = chunk.item.type
+                    functionCall.name = chunk.item.tool_name || chunk.item.name || functionCall.name
+                    functionCall.arguments = chunk.item.inputs || functionCall.arguments
+                    
+                    // Set results if present
+                    if (chunk.item.results) {
+                      functionCall.result = chunk.item.results
+                    }
+                  } else {
+                    console.log("🔴 WARNING: Could not find existing function call to update:", chunk.item.id, chunk.item.tool_name, chunk.item.name)
                   }
                 }
                 
-                // Handle tool call completion with results (new format)
-                else if (chunk.type === "response.output_item.done" && chunk.item?.type?.includes("_call")) {
-                  console.log("Tool call done with results (new format):", chunk.item)
+                // Handle tool call completion with results
+                else if (chunk.type === "response.output_item.done" && chunk.item?.type?.includes("_call") && chunk.item?.type !== "function_call") {
+                  console.log("Tool call done with results:", chunk.item)
                   
                   // Find existing function call by ID, or by name/type if ID not available
                   let functionCall = currentFunctionCalls.find(fc => 
                     fc.id === chunk.item.id || 
+                    (fc.name === chunk.item.tool_name) ||
+                    (fc.name === chunk.item.name) ||
                     (fc.name === chunk.item.type) ||
                     (fc.name.includes(chunk.item.type.replace('_call', '')) || chunk.item.type.includes(fc.name))
                   )
@@ -483,10 +509,9 @@ function ChatPage() {
                       functionCall.result = chunk.item.results
                     }
                   } else {
-                    // Only create new if we really can't find an existing one
-                    console.log("Creating new function call for:", chunk.item.type)
+                    // Create new function call if not found
                     functionCall = {
-                      name: chunk.item.type || "unknown",
+                      name: chunk.item.tool_name || chunk.item.name || chunk.item.type || "unknown",
                       arguments: chunk.item.inputs || {},
                       status: "completed" as const,
                       id: chunk.item.id,
@@ -498,16 +523,17 @@ function ChatPage() {
                 }
                 
                 // Handle function call output item added (new format)
-                else if (chunk.type === "response.output_item.added" && chunk.item?.type?.includes("_call")) {
-                  console.log("Tool call started (new format):", chunk.item)
+                else if (chunk.type === "response.output_item.added" && chunk.item?.type?.includes("_call") && chunk.item?.type !== "function_call") {
+                  console.log("🟡 CREATING tool call (added):", chunk.item.id, chunk.item.tool_name || chunk.item.name, chunk.item.type)
                   const functionCall = {
-                    name: chunk.item.type || "unknown",
+                    name: chunk.item.tool_name || chunk.item.name || chunk.item.type || "unknown",
                     arguments: chunk.item.inputs || {},
                     status: "pending" as const,
                     id: chunk.item.id,
                     type: chunk.item.type
                   }
                   currentFunctionCalls.push(functionCall)
+                  console.log("🟡 Function calls now:", currentFunctionCalls.map(fc => ({ id: fc.id, name: fc.name, type: fc.type })))
                 }
                 
                 // Handle function call results
@@ -698,6 +724,11 @@ function ChatPage() {
           const functionCallId = `${messageIndex || 'streaming'}-${index}`
           const isExpanded = expandedFunctionCalls.has(functionCallId)
           
+          // Determine display name - show both name and type if available
+          const displayName = fc.type && fc.type !== fc.name 
+            ? `${fc.name} (${fc.type})`
+            : fc.name
+          
           return (
             <div key={index} className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-3">
               <div 
@@ -706,8 +737,13 @@ function ChatPage() {
               >
                 <Settings className="h-4 w-4 text-blue-400" />
                 <span className="text-sm font-medium text-blue-400 flex-1">
-                  Function Call: {fc.name}
+                  Function Call: {displayName}
                 </span>
+                {fc.id && (
+                  <span className="text-xs text-blue-300/70 font-mono">
+                    {fc.id.substring(0, 8)}...
+                  </span>
+                )}
                 <div className={`px-2 py-1 rounded text-xs font-medium ${
                   fc.status === "completed" ? "bg-green-500/20 text-green-400" :
                   fc.status === "error" ? "bg-red-500/20 text-red-400" :
@@ -724,6 +760,26 @@ function ChatPage() {
               
               {isExpanded && (
                 <div className="mt-3 pt-3 border-t border-blue-500/20">
+                  {/* Show type information if available */}
+                  {fc.type && (
+                    <div className="text-xs text-muted-foreground mb-3">
+                      <span className="font-medium">Type:</span>
+                      <span className="ml-2 px-2 py-1 bg-muted/30 rounded font-mono">
+                        {fc.type}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Show ID if available */}
+                  {fc.id && (
+                    <div className="text-xs text-muted-foreground mb-3">
+                      <span className="font-medium">ID:</span>
+                      <span className="ml-2 px-2 py-1 bg-muted/30 rounded font-mono">
+                        {fc.id}
+                      </span>
+                    </div>
+                  )}
+                  
                   {/* Show arguments - either completed or streaming */}
                   {(fc.arguments || fc.argumentsString) && (
                     <div className="text-xs text-muted-foreground mb-3">
@@ -742,30 +798,99 @@ function ChatPage() {
                       <span className="font-medium">Result:</span>
                       {Array.isArray(fc.result) ? (
                         <div className="mt-1 space-y-2">
-                          {fc.result.map((result, idx) => (
-                            <div key={idx} className="p-2 bg-muted/30 rounded border border-muted/50">
-                              {result.data?.file_path && (
-                                <div className="font-medium text-blue-400 mb-1 text-xs">
-                                  📄 {result.data.file_path || "Unknown file"}
-                                </div>
-                              )}
-                              {result.data?.text && (
-                                <div className="text-xs text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
-                                  {result.data.text.length > 300 
-                                    ? result.data.text.substring(0, 300) + "..." 
-                                    : result.data.text
-                                  }
-                                </div>
-                              )}
-                              {result.text_key && (
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  Key: {result.text_key}
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                          {(() => {
+                            // Handle different result formats
+                            let resultsToRender = fc.result
+                            
+                            // Check if this is function_call format with nested results
+                            // Function call format: results = [{ results: [...] }]
+                            // Tool call format: results = [{ text_key: ..., data: {...} }]
+                            if (fc.result.length > 0 && 
+                                fc.result[0]?.results && 
+                                Array.isArray(fc.result[0].results) &&
+                                !fc.result[0].text_key) {
+                              resultsToRender = fc.result[0].results
+                            }
+                            
+                            return resultsToRender.map((result: any, idx: number) => (
+                              <div key={idx} className="p-2 bg-muted/30 rounded border border-muted/50">
+                                {/* Handle tool_call format (file_path in data) */}
+                                {result.data?.file_path && (
+                                  <div className="font-medium text-blue-400 mb-1 text-xs">
+                                    📄 {result.data.file_path || "Unknown file"}
+                                  </div>
+                                )}
+                                
+                                {/* Handle function_call format (filename directly) */}
+                                {result.filename && !result.data?.file_path && (
+                                  <div className="font-medium text-blue-400 mb-1 text-xs">
+                                    📄 {result.filename}
+                                    {result.page && ` (page ${result.page})`}
+                                    {result.score && (
+                                      <span className="ml-2 text-xs text-muted-foreground">
+                                        Score: {result.score.toFixed(3)}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {/* Handle tool_call text format */}
+                                {result.data?.text && (
+                                  <div className="text-xs text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
+                                    {result.data.text.length > 300 
+                                      ? result.data.text.substring(0, 300) + "..." 
+                                      : result.data.text
+                                    }
+                                  </div>
+                                )}
+                                
+                                {/* Handle function_call text format */}
+                                {result.text && !result.data?.text && (
+                                  <div className="text-xs text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
+                                    {result.text.length > 300 
+                                      ? result.text.substring(0, 300) + "..." 
+                                      : result.text
+                                    }
+                                  </div>
+                                )}
+                                
+                                {/* Show additional metadata for function_call format */}
+                                {result.source_url && (
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    <a href={result.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                                      Source URL
+                                    </a>
+                                  </div>
+                                )}
+                                
+                                {result.text_key && (
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    Key: {result.text_key}
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          })()}
                           <div className="text-xs text-muted-foreground">
-                            Found {fc.result.length} result{fc.result.length !== 1 ? 's' : ''}
+                            Found {(() => {
+                              let resultsToCount = fc.result
+                              if (fc.result.length > 0 && 
+                                  fc.result[0]?.results && 
+                                  Array.isArray(fc.result[0].results) &&
+                                  !fc.result[0].text_key) {
+                                resultsToCount = fc.result[0].results
+                              }
+                              return resultsToCount.length
+                            })()} result{(() => {
+                              let resultsToCount = fc.result
+                              if (fc.result.length > 0 && 
+                                  fc.result[0]?.results && 
+                                  Array.isArray(fc.result[0].results) &&
+                                  !fc.result[0].text_key) {
+                                resultsToCount = fc.result[0].results
+                              }
+                              return resultsToCount.length !== 1 ? 's' : ''
+                            })()}
                           </div>
                         </div>
                       ) : (
