@@ -85,7 +85,6 @@ services:
   langflow:
     volumes:
       - ./flows:/app/flows
-    #image: langflow:1.5.0.post1
     image: phact/langflow:responses
     container_name: langflow
     ports:
@@ -94,3 +93,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
       - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
+      - JWT="dummy"
+      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT
+      - LANGFLOW_LOG_LEVEL=DEBUG
