@@ -479,7 +479,7 @@ function ChatPage() {
                   console.log("🔵 Looking for existing function calls:", currentFunctionCalls.map(fc => ({ id: fc.id, name: fc.name })))
                   
                   // Find existing function call by ID or name
-                  let functionCall = currentFunctionCalls.find(fc => 
+                  const functionCall = currentFunctionCalls.find(fc => 
                     fc.id === chunk.item.id || 
                     fc.name === chunk.item.tool_name ||
                     fc.name === chunk.item.name
@@ -529,7 +529,7 @@ function ChatPage() {
                     }
                   } else {
                     // Create new function call if not found
-                    functionCall = {
+                    const newFunctionCall = {
                       name: chunk.item.tool_name || chunk.item.name || chunk.item.type || "unknown",
                       arguments: chunk.item.inputs || {},
                       status: "completed" as const,
@@ -537,7 +537,7 @@ function ChatPage() {
                       type: chunk.item.type,
                       result: chunk.item.results
                     }
-                    currentFunctionCalls.push(functionCall)
+                    currentFunctionCalls.push(newFunctionCall)
                   }
                 }
                 
@@ -850,7 +850,17 @@ function ChatPage() {
                               resultsToRender = fc.result[0].results
                             }
                             
-                            return resultsToRender.map((result: any, idx: number) => (
+                            type ToolResultItem = {
+                              text_key?: string
+                              data?: { file_path?: string; text?: string }
+                              filename?: string
+                              page?: number
+                              score?: number
+                              source_url?: string | null
+                              text?: string
+                            }
+                            const items = resultsToRender as unknown as ToolResultItem[]
+                            return items.map((result, idx: number) => (
                               <div key={idx} className="p-2 bg-muted/30 rounded border border-muted/50">
                                 {/* Handle tool_call format (file_path in data) */}
                                 {result.data?.file_path && (
