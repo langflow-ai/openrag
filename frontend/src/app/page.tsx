@@ -1,13 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Search, Loader2, FileText, Zap, ChevronDown, ChevronUp, Filter, X } from "lucide-react"
+import { Search, Loader2, FileText, Zap, ChevronDown, ChevronUp, Filter, X, Settings, Save } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 
 interface SearchResult {
@@ -61,6 +62,7 @@ interface SelectedFilters {
 }
 
 function SearchPage() {
+  const searchParams = useSearchParams()
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<SearchResult[]>([])
@@ -79,7 +81,52 @@ function SearchPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [resultLimit, setResultLimit] = useState(10)
   const [scoreThreshold, setScoreThreshold] = useState(0)
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [contextTitle, setContextTitle] = useState("")
+  const [contextDescription, setContextDescription] = useState("")
+  const [savingContext, setSavingContext] = useState(false)
+  const [loadedContextName, setLoadedContextName] = useState<string | null>(null)
 
+  // Load context if contextId is provided in URL
+  useEffect(() => {
+    const contextId = searchParams.get('contextId')
+    if (contextId) {
+      loadContext(contextId)
+    }
+  }, [searchParams])
+
+  const loadContext = async (contextId: string) => {
+    try {
+      const response = await fetch(`/api/contexts/${contextId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      const result = await response.json()
+      if (response.ok && result.success) {
+        const context = result.context
+        const parsedQueryData = JSON.parse(context.query_data)
+        
+        // Load the context data into state
+        setQuery(parsedQueryData.query)
+        setSelectedFilters(parsedQueryData.filters)
+        setResultLimit(parsedQueryData.limit)
+        setScoreThreshold(parsedQueryData.scoreThreshold)
+        setLoadedContextName(context.name)
+        
+        // Automatically perform the search
+        setTimeout(() => {
+          handleSearch()
+        }, 100)
+      } else {
+        console.error("Failed to load context:", result.error)
+      }
+    } catch (error) {
+      console.error("Error loading context:", error)
+    }
+  }
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -229,6 +276,70 @@ function SearchPage() {
            selectedFilters.owners.length
   }
 
+  const handleSaveContext = async () => {
+    const contextId = searchParams.get('contextId')
+    
+    // If no contextId present and no title, we need the modal
+    if (!contextId && !contextTitle.trim()) return
+
+    setSavingContext(true)
+    
+    try {
+      const contextData = {
+        query,
+        filters: selectedFilters,
+        limit: resultLimit,
+        scoreThreshold
+      }
+
+      let response;
+      
+      if (contextId) {
+        // Update existing context (upsert)
+        response = await fetch(`/api/contexts/${contextId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            queryData: JSON.stringify(contextData)
+          }),
+        })
+      } else {
+        // Create new context
+        response = await fetch("/api/contexts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: contextTitle,
+            description: contextDescription,
+            queryData: JSON.stringify(contextData)
+          }),
+        })
+      }
+
+      const result = await response.json()
+      
+      if (response.ok && result.success) {
+        if (!contextId) {
+          // Reset modal state only if we were creating a new context
+          setShowSaveModal(false)
+          setContextTitle("")
+          setContextDescription("")
+        }
+        console.log(contextId ? "Context updated successfully:" : "Context saved successfully:", result)
+      } else {
+        console.error(contextId ? "Failed to update context:" : "Failed to save context:", result.error)
+      }
+    } catch (error) {
+      console.error(contextId ? "Error updating context:" : "Error saving context:", error)
+    } finally {
+      setSavingContext(false)
+    }
+  }
+
   const FacetSection = ({ 
     title, 
     buckets, 
@@ -306,9 +417,19 @@ function SearchPage() {
           <CardTitle className="flex items-center gap-2">
             <Search className="h-5 w-5" />
             Search Documents
+            {loadedContextName && (
+              <span className="text-sm font-normal text-blue-400 bg-blue-400/10 px-2 py-1 rounded">
+                Context: {loadedContextName}
+              </span>
+            )}
           </CardTitle>
           <CardDescription>
             Enter your search query to find relevant documents using hybrid search (semantic + keyword)
+            {loadedContextName && (
+              <span className="block text-blue-400 text-xs mt-1">
+                Search configuration loaded from saved context
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -370,12 +491,7 @@ function SearchPage() {
                       onClick={() => setSidebarOpen(!sidebarOpen)}
                       className="flex items-center gap-2"
                     >
-                      <Filter className="h-4 w-4" />
-                      {getSelectedFilterCount() > 0 && (
-                        <span className="bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded">
-                          {getSelectedFilterCount()}
-                        </span>
-                      )}
+                      <Settings className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
@@ -479,32 +595,14 @@ function SearchPage() {
                   </div>
                 </div>
 
-                {/* Right Sidebar - Filters */}
+                {/* Right Sidebar - Settings */}
                 {((facets.data_sources?.length ?? 0) > 0 || (facets.document_types?.length ?? 0) > 0 || (facets.owners?.length ?? 0) > 0) && sidebarOpen && (
                   <div className="w-64 space-y-6 flex-shrink-0">
                     <div className="flex items-center justify-between">
                       <h2 className="text-lg font-semibold flex items-center gap-2">
-                        <Filter className="h-5 w-5" />
-                        Filters
+                        <Settings className="h-5 w-5" />
+                        Search Configuration
                       </h2>
-                      <div className="flex gap-1">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={selectAllFilters}
-                          className="text-xs h-auto px-2 py-1"
-                        >
-                          All
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={clearAllFilters}
-                          className="text-xs h-auto px-2 py-1"
-                        >
-                          None
-                        </Button>
-                      </div>
                     </div>
 
                     <div className="space-y-6">
@@ -529,6 +627,26 @@ function SearchPage() {
                         isOpen={openSections.owners}
                         onToggle={() => toggleSection('owners')}
                       />
+
+                      {/* All/None buttons - moved below facets */}
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={selectAllFilters} 
+                          className="h-auto px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 border-border/50"
+                        >
+                          All
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={clearAllFilters} 
+                          className="h-auto px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 border-border/50"
+                        >
+                          None
+                        </Button>
+                      </div>
 
                       {/* Result Limit Control */}
                       <div className="space-y-4 pt-4 border-t border-border/50">
@@ -723,6 +841,35 @@ function SearchPage() {
                           />
                         </div>
                       </div>
+
+                      {/* Save Context Button */}
+                      <div className="pt-4 border-t border-border/50">
+                        <Button
+                          onClick={() => {
+                            const contextId = searchParams.get('contextId')
+                            if (contextId) {
+                              handleSaveContext()
+                            } else {
+                              setShowSaveModal(true)
+                            }
+                          }}
+                          disabled={!searchPerformed || !query.trim() || savingContext}
+                          className="w-full flex items-center gap-2"
+                          variant="outline"
+                        >
+                          {savingContext ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              {searchParams.get('contextId') ? 'Updating...' : 'Saving...'}
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-4 w-4" />
+                              {searchParams.get('contextId') ? 'Update Context' : 'Save Context'}
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -740,6 +887,76 @@ function SearchPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Save Context Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4">Save Search Context</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="context-title" className="font-medium">
+                  Title <span className="text-red-400">*</span>
+                </Label>
+                <Input
+                  id="context-title"
+                  type="text"
+                  placeholder="Enter a title for this search context"
+                  value={contextTitle}
+                  onChange={(e) => setContextTitle(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="context-description" className="font-medium">
+                  Description (optional)
+                </Label>
+                <Input
+                  id="context-description"
+                  type="text"
+                  placeholder="Brief description of this search context"
+                  value={contextDescription}
+                  onChange={(e) => setContextDescription(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowSaveModal(false)
+                  setContextTitle("")
+                  setContextDescription("")
+                }}
+                disabled={savingContext}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveContext}
+                disabled={!contextTitle.trim() || savingContext}
+                className="flex items-center gap-2"
+              >
+                {savingContext ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    Save Context
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
