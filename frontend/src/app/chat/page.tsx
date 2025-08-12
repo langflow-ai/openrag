@@ -508,7 +508,7 @@ function ChatPage() {
                   console.log("Tool call done with results:", chunk.item)
                   
                   // Find existing function call by ID, or by name/type if ID not available
-                  let functionCall = currentFunctionCalls.find(fc => 
+                  const functionCall = currentFunctionCalls.find(fc => 
                     fc.id === chunk.item.id || 
                     (fc.name === chunk.item.tool_name) ||
                     (fc.name === chunk.item.name) ||
