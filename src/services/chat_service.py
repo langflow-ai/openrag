@@ -1,12 +1,17 @@
 from config.settings import clients, LANGFLOW_URL, FLOW_ID, LANGFLOW_KEY
 from agent import async_chat, async_langflow, async_chat_stream, async_langflow_stream
+from auth_context import set_auth_context
 
 class ChatService:
     
-    async def chat(self, prompt: str, user_id: str = None, previous_response_id: str = None, stream: bool = False):
+    async def chat(self, prompt: str, user_id: str = None, jwt_token: str = None, previous_response_id: str = None, stream: bool = False):
         """Handle chat requests using the patched OpenAI client"""
         if not prompt:
             raise ValueError("Prompt is required")
+        
+        # Set authentication context for this request so tools can access it
+        if user_id and jwt_token:
+            set_auth_context(user_id, jwt_token)
         
         if stream:
             return async_chat_stream(clients.patched_async_client, prompt, user_id, previous_response_id=previous_response_id)
