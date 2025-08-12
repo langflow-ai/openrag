@@ -39,13 +39,16 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
     previous_response_id = data.get("previous_response_id")
     stream = data.get("stream", False)
     
+    # Get JWT token from request cookie
+    jwt_token = request.cookies.get("auth_token")
+    
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
     try:
         if stream:
             return StreamingResponse(
-                await chat_service.langflow_chat(prompt, previous_response_id=previous_response_id, stream=True),
+                await chat_service.langflow_chat(prompt, jwt_token, previous_response_id=previous_response_id, stream=True),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -55,7 +58,7 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
                 }
             )
         else:
-            result = await chat_service.langflow_chat(prompt, previous_response_id=previous_response_id, stream=False)
+            result = await chat_service.langflow_chat(prompt, jwt_token, previous_response_id=previous_response_id, stream=False)
             return JSONResponse(result)
         
     except Exception as e:

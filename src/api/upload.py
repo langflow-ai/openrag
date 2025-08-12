@@ -45,6 +45,13 @@ async def upload_context(request: Request, document_service, chat_service, sessi
     # Get optional parameters
     previous_response_id = form.get("previous_response_id")
     endpoint = form.get("endpoint", "langflow")
+    
+    # Get JWT token from request cookie for authentication
+    jwt_token = request.cookies.get("auth_token")
+    
+    # Get user info from request state (set by auth middleware)
+    user = request.state.user
+    user_id = user.user_id if user else None
 
     # Process document and extract content
     doc_result = await document_service.process_upload_context(upload_file, filename)
@@ -53,6 +60,8 @@ async def upload_context(request: Request, document_service, chat_service, sessi
     response_text, response_id = await chat_service.upload_context_chat(
         doc_result["content"], 
         filename, 
+        user_id=user_id,
+        jwt_token=jwt_token,
         previous_response_id=previous_response_id, 
         endpoint=endpoint
     )
