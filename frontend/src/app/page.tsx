@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Search, Loader2, FileText, Zap, ChevronDown, ChevronUp, Filter, X, Settings, Save } from "lucide-react"
+import { Search, Loader2, FileText, Zap, ChevronDown, ChevronUp, X, Settings, Save } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { toast } from 'sonner'
 
@@ -88,15 +88,7 @@ function SearchPage() {
   const [savingContext, setSavingContext] = useState(false)
   const [loadedContextName, setLoadedContextName] = useState<string | null>(null)
 
-  // Load context if contextId is provided in URL
-  useEffect(() => {
-    const contextId = searchParams.get('contextId')
-    if (contextId) {
-      loadContext(contextId)
-    }
-  }, [searchParams])
-
-  const loadContext = async (contextId: string) => {
+  const loadContext = useCallback(async (contextId: string) => {
     try {
       const response = await fetch(`/api/contexts/${contextId}`, {
         method: "GET",
@@ -124,10 +116,18 @@ function SearchPage() {
       } else {
         console.error("Failed to load context:", result.error)
       }
-    } catch (error) {
-      console.error("Error loading context:", error)
+    } catch (err) {
+      console.error("Error loading context:", err)
     }
-  }
+  }, [])
+
+  // Load context if contextId is provided in URL
+  useEffect(() => {
+    const contextId = searchParams.get('contextId')
+    if (contextId) {
+      loadContext(contextId)
+    }
+  }, [searchParams, loadContext])
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -334,7 +334,7 @@ function SearchPage() {
       } else {
         toast.error(contextId ? "Failed to update context" : "Failed to save context")
       }
-    } catch (error) {
+    } catch {
       toast.error(contextId ? "Error updating context" : "Error saving context")
     } finally {
       setSavingContext(false)
