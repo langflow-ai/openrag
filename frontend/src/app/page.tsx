@@ -134,12 +134,22 @@ function SearchPage() {
         console.error("Search failed:", result.error)
         setResults([])
         setFacets({})
+        setSelectedFilters({
+          data_sources: [],
+          document_types: [],
+          owners: []
+        })
         setSearchPerformed(true)
       }
     } catch (error) {
       console.error("Search error:", error)
       setResults([])
       setFacets({})
+      setSelectedFilters({
+        data_sources: [],
+        document_types: [],
+        owners: []
+      })
       setSearchPerformed(true)
     } finally {
       setLoading(false)
@@ -340,20 +350,21 @@ function SearchPage() {
           {/* Search Results with Filters */}
           {searchPerformed && (
             <div className="space-y-4">
-              {/* Filter Toggle - Always visible when filters are available */}
-              {(facets.data_sources?.length || facets.document_types?.length || facets.owners?.length) && (
-                <div className="flex justify-between items-center">
-                  <h2 className="text-2xl font-semibold flex items-center gap-2">
-                    <Zap className="h-6 w-6 text-yellow-400" />
-                    Search Results
-                  </h2>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse"></div>
-                      <span className="text-sm text-muted-foreground">
-                        {results.length} result{results.length !== 1 ? 's' : ''} returned
-                      </span>
-                    </div>
+              {/* Search Results Header - Always visible when search is performed */}
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-semibold flex items-center gap-2">
+                  <Zap className="h-6 w-6 text-yellow-400" />
+                  Search Results
+                </h2>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span className="text-sm text-muted-foreground">
+                      {results.length} result{results.length !== 1 ? 's' : ''} returned
+                    </span>
+                  </div>
+                  {/* Filter Toggle - Only visible when filters are available */}
+                  {((facets.data_sources?.length ?? 0) > 0 || (facets.document_types?.length ?? 0) > 0 || (facets.owners?.length ?? 0) > 0) && (
                     <Button
                       variant="outline"
                       onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -366,9 +377,9 @@ function SearchPage() {
                         </span>
                       )}
                     </Button>
-                  </div>
+                  )}
                 </div>
-              )}
+              </div>
 
               <div className="flex gap-6">
                 {/* Main Content */}
@@ -469,7 +480,7 @@ function SearchPage() {
                 </div>
 
                 {/* Right Sidebar - Filters */}
-                {(facets.data_sources?.length || facets.document_types?.length || facets.owners?.length) && sidebarOpen && (
+                {((facets.data_sources?.length ?? 0) > 0 || (facets.document_types?.length ?? 0) > 0 || (facets.owners?.length ?? 0) > 0) && sidebarOpen && (
                   <div className="w-64 space-y-6 flex-shrink-0">
                     <div className="flex items-center justify-between">
                       <h2 className="text-lg font-semibold flex items-center gap-2">
