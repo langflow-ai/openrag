@@ -11,7 +11,7 @@ def get_user_conversation(user_id: str):
     return user_conversations[user_id]
 
 # Generic async response function for streaming
-async def async_response_stream(client, prompt: str, model: str, previous_response_id: str = None, log_prefix: str = "response"):
+async def async_response_stream(client, prompt: str, model: str, extra_headers: dict = None, previous_response_id: str = None, log_prefix: str = "response"):
     print(f"user ==> {prompt}")
     
     try:
@@ -24,6 +24,8 @@ async def async_response_stream(client, prompt: str, model: str, previous_respon
         }
         if previous_response_id is not None:
             request_params["previous_response_id"] = previous_response_id
+        if extra_headers:
+            request_params["extra_headers"] = extra_headers
         
         response = await client.responses.create(**request_params)
         
@@ -74,7 +76,7 @@ async def async_response_stream(client, prompt: str, model: str, previous_respon
         raise
 
 # Generic async response function for non-streaming
-async def async_response(client, prompt: str, model: str, previous_response_id: str = None, log_prefix: str = "response"):
+async def async_response(client, prompt: str, model: str, extra_headers: dict = None, previous_response_id: str = None, log_prefix: str = "response"):
     print(f"user ==> {prompt}")
     
     # Build request parameters
@@ -86,6 +88,8 @@ async def async_response(client, prompt: str, model: str, previous_response_id: 
     }
     if previous_response_id is not None:
         request_params["previous_response_id"] = previous_response_id
+    if extra_headers:
+        request_params["extra_headers"] = extra_headers
     
     response = await client.responses.create(**request_params)
     
@@ -98,20 +102,20 @@ async def async_response(client, prompt: str, model: str, previous_response_id: 
     return response_text, response_id
 
 # Unified streaming function for both chat and langflow
-async def async_stream(client, prompt: str, model: str, previous_response_id: str = None, log_prefix: str = "response"):
-    async for chunk in async_response_stream(client, prompt, model, previous_response_id=previous_response_id, log_prefix=log_prefix):
+async def async_stream(client, prompt: str, model: str, extra_headers: dict = None, previous_response_id: str = None, log_prefix: str = "response"):
+    async for chunk in async_response_stream(client, prompt, model, extra_headers=extra_headers, previous_response_id=previous_response_id, log_prefix=log_prefix):
         yield chunk
 
 # Async langflow function (non-streaming only)
-async def async_langflow(langflow_client, flow_id: str, prompt: str, previous_response_id: str = None):
-    response_text, response_id = await async_response(langflow_client, prompt, flow_id, previous_response_id=previous_response_id, log_prefix="langflow")
+async def async_langflow(langflow_client, flow_id: str, prompt: str, extra_headers: dict = None, previous_response_id: str = None):
+    response_text, response_id = await async_response(langflow_client, prompt, flow_id, extra_headers=extra_headers, previous_response_id=previous_response_id, log_prefix="langflow")
     return response_text, response_id
 
 # Async langflow function for streaming (alias for compatibility)
-async def async_langflow_stream(langflow_client, flow_id: str, prompt: str, previous_response_id: str = None):
+async def async_langflow_stream(langflow_client, flow_id: str, prompt: str, extra_headers: dict = None, previous_response_id: str = None):
     print(f"[DEBUG] Starting langflow stream for prompt: {prompt}")
     try:
-        async for chunk in async_stream(langflow_client, prompt, flow_id, previous_response_id=previous_response_id, log_prefix="langflow"):
+        async for chunk in async_stream(langflow_client, prompt, flow_id, extra_headers=extra_headers, previous_response_id=previous_response_id, log_prefix="langflow"):
             print(f"[DEBUG] Yielding chunk from langflow_stream: {chunk[:100]}...")
             yield chunk
         print(f"[DEBUG] Langflow stream completed")
