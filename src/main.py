@@ -23,6 +23,7 @@ from services.search_service import SearchService
 from services.task_service import TaskService
 from services.auth_service import AuthService
 from services.chat_service import ChatService
+from services.contexts_service import ContextsService
 
 # Existing services
 from connectors.service import ConnectorService
@@ -30,7 +31,7 @@ from session_manager import SessionManager
 from auth_middleware import require_auth, optional_auth
 
 # API endpoints
-from api import upload, search, chat, auth, connectors, tasks, oidc
+from api import upload, search, chat, auth, connectors, tasks, oidc, contexts
 
 print("CUDA available:", torch.cuda.is_available())
 print("CUDA version PyTorch was built with:", torch.version.cuda)
@@ -56,11 +57,36 @@ async def init_index():
     """Initialize OpenSearch index and security roles"""
     await wait_for_opensearch()
     
+    # Create documents index
     if not await clients.opensearch.indices.exists(index=INDEX_NAME):
         await clients.opensearch.indices.create(index=INDEX_NAME, body=INDEX_BODY)
         print(f"Created index '{INDEX_NAME}'")
     else:
         print(f"Index '{INDEX_NAME}' already exists, skipping creation.")
+    
+    # Create contexts index
+    contexts_index_name = "search_contexts"
+    contexts_index_body = {
+        "mappings": {
+            "properties": {
+                "id": {"type": "keyword"},
+                "name": {"type": "text", "analyzer": "standard"},
+                "description": {"type": "text", "analyzer": "standard"},
+                "query_data": {"type": "text"},  # Store as text for searching
+                "owner": {"type": "keyword"},
+                "allowed_users": {"type": "keyword"},
+                "allowed_groups": {"type": "keyword"},
+                "created_at": {"type": "date"},
+                "updated_at": {"type": "date"}
+            }
+        }
+    }
+    
+    if not await clients.opensearch.indices.exists(index=contexts_index_name):
+        await clients.opensearch.indices.create(index=contexts_index_name, body=contexts_index_body)
+        print(f"Created index '{contexts_index_name}'")
+    else:
+        print(f"Index '{contexts_index_name}' already exists, skipping creation.")
 
 async def init_index_when_ready():
     """Initialize OpenSearch index when it becomes available"""
@@ -85,6 +111,7 @@ def initialize_services():
     search_service = SearchService(session_manager)
     task_service = TaskService(document_service, process_pool)
     chat_service = ChatService()
+    contexts_service = ContextsService(session_manager)
     
     # Set process pool for document service
     document_service.process_pool = process_pool
@@ -109,6 +136,7 @@ def initialize_services():
         'chat_service': chat_service,
         'auth_service': auth_service,
         'connector_service': connector_service,
+        'contexts_service': contexts_service,
         'session_manager': session_manager
     }
 
@@ -169,6 +197,42 @@ def create_app():
                          search_service=services['search_service'],
                          session_manager=services['session_manager'])
               ), methods=["POST"]),
+        
+        # Contexts endpoints
+        Route("/contexts", 
+              require_auth(services['session_manager'])(
+                  partial(contexts.create_context,
+                         contexts_service=services['contexts_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["POST"]),
+        
+        Route("/contexts/search", 
+              require_auth(services['session_manager'])(
+                  partial(contexts.search_contexts,
+                         contexts_service=services['contexts_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["POST"]),
+        
+        Route("/contexts/{context_id}", 
+              require_auth(services['session_manager'])(
+                  partial(contexts.get_context,
+                         contexts_service=services['contexts_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["GET"]),
+        
+        Route("/contexts/{context_id}", 
+              require_auth(services['session_manager'])(
+                  partial(contexts.update_context,
+                         contexts_service=services['contexts_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["PUT"]),
+        
+        Route("/contexts/{context_id}", 
+              require_auth(services['session_manager'])(
+                  partial(contexts.delete_context,
+                         contexts_service=services['contexts_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["DELETE"]),
         
         # Chat endpoints
         Route("/chat", 
