@@ -412,16 +412,35 @@ function ChatPage() {
                 // Handle Realtime API format (this is what you're actually getting!)
                 else if (chunk.type === "response.output_item.added" && chunk.item?.type === "function_call") {
                   console.log("🟢 CREATING function call (added):", chunk.item.id, chunk.item.tool_name || chunk.item.name)
-                  const functionCall: FunctionCall = {
-                    name: chunk.item.tool_name || chunk.item.name || "unknown",
-                    arguments: chunk.item.inputs || undefined,
-                    status: "pending",
-                    argumentsString: "",
-                    id: chunk.item.id,
-                    type: chunk.item.type
+                  
+                  // Try to find an existing pending call to update (created by earlier deltas)
+                  let existing = currentFunctionCalls.find(fc => fc.id === chunk.item.id)
+                  if (!existing) {
+                    existing = [...currentFunctionCalls].reverse().find(fc => 
+                      fc.status === "pending" && 
+                      !fc.id && 
+                      (fc.name === (chunk.item.tool_name || chunk.item.name))
+                    )
                   }
-                  currentFunctionCalls.push(functionCall)
-                  console.log("🟢 Function calls now:", currentFunctionCalls.map(fc => ({ id: fc.id, name: fc.name })))
+                  
+                  if (existing) {
+                    existing.id = chunk.item.id
+                    existing.type = chunk.item.type
+                    existing.name = chunk.item.tool_name || chunk.item.name || existing.name
+                    existing.arguments = chunk.item.inputs || existing.arguments
+                    console.log("🟢 UPDATED existing pending function call with id:", existing.id)
+                  } else {
+                    const functionCall: FunctionCall = {
+                      name: chunk.item.tool_name || chunk.item.name || "unknown",
+                      arguments: chunk.item.inputs || undefined,
+                      status: "pending",
+                      argumentsString: "",
+                      id: chunk.item.id,
+                      type: chunk.item.type
+                    }
+                    currentFunctionCalls.push(functionCall)
+                    console.log("🟢 Function calls now:", currentFunctionCalls.map(fc => ({ id: fc.id, name: fc.name })))
+                  }
                 }
                 
                 // Handle function call arguments streaming (Realtime API)
@@ -525,15 +544,34 @@ function ChatPage() {
                 // Handle function call output item added (new format)
                 else if (chunk.type === "response.output_item.added" && chunk.item?.type?.includes("_call") && chunk.item?.type !== "function_call") {
                   console.log("🟡 CREATING tool call (added):", chunk.item.id, chunk.item.tool_name || chunk.item.name, chunk.item.type)
-                  const functionCall = {
-                    name: chunk.item.tool_name || chunk.item.name || chunk.item.type || "unknown",
-                    arguments: chunk.item.inputs || {},
-                    status: "pending" as const,
-                    id: chunk.item.id,
-                    type: chunk.item.type
+                  
+                  // Dedupe by id or pending with same name
+                  let existing = currentFunctionCalls.find(fc => fc.id === chunk.item.id)
+                  if (!existing) {
+                    existing = [...currentFunctionCalls].reverse().find(fc => 
+                      fc.status === "pending" && 
+                      !fc.id && 
+                      (fc.name === (chunk.item.tool_name || chunk.item.name || chunk.item.type))
+                    )
                   }
-                  currentFunctionCalls.push(functionCall)
-                  console.log("🟡 Function calls now:", currentFunctionCalls.map(fc => ({ id: fc.id, name: fc.name, type: fc.type })))
+                  
+                  if (existing) {
+                    existing.id = chunk.item.id
+                    existing.type = chunk.item.type
+                    existing.name = chunk.item.tool_name || chunk.item.name || chunk.item.type || existing.name
+                    existing.arguments = chunk.item.inputs || existing.arguments
+                    console.log("🟡 UPDATED existing pending tool call with id:", existing.id)
+                  } else {
+                    const functionCall = {
+                      name: chunk.item.tool_name || chunk.item.name || chunk.item.type || "unknown",
+                      arguments: chunk.item.inputs || {},
+                      status: "pending" as const,
+                      id: chunk.item.id,
+                      type: chunk.item.type
+                    }
+                    currentFunctionCalls.push(functionCall)
+                    console.log("🟡 Function calls now:", currentFunctionCalls.map(fc => ({ id: fc.id, name: fc.name, type: fc.type })))
+                  }
                 }
                 
                 // Handle function call results
