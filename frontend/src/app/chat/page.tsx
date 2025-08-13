@@ -89,17 +89,17 @@ function ChatPage() {
   const [scoreThreshold, setScoreThreshold] = useState(0)
   const [loadedContextName, setLoadedContextName] = useState<string | null>(null)
 
-  // Load context if contextId is provided in URL
+  // Load knowledge filter if filterId is provided in URL
   useEffect(() => {
-    const contextId = searchParams.get('contextId')
-    if (contextId) {
-      loadContext(contextId)
+    const filterId = searchParams.get('filterId')
+    if (filterId) {
+      loadKnowledgeFilter(filterId)
     }
   }, [searchParams])
 
-  const loadContext = async (contextId: string) => {
+  const loadKnowledgeFilter = async (filterId: string) => {
     try {
-      const response = await fetch(`/api/contexts/${contextId}`, {
+      const response = await fetch(`/api/knowledge-filter/${filterId}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -108,19 +108,19 @@ function ChatPage() {
 
       const result = await response.json()
       if (response.ok && result.success) {
-        const context = result.context
-        const parsedQueryData = JSON.parse(context.query_data)
+        const filter = result.filter
+        const parsedQueryData = JSON.parse(filter.query_data)
         
         // Load the context data into state
         setSelectedFilters(parsedQueryData.filters)
         setResultLimit(parsedQueryData.limit)
         setScoreThreshold(parsedQueryData.scoreThreshold)
-        setLoadedContextName(context.name)
+        setLoadedContextName(filter.name)
       } else {
-        console.error("Failed to load context:", result.error)
+        console.error("Failed to load knowledge filter:", result.error)
       }
     } catch (error) {
-      console.error("Error loading context:", error)
+      console.error("Error loading knowledge filter:", error)
     }
   }
 
@@ -283,10 +283,14 @@ function ChatPage() {
     const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
     
     try {
+      const hasFilters = selectedFilters.data_sources.length > 0 || 
+                        selectedFilters.document_types.length > 0 || 
+                        selectedFilters.owners.length > 0
+
       const requestBody: RequestBody = { 
         prompt: userMessage.content,
         stream: true,
-        filters: selectedFilters,
+        ...(hasFilters && { filters: selectedFilters }),
         limit: resultLimit,
         scoreThreshold: scoreThreshold
       }
@@ -744,9 +748,13 @@ function ChatPage() {
       try {
         const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
         
+        const hasFilters = selectedFilters.data_sources.length > 0 || 
+                          selectedFilters.document_types.length > 0 || 
+                          selectedFilters.owners.length > 0
+
         const requestBody: RequestBody = { 
           prompt: userMessage.content,
-          filters: selectedFilters,
+          ...(hasFilters && { filters: selectedFilters }),
           limit: resultLimit,
           scoreThreshold: scoreThreshold
         }

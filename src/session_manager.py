@@ -109,7 +109,7 @@ class SessionManager:
             # OIDC standard claims
             "iss": issuer,  # Issuer from request
             "sub": user_id,  # Subject (user ID)
-            "aud": ["opensearch", "gendb"],  # Audience
+            "aud": ["opensearch", "openrag"],  # Audience
             "exp": now + timedelta(days=7),  # Expiration
             "iat": now,  # Issued at
             "auth_time": int(now.timestamp()),  # Authentication time
@@ -120,7 +120,7 @@ class SessionManager:
             "name": user.name,
             "preferred_username": user.email,
             "email_verified": True,
-            "roles": ["gendb_user"]  # Backend role for OpenSearch
+            "roles": ["openrag_user"]  # Backend role for OpenSearch
         }
         
         token = jwt.encode(token_payload, self.private_key, algorithm="RS256")
@@ -133,7 +133,7 @@ class SessionManager:
                 token, 
                 self.public_key, 
                 algorithms=["RS256"],
-                audience=["opensearch", "gendb"]
+                audience=["opensearch", "openrag"]
             )
             return payload
         except jwt.ExpiredSignatureError:

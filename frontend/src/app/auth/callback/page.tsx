@@ -135,7 +135,7 @@ function AuthCallbackContent() {
       return isAppAuth ? "Signing you in..." : "Connecting..."
     }
     if (status === "success") {
-      return isAppAuth ? "Welcome to GenDB!" : "Connection Successful!"
+      return isAppAuth ? "Welcome to OpenRAG!" : "Connection Successful!"
     }
     if (status === "error") {
       return isAppAuth ? "Sign In Failed" : "Connection Failed"
