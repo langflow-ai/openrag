@@ -77,8 +77,8 @@ class ChatService:
 
         # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
         if filter_expression:
-            print(f"Sending GenDB query filter to Langflow: {json.dumps(filter_expression, indent=2)}")
-            extra_headers['X-LANGFLOW-GLOBAL-VAR-GENDB-QUERY-FILTER'] = json.dumps(filter_expression)
+            print(f"Sending OpenRAG query filter to Langflow: {json.dumps(filter_expression, indent=2)}")
+            extra_headers['X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER'] = json.dumps(filter_expression)
 
         if stream:
             return async_langflow_stream(clients.langflow_client, FLOW_ID, prompt, extra_headers=extra_headers, previous_response_id=previous_response_id)

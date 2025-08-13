@@ -2,13 +2,13 @@ _meta:
   type: "roles"
   config_version: 2
 
-gendb_user_role:
+openrag_user_role:
   description: "DLS: user can read/write docs they own or are allowed on"
   cluster_permissions:
     - "indices:data/write/bulk"
     - "indices:data/write/index"
   index_permissions:
-    - index_patterns: ["documents", "documents*", "search_contexts", "search_contexts*"]
+    - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*"]
       allowed_actions:
         - crud
         - create_index

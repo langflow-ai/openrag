@@ -39,7 +39,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         <div className="flex h-14 items-center px-4">
           <div className="flex items-center">
             <h1 className="text-lg font-semibold tracking-tight text-white">
-              GenDB
+              OpenRAG
             </h1>
           </div>
           <div className="flex flex-1 items-center justify-end space-x-2">

@@ -1,34 +1,34 @@
 from typing import Any, Dict, Optional
 
-CONTEXTS_INDEX_NAME = "search_contexts"
+KNOWLEDGE_FILTERS_INDEX_NAME = "knowledge_filters"
 
-class ContextsService:
+class KnowledgeFilterService:
     def __init__(self, session_manager=None):
         self.session_manager = session_manager
     
-    async def create_context(self, context_doc: Dict[str, Any], user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
-        """Create a new search context"""
+    async def create_knowledge_filter(self, filter_doc: Dict[str, Any], user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
+        """Create a new knowledge filter"""
         try:
             # Get user's OpenSearch client with JWT for OIDC auth
             opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
             
-            # Index the context document
+            # Index the knowledge filter document
             result = await opensearch_client.index(
-                index=CONTEXTS_INDEX_NAME,
-                id=context_doc["id"],
-                body=context_doc
+                index=KNOWLEDGE_FILTERS_INDEX_NAME,
+                id=filter_doc["id"],
+                body=filter_doc
             )
             
             if result.get("result") == "created":
-                return {"success": True, "id": context_doc["id"], "context": context_doc}
+                return {"success": True, "id": filter_doc["id"], "filter": filter_doc}
             else:
-                return {"success": False, "error": "Failed to create context"}
+                return {"success": False, "error": "Failed to create knowledge filter"}
                 
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def search_contexts(self, query: str, user_id: str = None, jwt_token: str = None, limit: int = 20) -> Dict[str, Any]:
-        """Search for contexts by name, description, or query content"""
+    async def search_knowledge_filters(self, query: str, user_id: str = None, jwt_token: str = None, limit: int = 20) -> Dict[str, Any]:
+        """Search for knowledge filters by name, description, or query content"""
         try:
             # Get user's OpenSearch client with JWT for OIDC auth  
             opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
@@ -52,7 +52,7 @@ class ContextsService:
                     "size": limit
                 }
             else:
-                # No query - return all contexts sorted by most recent
+                # No query - return all knowledge filters sorted by most recent
                 search_body = {
                     "query": {"match_all": {}},
                     "sort": [{"updated_at": {"order": "desc"}}],
@@ -60,72 +60,72 @@ class ContextsService:
                     "size": limit
                 }
             
-            result = await opensearch_client.search(index=CONTEXTS_INDEX_NAME, body=search_body)
+            result = await opensearch_client.search(index=KNOWLEDGE_FILTERS_INDEX_NAME, body=search_body)
             
             # Transform results
-            contexts = []
+            filters = []
             for hit in result["hits"]["hits"]:
-                context = hit["_source"]
-                context["score"] = hit.get("_score")
-                contexts.append(context)
+                knowledge_filter = hit["_source"]
+                knowledge_filter["score"] = hit.get("_score")
+                filters.append(knowledge_filter)
             
-            return {"success": True, "contexts": contexts}
+            return {"success": True, "filters": filters}
             
         except Exception as e:
-            return {"success": False, "error": str(e), "contexts": []}
+            return {"success": False, "error": str(e), "filters": []}
     
-    async def get_context(self, context_id: str, user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
-        """Get a specific context by ID"""
+    async def get_knowledge_filter(self, filter_id: str, user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
+        """Get a specific knowledge filter by ID"""
         try:
             # Get user's OpenSearch client with JWT for OIDC auth
             opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
             
-            result = await opensearch_client.get(index=CONTEXTS_INDEX_NAME, id=context_id)
+            result = await opensearch_client.get(index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id)
             
             if result.get("found"):
-                context = result["_source"]
-                return {"success": True, "context": context}
+                knowledge_filter = result["_source"]
+                return {"success": True, "filter": knowledge_filter}
             else:
-                return {"success": False, "error": "Context not found"}
+                return {"success": False, "error": "Knowledge filter not found"}
                 
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def update_context(self, context_id: str, updates: Dict[str, Any], user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
-        """Update an existing context"""
+    async def update_knowledge_filter(self, filter_id: str, updates: Dict[str, Any], user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
+        """Update an existing knowledge filter"""
         try:
             # Get user's OpenSearch client with JWT for OIDC auth
             opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
             
             # Update the document
             result = await opensearch_client.update(
-                index=CONTEXTS_INDEX_NAME,
-                id=context_id,
+                index=KNOWLEDGE_FILTERS_INDEX_NAME,
+                id=filter_id,
                 body={"doc": updates}
             )
             
             if result.get("result") in ["updated", "noop"]:
                 # Get the updated document
-                updated_doc = await opensearch_client.get(index=CONTEXTS_INDEX_NAME, id=context_id)
-                return {"success": True, "context": updated_doc["_source"]}
+                updated_doc = await opensearch_client.get(index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id)
+                return {"success": True, "filter": updated_doc["_source"]}
             else:
-                return {"success": False, "error": "Failed to update context"}
+                return {"success": False, "error": "Failed to update knowledge filter"}
                 
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def delete_context(self, context_id: str, user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
-        """Delete a context"""
+    async def delete_knowledge_filter(self, filter_id: str, user_id: str = None, jwt_token: str = None) -> Dict[str, Any]:
+        """Delete a knowledge filter"""
         try:
             # Get user's OpenSearch client with JWT for OIDC auth
             opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
             
-            result = await opensearch_client.delete(index=CONTEXTS_INDEX_NAME, id=context_id)
+            result = await opensearch_client.delete(index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id)
             
             if result.get("result") == "deleted":
-                return {"success": True, "message": "Context deleted successfully"}
+                return {"success": True, "message": "Knowledge filter deleted successfully"}
             else:
-                return {"success": False, "error": "Failed to delete context"}
+                return {"success": False, "error": "Failed to delete knowledge filter"}
                 
         except Exception as e:
             return {"success": False, "error": str(e)}
