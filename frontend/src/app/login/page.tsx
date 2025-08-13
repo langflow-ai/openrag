@@ -43,7 +43,7 @@ function LoginPageContent() {
             <Lock className="h-8 w-8 text-primary" />
           </div>
           <div>
-            <CardTitle className="text-2xl">Welcome to GenDB</CardTitle>
+            <CardTitle className="text-2xl">Welcome to OpenRAG</CardTitle>
             <CardDescription className="mt-2">
               Sign in to access your documents and AI chat
             </CardDescription>

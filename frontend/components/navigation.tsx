@@ -28,10 +28,10 @@ export function Navigation() {
       active: pathname === "/chat",
     },
     {
-      label: "Contexts",
+      label: "Knowledge Filters",
       icon: BookOpenCheck,
-      href: "/contexts",
-      active: pathname.startsWith("/contexts"),
+      href: "/knowledge-filters",
+      active: pathname.startsWith("/knowledge-filters"),
     },
     {
       label: "Connectors",

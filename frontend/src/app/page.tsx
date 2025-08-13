@@ -88,48 +88,7 @@ function SearchPage() {
   const [savingContext, setSavingContext] = useState(false)
   const [loadedContextName, setLoadedContextName] = useState<string | null>(null)
 
-  const loadContext = useCallback(async (contextId: string) => {
-    try {
-      const response = await fetch(`/api/contexts/${contextId}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-
-      const result = await response.json()
-      if (response.ok && result.success) {
-        const context = result.context
-        const parsedQueryData = JSON.parse(context.query_data)
-        
-        // Load the context data into state
-        setQuery(parsedQueryData.query)
-        setSelectedFilters(parsedQueryData.filters)
-        setResultLimit(parsedQueryData.limit)
-        setScoreThreshold(parsedQueryData.scoreThreshold)
-        setLoadedContextName(context.name)
-        
-        // Automatically perform the search
-        setTimeout(() => {
-          handleSearch()
-        }, 100)
-      } else {
-        console.error("Failed to load context:", result.error)
-      }
-    } catch (err) {
-      console.error("Error loading context:", err)
-    }
-  }, [])
-
-  // Load context if contextId is provided in URL
-  useEffect(() => {
-    const contextId = searchParams.get('contextId')
-    if (contextId) {
-      loadContext(contextId)
-    }
-  }, [searchParams, loadContext])
-
-  const handleSearch = async (e?: React.FormEvent) => {
+  const handleSearch = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
     if (!query.trim()) return
 
@@ -202,7 +161,48 @@ function SearchPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [query, resultLimit, scoreThreshold, searchPerformed, selectedFilters])
+
+  const loadKnowledgeFilter = useCallback(async (filterId: string) => {
+    try {
+      const response = await fetch(`/api/knowledge-filter/${filterId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      const result = await response.json()
+      if (response.ok && result.success) {
+        const filter = result.filter
+        const parsedQueryData = JSON.parse(filter.query_data)
+        
+        // Load the context data into state
+        setQuery(parsedQueryData.query)
+        setSelectedFilters(parsedQueryData.filters)
+        setResultLimit(parsedQueryData.limit)
+        setScoreThreshold(parsedQueryData.scoreThreshold)
+        setLoadedContextName(filter.name)
+        
+        // Automatically perform the search
+        setTimeout(() => {
+          handleSearch()
+        }, 100)
+      } else {
+        console.error("Failed to load knowledge filter:", result.error)
+      }
+    } catch (err) {
+      console.error("Error loading knowledge filter:", err)
+    }
+  }, [handleSearch])
+
+  // Load knowledge filter if filterId is provided in URL
+  useEffect(() => {
+    const filterId = searchParams.get('filterId')
+    if (filterId) {
+      loadKnowledgeFilter(filterId)
+    }
+  }, [searchParams, loadKnowledgeFilter])
 
   const handleFilterChange = async (facetType: keyof SelectedFilters, value: string, checked: boolean) => {
     const newFilters = {
@@ -277,16 +277,16 @@ function SearchPage() {
            selectedFilters.owners.length
   }
 
-  const handleSaveContext = async () => {
-    const contextId = searchParams.get('contextId')
+  const handleSaveKnowledgeFilter = async () => {
+    const filterId = searchParams.get('filterId')
     
-    // If no contextId present and no title, we need the modal
-    if (!contextId && !contextTitle.trim()) return
+    // If no filterId present and no title, we need the modal
+    if (!filterId && !contextTitle.trim()) return
 
     setSavingContext(true)
     
     try {
-      const contextData = {
+      const filterData = {
         query,
         filters: selectedFilters,
         limit: resultLimit,
@@ -295,20 +295,20 @@ function SearchPage() {
 
       let response;
       
-      if (contextId) {
-        // Update existing context (upsert)
-        response = await fetch(`/api/contexts/${contextId}`, {
+      if (filterId) {
+        // Update existing knowledge filter (upsert)
+        response = await fetch(`/api/knowledge-filter/${filterId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            queryData: JSON.stringify(contextData)
+            queryData: JSON.stringify(filterData)
           }),
         })
       } else {
-        // Create new context
-        response = await fetch("/api/contexts", {
+        // Create new knowledge filter
+        response = await fetch("/api/knowledge-filter", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -316,7 +316,7 @@ function SearchPage() {
           body: JSON.stringify({
             name: contextTitle,
             description: contextDescription,
-            queryData: JSON.stringify(contextData)
+            queryData: JSON.stringify(filterData)
           }),
         })
       }
@@ -324,18 +324,18 @@ function SearchPage() {
       const result = await response.json()
       
       if (response.ok && result.success) {
-        if (!contextId) {
-          // Reset modal state only if we were creating a new context
+        if (!filterId) {
+          // Reset modal state only if we were creating a new knowledge filter
           setShowSaveModal(false)
           setContextTitle("")
           setContextDescription("")
         }
-        toast.success(contextId ? "Context updated successfully" : "Context saved successfully")
+        toast.success(filterId ? "Knowledge filter updated successfully" : "Knowledge filter saved successfully")
       } else {
-        toast.error(contextId ? "Failed to update context" : "Failed to save context")
+        toast.error(filterId ? "Failed to update knowledge filter" : "Failed to save knowledge filter")
       }
     } catch {
-      toast.error(contextId ? "Error updating context" : "Error saving context")
+      toast.error(filterId ? "Error updating knowledge filter" : "Error saving knowledge filter")
     } finally {
       setSavingContext(false)
     }
@@ -843,13 +843,13 @@ function SearchPage() {
                         </div>
                       </div>
 
-                      {/* Save Context Button */}
+                      {/* Save Knowledge Filter Button */}
                       <div className="pt-4 border-t border-border/50">
                         <Button
                           onClick={() => {
-                            const contextId = searchParams.get('contextId')
-                            if (contextId) {
-                              handleSaveContext()
+                            const filterId = searchParams.get('filterId')
+                            if (filterId) {
+                              handleSaveKnowledgeFilter()
                             } else {
                               setShowSaveModal(true)
                             }
@@ -861,12 +861,12 @@ function SearchPage() {
                           {savingContext ? (
                             <>
                               <Loader2 className="h-4 w-4 animate-spin" />
-                              {searchParams.get('contextId') ? 'Updating...' : 'Saving...'}
+                              {searchParams.get('filterId') ? 'Updating...' : 'Saving...'}
                             </>
                           ) : (
                             <>
                               <Save className="h-4 w-4" />
-                              {searchParams.get('contextId') ? 'Update Context' : 'Save Context'}
+                              {searchParams.get('filterId') ? 'Update Knowledge Filter' : 'Save Knowledge Filter'}
                             </>
                           )}
                         </Button>
@@ -938,7 +938,7 @@ function SearchPage() {
                 Cancel
               </Button>
               <Button
-                onClick={handleSaveContext}
+                onClick={handleSaveKnowledgeFilter}
                 disabled={!contextTitle.trim() || savingContext}
                 className="flex items-center gap-2"
               >

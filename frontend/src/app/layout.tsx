@@ -18,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GenDB",
-  description: "Document search and management system",
+  title: "OpenRAG",
+  description: "Open source RAG (Retrieval Augmented Generation) system",
 };
 
 export default function RootLayout({

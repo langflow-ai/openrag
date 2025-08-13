@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Search, Loader2, BookOpenCheck, Settings, Calendar, MessageCircle } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 
-interface Context {
+interface KnowledgeFilter {
   id: string
   name: string
   description: string
@@ -30,18 +30,18 @@ interface ParsedQueryData {
   scoreThreshold: number
 }
 
-function ContextsPage() {
+function KnowledgeFiltersPage() {
   const router = useRouter()
-  const [contexts, setContexts] = useState<Context[]>([])
+  const [filters, setFilters] = useState<KnowledgeFilter[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedContext, setSelectedContext] = useState<Context | null>(null)
+  const [selectedFilter, setSelectedFilter] = useState<KnowledgeFilter | null>(null)
   const [parsedQueryData, setParsedQueryData] = useState<ParsedQueryData | null>(null)
 
-  const loadContexts = async (query = "") => {
+  const loadFilters = async (query = "") => {
     setLoading(true)
     try {
-      const response = await fetch("/api/contexts/search", {
+      const response = await fetch("/api/knowledge-filter/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -54,32 +54,32 @@ function ContextsPage() {
 
       const result = await response.json()
       if (response.ok && result.success) {
-        setContexts(result.contexts)
+        setFilters(result.filters)
       } else {
-        console.error("Failed to load contexts:", result.error)
-        setContexts([])
+        console.error("Failed to load knowledge filters:", result.error)
+        setFilters([])
       }
     } catch (error) {
-      console.error("Error loading contexts:", error)
-      setContexts([])
+      console.error("Error loading knowledge filters:", error)
+      setFilters([])
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadContexts()
+    loadFilters()
   }, [])
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
-    await loadContexts(searchQuery)
+    await loadFilters(searchQuery)
   }
 
-  const handleContextClick = (context: Context) => {
-    setSelectedContext(context)
+  const handleFilterClick = (filter: KnowledgeFilter) => {
+    setSelectedFilter(filter)
     try {
-      const parsed = JSON.parse(context.query_data) as ParsedQueryData
+      const parsed = JSON.parse(filter.query_data) as ParsedQueryData
       setParsedQueryData(parsed)
     } catch (error) {
       console.error("Error parsing query data:", error)
@@ -97,16 +97,16 @@ function ContextsPage() {
     })
   }
 
-  const handleSearchWithContext = () => {
-    if (!selectedContext) return
+  const handleSearchWithFilter = () => {
+    if (!selectedFilter) return
     
-    router.push(`/?contextId=${selectedContext.id}`)
+    router.push(`/?filterId=${selectedFilter.id}`)
   }
 
-  const handleChatWithContext = () => {
-    if (!selectedContext) return
+  const handleChatWithFilter = () => {
+    if (!selectedFilter) return
     
-    router.push(`/chat?contextId=${selectedContext.id}`)
+    router.push(`/chat?filterId=${selectedFilter.id}`)
   }
 
   return (
@@ -115,14 +115,14 @@ function ContextsPage() {
       <div className="space-y-4">
         <div className="mb-4">
           <h1 className="text-4xl font-bold tracking-tight text-white">
-            Contexts
+            Knowledge Filters
           </h1>
         </div>
         <p className="text-xl text-muted-foreground">
-          Manage your saved search contexts
+          Manage your saved knowledge filters
         </p>
         <p className="text-sm text-muted-foreground max-w-2xl">
-          View and manage your saved search queries, filters, and configurations for quick access to your most important searches.
+          View and manage your saved search configurations that help you focus on specific subsets of your knowledge base.
         </p>
       </div>
 
@@ -131,10 +131,10 @@ function ContextsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <BookOpenCheck className="h-5 w-5" />
-            Search Contexts
+            Search Knowledge Filters
           </CardTitle>
           <CardDescription>
-            Search through your saved search contexts by name or description
+            Search through your saved knowledge filters by name or description
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -142,7 +142,7 @@ function ContextsPage() {
             <div className="flex gap-2">
               <Input
                 type="text"
-                placeholder="Search contexts..."
+                placeholder="Search knowledge filters..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-12 bg-background/50 border-border/50 focus:border-blue-400/50 focus:ring-blue-400/20 flex-1"
@@ -170,7 +170,7 @@ function ContextsPage() {
           <div className="flex gap-6">
             {/* Context List */}
             <div className="flex-1 space-y-4">
-              {contexts.length === 0 ? (
+              {filters.length === 0 ? (
                 <Card className="bg-muted/20 border-dashed border-muted-foreground/30">
                   <CardContent className="pt-8 pb-8">
                     <div className="text-center space-y-3">
@@ -178,40 +178,40 @@ function ContextsPage() {
                         <BookOpenCheck className="h-8 w-8 text-muted-foreground/50" />
                       </div>
                       <p className="text-lg font-medium text-muted-foreground">
-                        No contexts found
+                        No knowledge filters found
                       </p>
                       <p className="text-sm text-muted-foreground/70 max-w-md mx-auto">
-                        Create your first context by saving a search configuration from the search page.
+                        Create your first knowledge filter by saving a search configuration from the search page.
                       </p>
                     </div>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="space-y-3">
-                  {contexts.map((context) => (
+                  {filters.map((filter) => (
                     <Card
-                      key={context.id}
+                      key={filter.id}
                       className={`bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/10 cursor-pointer ${
-                        selectedContext?.id === context.id ? 'ring-2 ring-blue-500/50 bg-card/70' : ''
+                        selectedFilter?.id === filter.id ? 'ring-2 ring-blue-500/50 bg-card/70' : ''
                       }`}
-                      onClick={() => handleContextClick(context)}
+                      onClick={() => handleFilterClick(filter)}
                     >
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between">
                           <div className="flex-1 space-y-2">
-                            <h3 className="font-semibold text-lg">{context.name}</h3>
-                            {context.description && (
-                              <p className="text-sm text-muted-foreground">{context.description}</p>
+                            <h3 className="font-semibold text-lg">{filter.name}</h3>
+                            {filter.description && (
+                              <p className="text-sm text-muted-foreground">{filter.description}</p>
                             )}
                             <div className="flex items-center gap-4 text-xs text-muted-foreground">
                               <div className="flex items-center gap-1">
                                 <Calendar className="h-3 w-3" />
-                                <span>Created {formatDate(context.created_at)}</span>
+                                <span>Created {formatDate(filter.created_at)}</span>
                               </div>
-                              {context.updated_at !== context.created_at && (
+                              {filter.updated_at !== filter.created_at && (
                                 <div className="flex items-center gap-1">
                                   <Calendar className="h-3 w-3" />
-                                  <span>Updated {formatDate(context.updated_at)}</span>
+                                  <span>Updated {formatDate(filter.updated_at)}</span>
                                 </div>
                               )}
                             </div>
@@ -225,12 +225,12 @@ function ContextsPage() {
             </div>
 
             {/* Context Detail Panel */}
-            {selectedContext && parsedQueryData && (
+            {selectedFilter && parsedQueryData && (
               <div className="w-64 space-y-6 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold flex items-center gap-2">
                     <Settings className="h-5 w-5" />
-                    Context Details
+                    Knowledge Filter Details
                   </h2>
                 </div>
 
@@ -311,21 +311,21 @@ function ContextsPage() {
                   {/* Action Buttons */}
                   <div className="space-y-2 pt-4 border-t border-border/50">
                     <Button
-                      onClick={handleSearchWithContext}
+                      onClick={handleSearchWithFilter}
                       className="w-full flex items-center gap-2"
                       variant="default"
                     >
                       <Search className="h-4 w-4" />
-                      Search with Context
+                      Search with Filter
                     </Button>
                     
                     <Button
-                      onClick={handleChatWithContext}
+                      onClick={handleChatWithFilter}
                       className="w-full flex items-center gap-2"
                       variant="outline"
                     >
                       <MessageCircle className="h-4 w-4" />
-                      Chat with Context
+                      Chat with Filter
                     </Button>
                   </div>
                 </div>
@@ -338,10 +338,10 @@ function ContextsPage() {
   )
 }
 
-export default function ProtectedContextsPage() {
+export default function ProtectedKnowledgeFiltersPage() {
   return (
     <ProtectedRoute>
-      <ContextsPage />
+      <KnowledgeFiltersPage />
     </ProtectedRoute>
   )
 }
