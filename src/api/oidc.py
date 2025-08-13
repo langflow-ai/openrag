@@ -51,7 +51,7 @@ async def jwks_endpoint(request: Request, session_manager):
             "kty": "RSA",
             "use": "sig",
             "alg": "RS256",
-            "kid": "gendb-key-1",
+            "kid": "openrag-key-1",
             "n": int_to_base64url(public_numbers.n),
             "e": int_to_base64url(public_numbers.e)
         }

@@ -23,7 +23,7 @@ from services.search_service import SearchService
 from services.task_service import TaskService
 from services.auth_service import AuthService
 from services.chat_service import ChatService
-from services.contexts_service import ContextsService
+from services.knowledge_filter_service import KnowledgeFilterService
 
 # Existing services
 from connectors.service import ConnectorService
@@ -31,7 +31,7 @@ from session_manager import SessionManager
 from auth_middleware import require_auth, optional_auth
 
 # API endpoints
-from api import upload, search, chat, auth, connectors, tasks, oidc, contexts
+from api import upload, search, chat, auth, connectors, tasks, oidc, knowledge_filter
 
 print("CUDA available:", torch.cuda.is_available())
 print("CUDA version PyTorch was built with:", torch.version.cuda)
@@ -64,9 +64,9 @@ async def init_index():
     else:
         print(f"Index '{INDEX_NAME}' already exists, skipping creation.")
     
-    # Create contexts index
-    contexts_index_name = "search_contexts"
-    contexts_index_body = {
+    # Create knowledge filters index
+    knowledge_filter_index_name = "knowledge_filters"
+    knowledge_filter_index_body = {
         "mappings": {
             "properties": {
                 "id": {"type": "keyword"},
@@ -82,11 +82,11 @@ async def init_index():
         }
     }
     
-    if not await clients.opensearch.indices.exists(index=contexts_index_name):
-        await clients.opensearch.indices.create(index=contexts_index_name, body=contexts_index_body)
-        print(f"Created index '{contexts_index_name}'")
+    if not await clients.opensearch.indices.exists(index=knowledge_filter_index_name):
+        await clients.opensearch.indices.create(index=knowledge_filter_index_name, body=knowledge_filter_index_body)
+        print(f"Created index '{knowledge_filter_index_name}'")
     else:
-        print(f"Index '{contexts_index_name}' already exists, skipping creation.")
+        print(f"Index '{knowledge_filter_index_name}' already exists, skipping creation.")
 
 async def init_index_when_ready():
     """Initialize OpenSearch index when it becomes available"""
@@ -111,7 +111,7 @@ def initialize_services():
     search_service = SearchService(session_manager)
     task_service = TaskService(document_service, process_pool)
     chat_service = ChatService()
-    contexts_service = ContextsService(session_manager)
+    knowledge_filter_service = KnowledgeFilterService(session_manager)
     
     # Set process pool for document service
     document_service.process_pool = process_pool
@@ -136,7 +136,7 @@ def initialize_services():
         'chat_service': chat_service,
         'auth_service': auth_service,
         'connector_service': connector_service,
-        'contexts_service': contexts_service,
+        'knowledge_filter_service': knowledge_filter_service,
         'session_manager': session_manager
     }
 
@@ -198,39 +198,39 @@ def create_app():
                          session_manager=services['session_manager'])
               ), methods=["POST"]),
         
-        # Contexts endpoints
-        Route("/contexts", 
+        # Knowledge Filter endpoints
+        Route("/knowledge-filter", 
               require_auth(services['session_manager'])(
-                  partial(contexts.create_context,
-                         contexts_service=services['contexts_service'],
+                  partial(knowledge_filter.create_knowledge_filter,
+                         knowledge_filter_service=services['knowledge_filter_service'],
                          session_manager=services['session_manager'])
               ), methods=["POST"]),
         
-        Route("/contexts/search", 
+        Route("/knowledge-filter/search", 
               require_auth(services['session_manager'])(
-                  partial(contexts.search_contexts,
-                         contexts_service=services['contexts_service'],
+                  partial(knowledge_filter.search_knowledge_filters,
+                         knowledge_filter_service=services['knowledge_filter_service'],
                          session_manager=services['session_manager'])
               ), methods=["POST"]),
         
-        Route("/contexts/{context_id}", 
+        Route("/knowledge-filter/{filter_id}", 
               require_auth(services['session_manager'])(
-                  partial(contexts.get_context,
-                         contexts_service=services['contexts_service'],
+                  partial(knowledge_filter.get_knowledge_filter,
+                         knowledge_filter_service=services['knowledge_filter_service'],
                          session_manager=services['session_manager'])
               ), methods=["GET"]),
         
-        Route("/contexts/{context_id}", 
+        Route("/knowledge-filter/{filter_id}", 
               require_auth(services['session_manager'])(
-                  partial(contexts.update_context,
-                         contexts_service=services['contexts_service'],
+                  partial(knowledge_filter.update_knowledge_filter,
+                         knowledge_filter_service=services['knowledge_filter_service'],
                          session_manager=services['session_manager'])
               ), methods=["PUT"]),
         
-        Route("/contexts/{context_id}", 
+        Route("/knowledge-filter/{filter_id}", 
               require_auth(services['session_manager'])(
-                  partial(contexts.delete_context,
-                         contexts_service=services['contexts_service'],
+                  partial(knowledge_filter.delete_knowledge_filter,
+                         knowledge_filter_service=services['knowledge_filter_service'],
                          session_manager=services['session_manager'])
               ), methods=["DELETE"]),
         

@@ -39,7 +39,7 @@ async function proxyRequest(
   request: NextRequest,
   params: { path: string[] }
 ) {
-  const backendHost = process.env.GENDB_BACKEND_HOST || 'localhost';
+  const backendHost = process.env.OPENRAG_BACKEND_HOST || 'localhost';
   const path = params.path.join('/');
   const searchParams = request.nextUrl.searchParams.toString();
   const backendUrl = `http://${backendHost}:8000/${path}${searchParams ? `?${searchParams}` : ''}`;

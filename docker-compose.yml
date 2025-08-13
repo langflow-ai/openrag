@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: os
     depends_on:
-      - gendb-backend
+      - openrag-backend
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
@@ -37,12 +37,12 @@ services:
     ports:
       - "5601:5601"
 
-  gendb-backend:
-    image: phact/gendb-backend:latest
+  openrag-backend:
+    image: phact/openrag-backend:latest
     #build:
       #context: .
       #dockerfile: Dockerfile.backend
-    container_name: gendb-backend
+    container_name: openrag-backend
     depends_on:
       - langflow
     environment:
@@ -67,16 +67,16 @@ services:
     gpus: all
     platform: linux/amd64
 
-  gendb-frontend:
-    image: phact/gendb-frontend:latest
+  openrag-frontend:
+    image: phact/openrag-frontend:latest
     #build:
       #context: .
       #dockerfile: Dockerfile.frontend
-    container_name: gendb-frontend
+    container_name: openrag-frontend
     depends_on:
-      - gendb-backend
+      - openrag-backend
     environment:
-      - GENDB_BACKEND_HOST=gendb-backend
+      - OPENRAG_BACKEND_HOST=openrag-backend
     ports:
       - "3000:3000"
     volumes:
@@ -94,6 +94,6 @@ services:
       - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
       - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
       - JWT="dummy"
-      - GENDB-QUERY-FILTER="{}"
-      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT
+      - OPENRAG-QUERY-FILTER="{}"
+      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER
       - LANGFLOW_LOG_LEVEL=DEBUG

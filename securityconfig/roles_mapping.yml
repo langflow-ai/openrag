@@ -2,11 +2,11 @@ _meta:
   type: "rolesmapping"
   config_version: 2
 
-gendb_user_role:
+openrag_user_role:
   users: []
   hosts: []
   backend_roles:
-    - "gendb_user"
+    - "openrag_user"
 
 all_access:
   users:
