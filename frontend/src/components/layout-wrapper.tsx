@@ -8,11 +8,15 @@ import { Navigation } from "@/components/navigation"
 import { ModeToggle } from "@/components/mode-toggle"
 import { UserNav } from "@/components/user-nav"
 import { TaskNotificationMenu } from "@/components/task-notification-menu"
+import { KnowledgeFilterDropdown } from "@/components/knowledge-filter-dropdown"
+import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel"
 import { useTask } from "@/contexts/task-context"
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { tasks, isMenuOpen, toggleMenu } = useTask()
+  const { selectedFilter, setSelectedFilter, isPanelOpen } = useKnowledgeFilter()
   
   // List of paths that should not show navigation
   const authPaths = ['/login', '/auth/callback']
@@ -44,6 +48,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex flex-1 items-center justify-end space-x-2">
             <nav className="flex items-center space-x-2">
+              {/* Knowledge Filter Dropdown */}
+              <KnowledgeFilterDropdown 
+                selectedFilter={selectedFilter}
+                onFilterSelect={setSelectedFilter}
+              />
               {/* Task Notification Bell */}
               <Button
                 variant="ghost"
@@ -74,7 +83,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       <div className="hidden md:flex md:w-72 md:flex-col md:fixed md:top-14 md:bottom-0 md:left-0 z-[80] border-r border-border/40">
         <Navigation />
       </div>
-      <main className={`md:pl-72 ${isMenuOpen ? 'md:pr-80' : ''}`}>
+      <main className={`md:pl-72 ${(isMenuOpen || isPanelOpen) ? 'md:pr-80' : ''}`}>
         <div className="flex flex-col h-[calc(100vh-3.6rem)]">
           <div className="flex-1 overflow-y-auto scrollbar-hide">
             <div className="container py-6 lg:py-8">
@@ -84,6 +93,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         </div>
       </main>
       <TaskNotificationMenu />
+      <KnowledgeFilterPanel />
     </div>
   )
 } 

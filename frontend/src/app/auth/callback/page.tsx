@@ -84,7 +84,7 @@ function AuthCallbackContent() {
             await refreshAuth()
             
             // Get redirect URL from login page
-            const redirectTo = searchParams.get('redirect') || '/'
+            const redirectTo = searchParams.get('redirect') || '/knowledge-sources'
             
             // Clean up localStorage
             localStorage.removeItem('connecting_connector_id')
