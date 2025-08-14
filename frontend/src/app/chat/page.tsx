@@ -236,12 +236,6 @@ function ChatPage() {
     inputRef.current?.focus()
   }, [])
 
-  // Update input when global filter query changes
-  useEffect(() => {
-    if (parsedFilterData?.query) {
-      setInput(parsedFilterData.query)
-    }
-  }, [parsedFilterData])
 
   const handleSSEStream = async (userMessage: Message) => {
     const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
@@ -252,17 +246,21 @@ function ChatPage() {
         stream: true,
         ...(parsedFilterData?.filters && (() => {
           const filters = parsedFilterData.filters
-          const processed: SelectedFilters = {}
-          if (!filters.data_sources.includes("*")) {
-            processed.data_sources = filters.data_sources
+          const processed: SelectedFilters = {
+            data_sources: [],
+            document_types: [],
+            owners: []
           }
-          if (!filters.document_types.includes("*")) {
-            processed.document_types = filters.document_types
-          }
-          if (!filters.owners.includes("*")) {
-            processed.owners = filters.owners
-          }
-          return Object.keys(processed).length > 0 ? { filters: processed } : {}
+          // Only copy non-wildcard arrays
+          processed.data_sources = filters.data_sources.includes("*") ? [] : filters.data_sources
+          processed.document_types = filters.document_types.includes("*") ? [] : filters.document_types
+          processed.owners = filters.owners.includes("*") ? [] : filters.owners
+          
+          // Only include filters if any array has values
+          const hasFilters = processed.data_sources.length > 0 || 
+                            processed.document_types.length > 0 || 
+                            processed.owners.length > 0
+          return hasFilters ? { filters: processed } : {}
         })()),
         limit: parsedFilterData?.limit ?? 10,
         scoreThreshold: parsedFilterData?.scoreThreshold ?? 0
@@ -725,17 +723,21 @@ function ChatPage() {
           prompt: userMessage.content,
           ...(parsedFilterData?.filters && (() => {
             const filters = parsedFilterData.filters
-            const processed: SelectedFilters = {}
-            if (!filters.data_sources.includes("*")) {
-              processed.data_sources = filters.data_sources
+            const processed: SelectedFilters = {
+              data_sources: [],
+              document_types: [],
+              owners: []
             }
-            if (!filters.document_types.includes("*")) {
-              processed.document_types = filters.document_types
-            }
-            if (!filters.owners.includes("*")) {
-              processed.owners = filters.owners
-            }
-            return Object.keys(processed).length > 0 ? { filters: processed } : {}
+            // Only copy non-wildcard arrays
+          processed.data_sources = filters.data_sources.includes("*") ? [] : filters.data_sources
+          processed.document_types = filters.document_types.includes("*") ? [] : filters.document_types
+          processed.owners = filters.owners.includes("*") ? [] : filters.owners
+          
+          // Only include filters if any array has values
+          const hasFilters = processed.data_sources.length > 0 || 
+                            processed.document_types.length > 0 || 
+                            processed.owners.length > 0
+          return hasFilters ? { filters: processed } : {}
           })()),
           limit: parsedFilterData?.limit ?? 10,
           scoreThreshold: parsedFilterData?.scoreThreshold ?? 0
