@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { useSearchParams } from "next/navigation"
+import { useState, useEffect, useCallback, useRef } from "react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -26,12 +26,13 @@ interface SearchResponse {
 }
 
 function SearchPage() {
-  const searchParams = useSearchParams()
+
   const { selectedFilter, parsedFilterData } = useKnowledgeFilter()
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<SearchResult[]>([])
   const [searchPerformed, setSearchPerformed] = useState(false)
+  const prevFilterDataRef = useRef<string>("")
 
   const handleSearch = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -42,7 +43,18 @@ function SearchPage() {
 
     try {
       // Build search payload with global filter data
-      const searchPayload: any = { 
+      interface SearchPayload {
+        query: string;
+        limit: number;
+        scoreThreshold: number;
+        filters?: {
+          data_sources?: string[];
+          document_types?: string[];
+          owners?: string[];
+        };
+      }
+
+      const searchPayload: SearchPayload = { 
         query,
         limit: parsedFilterData?.limit || 10,
         scoreThreshold: parsedFilterData?.scoreThreshold || 0
@@ -59,7 +71,7 @@ function SearchPage() {
           !filters.owners.includes("*")
 
         if (hasSpecificFilters) {
-          const processedFilters: any = {}
+          const processedFilters: SearchPayload['filters'] = {}
           
           // Only add filter arrays that don't contain wildcards
           if (!filters.data_sources.includes("*")) {
@@ -114,12 +126,32 @@ function SearchPage() {
     }
   }, [parsedFilterData])
 
-  // Auto-refresh search when filter changes (if search was already performed)
+  // Auto-refresh search when filter changes (but only if search was already performed)
   useEffect(() => {
-    if (searchPerformed && query.trim()) {
+    if (!parsedFilterData) return
+    
+    // Create a stable string representation of the filter data for comparison
+    const currentFilterString = JSON.stringify({
+      filters: parsedFilterData.filters,
+      limit: parsedFilterData.limit,
+      scoreThreshold: parsedFilterData.scoreThreshold
+    })
+    
+    // Only trigger search if filter data actually changed and we've done a search before
+    if (prevFilterDataRef.current !== "" && 
+        prevFilterDataRef.current !== currentFilterString && 
+        searchPerformed && 
+        query.trim()) {
+      
+      console.log("Filter changed, auto-refreshing search")
       handleSearch()
     }
-  }, [parsedFilterData]) // Only depend on parsedFilterData to avoid infinite loop
+    
+    // Update the ref with current filter data
+    prevFilterDataRef.current = currentFilterString
+  }, [parsedFilterData, searchPerformed, query, handleSearch])
+
+
 
 
   return (
