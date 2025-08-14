@@ -17,4 +17,13 @@ async def search(request: Request, search_service, session_manager):
     jwt_token = request.cookies.get("auth_token")
     
     result = await search_service.search(query, user_id=user.user_id, jwt_token=jwt_token, filters=filters, limit=limit, score_threshold=score_threshold)
-    return JSONResponse(result)
+    
+    # Return appropriate HTTP status codes
+    if result.get("success"):
+        return JSONResponse(result, status_code=200)
+    else:
+        error_msg = result.get("error", "")
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
+            return JSONResponse(result, status_code=403)
+        else:
+            return JSONResponse(result, status_code=500)

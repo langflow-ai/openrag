@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { MessageCircle, Send, Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
 
 interface Message {
   role: "user" | "assistant"
@@ -56,7 +56,6 @@ interface RequestBody {
 }
 
 function ChatPage() {
-  const searchParams = useSearchParams()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
@@ -78,51 +77,9 @@ function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const { addTask } = useTask()
+  const { selectedFilter, parsedFilterData } = useKnowledgeFilter()
 
-  // Context-related state
-  const [selectedFilters, setSelectedFilters] = useState<SelectedFilters>({
-    data_sources: [],
-    document_types: [],
-    owners: []
-  })
-  const [resultLimit, setResultLimit] = useState(10)
-  const [scoreThreshold, setScoreThreshold] = useState(0)
-  const [loadedContextName, setLoadedContextName] = useState<string | null>(null)
 
-  // Load knowledge filter if filterId is provided in URL
-  useEffect(() => {
-    const filterId = searchParams.get('filterId')
-    if (filterId) {
-      loadKnowledgeFilter(filterId)
-    }
-  }, [searchParams])
-
-  const loadKnowledgeFilter = async (filterId: string) => {
-    try {
-      const response = await fetch(`/api/knowledge-filter/${filterId}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-
-      const result = await response.json()
-      if (response.ok && result.success) {
-        const filter = result.filter
-        const parsedQueryData = JSON.parse(filter.query_data)
-        
-        // Load the context data into state
-        setSelectedFilters(parsedQueryData.filters)
-        setResultLimit(parsedQueryData.limit)
-        setScoreThreshold(parsedQueryData.scoreThreshold)
-        setLoadedContextName(filter.name)
-      } else {
-        console.error("Failed to load knowledge filter:", result.error)
-      }
-    } catch (error) {
-      console.error("Error loading knowledge filter:", error)
-    }
-  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -279,20 +236,36 @@ function ChatPage() {
     inputRef.current?.focus()
   }, [])
 
+  // Update input when global filter query changes
+  useEffect(() => {
+    if (parsedFilterData?.query) {
+      setInput(parsedFilterData.query)
+    }
+  }, [parsedFilterData])
+
   const handleSSEStream = async (userMessage: Message) => {
     const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
     
     try {
-      const hasFilters = selectedFilters.data_sources.length > 0 || 
-                        selectedFilters.document_types.length > 0 || 
-                        selectedFilters.owners.length > 0
-
-      const requestBody: RequestBody = { 
+      const requestBody: RequestBody = {
         prompt: userMessage.content,
         stream: true,
-        ...(hasFilters && { filters: selectedFilters }),
-        limit: resultLimit,
-        scoreThreshold: scoreThreshold
+        ...(parsedFilterData?.filters && (() => {
+          const filters = parsedFilterData.filters
+          const processed: SelectedFilters = {}
+          if (!filters.data_sources.includes("*")) {
+            processed.data_sources = filters.data_sources
+          }
+          if (!filters.document_types.includes("*")) {
+            processed.document_types = filters.document_types
+          }
+          if (!filters.owners.includes("*")) {
+            processed.owners = filters.owners
+          }
+          return Object.keys(processed).length > 0 ? { filters: processed } : {}
+        })()),
+        limit: parsedFilterData?.limit ?? 10,
+        scoreThreshold: parsedFilterData?.scoreThreshold ?? 0
       }
       
       // Add previous_response_id if we have one for this endpoint
@@ -748,15 +721,24 @@ function ChatPage() {
       try {
         const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
         
-        const hasFilters = selectedFilters.data_sources.length > 0 || 
-                          selectedFilters.document_types.length > 0 || 
-                          selectedFilters.owners.length > 0
-
-        const requestBody: RequestBody = { 
+        const requestBody: RequestBody = {
           prompt: userMessage.content,
-          ...(hasFilters && { filters: selectedFilters }),
-          limit: resultLimit,
-          scoreThreshold: scoreThreshold
+          ...(parsedFilterData?.filters && (() => {
+            const filters = parsedFilterData.filters
+            const processed: SelectedFilters = {}
+            if (!filters.data_sources.includes("*")) {
+              processed.data_sources = filters.data_sources
+            }
+            if (!filters.document_types.includes("*")) {
+              processed.document_types = filters.document_types
+            }
+            if (!filters.owners.includes("*")) {
+              processed.owners = filters.owners
+            }
+            return Object.keys(processed).length > 0 ? { filters: processed } : {}
+          })()),
+          limit: parsedFilterData?.limit ?? 10,
+          scoreThreshold: parsedFilterData?.scoreThreshold ?? 0
         }
         
         // Add previous_response_id if we have one for this endpoint
@@ -1042,9 +1024,9 @@ function ChatPage() {
             <div className="flex items-center gap-2">
               <MessageCircle className="h-5 w-5" />
               <CardTitle>Chat</CardTitle>
-              {loadedContextName && (
+              {selectedFilter && (
                 <span className="text-sm font-normal text-blue-400 bg-blue-400/10 px-2 py-1 rounded">
-                  Context: {loadedContextName}
+                  Context: {selectedFilter.name}
                 </span>
               )}
             </div>
@@ -1093,9 +1075,9 @@ function ChatPage() {
           <CardDescription>
             Chat with AI about your indexed documents using {endpoint === "chat" ? "Chat" : "Langflow"} endpoint 
             {asyncMode ? " with real-time streaming" : ""}
-            {loadedContextName && (
+            {selectedFilter && (
               <span className="block text-blue-400 text-xs mt-1">
-                Using search context with configured filters and settings
+                Using knowledge filter: {selectedFilter.name}
               </span>
             )}
           </CardDescription>
