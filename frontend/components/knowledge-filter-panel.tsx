@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Filter, X, Edit3, Save, Settings, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
+import { X, Edit3, Save, Settings, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -11,16 +11,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { useKnowledgeFilter } from '@/contexts/knowledge-filter-context'
 
-interface ParsedQueryData {
-  query: string
-  filters: {
-    data_sources: string[]
-    document_types: string[]
-    owners: string[]
-  }
-  limit: number
-  scoreThreshold: number
-}
 
 interface FacetBucket {
   key: string
@@ -143,14 +133,7 @@ export function KnowledgeFilterPanel() {
     }))
   }
 
-  const handleFilterChange = (facetType: keyof typeof selectedFilters, value: string, checked: boolean) => {
-    setSelectedFilters(prev => ({
-      ...prev,
-      [facetType]: checked 
-        ? [...prev[facetType], value]
-        : prev[facetType].filter(item => item !== value)
-    }))
-  }
+
 
   const selectAllFilters = () => {
     // Use wildcards instead of listing all specific items
@@ -276,7 +259,6 @@ export function KnowledgeFilterPanel() {
     if (!buckets || buckets.length === 0) return null
     
     const isAllSelected = selectedFilters[facetType].includes("*") // Wildcard
-    const hasSpecificSelections = selectedFilters[facetType].some(item => item !== "*")
     
     const handleAllToggle = (checked: boolean) => {
       if (checked) {
