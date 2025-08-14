@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Upload, FolderOpen, Loader2, PlugZap, CheckCircle, XCircle, RefreshCw, Download, AlertCircle, Database } from "lucide-react"
+import { Upload, FolderOpen, Loader2, PlugZap, RefreshCw, Download } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
 import { useAuth } from "@/contexts/auth-context"
@@ -42,7 +42,7 @@ interface Connection {
 
 function KnowledgeSourcesPage() {
   const { isAuthenticated } = useAuth()
-  const { addTask, refreshTasks, tasks } = useTask()
+  const { addTask, tasks } = useTask()
   const searchParams = useSearchParams()
   
   // File upload state
@@ -319,8 +319,8 @@ function KnowledgeSourcesPage() {
       const result = await response.json()
       if (response.ok) {
         const aggs = result.aggregations || {}
-        const toBuckets = (agg: any): FacetBucket[] =>
-          (agg?.buckets || []).map((b: any) => ({ key: String(b.key), count: b.doc_count }))
+        const toBuckets = (agg: { buckets?: Array<{ key: string | number; doc_count: number }> }): FacetBucket[] =>
+          (agg?.buckets || []).map(b => ({ key: String(b.key), count: b.doc_count }))
         const dataSourceBuckets = toBuckets(aggs.data_sources)
         setFacetStats({
           data_sources: dataSourceBuckets.slice(0, 10),
