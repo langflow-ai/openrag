@@ -101,13 +101,14 @@ class SessionManager:
         else:
             self.users[user_id] = user
         
-        # Use provided issuer
+        # Use OpenSearch-compatible issuer for OIDC validation
+        oidc_issuer = "http://openrag-backend:8000"
         
         # Create JWT token with OIDC-compliant claims
         now = datetime.utcnow()
         token_payload = {
             # OIDC standard claims
-            "iss": issuer,  # Issuer from request
+            "iss": oidc_issuer,  # Fixed issuer for OpenSearch OIDC
             "sub": user_id,  # Subject (user ID)
             "aud": ["opensearch", "openrag"],  # Audience
             "exp": now + timedelta(days=7),  # Expiration

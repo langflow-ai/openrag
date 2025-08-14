@@ -25,9 +25,13 @@ class SearchService:
         filters = get_search_filters() or {}
         limit = get_search_limit()
         score_threshold = get_score_threshold()
-        # Embed the query
-        resp = await clients.patched_async_client.embeddings.create(model=EMBED_MODEL, input=[query])
-        query_embedding = resp.data[0].embedding
+        # Detect wildcard request ("*") to return global facets/stats without semantic search
+        is_wildcard_match_all = isinstance(query, str) and query.strip() == "*"
+
+        # Only embed when not doing match_all
+        if not is_wildcard_match_all:
+            resp = await clients.patched_async_client.embeddings.create(model=EMBED_MODEL, input=[query])
+            query_embedding = resp.data[0].embedding
         
         # Build filter clauses
         filter_clauses = []
@@ -54,9 +58,16 @@ class SearchService:
                         # Multiple values filter
                         filter_clauses.append({"terms": {field_name: values}})
         
-        # Hybrid search query structure (semantic + keyword)
-        search_body = {
-            "query": {
+        # Build query body
+        if is_wildcard_match_all:
+            # Match all documents; still allow filters to narrow scope
+            if filter_clauses:
+                query_block = {"bool": {"filter": filter_clauses}}
+            else:
+                query_block = {"match_all": {}}
+        else:
+            # Hybrid search query structure (semantic + keyword)
+            query_block = {
                 "bool": {
                     "should": [
                         {
@@ -78,9 +89,13 @@ class SearchService:
                             }
                         }
                     ],
-                    "minimum_should_match": 1
+                    "minimum_should_match": 1,
+                    **({"filter": filter_clauses} if filter_clauses else {})
                 }
-            },
+            }
+
+        search_body = {
+            "query": query_block,
             "aggs": {
                 "data_sources": {
                     "terms": {
@@ -105,13 +120,9 @@ class SearchService:
             "size": limit
         }
         
-        # Add score threshold if specified
-        if score_threshold > 0:
+        # Add score threshold only for hybrid (not meaningful for match_all)
+        if not is_wildcard_match_all and score_threshold > 0:
             search_body["min_score"] = score_threshold
-        
-        # Add filter clauses if any exist
-        if filter_clauses:
-            search_body["query"]["bool"]["filter"] = filter_clauses
         
         # Authentication required - DLS will handle document filtering automatically
         if not user_id:
@@ -137,7 +148,8 @@ class SearchService:
         # Return both transformed results and aggregations
         return {
             "results": chunks,
-            "aggregations": results.get("aggregations", {})
+            "aggregations": results.get("aggregations", {}),
+            "total": (results.get("hits", {}).get("total", {}).get("value") if isinstance(results.get("hits", {}).get("total"), dict) else results.get("hits", {}).get("total"))
         }
 
     async def search(self, query: str, user_id: str = None, jwt_token: str = None, filters: Dict[str, Any] = None, limit: int = 10, score_threshold: float = 0) -> Dict[str, Any]:

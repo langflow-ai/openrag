@@ -34,7 +34,16 @@ async def create_knowledge_filter(request: Request, knowledge_filter_service, se
     }
     
     result = await knowledge_filter_service.create_knowledge_filter(filter_doc, user_id=user.user_id, jwt_token=jwt_token)
-    return JSONResponse(result)
+    
+    # Return appropriate HTTP status codes
+    if result.get("success"):
+        return JSONResponse(result, status_code=201)  # Created
+    else:
+        error_msg = result.get("error", "")
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
+            return JSONResponse(result, status_code=403)
+        else:
+            return JSONResponse(result, status_code=500)
 
 async def search_knowledge_filters(request: Request, knowledge_filter_service, session_manager):
     """Search for knowledge filters by name, description, or query content"""
@@ -47,7 +56,16 @@ async def search_knowledge_filters(request: Request, knowledge_filter_service, s
     jwt_token = request.cookies.get("auth_token")
     
     result = await knowledge_filter_service.search_knowledge_filters(query, user_id=user.user_id, jwt_token=jwt_token, limit=limit)
-    return JSONResponse(result)
+    
+    # Return appropriate HTTP status codes
+    if result.get("success"):
+        return JSONResponse(result, status_code=200)
+    else:
+        error_msg = result.get("error", "")
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
+            return JSONResponse(result, status_code=403)
+        else:
+            return JSONResponse(result, status_code=500)
 
 async def get_knowledge_filter(request: Request, knowledge_filter_service, session_manager):
     """Get a specific knowledge filter by ID"""
@@ -59,7 +77,18 @@ async def get_knowledge_filter(request: Request, knowledge_filter_service, sessi
     jwt_token = request.cookies.get("auth_token")
     
     result = await knowledge_filter_service.get_knowledge_filter(filter_id, user_id=user.user_id, jwt_token=jwt_token)
-    return JSONResponse(result)
+    
+    # Return appropriate HTTP status codes
+    if result.get("success"):
+        return JSONResponse(result, status_code=200)
+    else:
+        error_msg = result.get("error", "")
+        if "not found" in error_msg.lower():
+            return JSONResponse(result, status_code=404)
+        elif "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
+            return JSONResponse(result, status_code=403)
+        else:
+            return JSONResponse(result, status_code=500)
 
 async def update_knowledge_filter(request: Request, knowledge_filter_service, session_manager):
     """Update an existing knowledge filter by delete + recreate (due to DLS limitations)"""
@@ -99,7 +128,16 @@ async def update_knowledge_filter(request: Request, knowledge_filter_service, se
     
     # Recreate the knowledge filter
     result = await knowledge_filter_service.create_knowledge_filter(updated_filter, user_id=user.user_id, jwt_token=jwt_token)
-    return JSONResponse(result)
+    
+    # Return appropriate HTTP status codes
+    if result.get("success"):
+        return JSONResponse(result, status_code=200)  # Updated successfully
+    else:
+        error_msg = result.get("error", "")
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
+            return JSONResponse(result, status_code=403)
+        else:
+            return JSONResponse(result, status_code=500)
 
 async def delete_knowledge_filter(request: Request, knowledge_filter_service, session_manager):
     """Delete a knowledge filter"""
@@ -111,4 +149,15 @@ async def delete_knowledge_filter(request: Request, knowledge_filter_service, se
     jwt_token = request.cookies.get("auth_token")
     
     result = await knowledge_filter_service.delete_knowledge_filter(filter_id, user_id=user.user_id, jwt_token=jwt_token)
-    return JSONResponse(result)
+    
+    # Return appropriate HTTP status codes
+    if result.get("success"):
+        return JSONResponse(result, status_code=200)
+    else:
+        error_msg = result.get("error", "")
+        if "not found" in error_msg.lower() or "already deleted" in error_msg.lower():
+            return JSONResponse(result, status_code=404)
+        elif "access denied" in error_msg.lower() or "insufficient permissions" in error_msg.lower():
+            return JSONResponse(result, status_code=403)
+        else:
+            return JSONResponse(result, status_code=500)

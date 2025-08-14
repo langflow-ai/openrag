@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Search, Settings, MessageCircle, PlugZap, BookOpenCheck } from "lucide-react"
+import { Search, Database, MessageCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function Navigation() {
@@ -10,34 +10,22 @@ export function Navigation() {
 
   const routes = [
     {
-      label: "Ingest",
-      icon: Settings,
-      href: "/admin",
-      active: pathname === "/admin",
+      label: "Knowledge Sources",
+      icon: Database,
+      href: "/knowledge-sources",
+      active: pathname === "/" || pathname === "/knowledge-sources",
     },
     {
       label: "Search",
       icon: Search,
-      href: "/",
-      active: pathname === "/",
+      href: "/search",
+      active: pathname === "/search",
     },
     {
       label: "Chat",
       icon: MessageCircle,
       href: "/chat",
       active: pathname === "/chat",
-    },
-    {
-      label: "Knowledge Filters",
-      icon: BookOpenCheck,
-      href: "/knowledge-filters",
-      active: pathname.startsWith("/knowledge-filters"),
-    },
-    {
-      label: "Connectors",
-      icon: PlugZap,
-      href: "/connectors",
-      active: pathname.startsWith("/connectors"),
     },
   ]
 

@@ -1,11 +1,17 @@
+"use client"
+
 import { Navigation } from "@/components/navigation";
 import { ModeToggle } from "@/components/mode-toggle";
+import { KnowledgeFilterDropdown } from "@/components/knowledge-filter-dropdown";
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 
 interface NavigationLayoutProps {
   children: React.ReactNode;
 }
 
 export function NavigationLayout({ children }: NavigationLayoutProps) {
+  const { selectedFilter, setSelectedFilter } = useKnowledgeFilter();
+  
   return (
     <div className="h-full relative">
       <div className="hidden h-full md:flex md:w-72 md:flex-col md:fixed md:inset-y-0 z-[80] border-r border-border/40">
@@ -24,7 +30,11 @@ export function NavigationLayout({ children }: NavigationLayoutProps) {
                 <div className="w-full flex-1 md:w-auto md:flex-none">
                   {/* Search component could go here */}
                 </div>
-                <nav className="flex items-center">
+                <nav className="flex items-center space-x-2">
+                  <KnowledgeFilterDropdown 
+                    selectedFilter={selectedFilter}
+                    onFilterSelect={setSelectedFilter}
+                  />
                   <ModeToggle />
                 </nav>
               </div>

@@ -11,7 +11,7 @@ function LoginPageContent() {
   const { isLoading, isAuthenticated, login } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirect = searchParams.get('redirect') || '/'
+  const redirect = searchParams.get('redirect') || '/knowledge-sources'
 
   // Redirect if already authenticated
   useEffect(() => {
