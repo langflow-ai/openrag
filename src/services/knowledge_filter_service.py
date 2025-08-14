@@ -128,4 +128,10 @@ class KnowledgeFilterService:
                 return {"success": False, "error": "Failed to delete knowledge filter"}
                 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            error_str = str(e)
+            if "not_found" in error_str or "NotFoundError" in error_str:
+                return {"success": False, "error": "Knowledge filter not found or already deleted"}
+            elif "AuthenticationException" in error_str:
+                return {"success": False, "error": "Access denied: insufficient permissions"}
+            else:
+                return {"success": False, "error": f"Delete operation failed: {error_str}"}
