@@ -17,8 +17,9 @@ class GoogleDriveOAuth:
         'https://www.googleapis.com/auth/drive.metadata.readonly'
     ]
     
-    def __init__(self, client_id: str = None, token_file: str = "token.json"):
+    def __init__(self, client_id: str = None, client_secret: str = None, token_file: str = "token.json"):
         self.client_id = client_id
+        self.client_secret = client_secret
         self.token_file = token_file
         self.creds: Optional[Credentials] = None
     
@@ -35,7 +36,7 @@ class GoogleDriveOAuth:
                 id_token=token_data.get('id_token'),
                 token_uri="https://oauth2.googleapis.com/token",
                 client_id=self.client_id,
-                client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),  # Need for refresh
+                client_secret=self.client_secret,  # Need for refresh
                 scopes=token_data.get('scopes', self.SCOPES)
             )
             
@@ -54,15 +55,37 @@ class GoogleDriveOAuth:
         return self.creds
     
     async def save_credentials(self):
-        """Save credentials to token file"""
+        """Save credentials to token file (without client_secret)"""
         if self.creds:
+            # Create minimal token data without client_secret
+            token_data = {
+                "token": self.creds.token,
+                "refresh_token": self.creds.refresh_token,
+                "id_token": self.creds.id_token,
+                "scopes": self.creds.scopes,
+            }
+            
+            # Add expiry if available
+            if self.creds.expiry:
+                token_data["expiry"] = self.creds.expiry.isoformat()
+            
             async with aiofiles.open(self.token_file, 'w') as f:
-                await f.write(self.creds.to_json())
+                await f.write(json.dumps(token_data, indent=2))
     
     def create_authorization_url(self, redirect_uri: str) -> str:
         """Create authorization URL for OAuth flow"""
-        flow = Flow.from_client_secrets_file(
-            self.credentials_file, 
+        # Create flow from client credentials directly
+        client_config = {
+            "web": {
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token"
+            }
+        }
+        
+        flow = Flow.from_client_config(
+            client_config,
             scopes=self.SCOPES,
             redirect_uri=redirect_uri
         )

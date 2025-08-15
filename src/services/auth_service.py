@@ -6,7 +6,7 @@ import aiofiles
 from datetime import datetime, timedelta
 from typing import Optional
 
-from config.settings import GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, WEBHOOK_BASE_URL
+from config.settings import WEBHOOK_BASE_URL
 from session_manager import SessionManager
 
 class AuthService:
@@ -24,13 +24,11 @@ class AuthService:
         if not redirect_uri:
             raise ValueError("redirect_uri is required")
         
-        if not GOOGLE_OAUTH_CLIENT_ID:
-            raise ValueError("Google OAuth client ID not configured")
+        # We'll validate client credentials when creating the connector
         
         # Create connection configuration
         token_file = f"{provider}_{purpose}_{uuid.uuid4().hex[:8]}.json"
         config = {
-            "client_id": GOOGLE_OAUTH_CLIENT_ID,
             "token_file": token_file,
             "provider": provider,
             "purpose": purpose,
@@ -41,8 +39,8 @@ class AuthService:
         if WEBHOOK_BASE_URL:
             config["webhook_url"] = f"{WEBHOOK_BASE_URL}/connectors/{provider}_drive/webhook"
         
-        # Create connection in manager
-        connector_type = f"{provider}_drive" if purpose == "data_source" else f"{provider}_auth"
+        # Create connection in manager (always use _drive connector type as it handles OAuth)
+        connector_type = f"{provider}_drive"
         connection_id = await self.connector_service.connection_manager.create_connection(
             connector_type=connector_type,
             name=connection_name,
@@ -57,8 +55,14 @@ class AuthService:
             'https://www.googleapis.com/auth/drive.metadata.readonly'
         ]
 
+        # Get client_id from environment variable (same as connector would do)
+        import os
+        client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+        if not client_id:
+            raise ValueError("GOOGLE_OAUTH_CLIENT_ID environment variable not set")
+        
         oauth_config = {
-            "client_id": GOOGLE_OAUTH_CLIENT_ID,
+            "client_id": client_id,
             "scopes": scopes,
             "redirect_uri": redirect_uri,
             "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -95,10 +99,13 @@ class AuthService:
                 raise ValueError("Redirect URI not found in connection config")
 
             token_url = "https://oauth2.googleapis.com/token"
+            # Get connector to access client credentials
+            connector = self.connector_service.connection_manager._create_connector(connection_config)
+            
             token_payload = {
                 "code": authorization_code,
-                "client_id": connection_config.config["client_id"],
-                "client_secret": GOOGLE_OAUTH_CLIENT_SECRET,
+                "client_id": connector.get_client_id(),
+                "client_secret": connector.get_client_secret(),
                 "redirect_uri": redirect_uri,
                 "grant_type": "authorization_code"
             }
@@ -111,7 +118,7 @@ class AuthService:
 
             token_data = token_response.json()
 
-            # Store tokens in the token file
+            # Store tokens in the token file (without client_secret)
             token_file_data = {
                 "token": token_data["access_token"],
                 "refresh_token": token_data.get("refresh_token"),
