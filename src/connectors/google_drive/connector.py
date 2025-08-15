@@ -15,7 +15,7 @@ from .oauth import GoogleDriveOAuth
 # Global worker service cache for process pools
 _worker_drive_service = None
 
-def get_worker_drive_service(client_id: str, token_file: str):
+def get_worker_drive_service(client_id: str, client_secret: str, token_file: str):
     """Get or create a Google Drive service instance for this worker process"""
     global _worker_drive_service
     if _worker_drive_service is None:
@@ -23,7 +23,7 @@ def get_worker_drive_service(client_id: str, token_file: str):
         
         # Create OAuth instance and load credentials in worker
         from .oauth import GoogleDriveOAuth
-        oauth = GoogleDriveOAuth(client_id=client_id, token_file=token_file)
+        oauth = GoogleDriveOAuth(client_id=client_id, client_secret=client_secret, token_file=token_file)
         
         # Load credentials synchronously in worker
         import asyncio
@@ -40,9 +40,9 @@ def get_worker_drive_service(client_id: str, token_file: str):
 
 
 # Module-level functions for process pool execution (must be pickleable)
-def _sync_list_files_worker(client_id, token_file, query, page_token, page_size):
+def _sync_list_files_worker(client_id, client_secret, token_file, query, page_token, page_size):
     """Worker function for listing files in process pool"""
-    service = get_worker_drive_service(client_id, token_file)
+    service = get_worker_drive_service(client_id, client_secret, token_file)
     return service.files().list(
         q=query,
         pageSize=page_size,
@@ -51,16 +51,16 @@ def _sync_list_files_worker(client_id, token_file, query, page_token, page_size)
     ).execute()
 
 
-def _sync_get_metadata_worker(client_id, token_file, file_id):
+def _sync_get_metadata_worker(client_id, client_secret, token_file, file_id):
     """Worker function for getting file metadata in process pool"""
-    service = get_worker_drive_service(client_id, token_file)
+    service = get_worker_drive_service(client_id, client_secret, token_file)
     return service.files().get(
         fileId=file_id,
         fields="id, name, mimeType, modifiedTime, createdTime, webViewLink, permissions, owners, size"
     ).execute()
 
 
-def _sync_download_worker(client_id, token_file, file_id, mime_type, file_size=None):
+def _sync_download_worker(client_id, client_secret, token_file, file_id, mime_type, file_size=None):
     """Worker function for downloading files in process pool"""
     import signal
     import time
@@ -91,7 +91,7 @@ def _sync_download_worker(client_id, token_file, file_id, mime_type, file_size=N
     signal.alarm(timeout_seconds)
     
     try:
-        service = get_worker_drive_service(client_id, token_file)
+        service = get_worker_drive_service(client_id, client_secret, token_file)
         
         # For Google native formats, export as PDF
         if mime_type.startswith('application/vnd.google-apps.'):
@@ -129,6 +129,10 @@ def _sync_download_worker(client_id, token_file, file_id, mime_type, file_size=N
 class GoogleDriveConnector(BaseConnector):
     """Google Drive connector with OAuth and webhook support"""
     
+    # OAuth environment variables
+    CLIENT_ID_ENV_VAR = "GOOGLE_OAUTH_CLIENT_ID"
+    CLIENT_SECRET_ENV_VAR = "GOOGLE_OAUTH_CLIENT_SECRET"
+    
     # Supported file types that can be processed by docling
     SUPPORTED_MIMETYPES = {
         'application/pdf',
@@ -148,7 +152,8 @@ class GoogleDriveConnector(BaseConnector):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.oauth = GoogleDriveOAuth(
-            client_id=config.get('client_id'),
+            client_id=self.get_client_id(),
+            client_secret=self.get_client_secret(),
             token_file=config.get('token_file', 'gdrive_token.json')
         )
         self.service = None
@@ -230,6 +235,7 @@ class GoogleDriveConnector(BaseConnector):
                 process_pool, 
                 _sync_list_files_worker, 
                 self.oauth.client_id,
+                self.oauth.client_secret,
                 self.oauth.token_file,
                 query, 
                 page_token,  # page_token should come before page_size
@@ -274,6 +280,7 @@ class GoogleDriveConnector(BaseConnector):
                 process_pool, 
                 _sync_get_metadata_worker, 
                 self.oauth.client_id,
+                self.oauth.client_secret,
                 self.oauth.token_file,
                 file_id
             )
@@ -319,6 +326,7 @@ class GoogleDriveConnector(BaseConnector):
             process_pool, 
             _sync_download_worker, 
             self.oauth.client_id,
+            self.oauth.client_secret,
             self.oauth.token_file,
             file_id, 
             mime_type,

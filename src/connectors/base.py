@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
+import os
 
 
 @dataclass
@@ -49,9 +50,35 @@ class ConnectorDocument:
 class BaseConnector(ABC):
     """Base class for all document connectors"""
     
+    # Each connector must define the environment variable names for OAuth credentials
+    CLIENT_ID_ENV_VAR: str = None
+    CLIENT_SECRET_ENV_VAR: str = None
+    
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self._authenticated = False
+    
+    def get_client_id(self) -> str:
+        """Get the OAuth client ID from environment variable"""
+        if not self.CLIENT_ID_ENV_VAR:
+            raise NotImplementedError(f"{self.__class__.__name__} must define CLIENT_ID_ENV_VAR")
+        
+        client_id = os.getenv(self.CLIENT_ID_ENV_VAR)
+        if not client_id:
+            raise ValueError(f"Environment variable {self.CLIENT_ID_ENV_VAR} is not set")
+        
+        return client_id
+    
+    def get_client_secret(self) -> str:
+        """Get the OAuth client secret from environment variable"""
+        if not self.CLIENT_SECRET_ENV_VAR:
+            raise NotImplementedError(f"{self.__class__.__name__} must define CLIENT_SECRET_ENV_VAR")
+        
+        secret = os.getenv(self.CLIENT_SECRET_ENV_VAR)
+        if not secret:
+            raise ValueError(f"Environment variable {self.CLIENT_SECRET_ENV_VAR} is not set")
+        
+        return secret
     
     @abstractmethod
     async def authenticate(self) -> bool:
