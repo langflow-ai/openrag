@@ -5,3 +5,7 @@
     docker compose build
 
     docker compose up
+
+CPU only:
+
+    docker compose -f docker-compose-cpu.yml up
