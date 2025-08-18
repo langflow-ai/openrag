@@ -4,22 +4,20 @@ from starlette.responses import JSONResponse
 
 async def upload(request: Request, document_service, session_manager):
     """Upload a single file"""
-    form = await request.form()
-    upload_file = form["file"]
-    user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
-    
-    result = await document_service.process_upload_file(upload_file, owner_user_id=user.user_id, jwt_token=jwt_token)
-    
-    # Return appropriate HTTP status codes
-    if result.get("success"):
+    try:
+        form = await request.form()
+        upload_file = form["file"]
+        user = request.state.user
+        jwt_token = request.cookies.get("auth_token")
+        
+        result = await document_service.process_upload_file(upload_file, owner_user_id=user.user_id, jwt_token=jwt_token)
         return JSONResponse(result, status_code=201)  # Created
-    else:
-        error_msg = result.get("error", "")
+    except Exception as e:
+        error_msg = str(e)
         if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse(result, status_code=403)
+            return JSONResponse({"error": error_msg}, status_code=403)
         else:
-            return JSONResponse(result, status_code=500)
+            return JSONResponse({"error": error_msg}, status_code=500)
 
 async def upload_path(request: Request, task_service, session_manager):
     """Upload all files from a directory path"""

@@ -9,6 +9,8 @@ from pathlib import Path
 
 from .base import BaseConnector
 from .google_drive import GoogleDriveConnector
+from .sharepoint import SharePointConnector
+from .onedrive import OneDriveConnector
 
 
 @dataclass
@@ -186,10 +188,54 @@ class ConnectionManager:
         
         return None
     
+    def get_available_connector_types(self) -> Dict[str, Dict[str, str]]:
+        """Get available connector types with their metadata"""
+        return {
+            "google_drive": {
+                "name": GoogleDriveConnector.CONNECTOR_NAME,
+                "description": GoogleDriveConnector.CONNECTOR_DESCRIPTION,
+                "icon": GoogleDriveConnector.CONNECTOR_ICON,
+                "available": self._is_connector_available("google_drive")
+            },
+            "sharepoint": {
+                "name": SharePointConnector.CONNECTOR_NAME,
+                "description": SharePointConnector.CONNECTOR_DESCRIPTION,
+                "icon": SharePointConnector.CONNECTOR_ICON,
+                "available": self._is_connector_available("sharepoint")
+            },
+            "onedrive": {
+                "name": OneDriveConnector.CONNECTOR_NAME,
+                "description": OneDriveConnector.CONNECTOR_DESCRIPTION,
+                "icon": OneDriveConnector.CONNECTOR_ICON,
+                "available": self._is_connector_available("onedrive")
+            }
+        }
+    
+    def _is_connector_available(self, connector_type: str) -> bool:
+        """Check if a connector type is available (has required env vars)"""
+        try:
+            temp_config = ConnectionConfig(
+                connection_id="temp",
+                connector_type=connector_type,
+                name="temp",
+                config={}
+            )
+            connector = self._create_connector(temp_config)
+            # Try to get credentials to check if env vars are set
+            connector.get_client_id()
+            connector.get_client_secret()
+            return True
+        except (ValueError, NotImplementedError):
+            return False
+    
     def _create_connector(self, config: ConnectionConfig) -> BaseConnector:
         """Factory method to create connector instances"""
         if config.connector_type == "google_drive":
             return GoogleDriveConnector(config.config)
+        elif config.connector_type == "sharepoint":
+            return SharePointConnector(config.config)
+        elif config.connector_type == "onedrive":
+            return OneDriveConnector(config.config)
         elif config.connector_type == "box":
             # Future: BoxConnector(config.config)
             raise NotImplementedError("Box connector not implemented yet")

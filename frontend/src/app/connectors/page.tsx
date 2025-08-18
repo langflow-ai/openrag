@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -52,23 +52,43 @@ function ConnectorsPage() {
   const [syncResults, setSyncResults] = useState<{[key: string]: SyncResult | null}>({})
   const [maxFiles, setMaxFiles] = useState<number>(10)
 
-  // Function definitions first
-  const checkConnectorStatuses = async () => {
-    // Initialize connectors list
-    setConnectors([
-      {
-        id: "google_drive",
-        name: "Google Drive",
-        description: "Connect your Google Drive to automatically sync documents",
-        icon: <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center text-white font-bold">G</div>,
-        status: "not_connected",
-        type: "google_drive"
-      },
-    ])
+  // Helper function to get connector icon
+  const getConnectorIcon = (iconName: string) => {
+    const iconMap: { [key: string]: React.ReactElement } = {
+      'google-drive': <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center text-white font-bold">G</div>,
+      'sharepoint': <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold">SP</div>,
+      'onedrive': <div className="w-8 h-8 bg-blue-400 rounded flex items-center justify-center text-white font-bold">OD</div>,
+    }
+    return iconMap[iconName] || <div className="w-8 h-8 bg-gray-500 rounded flex items-center justify-center text-white font-bold">?</div>
+  }
 
+  // Function definitions first
+  const checkConnectorStatuses = useCallback(async () => {
     try {
+      // Fetch available connectors from backend
+      const connectorsResponse = await fetch('/api/connectors')
+      if (!connectorsResponse.ok) {
+        throw new Error('Failed to load connectors')
+      }
+      
+      const connectorsResult = await connectorsResponse.json()
+      const connectorTypes = Object.keys(connectorsResult.connectors)
+      
+      // Initialize connectors list with metadata from backend
+      const initialConnectors = connectorTypes
+        .filter(type => connectorsResult.connectors[type].available) // Only show available connectors
+        .map(type => ({
+          id: type,
+          name: connectorsResult.connectors[type].name,
+          description: connectorsResult.connectors[type].description,
+          icon: getConnectorIcon(connectorsResult.connectors[type].icon),
+          status: "not_connected" as const,
+          type: type
+        }))
+      
+      setConnectors(initialConnectors)
+
       // Check status for each connector type
-      const connectorTypes = ["google_drive"]
       
       for (const connectorType of connectorTypes) {
         const response = await fetch(`/api/connectors/${connectorType}/status`)
@@ -92,7 +112,7 @@ function ConnectorsPage() {
     } catch (error) {
       console.error('Failed to check connector statuses:', error)
     }
-  }
+  }, [setConnectors])
 
   const handleConnect = async (connector: Connector) => {
     setIsConnecting(connector.id)
@@ -110,8 +130,8 @@ function ConnectorsPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          provider: connector.type.replace('_drive', ''), // "google_drive" -> "google"
-          purpose: "data_source",
+          connector_type: connector.type,
+          purpose: "data_source", 
           name: `${connector.name} Connection`,
           redirect_uri: redirectUri
         }),
@@ -262,7 +282,7 @@ function ConnectorsPage() {
       url.searchParams.delete('oauth_success')
       window.history.replaceState({}, '', url.toString())
     }
-  }, [searchParams, isAuthenticated])
+  }, [searchParams, isAuthenticated, checkConnectorStatuses])
 
   return (
     <div className="space-y-8">

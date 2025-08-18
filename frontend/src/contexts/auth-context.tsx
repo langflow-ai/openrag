@@ -68,7 +68,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        provider: 'google',
+        connector_type: 'google_drive',
         purpose: 'app_auth',
         name: 'App Authentication',
         redirect_uri: redirectUri

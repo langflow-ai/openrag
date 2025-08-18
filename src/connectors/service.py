@@ -5,6 +5,8 @@ from typing import Dict, Any, List, Optional
 
 from .base import BaseConnector, ConnectorDocument
 from .google_drive import GoogleDriveConnector
+from .sharepoint import SharePointConnector
+from .onedrive import OneDriveConnector
 from .connection_manager import ConnectionManager
 
 
@@ -28,7 +30,7 @@ class ConnectorService:
         """Get a connector by connection ID"""
         return await self.connection_manager.get_connector(connection_id)
     
-    async def process_connector_document(self, document: ConnectorDocument, owner_user_id: str, jwt_token: str = None) -> Dict[str, Any]:
+    async def process_connector_document(self, document: ConnectorDocument, owner_user_id: str, connector_type: str, jwt_token: str = None) -> Dict[str, Any]:
         """Process a document from a connector using existing processing pipeline"""
         
         # Create temporary file from document content
@@ -54,7 +56,7 @@ class ConnectorService:
                 # If successfully indexed, update the indexed documents with connector metadata
                 if result["status"] == "indexed":
                     # Update all chunks with connector-specific metadata
-                    await self._update_connector_metadata(document, owner_user_id, jwt_token)
+                    await self._update_connector_metadata(document, owner_user_id, connector_type, jwt_token)
                 
                 return {
                     **result,
@@ -66,7 +68,7 @@ class ConnectorService:
                 # Clean up temporary file
                 os.unlink(tmp_file.name)
     
-    async def _update_connector_metadata(self, document: ConnectorDocument, owner_user_id: str, jwt_token: str = None):
+    async def _update_connector_metadata(self, document: ConnectorDocument, owner_user_id: str, connector_type: str, jwt_token: str = None):
         """Update indexed chunks with connector-specific metadata"""
         # Find all chunks for this document
         query = {
@@ -86,7 +88,7 @@ class ConnectorService:
             update_body = {
                 "doc": {
                     "source_url": document.source_url,
-                    "connector_type": "google_drive",  # Could be passed as parameter
+                    "connector_type": connector_type,
                     # Additional ACL info beyond owner (already set by process_file_common)
                     "allowed_users": document.acl.allowed_users,
                     "allowed_groups": document.acl.allowed_groups,

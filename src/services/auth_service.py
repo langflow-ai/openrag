@@ -8,6 +8,12 @@ from typing import Optional
 
 from config.settings import WEBHOOK_BASE_URL
 from session_manager import SessionManager
+from connectors.google_drive.oauth import GoogleDriveOAuth
+from connectors.onedrive.oauth import OneDriveOAuth
+from connectors.sharepoint.oauth import SharePointOAuth
+from connectors.google_drive import GoogleDriveConnector
+from connectors.onedrive import OneDriveConnector  
+from connectors.sharepoint import SharePointConnector
 
 class AuthService:
     def __init__(self, session_manager: SessionManager, connector_service=None):
@@ -15,11 +21,16 @@ class AuthService:
         self.connector_service = connector_service
         self.used_auth_codes = set()  # Track used authorization codes
 
-    async def init_oauth(self, provider: str, purpose: str, connection_name: str, 
+    async def init_oauth(self, connector_type: str, purpose: str, connection_name: str, 
                         redirect_uri: str, user_id: str = None) -> dict:
         """Initialize OAuth flow for authentication or data source connection"""
-        if provider != "google":
-            raise ValueError("Unsupported provider")
+        # Validate connector_type based on purpose
+        if purpose == "app_auth" and connector_type != "google_drive":
+            raise ValueError("Only Google login supported for app authentication")
+        elif purpose == "data_source" and connector_type not in ["google_drive", "onedrive", "sharepoint"]:
+            raise ValueError(f"Unsupported connector type: {connector_type}")
+        elif purpose not in ["app_auth", "data_source"]:
+            raise ValueError(f"Unsupported purpose: {purpose}")
         
         if not redirect_uri:
             raise ValueError("redirect_uri is required")
@@ -27,20 +38,19 @@ class AuthService:
         # We'll validate client credentials when creating the connector
         
         # Create connection configuration
-        token_file = f"{provider}_{purpose}_{uuid.uuid4().hex[:8]}.json"
+        token_file = f"{connector_type}_{purpose}_{uuid.uuid4().hex[:8]}.json"
         config = {
             "token_file": token_file,
-            "provider": provider,
+            "connector_type": connector_type,
             "purpose": purpose,
             "redirect_uri": redirect_uri
         }
         
         # Only add webhook URL if WEBHOOK_BASE_URL is configured
         if WEBHOOK_BASE_URL:
-            config["webhook_url"] = f"{WEBHOOK_BASE_URL}/connectors/{provider}_drive/webhook"
+            config["webhook_url"] = f"{WEBHOOK_BASE_URL}/connectors/{connector_type}/webhook"
         
-        # Create connection in manager (always use _drive connector type as it handles OAuth)
-        connector_type = f"{provider}_drive"
+        # Create connection in manager
         connection_id = await self.connector_service.connection_manager.create_connection(
             connector_type=connector_type,
             name=connection_name,
@@ -48,25 +58,38 @@ class AuthService:
             user_id=user_id
         )
         
-        # Return OAuth configuration for client-side flow
-        scopes = [
-            'openid', 'email', 'profile',
-            'https://www.googleapis.com/auth/drive.readonly',
-            'https://www.googleapis.com/auth/drive.metadata.readonly'
-        ]
-
-        # Get client_id from environment variable (same as connector would do)
+        # Get OAuth configuration from connector and OAuth classes
         import os
-        client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+        
+        # Map connector types to their connector and OAuth classes
+        connector_class_map = {
+            "google_drive": (GoogleDriveConnector, GoogleDriveOAuth),
+            "onedrive": (OneDriveConnector, OneDriveOAuth),
+            "sharepoint": (SharePointConnector, SharePointOAuth)
+        }
+        
+        connector_class, oauth_class = connector_class_map.get(connector_type, (None, None))
+        if not connector_class or not oauth_class:
+            raise ValueError(f"No classes found for connector type: {connector_type}")
+        
+        # Get scopes from OAuth class
+        scopes = oauth_class.SCOPES
+        
+        # Get endpoints from OAuth class
+        auth_endpoint = oauth_class.AUTH_ENDPOINT
+        token_endpoint = oauth_class.TOKEN_ENDPOINT
+        
+        # Get client_id from environment variable using connector's env var name
+        client_id = os.getenv(connector_class.CLIENT_ID_ENV_VAR)
         if not client_id:
-            raise ValueError("GOOGLE_OAUTH_CLIENT_ID environment variable not set")
+            raise ValueError(f"{connector_class.CLIENT_ID_ENV_VAR} environment variable not set")
         
         oauth_config = {
             "client_id": client_id,
             "scopes": scopes,
             "redirect_uri": redirect_uri,
-            "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
-            "token_endpoint": "https://oauth2.googleapis.com/token"
+            "authorization_endpoint": auth_endpoint,
+            "token_endpoint": token_endpoint
         }
         
         return {
@@ -98,9 +121,22 @@ class AuthService:
             if not redirect_uri:
                 raise ValueError("Redirect URI not found in connection config")
 
-            token_url = "https://oauth2.googleapis.com/token"
-            # Get connector to access client credentials
+            # Get connector to access client credentials and endpoints
             connector = self.connector_service.connection_manager._create_connector(connection_config)
+            
+            # Get token endpoint from connector type
+            connector_type = connection_config.connector_type
+            connector_class_map = {
+                "google_drive": (GoogleDriveConnector, GoogleDriveOAuth),
+                "onedrive": (OneDriveConnector, OneDriveOAuth),
+                "sharepoint": (SharePointConnector, SharePointOAuth)
+            }
+            
+            connector_class, oauth_class = connector_class_map.get(connector_type, (None, None))
+            if not connector_class or not oauth_class:
+                raise ValueError(f"No classes found for connector type: {connector_type}")
+            
+            token_url = oauth_class.TOKEN_ENDPOINT
             
             token_payload = {
                 "code": authorization_code,
@@ -119,14 +155,18 @@ class AuthService:
             token_data = token_response.json()
 
             # Store tokens in the token file (without client_secret)
+            # Use actual scopes from OAuth response
+            granted_scopes = token_data.get("scope")
+            if not granted_scopes:
+                raise ValueError(f"OAuth provider for {connector_type} did not return granted scopes in token response")
+            
+            # OAuth providers typically return scopes as a space-separated string
+            scopes = granted_scopes.split(" ") if isinstance(granted_scopes, str) else granted_scopes
+            
             token_file_data = {
                 "token": token_data["access_token"],
                 "refresh_token": token_data.get("refresh_token"),
-                "scopes": [
-                    "openid", "email", "profile",
-                    "https://www.googleapis.com/auth/drive.readonly",
-                    "https://www.googleapis.com/auth/drive.metadata.readonly"
-                ]
+                "scopes": scopes
             }
 
             # Add expiry if provided

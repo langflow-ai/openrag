@@ -13,9 +13,15 @@ class GoogleDriveOAuth:
     """Handles Google Drive OAuth authentication flow"""
     
     SCOPES = [
+        'openid',
+        'email', 
+        'profile',
         'https://www.googleapis.com/auth/drive.readonly',
         'https://www.googleapis.com/auth/drive.metadata.readonly'
     ]
+    
+    AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
+    TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
     
     def __init__(self, client_id: str = None, client_secret: str = None, token_file: str = "token.json"):
         self.client_id = client_id

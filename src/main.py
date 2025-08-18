@@ -278,6 +278,13 @@ def create_app():
               ), methods=["POST"]),
         
         # Connector endpoints
+        Route("/connectors", 
+              require_auth(services['session_manager'])(
+                  partial(connectors.list_connectors,
+                         connector_service=services['connector_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["GET"]),
+        
         Route("/connectors/{connector_type}/sync", 
               require_auth(services['session_manager'])(
                   partial(connectors.connector_sync,

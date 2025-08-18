@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, ReactNode } from 'react'
 
 interface KnowledgeFilter {
   id: string
@@ -61,9 +61,6 @@ export function KnowledgeFilterProvider({ children }: KnowledgeFilterProviderPro
         const parsed = JSON.parse(filter.query_data) as ParsedQueryData
         setParsedFilterData(parsed)
         
-        // Store in localStorage for persistence across page reloads
-        localStorage.setItem('selectedKnowledgeFilter', JSON.stringify(filter))
-        
         // Auto-open panel when filter is selected
         setIsPanelOpen(true)
       } catch (error) {
@@ -72,7 +69,6 @@ export function KnowledgeFilterProvider({ children }: KnowledgeFilterProviderPro
       }
     } else {
       setParsedFilterData(null)
-      localStorage.removeItem('selectedKnowledgeFilter')
       setIsPanelOpen(false)
     }
   }
@@ -93,19 +89,6 @@ export function KnowledgeFilterProvider({ children }: KnowledgeFilterProviderPro
     setIsPanelOpen(false) // Close panel but keep filter selected
   }
 
-  // Load persisted filter on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('selectedKnowledgeFilter')
-      if (saved) {
-        const filter = JSON.parse(saved) as KnowledgeFilter
-        setSelectedFilter(filter)
-      }
-    } catch (error) {
-      console.error('Error loading persisted filter:', error)
-      localStorage.removeItem('selectedKnowledgeFilter')
-    }
-  }, [])
 
   const value: KnowledgeFilterContextType = {
     selectedFilter,
