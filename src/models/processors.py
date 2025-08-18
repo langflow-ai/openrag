@@ -63,9 +63,10 @@ class ConnectorFileProcessor(TaskProcessor):
         file_id = item  # item is the connector file ID
         file_info = self.file_info_map.get(file_id)
         
-        # Get the connector
+        # Get the connector and connection info
         connector = await self.connector_service.get_connector(self.connection_id)
-        if not connector:
+        connection = await self.connector_service.connection_manager.get_connection(self.connection_id)
+        if not connector or not connection:
             raise ValueError(f"Connection '{self.connection_id}' not found")
         
         # Get file content from connector (the connector will fetch metadata if needed)
@@ -76,7 +77,7 @@ class ConnectorFileProcessor(TaskProcessor):
             raise ValueError("user_id not provided to ConnectorFileProcessor")
         
         # Process using existing pipeline
-        result = await self.connector_service.process_connector_document(document, self.user_id)
+        result = await self.connector_service.process_connector_document(document, self.user_id, connection.connector_type)
         
         file_task.status = TaskStatus.COMPLETED
         file_task.result = result

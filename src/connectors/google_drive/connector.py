@@ -133,6 +133,11 @@ class GoogleDriveConnector(BaseConnector):
     CLIENT_ID_ENV_VAR = "GOOGLE_OAUTH_CLIENT_ID"
     CLIENT_SECRET_ENV_VAR = "GOOGLE_OAUTH_CLIENT_SECRET"
     
+    # Connector metadata
+    CONNECTOR_NAME = "Google Drive"
+    CONNECTOR_DESCRIPTION = "Connect your Google Drive to automatically sync documents"
+    CONNECTOR_ICON = "google-drive"
+    
     # Supported file types that can be processed by docling
     SUPPORTED_MIMETYPES = {
         'application/pdf',
@@ -362,6 +367,10 @@ class GoogleDriveConnector(BaseConnector):
             user_permissions=user_permissions,
             group_permissions=group_permissions
         )
+    
+    def extract_webhook_channel_id(self, payload: Dict[str, Any], headers: Dict[str, str]) -> Optional[str]:
+        """Extract Google Drive channel ID from webhook headers"""
+        return headers.get('x-goog-channel-id')
     
     async def handle_webhook(self, payload: Dict[str, Any]) -> List[str]:
         """Handle Google Drive webhook notification"""

@@ -5,16 +5,16 @@ async def auth_init(request: Request, auth_service, session_manager):
     """Initialize OAuth flow for authentication or data source connection"""
     try:
         data = await request.json()
-        provider = data.get("provider")
+        connector_type = data.get("connector_type")
         purpose = data.get("purpose", "data_source")
-        connection_name = data.get("name", f"{provider}_{purpose}")
+        connection_name = data.get("name", f"{connector_type}_{purpose}")
         redirect_uri = data.get("redirect_uri")
         
         user = getattr(request.state, 'user', None)
         user_id = user.user_id if user else None
         
         result = await auth_service.init_oauth(
-            provider, purpose, connection_name, redirect_uri, user_id
+            connector_type, purpose, connection_name, redirect_uri, user_id
         )
         return JSONResponse(result)
         

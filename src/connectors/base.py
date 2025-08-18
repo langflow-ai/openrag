@@ -54,6 +54,11 @@ class BaseConnector(ABC):
     CLIENT_ID_ENV_VAR: str = None
     CLIENT_SECRET_ENV_VAR: str = None
     
+    # Connector metadata for UI
+    CONNECTOR_NAME: str = None
+    CONNECTOR_DESCRIPTION: str = None
+    CONNECTOR_ICON: str = None  # Icon identifier or emoji
+    
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self._authenticated = False
@@ -104,6 +109,17 @@ class BaseConnector(ABC):
     async def handle_webhook(self, payload: Dict[str, Any]) -> List[str]:
         """Handle webhook notification. Returns list of affected file IDs."""
         pass
+    
+    def handle_webhook_validation(self, request_method: str, headers: Dict[str, str], query_params: Dict[str, str]) -> Optional[str]:
+        """Handle webhook validation (e.g., for subscription setup). 
+        Returns validation response if applicable, None otherwise.
+        Default implementation returns None (no validation needed)."""
+        return None
+    
+    def extract_webhook_channel_id(self, payload: Dict[str, Any], headers: Dict[str, str]) -> Optional[str]:
+        """Extract channel/subscription ID from webhook payload/headers.
+        Must be implemented by each connector."""
+        raise NotImplementedError(f"{self.__class__.__name__} must implement extract_webhook_channel_id")
     
     @abstractmethod
     async def cleanup_subscription(self, subscription_id: str) -> bool:

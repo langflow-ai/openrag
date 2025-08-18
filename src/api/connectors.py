@@ -1,5 +1,14 @@
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, PlainTextResponse
+
+async def list_connectors(request: Request, connector_service, session_manager):
+    """List available connector types with metadata"""
+    try:
+        connector_types = connector_service.connection_manager.get_available_connector_types()
+        return JSONResponse({"connectors": connector_types})
+    except Exception as e:
+        print(f"Error listing connectors: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 async def connector_sync(request: Request, connector_service, session_manager):
     """Sync files from all active connections of a connector type"""
@@ -85,7 +94,29 @@ async def connector_status(request: Request, connector_service, session_manager)
 async def connector_webhook(request: Request, connector_service, session_manager):
     """Handle webhook notifications from any connector type"""
     connector_type = request.path_params.get("connector_type")
-    
+
+    # Handle webhook validation (connector-specific)
+    temp_config = {"token_file": "temp.json"}  
+    from connectors.connection_manager import ConnectionConfig
+    temp_connection = ConnectionConfig(
+        connection_id="temp",
+        connector_type=connector_type,
+        name="temp",
+        config=temp_config
+    )
+    try:
+        temp_connector = connector_service.connection_manager._create_connector(temp_connection)
+        validation_response = temp_connector.handle_webhook_validation(
+            request.method, 
+            dict(request.headers), 
+            dict(request.query_params)
+        )
+        if validation_response:
+            return PlainTextResponse(validation_response)
+    except (NotImplementedError, ValueError):
+        # Connector type not found or validation not needed
+        pass
+
     try:
         # Get the raw payload and headers
         payload = {}
@@ -109,8 +140,13 @@ async def connector_webhook(request: Request, connector_service, session_manager
         
         print(f"[WEBHOOK] {connector_type} notification received")
         
-        # Extract channel/subscription ID from headers (Google Drive specific)
-        channel_id = headers.get('x-goog-channel-id')
+        # Extract channel/subscription ID using connector-specific method
+        try:
+            temp_connector = connector_service.connection_manager._create_connector(temp_connection)
+            channel_id = temp_connector.extract_webhook_channel_id(payload, headers)
+        except (NotImplementedError, ValueError):
+            channel_id = None
+
         if not channel_id:
             print(f"[WEBHOOK] No channel ID found in {connector_type} webhook")
             return JSONResponse({"status": "ignored", "reason": "no_channel_id"})
@@ -132,7 +168,6 @@ async def connector_webhook(request: Request, connector_service, session_manager
                     connector = await connector_service._get_connector(active_connections[0].connection_id)
                     if connector:
                         print(f"[WEBHOOK] Cancelling unknown subscription {channel_id}")
-                        resource_id = headers.get('x-goog-resource-id')
                         await connector.cleanup_subscription(channel_id, resource_id)
                         print(f"[WEBHOOK] Successfully cancelled unknown subscription {channel_id}")
                     

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -150,27 +150,59 @@ function KnowledgeSourcesPage() {
     }
   }
 
-  // Connector functions
-  const checkConnectorStatuses = async () => {
-    setConnectors([
-      {
-        id: "google_drive",
-        name: "Google Drive",
-        description: "Connect your Google Drive to automatically sync documents",
-        icon: (
-          <div
-            className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold leading-none shrink-0"
-          >
-            G
-          </div>
-        ),
-        status: "not_connected",
-        type: "google_drive"
-      },
-    ])
+  // Helper function to get connector icon
+  const getConnectorIcon = (iconName: string) => {
+    const iconMap: { [key: string]: React.ReactElement } = {
+      'google-drive': (
+        <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
+          G
+        </div>
+      ),
+      'sharepoint': (
+        <div className="w-8 h-8 bg-blue-700 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
+          SP
+        </div>
+      ),
+      'onedrive': (
+        <div className="w-8 h-8 bg-blue-400 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
+          OD
+        </div>
+      ),
+    }
+    return iconMap[iconName] || (
+      <div className="w-8 h-8 bg-gray-500 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
+        ?
+      </div>
+    )
+  }
 
+  // Connector functions
+  const checkConnectorStatuses = useCallback(async () => {
     try {
-      const connectorTypes = ["google_drive"]
+      // Fetch available connectors from backend
+      const connectorsResponse = await fetch('/api/connectors')
+      if (!connectorsResponse.ok) {
+        throw new Error('Failed to load connectors')
+      }
+      
+      const connectorsResult = await connectorsResponse.json()
+      const connectorTypes = Object.keys(connectorsResult.connectors)
+      
+      // Initialize connectors list with metadata from backend
+      const initialConnectors = connectorTypes
+        .filter(type => connectorsResult.connectors[type].available) // Only show available connectors
+        .map(type => ({
+          id: type,
+          name: connectorsResult.connectors[type].name,
+          description: connectorsResult.connectors[type].description,
+          icon: getConnectorIcon(connectorsResult.connectors[type].icon),
+          status: "not_connected" as const,
+          type: type
+        }))
+      
+      setConnectors(initialConnectors)
+
+      // Check status for each connector type
       
       for (const connectorType of connectorTypes) {
         const response = await fetch(`/api/connectors/${connectorType}/status`)
@@ -194,18 +226,27 @@ function KnowledgeSourcesPage() {
     } catch (error) {
       console.error('Failed to check connector statuses:', error)
     }
-  }
+  }, [])
 
   const handleConnect = async (connector: Connector) => {
     setIsConnecting(connector.id)
     setSyncResults(prev => ({ ...prev, [connector.id]: null }))
     
     try {
-      const response = await fetch(`/api/connectors/${connector.type}/connect`, {
+      // Use the shared auth callback URL, same as connectors page
+      const redirectUri = `${window.location.origin}/auth/callback`
+      
+      const response = await fetch('/api/auth/init', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          connector_type: connector.type,
+          purpose: "data_source",
+          name: `${connector.name} Connection`,
+          redirect_uri: redirectUri
+        }),
       })
       
       if (response.ok) {
@@ -305,7 +346,7 @@ function KnowledgeSourcesPage() {
       url.searchParams.delete('oauth_success')
       window.history.replaceState({}, '', url.toString())
     }
-  }, [searchParams, isAuthenticated])
+  }, [searchParams, isAuthenticated, checkConnectorStatuses])
 
   // Fetch global stats using match-all wildcard
   const fetchStats = async () => {
