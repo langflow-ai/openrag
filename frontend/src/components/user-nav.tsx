@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/contexts/auth-context"
-import { LogIn, LogOut, User, Moon, Sun, Settings, ChevronsUpDown } from "lucide-react"
+import { LogIn, LogOut, User, Moon, Sun, ChevronsUpDown } from "lucide-react"
 import { useTheme } from "next-themes"
 
 export function UserNav() {
@@ -61,14 +61,6 @@ export function UserNav() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
-          <User className="mr-2 h-4 w-4" />
-          Profile
-        </DropdownMenuItem>
-        <DropdownMenuItem>
-          <Settings className="mr-2 h-4 w-4" />
-          <span>Settings</span>
-        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
           {theme === "light" ? (
             <Moon className="mr-2 h-4 w-4" />

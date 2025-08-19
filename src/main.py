@@ -162,9 +162,22 @@ def create_app():
                          session_manager=services['session_manager'])
               ), methods=["POST"]),
         
-        Route("/upload_path", 
+        Route("/upload_path",
               require_auth(services['session_manager'])(
                   partial(upload.upload_path,
+                         task_service=services['task_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["POST"]),
+
+        Route("/upload_options",
+              require_auth(services['session_manager'])(
+                  partial(upload.upload_options,
+                         session_manager=services['session_manager'])
+              ), methods=["GET"]),
+
+        Route("/upload_bucket",
+              require_auth(services['session_manager'])(
+                  partial(upload.upload_bucket,
                          task_service=services['task_service'],
                          session_manager=services['session_manager'])
               ), methods=["POST"]),

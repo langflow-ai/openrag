@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Upload, FolderOpen, Loader2, PlugZap, RefreshCw, Download } from "lucide-react"
+import { Upload, FolderOpen, Loader2, PlugZap, RefreshCw, Download, Cloud } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
 import { useAuth } from "@/contexts/auth-context"
@@ -50,7 +50,10 @@ function KnowledgeSourcesPage() {
   const [fileUploadLoading, setFileUploadLoading] = useState(false)
   const [pathUploadLoading, setPathUploadLoading] = useState(false)
   const [folderPath, setFolderPath] = useState("/app/documents/")
+  const [bucketUploadLoading, setBucketUploadLoading] = useState(false)
+  const [bucketUrl, setBucketUrl] = useState("s3://")
   const [uploadStatus, setUploadStatus] = useState<string>("")
+  const [awsEnabled, setAwsEnabled] = useState(false)
   
   // Connectors state
   const [connectors, setConnectors] = useState<Connector[]>([])
@@ -141,6 +144,50 @@ function KnowledgeSourcesPage() {
     } catch (error) {
       setUploadStatus(`Error: ${error instanceof Error ? error.message : "Path upload failed"}`)
       setPathUploadLoading(false)
+    }
+  }
+
+  const handleBucketUpload = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!bucketUrl.trim()) return
+
+    setBucketUploadLoading(true)
+    setUploadStatus("")
+
+    try {
+      const response = await fetch("/api/upload_bucket", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ s3_url: bucketUrl }),
+      })
+
+      const result = await response.json()
+
+      if (response.status === 201) {
+        const taskId = result.task_id || result.id
+        const totalFiles = result.total_files || 0
+
+        if (!taskId) {
+          throw new Error("No task ID received from server")
+        }
+
+        addTask(taskId)
+        setUploadStatus(`🔄 Processing started for ${totalFiles} files. Check the task notification panel for real-time progress. (Task ID: ${taskId})`)
+        setBucketUrl("s3://")
+        
+        // Refresh stats after successful bucket upload
+        fetchStats()
+      } else {
+        setUploadStatus(`Error: ${result.error || "Bucket processing failed"}`)
+      }
+    } catch (error) {
+      setUploadStatus(
+        `Error: ${error instanceof Error ? error.message : "Bucket processing failed"}`,
+      )
+    } finally {
+      setBucketUploadLoading(false)
     }
   }
 
@@ -374,6 +421,22 @@ function KnowledgeSourcesPage() {
     }
   }
 
+  // Check AWS availability
+  useEffect(() => {
+    const checkAws = async () => {
+      try {
+        const res = await fetch("/api/upload_options")
+        if (res.ok) {
+          const data = await res.json()
+          setAwsEnabled(Boolean(data.aws))
+        }
+      } catch (err) {
+        console.error("Failed to check AWS availability", err)
+      }
+    }
+    checkAws()
+  }, [])
+
   // Initial stats fetch
   useEffect(() => {
     fetchStats()
@@ -499,7 +562,7 @@ function KnowledgeSourcesPage() {
           </p>
         </div>
         
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className={`grid gap-6 ${awsEnabled ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
           {/* File Upload Card */}
           <Card className="flex flex-col">
             <CardHeader>
@@ -562,6 +625,52 @@ function KnowledgeSourcesPage() {
               </form>
             </CardContent>
           </Card>
+
+          {/* S3 Bucket Upload Card - only show if AWS is enabled */}
+          {awsEnabled && (
+            <Card className="flex flex-col">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Cloud className="h-5 w-5" />
+                  Process S3 Bucket
+                </CardTitle>
+                <CardDescription>
+                  Process all documents from an S3 bucket. AWS credentials must be configured.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 flex flex-col justify-end">
+                <form onSubmit={handleBucketUpload} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bucket-url">S3 URL</Label>
+                    <Input
+                      id="bucket-url"
+                      type="text"
+                      placeholder="s3://bucket/path"
+                      value={bucketUrl}
+                      onChange={(e) => setBucketUrl(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={!bucketUrl.trim() || bucketUploadLoading}
+                    className="w-full"
+                  >
+                    {bucketUploadLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Cloud className="mr-2 h-4 w-4" />
+                        Process Bucket
+                      </>
+                    )}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Upload Status */}
@@ -708,13 +817,6 @@ function KnowledgeSourcesPage() {
                 <div>
                   <div className="font-medium">Dropbox</div>
                   <div className="text-sm text-muted-foreground">File storage</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg border border-dashed">
-                <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center text-white font-bold leading-none">O</div>
-                <div>
-                  <div className="font-medium">OneDrive</div>
-                  <div className="text-sm text-muted-foreground">Microsoft cloud storage</div>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 rounded-lg border border-dashed">

@@ -13,6 +13,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isLoading, isAuthenticated } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
+  
+  console.log("ProtectedRoute - isLoading:", isLoading, "isAuthenticated:", isAuthenticated, "pathname:", pathname)
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
