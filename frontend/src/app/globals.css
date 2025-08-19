@@ -134,7 +134,7 @@
   }
 
   .header-notifications {
-    @apply absolute right-[3px] h-1.5 w-1.5 rounded-full bg-destructive;
+    @apply absolute right-[0px] top-[-4px] h-1 w-1 rounded-full bg-destructive;
   }
 
   .header-menu-bar {

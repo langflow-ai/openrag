@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from 'react'
-import { Bell, BellRing, CheckCircle, XCircle, Clock, Loader2, ChevronDown, ChevronUp, X } from 'lucide-react'
+import { Bell, CheckCircle, XCircle, Clock, Loader2, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -124,11 +124,7 @@ export function TaskNotificationMenu() {
         <div className="p-4 border-b border-border/40">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {activeTasks.length > 0 ? (
-                <BellRing className="h-5 w-5 text-blue-500" />
-              ) : (
-                <Bell className="h-5 w-5 text-muted-foreground" />
-              )}
+              <Bell className="h-5 w-5 text-muted-foreground" />
               <h3 className="font-semibold">Tasks</h3>
               {isFetching && (
                 <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
