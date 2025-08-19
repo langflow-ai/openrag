@@ -88,7 +88,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       <div className="side-bar-arrangement bg-background fixed left-0 top-[53px] bottom-0 md:flex hidden">
         <Navigation />
       </div>
-      <main className={`md:pl-72 md:pr-6 ${(isMenuOpen || isPanelOpen) ? 'md:pr-80' : ''}`}>
+      <main className={`md:pl-72 md:pr-6 ${(isMenuOpen || isPanelOpen) ? 'md:pr-[336px]' : ''}`}>
         <div className="container py-6 lg:py-8">
           {children}
         </div>
