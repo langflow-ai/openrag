@@ -72,11 +72,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
               onClick={toggleMenu}
               className="relative"
             >
-              {activeTasks.length > 0 ? (
-                <BellRing className="h-4 w-4 text-blue-500" />
-              ) : (
-                <Bell className="h-4 w-4 text-muted-foreground" />
-              )}
+              <Bell className="h-4 w-4 text-muted-foreground" />
               {activeTasks.length > 0 && (
                 <div className="header-notifications" />
               )}
