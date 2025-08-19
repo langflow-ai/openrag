@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation"
 import { Bell, BellRing } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Navigation } from "@/components/navigation"
 import { UserNav } from "@/components/user-nav"
 import { TaskNotificationMenu } from "@/components/task-notification-menu"
@@ -94,12 +93,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         <Navigation />
       </div>
       <main className={`md:pl-72 md:pr-6 ${(isMenuOpen || isPanelOpen) ? 'md:pr-80' : ''}`}>
-        <div className="flex flex-col min-h-screen">
-          <div className="flex-1 overflow-y-auto scrollbar-hide">
-            <div className="container py-6 lg:py-8">
-              {children}
-            </div>
-          </div>
+        <div className="container py-6 lg:py-8">
+          {children}
         </div>
       </main>
       <TaskNotificationMenu />

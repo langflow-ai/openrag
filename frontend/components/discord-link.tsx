@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { Users } from "lucide-react";
 import { useDiscordMembers } from "@/hooks/use-discord-members";
 import { formatCount } from "@/lib/format-count";
 
