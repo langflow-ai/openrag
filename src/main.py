@@ -1,6 +1,8 @@
 import asyncio
 import atexit
 import multiprocessing
+import os
+import subprocess
 from functools import partial
 from starlette.applications import Starlette
 from starlette.routing import Route
@@ -88,6 +90,35 @@ async def init_index():
     else:
         print(f"Index '{knowledge_filter_index_name}' already exists, skipping creation.")
 
+def generate_jwt_keys():
+    """Generate RSA keys for JWT signing if they don't exist"""
+    keys_dir = "keys"
+    private_key_path = os.path.join(keys_dir, "private_key.pem")
+    public_key_path = os.path.join(keys_dir, "public_key.pem")
+    
+    # Create keys directory if it doesn't exist
+    os.makedirs(keys_dir, exist_ok=True)
+    
+    # Generate keys if they don't exist
+    if not os.path.exists(private_key_path):
+        try:
+            # Generate private key
+            subprocess.run([
+                "openssl", "genrsa", "-out", private_key_path, "2048"
+            ], check=True, capture_output=True)
+            
+            # Generate public key
+            subprocess.run([
+                "openssl", "rsa", "-in", private_key_path, "-pubout", "-out", public_key_path
+            ], check=True, capture_output=True)
+            
+            print("Generated RSA keys for JWT signing")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to generate RSA keys: {e}")
+            raise
+    else:
+        print("RSA keys already exist, skipping generation")
+
 async def init_index_when_ready():
     """Initialize OpenSearch index when it becomes available"""
     try:
@@ -100,6 +131,9 @@ async def init_index_when_ready():
 
 def initialize_services():
     """Initialize all services and their dependencies"""
+    # Generate JWT keys if they don't exist
+    generate_jwt_keys()
+    
     # Initialize clients
     clients.initialize()
     

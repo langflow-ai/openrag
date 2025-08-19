@@ -22,14 +22,6 @@ RUN uv run python warm_up_docling.py && rm warm_up_docling.py 2506.08231v1.pdf
 # Copy Python source
 COPY src/ ./src/
 
-# Generate RSA keys for JWT signing if they don't exist
-RUN mkdir -p keys && \
-    if [ ! -f keys/private_key.pem ]; then \
-        openssl genrsa -out keys/private_key.pem 2048 && \
-        openssl rsa -in keys/private_key.pem -pubout -out keys/public_key.pem && \
-        echo "Generated RSA keys for JWT signing"; \
-    fi
-
 # Expose backend port
 EXPOSE 8000
 
