@@ -3,7 +3,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Upload, FolderOpen, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 
 interface FileUploadAreaProps {
   onFileSelected?: (file: File) => void

@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { Github, Star, TrendingUp } from "lucide-react";
+import { Github } from "lucide-react";
 import { useGitHubStars } from "@/hooks/use-github-stars";
-import { formatCount, formatExactCount } from "@/lib/format-count";
+import { formatCount } from "@/lib/format-count";
 
 interface GitHubStarButtonProps {
   repo?: string;
