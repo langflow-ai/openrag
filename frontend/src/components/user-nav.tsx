@@ -11,10 +11,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/contexts/auth-context"
-import { LogIn, LogOut, User } from "lucide-react"
+import { LogIn, LogOut, User, Moon, Sun, Settings, ChevronsUpDown } from "lucide-react"
+import { useTheme } from "next-themes"
 
 export function UserNav() {
   const { user, isLoading, isAuthenticated, login, logout } = useAuth()
+  const { theme, setTheme } = useTheme()
 
   if (isLoading) {
     return (
@@ -39,13 +41,14 @@ export function UserNav() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-          <Avatar className="h-8 w-8">
+        <Button variant="ghost" className="flex items-center gap-1 h-8 px-1 rounded-full">
+          <Avatar className="h-6 w-6">
             <AvatarImage src={user?.picture} alt={user?.name} />
-            <AvatarFallback>
-              {user?.name ? user.name.charAt(0).toUpperCase() : <User className="h-4 w-4" />}
+            <AvatarFallback className="text-xs">
+              {user?.name ? user.name.charAt(0).toUpperCase() : <User className="h-3 w-3" />}
             </AvatarFallback>
           </Avatar>
+          <ChevronsUpDown className="h-3 w-3 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="end" forceMount>
@@ -57,6 +60,23 @@ export function UserNav() {
             </p>
           </div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem>
+          <User className="mr-2 h-4 w-4" />
+          Profile
+        </DropdownMenuItem>
+        <DropdownMenuItem>
+          <Settings className="mr-2 h-4 w-4" />
+          <span>Settings</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
+          {theme === "light" ? (
+            <Moon className="mr-2 h-4 w-4" />
+          ) : (
+            <Sun className="mr-2 h-4 w-4" />
+          )}
+          <span>Toggle Theme</span>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={logout} className="text-red-600 focus:text-red-600">
           <LogOut className="mr-2 h-4 w-4" />

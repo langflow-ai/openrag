@@ -1,6 +1,11 @@
-import type { Config } from "tailwindcss";
+/** @type {import('tailwindcss').Config} */
+import tailwindcssForms from "@tailwindcss/forms";
+import tailwindcssTypography from "@tailwindcss/typography";
+import { fontFamily } from "tailwindcss/defaultTheme";
+import plugin from "tailwindcss/plugin";
+import tailwindcssAnimate from "tailwindcss-animate";
 
-const config: Config = {
+const config = {
   darkMode: ["class"],
   content: [
     "./pages/**/*.{ts,tsx}",
@@ -8,16 +13,47 @@ const config: Config = {
     "./app/**/*.{ts,tsx}",
     "./src/**/*.{ts,tsx}",
   ],
-  prefix: "",
   theme: {
     container: {
       center: true,
-      padding: "2rem",
       screens: {
         "2xl": "1400px",
+        "3xl": "1500px",
       },
     },
     extend: {
+      screens: {
+        xl: "1200px",
+        "2xl": "1400px",
+        "3xl": "1500px",
+      },
+      keyframes: {
+        overlayShow: {
+          from: { opacity: 0 },
+          to: { opacity: 1 },
+        },
+        contentShow: {
+          from: {
+            opacity: 0,
+            transform: "translate(-50%, -50%) scale(0.95)",
+            clipPath: "inset(50% 0)",
+          },
+          to: {
+            opacity: 1,
+            transform: "translate(-50%, -50%) scale(1)",
+            clipPath: "inset(0% 0)",
+          },
+        },
+        wiggle: {
+          "0%, 100%": { transform: "scale(100%)" },
+          "50%": { transform: "scale(120%)" },
+        },
+      },
+      animation: {
+        overlayShow: "overlayShow 400ms cubic-bezier(0.16, 1, 0.3, 1)",
+        contentShow: "contentShow 400ms cubic-bezier(0.16, 1, 0.3, 1)",
+        wiggle: "wiggle 150ms ease-in-out 1",
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -27,10 +63,12 @@ const config: Config = {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          hover: "hsl(var(--primary-hover))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
+          hover: "hsl(var(--secondary-hover))",
         },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
@@ -52,37 +90,36 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Custom colors from the screenshot
-        teal: {
-          50: "#f0fdfa",
-          100: "#ccfbf1",
-          200: "#99f6e4",
-          300: "#5eead4",
-          400: "#2dd4bf",
-          500: "#14b8a6",
-          600: "#0d9488",
-          700: "#0f766e",
-          800: "#115e59",
-          900: "#134e4a",
-          DEFAULT: "#00D4AA", // Primary teal from screenshot
+        "status-blue": "var(--status-blue)",
+        "status-green": "var(--status-green)",
+        "status-red": "var(--status-red)",
+        "status-yellow": "var(--status-yellow)",
+        "component-icon": "var(--component-icon)",
+        "flow-icon": "var(--flow-icon)",
+        "placeholder-foreground": "hsl(var(--placeholder-foreground))",
+        "datatype-blue": {
+          DEFAULT: "hsl(var(--datatype-blue))",
+          foreground: "hsl(var(--datatype-blue-foreground))",
         },
-        success: {
-          DEFAULT: "#10B981", // Success green from screenshot
-          foreground: "#ffffff",
+        "datatype-yellow": {
+          DEFAULT: "hsl(var(--datatype-yellow))",
+          foreground: "hsl(var(--datatype-yellow-foreground))",
         },
-        // Additional grays matching the screenshot
-        gray: {
-          850: "#1a1a1a", // Very dark background
-          800: "#2a2a2a",  // Card background
-          750: "#333333",  // Slightly lighter card
-          700: "#374151",  // Input background
-          600: "#4b5563",  // Border color
-          500: "#6b7280",  // Muted text
-          400: "#9ca3af",  // Secondary text
-          300: "#d1d5db",
-          200: "#e5e7eb",
-          100: "#f3f4f6",
-          50: "#f8f9fa",   // Primary text
+        "datatype-red": {
+          DEFAULT: "hsl(var(--datatype-red))",
+          foreground: "hsl(var(--datatype-red-foreground))",
+        },
+        "datatype-emerald": {
+          DEFAULT: "hsl(var(--datatype-emerald))",
+          foreground: "hsl(var(--datatype-emerald-foreground))",
+        },
+        "datatype-violet": {
+          DEFAULT: "hsl(var(--datatype-violet))",
+          foreground: "hsl(var(--datatype-violet-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
         },
       },
       borderRadius: {
@@ -90,23 +127,92 @@ const config: Config = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
-      keyframes: {
-        "accordion-down": {
-          from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
-        },
-        "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: "0" },
-        },
+      fontFamily: {
+        sans: ["var(--font-sans)", ...fontFamily.sans],
+        mono: ["var(--font-mono)", ...fontFamily.mono],
+        chivo: ["var(--font-chivo)", ...fontFamily.sans],
       },
-      animation: {
-        "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
+      fontSize: {
+        xxs: "11px",
+        mmd: "13px",
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    tailwindcssAnimate,
+    tailwindcssForms({
+      strategy: "class",
+    }),
+    plugin(({ addUtilities }) => {
+      addUtilities({
+        ".scrollbar-hide": {
+          "-ms-overflow-style": "none",
+          "scrollbar-width": "none",
+          "&::-webkit-scrollbar": {
+            display: "none",
+          },
+        },
+        ".truncate-multiline": {
+          display: "-webkit-box",
+          "-webkit-line-clamp": "3",
+          "-webkit-box-orient": "vertical",
+          overflow: "hidden",
+          "text-overflow": "ellipsis",
+        },
+        ".custom-scroll": {
+          "&::-webkit-scrollbar": {
+            width: "8px",
+            height: "8px",
+          },
+          "&::-webkit-scrollbar-track": {
+            backgroundColor: "hsl(var(--muted))",
+          },
+          "&::-webkit-scrollbar-thumb": {
+            backgroundColor: "hsl(var(--border))",
+            borderRadius: "999px",
+          },
+          "&::-webkit-scrollbar-thumb:hover": {
+            backgroundColor: "hsl(var(--placeholder-foreground))",
+          },
+        },
+        ".primary-input": {
+          display: "block",
+          width: "100%",
+          borderRadius: "0.375rem",
+          border: "1px solid hsl(var(--border))",
+          backgroundColor: "hsl(var(--background))",
+          paddingLeft: "0.75rem",
+          paddingRight: "0.75rem",
+          paddingTop: "0.5rem",
+          paddingBottom: "0.5rem",
+          fontSize: "0.875rem",
+          textAlign: "left",
+          textOverflow: "ellipsis",
+          "&::placeholder": {
+            color: "hsl(var(--muted-foreground))",
+          },
+          "&:hover": {
+            borderColor: "hsl(var(--muted-foreground))",
+          },
+          "&:focus": {
+            borderColor: "hsl(var(--foreground))",
+            outline: "none",
+            boxShadow: "none",
+            "&::placeholder": {
+              color: "transparent",
+            },
+          },
+          "&:disabled": {
+            pointerEvents: "none",
+            cursor: "not-allowed",
+            backgroundColor: "hsl(var(--muted))",
+            color: "hsl(var(--muted-foreground))",
+          },
+        },
+      });
+    }),
+    tailwindcssTypography,
+  ],
 };
 
 export default config;

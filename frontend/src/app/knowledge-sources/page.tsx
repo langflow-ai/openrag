@@ -11,6 +11,7 @@ import { Upload, FolderOpen, Loader2, PlugZap, RefreshCw, Download } from "lucid
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
 import { useAuth } from "@/contexts/auth-context"
+import { FileUploadArea } from "@/components/file-upload-area"
 
 type FacetBucket = { key: string; count: number }
 
@@ -48,7 +49,6 @@ function KnowledgeSourcesPage() {
   // File upload state
   const [fileUploadLoading, setFileUploadLoading] = useState(false)
   const [pathUploadLoading, setPathUploadLoading] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [folderPath, setFolderPath] = useState("/app/documents/")
   const [uploadStatus, setUploadStatus] = useState<string>("")
   
@@ -66,16 +66,13 @@ function KnowledgeSourcesPage() {
   const [facetStats, setFacetStats] = useState<{ data_sources: FacetBucket[]; document_types: FacetBucket[]; owners: FacetBucket[] } | null>(null)
 
   // File upload handlers
-  const handleFileUpload = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedFile) return
-
+  const handleDirectFileUpload = async (file: File) => {
     setFileUploadLoading(true)
     setUploadStatus("")
 
     try {
       const formData = new FormData()
-      formData.append("file", selectedFile)
+      formData.append("file", file)
 
       const response = await fetch("/api/upload", {
         method: "POST",
@@ -86,9 +83,6 @@ function KnowledgeSourcesPage() {
       
       if (response.ok) {
         setUploadStatus(`File processed successfully! ID: ${result.id}`)
-        setSelectedFile(null)
-        const fileInput = document.getElementById("file-input") as HTMLInputElement
-        if (fileInput) fileInput.value = ""
         
         // Refresh stats after successful file upload
         fetchStats()
@@ -331,7 +325,7 @@ function KnowledgeSourcesPage() {
       case "error":
         return <Badge variant="destructive">Error</Badge>
       default:
-        return <Badge variant="outline" className="bg-muted/20 text-muted-foreground border-muted">Not Connected</Badge>
+        return <Badge variant="outline" className="bg-muted/20 text-muted-foreground border-muted whitespace-nowrap">Not Connected</Badge>
     }
   }
 
@@ -507,7 +501,7 @@ function KnowledgeSourcesPage() {
         
         <div className="grid gap-6 md:grid-cols-2">
           {/* File Upload Card */}
-          <Card>
+          <Card className="flex flex-col">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Upload className="h-5 w-5" />
@@ -517,40 +511,16 @@ function KnowledgeSourcesPage() {
                 Import a single document to be processed and indexed
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleFileUpload} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="file-input">File</Label>
-                  <Input
-                    id="file-input"
-                    type="file"
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                    accept=".pdf,.docx,.txt,.md"
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  disabled={!selectedFile || fileUploadLoading}
-                  className="w-full"
-                >
-                  {fileUploadLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Add File
-                    </>
-                  )}
-                </Button>
-              </form>
+            <CardContent className="flex-1 flex flex-col justify-end">
+              <FileUploadArea
+                onFileSelected={handleDirectFileUpload}
+                isLoading={fileUploadLoading}
+              />
             </CardContent>
           </Card>
 
           {/* Folder Upload Card */}
-          <Card>
+          <Card className="flex flex-col">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FolderOpen className="h-5 w-5" />
@@ -560,7 +530,7 @@ function KnowledgeSourcesPage() {
                 Process all documents in a folder path
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 flex flex-col justify-end">
               <form onSubmit={handlePathUpload} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="folder-path">Folder Path</Label>
@@ -626,22 +596,24 @@ function KnowledgeSourcesPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <Label htmlFor="maxFiles" className="text-sm font-medium">
-                  Max files per sync:
-                </Label>
-                <Input
-                  id="maxFiles"
-                  type="number"
-                  value={maxFiles}
-                  onChange={(e) => setMaxFiles(parseInt(e.target.value) || 10)}
-                  className="w-24"
-                  min="1"
-                  max="100"
-                />
-                <span className="text-sm text-muted-foreground">
-                  (Leave blank or set to 0 for unlimited)
-                </span>
+              <div className="flex items-center text-sm">
+                <div className="flex items-center gap-3">
+                  <Label htmlFor="maxFiles" className="font-medium whitespace-nowrap">
+                    Max files per sync:
+                  </Label>
+                  <Input
+                    id="maxFiles"
+                    type="number"
+                    value={maxFiles}
+                    onChange={(e) => setMaxFiles(parseInt(e.target.value) || 10)}
+                    className="w-16 min-w-16 max-w-16 flex-shrink-0"
+                    min="1"
+                    max="100"
+                  />
+                  <span className="text-muted-foreground whitespace-nowrap">
+                    (Leave blank or set to 0 for unlimited)
+                  </span>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -650,7 +622,7 @@ function KnowledgeSourcesPage() {
         {/* Connectors Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {connectors.map((connector) => (
-            <Card key={connector.id} className="relative">
+            <Card key={connector.id} className="relative flex flex-col">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -665,7 +637,7 @@ function KnowledgeSourcesPage() {
                   {getStatusBadge(connector.status)}
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="flex-1 flex flex-col justify-end space-y-4">
                 {connector.status === "connected" ? (
                   <div className="space-y-3">
                     <Button

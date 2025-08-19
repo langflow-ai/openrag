@@ -1,21 +1,46 @@
-import * as React from "react"
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
-import { cn } from "@/lib/utils"
-
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
-  return (
-    <input
-      type={type}
-      data-slot="input"
-      className={cn(
-        "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-border/40 flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-        "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
-        className
-      )}
-      {...props}
-    />
-  )
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  icon?: React.ReactNode;
+  inputClassName?: string;
 }
 
-export { Input }
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, inputClassName, icon, type, placeholder, ...props }, ref) => {
+    return (
+      <label className={cn("relative block h-fit w-full text-sm", icon ? className : "")}>
+        {icon && (
+          <div className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground">
+            {icon}
+          </div>
+        )}
+        <input
+          autoComplete="off"
+          type={type}
+          placeholder={placeholder}
+          className={cn(
+            "primary-input !placeholder-transparent",
+            icon && "pl-9",
+            icon ? inputClassName : className,
+          )}
+          ref={ref}
+          {...props}
+        />
+        <span
+          className={cn(
+            "pointer-events-none absolute top-1/2 -translate-y-1/2 pl-px text-placeholder-foreground",
+            icon ? "left-9" : "left-3",
+            props.value && "hidden",
+          )}
+        >
+          {placeholder}
+        </span>
+      </label>
+    );
+  },
+);
+
+Input.displayName = "Input";
+
+export { Input };
