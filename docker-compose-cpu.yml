@@ -58,12 +58,14 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+      - MICROSOFT_GRAPH_OAUTH_CLIENT_ID=${MICROSOFT_GRAPH_OAUTH_CLIENT_ID}
+      - MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=${MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET}
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     volumes:
-      - ./src:/app/src
-      - ./pyproject.toml:/app/pyproject.toml
-      - ./uv.lock:/app/uv.lock
-      - ./documents:/app/documents
-      - ./keys:/app/keys
+      - documents_vol:/app/documents
+      - keys_vol:/app/keys
     platform: linux/amd64
 
   openrag-frontend:
@@ -78,12 +80,10 @@ services:
       - OPENRAG_BACKEND_HOST=openrag-backend
     ports:
       - "3000:3000"
-    volumes:
-      - ./frontend/src:/app/src
 
   langflow:
     volumes:
-      - ./flows:/app/flows
+      - flows_vol:/app/flows
     image: phact/langflow:responses
     container_name: langflow
     ports:
@@ -96,3 +96,23 @@ services:
       - OPENRAG-QUERY-FILTER="{}"
       - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER
       - LANGFLOW_LOG_LEVEL=DEBUG
+
+volumes:
+  documents_vol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./documents
+  keys_vol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./keys
+  flows_vol:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./flows
