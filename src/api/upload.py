@@ -1,4 +1,6 @@
 import os
+from urllib.parse import urlparse
+import boto3
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -83,4 +85,59 @@ async def upload_context(request: Request, document_service, chat_service, sessi
     }
     
     return JSONResponse(response_data)
+
+
+async def upload_options(request: Request, session_manager):
+    """Return availability of upload features"""
+    aws_enabled = bool(
+        os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")
+    )
+    return JSONResponse({"aws": aws_enabled})
+
+
+async def upload_bucket(request: Request, task_service, session_manager):
+    """Process all files from an S3 bucket URL"""
+    if not os.getenv("AWS_ACCESS_KEY_ID") or not os.getenv("AWS_SECRET_ACCESS_KEY"):
+        return JSONResponse({"error": "AWS credentials not configured"}, status_code=400)
+
+    payload = await request.json()
+    s3_url = payload.get("s3_url")
+    if not s3_url or not s3_url.startswith("s3://"):
+        return JSONResponse({"error": "Invalid S3 URL"}, status_code=400)
+
+    parsed = urlparse(s3_url)
+    bucket = parsed.netloc
+    prefix = parsed.path.lstrip("/")
+
+    s3_client = boto3.client("s3")
+    keys = []
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if not key.endswith("/"):
+                keys.append(key)
+
+    if not keys:
+        return JSONResponse({"error": "No files found in bucket"}, status_code=400)
+
+    user = request.state.user
+    jwt_token = request.cookies.get("auth_token")
+
+    from models.processors import S3FileProcessor
+
+    processor = S3FileProcessor(
+        task_service.document_service,
+        bucket,
+        s3_client=s3_client,
+        owner_user_id=user.user_id,
+        jwt_token=jwt_token,
+    )
+
+    task_id = await task_service.create_custom_task(user.user_id, keys, processor)
+
+    return JSONResponse(
+        {"task_id": task_id, "total_files": len(keys), "status": "accepted"},
+        status_code=201,
+    )
 
