@@ -4,10 +4,12 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { MessageCircle, Send, Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload } from "lucide-react"
+import { MessageCircle, Send, Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload, AtSign, Plus } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
+import { useAuth } from "@/contexts/auth-context"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface Message {
   role: "user" | "assistant"
@@ -56,7 +58,15 @@ interface RequestBody {
 }
 
 function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([])
+  const isDebugMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_OPENRAG_DEBUG === 'true'
+  const { user } = useAuth()
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: "assistant",
+      content: "How can I assist?",
+      timestamp: new Date()
+    }
+  ])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [endpoint, setEndpoint] = useState<EndpointType>("langflow")
@@ -1013,84 +1023,81 @@ function ChatPage() {
     )
   }
 
-  return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Chat Assistant</h1>
-        <p className="text-muted-foreground mt-2">Ask questions about your documents and get AI-powered answers</p>
-      </div>
+  const suggestionChips = [
+    "Show me this quarter's top 10 deals",
+    "Summarize recent client interactions",
+    "Search OpenSearch for mentions of our competitors"
+  ]
 
-      <Card className="h-[600px] flex flex-col max-w-full overflow-hidden">
-        <CardHeader className="flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" />
-              <CardTitle>Chat</CardTitle>
-              {selectedFilter && (
-                <span className="text-sm font-normal text-blue-400 bg-blue-400/10 px-2 py-1 rounded">
-                  Context: {selectedFilter.name}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-4">
-              {/* Async Mode Toggle */}
-              <div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
-                <Button
-                  variant={!asyncMode ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setAsyncMode(false)}
-                  className="h-7 text-xs"
-                >
-                  Streaming Off 
-                </Button>
-                <Button
-                  variant={asyncMode ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setAsyncMode(true)}
-                  className="h-7 text-xs"
-                >
-                  <Zap className="h-3 w-3 mr-1" />
-                  Streaming On
-                </Button>
-              </div>
-              {/* Endpoint Toggle */}
-              <div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
-                <Button
-                  variant={endpoint === "chat" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => handleEndpointChange("chat")}
-                  className="h-7 text-xs"
-                >
-                  Chat
-                </Button>
-                <Button
-                  variant={endpoint === "langflow" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => handleEndpointChange("langflow")}
-                  className="h-7 text-xs"
-                >
-                  Langflow
-                </Button>
-              </div>
-            </div>
-          </div>
-          <CardDescription>
-            Chat with AI about your indexed documents using {endpoint === "chat" ? "Chat" : "Langflow"} endpoint 
-            {asyncMode ? " with real-time streaming" : ""}
+  const handleSuggestionClick = (suggestion: string) => {
+    setInput(suggestion)
+    inputRef.current?.focus()
+  }
+
+  return (
+    <div className="fixed inset-0 md:left-72 md:right-6 top-[53px] flex flex-col">
+      {/* Debug header - only show in debug mode */}
+      {isDebugMode && (
+        <div className="flex items-center justify-between mb-6 px-6 pt-6">
+          <div className="flex items-center gap-2">
             {selectedFilter && (
-              <span className="block text-blue-400 text-xs mt-1">
-                Using knowledge filter: {selectedFilter.name}
+              <span className="text-sm font-normal text-blue-400 bg-blue-400/10 px-2 py-1 rounded">
+                Context: {selectedFilter.name}
               </span>
             )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
+          </div>
+          <div className="flex items-center gap-4">
+            {/* Async Mode Toggle */}
+            <div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
+              <Button
+                variant={!asyncMode ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setAsyncMode(false)}
+                className="h-7 text-xs"
+              >
+                Streaming Off 
+              </Button>
+              <Button
+                variant={asyncMode ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setAsyncMode(true)}
+                className="h-7 text-xs"
+              >
+                <Zap className="h-3 w-3 mr-1" />
+                Streaming On
+              </Button>
+            </div>
+            {/* Endpoint Toggle */}
+            <div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
+              <Button
+                variant={endpoint === "chat" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => handleEndpointChange("chat")}
+                className="h-7 text-xs"
+              >
+                Chat
+              </Button>
+              <Button
+                variant={endpoint === "langflow" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => handleEndpointChange("langflow")}
+                className="h-7 text-xs"
+              >
+                Langflow
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col min-h-0 px-6">
+        <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
           {/* Messages Area */}
           <div 
-            className={`flex-1 overflow-y-auto overflow-x-hidden space-y-6 p-4 rounded-lg min-h-0 transition-all relative ${
+            className={`flex-1 overflow-y-auto overflow-x-hidden space-y-6 min-h-0 transition-all relative ${
               isDragOver 
-                ? 'bg-primary/10 border-2 border-dashed border-primary' 
-                : 'bg-muted/20'
+                ? 'bg-primary/10 border-2 border-dashed border-primary rounded-lg p-4' 
+                : ''
             }`}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
@@ -1112,14 +1119,7 @@ function ChatPage() {
                       <p>Processing your document...</p>
                       <p className="text-sm mt-2">This may take a few moments</p>
                     </>
-                  ) : (
-                    <>
-                      <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>Start a conversation by asking a question!</p>
-                      <p className="text-sm mt-2">I can help you find information in your documents.</p>
-                      <p className="text-xs mt-3 opacity-75">💡 Tip: Drag & drop a document here to add context</p>
-                    </>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ) : (
@@ -1129,10 +1129,13 @@ function ChatPage() {
                     {message.role === "user" && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-                            <User className="h-4 w-4 text-primary" />
-                          </div>
-                          <span className="font-medium text-foreground">User</span>
+                          <Avatar className="w-8 h-8">
+                            <AvatarImage src={user?.picture} alt={user?.name} />
+                            <AvatarFallback className="text-sm bg-primary/20 text-primary">
+                              {user?.name ? user.name.charAt(0).toUpperCase() : <User className="h-4 w-4" />}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="font-medium text-foreground">{user?.name || "User"}</span>
                         </div>
                         <div className="pl-10 max-w-full">
                           <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
@@ -1147,7 +1150,6 @@ function ChatPage() {
                             <Bot className="h-4 w-4 text-accent-foreground" />
                           </div>
                           <span className="font-medium text-foreground">AI</span>
-                          <span className="text-sm text-muted-foreground">gpt-4.1</span>
                         </div>
                         <div className="pl-10 max-w-full">
                           <div className="rounded-lg bg-card border border-border/40 p-4 max-w-full overflow-hidden">
@@ -1175,7 +1177,6 @@ function ChatPage() {
                         <Bot className="h-4 w-4 text-accent-foreground" />
                       </div>
                       <span className="font-medium text-foreground">AI</span>
-                      <span className="text-sm text-muted-foreground">gpt-4.1</span>
                     </div>
                     <div className="pl-10 max-w-full">
                       <div className="rounded-lg bg-card border border-border/40 p-4 max-w-full overflow-hidden">
@@ -1203,7 +1204,6 @@ function ChatPage() {
                         <Bot className="h-4 w-4 text-accent-foreground" />
                       </div>
                       <span className="font-medium text-foreground">AI</span>
-                      <span className="text-sm text-muted-foreground">gpt-4.1</span>
                     </div>
                     <div className="pl-10 max-w-full">
                       <div className="rounded-lg bg-card border border-border/40 p-4 max-w-full overflow-hidden">
@@ -1229,27 +1229,82 @@ function ChatPage() {
               </div>
             )}
           </div>
+        </div>
 
-          {/* Input Area */}
-          <form onSubmit={handleSubmit} className="flex gap-2 flex-shrink-0 w-full">
-            <Input
+      </div>
+      
+      {/* Suggestion chips - always show unless streaming */}
+      {!streamingMessage && (
+        <div className="flex-shrink-0 p-6 pb-4 flex justify-center">
+          <div className="w-full max-w-[75%] relative">
+            <div className="flex gap-2 justify-start overflow-hidden">
+              {suggestionChips.map((suggestion, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleSuggestionClick(suggestion)}
+                  className="px-4 py-2 bg-muted/30 hover:bg-muted/50 rounded-lg text-sm text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+            {/* Fade out gradient on the right */}
+            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none"></div>
+          </div>
+        </div>
+      )}
+      
+      {/* Input Area - Fixed at bottom */}
+      <div className="flex-shrink-0 p-6 pb-8 flex justify-center">
+        <div className="w-full max-w-[75%]">
+          <form onSubmit={handleSubmit} className="relative">
+            <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask a question about your documents..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  if (input.trim() && !loading) {
+                    handleSubmit(e as any)
+                  }
+                }
+              }}
+              placeholder="Type to ask a question..."
               disabled={loading}
-              className="flex-1 min-w-0"
+              className="w-full bg-muted/20 rounded-lg border border-border/50 px-4 py-4 min-h-[100px] focus-visible:ring-1 focus-visible:ring-ring resize-none outline-none"
+              rows={1}
             />
-            <Button type="submit" disabled={!input.trim() || loading}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
+            >
+              <AtSign className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute bottom-3 left-12 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            <Button
+              type="submit"
+              disabled={!input.trim() || loading}
+              className="absolute bottom-3 right-3 rounded-lg h-10 px-4"
+            >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Send className="h-4 w-4" />
+                "Send"
               )}
             </Button>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
