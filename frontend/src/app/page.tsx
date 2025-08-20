@@ -8,8 +8,8 @@ function HomePage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Redirect to knowledge sources page - the new home page
-    router.replace("/knowledge-sources")
+    // Redirect to chat page - the new home page
+    router.replace("/chat")
   }, [router])
 
   return null
