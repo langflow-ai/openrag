@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Library, Database, MessageSquare, Settings2 } from "lucide-react"
+import { Library, MessageSquare, Settings2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function Navigation() {
@@ -18,14 +18,14 @@ export function Navigation() {
     {
       label: "Knowledge",
       icon: Library,
-      href: "/search",
-      active: pathname === "/search",
+      href: "/knowledge",
+      active: pathname === "/knowledge",
     },
     {
       label: "Settings",
       icon: Settings2,
-      href: "/knowledge-sources",
-      active: pathname === "/knowledge-sources",
+      href: "/settings",
+      active: pathname === "/settings",
     },
   ]
 
@@ -33,7 +33,7 @@ export function Navigation() {
     <div className="space-y-4 py-4 flex flex-col h-full bg-background">
       <div className="px-3 py-2 flex-1">
         <div className="space-y-1">
-          {routes.map((route, index) => (
+          {routes.map((route) => (
             <div key={route.href}>
               <Link
                 href={route.href}

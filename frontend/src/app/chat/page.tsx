@@ -2,9 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { MessageCircle, Send, Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload, AtSign, Plus } from "lucide-react"
+import { Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload, AtSign, Plus } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
@@ -85,7 +83,7 @@ function ChatPage() {
   const [isDragOver, setIsDragOver] = useState(false)
   const dragCounterRef = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const { addTask } = useTask()
   const { selectedFilter, parsedFilterData } = useKnowledgeFilter()
 
@@ -1125,44 +1123,29 @@ function ChatPage() {
             ) : (
               <>
                 {messages.map((message, index) => (
-                  <div key={index} className="space-y-2">
+                  <div key={index} className="space-y-6">
                     {message.role === "user" && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="w-8 h-8">
-                            <AvatarImage src={user?.picture} alt={user?.name} />
-                            <AvatarFallback className="text-sm bg-primary/20 text-primary">
-                              {user?.name ? user.name.charAt(0).toUpperCase() : <User className="h-4 w-4" />}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium text-foreground">{user?.name || "User"}</span>
-                        </div>
-                        <div className="pl-10 max-w-full">
+                      <div className="flex gap-3">
+                        <Avatar className="w-8 h-8 flex-shrink-0">
+                          <AvatarImage src={user?.picture} alt={user?.name} />
+                          <AvatarFallback className="text-sm bg-primary/20 text-primary">
+                            {user?.name ? user.name.charAt(0).toUpperCase() : <User className="h-4 w-4" />}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
                           <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
                         </div>
                       </div>
                     )}
                     
                     {message.role === "assistant" && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
-                            <Bot className="h-4 w-4 text-accent-foreground" />
-                          </div>
-                          <span className="font-medium text-foreground">AI</span>
+                      <div className="flex gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
+                          <Bot className="h-4 w-4 text-accent-foreground" />
                         </div>
-                        <div className="pl-10 max-w-full">
-                          <div className="rounded-lg bg-card border border-border/40 p-4 max-w-full overflow-hidden">
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                              <span className="text-sm text-green-400 font-medium">Finished</span>
-                              <span className="text-xs text-muted-foreground ml-auto">
-                                {message.timestamp.toLocaleTimeString()}
-                              </span>
-                            </div>
-                            {renderFunctionCalls(message.functionCalls || [], index)}
-                            <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
-                          </div>
+                        <div className="flex-1">
+                          {renderFunctionCalls(message.functionCalls || [], index)}
+                          <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
                         </div>
                       </div>
                     )}
@@ -1171,46 +1154,30 @@ function ChatPage() {
                 
                 {/* Streaming Message Display */}
                 {streamingMessage && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
-                        <Bot className="h-4 w-4 text-accent-foreground" />
-                      </div>
-                      <span className="font-medium text-foreground">AI</span>
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
+                      <Bot className="h-4 w-4 text-accent-foreground" />
                     </div>
-                    <div className="pl-10 max-w-full">
-                      <div className="rounded-lg bg-card border border-border/40 p-4 max-w-full overflow-hidden">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-                          <span className="text-sm text-blue-400 font-medium">Streaming...</span>
-                          <span className="text-xs text-muted-foreground ml-auto">
-                            {streamingMessage.timestamp.toLocaleTimeString()}
-                          </span>
-                        </div>
-                        {renderFunctionCalls(streamingMessage.functionCalls, messages.length)}
-                        <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">
-                          {streamingMessage.content}
-                          <span className="inline-block w-2 h-4 bg-blue-400 ml-1 animate-pulse"></span>
-                        </p>
-                      </div>
+                    <div className="flex-1">
+                      {renderFunctionCalls(streamingMessage.functionCalls, messages.length)}
+                      <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">
+                        {streamingMessage.content}
+                        <span className="inline-block w-2 h-4 bg-blue-400 ml-1 animate-pulse"></span>
+                      </p>
                     </div>
                   </div>
                 )}
                 
-                {loading && !asyncMode && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
-                        <Bot className="h-4 w-4 text-accent-foreground" />
-                      </div>
-                      <span className="font-medium text-foreground">AI</span>
+                {/* Loading animation - shows immediately after user submits */}
+                {loading && (
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
+                      <Bot className="h-4 w-4 text-accent-foreground" />
                     </div>
-                    <div className="pl-10 max-w-full">
-                      <div className="rounded-lg bg-card border border-border/40 p-4 max-w-full overflow-hidden">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Loader2 className="w-4 h-4 animate-spin text-white" />
-                          <span className="text-sm text-white font-medium">Thinking...</span>
-                        </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Thinking...</span>
                       </div>
                     </div>
                   </div>
@@ -1266,7 +1233,7 @@ function ChatPage() {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   if (input.trim() && !loading) {
-                    handleSubmit(e as any)
+                    handleSubmit(e as React.FormEvent<HTMLFormElement>)
                   }
                 }
               }}
