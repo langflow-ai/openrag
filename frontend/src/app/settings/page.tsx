@@ -13,7 +13,6 @@ import { useTask } from "@/contexts/task-context"
 import { useAuth } from "@/contexts/auth-context"
 import { FileUploadArea } from "@/components/file-upload-area"
 
-type FacetBucket = { key: string; count: number }
 
 interface Connector {
   id: string

@@ -706,6 +706,7 @@ function ChatPage() {
     }
   }
 
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || loading) return
@@ -1233,7 +1234,11 @@ function ChatPage() {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   if (input.trim() && !loading) {
-                    handleSubmit(e as React.FormEvent<HTMLFormElement>)
+                    // Trigger form submission by finding the form and calling submit
+                    const form = e.currentTarget.closest('form')
+                    if (form) {
+                      form.requestSubmit()
+                    }
                   }
                 }
               }}
