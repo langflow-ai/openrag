@@ -62,12 +62,12 @@ export function KnowledgeFilterPanel() {
       // Set the actual filter selections from the saved knowledge filter
       const filters = parsedFilterData.filters
       
-      // If arrays are empty, default to wildcard (match everything)
-      // Otherwise use the specific selections from the saved filter
+      // Use the exact selections from the saved filter
+      // Empty arrays mean "none selected" not "all selected"
       const processedFilters = {
-        data_sources: filters.data_sources.length === 0 ? ["*"] : filters.data_sources,
-        document_types: filters.document_types.length === 0 ? ["*"] : filters.document_types,
-        owners: filters.owners.length === 0 ? ["*"] : filters.owners
+        data_sources: filters.data_sources,
+        document_types: filters.document_types,
+        owners: filters.owners
       }
       
       console.log("[DEBUG] Loading filter selections:", processedFilters)
@@ -258,7 +258,8 @@ export function KnowledgeFilterPanel() {
   }) => {
     if (!buckets || buckets.length === 0) return null
     
-    const isAllSelected = selectedFilters[facetType].includes("*") // Wildcard
+    // "All" is selected if it contains wildcard OR if no specific selections are made
+    const isAllSelected = selectedFilters[facetType].includes("*")
     
     const handleAllToggle = (checked: boolean) => {
       if (checked) {

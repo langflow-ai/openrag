@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Search, Loader2, FileText, Zap } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Search, Loader2, FileText, Zap, RefreshCw } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
+
+type FacetBucket = { key: string; count: number }
 
 interface SearchResult {
   filename: string
@@ -33,6 +36,12 @@ function SearchPage() {
   const [results, setResults] = useState<SearchResult[]>([])
   const [searchPerformed, setSearchPerformed] = useState(false)
   const prevFilterDataRef = useRef<string>("")
+
+  // Stats state for knowledge overview
+  const [statsLoading, setStatsLoading] = useState<boolean>(false)
+  const [totalDocs, setTotalDocs] = useState<number>(0)
+  const [totalChunks, setTotalChunks] = useState<number>(0)
+  const [facetStats, setFacetStats] = useState<{ data_sources: FacetBucket[]; document_types: FacetBucket[]; owners: FacetBucket[] } | null>(null)
 
   const handleSearch = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -151,172 +160,206 @@ function SearchPage() {
     prevFilterDataRef.current = currentFilterString
   }, [parsedFilterData, searchPerformed, query, handleSearch])
 
+  // Fetch stats with current knowledge filter applied
+  const fetchStats = async () => {
+    try {
+      setStatsLoading(true)
+      
+      // Build search payload with current filter data
+      const searchPayload: any = { 
+        query: '*', 
+        limit: 0,
+        scoreThreshold: parsedFilterData?.scoreThreshold || 0
+      }
+
+      // Add filters from global context if available and not wildcards
+      if (parsedFilterData?.filters) {
+        const filters = parsedFilterData.filters
+        
+        // Only include filters if they're not wildcards (not "*")
+        const hasSpecificFilters = 
+          !filters.data_sources.includes("*") ||
+          !filters.document_types.includes("*") ||
+          !filters.owners.includes("*")
+
+        if (hasSpecificFilters) {
+          const processedFilters: any = {}
+          
+          // Only add filter arrays that don't contain wildcards
+          if (!filters.data_sources.includes("*")) {
+            processedFilters.data_sources = filters.data_sources
+          }
+          if (!filters.document_types.includes("*")) {
+            processedFilters.document_types = filters.document_types
+          }
+          if (!filters.owners.includes("*")) {
+            processedFilters.owners = filters.owners
+          }
+
+          // Only add filters object if it has any actual filters
+          if (Object.keys(processedFilters).length > 0) {
+            searchPayload.filters = processedFilters
+          }
+        }
+      }
+
+      const response = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(searchPayload)
+      })
+      const result = await response.json()
+      if (response.ok) {
+        const aggs = result.aggregations || {}
+        const toBuckets = (agg: { buckets?: Array<{ key: string | number; doc_count: number }> }): FacetBucket[] =>
+          (agg?.buckets || []).map(b => ({ key: String(b.key), count: b.doc_count }))
+        const dataSourceBuckets = toBuckets(aggs.data_sources)
+        setFacetStats({
+          data_sources: dataSourceBuckets.slice(0, 10),
+          document_types: toBuckets(aggs.document_types).slice(0, 10),
+          owners: toBuckets(aggs.owners).slice(0, 10)
+        })
+        setTotalDocs(dataSourceBuckets.length)
+        setTotalChunks(Number(result.total || 0))
+      }
+    } catch {
+      // non-fatal – keep page functional without stats
+    } finally {
+      setStatsLoading(false)
+    }
+  }
+
+  // Initial stats fetch and refresh when filter changes
+  useEffect(() => {
+    fetchStats()
+  }, [parsedFilterData])
+
 
 
 
   return (
-    <div className="space-y-8">
-      {/* Hero Section */}
-      <div className="space-y-4">
-        <div className="mb-4">
-          <h1 className="text-4xl font-bold tracking-tight text-white">
-            Search
-          </h1>
-        </div>
-        <p className="text-xl text-muted-foreground">
-          Find documents using hybrid search
-        </p>
-        <p className="text-sm text-muted-foreground max-w-2xl">
-          Enter your search query to find relevant documents using AI-powered semantic search combined with keyword matching across your document collection.
-        </p>
-      </div>
-
-      {/* Search Interface */}
-      <Card className="w-full bg-card/50 backdrop-blur-sm border-border/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="h-5 w-5" />
-            Search Documents
-            {selectedFilter && (
-              <span className="text-sm font-normal text-blue-400 bg-blue-400/10 px-2 py-1 rounded">
-                Filter: {selectedFilter.name}
-              </span>
-            )}
-          </CardTitle>
-          <CardDescription>
-            Enter your search query to find relevant documents using hybrid search (semantic + keyword)
-            {selectedFilter && (
-              <span className="block text-blue-400 text-xs mt-1">
-                Using knowledge filter: {selectedFilter.name}
-              </span>
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <form onSubmit={handleSearch} className="space-y-4">
-            <div className="space-y-3">
-              <Label htmlFor="search-query" className="font-medium">
-                Search Query
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="search-query"
-                  type="text"
-                  placeholder="e.g., 'financial reports from Q4' or 'user authentication setup'"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="h-12 bg-background/50 border-border/50 focus:border-blue-400/50 focus:ring-blue-400/20 flex-1"
-                />
-                <Button
-                  type="submit"
-                  disabled={!query.trim() || loading}
-                  className="h-12 px-6 transition-all duration-200"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Searching...
-                    </>
-                  ) : (
-                    <>
-                      <Search className="mr-2 h-5 w-5" />
-                      Search
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
+    <div className="fixed inset-0 md:left-72 md:right-6 top-[53px] flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
+        {/* Search Input Area */}
+        <div className="flex-shrink-0 mb-6">
+          <form onSubmit={handleSearch} className="flex gap-3">
+            <Input
+              id="search-query"
+              type="text"
+              placeholder="Search your documents..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 h-12 focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            <Button
+              type="submit"
+              disabled={!query.trim() || loading}
+              variant="secondary"
+              className="rounded-lg h-12 w-12 p-0 flex-shrink-0"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+            </Button>
           </form>
+        </div>
 
-          {/* Search Results */}
-          {searchPerformed && (
+        {/* Results Area */}
+        <div className="flex-1 overflow-y-auto">
+          {searchPerformed ? (
             <div className="space-y-4">
-              {/* Search Results Header */}
-              <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-semibold flex items-center gap-2">
-                  <Zap className="h-6 w-6 text-yellow-400" />
-                  Search Results
-                </h2>
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-sm text-muted-foreground">
-                    {results.length} result{results.length !== 1 ? 's' : ''} returned
-                  </span>
+              {results.length === 0 ? (
+                <div className="text-center py-12">
+                  <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-lg text-muted-foreground">No documents found</p>
+                  <p className="text-sm text-muted-foreground/70 mt-2">
+                    Try adjusting your search terms
+                  </p>
                 </div>
-              </div>
-
-              {/* Results */}
-              <div>
-                {results.length === 0 ? (
-                  <Card className="bg-muted/20 border-dashed border-muted-foreground/30">
-                    <CardContent className="pt-8 pb-8">
-                      <div className="text-center space-y-3">
-                        <div className="mx-auto w-16 h-16 bg-muted/30 rounded-full flex items-center justify-center">
-                          <Search className="h-8 w-8 text-muted-foreground/50" />
-                        </div>
-                        <p className="text-lg font-medium text-muted-foreground">
-                          No documents found
-                        </p>
-                        <p className="text-sm text-muted-foreground/70 max-w-md mx-auto">
-                          Try adjusting your search terms or modify your knowledge filter settings.
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : (
+              ) : (
+                <>
+                  <div className="text-sm text-muted-foreground mb-4">
+                    {results.length} result{results.length !== 1 ? 's' : ''} found
+                  </div>
                   <div className="space-y-4">
                     {results.map((result, index) => (
-                      <Card key={index} className="bg-card/50 backdrop-blur-sm border-border/50 hover:bg-card/70 transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/10">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <CardTitle className="text-lg flex items-center gap-3">
-                              <div className="p-2 rounded-lg bg-blue-500/20 border border-blue-500/30">
-                                <FileText className="h-4 w-4 text-blue-400" />
-                              </div>
-                              <span className="truncate">{result.filename}</span>
-                            </CardTitle>
-                            <div className="flex items-center gap-2">
-                              <div className="px-2 py-1 rounded-md bg-green-500/20 border border-green-500/30">
-                                <span className="text-xs font-medium text-green-400">
-                                  {result.score.toFixed(2)}
-                                </span>
-                              </div>
-                            </div>
+                      <div key={index} className="bg-muted/20 rounded-lg p-4 border border-border/50">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-blue-400" />
+                            <span className="font-medium truncate">{result.filename}</span>
                           </div>
-                          <CardDescription className="flex items-center gap-4 text-sm">
-                            <span className="px-2 py-1 rounded bg-muted/50 text-muted-foreground">
-                              {result.mimetype}
-                            </span>
-                            <span className="text-muted-foreground">
-                              Page {result.page}
-                            </span>
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="border-l-2 border-blue-400/50 pl-4 py-2 bg-muted/20 rounded-r-lg">
-                            <p className="text-sm leading-relaxed text-foreground/90">
-                              {result.text}
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>
+                          <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
+                            {result.score.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="text-sm text-muted-foreground mb-2">
+                          {result.mimetype} • Page {result.page}
+                        </div>
+                        <p className="text-sm text-foreground/90 leading-relaxed">
+                          {result.text}
+                        </p>
+                      </div>
                     ))}
                   </div>
-                )}
+                </>
+              )}
+            </div>
+          ) : (
+            /* Knowledge Overview - Show when no search has been performed */
+            <div className="bg-muted/20 rounded-lg border border-border/50">
+              <div className="p-6">
+                <div className="mb-6">
+                  <h2 className="text-lg font-semibold">Knowledge Overview</h2>
+                </div>
+
+                {/* Documents row */}
+                <div className="mb-6">
+                  <div className="text-sm text-muted-foreground mb-1">Total documents</div>
+                  <div className="text-2xl font-semibold">{statsLoading ? '—' : totalDocs}</div>
+                </div>
+
+                {/* Separator */}
+                <div className="border-t border-border/50 my-6" />
+
+                {/* Chunks and breakdown */}
+                <div className="grid gap-6 md:grid-cols-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-1">Total chunks</div>
+                    <div className="text-2xl font-semibold">{statsLoading ? '—' : totalChunks}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-2">Top types</div>
+                    <div className="flex flex-wrap gap-2">
+                      {(facetStats?.document_types || []).slice(0,5).map((b) => (
+                        <Badge key={`type-${b.key}`} variant="secondary">{b.key} · {b.count}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-2">Top owners</div>
+                    <div className="flex flex-wrap gap-2">
+                      {(facetStats?.owners || []).slice(0,5).map((b) => (
+                        <Badge key={`owner-${b.key}`} variant="secondary">{b.key || 'unknown'} · {b.count}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-2">Top files</div>
+                    <div className="flex flex-wrap gap-2">
+                      {(facetStats?.data_sources || []).slice(0,5).map((b) => (
+                        <Badge key={`file-${b.key}`} variant="secondary" title={b.key}>{b.key} · {b.count}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
-
-          {/* Empty State */}
-          {!searchPerformed && (
-            <div className="h-32 flex items-center justify-center">
-              <p className="text-muted-foreground/50 text-sm">
-                Enter a search query above to get started
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
