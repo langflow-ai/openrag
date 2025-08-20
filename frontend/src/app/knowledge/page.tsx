@@ -3,11 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Search, Loader2, FileText, Zap, RefreshCw } from "lucide-react"
+import { Search, Loader2, FileText } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
 
@@ -30,7 +28,7 @@ interface SearchResponse {
 
 function SearchPage() {
 
-  const { selectedFilter, parsedFilterData } = useKnowledgeFilter()
+  const { parsedFilterData } = useKnowledgeFilter()
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<SearchResult[]>([])
@@ -161,12 +159,23 @@ function SearchPage() {
   }, [parsedFilterData, searchPerformed, query, handleSearch])
 
   // Fetch stats with current knowledge filter applied
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       setStatsLoading(true)
       
       // Build search payload with current filter data
-      const searchPayload: any = { 
+      interface SearchPayload {
+        query: string;
+        limit: number;
+        scoreThreshold: number;
+        filters?: {
+          data_sources?: string[];
+          document_types?: string[];
+          owners?: string[];
+        };
+      }
+
+      const searchPayload: SearchPayload = { 
         query: '*', 
         limit: 0,
         scoreThreshold: parsedFilterData?.scoreThreshold || 0
@@ -183,7 +192,7 @@ function SearchPage() {
           !filters.owners.includes("*")
 
         if (hasSpecificFilters) {
-          const processedFilters: any = {}
+          const processedFilters: SearchPayload['filters'] = {}
           
           // Only add filter arrays that don't contain wildcards
           if (!filters.data_sources.includes("*")) {
@@ -227,12 +236,12 @@ function SearchPage() {
     } finally {
       setStatsLoading(false)
     }
-  }
+  }, [parsedFilterData])
 
   // Initial stats fetch and refresh when filter changes
   useEffect(() => {
     fetchStats()
-  }, [parsedFilterData])
+  }, [fetchStats])
 
 
 

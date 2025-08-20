@@ -62,11 +62,6 @@ function KnowledgeSourcesPage() {
   const [syncResults, setSyncResults] = useState<{[key: string]: SyncResult | null}>({})
   const [maxFiles, setMaxFiles] = useState<number>(10)
 
-  // Stats state (from wildcard search aggregations)
-  const [statsLoading, setStatsLoading] = useState<boolean>(false)
-  const [totalDocs, setTotalDocs] = useState<number>(0)
-  const [totalChunks, setTotalChunks] = useState<number>(0)
-  const [facetStats, setFacetStats] = useState<{ data_sources: FacetBucket[]; document_types: FacetBucket[]; owners: FacetBucket[] } | null>(null)
 
   // File upload handlers
   const handleDirectFileUpload = async (file: File) => {
@@ -87,8 +82,6 @@ function KnowledgeSourcesPage() {
       if (response.ok) {
         setUploadStatus(`File processed successfully! ID: ${result.id}`)
         
-        // Refresh stats after successful file upload
-        fetchStats()
       } else {
         setUploadStatus(`Error: ${result.error || "Processing failed"}`)
       }
@@ -176,9 +169,6 @@ function KnowledgeSourcesPage() {
         addTask(taskId)
         setUploadStatus(`🔄 Processing started for ${totalFiles} files. Check the task notification panel for real-time progress. (Task ID: ${taskId})`)
         setBucketUrl("s3://")
-        
-        // Refresh stats after successful bucket upload
-        fetchStats()
       } else {
         setUploadStatus(`Error: ${result.error || "Bucket processing failed"}`)
       }
@@ -389,37 +379,6 @@ function KnowledgeSourcesPage() {
     }
   }, [searchParams, isAuthenticated, checkConnectorStatuses])
 
-  // Fetch global stats using match-all wildcard
-  const fetchStats = async () => {
-    try {
-      setStatsLoading(true)
-      const response = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: '*', limit: 0 })
-      })
-      const result = await response.json()
-      if (response.ok) {
-        const aggs = result.aggregations || {}
-        const toBuckets = (agg: { buckets?: Array<{ key: string | number; doc_count: number }> }): FacetBucket[] =>
-          (agg?.buckets || []).map(b => ({ key: String(b.key), count: b.doc_count }))
-        const dataSourceBuckets = toBuckets(aggs.data_sources)
-        setFacetStats({
-          data_sources: dataSourceBuckets.slice(0, 10),
-          document_types: toBuckets(aggs.document_types).slice(0, 10),
-          owners: toBuckets(aggs.owners).slice(0, 10)
-        })
-        // Frontend-only doc count: number of distinct filenames (data_sources buckets)
-        setTotalDocs(dataSourceBuckets.length)
-        // Chunk count from hits.total (match_all over chunks)
-        setTotalChunks(Number(result.total || 0))
-      }
-    } catch {
-      // non-fatal – keep page functional without stats
-    } finally {
-      setStatsLoading(false)
-    }
-  }
 
   // Check AWS availability
   useEffect(() => {
@@ -437,10 +396,6 @@ function KnowledgeSourcesPage() {
     checkAws()
   }, [])
 
-  // Initial stats fetch
-  useEffect(() => {
-    fetchStats()
-  }, [])
 
   // Track previous tasks to detect new completions
   const [prevTasks, setPrevTasks] = useState<typeof tasks>([])
@@ -454,9 +409,9 @@ function KnowledgeSourcesPage() {
     })
     
     if (newlyCompletedTasks.length > 0) {
-      // Refresh stats when any task newly completes
+      // Task completed - could refresh data here if needed
       const timeoutId = setTimeout(() => {
-        fetchStats()
+        // Stats refresh removed
       }, 1000)
       
       // Update previous tasks state
@@ -471,95 +426,10 @@ function KnowledgeSourcesPage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero Section */}
-      <div className="space-y-4">
-        <div className="mb-4">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Knowledge Sources
-          </h1>
-        </div>
-        <p className="text-xl text-muted-foreground">
-          Add documents to your knowledge base
-        </p>
-        <p className="text-sm text-muted-foreground max-w-2xl">
-          Import files and folders directly, or connect external services like Google Drive to automatically sync and index your documents.
-        </p>
-      </div>
-
-      {/* Knowledge Overview Stats */}
-      <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">Knowledge Overview</div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={fetchStats}
-              disabled={statsLoading}
-              className="ml-auto"
-            >
-              {statsLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-            </Button>
-          </CardTitle>
-          <CardDescription>Snapshot of indexed content</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Documents row */}
-          <div className="grid gap-6 md:grid-cols-1">
-            <div>
-              <div className="text-sm text-muted-foreground mb-1">Total documents</div>
-              <div className="text-2xl font-semibold">{statsLoading ? '—' : totalDocs}</div>
-            </div>
-          </div>
-
-          {/* Separator */}
-          <div className="border-t border-border/50 my-6" />
-
-          {/* Chunks row */}
-          <div className="grid gap-6 md:grid-cols-4">
-            <div>
-              <div className="text-sm text-muted-foreground mb-1">Total chunks</div>
-              <div className="text-2xl font-semibold">{statsLoading ? '—' : totalChunks}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground mb-2">Top types</div>
-              <div className="flex flex-wrap gap-2">
-                {(facetStats?.document_types || []).slice(0,5).map((b) => (
-                  <Badge key={`type-${b.key}`} variant="secondary">{b.key} · {b.count}</Badge>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground mb-2">Top owners</div>
-              <div className="flex flex-wrap gap-2">
-                {(facetStats?.owners || []).slice(0,5).map((b) => (
-                  <Badge key={`owner-${b.key}`} variant="secondary">{b.key || 'unknown'} · {b.count}</Badge>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground mb-2">Top files</div>
-              <div className="flex flex-wrap gap-2">
-                {(facetStats?.data_sources || []).slice(0,5).map((b) => (
-                  <Badge key={`file-${b.key}`} variant="secondary" title={b.key}>{b.key} · {b.count}</Badge>
-                ))}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Upload Section */}
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight mb-2">Direct Import</h2>
-          <p className="text-muted-foreground">
-            Add individual files or process entire folders from your local system
-          </p>
+          <h2 className="text-2xl font-semibold tracking-tight mb-2">Import</h2>
         </div>
         
         <div className={`grid gap-6 ${awsEnabled ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
@@ -686,10 +556,7 @@ function KnowledgeSourcesPage() {
       {/* Connectors Section */}
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight mb-2">Connectors</h2>
-          <p className="text-muted-foreground">
-            Connect external services to automatically sync and index your documents
-          </p>
+          <h2 className="text-2xl font-semibold tracking-tight mb-2">Cloud Connectors</h2>
         </div>
 
         {/* Sync Settings */}
