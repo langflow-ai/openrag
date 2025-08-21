@@ -5,13 +5,16 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Search, Loader2, FileText } from "lucide-react"
+import { Search, Loader2, FileText, HardDrive } from "lucide-react"
+import { TbBrandOnedrive } from "react-icons/tb"
+import { SiGoogledrive, SiSharepoint, SiAmazonaws } from "react-icons/si"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
+import { useTask } from "@/contexts/task-context"
 
 type FacetBucket = { key: string; count: number }
 
-interface SearchResult {
+interface ChunkResult {
   filename: string
   mimetype: string
   page: number
@@ -19,19 +22,58 @@ interface SearchResult {
   score: number
   source_url?: string
   owner?: string
+  owner_name?: string
+  owner_email?: string
+  file_size?: number
+  connector_type?: string
+}
+
+interface FileResult {
+  filename: string
+  mimetype: string
+  chunkCount: number
+  avgScore: number
+  source_url?: string
+  owner?: string
+  owner_name?: string
+  owner_email?: string
+  lastModified?: string
+  size?: number
+  connector_type?: string
 }
 
 interface SearchResponse {
-  results: SearchResult[]
+  results: ChunkResult[]
+  files?: FileResult[]
   error?: string
 }
 
-function SearchPage() {
+// Function to get the appropriate icon for a connector type
+function getSourceIcon(connectorType?: string) {
+  switch (connectorType) {
+    case 'google_drive':
+      return <SiGoogledrive className="h-4 w-4 text-foreground" />
+    case 'onedrive':
+      return <TbBrandOnedrive className="h-4 w-4 text-foreground" />
+    case 'sharepoint':
+      return <SiSharepoint className="h-4 w-4 text-foreground" />
+    case 's3':
+      return <SiAmazonaws className="h-4 w-4 text-foreground" />
+    case 'local':
+    default:
+      return <HardDrive className="h-4 w-4 text-muted-foreground" />
+  }
+}
 
-  const { parsedFilterData } = useKnowledgeFilter()
+function SearchPage() {
+  const { isMenuOpen } = useTask()
+  const { parsedFilterData, isPanelOpen } = useKnowledgeFilter()
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
-  const [results, setResults] = useState<SearchResult[]>([])
+  const [chunkResults, setChunkResults] = useState<ChunkResult[]>([])
+  const [fileResults, setFileResults] = useState<FileResult[]>([])
+  const [viewMode, setViewMode] = useState<'files' | 'chunks'>('files')
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [searchPerformed, setSearchPerformed] = useState(false)
   const prevFilterDataRef = useRef<string>("")
 
@@ -39,7 +81,7 @@ function SearchPage() {
   const [statsLoading, setStatsLoading] = useState<boolean>(false)
   const [totalDocs, setTotalDocs] = useState<number>(0)
   const [totalChunks, setTotalChunks] = useState<number>(0)
-  const [facetStats, setFacetStats] = useState<{ data_sources: FacetBucket[]; document_types: FacetBucket[]; owners: FacetBucket[] } | null>(null)
+  const [facetStats, setFacetStats] = useState<{ data_sources: FacetBucket[]; document_types: FacetBucket[]; owners: FacetBucket[]; connector_types: FacetBucket[] } | null>(null)
 
   const handleSearch = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -63,8 +105,13 @@ function SearchPage() {
 
       const searchPayload: SearchPayload = { 
         query,
-        limit: parsedFilterData?.limit || 10,
+        limit: parsedFilterData?.limit || (query.trim() === "*" ? 50 : 10),  // Higher limit for wildcard searches
         scoreThreshold: parsedFilterData?.scoreThreshold || 0
+      }
+
+      // Debug logging for wildcard searches
+      if (query.trim() === "*") {
+        console.log("Wildcard search - parsedFilterData:", parsedFilterData)
       }
 
       // Add filters from global context if available and not wildcards
@@ -75,7 +122,8 @@ function SearchPage() {
         const hasSpecificFilters = 
           !filters.data_sources.includes("*") ||
           !filters.document_types.includes("*") ||
-          !filters.owners.includes("*")
+          !filters.owners.includes("*") ||
+          (filters.connector_types && !filters.connector_types.includes("*"))
 
         if (hasSpecificFilters) {
           const processedFilters: SearchPayload['filters'] = {}
@@ -89,6 +137,9 @@ function SearchPage() {
           }
           if (!filters.owners.includes("*")) {
             processedFilters.owners = filters.owners
+          }
+          if (filters.connector_types && !filters.connector_types.includes("*")) {
+            processedFilters.connector_types = filters.connector_types
           }
 
           // Only add filters object if it has any actual filters
@@ -110,16 +161,80 @@ function SearchPage() {
       const result: SearchResponse = await response.json()
       
       if (response.ok) {
-        setResults(result.results || [])
+        const chunks = result.results || []
+        
+        // Debug logging for wildcard searches
+        if (query.trim() === "*") {
+          console.log("Wildcard search results:", {
+            chunks: chunks.length,
+            totalFromBackend: result.total,
+            searchPayload,
+            firstChunk: chunks[0]
+          })
+        }
+        
+        setChunkResults(chunks)
+        
+        // Group chunks by filename to create file results
+        const fileMap = new Map<string, {
+          filename: string
+          mimetype: string
+          chunks: ChunkResult[]
+          totalScore: number
+          source_url?: string
+          owner?: string
+          owner_name?: string
+          owner_email?: string
+          file_size?: number
+          connector_type?: string
+        }>()
+        
+        chunks.forEach(chunk => {
+          const existing = fileMap.get(chunk.filename)
+          if (existing) {
+            existing.chunks.push(chunk)
+            existing.totalScore += chunk.score
+          } else {
+            fileMap.set(chunk.filename, {
+              filename: chunk.filename,
+              mimetype: chunk.mimetype,
+              chunks: [chunk],
+              totalScore: chunk.score,
+              source_url: chunk.source_url,
+              owner: chunk.owner,
+              owner_name: chunk.owner_name,
+              owner_email: chunk.owner_email,
+              file_size: chunk.file_size,
+              connector_type: chunk.connector_type
+            })
+          }
+        })
+        
+        const files: FileResult[] = Array.from(fileMap.values()).map(file => ({
+          filename: file.filename,
+          mimetype: file.mimetype,
+          chunkCount: file.chunks.length,
+          avgScore: file.totalScore / file.chunks.length,
+          source_url: file.source_url,
+          owner: file.owner,
+          owner_name: file.owner_name,
+          owner_email: file.owner_email,
+          size: file.file_size,
+          connector_type: file.connector_type
+        }))
+        
+        setFileResults(files)
         setSearchPerformed(true)
       } else {
         console.error("Search failed:", result.error)
-        setResults([])
+        setChunkResults([])
+        setFileResults([])
         setSearchPerformed(true)
       }
     } catch (error) {
       console.error("Search error:", error)
-      setResults([])
+      setChunkResults([])
+      setFileResults([])
       setSearchPerformed(true)
     } finally {
       setLoading(false)
@@ -177,7 +292,7 @@ function SearchPage() {
 
       const searchPayload: SearchPayload = { 
         query: '*', 
-        limit: 0,
+        limit: 50, // Get more results to ensure we have owner mapping data
         scoreThreshold: parsedFilterData?.scoreThreshold || 0
       }
 
@@ -189,7 +304,8 @@ function SearchPage() {
         const hasSpecificFilters = 
           !filters.data_sources.includes("*") ||
           !filters.document_types.includes("*") ||
-          !filters.owners.includes("*")
+          !filters.owners.includes("*") ||
+          (filters.connector_types && !filters.connector_types.includes("*"))
 
         if (hasSpecificFilters) {
           const processedFilters: SearchPayload['filters'] = {}
@@ -203,6 +319,9 @@ function SearchPage() {
           }
           if (!filters.owners.includes("*")) {
             processedFilters.owners = filters.owners
+          }
+          if (filters.connector_types && !filters.connector_types.includes("*")) {
+            processedFilters.connector_types = filters.connector_types
           }
 
           // Only add filters object if it has any actual filters
@@ -222,11 +341,15 @@ function SearchPage() {
         const aggs = result.aggregations || {}
         const toBuckets = (agg: { buckets?: Array<{ key: string | number; doc_count: number }> }): FacetBucket[] =>
           (agg?.buckets || []).map(b => ({ key: String(b.key), count: b.doc_count }))
+        
+        // Now we can aggregate directly on owner names since they're keyword fields
+        
         const dataSourceBuckets = toBuckets(aggs.data_sources)
         setFacetStats({
           data_sources: dataSourceBuckets.slice(0, 10),
           document_types: toBuckets(aggs.document_types).slice(0, 10),
-          owners: toBuckets(aggs.owners).slice(0, 10)
+          owners: toBuckets(aggs.owners).slice(0, 10),
+          connector_types: toBuckets(aggs.connector_types || {}).slice(0, 10)
         })
         setTotalDocs(dataSourceBuckets.length)
         setTotalChunks(Number(result.total || 0))
@@ -247,7 +370,12 @@ function SearchPage() {
 
 
   return (
-    <div className="fixed inset-0 md:left-72 md:right-6 top-[53px] flex flex-col">
+    <div className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
+      isMenuOpen && isPanelOpen ? 'md:right-[704px]' : // Both open: 384px (menu) + 320px (KF panel)
+      isMenuOpen ? 'md:right-96' : // Only menu open: 384px
+      isPanelOpen ? 'md:right-80' : // Only KF panel open: 320px
+      'md:right-6' // Neither open: 24px
+    }`}>
       <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
         {/* Search Input Area */}
         <div className="flex-shrink-0 mb-6">
@@ -279,7 +407,7 @@ function SearchPage() {
         <div className="flex-1 overflow-y-auto">
           {searchPerformed ? (
             <div className="space-y-4">
-              {results.length === 0 ? (
+              {fileResults.length === 0 && chunkResults.length === 0 ? (
                 <div className="text-center py-12">
                   <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
                   <p className="text-lg text-muted-foreground">No documents found</p>
@@ -289,29 +417,143 @@ function SearchPage() {
                 </div>
               ) : (
                 <>
-                  <div className="text-sm text-muted-foreground mb-4">
-                    {results.length} result{results.length !== 1 ? 's' : ''} found
+                  {/* View Toggle and Results Count */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="text-sm text-muted-foreground">
+                      {viewMode === 'files' ? fileResults.length : chunkResults.length} {viewMode === 'files' ? 'file' : 'result'}{(viewMode === 'files' ? fileResults.length : chunkResults.length) !== 1 ? 's' : ''} found
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={viewMode === 'files' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {setViewMode('files'); setSelectedFile(null)}}
+                      >
+                        Files
+                      </Button>
+                      <Button
+                        variant={viewMode === 'chunks' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {setViewMode('chunks'); setSelectedFile(null)}}
+                      >
+                        Chunks
+                      </Button>
+                    </div>
                   </div>
+
+                  {/* Results Display */}
                   <div className="space-y-4">
-                    {results.map((result, index) => (
-                      <div key={index} className="bg-muted/20 rounded-lg p-4 border border-border/50">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-blue-400" />
-                            <span className="font-medium truncate">{result.filename}</span>
+                    {viewMode === 'files' ? (
+                      selectedFile ? (
+                        // Show chunks for selected file
+                        <>
+                          <div className="flex items-center gap-2 mb-4">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedFile(null)}
+                            >
+                              ← Back to files
+                            </Button>
+                            <span className="text-sm text-muted-foreground">
+                              Chunks from {selectedFile}
+                            </span>
                           </div>
-                          <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-                            {result.score.toFixed(2)}
-                          </span>
+                          {chunkResults
+                            .filter(chunk => chunk.filename === selectedFile)
+                            .map((chunk, index) => (
+                            <div key={index} className="bg-muted/20 rounded-lg p-4 border border-border/50">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-blue-400" />
+                                  <span className="font-medium truncate">{chunk.filename}</span>
+                                </div>
+                                <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
+                                  {chunk.score.toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="text-sm text-muted-foreground mb-2">
+                                {chunk.mimetype} • Page {chunk.page}
+                              </div>
+                              <p className="text-sm text-foreground/90 leading-relaxed">
+                                {chunk.text}
+                              </p>
+                            </div>
+                          ))}
+                        </>
+                      ) : (
+                        // Show files table
+                        <div className="bg-muted/20 rounded-lg border border-border/50 overflow-hidden">
+                          <table className="w-full">
+                            <thead>
+                              <tr className="border-b border-border/50 bg-muted/10">
+                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Source</th>
+                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Type</th>
+                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Size</th>
+                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Chunks</th>
+                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Score</th>
+                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Owner</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {fileResults.map((file, index) => (
+                                <tr
+                                  key={index}
+                                  className="border-b border-border/30 hover:bg-muted/20 cursor-pointer transition-colors"
+                                  onClick={() => setSelectedFile(file.filename)}
+                                >
+                                  <td className="p-3">
+                                    <div className="flex items-center gap-2">
+                                      {getSourceIcon(file.connector_type)}
+                                      <span className="font-medium truncate" title={file.filename}>
+                                        {file.filename}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="p-3 text-sm text-muted-foreground">
+                                    {file.mimetype}
+                                  </td>
+                                  <td className="p-3 text-sm text-muted-foreground">
+                                    {file.size ? `${Math.round(file.size / 1024)} KB` : '—'}
+                                  </td>
+                                  <td className="p-3 text-sm text-muted-foreground">
+                                    {file.chunkCount}
+                                  </td>
+                                  <td className="p-3">
+                                    <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
+                                      {file.avgScore.toFixed(2)}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-sm text-muted-foreground" title={file.owner_email}>
+                                    {file.owner_name || file.owner || '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                        <div className="text-sm text-muted-foreground mb-2">
-                          {result.mimetype} • Page {result.page}
+                      )
+                    ) : (
+                      // Show chunks view
+                      chunkResults.map((result, index) => (
+                        <div key={index} className="bg-muted/20 rounded-lg p-4 border border-border/50">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-blue-400" />
+                              <span className="font-medium truncate">{result.filename}</span>
+                            </div>
+                            <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
+                              {result.score.toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="text-sm text-muted-foreground mb-2">
+                            {result.mimetype} • Page {result.page}
+                          </div>
+                          <p className="text-sm text-foreground/90 leading-relaxed">
+                            {result.text}
+                          </p>
                         </div>
-                        <p className="text-sm text-foreground/90 leading-relaxed">
-                          {result.text}
-                        </p>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </>
               )}
@@ -334,10 +576,20 @@ function SearchPage() {
                 <div className="border-t border-border/50 my-6" />
 
                 {/* Chunks and breakdown */}
-                <div className="grid gap-6 md:grid-cols-4">
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                   <div>
                     <div className="text-sm text-muted-foreground mb-1">Total chunks</div>
                     <div className="text-2xl font-semibold">{statsLoading ? '—' : totalChunks}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-2">Top sources</div>
+                    <div className="flex flex-wrap gap-2">
+                      {(facetStats?.connector_types || []).slice(0,5).map((b) => (
+                        <Badge key={`connector-${b.key}`} variant="secondary">
+                          <span className="capitalize">{b.key}</span> · {b.count}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground mb-2">Top types</div>
@@ -352,14 +604,6 @@ function SearchPage() {
                     <div className="flex flex-wrap gap-2">
                       {(facetStats?.owners || []).slice(0,5).map((b) => (
                         <Badge key={`owner-${b.key}`} variant="secondary">{b.key || 'unknown'} · {b.count}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-2">Top files</div>
-                    <div className="flex flex-wrap gap-2">
-                      {(facetStats?.data_sources || []).slice(0,5).map((b) => (
-                        <Badge key={`file-${b.key}`} variant="secondary" title={b.key}>{b.key} · {b.count}</Badge>
                       ))}
                     </div>
                   </div>
