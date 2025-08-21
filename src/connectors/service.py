@@ -30,7 +30,7 @@ class ConnectorService:
         """Get a connector by connection ID"""
         return await self.connection_manager.get_connector(connection_id)
     
-    async def process_connector_document(self, document: ConnectorDocument, owner_user_id: str, connector_type: str, jwt_token: str = None) -> Dict[str, Any]:
+    async def process_connector_document(self, document: ConnectorDocument, owner_user_id: str, connector_type: str, jwt_token: str = None, owner_name: str = None, owner_email: str = None) -> Dict[str, Any]:
         """Process a document from a connector using existing processing pipeline"""
         
         # Create temporary file from document content
@@ -44,17 +44,25 @@ class ConnectorService:
                 from services.document_service import DocumentService
                 doc_service = DocumentService(session_manager=self.session_manager)
                 
+                print(f"[DEBUG] Processing connector document with ID: {document.id}")
+                
                 # Process using the existing pipeline but with connector document metadata
                 result = await doc_service.process_file_common(
                     file_path=tmp_file.name, 
                     file_hash=document.id,  # Use connector document ID as hash
                     owner_user_id=owner_user_id,
                     original_filename=document.filename,  # Pass the original Google Doc title
-                    jwt_token=jwt_token
+                    jwt_token=jwt_token,
+                    owner_name=owner_name,
+                    owner_email=owner_email,
+                    file_size=len(document.content) if document.content else 0,
+                    connector_type=connector_type
                 )
                 
-                # If successfully indexed, update the indexed documents with connector metadata
-                if result["status"] == "indexed":
+                print(f"[DEBUG] Document processing result: {result}")
+                
+                # If successfully indexed or already exists, update the indexed documents with connector metadata
+                if result["status"] in ["indexed", "unchanged"]:
                     # Update all chunks with connector-specific metadata
                     await self._update_connector_metadata(document, owner_user_id, connector_type, jwt_token)
                 
@@ -70,6 +78,8 @@ class ConnectorService:
     
     async def _update_connector_metadata(self, document: ConnectorDocument, owner_user_id: str, connector_type: str, jwt_token: str = None):
         """Update indexed chunks with connector-specific metadata"""
+        print(f"[DEBUG] Looking for chunks with document_id: {document.id}")
+        
         # Find all chunks for this document
         query = {
             "query": {
@@ -80,29 +90,47 @@ class ConnectorService:
         # Get user's OpenSearch client
         opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
         
-        response = await opensearch_client.search(index=self.index_name, body=query)
+        try:
+            response = await opensearch_client.search(index=self.index_name, body=query)
+        except Exception as e:
+            print(f"[ERROR] OpenSearch search failed for connector metadata update: {e}")
+            print(f"[ERROR] Search query: {query}")
+            raise
+            
+        print(f"[DEBUG] Search query: {query}")
+        print(f"[DEBUG] Found {len(response['hits']['hits'])} chunks matching document_id: {document.id}")
         
         # Update each chunk with connector metadata
+        print(f"[DEBUG] Updating {len(response['hits']['hits'])} chunks with connector_type: {connector_type}")
         for hit in response["hits"]["hits"]:
             chunk_id = hit["_id"]
+            current_connector_type = hit["_source"].get("connector_type", "unknown")
+            print(f"[DEBUG] Chunk {chunk_id}: current connector_type = {current_connector_type}, updating to {connector_type}")
+            
             update_body = {
                 "doc": {
                     "source_url": document.source_url,
-                    "connector_type": connector_type,
+                    "connector_type": connector_type,  # Override the "local" set by process_file_common
                     # Additional ACL info beyond owner (already set by process_file_common)
                     "allowed_users": document.acl.allowed_users,
                     "allowed_groups": document.acl.allowed_groups,
                     "user_permissions": document.acl.user_permissions,
                     "group_permissions": document.acl.group_permissions,
                     # Timestamps
-                    "created_time": document.created_time.isoformat(),
-                    "modified_time": document.modified_time.isoformat(),
+                    "created_time": document.created_time.isoformat() if document.created_time else None,
+                    "modified_time": document.modified_time.isoformat() if document.modified_time else None,
                     # Additional metadata
                     "metadata": document.metadata
                 }
             }
             
-            await opensearch_client.update(index=self.index_name, id=chunk_id, body=update_body)
+            try:
+                await opensearch_client.update(index=self.index_name, id=chunk_id, body=update_body)
+                print(f"[DEBUG] Updated chunk {chunk_id} with connector metadata")
+            except Exception as e:
+                print(f"[ERROR] OpenSearch update failed for chunk {chunk_id}: {e}")
+                print(f"[ERROR] Update body: {update_body}")
+                raise
     
     def _get_file_extension(self, mimetype: str) -> str:
         """Get file extension based on MIME type"""
@@ -168,9 +196,14 @@ class ConnectorService:
         if not files_to_process:
             raise ValueError("No files found to sync")
         
+        # Get user information
+        user = self.session_manager.get_user(user_id) if self.session_manager else None
+        owner_name = user.name if user else None
+        owner_email = user.email if user else None
+        
         # Create custom processor for connector files
         from models.processors import ConnectorFileProcessor
-        processor = ConnectorFileProcessor(self, connection_id, files_to_process, user_id)
+        processor = ConnectorFileProcessor(self, connection_id, files_to_process, user_id, owner_name=owner_name, owner_email=owner_email)
         
         # Use file IDs as items (no more fake file paths!)
         file_ids = [file_info['id'] for file_info in files_to_process]
@@ -195,10 +228,15 @@ class ConnectorService:
         if not file_ids:
             raise ValueError("No file IDs provided")
         
+        # Get user information
+        user = self.session_manager.get_user(user_id) if self.session_manager else None
+        owner_name = user.name if user else None
+        owner_email = user.email if user else None
+        
         # Create custom processor for specific connector files
         from models.processors import ConnectorFileProcessor
         # We'll pass file_ids as the files_info, the processor will handle ID-only files
-        processor = ConnectorFileProcessor(self, connection_id, file_ids, user_id)
+        processor = ConnectorFileProcessor(self, connection_id, file_ids, user_id, owner_name=owner_name, owner_email=owner_email)
         
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(user_id, file_ids, processor)
