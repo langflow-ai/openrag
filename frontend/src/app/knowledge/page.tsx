@@ -5,9 +5,9 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Search, Loader2, FileText, HardDrive } from "lucide-react"
+import { Search, Loader2, FileText, HardDrive, Building2, Cloud } from "lucide-react"
 import { TbBrandOnedrive } from "react-icons/tb"
-import { SiGoogledrive, SiSharepoint, SiAmazonaws } from "react-icons/si"
+import { SiGoogledrive } from "react-icons/si"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
 import { useTask } from "@/contexts/task-context"
@@ -46,6 +46,13 @@ interface SearchResponse {
   results: ChunkResult[]
   files?: FileResult[]
   error?: string
+  total?: number
+  aggregations?: {
+    data_sources?: { buckets?: Array<{ key: string | number; doc_count: number }> }
+    document_types?: { buckets?: Array<{ key: string | number; doc_count: number }> }
+    owners?: { buckets?: Array<{ key: string | number; doc_count: number }> }
+    connector_types?: { buckets?: Array<{ key: string | number; doc_count: number }> }
+  }
 }
 
 // Function to get the appropriate icon for a connector type
@@ -56,9 +63,9 @@ function getSourceIcon(connectorType?: string) {
     case 'onedrive':
       return <TbBrandOnedrive className="h-4 w-4 text-foreground" />
     case 'sharepoint':
-      return <SiSharepoint className="h-4 w-4 text-foreground" />
+      return <Building2 className="h-4 w-4 text-foreground" />
     case 's3':
-      return <SiAmazonaws className="h-4 w-4 text-foreground" />
+      return <Cloud className="h-4 w-4 text-foreground" />
     case 'local':
     default:
       return <HardDrive className="h-4 w-4 text-muted-foreground" />
@@ -100,6 +107,7 @@ function SearchPage() {
           data_sources?: string[];
           document_types?: string[];
           owners?: string[];
+          connector_types?: string[];
         };
       }
 
@@ -287,6 +295,7 @@ function SearchPage() {
           data_sources?: string[];
           document_types?: string[];
           owners?: string[];
+          connector_types?: string[];
         };
       }
 

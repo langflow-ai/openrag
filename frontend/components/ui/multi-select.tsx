@@ -1,9 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { X, ChevronDown, Check } from "lucide-react"
+import { ChevronDown, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -83,14 +82,6 @@ export function MultiSelect({
     }
   }
 
-  const handleRemove = (optionValue: string) => {
-    if (optionValue === "*") {
-      onValueChange([])
-    } else {
-      onValueChange(value.filter(v => v !== optionValue))
-    }
-  }
-
   const getDisplayText = () => {
     if (isAllSelected) {
       return allOptionLabel
@@ -105,54 +96,7 @@ export function MultiSelect({
     return `${value.length} ${noun}`
   }
 
-  const getSelectedBadges = () => {
-    if (isAllSelected) {
-      return [
-        <Badge 
-          key="all" 
-          variant="secondary" 
-          className="mr-1 mb-1"
-        >
-          {allOptionLabel}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-1 h-auto p-0 text-muted-foreground hover:text-foreground"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleRemove("*")
-            }}
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        </Badge>
-      ]
-    }
 
-    return value.map(val => {
-      const option = options.find(opt => opt.value === val)
-      return (
-        <Badge 
-          key={val} 
-          variant="secondary" 
-          className="mr-1 mb-1"
-        >
-          {option?.label || val}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-1 h-auto p-0 text-muted-foreground hover:text-foreground"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleRemove(val)
-            }}
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        </Badge>
-      )
-    })
-  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload, AtSign, Plus, X } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
@@ -8,7 +8,7 @@ import { useTask } from "@/contexts/task-context"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
 import { useAuth } from "@/contexts/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+
 
 interface Message {
   role: "user" | "assistant"
@@ -47,6 +47,16 @@ interface SelectedFilters {
   owners: string[]
 }
 
+interface KnowledgeFilterData {
+  id: string
+  name: string
+  description: string
+  query_data: string
+  owner: string
+  created_at: string
+  updated_at: string
+}
+
 interface RequestBody {
   prompt: string
   stream?: boolean
@@ -83,7 +93,7 @@ function ChatPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false)
-  const [availableFilters, setAvailableFilters] = useState<any[]>([])
+  const [availableFilters, setAvailableFilters] = useState<KnowledgeFilterData[]>([])
   const [filterSearchTerm, setFilterSearchTerm] = useState("")
   const [selectedFilterIndex, setSelectedFilterIndex] = useState(0)
   const [isFilterHighlighted, setIsFilterHighlighted] = useState(false)
@@ -292,7 +302,7 @@ function ChatPage() {
     setIsFilterDropdownOpen(!isFilterDropdownOpen)
   }
 
-  const handleFilterSelect = (filter: any) => {
+  const handleFilterSelect = (filter: KnowledgeFilterData | null) => {
     setSelectedFilter(filter)
     setIsFilterDropdownOpen(false)
     setFilterSearchTerm("")
@@ -1552,7 +1562,7 @@ function ChatPage() {
                         filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase())
                       ).length === 0 && filterSearchTerm && (
                         <div className="px-2 py-3 text-sm text-muted-foreground">
-                          No filters match "{filterSearchTerm}"
+                          No filters match &quot;{filterSearchTerm}&quot;
                         </div>
                       )}
                     </>
