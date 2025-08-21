@@ -1,14 +1,14 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { X, Edit3, Save, Settings, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
+import { X, Edit3, Save, Settings, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { MultiSelect } from '@/components/ui/multi-select'
+import { Slider } from '@/components/ui/slider'
 import { useKnowledgeFilter } from '@/contexts/knowledge-filter-context'
 
 
@@ -21,6 +21,7 @@ interface AvailableFacets {
   data_sources: FacetBucket[]
   document_types: FacetBucket[]
   owners: FacetBucket[]
+  connector_types: FacetBucket[]
 }
 
 export function KnowledgeFilterPanel() {
@@ -37,21 +38,18 @@ export function KnowledgeFilterPanel() {
   const [selectedFilters, setSelectedFilters] = useState({
     data_sources: ["*"] as string[], // Default to wildcard
     document_types: ["*"] as string[], // Default to wildcard
-    owners: ["*"] as string[] // Default to wildcard
+    owners: ["*"] as string[], // Default to wildcard
+    connector_types: ["*"] as string[] // Default to wildcard
   })
   const [resultLimit, setResultLimit] = useState(10)
   const [scoreThreshold, setScoreThreshold] = useState(0)
-  const [openSections, setOpenSections] = useState({
-    data_sources: true,
-    document_types: true,
-    owners: true
-  })
   
   // Available facets (loaded from API)
   const [availableFacets, setAvailableFacets] = useState<AvailableFacets>({
     data_sources: [],
     document_types: [],
-    owners: []
+    owners: [],
+    connector_types: []
   })
 
   // Load current filter data into controls
@@ -67,7 +65,8 @@ export function KnowledgeFilterPanel() {
       const processedFilters = {
         data_sources: filters.data_sources,
         document_types: filters.document_types,
-        owners: filters.owners
+        owners: filters.owners,
+        connector_types: filters.connector_types || ["*"]
       }
       
       console.log("[DEBUG] Loading filter selections:", processedFilters)
@@ -111,7 +110,8 @@ export function KnowledgeFilterPanel() {
         const facets = {
           data_sources: result.aggregations.data_sources?.buckets || [],
           document_types: result.aggregations.document_types?.buckets || [],
-          owners: result.aggregations.owners?.buckets || []
+          owners: result.aggregations.owners?.buckets || [],
+          connector_types: result.aggregations.connector_types?.buckets || []
         }
         console.log("[DEBUG] Setting facets:", facets)
         setAvailableFacets(facets)
@@ -126,12 +126,6 @@ export function KnowledgeFilterPanel() {
   // Don't render if panel is closed or no filter selected
   if (!isPanelOpen || !selectedFilter || !parsedFilterData) return null
 
-  const toggleSection = (section: keyof typeof openSections) => {
-    setOpenSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }))
-  }
 
 
 
@@ -140,7 +134,8 @@ export function KnowledgeFilterPanel() {
     setSelectedFilters({
       data_sources: ["*"],
       document_types: ["*"],
-      owners: ["*"]
+      owners: ["*"],
+      connector_types: ["*"]
     })
   }
 
@@ -148,7 +143,8 @@ export function KnowledgeFilterPanel() {
     setSelectedFilters({
       data_sources: [],
       document_types: [],
-      owners: []
+      owners: [],
+      connector_types: []
     })
   }
 
@@ -243,119 +239,11 @@ export function KnowledgeFilterPanel() {
     })
   }
 
-  const FacetSection = ({ 
-    title, 
-    buckets, 
-    facetType,
-    isOpen,
-    onToggle 
-  }: { 
-    title: string
-    buckets: FacetBucket[]
-    facetType: keyof typeof selectedFilters
-    isOpen: boolean
-    onToggle: () => void
-  }) => {
-    if (!buckets || buckets.length === 0) return null
-    
-    // "All" is selected if it contains wildcard OR if no specific selections are made
-    const isAllSelected = selectedFilters[facetType].includes("*")
-    
-    const handleAllToggle = (checked: boolean) => {
-      if (checked) {
-        // Select "All" - clear specific selections and add wildcard
-        setSelectedFilters(prev => ({
-          ...prev,
-          [facetType]: ["*"]
-        }))
-      } else {
-        // Unselect "All" - remove wildcard but keep any specific selections
-        setSelectedFilters(prev => ({
-          ...prev,
-          [facetType]: prev[facetType].filter(item => item !== "*")
-        }))
-      }
-    }
-    
-    const handleSpecificToggle = (value: string, checked: boolean) => {
-      setSelectedFilters(prev => {
-        let newValues = [...prev[facetType]]
-        
-        // Remove wildcard if selecting specific items
-        newValues = newValues.filter(item => item !== "*")
-        
-        if (checked) {
-          newValues.push(value)
-        } else {
-          newValues = newValues.filter(item => item !== value)
-        }
-        
-        return {
-          ...prev,
-          [facetType]: newValues
-        }
-      })
-    }
-    
-    return (
-      <Collapsible open={isOpen} onOpenChange={onToggle}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="w-full justify-between p-0 h-auto font-medium text-left">
-            <span className="text-sm font-medium">{title}</span>
-            {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="space-y-2 mt-3">
-          {/* "All" wildcard option */}
-          <div className="flex items-center space-x-2 pb-2 border-b border-border/30">
-            <Checkbox
-              id={`${facetType}-all`}
-              checked={isAllSelected}
-              onCheckedChange={handleAllToggle}
-            />
-            <Label 
-              htmlFor={`${facetType}-all`}
-              className="text-sm font-medium flex-1 cursor-pointer flex items-center justify-between"
-            >
-              <span>All {title}</span>
-              <span className="text-xs text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded ml-2 flex-shrink-0">
-                *
-              </span>
-            </Label>
-          </div>
-          
-          {/* Individual items - disabled if "All" is selected */}
-          {buckets.map((bucket, index) => {
-            const isSelected = selectedFilters[facetType].includes(bucket.key)
-            const isDisabled = isAllSelected
-            
-            return (
-              <div key={index} className={`flex items-center space-x-2 ${isDisabled ? 'opacity-50' : ''}`}>
-                <Checkbox
-                  id={`${facetType}-${index}`}
-                  checked={isSelected}
-                  disabled={isDisabled}
-                  onCheckedChange={(checked) => 
-                    handleSpecificToggle(bucket.key, checked as boolean)
-                  }
-                />
-                <Label 
-                  htmlFor={`${facetType}-${index}`}
-                  className={`text-sm font-normal flex-1 flex items-center justify-between ${isDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                >
-                  <span className="truncate" title={bucket.key}>
-                    {bucket.key}
-                  </span>
-                  <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded ml-2 flex-shrink-0">
-                    {bucket.count}
-                  </span>
-                </Label>
-              </div>
-            )
-          })}
-        </CollapsibleContent>
-      </Collapsible>
-    )
+  const handleFilterChange = (facetType: keyof typeof selectedFilters, newValues: string[]) => {
+    setSelectedFilters(prev => ({
+      ...prev,
+      [facetType]: newValues
+    }))
   }
 
   return (
@@ -468,29 +356,67 @@ export function KnowledgeFilterPanel() {
             />
           </div>
 
-          {/* Facet Sections - exactly like search page */}
-          <div className="space-y-6">
-            <FacetSection
-              title="Data Sources"
-              buckets={availableFacets.data_sources || []}
-              facetType="data_sources"
-              isOpen={openSections.data_sources}
-              onToggle={() => toggleSection('data_sources')}
-            />
-            <FacetSection
-              title="Document Types"
-              buckets={availableFacets.document_types || []}
-              facetType="document_types"
-              isOpen={openSections.document_types}
-              onToggle={() => toggleSection('document_types')}
-            />
-            <FacetSection
-              title="Owners"
-              buckets={availableFacets.owners || []}
-              facetType="owners"
-              isOpen={openSections.owners}
-              onToggle={() => toggleSection('owners')}
-            />
+          {/* Filter Dropdowns */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Data Sources</Label>
+              <MultiSelect
+                options={(availableFacets.data_sources || []).map(bucket => ({
+                  value: bucket.key,
+                  label: bucket.key,
+                  count: bucket.count
+                }))}
+                value={selectedFilters.data_sources}
+                onValueChange={(values) => handleFilterChange('data_sources', values)}
+                placeholder="Select data sources..."
+                allOptionLabel="All Data Sources"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Document Types</Label>
+              <MultiSelect
+                options={(availableFacets.document_types || []).map(bucket => ({
+                  value: bucket.key,
+                  label: bucket.key,
+                  count: bucket.count
+                }))}
+                value={selectedFilters.document_types}
+                onValueChange={(values) => handleFilterChange('document_types', values)}
+                placeholder="Select document types..."
+                allOptionLabel="All Document Types"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Owners</Label>
+              <MultiSelect
+                options={(availableFacets.owners || []).map(bucket => ({
+                  value: bucket.key,
+                  label: bucket.key,
+                  count: bucket.count
+                }))}
+                value={selectedFilters.owners}
+                onValueChange={(values) => handleFilterChange('owners', values)}
+                placeholder="Select owners..."
+                allOptionLabel="All Owners"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Sources</Label>
+              <MultiSelect
+                options={(availableFacets.connector_types || []).map(bucket => ({
+                  value: bucket.key,
+                  label: bucket.key,
+                  count: bucket.count
+                }))}
+                value={selectedFilters.connector_types}
+                onValueChange={(values) => handleFilterChange('connector_types', values)}
+                placeholder="Select sources..."
+                allOptionLabel="All Sources"
+              />
+            </div>
 
             {/* All/None buttons */}
             <div className="flex gap-2">
@@ -526,16 +452,17 @@ export function KnowledgeFilterPanel() {
                       const newLimit = Math.max(1, Math.min(1000, parseInt(e.target.value) || 1))
                       setResultLimit(newLimit)
                     }}
-                    className="w-16 h-6 text-xs text-center"
+                    className="h-6 text-xs text-right px-2 bg-muted/30 !border-0 rounded ml-auto focus:ring-0 focus:outline-none"
+                    style={{ width: '70px' }}
                   />
                 </div>
-                <input
-                  type="range"
-                  min={1}
+                <Slider
+                  value={[resultLimit]}
+                  onValueChange={(values) => setResultLimit(values[0])}
                   max={1000}
-                  value={resultLimit}
-                  onChange={(e) => setResultLimit(parseInt(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  min={1}
+                  step={1}
+                  className="w-full"
                 />
               </div>
 
@@ -546,21 +473,21 @@ export function KnowledgeFilterPanel() {
                   <Input
                     type="number"
                     min="0"
-                    max="1"
-                    step="0.01"
+                    max="5"
+                    step="0.1"
                     value={scoreThreshold}
                     onChange={(e) => setScoreThreshold(parseFloat(e.target.value) || 0)}
-                    className="w-16 h-6 text-xs text-center"
+                    className="h-6 text-xs text-right px-2 bg-muted/30 !border-0 rounded ml-auto focus:ring-0 focus:outline-none"
+                    style={{ width: '70px' }}
                   />
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={scoreThreshold}
-                  onChange={(e) => setScoreThreshold(parseFloat(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                <Slider
+                  value={[scoreThreshold]}
+                  onValueChange={(values) => setScoreThreshold(values[0])}
+                  max={5}
+                  min={0}
+                  step={0.1}
+                  className="w-full"
                 />
               </div>
             </div>

@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload, AtSign, Plus } from "lucide-react"
+import { Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload, AtSign, Plus, X } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
 import { useAuth } from "@/contexts/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface Message {
   role: "user" | "assistant"
@@ -81,11 +82,19 @@ function ChatPage() {
   }>({ chat: null, langflow: null })
   const [isUploading, setIsUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false)
+  const [availableFilters, setAvailableFilters] = useState<any[]>([])
+  const [filterSearchTerm, setFilterSearchTerm] = useState("")
+  const [selectedFilterIndex, setSelectedFilterIndex] = useState(0)
+  const [isFilterHighlighted, setIsFilterHighlighted] = useState(false)
+  const [dropdownDismissed, setDropdownDismissed] = useState(false)
   const dragCounterRef = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const { addTask } = useTask()
-  const { selectedFilter, parsedFilterData } = useKnowledgeFilter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const { addTask, isMenuOpen } = useTask()
+  const { selectedFilter, parsedFilterData, isPanelOpen, setSelectedFilter } = useKnowledgeFilter()
 
 
 
@@ -235,14 +244,103 @@ function ChatPage() {
     }
   }
 
+  const handleFilePickerClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files && files.length > 0) {
+      handleFileUpload(files[0])
+    }
+    // Reset the input so the same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const loadAvailableFilters = async () => {
+    try {
+      const response = await fetch("/api/knowledge-filter/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: "",
+          limit: 20
+        }),
+      })
+
+      const result = await response.json()
+      if (response.ok && result.success) {
+        setAvailableFilters(result.filters)
+      } else {
+        console.error("Failed to load knowledge filters:", result.error)
+        setAvailableFilters([])
+      }
+    } catch (error) {
+      console.error('Failed to load knowledge filters:', error)
+      setAvailableFilters([])
+    }
+  }
+
+  const handleFilterDropdownToggle = () => {
+    if (!isFilterDropdownOpen) {
+      loadAvailableFilters()
+    }
+    setIsFilterDropdownOpen(!isFilterDropdownOpen)
+  }
+
+  const handleFilterSelect = (filter: any) => {
+    setSelectedFilter(filter)
+    setIsFilterDropdownOpen(false)
+    setFilterSearchTerm("")
+    setIsFilterHighlighted(false)
+    
+    // Remove the @searchTerm from the input and replace with filter pill
+    const words = input.split(' ')
+    const lastWord = words[words.length - 1]
+    
+    if (lastWord.startsWith('@')) {
+      // Remove the @search term
+      words.pop()
+      setInput(words.join(' ') + (words.length > 0 ? ' ' : ''))
+    }
+  }
+
   useEffect(() => {
     scrollToBottom()
   }, [messages, streamingMessage])
+
+  // Reset selected index when search term changes
+  useEffect(() => {
+    setSelectedFilterIndex(0)
+  }, [filterSearchTerm])
 
   // Auto-focus the input on component mount
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isFilterDropdownOpen && 
+          dropdownRef.current && 
+          !dropdownRef.current.contains(event.target as Node) &&
+          !inputRef.current?.contains(event.target as Node)) {
+        setIsFilterDropdownOpen(false)
+        setFilterSearchTerm("")
+        setSelectedFilterIndex(0)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isFilterDropdownOpen])
 
 
   const handleSSEStream = async (userMessage: Message) => {
@@ -720,6 +818,7 @@ function ChatPage() {
     setMessages(prev => [...prev, userMessage])
     setInput("")
     setLoading(true)
+    setIsFilterHighlighted(false)
 
     if (asyncMode) {
       await handleSSEStream(userMessage)
@@ -1034,16 +1133,16 @@ function ChatPage() {
   }
 
   return (
-    <div className="fixed inset-0 md:left-72 md:right-6 top-[53px] flex flex-col">
+    <div className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
+      isMenuOpen && isPanelOpen ? 'md:right-[704px]' : // Both open: 384px (menu) + 320px (KF panel)
+      isMenuOpen ? 'md:right-96' : // Only menu open: 384px
+      isPanelOpen ? 'md:right-80' : // Only KF panel open: 320px
+      'md:right-6' // Neither open: 24px
+    }`}>
       {/* Debug header - only show in debug mode */}
       {isDebugMode && (
         <div className="flex items-center justify-between mb-6 px-6 pt-6">
           <div className="flex items-center gap-2">
-            {selectedFilter && (
-              <span className="text-sm font-normal text-blue-400 bg-blue-400/10 px-2 py-1 rounded">
-                Context: {selectedFilter.name}
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-4">
             {/* Async Mode Toggle */}
@@ -1226,39 +1325,247 @@ function ChatPage() {
       <div className="flex-shrink-0 p-6 pb-8 flex justify-center">
         <div className="w-full max-w-[75%]">
           <form onSubmit={handleSubmit} className="relative">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  if (input.trim() && !loading) {
-                    // Trigger form submission by finding the form and calling submit
-                    const form = e.currentTarget.closest('form')
-                    if (form) {
-                      form.requestSubmit()
+            <div className="relative w-full bg-muted/20 rounded-lg border border-border/50 focus-within:ring-1 focus-within:ring-ring">
+              {selectedFilter && (
+                <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+                    isFilterHighlighted 
+                      ? 'bg-blue-500/40 text-blue-300 ring-2 ring-blue-400/50' 
+                      : 'bg-blue-500/20 text-blue-400'
+                  }`}>
+                    @filter:{selectedFilter.name}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFilter(null)
+                        setIsFilterHighlighted(false)
+                      }}
+                      className="ml-1 hover:bg-blue-500/30 rounded-full p-0.5"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                </div>
+              )}
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => {
+                  const newValue = e.target.value
+                  setInput(newValue)
+                  
+                  // Clear filter highlight when user starts typing
+                  if (isFilterHighlighted) {
+                    setIsFilterHighlighted(false)
+                  }
+                  
+                  // Find if there's an @ at the start of the last word
+                  const words = newValue.split(' ')
+                  const lastWord = words[words.length - 1]
+                  
+                  if (lastWord.startsWith('@') && !dropdownDismissed) {
+                    const searchTerm = lastWord.slice(1) // Remove the @
+                    console.log('Setting search term:', searchTerm)
+                    setFilterSearchTerm(searchTerm)
+                    setSelectedFilterIndex(0)
+                    
+                    if (!isFilterDropdownOpen) {
+                      loadAvailableFilters()
+                      setIsFilterDropdownOpen(true)
+                    }
+                  } else if (isFilterDropdownOpen) {
+                    // Close dropdown if @ is no longer present
+                    console.log('Closing dropdown - no @ found')
+                    setIsFilterDropdownOpen(false)
+                    setFilterSearchTerm("")
+                  }
+                  
+                  // Reset dismissed flag when user moves to a different word
+                  if (dropdownDismissed && !lastWord.startsWith('@')) {
+                    setDropdownDismissed(false)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  // Handle backspace for filter clearing
+                  if (e.key === 'Backspace' && selectedFilter && input.trim() === '') {
+                    e.preventDefault()
+                    
+                    if (isFilterHighlighted) {
+                      // Second backspace - remove the filter
+                      setSelectedFilter(null)
+                      setIsFilterHighlighted(false)
+                    } else {
+                      // First backspace - highlight the filter
+                      setIsFilterHighlighted(true)
+                    }
+                    return
+                  }
+                  
+                  if (isFilterDropdownOpen) {
+                    const filteredFilters = availableFilters.filter(filter => 
+                      filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase())
+                    )
+                    
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      setIsFilterDropdownOpen(false)
+                      setFilterSearchTerm("")
+                      setSelectedFilterIndex(0)
+                      setDropdownDismissed(true)
+                      
+                      // Keep focus on the textarea so user can continue typing normally
+                      inputRef.current?.focus()
+                      return
+                    }
+                    
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      setSelectedFilterIndex(prev => 
+                        prev < filteredFilters.length - 1 ? prev + 1 : 0
+                      )
+                      return
+                    }
+                    
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault()
+                      setSelectedFilterIndex(prev => 
+                        prev > 0 ? prev - 1 : filteredFilters.length - 1
+                      )
+                      return
+                    }
+                    
+                    if (e.key === 'Enter') {
+                      // Check if we're at the end of an @ mention (space before cursor or end of input)
+                      const cursorPos = e.currentTarget.selectionStart || 0
+                      const textBeforeCursor = input.slice(0, cursorPos)
+                      const words = textBeforeCursor.split(' ')
+                      const lastWord = words[words.length - 1]
+                      
+                      if (lastWord.startsWith('@') && filteredFilters[selectedFilterIndex]) {
+                        e.preventDefault()
+                        handleFilterSelect(filteredFilters[selectedFilterIndex])
+                        return
+                      }
+                    }
+                    
+                    if (e.key === ' ') {
+                      // Select filter on space if we're typing an @ mention
+                      const cursorPos = e.currentTarget.selectionStart || 0
+                      const textBeforeCursor = input.slice(0, cursorPos)
+                      const words = textBeforeCursor.split(' ')
+                      const lastWord = words[words.length - 1]
+                      
+                      if (lastWord.startsWith('@') && filteredFilters[selectedFilterIndex]) {
+                        e.preventDefault()
+                        handleFilterSelect(filteredFilters[selectedFilterIndex])
+                        return
+                      }
                     }
                   }
-                }
-              }}
-              placeholder="Type to ask a question..."
-              disabled={loading}
-              className="w-full bg-muted/20 rounded-lg border border-border/50 px-4 py-4 min-h-[100px] focus-visible:ring-1 focus-visible:ring-ring resize-none outline-none"
-              rows={1}
+                  
+                  if (e.key === 'Enter' && !e.shiftKey && !isFilterDropdownOpen) {
+                    e.preventDefault()
+                    if (input.trim() && !loading) {
+                      // Trigger form submission by finding the form and calling submit
+                      const form = e.currentTarget.closest('form')
+                      if (form) {
+                        form.requestSubmit()
+                      }
+                    }
+                  }
+                }}
+                placeholder="Type to ask a question..."
+                disabled={loading}
+                className={`w-full bg-transparent px-4 ${selectedFilter ? 'py-2 pb-4' : 'py-4'} min-h-[100px] focus-visible:outline-none resize-none`}
+                rows={1}
+              />
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              onChange={handleFilePickerChange}
+              className="hidden"
+              accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
             />
             <Button
               type="button"
               variant="ghost"
               size="sm"
+              onClick={handleFilterDropdownToggle}
               className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
             >
               <AtSign className="h-4 w-4" />
             </Button>
+            {isFilterDropdownOpen && (
+              <div ref={dropdownRef} className="absolute bottom-14 left-0 w-64 bg-popover border border-border rounded-md shadow-md z-50 p-2">
+                <div className="space-y-1">
+                  {filterSearchTerm && (
+                    <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                      Searching: @{filterSearchTerm}
+                    </div>
+                  )}
+                  {availableFilters.length === 0 ? (
+                    <div className="px-2 py-3 text-sm text-muted-foreground">
+                      No knowledge filters available
+                    </div>
+                  ) : (
+                    <>
+                      {!filterSearchTerm && (
+                        <button
+                          onClick={() => handleFilterSelect(null)}
+                          className={`w-full text-left px-2 py-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
+                            selectedFilterIndex === -1 ? 'bg-muted/50' : ''
+                          }`}
+                        >
+                          <span>No filter</span>
+                          {!selectedFilter && (
+                            <div className="w-2 h-2 rounded-full bg-blue-500" />
+                          )}
+                        </button>
+                      )}
+                      {availableFilters
+                        .filter(filter => 
+                          filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase())
+                        )
+                        .map((filter, index) => (
+                          <button
+                            key={filter.id}
+                            onClick={() => handleFilterSelect(filter)}
+                            className={`w-full text-left px-2 py-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
+                              index === selectedFilterIndex ? 'bg-muted/50' : ''
+                            }`}
+                          >
+                            <div>
+                              <div className="font-medium">{filter.name}</div>
+                              {filter.description && (
+                                <div className="text-xs text-muted-foreground truncate">
+                                  {filter.description}
+                                </div>
+                              )}
+                            </div>
+                            {selectedFilter?.id === filter.id && (
+                              <div className="w-2 h-2 rounded-full bg-blue-500" />
+                            )}
+                          </button>
+                        ))}
+                      {availableFilters.filter(filter => 
+                        filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase())
+                      ).length === 0 && filterSearchTerm && (
+                        <div className="px-2 py-3 text-sm text-muted-foreground">
+                          No filters match "{filterSearchTerm}"
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
             <Button
               type="button"
               variant="ghost"
               size="sm"
+              onClick={handleFilePickerClick}
+              disabled={isUploading}
               className="absolute bottom-3 left-12 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
             >
               <Plus className="h-4 w-4" />

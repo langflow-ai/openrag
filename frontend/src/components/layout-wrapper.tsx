@@ -88,7 +88,12 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       <div className="side-bar-arrangement bg-background fixed left-0 top-[53px] bottom-0 md:flex hidden">
         <Navigation />
       </div>
-      <main className={`md:pl-72 md:pr-6 ${(isMenuOpen || isPanelOpen) ? 'md:pr-[336px]' : ''}`}>
+      <main className={`md:pl-72 transition-all duration-300 ${
+        isMenuOpen && isPanelOpen ? 'md:pr-[728px]' : // Both open: 384px (menu) + 320px (KF panel) + 24px (original padding)
+        isMenuOpen ? 'md:pr-96' : // Only menu open: 384px
+        isPanelOpen ? 'md:pr-80' : // Only KF panel open: 320px  
+        'md:pr-6' // Neither open: 24px
+      }`}>
         <div className="container py-6 lg:py-8">
           {children}
         </div>
