@@ -24,11 +24,11 @@ class TaskService:
         delay = min(base_delay * (2 ** retry_count) + random.uniform(0, 1), max_delay)
         await asyncio.sleep(delay)
 
-    async def create_upload_task(self, user_id: str, file_paths: list, jwt_token: str = None) -> str:
+    async def create_upload_task(self, user_id: str, file_paths: list, jwt_token: str = None, owner_name: str = None, owner_email: str = None) -> str:
         """Create a new upload task for bulk file processing"""
         # Use default DocumentFileProcessor with user context
         from models.processors import DocumentFileProcessor
-        processor = DocumentFileProcessor(self.document_service, owner_user_id=user_id, jwt_token=jwt_token)
+        processor = DocumentFileProcessor(self.document_service, owner_user_id=user_id, jwt_token=jwt_token, owner_name=owner_name, owner_email=owner_email)
         return await self.create_custom_task(user_id, file_paths, processor)
     
     async def create_custom_task(self, user_id: str, items: list, processor) -> str:

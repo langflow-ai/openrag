@@ -12,7 +12,7 @@ async def upload(request: Request, document_service, session_manager):
         user = request.state.user
         jwt_token = request.cookies.get("auth_token")
         
-        result = await document_service.process_upload_file(upload_file, owner_user_id=user.user_id, jwt_token=jwt_token)
+        result = await document_service.process_upload_file(upload_file, owner_user_id=user.user_id, jwt_token=jwt_token, owner_name=user.name, owner_email=user.email)
         return JSONResponse(result, status_code=201)  # Created
     except Exception as e:
         error_msg = str(e)
@@ -37,7 +37,7 @@ async def upload_path(request: Request, task_service, session_manager):
 
     user = request.state.user
     jwt_token = request.cookies.get("auth_token")
-    task_id = await task_service.create_upload_task(user.user_id, file_paths, jwt_token=jwt_token)
+    task_id = await task_service.create_upload_task(user.user_id, file_paths, jwt_token=jwt_token, owner_name=user.name, owner_email=user.email)
     
     return JSONResponse({
         "task_id": task_id,
@@ -132,6 +132,8 @@ async def upload_bucket(request: Request, task_service, session_manager):
         s3_client=s3_client,
         owner_user_id=user.user_id,
         jwt_token=jwt_token,
+        owner_name=user.name,
+        owner_email=user.email,
     )
 
     task_id = await task_service.create_custom_task(user.user_id, keys, processor)

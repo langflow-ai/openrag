@@ -80,8 +80,9 @@ class DocumentService:
     def __init__(self, process_pool=None, session_manager=None):
         self.process_pool = process_pool
         self.session_manager = session_manager
+        self._mapping_ensured = False
     
-    async def process_file_common(self, file_path: str, file_hash: str = None, owner_user_id: str = None, original_filename: str = None, jwt_token: str = None):
+    async def process_file_common(self, file_path: str, file_hash: str = None, owner_user_id: str = None, original_filename: str = None, jwt_token: str = None, owner_name: str = None, owner_email: str = None, file_size: int = None, connector_type: str = "local"):
         """
         Common processing logic for both upload and upload_path.
         1. Optionally compute SHA256 hash if not provided.
@@ -131,16 +132,26 @@ class DocumentService:
                 "text": chunk["text"],
                 "chunk_embedding": vect,
                 "owner": owner_user_id,
+                "owner_name": owner_name,
+                "owner_email": owner_email,
+                "file_size": file_size,
+                "connector_type": connector_type,
                 "indexed_time": datetime.datetime.now().isoformat()
             }
             chunk_id = f"{file_hash}_{i}"
-            await opensearch_client.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
+            try:
+                await opensearch_client.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
+            except Exception as e:
+                print(f"[ERROR] OpenSearch indexing failed for chunk {chunk_id}: {e}")
+                print(f"[ERROR] Chunk document: {chunk_doc}")
+                raise
         return {"status": "indexed", "id": file_hash}
 
-    async def process_upload_file(self, upload_file, owner_user_id: str = None, jwt_token: str = None):
+    async def process_upload_file(self, upload_file, owner_user_id: str = None, jwt_token: str = None, owner_name: str = None, owner_email: str = None):
         """Process an uploaded file from form data"""
         sha256 = hashlib.sha256()
         tmp = tempfile.NamedTemporaryFile(delete=False)
+        file_size = 0
         try:
             while True:
                 chunk = await upload_file.read(1 << 20)
@@ -148,16 +159,22 @@ class DocumentService:
                     break
                 sha256.update(chunk)
                 tmp.write(chunk)
+                file_size += len(chunk)
             tmp.flush()
 
             file_hash = sha256.hexdigest()
             # Get user's OpenSearch client with JWT for OIDC auth
             opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
-            exists = await opensearch_client.exists(index=INDEX_NAME, id=file_hash)
+            
+            try:
+                exists = await opensearch_client.exists(index=INDEX_NAME, id=file_hash)
+            except Exception as e:
+                print(f"[ERROR] OpenSearch exists check failed for document {file_hash}: {e}")
+                raise
             if exists:
                 return {"status": "unchanged", "id": file_hash}
 
-            result = await self.process_file_common(tmp.name, file_hash, owner_user_id=owner_user_id, jwt_token=jwt_token)
+            result = await self.process_file_common(tmp.name, file_hash, owner_user_id=owner_user_id, original_filename=upload_file.filename, jwt_token=jwt_token, owner_name=owner_name, owner_email=owner_email, file_size=file_size)
             return result
 
         finally:
@@ -200,7 +217,7 @@ class DocumentService:
             "content_length": len(full_content)
         }
 
-    async def process_single_file_task(self, upload_task, file_path: str, owner_user_id: str = None, jwt_token: str = None):
+    async def process_single_file_task(self, upload_task, file_path: str, owner_user_id: str = None, jwt_token: str = None, owner_name: str = None, owner_email: str = None):
         """Process a single file and update task tracking - used by task service"""
         from models.tasks import TaskStatus
         import time
@@ -234,6 +251,13 @@ class DocumentService:
                     resp = await clients.patched_async_client.embeddings.create(model=EMBED_MODEL, input=batch)
                     embeddings.extend([d.embedding for d in resp.data])
 
+                # Get file size
+                file_size = 0
+                try:
+                    file_size = os.path.getsize(file_path)
+                except OSError:
+                    pass  # Keep file_size as 0 if can't get size
+                
                 # Index each chunk
                 for i, (chunk, vect) in enumerate(zip(slim_doc["chunks"], embeddings)):
                     chunk_doc = {
@@ -244,10 +268,19 @@ class DocumentService:
                         "text": chunk["text"],
                         "chunk_embedding": vect,
                         "owner": owner_user_id,
+                        "owner_name": owner_name,
+                        "owner_email": owner_email,
+                        "file_size": file_size,
+                        "connector_type": connector_type,
                         "indexed_time": datetime.datetime.now().isoformat()
                     }
                     chunk_id = f"{slim_doc['id']}_{i}"
-                    await opensearch_client.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
+                    try:
+                        await opensearch_client.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
+                    except Exception as e:
+                        print(f"[ERROR] OpenSearch indexing failed for batch chunk {chunk_id}: {e}")
+                        print(f"[ERROR] Chunk document: {chunk_doc}")
+                        raise
                 
                 result = {"status": "indexed", "id": slim_doc["id"]}
             

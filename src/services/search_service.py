@@ -40,7 +40,8 @@ class SearchService:
             field_mapping = {
                 "data_sources": "filename",
                 "document_types": "mimetype", 
-                "owners": "owner"
+                "owners": "owner_name.keyword",
+                "connector_types": "connector_type"
             }
             
             for filter_key, values in filters.items():
@@ -111,12 +112,18 @@ class SearchService:
                 },
                 "owners": {
                     "terms": {
-                        "field": "owner",
+                        "field": "owner_name.keyword",
+                        "size": 10
+                    }
+                },
+                "connector_types": {
+                    "terms": {
+                        "field": "connector_type",
                         "size": 10
                     }
                 }
             },
-            "_source": ["filename", "mimetype", "page", "text", "source_url", "owner", "allowed_users", "allowed_groups"],
+            "_source": ["filename", "mimetype", "page", "text", "source_url", "owner", "owner_name", "owner_email", "file_size", "connector_type", "allowed_users", "allowed_groups"],
             "size": limit
         }
         
@@ -130,7 +137,14 @@ class SearchService:
         
         # Get user's OpenSearch client with JWT for OIDC auth  
         opensearch_client = clients.create_user_opensearch_client(jwt_token)
-        results = await opensearch_client.search(index=INDEX_NAME, body=search_body)
+        
+        try:
+            results = await opensearch_client.search(index=INDEX_NAME, body=search_body)
+        except Exception as e:
+            print(f"[ERROR] OpenSearch query failed: {e}")
+            print(f"[ERROR] Search body: {search_body}")
+            # Re-raise the exception so the API returns the error to frontend
+            raise
         
         # Transform results (keep for backward compatibility)
         chunks = []
@@ -142,7 +156,11 @@ class SearchService:
                 "text": hit["_source"]["text"],
                 "score": hit["_score"],
                 "source_url": hit["_source"].get("source_url"),
-                "owner": hit["_source"].get("owner")
+                "owner": hit["_source"].get("owner"),
+                "owner_name": hit["_source"].get("owner_name"),
+                "owner_email": hit["_source"].get("owner_email"),
+                "file_size": hit["_source"].get("file_size"),
+                "connector_type": hit["_source"].get("connector_type")
             })
         
         # Return both transformed results and aggregations
