@@ -81,6 +81,27 @@ class DocumentService:
         self.process_pool = process_pool
         self.session_manager = session_manager
         self._mapping_ensured = False
+        self._process_pool_broken = False
+    
+    def _recreate_process_pool(self):
+        """Recreate the process pool if it's broken"""
+        if self._process_pool_broken and self.process_pool:
+            print("[WARNING] Attempting to recreate broken process pool...")
+            try:
+                # Shutdown the old pool
+                self.process_pool.shutdown(wait=False)
+                
+                # Import and create a new pool
+                from utils.process_pool import MAX_WORKERS
+                from concurrent.futures import ProcessPoolExecutor
+                self.process_pool = ProcessPoolExecutor(max_workers=MAX_WORKERS)
+                self._process_pool_broken = False
+                print(f"[INFO] Process pool recreated with {MAX_WORKERS} workers")
+                return True
+            except Exception as e:
+                print(f"[ERROR] Failed to recreate process pool: {e}")
+                return False
+        return False
     
     async def process_file_common(self, file_path: str, file_hash: str = None, owner_user_id: str = None, original_filename: str = None, jwt_token: str = None, owner_name: str = None, owner_email: str = None, file_size: int = None, connector_type: str = "local"):
         """
@@ -290,11 +311,31 @@ class DocumentService:
             upload_task.successful_files += 1
             
         except Exception as e:
-            print(f"[ERROR] Failed to process file {file_path}: {e}")
             import traceback
+            from concurrent.futures import BrokenExecutor
+            
+            if isinstance(e, BrokenExecutor):
+                print(f"[CRITICAL] Process pool broken while processing {file_path}")
+                print(f"[INFO] This usually indicates a worker process crashed")
+                print(f"[INFO] You should see detailed crash logs above from the worker process")
+                
+                # Mark pool as broken for potential recreation
+                self._process_pool_broken = True
+                
+                # Attempt to recreate the pool for future operations
+                if self._recreate_process_pool():
+                    print(f"[INFO] Process pool successfully recreated")
+                else:
+                    print(f"[WARNING] Failed to recreate process pool - future operations may fail")
+                
+                file_task.error = f"Worker process crashed: {str(e)}"
+            else:
+                print(f"[ERROR] Failed to process file {file_path}: {e}")
+                file_task.error = str(e)
+            
+            print(f"[ERROR] Full traceback:")
             traceback.print_exc()
             file_task.status = TaskStatus.FAILED  
-            file_task.error = str(e)
             upload_task.failed_files += 1
         finally:
             file_task.updated_at = time.time()
