@@ -1,14 +1,47 @@
-# User-scoped conversation state - keyed by user_id
-user_conversations = {}  # user_id -> {"messages": [...], "previous_response_id": None}
+# User-scoped conversation state - keyed by user_id -> response_id -> conversation
+user_conversations = {}  # user_id -> {response_id: {"messages": [...], "previous_response_id": parent_id, "created_at": timestamp, "last_activity": timestamp}}
 
-def get_user_conversation(user_id: str):
-    """Get or create conversation state for a user"""
+def get_user_conversations(user_id: str):
+    """Get all conversations for a user"""
     if user_id not in user_conversations:
-        user_conversations[user_id] = {
-            "messages": [{"role": "system", "content": "You are a helpful assistant. Always use the search_tools to answer questions."}],
-            "previous_response_id": None
-        }
+        user_conversations[user_id] = {}
     return user_conversations[user_id]
+
+def get_conversation_thread(user_id: str, previous_response_id: str = None):
+    """Get or create a specific conversation thread"""
+    conversations = get_user_conversations(user_id)
+    
+    if previous_response_id and previous_response_id in conversations:
+        # Update last activity and return existing conversation
+        conversations[previous_response_id]["last_activity"] = __import__('datetime').datetime.now()
+        return conversations[previous_response_id]
+    
+    # Create new conversation thread
+    from datetime import datetime
+    new_conversation = {
+        "messages": [{"role": "system", "content": "You are a helpful assistant. Always use the search_tools to answer questions."}],
+        "previous_response_id": previous_response_id,  # Parent response_id for branching
+        "created_at": datetime.now(),
+        "last_activity": datetime.now()
+    }
+    
+    return new_conversation
+
+def store_conversation_thread(user_id: str, response_id: str, conversation_state: dict):
+    """Store a conversation thread with its response_id"""
+    conversations = get_user_conversations(user_id)
+    conversations[response_id] = conversation_state
+
+# Legacy function for backward compatibility
+def get_user_conversation(user_id: str):
+    """Get the most recent conversation for a user (for backward compatibility)"""
+    conversations = get_user_conversations(user_id)
+    if not conversations:
+        return get_conversation_thread(user_id)
+    
+    # Return the most recently active conversation
+    latest_conversation = max(conversations.values(), key=lambda c: c["last_activity"])
+    return latest_conversation
 
 # Generic async response function for streaming
 async def async_response_stream(client, prompt: str, model: str, extra_headers: dict = None, previous_response_id: str = None, log_prefix: str = "response"):
@@ -127,41 +160,65 @@ async def async_langflow_stream(langflow_client, flow_id: str, prompt: str, extr
 
 # Async chat function (non-streaming only)
 async def async_chat(async_client, prompt: str, user_id: str, model: str = "gpt-4.1-mini", previous_response_id: str = None):
-    conversation_state = get_user_conversation(user_id)
+    print(f"[DEBUG] async_chat called with user_id: {user_id}, previous_response_id: {previous_response_id}")
     
-    # If no previous_response_id is provided, reset conversation state
-    if previous_response_id is None:
-        conversation_state["messages"] = [{"role": "system", "content": "You are a helpful assistant. Always use the search_tools to answer questions."}]
-        conversation_state["previous_response_id"] = None
+    # Get the specific conversation thread (or create new one)
+    conversation_state = get_conversation_thread(user_id, previous_response_id)
+    print(f"[DEBUG] Got conversation_state with {len(conversation_state['messages'])} messages")
     
-    # Add user message to conversation
-    conversation_state["messages"].append({"role": "user", "content": prompt})
+    # Add user message to conversation with timestamp
+    from datetime import datetime
+    user_message = {
+        "role": "user", 
+        "content": prompt,
+        "timestamp": datetime.now()
+    }
+    conversation_state["messages"].append(user_message)
+    print(f"[DEBUG] Added user message, now {len(conversation_state['messages'])} messages")
     
     response_text, response_id = await async_response(async_client, prompt, model, previous_response_id=previous_response_id, log_prefix="agent")
+    print(f"[DEBUG] Got response_text: {response_text[:50]}..., response_id: {response_id}")
     
-    # Add assistant response to conversation
-    conversation_state["messages"].append({"role": "assistant", "content": response_text})
+    # Add assistant response to conversation with response_id and timestamp
+    assistant_message = {
+        "role": "assistant", 
+        "content": response_text,
+        "response_id": response_id,
+        "timestamp": datetime.now()
+    }
+    conversation_state["messages"].append(assistant_message)
+    print(f"[DEBUG] Added assistant message, now {len(conversation_state['messages'])} messages")
     
-    # Store response_id for this user's conversation
+    # Store the conversation thread with its response_id
     if response_id:
-        conversation_state["previous_response_id"] = response_id
-        print(f"Stored response_id for user {user_id}: {response_id}")
+        conversation_state["last_activity"] = datetime.now()
+        store_conversation_thread(user_id, response_id, conversation_state)
+        print(f"[DEBUG] Stored conversation thread for user {user_id} with response_id: {response_id}")
+        
+        # Debug: Check what's in user_conversations now
+        conversations = get_user_conversations(user_id)
+        print(f"[DEBUG] user_conversations now has {len(conversations)} conversations: {list(conversations.keys())}")
+    else:
+        print(f"[DEBUG] WARNING: No response_id received, conversation not stored!")
     
     return response_text, response_id
 
 # Async chat function for streaming (alias for compatibility)
 async def async_chat_stream(async_client, prompt: str, user_id: str, model: str = "gpt-4.1-mini", previous_response_id: str = None):
-    conversation_state = get_user_conversation(user_id)
+    # Get the specific conversation thread (or create new one)
+    conversation_state = get_conversation_thread(user_id, previous_response_id)
     
-    # If no previous_response_id is provided, reset conversation state
-    if previous_response_id is None:
-        conversation_state["messages"] = [{"role": "system", "content": "You are a helpful assistant. Always use the search_tools to answer questions."}]
-        conversation_state["previous_response_id"] = None
-    
-    # Add user message to conversation
-    conversation_state["messages"].append({"role": "user", "content": prompt})
+    # Add user message to conversation with timestamp
+    from datetime import datetime
+    user_message = {
+        "role": "user", 
+        "content": prompt,
+        "timestamp": datetime.now()
+    }
+    conversation_state["messages"].append(user_message)
     
     full_response = ""
+    response_id = None
     async for chunk in async_stream(async_client, prompt, model, previous_response_id=previous_response_id, log_prefix="agent"):
         # Extract text content to build full response for history
         try:
@@ -169,10 +226,122 @@ async def async_chat_stream(async_client, prompt: str, user_id: str, model: str 
             chunk_data = json.loads(chunk.decode('utf-8'))
             if 'delta' in chunk_data and 'content' in chunk_data['delta']:
                 full_response += chunk_data['delta']['content']
+            # Extract response_id from chunk
+            if 'id' in chunk_data:
+                response_id = chunk_data['id']
+            elif 'response_id' in chunk_data:
+                response_id = chunk_data['response_id']
         except:
             pass
         yield chunk
     
-    # Add the complete assistant response to message history
+    # Add the complete assistant response to message history with response_id and timestamp
     if full_response:
-        conversation_state["messages"].append({"role": "assistant", "content": full_response})
+        assistant_message = {
+            "role": "assistant", 
+            "content": full_response,
+            "response_id": response_id,
+            "timestamp": datetime.now()
+        }
+        conversation_state["messages"].append(assistant_message)
+        
+        # Store the conversation thread with its response_id
+        if response_id:
+            conversation_state["last_activity"] = datetime.now()
+            store_conversation_thread(user_id, response_id, conversation_state)
+            print(f"Stored conversation thread for user {user_id} with response_id: {response_id}")
+
+# Async langflow function with conversation storage (non-streaming)
+async def async_langflow_chat(langflow_client, flow_id: str, prompt: str, user_id: str, extra_headers: dict = None, previous_response_id: str = None):
+    print(f"[DEBUG] async_langflow_chat called with user_id: {user_id}, previous_response_id: {previous_response_id}")
+    
+    # Get the specific conversation thread (or create new one)
+    conversation_state = get_conversation_thread(user_id, previous_response_id)
+    print(f"[DEBUG] Got langflow conversation_state with {len(conversation_state['messages'])} messages")
+    
+    # Add user message to conversation with timestamp
+    from datetime import datetime
+    user_message = {
+        "role": "user", 
+        "content": prompt,
+        "timestamp": datetime.now()
+    }
+    conversation_state["messages"].append(user_message)
+    print(f"[DEBUG] Added user message to langflow, now {len(conversation_state['messages'])} messages")
+    
+    response_text, response_id = await async_response(langflow_client, prompt, flow_id, extra_headers=extra_headers, previous_response_id=previous_response_id, log_prefix="langflow")
+    print(f"[DEBUG] Got langflow response_text: {response_text[:50]}..., response_id: {response_id}")
+    
+    # Add assistant response to conversation with response_id and timestamp
+    assistant_message = {
+        "role": "assistant", 
+        "content": response_text,
+        "response_id": response_id,
+        "timestamp": datetime.now()
+    }
+    conversation_state["messages"].append(assistant_message)
+    print(f"[DEBUG] Added assistant message to langflow, now {len(conversation_state['messages'])} messages")
+    
+    # Store the conversation thread with its response_id
+    if response_id:
+        conversation_state["last_activity"] = datetime.now()
+        store_conversation_thread(user_id, response_id, conversation_state)
+        print(f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}")
+        
+        # Debug: Check what's in user_conversations now
+        conversations = get_user_conversations(user_id)
+        print(f"[DEBUG] user_conversations now has {len(conversations)} conversations: {list(conversations.keys())}")
+    else:
+        print(f"[DEBUG] WARNING: No response_id received from langflow, conversation not stored!")
+    
+    return response_text, response_id
+
+# Async langflow function with conversation storage (streaming)
+async def async_langflow_chat_stream(langflow_client, flow_id: str, prompt: str, user_id: str, extra_headers: dict = None, previous_response_id: str = None):
+    print(f"[DEBUG] async_langflow_chat_stream called with user_id: {user_id}, previous_response_id: {previous_response_id}")
+    
+    # Get the specific conversation thread (or create new one)
+    conversation_state = get_conversation_thread(user_id, previous_response_id)
+    
+    # Add user message to conversation with timestamp
+    from datetime import datetime
+    user_message = {
+        "role": "user", 
+        "content": prompt,
+        "timestamp": datetime.now()
+    }
+    conversation_state["messages"].append(user_message)
+    
+    full_response = ""
+    response_id = None
+    async for chunk in async_stream(langflow_client, prompt, flow_id, extra_headers=extra_headers, previous_response_id=previous_response_id, log_prefix="langflow"):
+        # Extract text content to build full response for history
+        try:
+            import json
+            chunk_data = json.loads(chunk.decode('utf-8'))
+            if 'delta' in chunk_data and 'content' in chunk_data['delta']:
+                full_response += chunk_data['delta']['content']
+            # Extract response_id from chunk
+            if 'id' in chunk_data:
+                response_id = chunk_data['id']
+            elif 'response_id' in chunk_data:
+                response_id = chunk_data['response_id']
+        except:
+            pass
+        yield chunk
+    
+    # Add the complete assistant response to message history with response_id and timestamp
+    if full_response:
+        assistant_message = {
+            "role": "assistant", 
+            "content": full_response,
+            "response_id": response_id,
+            "timestamp": datetime.now()
+        }
+        conversation_state["messages"].append(assistant_message)
+        
+        # Store the conversation thread with its response_id
+        if response_id:
+            conversation_state["last_activity"] = datetime.now()
+            store_conversation_thread(user_id, response_id, conversation_state)
+            print(f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}")

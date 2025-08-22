@@ -355,6 +355,21 @@ def create_app():
                          session_manager=services['session_manager'])
               ), methods=["POST"]),
         
+        # Chat history endpoints
+        Route("/chat/history", 
+              require_auth(services['session_manager'])(
+                  partial(chat.chat_history_endpoint,
+                         chat_service=services['chat_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["GET"]),
+        
+        Route("/langflow/history", 
+              require_auth(services['session_manager'])(
+                  partial(chat.langflow_history_endpoint,
+                         chat_service=services['chat_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["GET"]),
+        
         # Authentication endpoints
         Route("/auth/init", 
               optional_auth(services['session_manager'])(
@@ -498,6 +513,7 @@ if __name__ == "__main__":
     # Run the server (startup tasks now handled by Starlette startup event)
     uvicorn.run(
         app,
+        workers=1,
         host="0.0.0.0",
         port=8000,
         reload=False,  # Disable reload since we're running from main

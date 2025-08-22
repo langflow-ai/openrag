@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Search, Loader2, FileText, HardDrive, Building2, Cloud } from "lucide-react"
+import { Search, Loader2, FileText, HardDrive, Building2, Cloud, Plus } from "lucide-react"
 import { TbBrandOnedrive } from "react-icons/tb"
 import { SiGoogledrive } from "react-icons/si"
 import { ProtectedRoute } from "@/components/protected-route"
@@ -73,6 +74,7 @@ function getSourceIcon(connectorType?: string) {
 }
 
 function SearchPage() {
+  const router = useRouter()
   const { isMenuOpen } = useTask()
   const { parsedFilterData, isPanelOpen } = useKnowledgeFilter()
   const [query, setQuery] = useState("")
@@ -408,6 +410,14 @@ function SearchPage() {
               ) : (
                 <Search className="h-4 w-4" />
               )}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => router.push('/settings')}
+              className="rounded-lg h-12 px-4 flex-shrink-0"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Knowledge
             </Button>
           </form>
         </div>

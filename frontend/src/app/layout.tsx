@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/auth-context";
 import { TaskProvider } from "@/contexts/task-context";
 import { KnowledgeFilterProvider } from "@/contexts/knowledge-filter-context";
+import { ChatProvider } from "@/contexts/chat-context";
 import { LayoutWrapper } from "@/components/layout-wrapper";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -47,9 +48,11 @@ export default function RootLayout({
           <AuthProvider>
             <TaskProvider>
               <KnowledgeFilterProvider>
-                <LayoutWrapper>
-                  {children}
-                </LayoutWrapper>
+                <ChatProvider>
+                  <LayoutWrapper>
+                    {children}
+                  </LayoutWrapper>
+                </ChatProvider>
               </KnowledgeFilterProvider>
             </TaskProvider>
           </AuthProvider>

@@ -2,11 +2,12 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload, AtSign, Plus, X } from "lucide-react"
+import { Loader2, User, Bot, Zap, Settings, ChevronDown, ChevronRight, Upload, AtSign, Plus, X, GitBranch } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
 import { useAuth } from "@/contexts/auth-context"
+import { useChat, EndpointType } from "@/contexts/chat-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 
@@ -39,7 +40,7 @@ interface ToolCallResult {
   [key: string]: unknown
 }
 
-type EndpointType = "chat" | "langflow"
+
 
 interface SelectedFilters {
   data_sources: string[]
@@ -69,6 +70,7 @@ interface RequestBody {
 function ChatPage() {
   const isDebugMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_OPENRAG_DEBUG === 'true'
   const { user } = useAuth()
+  const { endpoint, setEndpoint, refreshConversations, currentConversationId, conversationData, setCurrentConversationId, addConversationDoc } = useChat()
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -78,7 +80,6 @@ function ChatPage() {
   ])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
-  const [endpoint, setEndpoint] = useState<EndpointType>("langflow")
   const [asyncMode, setAsyncMode] = useState(true)
   const [streamingMessage, setStreamingMessage] = useState<{
     content: string
@@ -125,6 +126,7 @@ function ChatPage() {
     if (isUploading) return
     
     setIsUploading(true)
+    setLoading(true)
     
     // Add initial upload message
     const uploadStartMessage: Message = {
@@ -192,6 +194,11 @@ function ChatPage() {
         
         setMessages(prev => [...prev.slice(0, -1), uploadMessage])
         
+        // Add file to conversation docs
+        if (result.filename) {
+          addConversationDoc(result.filename)
+        }
+        
         // Update the response ID for this endpoint
         if (result.response_id) {
           setPreviousResponseIds(prev => ({
@@ -214,6 +221,7 @@ function ChatPage() {
       setMessages(prev => [...prev.slice(0, -1), errorMessage])
     } finally {
       setIsUploading(false)
+      setLoading(false)
     }
   }
 
@@ -332,6 +340,109 @@ function ChatPage() {
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  // Load conversation when conversationData changes
+  useEffect(() => {
+    if (conversationData && conversationData.messages) {
+      // Convert backend message format to frontend Message interface
+      const convertedMessages: Message[] = conversationData.messages.map((msg: any) => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date(msg.timestamp || new Date()),
+        // Add any other necessary properties
+      }))
+      
+      setMessages(convertedMessages)
+      
+      // Set the previous response ID for this conversation
+      setPreviousResponseIds(prev => ({
+        ...prev,
+        [conversationData.endpoint]: conversationData.response_id
+      }))
+    }
+    // Reset messages when starting a new conversation
+    else if (currentConversationId === null) {
+      setMessages([
+        {
+          role: "assistant",
+          content: "How can I assist?",
+          timestamp: new Date()
+        }
+      ])
+    }
+  }, [conversationData, currentConversationId])
+
+  // Listen for file upload events from navigation
+  useEffect(() => {
+    const handleFileUploadStart = (event: CustomEvent) => {
+      const { filename } = event.detail
+      console.log("Chat page received file upload start event:", filename)
+      
+      setLoading(true)
+      setIsUploading(true)
+      
+      // Add initial upload message
+      const uploadStartMessage: Message = {
+        role: "assistant", 
+        content: `🔄 Starting upload of **${filename}**...`,
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, uploadStartMessage])
+    }
+
+    const handleFileUploaded = (event: CustomEvent) => {
+      const { result } = event.detail
+      console.log("Chat page received file upload event:", result)
+      
+      // Replace the last message with upload complete message
+      const uploadMessage: Message = {
+        role: "assistant",
+        content: `📄 Document uploaded: **${result.filename}** (${result.pages} pages, ${result.content_length.toLocaleString()} characters)\n\n${result.confirmation}`,
+        timestamp: new Date()
+      }
+      
+      setMessages(prev => [...prev.slice(0, -1), uploadMessage])
+      
+      // Update the response ID for this endpoint
+      if (result.response_id) {
+        setPreviousResponseIds(prev => ({
+          ...prev,
+          [endpoint]: result.response_id
+        }))
+      }
+    }
+
+    const handleFileUploadComplete = () => {
+      console.log("Chat page received file upload complete event")
+      setLoading(false)
+      setIsUploading(false)
+    }
+
+    const handleFileUploadError = (event: CustomEvent) => {
+      const { filename, error } = event.detail
+      console.log("Chat page received file upload error event:", filename, error)
+      
+      // Replace the last message with error message
+      const errorMessage: Message = {
+        role: "assistant",
+        content: `❌ Upload failed for **${filename}**: ${error}`,
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev.slice(0, -1), errorMessage])
+    }
+
+    window.addEventListener('fileUploadStart', handleFileUploadStart as EventListener)
+    window.addEventListener('fileUploaded', handleFileUploaded as EventListener)
+    window.addEventListener('fileUploadComplete', handleFileUploadComplete as EventListener)
+    window.addEventListener('fileUploadError', handleFileUploadError as EventListener)
+    
+    return () => {
+      window.removeEventListener('fileUploadStart', handleFileUploadStart as EventListener)
+      window.removeEventListener('fileUploaded', handleFileUploaded as EventListener)
+      window.removeEventListener('fileUploadComplete', handleFileUploadComplete as EventListener)
+      window.removeEventListener('fileUploadError', handleFileUploadError as EventListener)
+    }
+  }, [endpoint])
 
   // Handle click outside to close dropdown
   useEffect(() => {
@@ -927,6 +1038,38 @@ function ChatPage() {
     })
   }
 
+  const handleForkConversation = (messageIndex: number) => {
+    // Get messages up to and including the selected assistant message
+    const messagesToKeep = messages.slice(0, messageIndex + 1)
+    
+    // The selected message should be an assistant message (since fork button is only on assistant messages)
+    const forkedMessage = messages[messageIndex]
+    if (forkedMessage.role !== 'assistant') {
+      console.error('Fork button should only be on assistant messages')
+      return
+    }
+    
+    // For forking, we want to continue from the response_id of the assistant message we're forking from
+    // Since we don't store individual response_ids per message yet, we'll use the current conversation's response_id
+    // This means we're continuing the conversation thread from that point
+    const responseIdToForkFrom = currentConversationId || previousResponseIds[endpoint]
+    
+    // Create a new conversation by clearing the current conversation ID
+    // but keeping the messages truncated to the fork point
+    setMessages(messagesToKeep)
+    setCurrentConversationId(null) // This creates a new conversation thread
+    
+    // Set the response_id we want to continue from as the previous response ID
+    // This tells the backend to continue the conversation from this point
+    setPreviousResponseIds(prev => ({
+      ...prev,
+      [endpoint]: responseIdToForkFrom
+    }))
+    
+    // The original conversation remains unchanged in the sidebar
+    // This new forked conversation will get its own response_id when the user sends the next message
+  }
+
   const renderFunctionCalls = (functionCalls: FunctionCall[], messageIndex?: number) => {
     if (!functionCalls || functionCalls.length === 0) return null
     
@@ -1198,11 +1341,11 @@ function ChatPage() {
         </div>
       )}
 
-      <div className={`flex-1 flex flex-col min-h-0 px-6 ${!isDebugMode ? 'pt-6' : ''}`}>
+      <div className="flex-1 flex flex-col min-h-0 px-6">
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
           {/* Messages Area */}
           <div 
-            className={`flex-1 overflow-y-auto overflow-x-hidden space-y-6 min-h-0 transition-all relative ${
+            className={`flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide space-y-6 min-h-0 transition-all relative ${
               isDragOver 
                 ? 'bg-primary/10 border-2 border-dashed border-primary rounded-lg p-4' 
                 : ''
@@ -1233,7 +1376,7 @@ function ChatPage() {
             ) : (
               <>
                 {messages.map((message, index) => (
-                  <div key={index} className="space-y-6">
+                  <div key={index} className="space-y-6 group">
                     {message.role === "user" && (
                       <div className="flex gap-3">
                         <Avatar className="w-8 h-8 flex-shrink-0">
@@ -1253,9 +1396,18 @@ function ChatPage() {
                         <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
                           <Bot className="h-4 w-4 text-accent-foreground" />
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           {renderFunctionCalls(message.functionCalls || [], index)}
                           <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
+                        </div>
+                        <div className="flex-shrink-0 ml-2">
+                          <button
+                            onClick={() => handleForkConversation(index)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
+                            title="Fork conversation from here"
+                          >
+                            <GitBranch className="h-3 w-3" />
+                          </button>
                         </div>
                       </div>
                     )}

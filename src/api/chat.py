@@ -75,7 +75,7 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
     try:
         if stream:
             return StreamingResponse(
-                await chat_service.langflow_chat(prompt, jwt_token, previous_response_id=previous_response_id, stream=True),
+                await chat_service.langflow_chat(prompt, user_id, jwt_token, previous_response_id=previous_response_id, stream=True),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -85,8 +85,31 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
                 }
             )
         else:
-            result = await chat_service.langflow_chat(prompt, jwt_token, previous_response_id=previous_response_id, stream=False)
+            result = await chat_service.langflow_chat(prompt, user_id, jwt_token, previous_response_id=previous_response_id, stream=False)
             return JSONResponse(result)
         
     except Exception as e:
         return JSONResponse({"error": f"Langflow request failed: {str(e)}"}, status_code=500)
+
+async def chat_history_endpoint(request: Request, chat_service, session_manager):
+    """Get chat history for a user"""
+    user = request.state.user
+    user_id = user.user_id
+    
+    try:
+        history = await chat_service.get_chat_history(user_id)
+        return JSONResponse(history)
+    except Exception as e:
+        return JSONResponse({"error": f"Failed to get chat history: {str(e)}"}, status_code=500)
+
+async def langflow_history_endpoint(request: Request, chat_service, session_manager):
+    """Get langflow chat history for a user"""
+    user = request.state.user
+    user_id = user.user_id
+    
+    try:
+        history = await chat_service.get_langflow_history(user_id)
+        return JSONResponse(history)
+    except Exception as e:
+        return JSONResponse({"error": f"Failed to get langflow history: {str(e)}"}, status_code=500)
+
