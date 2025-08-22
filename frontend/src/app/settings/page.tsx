@@ -7,11 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Upload, FolderOpen, Loader2, PlugZap, RefreshCw, Download, Cloud } from "lucide-react"
+import { Loader2, PlugZap, RefreshCw } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
 import { useAuth } from "@/contexts/auth-context"
-import { FileUploadArea } from "@/components/file-upload-area"
 
 
 interface Connector {
@@ -45,14 +44,6 @@ function KnowledgeSourcesPage() {
   const { addTask, tasks } = useTask()
   const searchParams = useSearchParams()
   
-  // File upload state
-  const [fileUploadLoading, setFileUploadLoading] = useState(false)
-  const [pathUploadLoading, setPathUploadLoading] = useState(false)
-  const [folderPath, setFolderPath] = useState("/app/documents/")
-  const [bucketUploadLoading, setBucketUploadLoading] = useState(false)
-  const [bucketUrl, setBucketUrl] = useState("s3://")
-  const [uploadStatus, setUploadStatus] = useState<string>("")
-  const [awsEnabled, setAwsEnabled] = useState(false)
   
   // Connectors state
   const [connectors, setConnectors] = useState<Connector[]>([])
@@ -62,123 +53,6 @@ function KnowledgeSourcesPage() {
   const [maxFiles, setMaxFiles] = useState<number>(10)
 
 
-  // File upload handlers
-  const handleDirectFileUpload = async (file: File) => {
-    setFileUploadLoading(true)
-    setUploadStatus("")
-
-    try {
-      const formData = new FormData()
-      formData.append("file", file)
-
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      })
-
-      const result = await response.json()
-      
-      if (response.ok) {
-        setUploadStatus(`File processed successfully! ID: ${result.id}`)
-        
-      } else {
-        setUploadStatus(`Error: ${result.error || "Processing failed"}`)
-      }
-    } catch (error) {
-      setUploadStatus(`Error: ${error instanceof Error ? error.message : "Processing failed"}`)
-    } finally {
-      setFileUploadLoading(false)
-    }
-  }
-
-  const handlePathUpload = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!folderPath.trim()) return
-
-    setPathUploadLoading(true)
-    setUploadStatus("")
-
-    try {
-      const response = await fetch("/api/upload_path", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ path: folderPath }),
-      })
-
-      const result = await response.json()
-      
-      if (response.status === 201) {
-        const taskId = result.task_id || result.id
-        const totalFiles = result.total_files || 0
-        
-        if (!taskId) {
-          throw new Error("No task ID received from server")
-        }
-        
-        addTask(taskId)
-        
-        setUploadStatus(`🔄 Processing started for ${totalFiles} files. Check the task notification panel for real-time progress. (Task ID: ${taskId})`)
-        setFolderPath("")
-        setPathUploadLoading(false)
-        
-      } else if (response.ok) {
-        const successful = result.results?.filter((r: {status: string}) => r.status === "indexed").length || 0
-        const total = result.results?.length || 0
-        setUploadStatus(`Path processed successfully! ${successful}/${total} files indexed.`)
-        setFolderPath("")
-        setPathUploadLoading(false)
-      } else {
-        setUploadStatus(`Error: ${result.error || "Path upload failed"}`)
-        setPathUploadLoading(false)
-      }
-    } catch (error) {
-      setUploadStatus(`Error: ${error instanceof Error ? error.message : "Path upload failed"}`)
-      setPathUploadLoading(false)
-    }
-  }
-
-  const handleBucketUpload = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!bucketUrl.trim()) return
-
-    setBucketUploadLoading(true)
-    setUploadStatus("")
-
-    try {
-      const response = await fetch("/api/upload_bucket", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ s3_url: bucketUrl }),
-      })
-
-      const result = await response.json()
-
-      if (response.status === 201) {
-        const taskId = result.task_id || result.id
-        const totalFiles = result.total_files || 0
-
-        if (!taskId) {
-          throw new Error("No task ID received from server")
-        }
-
-        addTask(taskId)
-        setUploadStatus(`🔄 Processing started for ${totalFiles} files. Check the task notification panel for real-time progress. (Task ID: ${taskId})`)
-        setBucketUrl("s3://")
-      } else {
-        setUploadStatus(`Error: ${result.error || "Bucket processing failed"}`)
-      }
-    } catch (error) {
-      setUploadStatus(
-        `Error: ${error instanceof Error ? error.message : "Bucket processing failed"}`,
-      )
-    } finally {
-      setBucketUploadLoading(false)
-    }
-  }
 
   // Helper function to get connector icon
   const getConnectorIcon = (iconName: string) => {
@@ -379,21 +253,6 @@ function KnowledgeSourcesPage() {
   }, [searchParams, isAuthenticated, checkConnectorStatuses])
 
 
-  // Check AWS availability
-  useEffect(() => {
-    const checkAws = async () => {
-      try {
-        const res = await fetch("/api/upload_options")
-        if (res.ok) {
-          const data = await res.json()
-          setAwsEnabled(Boolean(data.aws))
-        }
-      } catch (err) {
-        console.error("Failed to check AWS availability", err)
-      }
-    }
-    checkAws()
-  }, [])
 
 
   // Track previous tasks to detect new completions

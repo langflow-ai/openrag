@@ -60,7 +60,6 @@ export function TaskNotificationMenu() {
     const processed = task.processed_files || 0
     const successful = task.successful_files || 0
     const failed = task.failed_files || 0
-    const skipped = Math.max(0, processed - successful - failed) // Calculate skipped
     
     if (total > 0) {
       return {
@@ -70,7 +69,6 @@ export function TaskNotificationMenu() {
           processed,
           successful,
           failed,
-          skipped,
           remaining: total - processed
         }
       }
@@ -180,12 +178,6 @@ export function TaskNotificationMenu() {
                             <div className="flex items-center gap-1">
                               <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
                               <span className="text-yellow-600">
-                                {formatTaskProgress(task)?.detailed.skipped} skipped
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                              <span className="text-muted-foreground">
                                 {formatTaskProgress(task)?.detailed.remaining} pending
                               </span>
                             </div>
@@ -269,8 +261,7 @@ export function TaskNotificationMenu() {
                         {task.status === 'completed' && formatTaskProgress(task)?.detailed && (
                           <div className="text-xs text-muted-foreground mt-1">
                             {formatTaskProgress(task)?.detailed.successful} success, {' '}
-                            {formatTaskProgress(task)?.detailed.failed} failed, {' '}
-                            {formatTaskProgress(task)?.detailed.skipped} skipped
+                            {formatTaskProgress(task)?.detailed.failed} failed
                           </div>
                         )}
                         {task.status === 'failed' && task.error && (

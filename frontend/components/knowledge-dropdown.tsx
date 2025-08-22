@@ -125,7 +125,6 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
       
       if (response.status === 201) {
         const taskId = result.task_id || result.id
-        const totalFiles = result.total_files || 0
         
         if (!taskId) {
           throw new Error("No task ID received from server")
@@ -166,7 +165,6 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
 
       if (response.status === 201) {
         const taskId = result.task_id || result.id
-        const totalFiles = result.total_files || 0
 
         if (!taskId) {
           throw new Error("No task ID received from server")
