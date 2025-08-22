@@ -40,9 +40,13 @@ async function proxyRequest(
   params: { path: string[] }
 ) {
   const backendHost = process.env.OPENRAG_BACKEND_HOST || 'localhost';
+  const backendSSL= process.env.OPENRAG_BACKEND_SSL || false;
   const path = params.path.join('/');
   const searchParams = request.nextUrl.searchParams.toString();
-  const backendUrl = `http://${backendHost}:8000/${path}${searchParams ? `?${searchParams}` : ''}`;
+  var backendUrl = `http://${backendHost}:8000/${path}${searchParams ? `?${searchParams}` : ''}`;
+  if (backendSSL) {
+    const backendUrl = `https://${backendHost}:8000/${path}${searchParams ? `?${searchParams}` : ''}`;
+  }
 
   try {
     let body: string | ArrayBuffer | undefined = undefined;
