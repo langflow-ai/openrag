@@ -425,132 +425,24 @@ function KnowledgeSourcesPage() {
 
   return (
     <div className="space-y-8">
-      {/* Upload Section */}
-      <div className="space-y-6">
+      {/* Agent Behavior Section */}
+      <div className="flex items-center justify-between py-4">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight mb-2">Import</h2>
+          <h3 className="text-lg font-medium">Agent behavior</h3>
+          <p className="text-sm text-muted-foreground">Adjust your retrieval agent flow</p>
         </div>
-        
-        <div className={`grid gap-6 ${awsEnabled ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-          {/* File Upload Card */}
-          <Card className="flex flex-col">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Upload className="h-5 w-5" />
-                Add File
-              </CardTitle>
-              <CardDescription>
-                Import a single document to be processed and indexed
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col justify-end">
-              <FileUploadArea
-                onFileSelected={handleDirectFileUpload}
-                isLoading={fileUploadLoading}
-              />
-            </CardContent>
-          </Card>
-
-          {/* Folder Upload Card */}
-          <Card className="flex flex-col">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FolderOpen className="h-5 w-5" />
-                Process Folder
-              </CardTitle>
-              <CardDescription>
-                Process all documents in a folder path
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col justify-end">
-              <form onSubmit={handlePathUpload} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="folder-path">Folder Path</Label>
-                  <Input
-                    id="folder-path"
-                    type="text"
-                    placeholder="/path/to/documents"
-                    value={folderPath}
-                    onChange={(e) => setFolderPath(e.target.value)}
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  disabled={!folderPath.trim() || pathUploadLoading}
-                  className="w-full"
-                >
-                  {pathUploadLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <FolderOpen className="mr-2 h-4 w-4" />
-                      Process Folder
-                    </>
-                  )}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          {/* S3 Bucket Upload Card - only show if AWS is enabled */}
-          {awsEnabled && (
-            <Card className="flex flex-col">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Cloud className="h-5 w-5" />
-                  Process S3 Bucket
-                </CardTitle>
-                <CardDescription>
-                  Process all documents from an S3 bucket. AWS credentials must be configured.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-end">
-                <form onSubmit={handleBucketUpload} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="bucket-url">S3 URL</Label>
-                    <Input
-                      id="bucket-url"
-                      type="text"
-                      placeholder="s3://bucket/path"
-                      value={bucketUrl}
-                      onChange={(e) => setBucketUrl(e.target.value)}
-                    />
-                  </div>
-                  <Button
-                    type="submit"
-                    disabled={!bucketUrl.trim() || bucketUploadLoading}
-                    className="w-full"
-                  >
-                    {bucketUploadLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Cloud className="mr-2 h-4 w-4" />
-                        Process Bucket
-                      </>
-                    )}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Upload Status */}
-        {uploadStatus && (
-          <Card className="bg-muted/20">
-            <CardContent className="pt-6">
-              <p className="text-sm">{uploadStatus}</p>
-            </CardContent>
-          </Card>
-        )}
+        <Button
+          onClick={() => window.open('http://localhost:7860/flow/1098eea1-6649-4e1d-aed1-b77249fb8dd0', '_blank')}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="22" viewBox="0 0 24 22" className="h-4 w-4 mr-2">
+            <path fill="currentColor" d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"></path>
+            <path fill="currentColor" d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"></path>
+            <path fill="currentColor" d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"></path>
+          </svg>
+          Edit in Langflow
+        </Button>
       </div>
+
 
       {/* Connectors Section */}
       <div className="space-y-6">
@@ -559,40 +451,29 @@ function KnowledgeSourcesPage() {
         </div>
 
         {/* Sync Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Download className="h-5 w-5" />
-              Sync Settings
-            </CardTitle>
-            <CardDescription>
-              Configure how many files to sync when manually triggering a sync
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center text-sm">
-                <div className="flex items-center gap-3">
-                  <Label htmlFor="maxFiles" className="font-medium whitespace-nowrap">
-                    Max files per sync:
-                  </Label>
-                  <Input
-                    id="maxFiles"
-                    type="number"
-                    value={maxFiles}
-                    onChange={(e) => setMaxFiles(parseInt(e.target.value) || 10)}
-                    className="w-16 min-w-16 max-w-16 flex-shrink-0"
-                    min="1"
-                    max="100"
-                  />
-                  <span className="text-muted-foreground whitespace-nowrap">
-                    (Leave blank or set to 0 for unlimited)
-                  </span>
-                </div>
-              </div>
+        <div className="flex items-center justify-between py-4">
+          <div>
+            <h3 className="text-lg font-medium">Sync Settings</h3>
+            <p className="text-sm text-muted-foreground">Configure how many files to sync when manually triggering a sync</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Label htmlFor="maxFiles" className="font-medium whitespace-nowrap">
+              Max files per sync:
+            </Label>
+            <div className="relative">
+              <Input
+                id="maxFiles"
+                type="number"
+                value={maxFiles}
+                onChange={(e) => setMaxFiles(parseInt(e.target.value) || 10)}
+                className="w-16 min-w-16 max-w-16 flex-shrink-0"
+                min="1"
+                max="100"
+                title="Leave blank or set to 0 for unlimited"
+              />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Connectors Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
