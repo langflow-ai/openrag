@@ -12,6 +12,7 @@ import { SiGoogledrive } from "react-icons/si"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
 import { useTask } from "@/contexts/task-context"
+import { KnowledgeDropdown } from "@/components/knowledge-dropdown"
 
 type FacetBucket = { key: string; count: number }
 
@@ -77,7 +78,7 @@ function SearchPage() {
   const router = useRouter()
   const { isMenuOpen } = useTask()
   const { parsedFilterData, isPanelOpen } = useKnowledgeFilter()
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState("*")
   const [loading, setLoading] = useState(false)
   const [chunkResults, setChunkResults] = useState<ChunkResult[]>([])
   const [fileResults, setFileResults] = useState<FileResult[]>([])
@@ -372,6 +373,13 @@ function SearchPage() {
     }
   }, [parsedFilterData])
 
+  // Auto-search on mount with "*"
+  useEffect(() => {
+    if (query === "*") {
+      handleSearch()
+    }
+  }, []) // Only run once on mount
+  
   // Initial stats fetch and refresh when filter changes
   useEffect(() => {
     fetchStats()
@@ -411,225 +419,150 @@ function SearchPage() {
                 <Search className="h-4 w-4" />
               )}
             </Button>
-            <Button
-              type="button"
-              onClick={() => router.push('/settings')}
-              className="rounded-lg h-12 px-4 flex-shrink-0"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Knowledge
-            </Button>
+            <div className="flex-shrink-0">
+              <KnowledgeDropdown variant="button" />
+            </div>
           </form>
         </div>
 
         {/* Results Area */}
         <div className="flex-1 overflow-y-auto">
-          {searchPerformed ? (
-            <div className="space-y-4">
-              {fileResults.length === 0 && chunkResults.length === 0 ? (
-                <div className="text-center py-12">
-                  <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                  <p className="text-lg text-muted-foreground">No documents found</p>
-                  <p className="text-sm text-muted-foreground/70 mt-2">
-                    Try adjusting your search terms
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {/* View Toggle and Results Count */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="text-sm text-muted-foreground">
-                      {viewMode === 'files' ? fileResults.length : chunkResults.length} {viewMode === 'files' ? 'file' : 'result'}{(viewMode === 'files' ? fileResults.length : chunkResults.length) !== 1 ? 's' : ''} found
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant={viewMode === 'files' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => {setViewMode('files'); setSelectedFile(null)}}
-                      >
-                        Files
-                      </Button>
-                      <Button
-                        variant={viewMode === 'chunks' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => {setViewMode('chunks'); setSelectedFile(null)}}
-                      >
-                        Chunks
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Results Display */}
-                  <div className="space-y-4">
-                    {viewMode === 'files' ? (
-                      selectedFile ? (
-                        // Show chunks for selected file
-                        <>
-                          <div className="flex items-center gap-2 mb-4">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedFile(null)}
-                            >
-                              ← Back to files
-                            </Button>
-                            <span className="text-sm text-muted-foreground">
-                              Chunks from {selectedFile}
-                            </span>
-                          </div>
-                          {chunkResults
-                            .filter(chunk => chunk.filename === selectedFile)
-                            .map((chunk, index) => (
-                            <div key={index} className="bg-muted/20 rounded-lg p-4 border border-border/50">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <FileText className="h-4 w-4 text-blue-400" />
-                                  <span className="font-medium truncate">{chunk.filename}</span>
-                                </div>
-                                <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-                                  {chunk.score.toFixed(2)}
-                                </span>
-                              </div>
-                              <div className="text-sm text-muted-foreground mb-2">
-                                {chunk.mimetype} • Page {chunk.page}
-                              </div>
-                              <p className="text-sm text-foreground/90 leading-relaxed">
-                                {chunk.text}
-                              </p>
-                            </div>
-                          ))}
-                        </>
-                      ) : (
-                        // Show files table
-                        <div className="bg-muted/20 rounded-lg border border-border/50 overflow-hidden">
-                          <table className="w-full">
-                            <thead>
-                              <tr className="border-b border-border/50 bg-muted/10">
-                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Source</th>
-                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Type</th>
-                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Size</th>
-                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Chunks</th>
-                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Score</th>
-                                <th className="text-left p-3 text-sm font-medium text-muted-foreground">Owner</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {fileResults.map((file, index) => (
-                                <tr
-                                  key={index}
-                                  className="border-b border-border/30 hover:bg-muted/20 cursor-pointer transition-colors"
-                                  onClick={() => setSelectedFile(file.filename)}
-                                >
-                                  <td className="p-3">
-                                    <div className="flex items-center gap-2">
-                                      {getSourceIcon(file.connector_type)}
-                                      <span className="font-medium truncate" title={file.filename}>
-                                        {file.filename}
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className="p-3 text-sm text-muted-foreground">
-                                    {file.mimetype}
-                                  </td>
-                                  <td className="p-3 text-sm text-muted-foreground">
-                                    {file.size ? `${Math.round(file.size / 1024)} KB` : '—'}
-                                  </td>
-                                  <td className="p-3 text-sm text-muted-foreground">
-                                    {file.chunkCount}
-                                  </td>
-                                  <td className="p-3">
-                                    <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-                                      {file.avgScore.toFixed(2)}
-                                    </span>
-                                  </td>
-                                  <td className="p-3 text-sm text-muted-foreground" title={file.owner_email}>
-                                    {file.owner_name || file.owner || '—'}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )
-                    ) : (
-                      // Show chunks view
-                      chunkResults.map((result, index) => (
-                        <div key={index} className="bg-muted/20 rounded-lg p-4 border border-border/50">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <FileText className="h-4 w-4 text-blue-400" />
-                              <span className="font-medium truncate">{result.filename}</span>
-                            </div>
-                            <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-                              {result.score.toFixed(2)}
-                            </span>
-                          </div>
-                          <div className="text-sm text-muted-foreground mb-2">
-                            {result.mimetype} • Page {result.page}
-                          </div>
-                          <p className="text-sm text-foreground/90 leading-relaxed">
-                            {result.text}
-                          </p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            /* Knowledge Overview - Show when no search has been performed */
-            <div className="bg-muted/20 rounded-lg border border-border/50">
-              <div className="p-6">
-                <div className="mb-6">
-                  <h2 className="text-lg font-semibold">Knowledge Overview</h2>
-                </div>
-
-                {/* Documents row */}
-                <div className="mb-6">
-                  <div className="text-sm text-muted-foreground mb-1">Total documents</div>
-                  <div className="text-2xl font-semibold">{statsLoading ? '—' : totalDocs}</div>
-                </div>
-
-                {/* Separator */}
-                <div className="border-t border-border/50 my-6" />
-
-                {/* Chunks and breakdown */}
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-1">Total chunks</div>
-                    <div className="text-2xl font-semibold">{statsLoading ? '—' : totalChunks}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-2">Top sources</div>
-                    <div className="flex flex-wrap gap-2">
-                      {(facetStats?.connector_types || []).slice(0,5).map((b) => (
-                        <Badge key={`connector-${b.key}`} variant="secondary">
-                          <span className="capitalize">{b.key}</span> · {b.count}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-2">Top types</div>
-                    <div className="flex flex-wrap gap-2">
-                      {(facetStats?.document_types || []).slice(0,5).map((b) => (
-                        <Badge key={`type-${b.key}`} variant="secondary">{b.key} · {b.count}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-2">Top owners</div>
-                    <div className="flex flex-wrap gap-2">
-                      {(facetStats?.owners || []).slice(0,5).map((b) => (
-                        <Badge key={`owner-${b.key}`} variant="secondary">{b.key || 'unknown'} · {b.count}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+          <div className="space-y-4">
+            {fileResults.length === 0 && chunkResults.length === 0 && !loading ? (
+              <div className="text-center py-12">
+                <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                <p className="text-lg text-muted-foreground">No documents found</p>
+                <p className="text-sm text-muted-foreground/70 mt-2">
+                  Try adjusting your search terms
+                </p>
               </div>
-            </div>
-          )}
+            ) : (
+              <>
+                {/* Results Count */}
+                <div className="mb-4">
+                  <div className="text-sm text-muted-foreground">
+                    {fileResults.length} file{fileResults.length !== 1 ? 's' : ''} found
+                  </div>
+                </div>
+
+                {/* Results Display */}
+                <div className="space-y-4">
+                  {viewMode === 'files' ? (
+                    selectedFile ? (
+                      // Show chunks for selected file
+                      <>
+                        <div className="flex items-center gap-2 mb-4">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedFile(null)}
+                          >
+                            ← Back to files
+                          </Button>
+                          <span className="text-sm text-muted-foreground">
+                            Chunks from {selectedFile}
+                          </span>
+                        </div>
+                        {chunkResults
+                          .filter(chunk => chunk.filename === selectedFile)
+                          .map((chunk, index) => (
+                          <div key={index} className="bg-muted/20 rounded-lg p-4 border border-border/50">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-blue-400" />
+                                <span className="font-medium truncate">{chunk.filename}</span>
+                              </div>
+                              <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
+                                {chunk.score.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="text-sm text-muted-foreground mb-2">
+                              {chunk.mimetype} • Page {chunk.page}
+                            </div>
+                            <p className="text-sm text-foreground/90 leading-relaxed">
+                              {chunk.text}
+                            </p>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      // Show files table
+                      <div className="bg-muted/20 rounded-lg border border-border/50 overflow-hidden">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-border/50 bg-muted/10">
+                              <th className="text-left p-3 text-sm font-medium text-muted-foreground">Source</th>
+                              <th className="text-left p-3 text-sm font-medium text-muted-foreground">Type</th>
+                              <th className="text-left p-3 text-sm font-medium text-muted-foreground">Size</th>
+                              <th className="text-left p-3 text-sm font-medium text-muted-foreground">Matching chunks</th>
+                              <th className="text-left p-3 text-sm font-medium text-muted-foreground">Average score</th>
+                              <th className="text-left p-3 text-sm font-medium text-muted-foreground">Owner</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {fileResults.map((file, index) => (
+                              <tr
+                                key={index}
+                                className="border-b border-border/30 hover:bg-muted/20 cursor-pointer transition-colors"
+                                onClick={() => setSelectedFile(file.filename)}
+                              >
+                                <td className="p-3">
+                                  <div className="flex items-center gap-2">
+                                    {getSourceIcon(file.connector_type)}
+                                    <span className="font-medium truncate" title={file.filename}>
+                                      {file.filename}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="p-3 text-sm text-muted-foreground">
+                                  {file.mimetype}
+                                </td>
+                                <td className="p-3 text-sm text-muted-foreground">
+                                  {file.size ? `${Math.round(file.size / 1024)} KB` : '—'}
+                                </td>
+                                <td className="p-3 text-sm text-muted-foreground">
+                                  {file.chunkCount}
+                                </td>
+                                <td className="p-3">
+                                  <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
+                                    {file.avgScore.toFixed(2)}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-sm text-muted-foreground" title={file.owner_email}>
+                                  {file.owner_name || file.owner || '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  ) : (
+                    // Show chunks view
+                    chunkResults.map((result, index) => (
+                      <div key={index} className="bg-muted/20 rounded-lg p-4 border border-border/50">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-blue-400" />
+                            <span className="font-medium truncate">{result.filename}</span>
+                          </div>
+                          <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
+                            {result.score.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="text-sm text-muted-foreground mb-2">
+                          {result.mimetype} • Page {result.page}
+                        </div>
+                        <p className="text-sm text-foreground/90 leading-relaxed">
+                          {result.text}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

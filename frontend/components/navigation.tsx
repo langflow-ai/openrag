@@ -6,6 +6,7 @@ import { Library, MessageSquare, Settings2, Plus, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useChat } from "@/contexts/chat-context"
+import { KnowledgeDropdown } from "@/components/knowledge-dropdown"
 
 import { EndpointType } from "@/contexts/chat-context"
 
