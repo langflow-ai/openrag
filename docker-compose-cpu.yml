@@ -64,8 +64,8 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     volumes:
-      - documents_vol:/app/documents
-      - keys_vol:/app/keys
+      - ./documents:/app/documents:Z
+      - ./keys:/app/keys:Z
     platform: linux/amd64
 
   openrag-frontend:
@@ -83,7 +83,7 @@ services:
 
   langflow:
     volumes:
-      - flows_vol:/app/flows
+      - ./flows:/app/flows:Z
     image: phact/langflow:responses
     container_name: langflow
     ports:
@@ -96,23 +96,3 @@ services:
       - OPENRAG-QUERY-FILTER="{}"
       - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER
       - LANGFLOW_LOG_LEVEL=DEBUG
-
-volumes:
-  documents_vol:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./documents
-  keys_vol:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./keys
-  flows_vol:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./flows
