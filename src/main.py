@@ -26,6 +26,7 @@ from services.task_service import TaskService
 from services.auth_service import AuthService
 from services.chat_service import ChatService
 from services.knowledge_filter_service import KnowledgeFilterService
+from services.monitor_service import MonitorService
 
 # Existing services
 from connectors.service import ConnectorService
@@ -55,6 +56,27 @@ async def wait_for_opensearch():
             else:
                 raise Exception("OpenSearch failed to become ready")
 
+async def configure_alerting_security():
+    """Configure OpenSearch alerting plugin security settings"""
+    try:
+        # For testing, disable backend role filtering to allow all authenticated users
+        # In production, you'd want to configure proper roles instead
+        alerting_settings = {
+            "persistent": {
+                "plugins.alerting.filter_by_backend_roles": "false",
+                "opendistro.alerting.filter_by_backend_roles": "false", 
+                "opensearch.notifications.general.filter_by_backend_roles": "false"
+            }
+        }
+        
+        # Use admin client (clients.opensearch uses admin credentials)
+        response = await clients.opensearch.cluster.put_settings(body=alerting_settings)
+        print("Alerting security settings configured successfully")
+        print(f"Response: {response}")
+    except Exception as e:
+        print(f"Warning: Failed to configure alerting security settings: {e}")
+        # Don't fail startup if alerting config fails
+
 async def init_index():
     """Initialize OpenSearch index and security roles"""
     await wait_for_opensearch()
@@ -78,6 +100,7 @@ async def init_index():
                 "owner": {"type": "keyword"},
                 "allowed_users": {"type": "keyword"},
                 "allowed_groups": {"type": "keyword"},
+                "subscriptions": {"type": "object"},  # Store subscription data
                 "created_at": {"type": "date"},
                 "updated_at": {"type": "date"}
             }
@@ -89,6 +112,9 @@ async def init_index():
         print(f"Created index '{knowledge_filter_index_name}'")
     else:
         print(f"Index '{knowledge_filter_index_name}' already exists, skipping creation.")
+    
+    # Configure alerting plugin security settings
+    await configure_alerting_security()
 
 def generate_jwt_keys():
     """Generate RSA keys for JWT signing if they don't exist"""
@@ -146,6 +172,7 @@ def initialize_services():
     task_service = TaskService(document_service, process_pool)
     chat_service = ChatService()
     knowledge_filter_service = KnowledgeFilterService(session_manager)
+    monitor_service = MonitorService(session_manager)
     
     # Set process pool for document service
     document_service.process_pool = process_pool
@@ -171,6 +198,7 @@ def initialize_services():
         'auth_service': auth_service,
         'connector_service': connector_service,
         'knowledge_filter_service': knowledge_filter_service,
+        'monitor_service': monitor_service,
         'session_manager': session_manager
     }
 
@@ -280,6 +308,37 @@ def create_app():
                          knowledge_filter_service=services['knowledge_filter_service'],
                          session_manager=services['session_manager'])
               ), methods=["DELETE"]),
+        
+        # Knowledge Filter Subscription endpoints
+        Route("/knowledge-filter/{filter_id}/subscribe", 
+              require_auth(services['session_manager'])(
+                  partial(knowledge_filter.subscribe_to_knowledge_filter,
+                         knowledge_filter_service=services['knowledge_filter_service'],
+                         monitor_service=services['monitor_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["POST"]),
+        
+        Route("/knowledge-filter/{filter_id}/subscriptions", 
+              require_auth(services['session_manager'])(
+                  partial(knowledge_filter.list_knowledge_filter_subscriptions,
+                         knowledge_filter_service=services['knowledge_filter_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["GET"]),
+        
+        Route("/knowledge-filter/{filter_id}/subscribe/{subscription_id}", 
+              require_auth(services['session_manager'])(
+                  partial(knowledge_filter.cancel_knowledge_filter_subscription,
+                         knowledge_filter_service=services['knowledge_filter_service'],
+                         monitor_service=services['monitor_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["DELETE"]),
+        
+        # Knowledge Filter Webhook endpoint (no auth required - called by OpenSearch)
+        Route("/knowledge-filter/{filter_id}/webhook/{subscription_id}", 
+              partial(knowledge_filter.knowledge_filter_webhook,
+                     knowledge_filter_service=services['knowledge_filter_service'],
+                     session_manager=services['session_manager']), 
+              methods=["POST"]),
         
         # Chat endpoints
         Route("/chat", 

@@ -7,6 +7,13 @@ openrag_user_role:
   cluster_permissions:
     - "indices:data/write/bulk"
     - "indices:data/write/index"
+    - "cluster:admin/opensearch/notifications/configs/create"
+    - "cluster:admin/opensearch/notifications/configs/list"
+    - "cluster:admin/opensearch/notifications/configs/get"
+    - "cluster:admin/opensearch/notifications/configs/update"
+    - "cluster:admin/opensearch/notifications/configs/delete"
+    - "cluster:admin/opensearch/alerting/*"
+
   index_permissions:
     - index_patterns: ["documents", "documents*", "knowledge_filters", "knowledge_filters*"]
       allowed_actions:
@@ -18,3 +25,4 @@ openrag_user_role:
           {"term":{"allowed_users":"${user.name}"}},
           {"bool":{"must_not":{"exists":{"field":"owner"}}}}
         ],"minimum_should_match":1}}
+
