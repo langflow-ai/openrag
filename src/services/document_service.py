@@ -217,7 +217,7 @@ class DocumentService:
             "content_length": len(full_content)
         }
 
-    async def process_single_file_task(self, upload_task, file_path: str, owner_user_id: str = None, jwt_token: str = None, owner_name: str = None, owner_email: str = None):
+    async def process_single_file_task(self, upload_task, file_path: str, owner_user_id: str = None, jwt_token: str = None, owner_name: str = None, owner_email: str = None, connector_type: str = "local"):
         """Process a single file and update task tracking - used by task service"""
         from models.tasks import TaskStatus
         import time
