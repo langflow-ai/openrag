@@ -29,7 +29,7 @@ If you need to reset state:
     docker compose up --build --force-recreate --remove-orphans
 
 
-For podman on mac you may have to increase your VM memory:
+For podman on mac you may have to increase your VM memory (`podman stats` should not show limit at only 2gb):
 
     podman machine stop
     podman machine rm
