@@ -23,7 +23,7 @@ class ChatService:
                 response_data["response_id"] = response_id
             return response_data
 
-    async def langflow_chat(self, prompt: str, jwt_token: str = None, previous_response_id: str = None, stream: bool = False):
+    async def langflow_chat(self, prompt: str, user_id: str = None, jwt_token: str = None, previous_response_id: str = None, stream: bool = False):
         """Handle Langflow chat requests"""
         if not prompt:
             raise ValueError("Prompt is required")
@@ -81,9 +81,11 @@ class ChatService:
             extra_headers['X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER'] = json.dumps(filter_expression)
 
         if stream:
-            return async_langflow_stream(clients.langflow_client, FLOW_ID, prompt, extra_headers=extra_headers, previous_response_id=previous_response_id)
+            from agent import async_langflow_chat_stream
+            return async_langflow_chat_stream(clients.langflow_client, FLOW_ID, prompt, user_id, extra_headers=extra_headers, previous_response_id=previous_response_id)
         else:
-            response_text, response_id = await async_langflow(clients.langflow_client, FLOW_ID, prompt, extra_headers=extra_headers, previous_response_id=previous_response_id)
+            from agent import async_langflow_chat
+            response_text, response_id = await async_langflow_chat(clients.langflow_client, FLOW_ID, prompt, user_id, extra_headers=extra_headers, previous_response_id=previous_response_id)
             response_data = {"response": response_text}
             if response_id:
                 response_data["response_id"] = response_id
@@ -107,3 +109,106 @@ class ChatService:
             response_text, response_id = await async_chat(clients.patched_async_client, document_prompt, user_id, previous_response_id=previous_response_id)
         
         return response_text, response_id
+
+    async def get_chat_history(self, user_id: str):
+        """Get chat conversation history for a user"""
+        from agent import get_user_conversations
+        
+        if not user_id:
+            return {"error": "User ID is required", "conversations": []}
+        
+        conversations_dict = get_user_conversations(user_id)
+        print(f"[DEBUG] get_chat_history for user {user_id}: found {len(conversations_dict)} conversations")
+        
+        # Convert conversations dict to list format with metadata
+        conversations = []
+        for response_id, conversation_state in conversations_dict.items():
+            # Filter out system messages
+            messages = []
+            for msg in conversation_state.get("messages", []):
+                if msg.get("role") in ["user", "assistant"]:
+                    message_data = {
+                        "role": msg["role"],
+                        "content": msg["content"],
+                        "timestamp": msg.get("timestamp").isoformat() if msg.get("timestamp") else None
+                    }
+                    if msg.get("response_id"):
+                        message_data["response_id"] = msg["response_id"]
+                    messages.append(message_data)
+            
+            if messages:  # Only include conversations with actual messages
+                # Generate title from first user message
+                first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
+                title = first_user_msg["content"][:50] + "..." if first_user_msg and len(first_user_msg["content"]) > 50 else first_user_msg["content"] if first_user_msg else "New chat"
+                
+                conversations.append({
+                    "response_id": response_id,
+                    "title": title,
+                    "endpoint": "chat",
+                    "messages": messages,
+                    "created_at": conversation_state.get("created_at").isoformat() if conversation_state.get("created_at") else None,
+                    "last_activity": conversation_state.get("last_activity").isoformat() if conversation_state.get("last_activity") else None,
+                    "previous_response_id": conversation_state.get("previous_response_id"),
+                    "total_messages": len(messages)
+                })
+        
+        # Sort by last activity (most recent first)
+        conversations.sort(key=lambda c: c["last_activity"], reverse=True)
+        
+        return {
+            "user_id": user_id,
+            "endpoint": "chat",
+            "conversations": conversations,
+            "total_conversations": len(conversations)
+        }
+
+    async def get_langflow_history(self, user_id: str):
+        """Get langflow conversation history for a user"""
+        from agent import get_user_conversations
+        
+        if not user_id:
+            return {"error": "User ID is required", "conversations": []}
+        
+        conversations_dict = get_user_conversations(user_id)
+        
+        # Convert conversations dict to list format with metadata
+        conversations = []
+        for response_id, conversation_state in conversations_dict.items():
+            # Filter out system messages
+            messages = []
+            for msg in conversation_state.get("messages", []):
+                if msg.get("role") in ["user", "assistant"]:
+                    message_data = {
+                        "role": msg["role"],
+                        "content": msg["content"],
+                        "timestamp": msg.get("timestamp").isoformat() if msg.get("timestamp") else None
+                    }
+                    if msg.get("response_id"):
+                        message_data["response_id"] = msg["response_id"]
+                    messages.append(message_data)
+            
+            if messages:  # Only include conversations with actual messages
+                # Generate title from first user message
+                first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
+                title = first_user_msg["content"][:50] + "..." if first_user_msg and len(first_user_msg["content"]) > 50 else first_user_msg["content"] if first_user_msg else "New chat"
+                
+                conversations.append({
+                    "response_id": response_id,
+                    "title": title,
+                    "endpoint": "langflow",
+                    "messages": messages,
+                    "created_at": conversation_state.get("created_at").isoformat() if conversation_state.get("created_at") else None,
+                    "last_activity": conversation_state.get("last_activity").isoformat() if conversation_state.get("last_activity") else None,
+                    "previous_response_id": conversation_state.get("previous_response_id"),
+                    "total_messages": len(messages)
+                })
+        
+        # Sort by last activity (most recent first)
+        conversations.sort(key=lambda c: c["last_activity"], reverse=True)
+        
+        return {
+            "user_id": user_id,
+            "endpoint": "langflow",
+            "conversations": conversations,
+            "total_conversations": len(conversations)
+        }
