@@ -27,3 +27,11 @@ CPU only:
 If you need to reset state:
 
     docker compose up --build --force-recreate --remove-orphans
+
+
+For podman on mac you may have to increase your VM memory:
+
+    podman machine stop
+    podman machine rm
+    podman machine init --memory 8192   # example: 8 GB
+    podman machine start
