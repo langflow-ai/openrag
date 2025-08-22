@@ -4,15 +4,17 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Library, MessageSquare, Settings2, Plus, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useChat } from "@/contexts/chat-context"
 
-interface ChatConversation {
+import { EndpointType } from "@/contexts/chat-context"
+
+interface RawConversation {
   response_id: string
   title: string
-  endpoint: 'chat' | 'langflow'
+  endpoint: string
   messages: Array<{
-    role: 'user' | 'assistant'
+    role: string
     content: string
     timestamp?: string
     response_id?: string
@@ -21,6 +23,24 @@ interface ChatConversation {
   last_activity?: string
   previous_response_id?: string
   total_messages: number
+  [key: string]: unknown
+}
+
+interface ChatConversation {
+  response_id: string
+  title: string
+  endpoint: EndpointType
+  messages: Array<{
+    role: string
+    content: string
+    timestamp?: string
+    response_id?: string
+  }>
+  created_at?: string
+  last_activity?: string
+  previous_response_id?: string
+  total_messages: number
+  [key: string]: unknown
 }
 
 
@@ -128,14 +148,7 @@ export function Navigation() {
 
   const isOnChatPage = pathname === "/" || pathname === "/chat"
 
-  // Fetch chat conversations when on chat page, endpoint changes, or refresh is triggered
-  useEffect(() => {
-    if (isOnChatPage) {
-      fetchConversations()
-    }
-  }, [isOnChatPage, endpoint, refreshTrigger])
-
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     setLoadingConversations(true)
     try {
       // Fetch from the selected endpoint only
@@ -144,7 +157,13 @@ export function Navigation() {
       const response = await fetch(apiEndpoint)
       if (response.ok) {
         const history = await response.json()
-        const conversations = history.conversations || []
+        const rawConversations = history.conversations || []
+        
+        // Cast conversations to proper type and ensure endpoint is correct
+        const conversations: ChatConversation[] = rawConversations.map((conv: RawConversation) => ({
+          ...conv,
+          endpoint: conv.endpoint as EndpointType
+        }))
         
         // Sort conversations by last activity (most recent first)
         conversations.sort((a: ChatConversation, b: ChatConversation) => {
@@ -166,7 +185,14 @@ export function Navigation() {
     } finally {
       setLoadingConversations(false)
     }
-  }
+  }, [endpoint])
+
+  // Fetch chat conversations when on chat page, endpoint changes, or refresh is triggered
+  useEffect(() => {
+    if (isOnChatPage) {
+      fetchConversations()
+    }
+  }, [isOnChatPage, endpoint, refreshTrigger, fetchConversations])
 
   return (
     <div className="space-y-4 py-4 flex flex-col h-full bg-background">

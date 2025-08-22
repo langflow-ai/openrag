@@ -9,6 +9,20 @@ interface ConversationDocument {
   uploadTime: Date
 }
 
+interface ConversationMessage {
+  role: string
+  content: string
+  timestamp?: string
+  response_id?: string
+}
+
+interface ConversationData {
+  messages: ConversationMessage[]
+  endpoint: EndpointType
+  response_id: string
+  [key: string]: unknown
+}
+
 interface ChatContextType {
   endpoint: EndpointType
   setEndpoint: (endpoint: EndpointType) => void
@@ -21,10 +35,10 @@ interface ChatContextType {
   setPreviousResponseIds: (ids: { chat: string | null; langflow: string | null }) => void
   refreshConversations: () => void
   refreshTrigger: number
-  loadConversation: (conversation: any) => void
+  loadConversation: (conversation: ConversationData) => void
   startNewConversation: () => void
-  conversationData: any
-  forkFromResponse: (responseId: string, messagesToKeep: any[]) => void
+  conversationData: ConversationData | null
+  forkFromResponse: (responseId: string) => void
   conversationDocs: ConversationDocument[]
   addConversationDoc: (filename: string) => void
   clearConversationDocs: () => void
@@ -44,14 +58,14 @@ export function ChatProvider({ children }: ChatProviderProps) {
     langflow: string | null
   }>({ chat: null, langflow: null })
   const [refreshTrigger, setRefreshTrigger] = useState(0)
-  const [conversationData, setConversationData] = useState<any>(null)
+  const [conversationData, setConversationData] = useState<ConversationData | null>(null)
   const [conversationDocs, setConversationDocs] = useState<ConversationDocument[]>([])
 
   const refreshConversations = () => {
     setRefreshTrigger(prev => prev + 1)
   }
 
-  const loadConversation = (conversation: any) => {
+  const loadConversation = (conversation: ConversationData) => {
     setCurrentConversationId(conversation.response_id)
     setEndpoint(conversation.endpoint)
     // Store the full conversation data for the chat page to use
@@ -74,10 +88,10 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setConversationDocs([])
   }
 
-  const forkFromResponse = (responseId: string, messagesToKeep: any[]) => {
+  const forkFromResponse = (responseId: string) => {
     // Start a new conversation with the messages up to the fork point
     setCurrentConversationId(null) // Clear current conversation to indicate new conversation
-    // Don't clear conversation data - let the chat page manage the messages
+    setConversationData(null) // Clear conversation data to prevent reloading
     // Set the response ID that we're forking from as the previous response ID
     setPreviousResponseIds(prev => ({
       ...prev,

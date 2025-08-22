@@ -70,7 +70,7 @@ interface RequestBody {
 function ChatPage() {
   const isDebugMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_OPENRAG_DEBUG === 'true'
   const { user } = useAuth()
-  const { endpoint, setEndpoint, refreshConversations, currentConversationId, conversationData, setCurrentConversationId, addConversationDoc, startNewConversation } = useChat()
+  const { endpoint, setEndpoint, currentConversationId, conversationData, setCurrentConversationId, addConversationDoc, forkFromResponse } = useChat()
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -370,8 +370,13 @@ function ChatPage() {
     if (conversationData && conversationData.messages) {
       console.log("Loading conversation with", conversationData.messages.length, "messages")
       // Convert backend message format to frontend Message interface
-      const convertedMessages: Message[] = conversationData.messages.map((msg: any) => ({
-        role: msg.role,
+      const convertedMessages: Message[] = conversationData.messages.map((msg: {
+        role: string;
+        content: string;
+        timestamp?: string;
+        response_id?: string;
+      }) => ({
+        role: msg.role as "user" | "assistant",
         content: msg.content,
         timestamp: new Date(msg.timestamp || new Date()),
         // Add any other necessary properties
@@ -1097,19 +1102,23 @@ function ChatPage() {
     // This means we're continuing the conversation thread from that point
     const responseIdToForkFrom = currentConversationId || previousResponseIds[endpoint]
     
-    // Create a new conversation by clearing the current conversation ID
-    // but keeping the messages truncated to the fork point
+    // Create a new conversation by properly forking
     setMessages(messagesToKeep)
-    setCurrentConversationId(null) // This creates a new conversation thread
     
-    // We'll handle clearing conversation data differently
-    
-    // Set the response_id we want to continue from as the previous response ID
-    // This tells the backend to continue the conversation from this point
-    setPreviousResponseIds(prev => ({
-      ...prev,
-      [endpoint]: responseIdToForkFrom
-    }))
+    // Use the chat context's fork method which handles creating a new conversation properly
+    if (forkFromResponse) {
+      forkFromResponse(responseIdToForkFrom || '')
+    } else {
+      // Fallback to manual approach
+      setCurrentConversationId(null) // This creates a new conversation thread
+      
+      // Set the response_id we want to continue from as the previous response ID
+      // This tells the backend to continue the conversation from this point
+      setPreviousResponseIds(prev => ({
+        ...prev,
+        [endpoint]: responseIdToForkFrom
+      }))
+    }
     
     console.log("Forked conversation with", messagesToKeep.length, "messages")
     
