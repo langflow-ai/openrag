@@ -1,12 +1,10 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Search, Loader2, FileText, HardDrive, Building2, Cloud, Plus } from "lucide-react"
+import { Search, Loader2, FileText, HardDrive, Building2, Cloud } from "lucide-react"
 import { TbBrandOnedrive } from "react-icons/tb"
 import { SiGoogledrive } from "react-icons/si"
 import { ProtectedRoute } from "@/components/protected-route"
@@ -14,7 +12,6 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
 import { useTask } from "@/contexts/task-context"
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown"
 
-type FacetBucket = { key: string; count: number }
 
 interface ChunkResult {
   filename: string
@@ -75,23 +72,15 @@ function getSourceIcon(connectorType?: string) {
 }
 
 function SearchPage() {
-  const router = useRouter()
   const { isMenuOpen } = useTask()
   const { parsedFilterData, isPanelOpen } = useKnowledgeFilter()
   const [query, setQuery] = useState("*")
   const [loading, setLoading] = useState(false)
   const [chunkResults, setChunkResults] = useState<ChunkResult[]>([])
   const [fileResults, setFileResults] = useState<FileResult[]>([])
-  const [viewMode, setViewMode] = useState<'files' | 'chunks'>('files')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [searchPerformed, setSearchPerformed] = useState(false)
   const prevFilterDataRef = useRef<string>("")
-
-  // Stats state for knowledge overview
-  const [statsLoading, setStatsLoading] = useState<boolean>(false)
-  const [totalDocs, setTotalDocs] = useState<number>(0)
-  const [totalChunks, setTotalChunks] = useState<number>(0)
-  const [facetStats, setFacetStats] = useState<{ data_sources: FacetBucket[]; document_types: FacetBucket[]; owners: FacetBucket[]; connector_types: FacetBucket[] } | null>(null)
 
   const handleSearch = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -116,7 +105,7 @@ function SearchPage() {
 
       const searchPayload: SearchPayload = { 
         query,
-        limit: parsedFilterData?.limit || (query.trim() === "*" ? 50 : 10),  // Higher limit for wildcard searches
+        limit: parsedFilterData?.limit || (query.trim() === "*" ? 10000 : 10),  // Maximum allowed limit for wildcard searches
         scoreThreshold: parsedFilterData?.scoreThreshold || 0
       }
 
@@ -284,106 +273,12 @@ function SearchPage() {
     prevFilterDataRef.current = currentFilterString
   }, [parsedFilterData, searchPerformed, query, handleSearch])
 
-  // Fetch stats with current knowledge filter applied
-  const fetchStats = useCallback(async () => {
-    try {
-      setStatsLoading(true)
-      
-      // Build search payload with current filter data
-      interface SearchPayload {
-        query: string;
-        limit: number;
-        scoreThreshold: number;
-        filters?: {
-          data_sources?: string[];
-          document_types?: string[];
-          owners?: string[];
-          connector_types?: string[];
-        };
-      }
-
-      const searchPayload: SearchPayload = { 
-        query: '*', 
-        limit: 50, // Get more results to ensure we have owner mapping data
-        scoreThreshold: parsedFilterData?.scoreThreshold || 0
-      }
-
-      // Add filters from global context if available and not wildcards
-      if (parsedFilterData?.filters) {
-        const filters = parsedFilterData.filters
-        
-        // Only include filters if they're not wildcards (not "*")
-        const hasSpecificFilters = 
-          !filters.data_sources.includes("*") ||
-          !filters.document_types.includes("*") ||
-          !filters.owners.includes("*") ||
-          (filters.connector_types && !filters.connector_types.includes("*"))
-
-        if (hasSpecificFilters) {
-          const processedFilters: SearchPayload['filters'] = {}
-          
-          // Only add filter arrays that don't contain wildcards
-          if (!filters.data_sources.includes("*")) {
-            processedFilters.data_sources = filters.data_sources
-          }
-          if (!filters.document_types.includes("*")) {
-            processedFilters.document_types = filters.document_types
-          }
-          if (!filters.owners.includes("*")) {
-            processedFilters.owners = filters.owners
-          }
-          if (filters.connector_types && !filters.connector_types.includes("*")) {
-            processedFilters.connector_types = filters.connector_types
-          }
-
-          // Only add filters object if it has any actual filters
-          if (Object.keys(processedFilters).length > 0) {
-            searchPayload.filters = processedFilters
-          }
-        }
-      }
-
-      const response = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(searchPayload)
-      })
-      const result = await response.json()
-      if (response.ok) {
-        const aggs = result.aggregations || {}
-        const toBuckets = (agg: { buckets?: Array<{ key: string | number; doc_count: number }> }): FacetBucket[] =>
-          (agg?.buckets || []).map(b => ({ key: String(b.key), count: b.doc_count }))
-        
-        // Now we can aggregate directly on owner names since they're keyword fields
-        
-        const dataSourceBuckets = toBuckets(aggs.data_sources)
-        setFacetStats({
-          data_sources: dataSourceBuckets.slice(0, 10),
-          document_types: toBuckets(aggs.document_types).slice(0, 10),
-          owners: toBuckets(aggs.owners).slice(0, 10),
-          connector_types: toBuckets(aggs.connector_types || {}).slice(0, 10)
-        })
-        setTotalDocs(dataSourceBuckets.length)
-        setTotalChunks(Number(result.total || 0))
-      }
-    } catch {
-      // non-fatal – keep page functional without stats
-    } finally {
-      setStatsLoading(false)
-    }
-  }, [parsedFilterData])
-
   // Auto-search on mount with "*"
   useEffect(() => {
-    if (query === "*") {
-      handleSearch()
-    }
-  }, []) // Only run once on mount
-  
-  // Initial stats fetch and refresh when filter changes
-  useEffect(() => {
-    fetchStats()
-  }, [fetchStats])
+    // Only trigger initial search on mount when query is "*"
+    handleSearch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only run once on mount - ignore handleSearch dependency
 
 
 
@@ -447,8 +342,7 @@ function SearchPage() {
 
                 {/* Results Display */}
                 <div className="space-y-4">
-                  {viewMode === 'files' ? (
-                    selectedFile ? (
+                  {selectedFile ? (
                       // Show chunks for selected file
                       <>
                         <div className="flex items-center gap-2 mb-4">
@@ -536,29 +430,7 @@ function SearchPage() {
                           </tbody>
                         </table>
                       </div>
-                    )
-                  ) : (
-                    // Show chunks view
-                    chunkResults.map((result, index) => (
-                      <div key={index} className="bg-muted/20 rounded-lg p-4 border border-border/50">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-blue-400" />
-                            <span className="font-medium truncate">{result.filename}</span>
-                          </div>
-                          <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-                            {result.score.toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="text-sm text-muted-foreground mb-2">
-                          {result.mimetype} • Page {result.page}
-                        </div>
-                        <p className="text-sm text-foreground/90 leading-relaxed">
-                          {result.text}
-                        </p>
-                      </div>
-                    ))
-                  )}
+                    )}
                 </div>
               </>
             )}
