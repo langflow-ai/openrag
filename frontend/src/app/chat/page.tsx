@@ -70,7 +70,7 @@ interface RequestBody {
 function ChatPage() {
   const isDebugMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_OPENRAG_DEBUG === 'true'
   const { user } = useAuth()
-  const { endpoint, setEndpoint, refreshConversations, currentConversationId, conversationData, setCurrentConversationId, addConversationDoc } = useChat()
+  const { endpoint, setEndpoint, refreshConversations, currentConversationId, conversationData, setCurrentConversationId, addConversationDoc, startNewConversation } = useChat()
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -99,6 +99,9 @@ function ChatPage() {
   const [selectedFilterIndex, setSelectedFilterIndex] = useState(0)
   const [isFilterHighlighted, setIsFilterHighlighted] = useState(false)
   const [dropdownDismissed, setDropdownDismissed] = useState(false)
+  const [isUserInteracting, setIsUserInteracting] = useState(false)
+  const [isForkingInProgress, setIsForkingInProgress] = useState(false)
+  const [lastForkTimestamp, setLastForkTimestamp] = useState<number>(0)
   const dragCounterRef = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -328,8 +331,15 @@ function ChatPage() {
   }
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, streamingMessage])
+    // Only auto-scroll if not in the middle of user interaction
+    if (!isUserInteracting) {
+      const timer = setTimeout(() => {
+        scrollToBottom()
+      }, 50) // Small delay to avoid conflicts with click events
+      
+      return () => clearTimeout(timer)
+    }
+  }, [messages, streamingMessage, isUserInteracting])
 
   // Reset selected index when search term changes
   useEffect(() => {
@@ -343,7 +353,22 @@ function ChatPage() {
 
   // Load conversation when conversationData changes
   useEffect(() => {
+    const now = Date.now()
+    
+    // Don't reset messages if user is in the middle of an interaction (like forking)
+    if (isUserInteracting || isForkingInProgress) {
+      console.log("Skipping conversation load due to user interaction or forking")
+      return
+    }
+    
+    // Don't reload if we just forked recently (within 1 second)
+    if (now - lastForkTimestamp < 1000) {
+      console.log("Skipping conversation load - recent fork detected")
+      return
+    }
+    
     if (conversationData && conversationData.messages) {
+      console.log("Loading conversation with", conversationData.messages.length, "messages")
       // Convert backend message format to frontend Message interface
       const convertedMessages: Message[] = conversationData.messages.map((msg: any) => ({
         role: msg.role,
@@ -360,8 +385,9 @@ function ChatPage() {
         [conversationData.endpoint]: conversationData.response_id
       }))
     }
-    // Reset messages when starting a new conversation
-    else if (currentConversationId === null) {
+    // Reset messages when starting a new conversation (but not during forking)
+    else if (currentConversationId === null && !isUserInteracting && !isForkingInProgress && now - lastForkTimestamp > 1000) {
+      console.log("Resetting to default message for new conversation")
       setMessages([
         {
           role: "assistant",
@@ -370,7 +396,7 @@ function ChatPage() {
         }
       ])
     }
-  }, [conversationData, currentConversationId])
+  }, [conversationData, currentConversationId, isUserInteracting, isForkingInProgress, lastForkTimestamp])
 
   // Listen for file upload events from navigation
   useEffect(() => {
@@ -1038,7 +1064,21 @@ function ChatPage() {
     })
   }
 
-  const handleForkConversation = (messageIndex: number) => {
+  const handleForkConversation = (messageIndex: number, event?: React.MouseEvent) => {
+    // Prevent any default behavior and stop event propagation
+    if (event) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    
+    // Set interaction state to prevent auto-scroll interference
+    const forkTimestamp = Date.now()
+    setIsUserInteracting(true)
+    setIsForkingInProgress(true)
+    setLastForkTimestamp(forkTimestamp)
+    
+    console.log("Fork conversation called for message index:", messageIndex)
+    
     // Get messages up to and including the selected assistant message
     const messagesToKeep = messages.slice(0, messageIndex + 1)
     
@@ -1046,6 +1086,9 @@ function ChatPage() {
     const forkedMessage = messages[messageIndex]
     if (forkedMessage.role !== 'assistant') {
       console.error('Fork button should only be on assistant messages')
+      setIsUserInteracting(false)
+      setIsForkingInProgress(false)
+      setLastForkTimestamp(0)
       return
     }
     
@@ -1059,12 +1102,23 @@ function ChatPage() {
     setMessages(messagesToKeep)
     setCurrentConversationId(null) // This creates a new conversation thread
     
+    // We'll handle clearing conversation data differently
+    
     // Set the response_id we want to continue from as the previous response ID
     // This tells the backend to continue the conversation from this point
     setPreviousResponseIds(prev => ({
       ...prev,
       [endpoint]: responseIdToForkFrom
     }))
+    
+    console.log("Forked conversation with", messagesToKeep.length, "messages")
+    
+    // Reset interaction state after a longer delay to ensure all effects complete
+    setTimeout(() => {
+      setIsUserInteracting(false)
+      setIsForkingInProgress(false)
+      console.log("Fork interaction complete, re-enabling auto effects")
+    }, 500)
     
     // The original conversation remains unchanged in the sidebar
     // This new forked conversation will get its own response_id when the user sends the next message
@@ -1402,7 +1456,7 @@ function ChatPage() {
                         </div>
                         <div className="flex-shrink-0 ml-2">
                           <button
-                            onClick={() => handleForkConversation(index)}
+                            onClick={(e) => handleForkConversation(index, e)}
                             className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
                             title="Fork conversation from here"
                           >
