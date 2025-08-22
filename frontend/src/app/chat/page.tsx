@@ -1404,7 +1404,7 @@ function ChatPage() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-h-0 px-6">
+      <div className={`flex-1 flex flex-col min-h-0 px-6 ${!isDebugMode ? 'pt-6' : ''}`}>
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
           {/* Messages Area */}
           <div 
