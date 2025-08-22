@@ -1463,15 +1463,17 @@ function ChatPage() {
                           {renderFunctionCalls(message.functionCalls || [], index)}
                           <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
                         </div>
-                        <div className="flex-shrink-0 ml-2">
-                          <button
-                            onClick={(e) => handleForkConversation(index, e)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
-                            title="Fork conversation from here"
-                          >
-                            <GitBranch className="h-3 w-3" />
-                          </button>
-                        </div>
+                        {endpoint === 'chat' && (
+                          <div className="flex-shrink-0 ml-2">
+                            <button
+                              onClick={(e) => handleForkConversation(index, e)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
+                              title="Fork conversation from here"
+                            >
+                              <GitBranch className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
