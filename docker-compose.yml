@@ -67,7 +67,6 @@ services:
       - ./documents:/app/documents:Z
       - ./keys:/app/keys:Z
     gpus: all
-    platform: linux/amd64
 
   openrag-frontend:
     image: phact/openrag-frontend:latest
