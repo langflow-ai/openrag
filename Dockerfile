@@ -11,12 +11,19 @@ RUN usermod -aG wheel opensearch
 # Change the sudoers file to allow passwordless sudo
 RUN echo "opensearch ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# FIXME handle the machine arch better, somehow
-ARG ASYNC_PROFILER_URL=https://github.com/async-profiler/async-profiler/releases/download/v4.0/async-profiler-4.0-linux-x64.tar.gz
+# Handle different architectures for async-profiler
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+      export ASYNC_PROFILER_URL=https://github.com/async-profiler/async-profiler/releases/download/v4.0/async-profiler-4.0-linux-x64.tar.gz; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+      export ASYNC_PROFILER_URL=https://github.com/async-profiler/async-profiler/releases/download/v4.0/async-profiler-4.0-linux-arm64.tar.gz; \
+    else \
+      echo "Unsupported architecture: $TARGETARCH" && exit 1; \
+    fi && \
+    mkdir /opt/async-profiler && \
+    curl -s -L $ASYNC_PROFILER_URL | tar zxvf - --strip-components=1 -C /opt/async-profiler && \
+    chown -R opensearch:opensearch /opt/async-profiler
 
-RUN mkdir /opt/async-profiler
-RUN curl -s -L $ASYNC_PROFILER_URL | tar zxvf - --strip-components=1 -C /opt/async-profiler
-RUN chown -R opensearch:opensearch /opt/async-profiler
 
 RUN echo "#!/bin/bash" > /usr/share/opensearch/profile.sh
 RUN echo "export PATH=\$PATH:/opt/async-profiler/bin" >> /usr/share/opensearch/profile.sh

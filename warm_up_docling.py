@@ -4,7 +4,7 @@ print('Warming up docling models...')
 
 try:
     # Use the sample document to warm up docling
-    test_file = "/app/2506.08231v1.pdf"
+    test_file = "/app/warmup_ocr.pdf"
     print(f'Using {test_file} to warm up docling...')
     DocumentConverter().convert(test_file)
     print('Docling models warmed up successfully')

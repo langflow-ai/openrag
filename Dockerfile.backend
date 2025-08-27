@@ -1,7 +1,13 @@
 FROM python:3.13-slim
 
 # Install curl for uv installation and openssl for RSA key generation
-RUN apt-get update && apt-get install -y curl openssl && rm -rf /var/lib/apt/lists/*
+# Also install git for potential dependencies and build-essential for native compilations
+RUN apt-get update && apt-get install -y \
+    curl \
+    openssl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -15,9 +21,24 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync
 
 # Copy sample document and warmup script for docling
-COPY documents/2506.08231v1.pdf ./
+COPY documents/warmup_ocr.pdf ./
 COPY warm_up_docling.py ./
-RUN uv run python warm_up_docling.py && rm warm_up_docling.py 2506.08231v1.pdf
+RUN uv run docling-tools models download 
+RUN uv run python - <<'PY'
+import pathlib, easyocr
+cache = pathlib.Path("/root/.EasyOCR/model")
+cache.mkdir(parents=True, exist_ok=True)
+# Prewarm the detector + recog for Docling’s default langs
+easyocr.Reader(['fr','de','es','en'],
+               download_enabled=True,
+               model_storage_directory=str(cache))
+print("EasyOCR cache ready at", cache)
+PY
+
+RUN uv run python warm_up_docling.py && rm warm_up_docling.py warmup_ocr.pdf
+
+
+#ENV EASYOCR_MODULE_PATH=~/.cache/docling/models/EasyOcr/
 
 # Copy Python source
 COPY src/ ./src/
