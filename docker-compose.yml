@@ -1,8 +1,9 @@
 services:
   opensearch:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: phact/openrag-opensearch:latest
+    #build:
+      #context: .
+      #dockerfile: Dockerfile
     container_name: os
     depends_on:
       - openrag-backend
