@@ -34,7 +34,7 @@ from session_manager import SessionManager
 from auth_middleware import require_auth, optional_auth
 
 # API endpoints
-from api import upload, search, chat, auth, connectors, tasks, oidc, knowledge_filter
+from api import upload, search, chat, auth, connectors, tasks, oidc, knowledge_filter, settings
 
 print("CUDA available:", torch.cuda.is_available())
 print("CUDA version PyTorch was built with:", torch.version.cuda)
@@ -155,13 +155,13 @@ async def init_index_when_ready():
         print("OIDC endpoints will still work, but document operations may fail until OpenSearch is ready")
     
 
-def initialize_services():
+async def initialize_services():
     """Initialize all services and their dependencies"""
     # Generate JWT keys if they don't exist
     generate_jwt_keys()
     
-    # Initialize clients
-    clients.initialize()
+    # Initialize clients (now async to generate Langflow API key)
+    await clients.initialize()
     
     # Initialize session manager
     session_manager = SessionManager(SESSION_SECRET)
@@ -202,9 +202,9 @@ def initialize_services():
         'session_manager': session_manager
     }
 
-def create_app():
+async def create_app():
     """Create and configure the Starlette application"""
-    services = initialize_services()
+    services = await initialize_services()
     
     # Create route handlers with service dependencies injected
     routes = [
@@ -441,6 +441,13 @@ def create_app():
               partial(oidc.token_introspection,
                      session_manager=services['session_manager']), 
               methods=["POST"]),
+        
+        # Settings endpoint
+        Route("/settings", 
+              require_auth(services['session_manager'])(
+                  partial(settings.get_settings,
+                         session_manager=services['session_manager'])
+              ), methods=["GET"]),
     ]
     
     app = Starlette(debug=True, routes=routes)
@@ -507,8 +514,8 @@ if __name__ == "__main__":
     # Register cleanup function
     atexit.register(cleanup)
     
-    # Create app
-    app = create_app()
+    # Create app asynchronously
+    app = asyncio.run(create_app())
     
     # Run the server (startup tasks now handled by Starlette startup event)
     uvicorn.run(
