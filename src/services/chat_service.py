@@ -1,4 +1,4 @@
-from config.settings import clients, LANGFLOW_URL, FLOW_ID, LANGFLOW_KEY
+from config.settings import clients, LANGFLOW_URL, FLOW_ID
 from agent import async_chat, async_langflow, async_chat_stream, async_langflow_stream
 from auth_context import set_auth_context
 import json
@@ -28,8 +28,8 @@ class ChatService:
         if not prompt:
             raise ValueError("Prompt is required")
 
-        if not LANGFLOW_URL or not FLOW_ID or not LANGFLOW_KEY:
-            raise ValueError("LANGFLOW_URL, FLOW_ID, and LANGFLOW_KEY environment variables are required")
+        if not LANGFLOW_URL or not FLOW_ID:
+            raise ValueError("LANGFLOW_URL and FLOW_ID environment variables are required")
 
         # Prepare extra headers for JWT authentication
         extra_headers = {}
@@ -80,12 +80,17 @@ class ChatService:
             print(f"Sending OpenRAG query filter to Langflow: {json.dumps(filter_expression, indent=2)}")
             extra_headers['X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER'] = json.dumps(filter_expression)
 
+        # Ensure the Langflow client exists; try lazy init if needed
+        langflow_client = await clients.ensure_langflow_client()
+        if not langflow_client:
+            raise ValueError("Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY.")
+
         if stream:
             from agent import async_langflow_chat_stream
-            return async_langflow_chat_stream(clients.langflow_client, FLOW_ID, prompt, user_id, extra_headers=extra_headers, previous_response_id=previous_response_id)
+            return async_langflow_chat_stream(langflow_client, FLOW_ID, prompt, user_id, extra_headers=extra_headers, previous_response_id=previous_response_id)
         else:
             from agent import async_langflow_chat
-            response_text, response_id = await async_langflow_chat(clients.langflow_client, FLOW_ID, prompt, user_id, extra_headers=extra_headers, previous_response_id=previous_response_id)
+            response_text, response_id = await async_langflow_chat(langflow_client, FLOW_ID, prompt, user_id, extra_headers=extra_headers, previous_response_id=previous_response_id)
             response_data = {"response": response_text}
             if response_id:
                 response_data["response_id"] = response_id
@@ -101,7 +106,11 @@ class ChatService:
             extra_headers = {}
             if jwt_token:
                 extra_headers['X-LANGFLOW-GLOBAL-VAR-JWT'] = jwt_token
-            response_text, response_id = await async_langflow(clients.langflow_client, FLOW_ID, document_prompt, extra_headers=extra_headers, previous_response_id=previous_response_id)
+            # Ensure the Langflow client exists; try lazy init if needed
+            langflow_client = await clients.ensure_langflow_client()
+            if not langflow_client:
+                raise ValueError("Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY.")
+            response_text, response_id = await async_langflow(langflow_client, FLOW_ID, document_prompt, extra_headers=extra_headers, previous_response_id=previous_response_id)
         else:  # chat
             # Set auth context for chat tools and provide user_id
             if user_id and jwt_token:

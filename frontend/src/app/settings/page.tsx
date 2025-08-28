@@ -51,8 +51,33 @@ function KnowledgeSourcesPage() {
   const [isSyncing, setIsSyncing] = useState<string | null>(null)
   const [syncResults, setSyncResults] = useState<{[key: string]: SyncResult | null}>({})
   const [maxFiles, setMaxFiles] = useState<number>(10)
+  
+  // Settings state
+  // Note: backend internal Langflow URL is not needed on the frontend
+  const [flowId, setFlowId] = useState<string>('1098eea1-6649-4e1d-aed1-b77249fb8dd0')
+  const [langflowEditUrl, setLangflowEditUrl] = useState<string>('')
+  const [publicLangflowUrl, setPublicLangflowUrl] = useState<string>('')
 
-
+  // Fetch settings from backend
+  const fetchSettings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/settings')
+      if (response.ok) {
+        const settings = await response.json()
+        if (settings.flow_id) {
+          setFlowId(settings.flow_id)
+        }
+        if (settings.langflow_edit_url) {
+          setLangflowEditUrl(settings.langflow_edit_url)
+        }
+        if (settings.langflow_public_url) {
+          setPublicLangflowUrl(settings.langflow_public_url)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch settings:', error)
+    }
+  }, [])
 
   // Helper function to get connector icon
   const getConnectorIcon = (iconName: string) => {
@@ -239,6 +264,13 @@ function KnowledgeSourcesPage() {
     }
   }
 
+  // Fetch settings on mount when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchSettings()
+    }
+  }, [isAuthenticated, fetchSettings])
+
   // Check connector status on mount and when returning from OAuth
   useEffect(() => {
     if (isAuthenticated) {
@@ -291,7 +323,15 @@ function KnowledgeSourcesPage() {
           <p className="text-sm text-muted-foreground">Adjust your retrieval agent flow</p>
         </div>
         <Button
-          onClick={() => window.open('http://localhost:7860/flow/1098eea1-6649-4e1d-aed1-b77249fb8dd0', '_blank')}
+          onClick={() => {
+            const derivedFromWindow = typeof window !== 'undefined' 
+              ? `${window.location.protocol}//${window.location.hostname}:7860` 
+              : ''
+            const base = (publicLangflowUrl || derivedFromWindow || 'http://localhost:7860').replace(/\/$/, '')
+            const computed = flowId ? `${base}/flow/${flowId}` : base
+            const url = langflowEditUrl || computed
+            window.open(url, '_blank')
+          }}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="22" viewBox="0 0 24 22" className="h-4 w-4 mr-2">
             <path fill="currentColor" d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"></path>
