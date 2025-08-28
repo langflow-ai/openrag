@@ -89,6 +89,9 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
             return JSONResponse(result)
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[ERROR] Langflow request failed: {str(e)}")
         return JSONResponse({"error": f"Langflow request failed: {str(e)}"}, status_code=500)
 
 async def chat_history_endpoint(request: Request, chat_service, session_manager):

@@ -57,9 +57,14 @@ async def async_response_stream(client, prompt: str, model: str, extra_headers: 
         }
         if previous_response_id is not None:
             request_params["previous_response_id"] = previous_response_id
+
+        if "x-api-key" not in client.default_headers:
+            if hasattr(client, 'api_key') and extra_headers is not None:
+                extra_headers["x-api-key"] = client.api_key
+
         if extra_headers:
             request_params["extra_headers"] = extra_headers
-        
+
         response = await client.responses.create(**request_params)
         
         full_response = ""
