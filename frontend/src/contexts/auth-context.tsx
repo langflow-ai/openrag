@@ -15,6 +15,7 @@ interface AuthContextType {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
+  isNoAuthMode: boolean
   login: () => void
   logout: () => Promise<void>
   refreshAuth: () => Promise<void>
@@ -37,26 +38,49 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isNoAuthMode, setIsNoAuthMode] = useState(false)
 
   const checkAuth = async () => {
     try {
       const response = await fetch('/api/auth/me')
+      
+      // If we can't reach the backend, keep loading
+      if (!response.ok && (response.status === 0 || response.status >= 500)) {
+        console.log('Backend not ready, retrying in 2 seconds...')
+        setTimeout(checkAuth, 2000)
+        return
+      }
+      
       const data = await response.json()
       
-      if (data.authenticated && data.user) {
+      // Check if we're in no-auth mode
+      if (data.no_auth_mode) {
+        setIsNoAuthMode(true)
+        setUser(null)
+      } else if (data.authenticated && data.user) {
+        setIsNoAuthMode(false)
         setUser(data.user)
       } else {
+        setIsNoAuthMode(false)
         setUser(null)
       }
+      
+      setIsLoading(false)
     } catch (error) {
       console.error('Auth check failed:', error)
-      setUser(null)
-    } finally {
-      setIsLoading(false)
+      // Network error - backend not ready, keep loading and retry
+      console.log('Backend not ready, retrying in 2 seconds...')
+      setTimeout(checkAuth, 2000)
     }
   }
 
   const login = () => {
+    // Don't allow login in no-auth mode
+    if (isNoAuthMode) {
+      console.log('Login attempted in no-auth mode - ignored')
+      return
+    }
+    
     // Use the correct auth callback URL, not connectors callback
     const redirectUri = `${window.location.origin}/auth/callback`
     
@@ -111,6 +135,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   const logout = async () => {
+    // Don't allow logout in no-auth mode
+    if (isNoAuthMode) {
+      console.log('Logout attempted in no-auth mode - ignored')
+      return
+    }
+    
     try {
       await fetch('/api/auth/logout', {
         method: 'POST',
@@ -133,6 +163,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     isLoading,
     isAuthenticated: !!user,
+    isNoAuthMode,
     login,
     logout,
     refreshAuth,

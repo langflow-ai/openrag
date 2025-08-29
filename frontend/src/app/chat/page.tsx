@@ -70,7 +70,7 @@ interface RequestBody {
 function ChatPage() {
   const isDebugMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_OPENRAG_DEBUG === 'true'
   const { user } = useAuth()
-  const { endpoint, setEndpoint, currentConversationId, conversationData, setCurrentConversationId, addConversationDoc, forkFromResponse } = useChat()
+  const { endpoint, setEndpoint, currentConversationId, conversationData, setCurrentConversationId, addConversationDoc, forkFromResponse, refreshConversations, previousResponseIds, setPreviousResponseIds, setPlaceholderConversation } = useChat()
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -87,10 +87,7 @@ function ChatPage() {
     timestamp: Date
   } | null>(null)
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<Set<string>>(new Set())
-  const [previousResponseIds, setPreviousResponseIds] = useState<{
-    chat: string | null
-    langflow: string | null
-  }>({ chat: null, langflow: null })
+  // previousResponseIds now comes from useChat context
   const [isUploading, setIsUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false)
@@ -107,6 +104,8 @@ function ChatPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const streamAbortRef = useRef<AbortController | null>(null)
+  const streamIdRef = useRef(0)
   const { addTask, isMenuOpen } = useTask()
   const { selectedFilter, parsedFilterData, isPanelOpen, setSelectedFilter } = useKnowledgeFilter()
 
@@ -209,6 +208,8 @@ function ChatPage() {
             [endpoint]: result.response_id
           }))
         }
+        // Sidebar should show this conversation after upload creates it
+        try { refreshConversations() } catch {}
         
       } else {
         throw new Error(`Upload failed: ${response.status}`)
@@ -349,6 +350,40 @@ function ChatPage() {
   // Auto-focus the input on component mount
   useEffect(() => {
     inputRef.current?.focus()
+  }, [])
+
+  // Explicitly handle external new conversation trigger
+  useEffect(() => {
+    const handleNewConversation = () => {
+      // Abort any in-flight streaming so it doesn't bleed into new chat
+      if (streamAbortRef.current) {
+        streamAbortRef.current.abort()
+      }
+      // Reset chat UI even if context state was already 'new'
+      setMessages([
+        {
+          role: "assistant",
+          content: "How can I assist?",
+          timestamp: new Date(),
+        },
+      ])
+      setInput("")
+      setStreamingMessage(null)
+      setExpandedFunctionCalls(new Set())
+      setIsFilterHighlighted(false)
+      setLoading(false)
+    }
+
+    const handleFocusInput = () => {
+      inputRef.current?.focus()
+    }
+
+    window.addEventListener('newConversation', handleNewConversation)
+    window.addEventListener('focusInput', handleFocusInput)
+    return () => {
+      window.removeEventListener('newConversation', handleNewConversation)
+      window.removeEventListener('focusInput', handleFocusInput)
+    }
   }, [])
 
   // Load conversation when conversationData changes
@@ -499,6 +534,13 @@ function ChatPage() {
     const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow"
     
     try {
+      // Abort any existing stream before starting a new one
+      if (streamAbortRef.current) {
+        streamAbortRef.current.abort()
+      }
+      const controller = new AbortController()
+      streamAbortRef.current = controller
+      const thisStreamId = ++streamIdRef.current
       const requestBody: RequestBody = {
         prompt: userMessage.content,
         stream: true,
@@ -536,6 +578,7 @@ function ChatPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       })
 
       if (!response.ok) {
@@ -554,18 +597,19 @@ function ChatPage() {
       let newResponseId: string | null = null
       
       // Initialize streaming message
-      setStreamingMessage({
-        content: "",
-        functionCalls: [],
-        timestamp: new Date()
-      })
+      if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
+        setStreamingMessage({
+          content: "",
+          functionCalls: [],
+          timestamp: new Date()
+        })
+      }
 
       try {
         while (true) {
           const { done, value } = await reader.read()
-          
+          if (controller.signal.aborted || thisStreamId !== streamIdRef.current) break
           if (done) break
-          
           buffer += decoder.decode(value, { stream: true })
           
           // Process complete lines (JSON objects)
@@ -908,11 +952,13 @@ function ChatPage() {
                 }
                 
                 // Update streaming message
-                setStreamingMessage({
-                  content: currentContent,
-                  functionCalls: [...currentFunctionCalls],
-                  timestamp: new Date()
-                })
+                if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
+                  setStreamingMessage({
+                    content: currentContent,
+                    functionCalls: [...currentFunctionCalls],
+                    timestamp: new Date()
+                  })
+                }
                 
               } catch (parseError) {
                 console.warn("Failed to parse chunk:", line, parseError)
@@ -932,18 +978,29 @@ function ChatPage() {
         timestamp: new Date()
       }
       
-      setMessages(prev => [...prev, finalMessage])
-      setStreamingMessage(null)
+      if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
+        setMessages(prev => [...prev, finalMessage])
+        setStreamingMessage(null)
+      }
       
       // Store the response ID for the next request for this endpoint
-      if (newResponseId) {
+      if (newResponseId && !controller.signal.aborted && thisStreamId === streamIdRef.current) {
         setPreviousResponseIds(prev => ({
           ...prev,
           [endpoint]: newResponseId
         }))
       }
       
+      // Trigger sidebar refresh to include this conversation (with small delay to ensure backend has processed)
+      setTimeout(() => {
+        try { refreshConversations() } catch {}
+      }, 100)
+      
     } catch (error) {
+      // If stream was aborted (e.g., starting new conversation), do not append errors or final messages
+      if (streamAbortRef.current?.signal.aborted) {
+        return
+      }
       console.error("SSE Stream error:", error)
       setStreamingMessage(null)
       
@@ -1034,6 +1091,10 @@ function ChatPage() {
               [endpoint]: result.response_id
             }))
           }
+          // Trigger sidebar refresh to include/update this conversation (with small delay to ensure backend has processed)
+          setTimeout(() => {
+            try { refreshConversations() } catch {}
+          }, 100)
         } else {
           console.error("Chat failed:", result.error)
           const errorMessage: Message = {
@@ -1583,8 +1644,9 @@ function ChatPage() {
                   
                   // Clear filter highlight when user starts typing
                   if (isFilterHighlighted) {
-                    setIsFilterHighlighted(false)
-                  }
+      setIsFilterHighlighted(false)
+      try { refreshConversations() } catch {}
+    }
                   
                   // Find if there's an @ at the start of the last word
                   const words = newValue.split(' ')

@@ -47,15 +47,21 @@ interface ChatConversation {
 
 export function Navigation() {
   const pathname = usePathname()
-  const { endpoint, refreshTrigger, loadConversation, currentConversationId, setCurrentConversationId, conversationDocs, addConversationDoc } = useChat()
+  const { endpoint, refreshTrigger, loadConversation, currentConversationId, setCurrentConversationId, startNewConversation, conversationDocs, addConversationDoc, refreshConversations, placeholderConversation, setPlaceholderConversation } = useChat()
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [loadingConversations, setLoadingConversations] = useState(false)
+  const [previousConversationCount, setPreviousConversationCount] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   const handleNewConversation = () => {
-    setCurrentConversationId(null)
-    // The chat page will handle resetting messages when it detects a new conversation request
-    window.dispatchEvent(new CustomEvent('newConversation'))
+    // Ensure current conversation appears in sidebar before starting a new one
+    refreshConversations()
+    // Use context helper to fully reset conversation state
+    startNewConversation()
+    // Notify chat view even if state was already 'new'
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('newConversation'))
+    }
   }
 
   const handleFileUpload = async (file: File) => {
@@ -173,8 +179,44 @@ export function Navigation() {
         })
         
         setConversations(conversations)
+        
+        // If no conversations exist and no placeholder is shown, create a default placeholder
+        if (conversations.length === 0 && !placeholderConversation) {
+          const defaultPlaceholder: ChatConversation = {
+            response_id: 'new-conversation-' + Date.now(),
+            title: 'New conversation',
+            endpoint: endpoint,
+            messages: [{
+              role: 'assistant',
+              content: 'How can I assist?',
+              timestamp: new Date().toISOString()
+            }],
+            created_at: new Date().toISOString(),
+            last_activity: new Date().toISOString(),
+            total_messages: 1
+          }
+          setPlaceholderConversation(defaultPlaceholder)
+        }
       } else {
         setConversations([])
+        
+        // Also create placeholder when request fails and no conversations exist
+        if (!placeholderConversation) {
+          const defaultPlaceholder: ChatConversation = {
+            response_id: 'new-conversation-' + Date.now(),
+            title: 'New conversation',
+            endpoint: endpoint,
+            messages: [{
+              role: 'assistant',
+              content: 'How can I assist?',
+              timestamp: new Date().toISOString()
+            }],
+            created_at: new Date().toISOString(),
+            last_activity: new Date().toISOString(),
+            total_messages: 1
+          }
+          setPlaceholderConversation(defaultPlaceholder)
+        }
       }
       
       // Conversation documents are now managed in chat context
@@ -193,6 +235,24 @@ export function Navigation() {
       fetchConversations()
     }
   }, [isOnChatPage, endpoint, refreshTrigger, fetchConversations])
+
+  // Clear placeholder when conversation count increases (new conversation was created)
+  useEffect(() => {
+    const currentCount = conversations.length
+    
+    // If we had a placeholder and the conversation count increased, clear the placeholder and highlight the new conversation
+    if (placeholderConversation && currentCount > previousConversationCount && conversations.length > 0) {
+      setPlaceholderConversation(null)
+      // Highlight the most recent conversation (first in sorted array) without loading its messages
+      const newestConversation = conversations[0]
+      if (newestConversation) {
+        setCurrentConversationId(newestConversation.response_id)
+      }
+    }
+    
+    // Update the previous count
+    setPreviousConversationCount(currentCount)
+  }, [conversations.length, placeholderConversation, setPlaceholderConversation, previousConversationCount, conversations, setCurrentConversationId])
 
   return (
     <div className="space-y-4 py-4 flex flex-col h-full bg-background">
@@ -244,32 +304,57 @@ export function Navigation() {
             <div className="flex-shrink-0 overflow-y-auto scrollbar-hide space-y-1 max-h-full">
               {loadingConversations ? (
                 <div className="text-sm text-muted-foreground p-2">Loading...</div>
-              ) : conversations.length === 0 ? (
-                <div className="text-sm text-muted-foreground p-2">No conversations yet</div>
               ) : (
-                conversations.map((conversation) => (
-                  <div
-                    key={conversation.response_id}
-                    className={`p-2 rounded-lg hover:bg-accent cursor-pointer group ${
-                      currentConversationId === conversation.response_id ? 'bg-accent' : ''
-                    }`}
-                    onClick={() => {
-                      loadConversation(conversation)
-                    }}
-                  >
-                    <div className="text-sm font-medium text-foreground mb-1 truncate">
-                      {conversation.title}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {conversation.total_messages} messages
-                    </div>
-                    {conversation.last_activity && (
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(conversation.last_activity).toLocaleDateString()}
+                <>
+                  {/* Show placeholder conversation if it exists */}
+                  {placeholderConversation && (
+                    <div
+                      className="p-2 rounded-lg bg-accent/50 border border-dashed border-accent cursor-pointer group"
+                      onClick={() => {
+                        // Don't load placeholder as a real conversation, just focus the input
+                        if (typeof window !== 'undefined') {
+                          window.dispatchEvent(new CustomEvent('focusInput'))
+                        }
+                      }}
+                    >
+                      <div className="text-sm font-medium text-foreground mb-1 truncate">
+                        {placeholderConversation.title}
                       </div>
-                    )}
-                  </div>
-                ))
+                      <div className="text-xs text-muted-foreground">
+                        Start typing to begin...
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Show regular conversations */}
+                  {conversations.length === 0 && !placeholderConversation ? (
+                    <div className="text-sm text-muted-foreground p-2">No conversations yet</div>
+                  ) : (
+                    conversations.map((conversation) => (
+                      <div
+                        key={conversation.response_id}
+                        className={`p-2 rounded-lg hover:bg-accent cursor-pointer group ${
+                          currentConversationId === conversation.response_id ? 'bg-accent' : ''
+                        }`}
+                        onClick={() => {
+                          loadConversation(conversation)
+                        }}
+                      >
+                        <div className="text-sm font-medium text-foreground mb-1 truncate">
+                          {conversation.title}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {conversation.total_messages} messages
+                        </div>
+                        {conversation.last_activity && (
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(conversation.last_activity).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </>
               )}
             </div>
 

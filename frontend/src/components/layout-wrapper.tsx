@@ -12,11 +12,14 @@ import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel"
 // import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
+import { useAuth } from "@/contexts/auth-context"
+import { Loader2 } from "lucide-react"
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { tasks, isMenuOpen, toggleMenu } = useTask()
   const { selectedFilter, setSelectedFilter, isPanelOpen } = useKnowledgeFilter()
+  const { isLoading } = useAuth()
   
   // List of paths that should not show navigation
   const authPaths = ['/login', '/auth/callback']
@@ -26,6 +29,18 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const activeTasks = tasks.filter(task => 
     task.status === 'pending' || task.status === 'running' || task.status === 'processing'
   )
+  
+  // Show loading state when backend isn't ready
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-muted-foreground">Starting OpenRAG...</p>
+        </div>
+      </div>
+    )
+  }
   
   if (isAuthPage) {
     // For auth pages, render without navigation
