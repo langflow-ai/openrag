@@ -149,7 +149,7 @@ class ConnectorService:
         }
         return mime_to_ext.get(mimetype, '.bin')
     
-    async def sync_connector_files(self, connection_id: str, user_id: str, max_files: int = None) -> str:
+    async def sync_connector_files(self, connection_id: str, user_id: str, max_files: int = None, jwt_token: str = None) -> str:
         """Sync files from a connector connection using existing task tracking system"""
         if not self.task_service:
             raise ValueError("TaskService not available - connector sync requires task service dependency")
@@ -203,7 +203,7 @@ class ConnectorService:
         
         # Create custom processor for connector files
         from models.processors import ConnectorFileProcessor
-        processor = ConnectorFileProcessor(self, connection_id, files_to_process, user_id, owner_name=owner_name, owner_email=owner_email)
+        processor = ConnectorFileProcessor(self, connection_id, files_to_process, user_id, jwt_token=jwt_token, owner_name=owner_name, owner_email=owner_email)
         
         # Use file IDs as items (no more fake file paths!)
         file_ids = [file_info['id'] for file_info in files_to_process]
@@ -213,7 +213,7 @@ class ConnectorService:
         
         return task_id
     
-    async def sync_specific_files(self, connection_id: str, user_id: str, file_ids: List[str]) -> str:
+    async def sync_specific_files(self, connection_id: str, user_id: str, file_ids: List[str], jwt_token: str = None) -> str:
         """Sync specific files by their IDs (used for webhook-triggered syncs)"""
         if not self.task_service:
             raise ValueError("TaskService not available - connector sync requires task service dependency")
@@ -236,7 +236,7 @@ class ConnectorService:
         # Create custom processor for specific connector files
         from models.processors import ConnectorFileProcessor
         # We'll pass file_ids as the files_info, the processor will handle ID-only files
-        processor = ConnectorFileProcessor(self, connection_id, file_ids, user_id, owner_name=owner_name, owner_email=owner_email)
+        processor = ConnectorFileProcessor(self, connection_id, file_ids, user_id, jwt_token=jwt_token, owner_name=owner_name, owner_email=owner_email)
         
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(user_id, file_ids, processor)

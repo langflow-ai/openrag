@@ -20,6 +20,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
         print(f"[DEBUG] Starting connector sync for connector_type={connector_type}, max_files={max_files}")
         
         user = request.state.user
+        jwt_token = request.cookies.get("auth_token")
         print(f"[DEBUG] User: {user.user_id}")
         
         # Get all active connections for this connector type and user
@@ -36,7 +37,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
         task_ids = []
         for connection in active_connections:
             print(f"[DEBUG] About to call sync_connector_files for connection {connection.connection_id}")
-            task_id = await connector_service.sync_connector_files(connection.connection_id, user.user_id, max_files)
+            task_id = await connector_service.sync_connector_files(connection.connection_id, user.user_id, max_files, jwt_token=jwt_token)
             task_ids.append(task_id)
             print(f"[DEBUG] Got task_id: {task_id}")
         
@@ -154,27 +155,8 @@ async def connector_webhook(request: Request, connector_service, session_manager
         # Find the specific connection for this webhook
         connection = await connector_service.connection_manager.get_connection_by_webhook_id(channel_id)
         if not connection or not connection.is_active:
-            print(f"[WEBHOOK] Unknown channel {channel_id} - attempting to cancel old subscription")
-            
-            # Try to cancel this unknown subscription using any active connection of this connector type
-            try:
-                all_connections = await connector_service.connection_manager.list_connections(
-                    connector_type=connector_type
-                )
-                active_connections = [c for c in all_connections if c.is_active]
-                
-                if active_connections:
-                    # Use the first active connection to cancel the unknown subscription
-                    connector = await connector_service._get_connector(active_connections[0].connection_id)
-                    if connector:
-                        print(f"[WEBHOOK] Cancelling unknown subscription {channel_id}")
-                        await connector.cleanup_subscription(channel_id, resource_id)
-                        print(f"[WEBHOOK] Successfully cancelled unknown subscription {channel_id}")
-                    
-            except Exception as e:
-                print(f"[WARNING] Failed to cancel unknown subscription {channel_id}: {e}")
-            
-            return JSONResponse({"status": "cancelled_unknown", "channel_id": channel_id})
+            print(f"[WEBHOOK] Unknown channel {channel_id} - no cleanup attempted (will auto-expire)")
+            return JSONResponse({"status": "ignored_unknown_channel", "channel_id": channel_id})
         
         # Process webhook for the specific connection
         results = []
@@ -191,11 +173,19 @@ async def connector_webhook(request: Request, connector_service, session_manager
             if affected_files:
                 print(f"[WEBHOOK] Connection {connection.connection_id}: {len(affected_files)} files affected")
                 
+                # Generate JWT token for the user (needed for OpenSearch authentication)
+                user = session_manager.get_user(connection.user_id)
+                if user:
+                    jwt_token = session_manager.create_jwt_token(user)
+                else:
+                    jwt_token = None
+                
                 # Trigger incremental sync for affected files
                 task_id = await connector_service.sync_specific_files(
                     connection.connection_id,
                     connection.user_id, 
-                    affected_files
+                    affected_files,
+                    jwt_token=jwt_token
                 )
                 
                 result = {

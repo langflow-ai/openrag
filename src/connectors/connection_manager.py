@@ -300,9 +300,11 @@ class ConnectionManager:
             print(f"[WEBHOOK] Setting up subscription for connection {connection_id}")
             subscription_id = await connector.setup_subscription()
             
-            # Store the subscription ID in connection config
+            # Store the subscription and resource IDs in connection config
             connection_config.config['webhook_channel_id'] = subscription_id
             connection_config.config['subscription_id'] = subscription_id  # Alternative field
+            if getattr(connector, 'webhook_resource_id', None):
+                connection_config.config['resource_id'] = connector.webhook_resource_id
             
             # Save updated connection config
             await self.save_connections()
@@ -327,9 +329,11 @@ class ConnectionManager:
             # Setup subscription
             subscription_id = await connector.setup_subscription()
             
-            # Store the subscription ID in connection config
+            # Store the subscription and resource IDs in connection config
             connection_config.config['webhook_channel_id'] = subscription_id
             connection_config.config['subscription_id'] = subscription_id
+            if getattr(connector, 'webhook_resource_id', None):
+                connection_config.config['resource_id'] = connector.webhook_resource_id
             
             # Save updated connection config
             await self.save_connections()

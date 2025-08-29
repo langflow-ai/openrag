@@ -164,6 +164,8 @@ class GoogleDriveConnector(BaseConnector):
         self.service = None
         # Load existing webhook channel ID from config if available
         self.webhook_channel_id = config.get('webhook_channel_id') or config.get('subscription_id')
+        # Load existing webhook resource ID (Google Drive requires this to stop a channel)
+        self.webhook_resource_id = config.get('resource_id')
         
     async def authenticate(self) -> bool:
         """Authenticate with Google Drive"""
@@ -207,6 +209,11 @@ class GoogleDriveConnector(BaseConnector):
             ).execute()
             
             self.webhook_channel_id = channel_id
+            # Persist the resourceId returned by Google to allow proper cleanup
+            try:
+                self.webhook_resource_id = result.get('resourceId')
+            except Exception:
+                self.webhook_resource_id = None
             return channel_id
             
         except HttpError as e:
@@ -388,6 +395,10 @@ class GoogleDriveConnector(BaseConnector):
     def extract_webhook_channel_id(self, payload: Dict[str, Any], headers: Dict[str, str]) -> Optional[str]:
         """Extract Google Drive channel ID from webhook headers"""
         return headers.get('x-goog-channel-id')
+
+    def extract_webhook_resource_id(self, headers: Dict[str, str]) -> Optional[str]:
+        """Extract Google Drive resource ID from webhook headers"""
+        return headers.get('x-goog-resource-id')
     
     async def handle_webhook(self, payload: Dict[str, Any]) -> List[str]:
         """Handle Google Drive webhook notification"""
@@ -469,15 +480,19 @@ class GoogleDriveConnector(BaseConnector):
             print(f"Failed to handle webhook: {e}")
             return []
     
-    async def cleanup_subscription(self, subscription_id: str, resource_id: str = None) -> bool:
-        """Clean up Google Drive subscription"""
+    async def cleanup_subscription(self, subscription_id: str) -> bool:
+        """Clean up Google Drive subscription for this connection.
+
+        Uses the stored resource_id captured during subscription setup.
+        """
         if not self._authenticated:
             return False
         
         try:
-            body = {'id': subscription_id}
-            if resource_id:
-                body['resourceId'] = resource_id
+            # Google Channels API requires both 'id' (channel) and 'resourceId'
+            if not self.webhook_resource_id:
+                raise ValueError("Missing resource_id for cleanup; ensure subscription state is persisted")
+            body = {'id': subscription_id, 'resourceId': self.webhook_resource_id}
             
             self.service.channels().stop(body=body).execute()
             return True
