@@ -8,17 +8,17 @@ import { useAuth } from "@/contexts/auth-context"
 import { Lock, LogIn, Loader2 } from "lucide-react"
 
 function LoginPageContent() {
-  const { isLoading, isAuthenticated, login } = useAuth()
+  const { isLoading, isAuthenticated, isNoAuthMode, login } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect') || '/chat'
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated or in no-auth mode
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
+    if (!isLoading && (isAuthenticated || isNoAuthMode)) {
       router.push(redirect)
     }
-  }, [isLoading, isAuthenticated, router, redirect])
+  }, [isLoading, isAuthenticated, isNoAuthMode, router, redirect])
 
   if (isLoading) {
     return (
@@ -31,7 +31,7 @@ function LoginPageContent() {
     )
   }
 
-  if (isAuthenticated) {
+  if (isAuthenticated || isNoAuthMode) {
     return null // Will redirect in useEffect
   }
 

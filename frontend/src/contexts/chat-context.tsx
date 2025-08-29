@@ -42,6 +42,8 @@ interface ChatContextType {
   conversationDocs: ConversationDocument[]
   addConversationDoc: (filename: string) => void
   clearConversationDocs: () => void
+  placeholderConversation: ConversationData | null
+  setPlaceholderConversation: (conversation: ConversationData | null) => void
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
@@ -60,6 +62,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [conversationData, setConversationData] = useState<ConversationData | null>(null)
   const [conversationDocs, setConversationDocs] = useState<ConversationDocument[]>([])
+  const [placeholderConversation, setPlaceholderConversation] = useState<ConversationData | null>(null)
 
   const refreshConversations = () => {
     setRefreshTrigger(prev => prev + 1)
@@ -71,13 +74,32 @@ export function ChatProvider({ children }: ChatProviderProps) {
     // Store the full conversation data for the chat page to use
     // We'll pass it through a ref or state that the chat page can access
     setConversationData(conversation)
+    // Clear placeholder when loading a real conversation
+    setPlaceholderConversation(null)
   }
 
   const startNewConversation = () => {
+    // Create a temporary placeholder conversation
+    const placeholderConversation: ConversationData = {
+      response_id: 'new-conversation-' + Date.now(),
+      title: 'New conversation',
+      endpoint: endpoint,
+      messages: [{
+        role: 'assistant',
+        content: 'How can I assist?',
+        timestamp: new Date().toISOString()
+      }],
+      created_at: new Date().toISOString(),
+      last_activity: new Date().toISOString()
+    }
+    
     setCurrentConversationId(null)
     setPreviousResponseIds({ chat: null, langflow: null })
     setConversationData(null)
     setConversationDocs([])
+    setPlaceholderConversation(placeholderConversation)
+    // Force a refresh to ensure sidebar shows correct state
+    setRefreshTrigger(prev => prev + 1)
   }
 
   const addConversationDoc = (filename: string) => {
@@ -97,6 +119,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       ...prev,
       [endpoint]: responseId
     }))
+    // Clear placeholder when forking
+    setPlaceholderConversation(null)
     // The messages are already set by the chat page component before calling this
   }
 
@@ -116,6 +140,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
     conversationDocs,
     addConversationDoc,
     clearConversationDocs,
+    placeholderConversation,
+    setPlaceholderConversation,
   }
 
   return (

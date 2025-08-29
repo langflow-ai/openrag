@@ -10,19 +10,24 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isLoading, isAuthenticated } = useAuth()
+  const { isLoading, isAuthenticated, isNoAuthMode } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   
-  console.log("ProtectedRoute - isLoading:", isLoading, "isAuthenticated:", isAuthenticated, "pathname:", pathname)
+  console.log("ProtectedRoute - isLoading:", isLoading, "isAuthenticated:", isAuthenticated, "isNoAuthMode:", isNoAuthMode, "pathname:", pathname)
 
   useEffect(() => {
+    // In no-auth mode, allow access without authentication
+    if (isNoAuthMode) {
+      return
+    }
+    
     if (!isLoading && !isAuthenticated) {
       // Redirect to login with current path as redirect parameter
       const redirectUrl = `/login?redirect=${encodeURIComponent(pathname)}`
       router.push(redirectUrl)
     }
-  }, [isLoading, isAuthenticated, router, pathname])
+  }, [isLoading, isAuthenticated, isNoAuthMode, router, pathname])
 
   // Show loading state while checking authentication
   if (isLoading) {
@@ -34,6 +39,11 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
         </div>
       </div>
     )
+  }
+
+  // In no-auth mode, always render content
+  if (isNoAuthMode) {
+    return <>{children}</>
   }
 
   // Don't render anything if not authenticated (will redirect)

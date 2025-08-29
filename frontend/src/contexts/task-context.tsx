@@ -37,10 +37,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [isPolling, setIsPolling] = useState(false)
   const [isFetching, setIsFetching] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isNoAuthMode } = useAuth()
 
   const fetchTasks = useCallback(async () => {
-    if (!isAuthenticated) return
+    if (!isAuthenticated && !isNoAuthMode) return
 
     setIsFetching(true)
     try {
@@ -81,7 +81,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsFetching(false)
     }
-  }, [isAuthenticated]) // Removed 'tasks' from dependencies to prevent infinite loop!
+  }, [isAuthenticated, isNoAuthMode]) // Removed 'tasks' from dependencies to prevent infinite loop!
 
   const addTask = useCallback((taskId: string) => {
     // Immediately start aggressive polling for the new task
@@ -163,7 +163,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   // Periodic polling for task updates
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!isAuthenticated && !isNoAuthMode) return
 
     setIsPolling(true)
     
@@ -177,7 +177,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       clearInterval(interval)
       setIsPolling(false)
     }
-  }, [isAuthenticated, fetchTasks])
+  }, [isAuthenticated, isNoAuthMode, fetchTasks])
 
   const value: TaskContextType = {
     tasks,

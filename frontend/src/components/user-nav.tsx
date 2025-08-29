@@ -15,12 +15,26 @@ import { LogIn, LogOut, User, Moon, Sun, ChevronsUpDown } from "lucide-react"
 import { useTheme } from "next-themes"
 
 export function UserNav() {
-  const { user, isLoading, isAuthenticated, login, logout } = useAuth()
+  const { user, isLoading, isAuthenticated, isNoAuthMode, login, logout } = useAuth()
   const { theme, setTheme } = useTheme()
 
   if (isLoading) {
     return (
       <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+    )
+  }
+
+  // In no-auth mode, show a simple theme switcher instead of auth UI
+  if (isNoAuthMode) {
+    return (
+      <Button 
+        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        variant="outline" 
+        size="sm"
+        className="flex items-center gap-2"
+      >
+        {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      </Button>
     )
   }
 
