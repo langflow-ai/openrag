@@ -8,8 +8,8 @@ import { UserNav } from "@/components/user-nav"
 import { TaskNotificationMenu } from "@/components/task-notification-menu"
 import { KnowledgeFilterDropdown } from "@/components/knowledge-filter-dropdown"
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel"
-import { GitHubStarButton } from "@/components/github-star-button"
-import { DiscordLink } from "@/components/discord-link"
+// import { GitHubStarButton } from "@/components/github-star-button"
+// import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context"
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
 
@@ -60,10 +60,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             />
             
             {/* GitHub Star Button */}
-            <GitHubStarButton repo="phact/openrag" />
+            {/* <GitHubStarButton repo="phact/openrag" /> */}
 
             {/* Discord Link */}
-            <DiscordLink inviteCode="EqksyE2EX9" />
+            {/* <DiscordLink inviteCode="EqksyE2EX9" /> */}
 
             {/* Task Notification Bell */}
             <Button
