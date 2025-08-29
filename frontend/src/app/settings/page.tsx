@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, PlugZap, RefreshCw } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
@@ -51,6 +52,7 @@ function KnowledgeSourcesPage() {
   const [isSyncing, setIsSyncing] = useState<string | null>(null)
   const [syncResults, setSyncResults] = useState<{[key: string]: SyncResult | null}>({})
   const [maxFiles, setMaxFiles] = useState<number>(10)
+  const [syncAllFiles, setSyncAllFiles] = useState<boolean>(false)
   
   // Settings state
   // Note: backend internal Langflow URL is not needed on the frontend
@@ -220,7 +222,7 @@ function KnowledgeSourcesPage() {
         },
         body: JSON.stringify({
           connection_id: connector.connectionId,
-          max_files: maxFiles || undefined
+          max_files: syncAllFiles ? 0 : (maxFiles || undefined)
         }),
       })
       
@@ -355,7 +357,24 @@ function KnowledgeSourcesPage() {
             <h3 className="text-lg font-medium">Sync Settings</h3>
             <p className="text-sm text-muted-foreground">Configure how many files to sync when manually triggering a sync</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="syncAllFiles" 
+                checked={syncAllFiles}
+                onCheckedChange={(checked) => {
+                  setSyncAllFiles(!!checked)
+                  if (checked) {
+                    setMaxFiles(0)
+                  } else {
+                    setMaxFiles(10)
+                  }
+                }}
+              />
+              <Label htmlFor="syncAllFiles" className="font-medium whitespace-nowrap">
+                Sync all files
+              </Label>
+            </div>
             <Label htmlFor="maxFiles" className="font-medium whitespace-nowrap">
               Max files per sync:
             </Label>
@@ -363,12 +382,13 @@ function KnowledgeSourcesPage() {
               <Input
                 id="maxFiles"
                 type="number"
-                value={maxFiles}
+                value={syncAllFiles ? 0 : maxFiles}
                 onChange={(e) => setMaxFiles(parseInt(e.target.value) || 10)}
-                className="w-16 min-w-16 max-w-16 flex-shrink-0"
+                disabled={syncAllFiles}
+                className="w-16 min-w-16 max-w-16 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 min="1"
                 max="100"
-                title="Leave blank or set to 0 for unlimited"
+                title={syncAllFiles ? "Disabled when 'Sync all files' is checked" : "Leave blank or set to 0 for unlimited"}
               />
             </div>
           </div>
