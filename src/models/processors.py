@@ -44,11 +44,12 @@ class DocumentFileProcessor(TaskProcessor):
 class ConnectorFileProcessor(TaskProcessor):
     """Processor for connector file uploads"""
     
-    def __init__(self, connector_service, connection_id: str, files_to_process: list, user_id: str = None, owner_name: str = None, owner_email: str = None):
+    def __init__(self, connector_service, connection_id: str, files_to_process: list, user_id: str = None, jwt_token: str = None, owner_name: str = None, owner_email: str = None):
         self.connector_service = connector_service
         self.connection_id = connection_id
         self.files_to_process = files_to_process
         self.user_id = user_id
+        self.jwt_token = jwt_token
         self.owner_name = owner_name
         self.owner_email = owner_email
         # Create lookup map for file info - handle both file objects and file IDs
@@ -83,7 +84,7 @@ class ConnectorFileProcessor(TaskProcessor):
             raise ValueError("user_id not provided to ConnectorFileProcessor")
         
         # Process using existing pipeline
-        result = await self.connector_service.process_connector_document(document, self.user_id, connection.connector_type, owner_name=self.owner_name, owner_email=self.owner_email)
+        result = await self.connector_service.process_connector_document(document, self.user_id, connection.connector_type, jwt_token=self.jwt_token, owner_name=self.owner_name, owner_email=self.owner_email)
         
         file_task.status = TaskStatus.COMPLETED
         file_task.result = result

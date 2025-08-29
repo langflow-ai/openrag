@@ -190,6 +190,15 @@ async def initialize_services():
     # Initialize auth service
     auth_service = AuthService(session_manager, connector_service)
     
+    # Load persisted connector connections at startup so webhooks and syncs
+    # can resolve existing subscriptions immediately after server boot
+    try:
+        await connector_service.initialize()
+        loaded_count = len(connector_service.connection_manager.connections)
+        print(f"[CONNECTORS] Loaded {loaded_count} persisted connection(s) on startup")
+    except Exception as e:
+        print(f"[WARNING] Failed to load persisted connections on startup: {e}")
+    
     return {
         'document_service': document_service,
         'search_service': search_service,
@@ -497,8 +506,7 @@ async def cleanup_subscriptions_proper(services):
                 connector = await connector_service.get_connector(connection.connection_id)
                 if connector:
                     subscription_id = connection.config.get('webhook_channel_id')
-                    resource_id = connection.config.get('resource_id')  # If stored
-                    await connector.cleanup_subscription(subscription_id, resource_id)
+                    await connector.cleanup_subscription(subscription_id)
                     print(f"[CLEANUP] Cancelled subscription {subscription_id}")
             except Exception as e:
                 print(f"[ERROR] Failed to cancel subscription for {connection.connection_id}: {e}")

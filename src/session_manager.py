@@ -101,6 +101,11 @@ class SessionManager:
         else:
             self.users[user_id] = user
         
+        # Create JWT token using the shared method
+        return self.create_jwt_token(user)
+    
+    def create_jwt_token(self, user: User) -> str:
+        """Create JWT token for an existing user"""
         # Use OpenSearch-compatible issuer for OIDC validation
         oidc_issuer = "http://openrag-backend:8000"
         
@@ -109,14 +114,14 @@ class SessionManager:
         token_payload = {
             # OIDC standard claims
             "iss": oidc_issuer,  # Fixed issuer for OpenSearch OIDC
-            "sub": user_id,  # Subject (user ID)
+            "sub": user.user_id,  # Subject (user ID)
             "aud": ["opensearch", "openrag"],  # Audience
             "exp": now + timedelta(days=7),  # Expiration
             "iat": now,  # Issued at
             "auth_time": int(now.timestamp()),  # Authentication time
             
             # Custom claims
-            "user_id": user_id,  # Keep for backward compatibility
+            "user_id": user.user_id,  # Keep for backward compatibility
             "email": user.email,
             "name": user.name,
             "preferred_username": user.email,
