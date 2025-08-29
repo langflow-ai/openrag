@@ -280,6 +280,17 @@ function SearchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Only run once on mount - ignore handleSearch dependency
 
+  // Listen for knowledge updates and refresh search
+  useEffect(() => {
+    const handleKnowledgeUpdate = () => {
+      console.log("Knowledge updated, refreshing search")
+      handleSearch()
+    }
+
+    window.addEventListener('knowledgeUpdated', handleKnowledgeUpdate)
+    return () => window.removeEventListener('knowledgeUpdated', handleKnowledgeUpdate)
+  }, [handleSearch])
+
 
 
 
