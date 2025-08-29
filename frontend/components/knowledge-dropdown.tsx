@@ -67,6 +67,10 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files && files.length > 0) {
+      // Close dropdown and disable button immediately after file selection
+      setIsOpen(false)
+      setFileUploading(true)
+      
       // Trigger the same file upload event as the chat page
       window.dispatchEvent(new CustomEvent('fileUploadStart', { 
         detail: { filename: files[0].name } 
@@ -87,6 +91,8 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
           window.dispatchEvent(new CustomEvent('fileUploaded', { 
             detail: { file: files[0], result } 
           }))
+          // Trigger search refresh after successful upload
+          window.dispatchEvent(new CustomEvent('knowledgeUpdated'))
         } else {
           window.dispatchEvent(new CustomEvent('fileUploadError', { 
             detail: { filename: files[0].name, error: result.error || 'Upload failed' } 
@@ -98,6 +104,7 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
         }))
       } finally {
         window.dispatchEvent(new CustomEvent('fileUploadComplete'))
+        setFileUploading(false)
       }
     }
     
@@ -105,13 +112,13 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-    setIsOpen(false)
   }
 
   const handleFolderUpload = async () => {
     if (!folderPath.trim()) return
 
     setFolderLoading(true)
+    setShowFolderDialog(false)
 
     try {
       const response = await fetch("/api/upload_path", {
@@ -133,11 +140,12 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
         
         addTask(taskId)
         setFolderPath("")
-        setShowFolderDialog(false)
+        // Trigger search refresh after successful folder processing starts
+        window.dispatchEvent(new CustomEvent('knowledgeUpdated'))
         
       } else if (response.ok) {
         setFolderPath("")
-        setShowFolderDialog(false)
+        window.dispatchEvent(new CustomEvent('knowledgeUpdated'))
       } else {
         console.error("Folder upload failed:", result.error)
       }
@@ -152,6 +160,7 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
     if (!bucketUrl.trim()) return
 
     setS3Loading(true)
+    setShowS3Dialog(false)
 
     try {
       const response = await fetch("/api/upload_bucket", {
@@ -173,7 +182,8 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
 
         addTask(taskId)
         setBucketUrl("s3://")
-        setShowS3Dialog(false)
+        // Trigger search refresh after successful S3 processing starts
+        window.dispatchEvent(new CustomEvent('knowledgeUpdated'))
       } else {
         console.error("S3 upload failed:", result.error)
       }
@@ -220,11 +230,12 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
     <>
       <div ref={dropdownRef} className="relative">
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => !(fileUploading || folderLoading || s3Loading) && setIsOpen(!isOpen)}
+          disabled={fileUploading || folderLoading || s3Loading}
           className={cn(
             variant === 'button' 
-              ? "rounded-lg h-12 px-4 flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-              : "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-lg transition-all",
+              ? "rounded-lg h-12 px-4 flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              : "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed",
             variant === 'navigation' && active 
               ? "bg-accent text-accent-foreground shadow-sm" 
               : variant === 'navigation' ? "text-foreground hover:text-accent-foreground" : "",
