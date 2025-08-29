@@ -26,6 +26,7 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
   const [bucketUrl, setBucketUrl] = useState("s3://")
   const [folderLoading, setFolderLoading] = useState(false)
   const [s3Loading, setS3Loading] = useState(false)
+  const [fileUploading, setFileUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 

@@ -154,6 +154,22 @@ export function Navigation() {
 
   const isOnChatPage = pathname === "/" || pathname === "/chat"
 
+  const createDefaultPlaceholder = useCallback(() => {
+    return {
+      response_id: 'new-conversation-' + Date.now(),
+      title: 'New conversation',
+      endpoint: endpoint,
+      messages: [{
+        role: 'assistant',
+        content: 'How can I assist?',
+        timestamp: new Date().toISOString()
+      }],
+      created_at: new Date().toISOString(),
+      last_activity: new Date().toISOString(),
+      total_messages: 1
+    } as ChatConversation
+  }, [endpoint])
+
   const fetchConversations = useCallback(async () => {
     setLoadingConversations(true)
     try {
@@ -182,40 +198,14 @@ export function Navigation() {
         
         // If no conversations exist and no placeholder is shown, create a default placeholder
         if (conversations.length === 0 && !placeholderConversation) {
-          const defaultPlaceholder: ChatConversation = {
-            response_id: 'new-conversation-' + Date.now(),
-            title: 'New conversation',
-            endpoint: endpoint,
-            messages: [{
-              role: 'assistant',
-              content: 'How can I assist?',
-              timestamp: new Date().toISOString()
-            }],
-            created_at: new Date().toISOString(),
-            last_activity: new Date().toISOString(),
-            total_messages: 1
-          }
-          setPlaceholderConversation(defaultPlaceholder)
+          setPlaceholderConversation(createDefaultPlaceholder())
         }
       } else {
         setConversations([])
         
         // Also create placeholder when request fails and no conversations exist
         if (!placeholderConversation) {
-          const defaultPlaceholder: ChatConversation = {
-            response_id: 'new-conversation-' + Date.now(),
-            title: 'New conversation',
-            endpoint: endpoint,
-            messages: [{
-              role: 'assistant',
-              content: 'How can I assist?',
-              timestamp: new Date().toISOString()
-            }],
-            created_at: new Date().toISOString(),
-            last_activity: new Date().toISOString(),
-            total_messages: 1
-          }
-          setPlaceholderConversation(defaultPlaceholder)
+          setPlaceholderConversation(createDefaultPlaceholder())
         }
       }
       
@@ -227,7 +217,7 @@ export function Navigation() {
     } finally {
       setLoadingConversations(false)
     }
-  }, [endpoint])
+  }, [endpoint, placeholderConversation, setPlaceholderConversation, createDefaultPlaceholder])
 
   // Fetch chat conversations when on chat page, endpoint changes, or refresh is triggered
   useEffect(() => {
