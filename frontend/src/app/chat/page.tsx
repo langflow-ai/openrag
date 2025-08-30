@@ -70,7 +70,7 @@ interface RequestBody {
 function ChatPage() {
   const isDebugMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_OPENRAG_DEBUG === 'true'
   const { user } = useAuth()
-  const { endpoint, setEndpoint, currentConversationId, conversationData, setCurrentConversationId, addConversationDoc, forkFromResponse, refreshConversations, previousResponseIds, setPreviousResponseIds, setPlaceholderConversation } = useChat()
+  const { endpoint, setEndpoint, currentConversationId, conversationData, setCurrentConversationId, addConversationDoc, forkFromResponse, refreshConversations, previousResponseIds, setPreviousResponseIds } = useChat()
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -436,7 +436,7 @@ function ChatPage() {
         }
       ])
     }
-  }, [conversationData, currentConversationId, isUserInteracting, isForkingInProgress, lastForkTimestamp])
+  }, [conversationData, currentConversationId, isUserInteracting, isForkingInProgress, lastForkTimestamp, setPreviousResponseIds])
 
   // Listen for file upload events from navigation
   useEffect(() => {
@@ -508,7 +508,7 @@ function ChatPage() {
       window.removeEventListener('fileUploadComplete', handleFileUploadComplete as EventListener)
       window.removeEventListener('fileUploadError', handleFileUploadError as EventListener)
     }
-  }, [endpoint])
+  }, [endpoint, setPreviousResponseIds])
 
   // Handle click outside to close dropdown
   useEffect(() => {
