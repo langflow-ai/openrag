@@ -20,6 +20,7 @@ interface ConversationData {
   messages: ConversationMessage[]
   endpoint: EndpointType
   response_id: string
+  title: string
   [key: string]: unknown
 }
 
@@ -32,7 +33,7 @@ interface ChatContextType {
     chat: string | null
     langflow: string | null
   }
-  setPreviousResponseIds: (ids: { chat: string | null; langflow: string | null }) => void
+  setPreviousResponseIds: (ids: { chat: string | null; langflow: string | null } | ((prev: { chat: string | null; langflow: string | null }) => { chat: string | null; langflow: string | null })) => void
   refreshConversations: () => void
   refreshTrigger: number
   loadConversation: (conversation: ConversationData) => void
