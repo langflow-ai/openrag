@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 
 interface User {
   user_id: string
@@ -40,7 +40,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isNoAuthMode, setIsNoAuthMode] = useState(false)
 
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       const response = await fetch('/api/auth/me')
       
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.log('Backend not ready, retrying in 2 seconds...')
       setTimeout(checkAuth, 2000)
     }
-  }
+  }, [])
 
   const login = () => {
     // Don't allow login in no-auth mode
@@ -157,7 +157,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     checkAuth()
-  }, [])
+  }, [checkAuth])
 
   const value: AuthContextType = {
     user,
