@@ -14,8 +14,10 @@ async def search(request: Request, search_service, session_manager):
         score_threshold = payload.get("scoreThreshold", 0)  # Optional score threshold, defaults to 0
         
         user = request.state.user
-        # Extract JWT token from cookie for OpenSearch OIDC auth
-        jwt_token = request.cookies.get("auth_token")
+        # Extract JWT token from auth middleware
+        jwt_token = request.state.jwt_token
+        
+        print(f"[DEBUG] search API: user={user}, user_id={user.user_id if user else None}, jwt_token={'None' if jwt_token is None else 'present'}")
         
         result = await search_service.search(query, user_id=user.user_id, jwt_token=jwt_token, filters=filters, limit=limit, score_threshold=score_threshold)
         return JSONResponse(result, status_code=200)

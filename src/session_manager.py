@@ -160,9 +160,37 @@ class SessionManager:
     
     def get_user_opensearch_client(self, user_id: str, jwt_token: str):
         """Get or create OpenSearch client for user with their JWT"""
+        from config.settings import is_no_auth_mode
+        
+        print(f"[DEBUG] get_user_opensearch_client: user_id={user_id}, jwt_token={'None' if jwt_token is None else 'present'}, no_auth_mode={is_no_auth_mode()}")
+        
+        # In no-auth mode, create anonymous JWT for OpenSearch DLS
+        if is_no_auth_mode() and jwt_token is None:
+            if not hasattr(self, '_anonymous_jwt'):
+                # Create anonymous JWT token for OpenSearch OIDC
+                print(f"[DEBUG] Creating anonymous JWT...")
+                self._anonymous_jwt = self._create_anonymous_jwt()
+                print(f"[DEBUG] Anonymous JWT created: {self._anonymous_jwt[:50]}...")
+            jwt_token = self._anonymous_jwt
+            print(f"[DEBUG] Using anonymous JWT for OpenSearch")
+        
         # Check if we have a cached client for this user
         if user_id not in self.user_opensearch_clients:
             from config.settings import clients
             self.user_opensearch_clients[user_id] = clients.create_user_opensearch_client(jwt_token)
         
         return self.user_opensearch_clients[user_id]
+    
+    def _create_anonymous_jwt(self) -> str:
+        """Create JWT token for anonymous user in no-auth mode"""
+        anonymous_user = User(
+            user_id="anonymous",
+            email="anonymous@localhost",
+            name="Anonymous User",
+            picture=None,
+            provider="none",
+            created_at=datetime.now(),
+            last_login=datetime.now()
+        )
+        
+        return self.create_jwt_token(anonymous_user)

@@ -10,7 +10,7 @@ async def upload(request: Request, document_service, session_manager):
         form = await request.form()
         upload_file = form["file"]
         user = request.state.user
-        jwt_token = request.cookies.get("auth_token")
+        jwt_token = request.state.jwt_token
         
         result = await document_service.process_upload_file(upload_file, owner_user_id=user.user_id, jwt_token=jwt_token, owner_name=user.name, owner_email=user.email)
         return JSONResponse(result, status_code=201)  # Created
@@ -36,7 +36,7 @@ async def upload_path(request: Request, task_service, session_manager):
         return JSONResponse({"error": "No files found in directory"}, status_code=400)
 
     user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
+    jwt_token = request.state.jwt_token
     task_id = await task_service.create_upload_task(user.user_id, file_paths, jwt_token=jwt_token, owner_name=user.name, owner_email=user.email)
     
     return JSONResponse({
@@ -55,8 +55,8 @@ async def upload_context(request: Request, document_service, chat_service, sessi
     previous_response_id = form.get("previous_response_id")
     endpoint = form.get("endpoint", "langflow")
     
-    # Get JWT token from request cookie for authentication
-    jwt_token = request.cookies.get("auth_token")
+    # Get JWT token from auth middleware
+    jwt_token = request.state.jwt_token
     
     # Get user info from request state (set by auth middleware)
     user = request.state.user
@@ -122,7 +122,7 @@ async def upload_bucket(request: Request, task_service, session_manager):
         return JSONResponse({"error": "No files found in bucket"}, status_code=400)
 
     user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
+    jwt_token = request.state.jwt_token
 
     from models.processors import S3FileProcessor
 

@@ -192,12 +192,17 @@ async def initialize_services():
     
     # Load persisted connector connections at startup so webhooks and syncs
     # can resolve existing subscriptions immediately after server boot
-    try:
-        await connector_service.initialize()
-        loaded_count = len(connector_service.connection_manager.connections)
-        print(f"[CONNECTORS] Loaded {loaded_count} persisted connection(s) on startup")
-    except Exception as e:
-        print(f"[WARNING] Failed to load persisted connections on startup: {e}")
+    # Skip in no-auth mode since connectors require OAuth
+    from config.settings import is_no_auth_mode
+    if not is_no_auth_mode():
+        try:
+            await connector_service.initialize()
+            loaded_count = len(connector_service.connection_manager.connections)
+            print(f"[CONNECTORS] Loaded {loaded_count} persisted connection(s) on startup")
+        except Exception as e:
+            print(f"[WARNING] Failed to load persisted connections on startup: {e}")
+    else:
+        print(f"[CONNECTORS] Skipping connection loading in no-auth mode")
     
     return {
         'document_service': document_service,
