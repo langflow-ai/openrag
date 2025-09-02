@@ -145,14 +145,25 @@ class TaskService:
                 self.task_store[user_id][task_id].status = TaskStatus.FAILED
                 self.task_store[user_id][task_id].updated_at = time.time()
 
-    def get_task_status(self, user_id: str, task_id: str) -> dict:
+    async def get_task_status(self, task_id: str, user_id: str = None) -> dict:
         """Get the status of a specific upload task"""
-        if (not task_id or 
-            user_id not in self.task_store or 
-            task_id not in self.task_store[user_id]):
+        if not task_id:
             return None
         
-        upload_task = self.task_store[user_id][task_id]
+        upload_task = None
+        
+        # If user_id is provided, look in that user's tasks
+        if user_id and user_id in self.task_store and task_id in self.task_store[user_id]:
+            upload_task = self.task_store[user_id][task_id]
+        # If user_id not provided or task not found, search all users
+        elif user_id is None:
+            for uid, user_tasks in self.task_store.items():
+                if task_id in user_tasks:
+                    upload_task = user_tasks[task_id]
+                    break
+        
+        if upload_task is None:
+            return None
         
         file_statuses = {}
         for file_path, file_task in upload_task.file_tasks.items():

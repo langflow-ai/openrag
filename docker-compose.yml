@@ -66,6 +66,7 @@ services:
       - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - DATA_DIRECTORY=${DATA_DIRECTORY}
     volumes:
       - ./documents:/app/documents:Z
       - ./keys:/app/keys:Z

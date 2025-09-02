@@ -153,6 +153,33 @@ async def init_index_when_ready():
     except Exception as e:
         print(f"OpenSearch index initialization failed: {e}")
         print("OIDC endpoints will still work, but document operations may fail until OpenSearch is ready")
+
+async def run_first_time_initialization(services):
+    """Run first-time initialization if needed"""
+    try:
+        from utils.default_ingestion import run_first_time_setup
+        await run_first_time_setup(services['document_service'], services['task_service'])
+    except Exception as e:
+        print(f"[ERROR] First-time initialization failed: {e}")
+
+async def run_first_time_initialization_when_ready(services):
+    """Run first-time initialization after OpenSearch index is ready"""
+    # Wait for OpenSearch to be initialized first
+    max_retries = 30
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            await clients.opensearch.info()
+            # Index is ready, now run first-time initialization
+            await run_first_time_initialization(services)
+            return
+        except Exception as e:
+            print(f"[FIRST_RUN] Waiting for OpenSearch (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+            else:
+                print("[FIRST_RUN] Failed to wait for OpenSearch, skipping first-time initialization")
     
 
 async def initialize_services():
@@ -472,6 +499,8 @@ async def create_app():
     async def startup_event():
         # Start index initialization in background to avoid blocking OIDC endpoints
         asyncio.create_task(init_index_when_ready())
+        # Start first-time initialization in background after index is ready
+        asyncio.create_task(run_first_time_initialization_when_ready(services))
     
     # Add shutdown event handler
     @app.on_event("shutdown")

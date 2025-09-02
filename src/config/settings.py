@@ -30,6 +30,9 @@ SESSION_SECRET = os.getenv("SESSION_SECRET", "your-secret-key-change-in-producti
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
+# Default dataset directory for first-run initialization
+DATA_DIRECTORY = os.getenv("DATA_DIRECTORY", "./documents")
+
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     result = not (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
