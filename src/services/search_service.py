@@ -132,11 +132,13 @@ class SearchService:
             search_body["min_score"] = score_threshold
         
         # Authentication required - DLS will handle document filtering automatically
+        print(f"[DEBUG] search_service: user_id={user_id}, jwt_token={'None' if jwt_token is None else 'present'}")
         if not user_id:
+            print(f"[DEBUG] search_service: user_id is None/empty, returning auth error")
             return {"results": [], "error": "Authentication required"}
         
-        # Get user's OpenSearch client with JWT for OIDC auth  
-        opensearch_client = clients.create_user_opensearch_client(jwt_token)
+        # Get user's OpenSearch client with JWT for OIDC auth through session manager
+        opensearch_client = self.session_manager.get_user_opensearch_client(user_id, jwt_token)
         
         try:
             results = await opensearch_client.search(index=INDEX_NAME, body=search_body)
@@ -173,7 +175,8 @@ class SearchService:
     async def search(self, query: str, user_id: str = None, jwt_token: str = None, filters: Dict[str, Any] = None, limit: int = 10, score_threshold: float = 0) -> Dict[str, Any]:
         """Public search method for API endpoints"""
         # Set auth context if provided (for direct API calls)
-        if user_id and jwt_token:
+        from config.settings import is_no_auth_mode
+        if user_id and (jwt_token or is_no_auth_mode()):
             from auth_context import set_auth_context
             set_auth_context(user_id, jwt_token)
         

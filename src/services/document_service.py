@@ -152,13 +152,18 @@ class DocumentService:
                 "page": chunk["page"],
                 "text": chunk["text"],
                 "chunk_embedding": vect,
-                "owner": owner_user_id,
-                "owner_name": owner_name,
-                "owner_email": owner_email,
                 "file_size": file_size,
                 "connector_type": connector_type,
                 "indexed_time": datetime.datetime.now().isoformat()
             }
+            
+            # Only set owner fields if owner_user_id is provided (for no-auth mode support)
+            if owner_user_id is not None:
+                chunk_doc["owner"] = owner_user_id
+            if owner_name is not None:
+                chunk_doc["owner_name"] = owner_name
+            if owner_email is not None:
+                chunk_doc["owner_email"] = owner_email
             chunk_id = f"{file_hash}_{i}"
             try:
                 await opensearch_client.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
@@ -288,13 +293,18 @@ class DocumentService:
                         "page": chunk["page"],
                         "text": chunk["text"],
                         "chunk_embedding": vect,
-                        "owner": owner_user_id,
-                        "owner_name": owner_name,
-                        "owner_email": owner_email,
                         "file_size": file_size,
                         "connector_type": connector_type,
                         "indexed_time": datetime.datetime.now().isoformat()
                     }
+                    
+                    # Only set owner fields if owner_user_id is provided (for no-auth mode support)
+                    if owner_user_id is not None:
+                        chunk_doc["owner"] = owner_user_id
+                    if owner_name is not None:
+                        chunk_doc["owner_name"] = owner_name
+                    if owner_email is not None:
+                        chunk_doc["owner_email"] = owner_email
                     chunk_id = f"{slim_doc['id']}_{i}"
                     try:
                         await opensearch_client.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)

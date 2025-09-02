@@ -20,7 +20,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
         print(f"[DEBUG] Starting connector sync for connector_type={connector_type}, max_files={max_files}")
         
         user = request.state.user
-        jwt_token = request.cookies.get("auth_token")
+        jwt_token = request.state.jwt_token
         print(f"[DEBUG] User: {user.user_id}")
         
         # Get all active connections for this connector type and user

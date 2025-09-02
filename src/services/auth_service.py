@@ -6,7 +6,7 @@ import aiofiles
 from datetime import datetime, timedelta
 from typing import Optional
 
-from config.settings import WEBHOOK_BASE_URL
+from config.settings import WEBHOOK_BASE_URL, is_no_auth_mode
 from session_manager import SessionManager
 from connectors.google_drive.oauth import GoogleDriveOAuth
 from connectors.onedrive.oauth import OneDriveOAuth
@@ -24,6 +24,13 @@ class AuthService:
     async def init_oauth(self, connector_type: str, purpose: str, connection_name: str, 
                         redirect_uri: str, user_id: str = None) -> dict:
         """Initialize OAuth flow for authentication or data source connection"""
+        # Check if we're in no-auth mode
+        if is_no_auth_mode():
+            if purpose == "app_auth":
+                raise ValueError("OAuth credentials not configured. Please add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET environment variables to enable authentication.")
+            else:
+                raise ValueError("OAuth credentials not configured. Data source connections require OAuth setup.")
+        
         # Validate connector_type based on purpose
         if purpose == "app_auth" and connector_type != "google_drive":
             raise ValueError("Only Google login supported for app authentication")
@@ -253,6 +260,14 @@ class AuthService:
     
     async def get_user_info(self, request) -> Optional[dict]:
         """Get current user information from request"""
+        # In no-auth mode, return a consistent response
+        if is_no_auth_mode():
+            return {
+                "authenticated": False,
+                "user": None,
+                "no_auth_mode": True
+            }
+        
         user = getattr(request.state, 'user', None)
         
         if user:

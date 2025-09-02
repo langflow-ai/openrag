@@ -14,8 +14,8 @@ async def chat_endpoint(request: Request, chat_service, session_manager):
     user = request.state.user
     user_id = user.user_id
     
-    # Get JWT token from request cookie
-    jwt_token = request.cookies.get("auth_token")
+    # Get JWT token from auth middleware
+    jwt_token = request.state.jwt_token
 
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
@@ -57,8 +57,8 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
     user = request.state.user
     user_id = user.user_id
     
-    # Get JWT token from request cookie
-    jwt_token = request.cookies.get("auth_token")
+    # Get JWT token from auth middleware
+    jwt_token = request.state.jwt_token
     
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)

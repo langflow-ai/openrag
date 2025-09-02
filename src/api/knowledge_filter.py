@@ -18,7 +18,7 @@ async def create_knowledge_filter(request: Request, knowledge_filter_service, se
         return JSONResponse({"error": "Query data is required"}, status_code=400)
     
     user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
+    jwt_token = request.state.jwt_token
     
     # Create knowledge filter document
     filter_id = str(uuid.uuid4())
@@ -54,7 +54,7 @@ async def search_knowledge_filters(request: Request, knowledge_filter_service, s
     limit = payload.get("limit", 20)
     
     user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
+    jwt_token = request.state.jwt_token
     
     result = await knowledge_filter_service.search_knowledge_filters(query, user_id=user.user_id, jwt_token=jwt_token, limit=limit)
     
@@ -75,7 +75,7 @@ async def get_knowledge_filter(request: Request, knowledge_filter_service, sessi
         return JSONResponse({"error": "Knowledge filter ID is required"}, status_code=400)
     
     user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
+    jwt_token = request.state.jwt_token
     
     result = await knowledge_filter_service.get_knowledge_filter(filter_id, user_id=user.user_id, jwt_token=jwt_token)
     
@@ -100,7 +100,7 @@ async def update_knowledge_filter(request: Request, knowledge_filter_service, se
     payload = await request.json()
     
     user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
+    jwt_token = request.state.jwt_token
     
     # First, get the existing knowledge filter
     existing_result = await knowledge_filter_service.get_knowledge_filter(filter_id, user_id=user.user_id, jwt_token=jwt_token)
@@ -147,7 +147,7 @@ async def delete_knowledge_filter(request: Request, knowledge_filter_service, se
         return JSONResponse({"error": "Knowledge filter ID is required"}, status_code=400)
     
     user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
+    jwt_token = request.state.jwt_token
     
     result = await knowledge_filter_service.delete_knowledge_filter(filter_id, user_id=user.user_id, jwt_token=jwt_token)
     
@@ -171,7 +171,7 @@ async def subscribe_to_knowledge_filter(request: Request, knowledge_filter_servi
     
     payload = await request.json()
     user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
+    jwt_token = request.state.jwt_token
     
     # Get the knowledge filter to validate it exists and get its details
     filter_result = await knowledge_filter_service.get_knowledge_filter(filter_id, user_id=user.user_id, jwt_token=jwt_token)
@@ -227,7 +227,7 @@ async def list_knowledge_filter_subscriptions(request: Request, knowledge_filter
         return JSONResponse({"error": "Knowledge filter ID is required"}, status_code=400)
     
     user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
+    jwt_token = request.state.jwt_token
     
     result = await knowledge_filter_service.get_filter_subscriptions(filter_id, user_id=user.user_id, jwt_token=jwt_token)
     
@@ -251,7 +251,7 @@ async def cancel_knowledge_filter_subscription(request: Request, knowledge_filte
         return JSONResponse({"error": "Knowledge filter ID and subscription ID are required"}, status_code=400)
     
     user = request.state.user
-    jwt_token = request.cookies.get("auth_token")
+    jwt_token = request.state.jwt_token
     
     # Get subscription details to find the monitor ID
     subscriptions_result = await knowledge_filter_service.get_filter_subscriptions(filter_id, user_id=user.user_id, jwt_token=jwt_token)
