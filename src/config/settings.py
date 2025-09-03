@@ -1,13 +1,13 @@
 import os
-import requests
-import asyncio
 import time
+
+import requests
+from agentd.patch import patch_openai_with_mcp
+from docling.document_converter import DocumentConverter
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
-from docling.document_converter import DocumentConverter
-from agentd.patch import patch_openai_with_mcp
-from openai import AsyncOpenAI
 
 load_dotenv()
 load_dotenv("../")
