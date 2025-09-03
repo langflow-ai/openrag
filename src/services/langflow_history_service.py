@@ -10,6 +10,7 @@ from datetime import datetime
 
 from config.settings import LANGFLOW_URL, LANGFLOW_KEY, LANGFLOW_SUPERUSER, LANGFLOW_SUPERUSER_PASSWORD
 from services.user_binding_service import user_binding_service
+from services.session_ownership_service import session_ownership_service
 
 
 class LangflowHistoryService:
@@ -48,6 +49,18 @@ class LangflowHistoryService:
         # Basic UUID pattern check (with or without dashes)
         uuid_pattern = r'^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$'
         return bool(re.match(uuid_pattern, user_id.lower().replace('-', '')))
+        
+    def _filter_sessions_by_ownership(self, session_ids: List[str], user_id: str, langflow_user_id: str) -> List[str]:
+        """Filter sessions based on user type and ownership"""
+        if self._is_uuid_format(user_id):
+            # Direct Langflow user - show all sessions for this Langflow user
+            print(f"[DEBUG] Direct Langflow user - showing all {len(session_ids)} sessions")
+            return session_ids
+        else:
+            # Google OAuth user - only show sessions they own
+            owned_sessions = session_ownership_service.filter_sessions_for_google_user(session_ids, user_id)
+            print(f"[DEBUG] Google user {user_id} owns {len(owned_sessions)} out of {len(session_ids)} total sessions")
+            return owned_sessions
         
     async def _authenticate(self) -> Optional[str]:
         """Authenticate with Langflow and get access token"""
@@ -119,8 +132,12 @@ class LangflowHistoryService:
                     
                     # Filter sessions to only include those belonging to the user
                     user_sessions = await self._filter_sessions_by_user(session_ids, langflow_user_id, token)
-                    print(f"Found {len(user_sessions)} sessions for user {user_id} (Langflow ID: {langflow_user_id})")
-                    return user_sessions
+                    
+                    # Apply ownership-based filtering for Google users
+                    filtered_sessions = self._filter_sessions_by_ownership(user_sessions, user_id, langflow_user_id)
+                    
+                    print(f"Found {len(filtered_sessions)} sessions for user {user_id} (Langflow ID: {langflow_user_id})")
+                    return filtered_sessions
                 else:
                     print(f"Failed to get sessions: {response.status_code} - {response.text}")
                     return []
