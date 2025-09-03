@@ -1,3 +1,11 @@
+import sys
+
+# Check for TUI flag FIRST, before any heavy imports
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--tui":
+    from tui.main import run_tui
+    run_tui()
+    sys.exit(0)
+
 import asyncio
 import atexit
 import multiprocessing
@@ -699,6 +707,7 @@ async def cleanup_subscriptions_proper(services):
 if __name__ == "__main__":
     import uvicorn
 
+    # TUI check already handled at top of file
     # Register cleanup function
     atexit.register(cleanup)
 
