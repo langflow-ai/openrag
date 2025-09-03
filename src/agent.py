@@ -434,6 +434,25 @@ async def async_langflow_chat(
     if response_id:
         conversation_state["last_activity"] = datetime.now()
         store_conversation_thread(user_id, response_id, conversation_state)
+        
+        # Claim session ownership if this is a Google user
+        try:
+            from services.session_ownership_service import session_ownership_service
+            from services.user_binding_service import user_binding_service
+            
+            # Check if this is a Google user (has binding but not UUID format)
+            import re
+            uuid_pattern = r'^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$'
+            is_uuid = bool(re.match(uuid_pattern, user_id.lower().replace('-', '')))
+            
+            if not is_uuid and user_binding_service.has_binding(user_id):
+                langflow_user_id = user_binding_service.get_langflow_user_id(user_id)
+                if langflow_user_id:
+                    session_ownership_service.claim_session(user_id, response_id, langflow_user_id)
+                    print(f"[DEBUG] Claimed session {response_id} for Google user {user_id}")
+        except Exception as e:
+            print(f"[WARNING] Failed to claim session ownership: {e}")
+        
         print(
             f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
         )
@@ -513,6 +532,25 @@ async def async_langflow_chat_stream(
         if response_id:
             conversation_state["last_activity"] = datetime.now()
             store_conversation_thread(user_id, response_id, conversation_state)
+            
+            # Claim session ownership if this is a Google user
+            try:
+                from services.session_ownership_service import session_ownership_service
+                from services.user_binding_service import user_binding_service
+                
+                # Check if this is a Google user (has binding but not UUID format)
+                import re
+                uuid_pattern = r'^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$'
+                is_uuid = bool(re.match(uuid_pattern, user_id.lower().replace('-', '')))
+                
+                if not is_uuid and user_binding_service.has_binding(user_id):
+                    langflow_user_id = user_binding_service.get_langflow_user_id(user_id)
+                    if langflow_user_id:
+                        session_ownership_service.claim_session(user_id, response_id, langflow_user_id)
+                        print(f"[DEBUG] Claimed session {response_id} for Google user {user_id} (streaming)")
+            except Exception as e:
+                print(f"[WARNING] Failed to claim session ownership (streaming): {e}")
+            
             print(
                 f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
             )

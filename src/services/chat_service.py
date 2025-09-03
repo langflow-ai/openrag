@@ -377,16 +377,51 @@ class ChatService:
             print(f"[ERROR] Failed to fetch Langflow history: {e}")
             # Continue with just in-memory conversations
         
-        # Sort all conversations by last activity (most recent first)
-        all_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
+        # Deduplicate conversations by response_id (in-memory takes priority over database)
+        deduplicated_conversations = {}
+        
+        for conversation in all_conversations:
+            response_id = conversation.get("response_id")
+            if response_id:
+                if response_id not in deduplicated_conversations:
+                    # First occurrence - add it
+                    deduplicated_conversations[response_id] = conversation
+                else:
+                    # Duplicate found - prioritize in-memory (more recent) over database
+                    existing = deduplicated_conversations[response_id]
+                    current_source = conversation.get("source")
+                    existing_source = existing.get("source")
+                    
+                    if current_source == "openrag_memory" and existing_source == "langflow_database":
+                        # Replace database version with in-memory version
+                        deduplicated_conversations[response_id] = conversation
+                        print(f"[DEBUG] Replaced database conversation {response_id} with in-memory version")
+                    # Otherwise keep existing (in-memory has priority, or first database entry)
+            else:
+                # No response_id - add with unique key based on content and timestamp
+                unique_key = f"no_id_{hash(conversation.get('title', ''))}{conversation.get('created_at', '')}"
+                if unique_key not in deduplicated_conversations:
+                    deduplicated_conversations[unique_key] = conversation
+        
+        final_conversations = list(deduplicated_conversations.values())
+        
+        # Sort by last activity (most recent first)
+        final_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
+        
+        # Calculate source statistics after deduplication
+        sources = {
+            "memory": len([c for c in final_conversations if c.get("source") == "openrag_memory"]),
+            "langflow_db": len([c for c in final_conversations if c.get("source") == "langflow_database"]),
+            "duplicates_removed": len(all_conversations) - len(final_conversations)
+        }
+        
+        if sources["duplicates_removed"] > 0:
+            print(f"[DEBUG] Removed {sources['duplicates_removed']} duplicate conversations")
         
         return {
             "user_id": user_id,
             "endpoint": "langflow",
-            "conversations": all_conversations,
-            "total_conversations": len(all_conversations),
-            "sources": {
-                "memory": len([c for c in all_conversations if c.get("source") == "openrag_memory"]),
-                "langflow_db": len([c for c in all_conversations if c.get("source") == "langflow_database"])
-            }
+            "conversations": final_conversations,
+            "total_conversations": len(final_conversations),
+            "sources": sources
         }
