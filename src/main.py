@@ -20,6 +20,7 @@ from api import (
     chat,
     connectors,
     knowledge_filter,
+    langflow_files,
     oidc,
     search,
     settings,
@@ -30,13 +31,13 @@ from auth_middleware import optional_auth, require_auth
 
 # Configuration and setup
 from config.settings import INDEX_BODY, INDEX_NAME, SESSION_SECRET, clients
-
 # Existing services
 from connectors.service import ConnectorService
 from services.auth_service import AuthService
 from services.chat_service import ChatService
 
 # Services
+from services.langflow_file_service import LangflowFileService
 from services.document_service import DocumentService
 from services.knowledge_filter_service import KnowledgeFilterService
 from services.monitor_service import MonitorService
@@ -213,11 +214,16 @@ async def initialize_services():
     else:
         print("[CONNECTORS] Skipping connection loading in no-auth mode")
     
+    # New: Langflow file service
+
+    langflow_file_service = LangflowFileService()
+
     return {
         'document_service': document_service,
         'search_service': search_service,
         'task_service': task_service,
         'chat_service': chat_service,
+        'langflow_file_service': langflow_file_service,
         'auth_service': auth_service,
         'connector_service': connector_service,
         'knowledge_filter_service': knowledge_filter_service,
@@ -238,6 +244,28 @@ async def create_app():
                          document_service=services['document_service'],
                          session_manager=services['session_manager'])
               ), methods=["POST"]),
+
+        # Langflow Files endpoints
+        Route("/langflow/files/upload",
+              optional_auth(services['session_manager'])(
+                  partial(langflow_files.upload_user_file,
+                         langflow_file_service=services['langflow_file_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["POST"]),
+
+        Route("/langflow/ingest",
+              require_auth(services['session_manager'])(
+                  partial(langflow_files.run_ingestion,
+                         langflow_file_service=services['langflow_file_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["POST"]),
+
+        Route("/langflow/files",
+              require_auth(services['session_manager'])(
+                  partial(langflow_files.delete_user_files,
+                         langflow_file_service=services['langflow_file_service'],
+                         session_manager=services['session_manager'])
+              ), methods=["DELETE"]),
         
         Route("/upload_context", 
               require_auth(services['session_manager'])(
@@ -529,6 +557,7 @@ async def cleanup_subscriptions_proper(services):
         
     except Exception as e:
         print(f"[ERROR] Failed to cleanup subscriptions: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn
