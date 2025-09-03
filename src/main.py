@@ -17,6 +17,7 @@ import torch
 
 # Configuration and setup
 from config.settings import clients, INDEX_NAME, INDEX_BODY, SESSION_SECRET
+from config.settings import is_no_auth_mode
 from utils.gpu_detection import detect_gpu_devices
 
 # Services
@@ -188,6 +189,53 @@ async def init_index_when_ready():
         print(
             "OIDC endpoints will still work, but document operations may fail until OpenSearch is ready"
         )
+
+
+async def ingest_default_documents_when_ready(services):
+    """Scan the local documents folder and ingest files like a non-auth upload."""
+    try:
+        # Ensure OpenSearch is ready and indices exist
+        await init_index()
+
+        # Only run in no-auth mode (mirrors non-auth upload behavior)
+        if not is_no_auth_mode():
+            print("[INGEST] Skipping default documents ingestion: auth mode enabled")
+            return
+
+        base_dir = os.path.abspath(os.path.join(os.getcwd(), "documents"))
+        if not os.path.isdir(base_dir):
+            print(f"[INGEST] Documents directory not found at {base_dir}; skipping")
+            return
+
+        # Collect files recursively
+        file_paths = [
+            os.path.join(root, fn)
+            for root, _, files in os.walk(base_dir)
+            for fn in files
+        ]
+
+        if not file_paths:
+            print(f"[INGEST] No files found in {base_dir}; nothing to ingest")
+            return
+
+        # Use anonymous context to mirror non-auth upload
+        user_id = "anonymous"
+        jwt_token = None
+        owner_name = "Anonymous User"
+        owner_email = "anonymous@localhost"
+
+        task_id = await services["task_service"].create_upload_task(
+            user_id,
+            file_paths,
+            jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
+        )
+        print(
+            f"[INGEST] Started default documents ingestion task {task_id} for {len(file_paths)} file(s)"
+        )
+    except Exception as e:
+        print(f"[INGEST] Default documents ingestion failed: {e}")
 
 
 async def initialize_services():
@@ -627,12 +675,19 @@ async def create_app():
 
     app = Starlette(debug=True, routes=routes)
     app.state.services = services  # Store services for cleanup
+    app.state.background_tasks = set()
 
     # Add startup event handler
     @app.on_event("startup")
     async def startup_event():
         # Start index initialization in background to avoid blocking OIDC endpoints
-        asyncio.create_task(init_index_when_ready())
+        t1 = asyncio.create_task(init_index_when_ready())
+        app.state.background_tasks.add(t1)
+        t1.add_done_callback(app.state.background_tasks.discard)
+        # Start default documents ingestion in background
+        t2 = asyncio.create_task(ingest_default_documents_when_ready(services))
+        app.state.background_tasks.add(t2)
+        t2.add_done_callback(app.state.background_tasks.discard)
 
     # Add shutdown event handler
     @app.on_event("shutdown")
