@@ -172,52 +172,105 @@ class ChatService:
         }
 
     async def get_langflow_history(self, user_id: str):
-        """Get langflow conversation history for a user"""
+        """Get langflow conversation history for a user - now fetches from both OpenRAG memory and Langflow database"""
         from agent import get_user_conversations
+        from services.langflow_history_service import langflow_history_service
+        from services.user_binding_service import user_binding_service
         
         if not user_id:
             return {"error": "User ID is required", "conversations": []}
         
-        conversations_dict = get_user_conversations(user_id)
+        all_conversations = []
         
-        # Convert conversations dict to list format with metadata
-        conversations = []
-        for response_id, conversation_state in conversations_dict.items():
-            # Filter out system messages
-            messages = []
-            for msg in conversation_state.get("messages", []):
-                if msg.get("role") in ["user", "assistant"]:
-                    message_data = {
-                        "role": msg["role"],
-                        "content": msg["content"],
-                        "timestamp": msg.get("timestamp").isoformat() if msg.get("timestamp") else None
-                    }
-                    if msg.get("response_id"):
-                        message_data["response_id"] = msg["response_id"]
-                    messages.append(message_data)
+        try:
+            # 1. Get in-memory OpenRAG conversations (current session)
+            conversations_dict = get_user_conversations(user_id)
             
-            if messages:  # Only include conversations with actual messages
-                # Generate title from first user message
-                first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
-                title = first_user_msg["content"][:50] + "..." if first_user_msg and len(first_user_msg["content"]) > 50 else first_user_msg["content"] if first_user_msg else "New chat"
+            for response_id, conversation_state in conversations_dict.items():
+                # Filter out system messages
+                messages = []
+                for msg in conversation_state.get("messages", []):
+                    if msg.get("role") in ["user", "assistant"]:
+                        message_data = {
+                            "role": msg["role"],
+                            "content": msg["content"],
+                            "timestamp": msg.get("timestamp").isoformat() if msg.get("timestamp") else None
+                        }
+                        if msg.get("response_id"):
+                            message_data["response_id"] = msg["response_id"]
+                        messages.append(message_data)
                 
-                conversations.append({
-                    "response_id": response_id,
-                    "title": title,
-                    "endpoint": "langflow",
-                    "messages": messages,
-                    "created_at": conversation_state.get("created_at").isoformat() if conversation_state.get("created_at") else None,
-                    "last_activity": conversation_state.get("last_activity").isoformat() if conversation_state.get("last_activity") else None,
-                    "previous_response_id": conversation_state.get("previous_response_id"),
-                    "total_messages": len(messages)
-                })
+                if messages:  # Only include conversations with actual messages
+                    first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
+                    title = first_user_msg["content"][:50] + "..." if first_user_msg and len(first_user_msg["content"]) > 50 else first_user_msg["content"] if first_user_msg else "New chat"
+                    
+                    all_conversations.append({
+                        "response_id": response_id,
+                        "title": title,
+                        "endpoint": "langflow",
+                        "messages": messages,
+                        "created_at": conversation_state.get("created_at").isoformat() if conversation_state.get("created_at") else None,
+                        "last_activity": conversation_state.get("last_activity").isoformat() if conversation_state.get("last_activity") else None,
+                        "previous_response_id": conversation_state.get("previous_response_id"),
+                        "total_messages": len(messages),
+                        "source": "openrag_memory"
+                    })
+            
+            # 2. Get historical conversations from Langflow database 
+            # (works with both Google-bound users and direct Langflow users)
+            print(f"[DEBUG] Attempting to fetch Langflow history for user: {user_id}")
+            langflow_history = await langflow_history_service.get_user_conversation_history(user_id)
+            
+            if langflow_history.get("conversations"):
+                    for conversation in langflow_history["conversations"]:
+                        # Convert Langflow format to OpenRAG format
+                        messages = []
+                        for msg in conversation.get("messages", []):
+                            messages.append({
+                                "role": msg["role"],
+                                "content": msg["content"],
+                                "timestamp": msg.get("timestamp"),
+                                "langflow_message_id": msg.get("langflow_message_id"),
+                                "source": "langflow"
+                            })
+                        
+                        if messages:
+                            first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
+                            title = first_user_msg["content"][:50] + "..." if first_user_msg and len(first_user_msg["content"]) > 50 else first_user_msg["content"] if first_user_msg else "Langflow chat"
+                            
+                            all_conversations.append({
+                                "response_id": conversation["session_id"],
+                                "title": title,
+                                "endpoint": "langflow",
+                                "messages": messages,
+                                "created_at": conversation.get("created_at"),
+                                "last_activity": conversation.get("last_activity"),
+                                "total_messages": len(messages),
+                                "source": "langflow_database",
+                                "langflow_session_id": conversation["session_id"],
+                                "langflow_flow_id": conversation.get("flow_id")
+                            })
+                    
+                    print(f"[DEBUG] Added {len(langflow_history['conversations'])} historical conversations from Langflow")
+            elif langflow_history.get("error"):
+                print(f"[DEBUG] Could not fetch Langflow history for user {user_id}: {langflow_history['error']}")
+            else:
+                print(f"[DEBUG] No Langflow conversations found for user {user_id}")
         
-        # Sort by last activity (most recent first)
-        conversations.sort(key=lambda c: c["last_activity"], reverse=True)
+        except Exception as e:
+            print(f"[ERROR] Failed to fetch Langflow history: {e}")
+            # Continue with just in-memory conversations
+        
+        # Sort all conversations by last activity (most recent first)
+        all_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
         
         return {
             "user_id": user_id,
             "endpoint": "langflow",
-            "conversations": conversations,
-            "total_conversations": len(conversations)
+            "conversations": all_conversations,
+            "total_conversations": len(all_conversations),
+            "sources": {
+                "memory": len([c for c in all_conversations if c.get("source") == "openrag_memory"]),
+                "langflow_db": len([c for c in all_conversations if c.get("source") == "langflow_database"])
+            }
         }
