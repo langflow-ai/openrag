@@ -8,6 +8,9 @@ from docling_core.types.io import DocumentStream
 from typing import List
 import openai
 import tiktoken
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 from config.settings import clients, INDEX_NAME, EMBED_MODEL
 from utils.document_processing import extract_relevant, process_document_sync
@@ -91,7 +94,7 @@ class DocumentService:
     def _recreate_process_pool(self):
         """Recreate the process pool if it's broken"""
         if self._process_pool_broken and self.process_pool:
-            print("[WARNING] Attempting to recreate broken process pool...")
+            logger.warning("Attempting to recreate broken process pool")
             try:
                 # Shutdown the old pool
                 self.process_pool.shutdown(wait=False)
@@ -102,10 +105,10 @@ class DocumentService:
 
                 self.process_pool = ProcessPoolExecutor(max_workers=MAX_WORKERS)
                 self._process_pool_broken = False
-                print(f"[INFO] Process pool recreated with {MAX_WORKERS} workers")
+                logger.info("Process pool recreated", worker_count=MAX_WORKERS)
                 return True
             except Exception as e:
-                print(f"[ERROR] Failed to recreate process pool: {e}")
+                logger.error("Failed to recreate process pool", error=str(e))
                 return False
         return False
 
@@ -193,8 +196,8 @@ class DocumentService:
                     index=INDEX_NAME, id=chunk_id, body=chunk_doc
                 )
             except Exception as e:
-                print(f"[ERROR] OpenSearch indexing failed for chunk {chunk_id}: {e}")
-                print(f"[ERROR] Chunk document: {chunk_doc}")
+                logger.error("OpenSearch indexing failed for chunk", chunk_id=chunk_id, error=str(e))
+                logger.error("Chunk document details", chunk_doc=chunk_doc)
                 raise
         return {"status": "indexed", "id": file_hash}
 
@@ -229,9 +232,7 @@ class DocumentService:
             try:
                 exists = await opensearch_client.exists(index=INDEX_NAME, id=file_hash)
             except Exception as e:
-                print(
-                    f"[ERROR] OpenSearch exists check failed for document {file_hash}: {e}"
-                )
+                logger.error("OpenSearch exists check failed", file_hash=file_hash, error=str(e))
                 raise
             if exists:
                 return {"status": "unchanged", "id": file_hash}
@@ -371,10 +372,8 @@ class DocumentService:
                             index=INDEX_NAME, id=chunk_id, body=chunk_doc
                         )
                     except Exception as e:
-                        print(
-                            f"[ERROR] OpenSearch indexing failed for batch chunk {chunk_id}: {e}"
-                        )
-                        print(f"[ERROR] Chunk document: {chunk_doc}")
+                        logger.error("OpenSearch indexing failed for batch chunk", chunk_id=chunk_id, error=str(e))
+                        logger.error("Chunk document details", chunk_doc=chunk_doc)
                         raise
 
                 result = {"status": "indexed", "id": slim_doc["id"]}
@@ -389,29 +388,25 @@ class DocumentService:
             from concurrent.futures import BrokenExecutor
 
             if isinstance(e, BrokenExecutor):
-                print(f"[CRITICAL] Process pool broken while processing {file_path}")
-                print(f"[INFO] This usually indicates a worker process crashed")
-                print(
-                    f"[INFO] You should see detailed crash logs above from the worker process"
-                )
+                logger.error("Process pool broken while processing file", file_path=file_path)
+                logger.info("Worker process likely crashed")
+                logger.info("You should see detailed crash logs above from the worker process")
 
                 # Mark pool as broken for potential recreation
                 self._process_pool_broken = True
 
                 # Attempt to recreate the pool for future operations
                 if self._recreate_process_pool():
-                    print(f"[INFO] Process pool successfully recreated")
+                    logger.info("Process pool successfully recreated")
                 else:
-                    print(
-                        f"[WARNING] Failed to recreate process pool - future operations may fail"
-                    )
+                    logger.warning("Failed to recreate process pool - future operations may fail")
 
                 file_task.error = f"Worker process crashed: {str(e)}"
             else:
-                print(f"[ERROR] Failed to process file {file_path}: {e}")
+                logger.error("Failed to process file", file_path=file_path, error=str(e))
                 file_task.error = str(e)
 
-            print(f"[ERROR] Full traceback:")
+            logger.error("Full traceback available")
             traceback.print_exc()
             file_task.status = TaskStatus.FAILED
             upload_task.failed_files += 1

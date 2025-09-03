@@ -162,6 +162,17 @@ class ConfigScreen(Screen):
             yield Label("Google OAuth Client ID")
             # Where to create Google OAuth credentials (helper above the box)
             yield Static(Text("Create credentials: https://console.cloud.google.com/apis/credentials", style="dim"), classes="helper-text")
+            # Callback URL guidance for Google OAuth
+            yield Static(
+                Text(
+                    "Important: add an Authorized redirect URI to your Google OAuth app(s):\n"
+                    "  - Local: http://localhost:3000/auth/callback\n"
+                    "  - Prod:  https://your-domain.com/auth/callback\n"
+                    "If you use separate apps for login and connectors, add this URL to BOTH.",
+                    style="dim"
+                ),
+                classes="helper-text"
+            )
             current_value = getattr(self.env_manager.config, "google_oauth_client_id", "")
             input_widget = Input(
                 placeholder="xxx.apps.googleusercontent.com",
@@ -189,6 +200,17 @@ class ConfigScreen(Screen):
             yield Label("Microsoft Graph Client ID")
             # Where to create Microsoft app registrations (helper above the box)
             yield Static(Text("Create app: https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade", style="dim"), classes="helper-text")
+            # Callback URL guidance for Microsoft OAuth
+            yield Static(
+                Text(
+                    "Important: configure a Web redirect URI for your Microsoft app(s):\n"
+                    "  - Local: http://localhost:3000/auth/callback\n"
+                    "  - Prod:  https://your-domain.com/auth/callback\n"
+                    "If you use separate apps for login and connectors, add this URI to BOTH.",
+                    style="dim"
+                ),
+                classes="helper-text"
+            )
             current_value = getattr(self.env_manager.config, "microsoft_graph_oauth_client_id", "")
             input_widget = Input(
                 placeholder="",

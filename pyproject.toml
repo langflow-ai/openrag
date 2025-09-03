@@ -26,6 +26,7 @@ dependencies = [
     "textual>=0.45.0",
     "python-dotenv>=1.0.0",
     "textual-fspicker>=0.6.0",
+    "structlog>=25.4.0",
 ]
 
 [tool.uv.sources]
