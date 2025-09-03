@@ -41,7 +41,7 @@ interface Connection {
 }
 
 function KnowledgeSourcesPage() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isNoAuthMode } = useAuth()
   const { addTask, tasks } = useTask()
   const searchParams = useSearchParams()
   
@@ -351,48 +351,66 @@ function KnowledgeSourcesPage() {
           <h2 className="text-2xl font-semibold tracking-tight mb-2">Cloud Connectors</h2>
         </div>
 
-        {/* Sync Settings */}
-        <div className="flex items-center justify-between py-4">
-          <div>
-            <h3 className="text-lg font-medium">Sync Settings</h3>
-            <p className="text-sm text-muted-foreground">Configure how many files to sync when manually triggering a sync</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center space-x-2">
-              <Checkbox 
-                id="syncAllFiles" 
-                checked={syncAllFiles}
-                onCheckedChange={(checked) => {
-                  setSyncAllFiles(!!checked)
-                  if (checked) {
-                    setMaxFiles(0)
-                  } else {
-                    setMaxFiles(10)
-                  }
-                }}
-              />
-              <Label htmlFor="syncAllFiles" className="font-medium whitespace-nowrap">
-                Sync all files
+        {/* Conditional Sync Settings or No-Auth Message */}
+        {isNoAuthMode ? (
+          <Card className="border-yellow-500/50 bg-yellow-500/5">
+            <CardHeader>
+              <CardTitle className="text-lg text-yellow-600">Cloud connectors are only available with auth mode enabled</CardTitle>
+              <CardDescription className="text-sm">
+                Please provide the following environment variables and restart:
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-muted rounded-md p-4 font-mono text-sm">
+                <div className="text-muted-foreground mb-2"># make here https://console.cloud.google.com/apis/credentials</div>
+                <div>GOOGLE_OAUTH_CLIENT_ID=</div>
+                <div>GOOGLE_OAUTH_CLIENT_SECRET=</div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="flex items-center justify-between py-4">
+            <div>
+              <h3 className="text-lg font-medium">Sync Settings</h3>
+              <p className="text-sm text-muted-foreground">Configure how many files to sync when manually triggering a sync</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="syncAllFiles" 
+                  checked={syncAllFiles}
+                  onCheckedChange={(checked) => {
+                    setSyncAllFiles(!!checked)
+                    if (checked) {
+                      setMaxFiles(0)
+                    } else {
+                      setMaxFiles(10)
+                    }
+                  }}
+                />
+                <Label htmlFor="syncAllFiles" className="font-medium whitespace-nowrap">
+                  Sync all files
+                </Label>
+              </div>
+              <Label htmlFor="maxFiles" className="font-medium whitespace-nowrap">
+                Max files per sync:
               </Label>
-            </div>
-            <Label htmlFor="maxFiles" className="font-medium whitespace-nowrap">
-              Max files per sync:
-            </Label>
-            <div className="relative">
-              <Input
-                id="maxFiles"
-                type="number"
-                value={syncAllFiles ? 0 : maxFiles}
-                onChange={(e) => setMaxFiles(parseInt(e.target.value) || 10)}
-                disabled={syncAllFiles}
-                className="w-16 min-w-16 max-w-16 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                min="1"
-                max="100"
-                title={syncAllFiles ? "Disabled when 'Sync all files' is checked" : "Leave blank or set to 0 for unlimited"}
-              />
+              <div className="relative">
+                <Input
+                  id="maxFiles"
+                  type="number"
+                  value={syncAllFiles ? 0 : maxFiles}
+                  onChange={(e) => setMaxFiles(parseInt(e.target.value) || 10)}
+                  disabled={syncAllFiles}
+                  className="w-16 min-w-16 max-w-16 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                  min="1"
+                  max="100"
+                  title={syncAllFiles ? "Disabled when 'Sync all files' is checked" : "Leave blank or set to 0 for unlimited"}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Connectors Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -468,33 +486,6 @@ function KnowledgeSourcesPage() {
           ))}
         </div>
 
-        {/* Coming Soon Section */}
-        <Card className="border-dashed">
-          <CardHeader>
-            <CardTitle className="text-lg text-muted-foreground">Coming Soon</CardTitle>
-            <CardDescription>
-              Additional connectors are in development
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 opacity-50">
-              <div className="flex items-center gap-3 p-3 rounded-lg border border-dashed">
-                <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold leading-none">D</div>
-                <div>
-                  <div className="font-medium">Dropbox</div>
-                  <div className="text-sm text-muted-foreground">File storage</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg border border-dashed">
-                <div className="w-8 h-8 bg-orange-600 rounded flex items-center justify-center text-white font-bold leading-none">B</div>
-                <div>
-                  <div className="font-medium">Box</div>
-                  <div className="text-sm text-muted-foreground">Enterprise file sharing</div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   )
