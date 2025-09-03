@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import subprocess
 from functools import partial
+
 from starlette.applications import Starlette
 from starlette.routing import Route
 
@@ -11,30 +12,38 @@ from starlette.routing import Route
 multiprocessing.set_start_method('spawn', force=True)
 
 # Create process pool FIRST, before any torch/CUDA imports
-from utils.process_pool import process_pool
-
 import torch
 
-# Configuration and setup
-from config.settings import clients, INDEX_NAME, INDEX_BODY, SESSION_SECRET
-from utils.gpu_detection import detect_gpu_devices
+# API endpoints
+from api import (
+    auth,
+    chat,
+    connectors,
+    knowledge_filter,
+    oidc,
+    search,
+    settings,
+    tasks,
+    upload,
+)
+from auth_middleware import optional_auth, require_auth
 
-# Services
-from services.document_service import DocumentService
-from services.search_service import SearchService
-from services.task_service import TaskService
-from services.auth_service import AuthService
-from services.chat_service import ChatService
-from services.knowledge_filter_service import KnowledgeFilterService
-from services.monitor_service import MonitorService
+# Configuration and setup
+from config.settings import INDEX_BODY, INDEX_NAME, SESSION_SECRET, clients
 
 # Existing services
 from connectors.service import ConnectorService
-from session_manager import SessionManager
-from auth_middleware import require_auth, optional_auth
+from services.auth_service import AuthService
+from services.chat_service import ChatService
 
-# API endpoints
-from api import upload, search, chat, auth, connectors, tasks, oidc, knowledge_filter, settings
+# Services
+from services.document_service import DocumentService
+from services.knowledge_filter_service import KnowledgeFilterService
+from services.monitor_service import MonitorService
+from services.search_service import SearchService
+from services.task_service import TaskService
+from session_manager import SessionManager
+from utils.process_pool import process_pool
 
 print("CUDA available:", torch.cuda.is_available())
 print("CUDA version PyTorch was built with:", torch.version.cuda)
@@ -202,7 +211,7 @@ async def initialize_services():
         except Exception as e:
             print(f"[WARNING] Failed to load persisted connections on startup: {e}")
     else:
-        print(f"[CONNECTORS] Skipping connection loading in no-auth mode")
+        print("[CONNECTORS] Skipping connection loading in no-auth mode")
     
     return {
         'document_service': document_service,
