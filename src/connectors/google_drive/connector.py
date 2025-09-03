@@ -7,6 +7,9 @@ from typing import Dict, List, Any, Optional
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
 from .oauth import GoogleDriveOAuth
@@ -20,9 +23,7 @@ def get_worker_drive_service(client_id: str, client_secret: str, token_file: str
     """Get or create a Google Drive service instance for this worker process"""
     global _worker_drive_service
     if _worker_drive_service is None:
-        print(
-            f"🔧 Initializing Google Drive service in worker process (PID: {os.getpid()})"
-        )
+        logger.info("Initializing Google Drive service in worker process", pid=os.getpid())
 
         # Create OAuth instance and load credentials in worker
         from .oauth import GoogleDriveOAuth
@@ -39,9 +40,7 @@ def get_worker_drive_service(client_id: str, client_secret: str, token_file: str
         try:
             loop.run_until_complete(oauth.load_credentials())
             _worker_drive_service = oauth.get_service()
-            print(
-                f"✅ Google Drive service ready in worker process (PID: {os.getpid()})"
-            )
+            logger.info("Google Drive service ready in worker process", pid=os.getpid())
         finally:
             loop.close()
 
@@ -215,7 +214,7 @@ class GoogleDriveConnector(BaseConnector):
                 return True
             return False
         except Exception as e:
-            print(f"Authentication failed: {e}")
+            logger.error("Authentication failed", error=str(e))
             return False
 
     async def setup_subscription(self) -> str:
@@ -258,7 +257,7 @@ class GoogleDriveConnector(BaseConnector):
             return channel_id
 
         except HttpError as e:
-            print(f"Failed to set up subscription: {e}")
+            logger.error("Failed to set up subscription", error=str(e))
             raise
 
     def _get_start_page_token(self) -> str:
@@ -340,7 +339,7 @@ class GoogleDriveConnector(BaseConnector):
             return {"files": files, "nextPageToken": results.get("nextPageToken")}
 
         except HttpError as e:
-            print(f"Failed to list files: {e}")
+            logger.error("Failed to list files", error=str(e))
             raise
 
     async def get_file_content(self, file_id: str) -> ConnectorDocument:
@@ -397,7 +396,7 @@ class GoogleDriveConnector(BaseConnector):
             )
 
         except HttpError as e:
-            print(f"Failed to get file content: {e}")
+            logger.error("Failed to get file content", error=str(e))
             raise
 
     async def _download_file_content(
@@ -477,19 +476,17 @@ class GoogleDriveConnector(BaseConnector):
         resource_state = headers.get("x-goog-resource-state")
 
         if not channel_id:
-            print("[WEBHOOK] No channel ID found in Google Drive webhook")
+            logger.warning("No channel ID found in Google Drive webhook")
             return []
 
         # Check if this webhook belongs to this connection
         if self.webhook_channel_id != channel_id:
-            print(
-                f"[WEBHOOK] Channel ID mismatch: expected {self.webhook_channel_id}, got {channel_id}"
-            )
+            logger.warning("Channel ID mismatch", expected=self.webhook_channel_id, received=channel_id)
             return []
 
         # Only process certain states (ignore 'sync' which is just a ping)
         if resource_state not in ["exists", "not_exists", "change"]:
-            print(f"[WEBHOOK] Ignoring resource state: {resource_state}")
+            logger.debug("Ignoring resource state", state=resource_state)
             return []
 
         try:
@@ -508,10 +505,10 @@ class GoogleDriveConnector(BaseConnector):
                 page_token = query_params.get("pageToken", [None])[0]
 
             if not page_token:
-                print("[WEBHOOK] No page token found, cannot identify specific changes")
+                logger.warning("No page token found, cannot identify specific changes")
                 return []
 
-            print(f"[WEBHOOK] Getting changes since page token: {page_token}")
+            logger.info("Getting changes since page token", page_token=page_token)
 
             # Get list of changes since the page token
             changes = (
@@ -536,23 +533,19 @@ class GoogleDriveConnector(BaseConnector):
                 is_trashed = file_info.get("trashed", False)
 
                 if not is_trashed and mime_type in self.SUPPORTED_MIMETYPES:
-                    print(
-                        f"[WEBHOOK] File changed: {file_info.get('name', 'Unknown')} ({file_id})"
-                    )
+                    logger.info("File changed", filename=file_info.get('name', 'Unknown'), file_id=file_id)
                     affected_files.append(file_id)
                 elif is_trashed:
-                    print(
-                        f"[WEBHOOK] File deleted/trashed: {file_info.get('name', 'Unknown')} ({file_id})"
-                    )
+                    logger.info("File deleted/trashed", filename=file_info.get('name', 'Unknown'), file_id=file_id)
                     # TODO: Handle file deletion (remove from index)
                 else:
-                    print(f"[WEBHOOK] Ignoring unsupported file type: {mime_type}")
+                    logger.debug("Ignoring unsupported file type", mime_type=mime_type)
 
-            print(f"[WEBHOOK] Found {len(affected_files)} affected supported files")
+            logger.info("Found affected supported files", count=len(affected_files))
             return affected_files
 
         except HttpError as e:
-            print(f"Failed to handle webhook: {e}")
+            logger.error("Failed to handle webhook", error=str(e))
             return []
 
     async def cleanup_subscription(self, subscription_id: str) -> bool:
@@ -574,5 +567,5 @@ class GoogleDriveConnector(BaseConnector):
             self.service.channels().stop(body=body).execute()
             return True
         except HttpError as e:
-            print(f"Failed to cleanup subscription: {e}")
+            logger.error("Failed to cleanup subscription", error=str(e))
             return False

@@ -3,6 +3,9 @@ import json
 from typing import Any, Dict, Optional, List
 from datetime import datetime
 from config.settings import clients
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class MonitorService:
@@ -192,7 +195,7 @@ class MonitorService:
             return monitors
 
         except Exception as e:
-            print(f"Error listing monitors for user {user_id}: {e}")
+            logger.error("Error listing monitors for user", user_id=user_id, error=str(e))
             return []
 
     async def list_monitors_for_filter(
@@ -233,7 +236,7 @@ class MonitorService:
             return monitors
 
         except Exception as e:
-            print(f"Error listing monitors for filter {filter_id}: {e}")
+            logger.error("Error listing monitors for filter", filter_id=filter_id, error=str(e))
             return []
 
     async def _get_or_create_webhook_destination(
