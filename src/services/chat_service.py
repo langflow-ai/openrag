@@ -2,6 +2,9 @@ from config.settings import clients, LANGFLOW_URL, FLOW_ID
 from agent import async_chat, async_langflow, async_chat_stream, async_langflow_stream
 from auth_context import set_auth_context
 import json
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class ChatService:
@@ -108,9 +111,7 @@ class ChatService:
 
         # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
         if filter_expression:
-            print(
-                f"Sending OpenRAG query filter to Langflow: {json.dumps(filter_expression, indent=2)}"
-            )
+            logger.info("Sending OpenRAG query filter to Langflow", filter_expression=filter_expression)
             extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
                 filter_expression
             )
@@ -200,9 +201,7 @@ class ChatService:
             return {"error": "User ID is required", "conversations": []}
 
         conversations_dict = get_user_conversations(user_id)
-        print(
-            f"[DEBUG] get_chat_history for user {user_id}: found {len(conversations_dict)} conversations"
-        )
+        logger.debug("Getting chat history for user", user_id=user_id, conversation_count=len(conversations_dict))
 
         # Convert conversations dict to list format with metadata
         conversations = []
