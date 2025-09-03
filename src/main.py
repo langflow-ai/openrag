@@ -587,6 +587,17 @@ async def create_app():
             methods=["GET"],
         ),
         Route(
+            "/connectors/{connector_type}/token",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.connector_token,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
             "/connectors/{connector_type}/webhook",
             partial(
                 connectors.connector_webhook,
