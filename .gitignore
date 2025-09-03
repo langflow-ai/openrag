@@ -11,7 +11,7 @@ wheels/
 .env
 
 # RSA keys for JWT signing
-keys/
+*.pem
 
 .idea/
 

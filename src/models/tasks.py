@@ -3,11 +3,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Optional
 
+
 class TaskStatus(Enum):
     PENDING = "pending"
-    RUNNING = "running" 
+    RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+
 
 @dataclass
 class FileTask:
@@ -19,7 +21,8 @@ class FileTask:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
-@dataclass 
+
+@dataclass
 class UploadTask:
     task_id: str
     total_files: int
