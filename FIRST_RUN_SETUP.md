@@ -13,6 +13,21 @@ OpenRAG now includes a first-run initialization system that automatically loads 
 - `DATA_DIRECTORY`: Path to the directory containing default documents to load on first run (default: `./documents`)
 - `SKIP_FIRST_RUN_INIT`: Set to `true` to disable automatic first-run initialization (default: `false`)
 
+### External Dataset Loading
+
+You can point `DATA_DIRECTORY` to any external location containing your default datasets. The system will:
+- Copy files from the external directory to `./documents` to ensure Docker volume access
+- Maintain directory structure during copying
+- Only copy newer files (based on modification time)
+- Skip files that already exist and are up-to-date
+
+Example with external directory:
+```bash
+DATA_DIRECTORY=/path/to/my/external/datasets
+```
+
+This allows you to maintain your datasets outside the OpenRAG project while still leveraging the automatic loading feature.
+
 ### Example .env Configuration
 
 ```bash
@@ -27,9 +42,11 @@ DATA_DIRECTORY=./documents
 
 1. **First-Run Detection**: The system checks for a `.openrag_initialized` marker file in the application root
 2. **Document Detection**: If no marker file exists and there are no existing documents in the OpenSearch index, first-run initialization triggers
-3. **File Discovery**: The system scans the `DATA_DIRECTORY` for supported document types (PDF, TXT, DOC, DOCX, MD, RTF, ODT)
-4. **Automatic Ingestion**: Found files are automatically processed and ingested into the OpenSearch index using the existing upload workflow
-5. **Initialization Marker**: After successful setup, a marker file is created to prevent re-initialization on subsequent startups
+3. **File Copying**: If `DATA_DIRECTORY` points to a different location than `./documents`, files are copied to the documents folder to ensure Docker volume access
+4. **File Discovery**: The system scans the documents folder for supported document types (PDF, TXT, DOC, DOCX, MD, RTF, ODT)
+5. **Existing Workflow Reuse**: Found files are processed using the same `create_upload_task` method as the manual "Upload Path" feature
+6. **Document Ownership**: In no-auth mode, documents owned by anonymous user; in auth mode, documents created without owner (globally accessible)
+7. **Initialization Marker**: After successful setup, a marker file is created to prevent re-initialization on subsequent startups
 
 ## Docker Configuration
 
@@ -77,10 +94,12 @@ The first-run initialization supports the following document types:
 1. Application starts
 2. OpenSearch index is initialized
 3. System checks for existing documents
-4. If none found, scans `DATA_DIRECTORY`
-5. Creates background task to process found documents
-6. Creates `.openrag_initialized` marker file
-7. Documents are processed asynchronously in the background
+4. If none found, copies files from `DATA_DIRECTORY` to `./documents` (if different)
+5. Scans documents folder for supported files
+6. Creates upload task using existing `create_upload_task` method (same as manual "Upload Path")
+7. Documents are processed through complete knowledge pipeline (conversion, chunking, embedding, indexing) 
+8. Creates `.openrag_initialized` marker file
+9. Processing continues asynchronously in the background
 
 ### Subsequent Runs
 1. Application starts
@@ -109,6 +128,17 @@ First-run initialization creates a background task that can be monitored through
 If you want to prevent automatic initialization:
 1. Set `SKIP_FIRST_RUN_INIT=true` in your .env file
 2. Or create an empty `.openrag_initialized` file manually
+
+### Files Not Visible in Knowledge List
+If first-run files don't appear in the knowledge interface:
+
+**For No-Auth Mode:**
+- Files should be owned by "anonymous" user and visible immediately
+
+**For Auth Mode:**
+- Files are created without owner field, making them globally accessible
+- All authenticated users should see these files in their knowledge list
+- Check OpenSearch DLS configuration in `securityconfig/roles.yml`
 
 ### Force Re-initialization
 To force first-run setup to run again:

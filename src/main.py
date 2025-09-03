@@ -158,7 +158,7 @@ async def run_first_time_initialization(services):
     """Run first-time initialization if needed"""
     try:
         from utils.default_ingestion import run_first_time_setup
-        await run_first_time_setup(services['document_service'], services['task_service'])
+        await run_first_time_setup(services['task_service'])
     except Exception as e:
         print(f"[ERROR] First-time initialization failed: {e}")
 
