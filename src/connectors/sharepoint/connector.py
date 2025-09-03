@@ -12,7 +12,7 @@ class SharePointConnector(BaseConnector):
 
     CLIENT_ID_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_ID"
     CLIENT_SECRET_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"
-    
+
     # Connector metadata
     CONNECTOR_NAME = "SharePoint"
     CONNECTOR_DESCRIPTION = "Connect to SharePoint sites to sync team documents"
@@ -25,9 +25,11 @@ class SharePointConnector(BaseConnector):
             client_secret=self.get_client_secret(),
             token_file=config.get("token_file", "sharepoint_token.json"),
         )
-        self.subscription_id = config.get("subscription_id") or config.get("webhook_channel_id")
+        self.subscription_id = config.get("subscription_id") or config.get(
+            "webhook_channel_id"
+        )
         self.base_url = "https://graph.microsoft.com/v1.0"
-        
+
         # SharePoint site configuration
         self.site_id = config.get("site_id")  # Required for SharePoint
 
@@ -67,7 +69,9 @@ class SharePointConnector(BaseConnector):
         self.subscription_id = data["id"]
         return self.subscription_id
 
-    async def list_files(self, page_token: Optional[str] = None, limit: int = 100) -> Dict[str, Any]:
+    async def list_files(
+        self, page_token: Optional[str] = None, limit: int = 100
+    ) -> Dict[str, Any]:
         if not self._authenticated:
             raise ValueError("Not authenticated")
 
@@ -88,14 +92,18 @@ class SharePointConnector(BaseConnector):
         files = []
         for item in data.get("value", []):
             if item.get("file"):
-                files.append({
-                    "id": item["id"],
-                    "name": item["name"],
-                    "mimeType": item.get("file", {}).get("mimeType", "application/octet-stream"),
-                    "webViewLink": item.get("webUrl"),
-                    "createdTime": item.get("createdDateTime"),
-                    "modifiedTime": item.get("lastModifiedDateTime"),
-                })
+                files.append(
+                    {
+                        "id": item["id"],
+                        "name": item["name"],
+                        "mimeType": item.get("file", {}).get(
+                            "mimeType", "application/octet-stream"
+                        ),
+                        "webViewLink": item.get("webUrl"),
+                        "createdTime": item.get("createdDateTime"),
+                        "modifiedTime": item.get("lastModifiedDateTime"),
+                    }
+                )
 
         next_token = None
         next_link = data.get("@odata.nextLink")
@@ -114,26 +122,41 @@ class SharePointConnector(BaseConnector):
         token = self.oauth.get_access_token()
         headers = {"Authorization": f"Bearer {token}"}
         async with httpx.AsyncClient() as client:
-            meta_resp = await client.get(f"{self.base_url}/sites/{self.site_id}/drive/items/{file_id}", headers=headers)
+            meta_resp = await client.get(
+                f"{self.base_url}/sites/{self.site_id}/drive/items/{file_id}",
+                headers=headers,
+            )
             meta_resp.raise_for_status()
             metadata = meta_resp.json()
 
-            content_resp = await client.get(f"{self.base_url}/sites/{self.site_id}/drive/items/{file_id}/content", headers=headers)
+            content_resp = await client.get(
+                f"{self.base_url}/sites/{self.site_id}/drive/items/{file_id}/content",
+                headers=headers,
+            )
             content_resp.raise_for_status()
             content = content_resp.content
 
-            perm_resp = await client.get(f"{self.base_url}/sites/{self.site_id}/drive/items/{file_id}/permissions", headers=headers)
+            perm_resp = await client.get(
+                f"{self.base_url}/sites/{self.site_id}/drive/items/{file_id}/permissions",
+                headers=headers,
+            )
             perm_resp.raise_for_status()
             permissions = perm_resp.json()
 
         acl = self._parse_permissions(metadata, permissions)
-        modified = datetime.fromisoformat(metadata["lastModifiedDateTime"].replace("Z", "+00:00")).replace(tzinfo=None)
-        created = datetime.fromisoformat(metadata["createdDateTime"].replace("Z", "+00:00")).replace(tzinfo=None)
+        modified = datetime.fromisoformat(
+            metadata["lastModifiedDateTime"].replace("Z", "+00:00")
+        ).replace(tzinfo=None)
+        created = datetime.fromisoformat(
+            metadata["createdDateTime"].replace("Z", "+00:00")
+        ).replace(tzinfo=None)
 
         document = ConnectorDocument(
             id=metadata["id"],
             filename=metadata["name"],
-            mimetype=metadata.get("file", {}).get("mimeType", "application/octet-stream"),
+            mimetype=metadata.get("file", {}).get(
+                "mimeType", "application/octet-stream"
+            ),
             content=content,
             source_url=metadata.get("webUrl"),
             acl=acl,
@@ -143,7 +166,9 @@ class SharePointConnector(BaseConnector):
         )
         return document
 
-    def _parse_permissions(self, metadata: Dict[str, Any], permissions: Dict[str, Any]) -> DocumentACL:
+    def _parse_permissions(
+        self, metadata: Dict[str, Any], permissions: Dict[str, Any]
+    ) -> DocumentACL:
         acl = DocumentACL()
         owner = metadata.get("createdBy", {}).get("user", {}).get("email")
         if owner:
@@ -161,19 +186,25 @@ class SharePointConnector(BaseConnector):
                 acl.group_permissions[group["email"]] = role
         return acl
 
-    def handle_webhook_validation(self, request_method: str, headers: Dict[str, str], query_params: Dict[str, str]) -> Optional[str]:
+    def handle_webhook_validation(
+        self, request_method: str, headers: Dict[str, str], query_params: Dict[str, str]
+    ) -> Optional[str]:
         """Handle Microsoft Graph webhook validation"""
         if request_method == "GET":
-            validation_token = query_params.get("validationtoken") or query_params.get("validationToken")
+            validation_token = query_params.get("validationtoken") or query_params.get(
+                "validationToken"
+            )
             if validation_token:
                 return validation_token
         return None
-    
-    def extract_webhook_channel_id(self, payload: Dict[str, Any], headers: Dict[str, str]) -> Optional[str]:
+
+    def extract_webhook_channel_id(
+        self, payload: Dict[str, Any], headers: Dict[str, str]
+    ) -> Optional[str]:
         """Extract SharePoint subscription ID from webhook payload"""
-        values = payload.get('value', [])
-        return values[0].get('subscriptionId') if values else None
-    
+        values = payload.get("value", [])
+        return values[0].get("subscriptionId") if values else None
+
     async def handle_webhook(self, payload: Dict[str, Any]) -> List[str]:
         values = payload.get("value", [])
         file_ids = []
@@ -184,7 +215,9 @@ class SharePointConnector(BaseConnector):
                 file_ids.append(file_id)
         return file_ids
 
-    async def cleanup_subscription(self, subscription_id: str, resource_id: str = None) -> bool:
+    async def cleanup_subscription(
+        self, subscription_id: str, resource_id: str = None
+    ) -> bool:
         if not self._authenticated:
             return False
         token = self.oauth.get_access_token()

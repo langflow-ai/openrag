@@ -10,16 +10,17 @@ def get_current_user(request: Request, session_manager) -> Optional[User]:
     # In no-auth mode, ignore cookies entirely
     if is_no_auth_mode():
         return None
-        
+
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
         return None
-    
+
     return session_manager.get_user_from_token(auth_token)
 
 
 def require_auth(session_manager):
     """Decorator to require authentication for endpoints"""
+
     def decorator(handler):
         async def wrapper(request: Request):
             # In no-auth mode, bypass authentication entirely
@@ -28,6 +29,7 @@ def require_auth(session_manager):
                 # Create an anonymous user object so endpoints don't break
                 from session_manager import User
                 from datetime import datetime
+
                 request.state.user = User(
                     user_id="anonymous",
                     email="anonymous@localhost",
@@ -35,30 +37,33 @@ def require_auth(session_manager):
                     picture=None,
                     provider="none",
                     created_at=datetime.now(),
-                    last_login=datetime.now()
+                    last_login=datetime.now(),
                 )
                 request.state.jwt_token = None  # No JWT in no-auth mode
                 print(f"[DEBUG] Set user_id=anonymous, jwt_token=None")
                 return await handler(request)
-            
+
             user = get_current_user(request, session_manager)
             if not user:
                 return JSONResponse(
-                    {"error": "Authentication required"}, 
-                    status_code=401
+                    {"error": "Authentication required"}, status_code=401
                 )
-            
+
             # Add user and JWT token to request state so handlers can access them
             request.state.user = user
-            request.state.jwt_token = None if is_no_auth_mode() else request.cookies.get("auth_token")
+            request.state.jwt_token = (
+                None if is_no_auth_mode() else request.cookies.get("auth_token")
+            )
             return await handler(request)
-        
+
         return wrapper
+
     return decorator
 
 
 def optional_auth(session_manager):
     """Decorator to optionally extract user for endpoints"""
+
     def decorator(handler):
         async def wrapper(request: Request):
             # In no-auth mode, create anonymous user
@@ -66,21 +71,27 @@ def optional_auth(session_manager):
                 # Create an anonymous user object so endpoints don't break
                 from session_manager import User
                 from datetime import datetime
+
                 request.state.user = User(
                     user_id="anonymous",
-                    email="anonymous@localhost", 
+                    email="anonymous@localhost",
                     name="Anonymous User",
                     picture=None,
                     provider="none",
                     created_at=datetime.now(),
-                    last_login=datetime.now()
+                    last_login=datetime.now(),
                 )
                 request.state.jwt_token = None  # No JWT in no-auth mode
             else:
                 user = get_current_user(request, session_manager)
                 request.state.user = user  # Can be None
-                request.state.jwt_token = None if is_no_auth_mode() else (request.cookies.get("auth_token") if user else None)
+                request.state.jwt_token = (
+                    None
+                    if is_no_auth_mode()
+                    else (request.cookies.get("auth_token") if user else None)
+                )
             return await handler(request)
-        
+
         return wrapper
+
     return decorator

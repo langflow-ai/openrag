@@ -1,6 +1,7 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+
 async def auth_init(request: Request, auth_service, session_manager):
     """Initialize OAuth flow for authentication or data source connection"""
     try:
@@ -9,19 +10,23 @@ async def auth_init(request: Request, auth_service, session_manager):
         purpose = data.get("purpose", "data_source")
         connection_name = data.get("name", f"{connector_type}_{purpose}")
         redirect_uri = data.get("redirect_uri")
-        
-        user = getattr(request.state, 'user', None)
+
+        user = getattr(request.state, "user", None)
         user_id = user.user_id if user else None
-        
+
         result = await auth_service.init_oauth(
             connector_type, purpose, connection_name, redirect_uri, user_id
         )
         return JSONResponse(result)
-        
+
     except Exception as e:
         import traceback
+
         traceback.print_exc()
-        return JSONResponse({"error": f"Failed to initialize OAuth: {str(e)}"}, status_code=500)
+        return JSONResponse(
+            {"error": f"Failed to initialize OAuth: {str(e)}"}, status_code=500
+        )
+
 
 async def auth_callback(request: Request, auth_service, session_manager):
     """Handle OAuth callback - exchange authorization code for tokens"""
@@ -34,19 +39,19 @@ async def auth_callback(request: Request, auth_service, session_manager):
         result = await auth_service.handle_oauth_callback(
             connection_id, authorization_code, state, request
         )
-        
+
         # If this is app auth, set JWT cookie
         if result.get("purpose") == "app_auth" and result.get("jwt_token"):
-            response = JSONResponse({
-                k: v for k, v in result.items() if k != "jwt_token"
-            })
+            response = JSONResponse(
+                {k: v for k, v in result.items() if k != "jwt_token"}
+            )
             response.set_cookie(
                 key="auth_token",
                 value=result["jwt_token"],
                 httponly=True,
                 secure=False,
                 samesite="lax",
-                max_age=7 * 24 * 60 * 60  # 7 days
+                max_age=7 * 24 * 60 * 60,  # 7 days
             )
             return response
         else:
@@ -54,27 +59,26 @@ async def auth_callback(request: Request, auth_service, session_manager):
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return JSONResponse({"error": f"Callback failed: {str(e)}"}, status_code=500)
+
 
 async def auth_me(request: Request, auth_service, session_manager):
     """Get current user information"""
     result = await auth_service.get_user_info(request)
     return JSONResponse(result)
 
+
 async def auth_logout(request: Request, auth_service, session_manager):
     """Logout user by clearing auth cookie"""
-    response = JSONResponse({
-        "status": "logged_out",
-        "message": "Successfully logged out"
-    })
-    
+    response = JSONResponse(
+        {"status": "logged_out", "message": "Successfully logged out"}
+    )
+
     # Clear the auth cookie
     response.delete_cookie(
-        key="auth_token",
-        httponly=True,
-        secure=False,
-        samesite="lax"
+        key="auth_token", httponly=True, secure=False, samesite="lax"
     )
-    
+
     return response

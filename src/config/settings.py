@@ -30,14 +30,20 @@ SESSION_SECRET = os.getenv("SESSION_SECRET", "your-secret-key-change-in-producti
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
+
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     result = not (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
-    print(f"[DEBUG] is_no_auth_mode() = {result}, CLIENT_ID={GOOGLE_OAUTH_CLIENT_ID is not None}, CLIENT_SECRET={GOOGLE_OAUTH_CLIENT_SECRET is not None}")
+    print(
+        f"[DEBUG] is_no_auth_mode() = {result}, CLIENT_ID={GOOGLE_OAUTH_CLIENT_ID is not None}, CLIENT_SECRET={GOOGLE_OAUTH_CLIENT_SECRET is not None}"
+    )
     return result
 
+
 # Webhook configuration - must be set to enable webhooks
-WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL")  # No default - must be explicitly configured
+WEBHOOK_BASE_URL = os.getenv(
+    "WEBHOOK_BASE_URL"
+)  # No default - must be explicitly configured
 
 # OpenSearch configuration
 INDEX_NAME = "documents"
@@ -48,56 +54,56 @@ INDEX_BODY = {
     "settings": {
         "index": {"knn": True},
         "number_of_shards": 1,
-        "number_of_replicas": 1
+        "number_of_replicas": 1,
     },
     "mappings": {
         "properties": {
-            "document_id": { "type": "keyword" },
-            "filename":    { "type": "keyword" },
-            "mimetype":    { "type": "keyword" },
-            "page":        { "type": "integer" },
-            "text":        { "type": "text" },
+            "document_id": {"type": "keyword"},
+            "filename": {"type": "keyword"},
+            "mimetype": {"type": "keyword"},
+            "page": {"type": "integer"},
+            "text": {"type": "text"},
             "chunk_embedding": {
                 "type": "knn_vector",
                 "dimension": VECTOR_DIM,
                 "method": {
-                    "name":       "disk_ann",
-                    "engine":     "jvector",
+                    "name": "disk_ann",
+                    "engine": "jvector",
                     "space_type": "l2",
-                    "parameters": {
-                        "ef_construction": 100,
-                        "m":               16
-                    }
-                }
+                    "parameters": {"ef_construction": 100, "m": 16},
+                },
             },
-            "source_url": { "type": "keyword" },
-            "connector_type": { "type": "keyword" },
-            "owner": { "type": "keyword" },
-            "allowed_users": { "type": "keyword" },
-            "allowed_groups": { "type": "keyword" },
-            "user_permissions": { "type": "object" },
-            "group_permissions": { "type": "object" },
-            "created_time": { "type": "date" },
-            "modified_time": { "type": "date" },
-            "indexed_time": { "type": "date" },
-            "metadata": { "type": "object" }
+            "source_url": {"type": "keyword"},
+            "connector_type": {"type": "keyword"},
+            "owner": {"type": "keyword"},
+            "allowed_users": {"type": "keyword"},
+            "allowed_groups": {"type": "keyword"},
+            "user_permissions": {"type": "object"},
+            "group_permissions": {"type": "object"},
+            "created_time": {"type": "date"},
+            "modified_time": {"type": "date"},
+            "indexed_time": {"type": "date"},
+            "metadata": {"type": "object"},
         }
-    }
+    },
 }
+
 
 async def generate_langflow_api_key():
     """Generate Langflow API key using superuser credentials at startup"""
     global LANGFLOW_KEY
-    
+
     # If key already provided via env, do not attempt generation
     if LANGFLOW_KEY:
         print("[INFO] Using LANGFLOW_KEY from environment; skipping generation")
         return LANGFLOW_KEY
-    
+
     if not LANGFLOW_SUPERUSER or not LANGFLOW_SUPERUSER_PASSWORD:
-        print("[WARNING] LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation")
+        print(
+            "[WARNING] LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
+        )
         return None
-    
+
     try:
         print("[INFO] Generating Langflow API key using superuser credentials...")
         max_attempts = int(os.getenv("LANGFLOW_KEY_RETRIES", "15"))
@@ -112,9 +118,9 @@ async def generate_langflow_api_key():
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                     data={
                         "username": LANGFLOW_SUPERUSER,
-                        "password": LANGFLOW_SUPERUSER_PASSWORD
+                        "password": LANGFLOW_SUPERUSER_PASSWORD,
                     },
-                    timeout=10
+                    timeout=10,
                 )
                 login_response.raise_for_status()
                 access_token = login_response.json().get("access_token")
@@ -126,10 +132,10 @@ async def generate_langflow_api_key():
                     f"{LANGFLOW_URL}/api/v1/api_key/",
                     headers={
                         "Content-Type": "application/json",
-                        "Authorization": f"Bearer {access_token}"
+                        "Authorization": f"Bearer {access_token}",
                     },
                     json={"name": "openrag-auto-generated"},
-                    timeout=10
+                    timeout=10,
                 )
                 api_key_response.raise_for_status()
                 api_key = api_key_response.json().get("api_key")
@@ -137,16 +143,20 @@ async def generate_langflow_api_key():
                     raise KeyError("api_key")
 
                 LANGFLOW_KEY = api_key
-                print(f"[INFO] Successfully generated Langflow API key: {api_key[:8]}...")
+                print(
+                    f"[INFO] Successfully generated Langflow API key: {api_key[:8]}..."
+                )
                 return api_key
             except (requests.exceptions.RequestException, KeyError) as e:
                 last_error = e
-                print(f"[WARN] Attempt {attempt}/{max_attempts} to generate Langflow API key failed: {e}")
+                print(
+                    f"[WARN] Attempt {attempt}/{max_attempts} to generate Langflow API key failed: {e}"
+                )
                 if attempt < max_attempts:
                     time.sleep(delay_seconds)
                 else:
                     raise
-    
+
     except requests.exceptions.RequestException as e:
         print(f"[ERROR] Failed to generate Langflow API key: {e}")
         return None
@@ -157,17 +167,18 @@ async def generate_langflow_api_key():
         print(f"[ERROR] Unexpected error generating Langflow API key: {e}")
         return None
 
+
 class AppClients:
     def __init__(self):
         self.opensearch = None
         self.langflow_client = None
         self.patched_async_client = None
         self.converter = None
-        
+
     async def initialize(self):
         # Generate Langflow API key first
         await generate_langflow_api_key()
-        
+
         # Initialize OpenSearch client
         self.opensearch = AsyncOpenSearch(
             hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
@@ -179,26 +190,27 @@ class AppClients:
             http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),
             http_compress=True,
         )
-        
+
         # Initialize Langflow client with generated/provided API key
         if LANGFLOW_KEY and self.langflow_client is None:
             try:
                 self.langflow_client = AsyncOpenAI(
-                    base_url=f"{LANGFLOW_URL}/api/v1",
-                    api_key=LANGFLOW_KEY
+                    base_url=f"{LANGFLOW_URL}/api/v1", api_key=LANGFLOW_KEY
                 )
             except Exception as e:
                 print(f"[WARNING] Failed to initialize Langflow client: {e}")
                 self.langflow_client = None
         if self.langflow_client is None:
-            print("[WARNING] No Langflow client initialized yet; will attempt later on first use")
-        
+            print(
+                "[WARNING] No Langflow client initialized yet; will attempt later on first use"
+            )
+
         # Initialize patched OpenAI client
         self.patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
-        
+
         # Initialize document converter
         self.converter = DocumentConverter()
-        
+
         return self
 
     async def ensure_langflow_client(self):
@@ -210,19 +222,18 @@ class AppClients:
         if LANGFLOW_KEY and self.langflow_client is None:
             try:
                 self.langflow_client = AsyncOpenAI(
-                    base_url=f"{LANGFLOW_URL}/api/v1",
-                    api_key=LANGFLOW_KEY
+                    base_url=f"{LANGFLOW_URL}/api/v1", api_key=LANGFLOW_KEY
                 )
                 print("[INFO] Langflow client initialized on-demand")
             except Exception as e:
                 print(f"[ERROR] Failed to initialize Langflow client on-demand: {e}")
                 self.langflow_client = None
         return self.langflow_client
-    
+
     def create_user_opensearch_client(self, jwt_token: str):
         """Create OpenSearch client with user's JWT token for OIDC auth"""
-        headers = {'Authorization': f'Bearer {jwt_token}'}
-        
+        headers = {"Authorization": f"Bearer {jwt_token}"}
+
         return AsyncOpenSearch(
             hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
             connection_class=AIOHttpConnection,
@@ -233,6 +244,7 @@ class AppClients:
             headers=headers,
             http_compress=True,
         )
+
 
 # Global clients instance
 clients = AppClients()
