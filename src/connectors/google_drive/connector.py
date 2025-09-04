@@ -8,6 +8,9 @@ from typing import Dict, List, Any, Optional, Iterable, Set
 
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Project-specific base types (adjust imports to your project)
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
@@ -435,7 +438,7 @@ class GoogleDriveConnector(BaseConnector):
 
         except Exception as e:
             self._authenticated = False
-            self.log(f"GoogleDriveConnector.authenticate failed: {e}")
+            logger.error(f"GoogleDriveConnector.authenticate failed: {e}")
             return False
 
     async def list_files(
@@ -601,7 +604,7 @@ class GoogleDriveConnector(BaseConnector):
 
         except Exception as e:
             try:
-                self.log(f"GoogleDriveConnector.setup_subscription failed: {e}")
+                logger.error(f"GoogleDriveConnector.setup_subscription failed: {e}")
             except Exception:
                 pass
             raise
@@ -659,7 +662,6 @@ class GoogleDriveConnector(BaseConnector):
                 pass
             return False
 
-        # 3) Call Channels.stop
         try:
             self.service.channels().stop(body={"id": subscription_id, "resourceId": resource_id}).execute()
 
@@ -971,5 +973,8 @@ class GoogleDriveConnector(BaseConnector):
         try:
             self.service.channels().stop(body={"id": channel_id, "resourceId": resource_id}).execute()
             return True
-        except HttpError:
+
+        except HttpError as e:
+            logger.error("Failed to cleanup subscription", error=str(e))
+
             return False

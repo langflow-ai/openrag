@@ -1,5 +1,8 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 async def chat_endpoint(request: Request, chat_service, session_manager):
@@ -122,7 +125,7 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
         import traceback
 
         traceback.print_exc()
-        print(f"[ERROR] Langflow request failed: {str(e)}")
+        logger.error("Langflow request failed", error=str(e))
         return JSONResponse(
             {"error": f"Langflow request failed: {str(e)}"}, status_code=500
         )

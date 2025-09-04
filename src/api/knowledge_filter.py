@@ -3,6 +3,9 @@ from starlette.responses import JSONResponse
 import uuid
 import json
 from datetime import datetime
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 async def create_knowledge_filter(
@@ -392,17 +395,15 @@ async def knowledge_filter_webhook(
         # Get the webhook payload
         payload = await request.json()
 
-        print(
-            f"[WEBHOOK] Knowledge filter webhook received for filter {filter_id}, subscription {subscription_id}"
-        )
-        print(f"[WEBHOOK] Payload: {json.dumps(payload, indent=2)}")
+        logger.info("Knowledge filter webhook received", 
+                   filter_id=filter_id, 
+                   subscription_id=subscription_id,
+                   payload_size=len(str(payload)))
 
         # Extract findings from the payload
         findings = payload.get("findings", [])
         if not findings:
-            print(
-                f"[WEBHOOK] No findings in webhook payload for subscription {subscription_id}"
-            )
+            logger.info("No findings in webhook payload", subscription_id=subscription_id)
             return JSONResponse({"status": "no_findings"})
 
         # Process the findings - these are the documents that matched the knowledge filter
@@ -419,13 +420,14 @@ async def knowledge_filter_webhook(
             )
 
         # Log the matched documents
-        print(
-            f"[WEBHOOK] Knowledge filter {filter_id} matched {len(matched_documents)} documents"
-        )
+        logger.info("Knowledge filter matched documents", 
+                   filter_id=filter_id, 
+                   matched_count=len(matched_documents))
         for doc in matched_documents:
-            print(
-                f"[WEBHOOK] Matched document: {doc['document_id']} from index {doc['index']}"
-            )
+            logger.debug("Matched document", 
+                        document_id=doc['document_id'], 
+                        index=doc['index'],
+                        score=doc.get('score'))
 
         # Here you could add additional processing:
         # - Send notifications to external webhooks
@@ -444,7 +446,10 @@ async def knowledge_filter_webhook(
         )
 
     except Exception as e:
-        print(f"[ERROR] Failed to process knowledge filter webhook: {str(e)}")
+        logger.error("Failed to process knowledge filter webhook", 
+                    filter_id=filter_id,
+                    subscription_id=subscription_id,
+                    error=str(e))
         import traceback
 
         traceback.print_exc()
