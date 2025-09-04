@@ -23,6 +23,9 @@ async def connector_sync(request: Request, connector_service, session_manager):
     data = await request.json()
     max_files = data.get("max_files")
 
+    if not data.get("selected_files"):
+        return JSONResponse({"error": "selected_files is required"}, status_code=400)
+
     try:
         logger.debug("Starting connector sync", connector_type=connector_type, max_files=max_files)
 
