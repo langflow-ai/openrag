@@ -33,6 +33,10 @@ RUN echo "asprof \$@" >> /usr/share/opensearch/profile.sh
 
 RUN chmod 777 /usr/share/opensearch/profile.sh
 
+# Copy OIDC and DLS security configuration (as root)
+COPY securityconfig/ /usr/share/opensearch/securityconfig/
+RUN chown -R opensearch:opensearch /usr/share/opensearch/securityconfig/
+
 USER opensearch
 
 RUN opensearch-plugin remove opensearch-neural-search
@@ -45,10 +49,6 @@ RUN echo y | opensearch-plugin install https://repo1.maven.org/maven2/org/opense
 RUN echo y | opensearch-plugin install repository-gcs
 RUN echo y | opensearch-plugin install repository-azure
 RUN echo y | opensearch-plugin install repository-s3
-
-# Copy OIDC and DLS security configuration
-COPY securityconfig/ /usr/share/opensearch/securityconfig/
-RUN chown -R opensearch:opensearch /usr/share/opensearch/securityconfig/
 
 # Create a script to apply security configuration after OpenSearch starts
 RUN echo '#!/bin/bash' > /usr/share/opensearch/setup-security.sh && \
