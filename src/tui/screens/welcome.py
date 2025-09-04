@@ -97,9 +97,6 @@ class WelcomeScreen(Screen):
             # Always show monitor option
             buttons.append(Button("Monitor Services", variant="default", id="monitor-btn"))
         
-        # Always show diagnostics button
-        buttons.append(Button("Diagnostics", variant="default", id="diagnostics-btn"))
-        
         return Horizontal(*buttons, classes="button-row")
     
     async def on_mount(self) -> None:

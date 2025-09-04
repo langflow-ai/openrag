@@ -11,6 +11,7 @@ from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.screen import Screen
 from textual.widgets import Header, Footer, Static, Button, Label, Log
+from rich.text import Text
 
 from ..managers.container_manager import ContainerManager
 
@@ -76,6 +77,12 @@ class DiagnosticsScreen(Screen):
     def on_mount(self) -> None:
         """Initialize the screen."""
         self.run_diagnostics()
+        
+        # Focus the first button (refresh-btn)
+        try:
+            self.query_one("#refresh-btn").focus()
+        except Exception:
+            pass
     
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -228,17 +235,31 @@ class DiagnosticsScreen(Screen):
         """Go back to previous screen."""
         self.app.pop_screen()
     
+    def _get_system_info(self) -> Text:
+        """Get system information text."""
+        info_text = Text()
+        
+        runtime_info = self.container_manager.get_runtime_info()
+        
+        info_text.append("Container Runtime Information\n", style="bold")
+        info_text.append("=" * 30 + "\n")
+        info_text.append(f"Type: {runtime_info.runtime_type.value}\n")
+        info_text.append(f"Compose Command: {' '.join(runtime_info.compose_command)}\n")
+        info_text.append(f"Runtime Command: {' '.join(runtime_info.runtime_command)}\n")
+        
+        if runtime_info.version:
+            info_text.append(f"Version: {runtime_info.version}\n")
+            
+        return info_text
+    
     def run_diagnostics(self) -> None:
         """Run all diagnostics."""
         log = self.query_one("#diagnostics-log", Log)
         log.clear()
         
         # System information
-        log.write("[bold green]System Information[/bold green]")
-        log.write(f"Runtime: {self.container_manager.runtime_info.runtime_type.value}")
-        log.write(f"Version: {self.container_manager.runtime_info.version or 'Unknown'}")
-        log.write(f"Compose file: {self.container_manager.compose_file}")
-        log.write(f"CPU mode: {self.container_manager.use_cpu_compose}")
+        system_info = self._get_system_info()
+        log.write(str(system_info))
         log.write("")
         
         # Run async diagnostics

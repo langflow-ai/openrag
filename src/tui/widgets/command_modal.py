@@ -7,7 +7,8 @@ from textual.app import ComposeResult
 from textual.worker import Worker
 from textual.containers import Container, ScrollableContainer
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label, Log
+from textual.widgets import Button, Static, Label, RichLog
+from rich.console import Console
 
 
 class CommandOutputModal(ModalScreen):
@@ -86,7 +87,7 @@ class CommandOutputModal(ModalScreen):
         with Container(id="dialog"):
             yield Label(self.title_text, id="title")
             with ScrollableContainer(id="output-container"):
-                yield Log(id="command-output", highlight=True)
+                yield RichLog(id="command-output", highlight=True, markup=True)
             with Container(id="button-row"):
                 yield Button("Close", variant="primary", id="close-btn")
 
@@ -102,12 +103,12 @@ class CommandOutputModal(ModalScreen):
 
     async def _run_command(self) -> None:
         """Run the command and update the output in real-time."""
-        output = self.query_one("#command-output", Log)
+        output = self.query_one("#command-output", RichLog)
         
         try:
             async for is_complete, message in self.command_generator:
-                # Add message to output
-                output.write(message)
+                # Simple approach: just append each line as it comes
+                output.write(message + "\n")
                 
                 # Scroll to bottom
                 container = self.query_one("#output-container", ScrollableContainer)
@@ -115,16 +116,17 @@ class CommandOutputModal(ModalScreen):
                 
                 # If command is complete, update UI
                 if is_complete:
-                    output.write("[bold green]Command completed successfully[/bold green]")
+                    output.write("[bold green]Command completed successfully[/bold green]\n")
                     # Call the completion callback if provided
                     if self.on_complete:
                         await asyncio.sleep(0.5)  # Small delay for better UX
                         self.on_complete()
         except Exception as e:
-            output.write(f"[bold red]Error: {e}[/bold red]")
+            output.write(f"[bold red]Error: {e}[/bold red]\n")
         
-        # Enable the close button
+        # Enable the close button and focus it
         close_btn = self.query_one("#close-btn", Button)
         close_btn.disabled = False
+        close_btn.focus()
 
 # Made with Bob

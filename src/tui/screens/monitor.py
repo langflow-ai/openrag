@@ -10,7 +10,7 @@ ButtonVariant = Literal["default", "primary", "success", "warning", "error"]
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Button, DataTable, TabbedContent, TabPane
+from textual.widgets import Header, Footer, Static, Button, DataTable
 from textual.timer import Timer
 from rich.text import Text
 from rich.table import Table
@@ -31,6 +31,9 @@ class MonitorScreen(Screen):
         ("t", "stop", "Stop Services"),
         ("u", "upgrade", "Upgrade"),
         ("x", "reset", "Reset"),
+        ("l", "logs", "View Logs"),
+        ("j", "cursor_down", "Move Down"),
+        ("k", "cursor_up", "Move Up"),
     ]
     
     def __init__(self):
@@ -47,15 +50,8 @@ class MonitorScreen(Screen):
     
     def compose(self) -> ComposeResult:
         """Create the monitoring screen layout."""
-        yield Header()
-        
-        with TabbedContent(id="monitor-tabs"):
-            with TabPane("Services", id="services-tab"):
-                yield from self._create_services_tab()
-            with TabPane("Logs", id="logs-tab"):
-                yield from self._create_logs_tab()
-            with TabPane("System", id="system-tab"):
-                yield from self._create_system_tab()
+        # Just show the services content directly (no header, no tabs)
+        yield from self._create_services_tab()
         
         yield Footer()
     
@@ -70,7 +66,8 @@ class MonitorScreen(Screen):
         )
         # Images summary table (above services)
         yield Static("Container Images", classes="tab-header")
-        self.images_table = DataTable(id="images-table")
+        self.images_table = DataTable(id="images-table", show_cursor=False)
+        self.images_table.can_focus = False
         self.images_table.add_columns("Image", "Digest")
         yield self.images_table
         yield Static(" ")
@@ -80,32 +77,7 @@ class MonitorScreen(Screen):
         self.services_table = DataTable(id="services-table")
         self.services_table.add_columns("Service", "Status", "Health", "Ports", "Image", "Digest")
         yield self.services_table
-        yield Horizontal(
-            Button("Refresh", variant="default", id="refresh-services-btn"),
-            Button("Back", variant="default", id="back-services-btn"),
-            classes="button-row"
-        )
     
-    def _create_logs_tab(self) -> ComposeResult:
-        """Create the logs viewing tab."""
-        logs_content = Static("Select a service to view logs", id="logs-content", markup=False)
-
-        yield Static("Service Logs", id="logs-header")
-        yield Horizontal(
-            Button("Backend", variant="default", id="logs-backend"),
-            Button("Frontend", variant="default", id="logs-frontend"),
-            Button("OpenSearch", variant="default", id="logs-opensearch"),
-            Button("Langflow", variant="default", id="logs-langflow"),
-            classes="button-row"
-        )
-        yield ScrollableContainer(logs_content, id="logs-scroll")
-    
-    def _create_system_tab(self) -> ComposeResult:
-        """Create the system information tab."""
-        system_info = Static(self._get_system_info(), id="system-info")
-        
-        yield Static("System Information", id="system-header")
-        yield system_info
     
     def _get_runtime_status(self) -> Text:
         """Get container runtime status text."""
@@ -136,29 +108,18 @@ class MonitorScreen(Screen):
         
         return status_text
     
-    def _get_system_info(self) -> Text:
-        """Get system information text."""
-        info_text = Text()
-        
-        runtime_info = self.container_manager.get_runtime_info()
-        
-        info_text.append("Container Runtime Information\n", style="bold")
-        info_text.append("=" * 30 + "\n")
-        info_text.append(f"Type: {runtime_info.runtime_type.value}\n")
-        info_text.append(f"Compose Command: {' '.join(runtime_info.compose_command)}\n")
-        info_text.append(f"Runtime Command: {' '.join(runtime_info.runtime_command)}\n")
-        
-        if runtime_info.version:
-            info_text.append(f"Version: {runtime_info.version}\n")
-        # Removed compose files section for cleaner display
-
-        return info_text
     
     async def on_mount(self) -> None:
         """Initialize the screen when mounted."""
         await self._refresh_services()
         # Set up auto-refresh every 5 seconds
         self.refresh_timer = self.set_interval(5.0, self._auto_refresh)
+        
+        # Focus the services table
+        try:
+            self.services_table.focus()
+        except Exception:
+            pass
     
     def on_unmount(self) -> None:
         """Clean up when unmounting."""
@@ -257,9 +218,9 @@ class MonitorScreen(Screen):
             self.run_worker(self._reset_services())
         elif button_id == "toggle-mode-btn":
             self.action_toggle_mode()
-        elif button_id == "refresh-services-btn" or button_id == "refresh-btn":
+        elif button_id.startswith("refresh-btn"):
             self.action_refresh()
-        elif button_id == "back-services-btn" or button_id == "back-btn":
+        elif button_id.startswith("back-btn"):
             self.action_back()
         elif button_id.startswith("logs-"):
             # Map button IDs to actual service names
@@ -439,6 +400,20 @@ class MonitorScreen(Screen):
         """Refresh services manually."""
         self.run_worker(self._refresh_services())
 
+    def action_cursor_down(self) -> None:
+        """Move cursor down in services table."""
+        try:
+            self.services_table.action_cursor_down()
+        except Exception:
+            pass
+
+    def action_cursor_up(self) -> None:
+        """Move cursor up in services table."""
+        try:
+            self.services_table.action_cursor_up()
+        except Exception:
+            pass
+
     def _update_mode_row(self) -> None:
         """Update the mode indicator and toggle button label."""
         try:
@@ -522,3 +497,37 @@ class MonitorScreen(Screen):
     def action_reset(self) -> None:
         """Reset services."""
         self.run_worker(self._reset_services())
+    
+    def action_logs(self) -> None:
+        """View logs for the selected service."""
+        try:
+            # Get the currently focused row in the services table
+            table = self.query_one("#services-table", DataTable)
+            
+            if table.cursor_row is not None and table.cursor_row >= 0:
+                # Get the service name from the first column of the selected row
+                row_data = table.get_row_at(table.cursor_row)
+                if row_data:
+                    service_name = str(row_data[0])  # First column is service name
+                    
+                    # Map display names to actual service names
+                    service_mapping = {
+                        "openrag-backend": "openrag-backend",
+                        "openrag-frontend": "openrag-frontend", 
+                        "opensearch": "opensearch",
+                        "langflow": "langflow",
+                        "dashboards": "dashboards"
+                    }
+                    
+                    actual_service_name = service_mapping.get(service_name, service_name)
+                    
+                    # Push the logs screen with the selected service
+                    from .logs import LogsScreen
+                    logs_screen = LogsScreen(initial_service=actual_service_name)
+                    self.app.push_screen(logs_screen)
+                else:
+                    self.notify("No service selected", severity="warning")
+            else:
+                self.notify("No service selected", severity="warning")
+        except Exception as e:
+            self.notify(f"Error opening logs: {e}", severity="error")
