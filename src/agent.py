@@ -1,3 +1,7 @@
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 # User-scoped conversation state - keyed by user_id -> response_id -> conversation
 user_conversations = {}  # user_id -> {response_id: {"messages": [...], "previous_response_id": parent_id, "created_at": timestamp, "last_activity": timestamp}}
 
@@ -65,7 +69,7 @@ async def async_response_stream(
     previous_response_id: str = None,
     log_prefix: str = "response",
 ):
-    print(f"user ==> {prompt}")
+    logger.info("User prompt received", prompt=prompt)
 
     try:
         # Build request parameters
@@ -91,7 +95,7 @@ async def async_response_stream(
         chunk_count = 0
         async for chunk in response:
             chunk_count += 1
-            print(f"[DEBUG] Chunk {chunk_count}: {chunk}")
+            logger.debug("Stream chunk received", chunk_count=chunk_count, chunk=str(chunk))
 
             # Yield the raw event as JSON for the UI to process
             import json
@@ -125,7 +129,7 @@ async def async_response_stream(
                 yield (json.dumps(chunk_data, default=str) + "\n").encode("utf-8")
             except Exception as e:
                 # Fallback to string representation
-                print(f"[DEBUG] JSON serialization failed: {e}")
+                logger.warning("JSON serialization failed", error=str(e))
                 yield (
                     json.dumps(
                         {"error": f"Serialization failed: {e}", "raw": str(chunk)}
@@ -133,11 +137,11 @@ async def async_response_stream(
                     + "\n"
                 ).encode("utf-8")
 
-        print(f"[DEBUG] Stream complete. Total chunks: {chunk_count}")
-        print(f"{log_prefix} ==> {full_response}")
+        logger.debug("Stream complete", total_chunks=chunk_count)
+        logger.info("Response generated", log_prefix=log_prefix, response=full_response)
 
     except Exception as e:
-        print(f"[ERROR] Exception in streaming: {e}")
+        logger.error("Exception in streaming", error=str(e))
         import traceback
 
         traceback.print_exc()
@@ -153,7 +157,7 @@ async def async_response(
     previous_response_id: str = None,
     log_prefix: str = "response",
 ):
-    print(f"user ==> {prompt}")
+    logger.info("User prompt received", prompt=prompt)
 
     # Build request parameters
     request_params = {
@@ -170,7 +174,7 @@ async def async_response(
     response = await client.responses.create(**request_params)
 
     response_text = response.output_text
-    print(f"{log_prefix} ==> {response_text}")
+    logger.info("Response generated", log_prefix=log_prefix, response=response_text)
 
     # Extract and store response_id if available
     response_id = getattr(response, "id", None) or getattr(
@@ -227,7 +231,7 @@ async def async_langflow_stream(
     extra_headers: dict = None,
     previous_response_id: str = None,
 ):
-    print(f"[DEBUG] Starting langflow stream for prompt: {prompt}")
+    logger.debug("Starting langflow stream", prompt=prompt)
     try:
         async for chunk in async_stream(
             langflow_client,
@@ -237,11 +241,11 @@ async def async_langflow_stream(
             previous_response_id=previous_response_id,
             log_prefix="langflow",
         ):
-            print(f"[DEBUG] Yielding chunk from langflow_stream: {chunk[:100]}...")
+            logger.debug("Yielding chunk from langflow stream", chunk_preview=chunk[:100].decode('utf-8', errors='replace'))
             yield chunk
-        print(f"[DEBUG] Langflow stream completed")
+        logger.debug("Langflow stream completed")
     except Exception as e:
-        print(f"[ERROR] Exception in langflow_stream: {e}")
+        logger.error("Exception in langflow stream", error=str(e))
         import traceback
 
         traceback.print_exc()
@@ -256,24 +260,18 @@ async def async_chat(
     model: str = "gpt-4.1-mini",
     previous_response_id: str = None,
 ):
-    print(
-        f"[DEBUG] async_chat called with user_id: {user_id}, previous_response_id: {previous_response_id}"
-    )
+    logger.debug("async_chat called", user_id=user_id, previous_response_id=previous_response_id)
 
     # Get the specific conversation thread (or create new one)
     conversation_state = get_conversation_thread(user_id, previous_response_id)
-    print(
-        f"[DEBUG] Got conversation_state with {len(conversation_state['messages'])} messages"
-    )
+    logger.debug("Got conversation state", message_count=len(conversation_state['messages']))
 
     # Add user message to conversation with timestamp
     from datetime import datetime
 
     user_message = {"role": "user", "content": prompt, "timestamp": datetime.now()}
     conversation_state["messages"].append(user_message)
-    print(
-        f"[DEBUG] Added user message, now {len(conversation_state['messages'])} messages"
-    )
+    logger.debug("Added user message", message_count=len(conversation_state['messages']))
 
     response_text, response_id = await async_response(
         async_client,
@@ -282,9 +280,7 @@ async def async_chat(
         previous_response_id=previous_response_id,
         log_prefix="agent",
     )
-    print(
-        f"[DEBUG] Got response_text: {response_text[:50]}..., response_id: {response_id}"
-    )
+    logger.debug("Got response", response_preview=response_text[:50], response_id=response_id)
 
     # Add assistant response to conversation with response_id and timestamp
     assistant_message = {
@@ -294,25 +290,19 @@ async def async_chat(
         "timestamp": datetime.now(),
     }
     conversation_state["messages"].append(assistant_message)
-    print(
-        f"[DEBUG] Added assistant message, now {len(conversation_state['messages'])} messages"
-    )
+    logger.debug("Added assistant message", message_count=len(conversation_state['messages']))
 
     # Store the conversation thread with its response_id
     if response_id:
         conversation_state["last_activity"] = datetime.now()
         store_conversation_thread(user_id, response_id, conversation_state)
-        print(
-            f"[DEBUG] Stored conversation thread for user {user_id} with response_id: {response_id}"
-        )
+        logger.debug("Stored conversation thread", user_id=user_id, response_id=response_id)
 
         # Debug: Check what's in user_conversations now
         conversations = get_user_conversations(user_id)
-        print(
-            f"[DEBUG] user_conversations now has {len(conversations)} conversations: {list(conversations.keys())}"
-        )
+        logger.debug("User conversations updated", user_id=user_id, conversation_count=len(conversations), conversation_ids=list(conversations.keys()))
     else:
-        print(f"[DEBUG] WARNING: No response_id received, conversation not stored!")
+        logger.warning("No response_id received, conversation not stored")
 
     return response_text, response_id
 
@@ -373,9 +363,7 @@ async def async_chat_stream(
         if response_id:
             conversation_state["last_activity"] = datetime.now()
             store_conversation_thread(user_id, response_id, conversation_state)
-            print(
-                f"Stored conversation thread for user {user_id} with response_id: {response_id}"
-            )
+            logger.debug("Stored conversation thread", user_id=user_id, response_id=response_id)
 
 
 # Async langflow function with conversation storage (non-streaming)
@@ -387,24 +375,18 @@ async def async_langflow_chat(
     extra_headers: dict = None,
     previous_response_id: str = None,
 ):
-    print(
-        f"[DEBUG] async_langflow_chat called with user_id: {user_id}, previous_response_id: {previous_response_id}"
-    )
+    logger.debug("async_langflow_chat called", user_id=user_id, previous_response_id=previous_response_id)
 
     # Get the specific conversation thread (or create new one)
     conversation_state = get_conversation_thread(user_id, previous_response_id)
-    print(
-        f"[DEBUG] Got langflow conversation_state with {len(conversation_state['messages'])} messages"
-    )
+    logger.debug("Got langflow conversation state", message_count=len(conversation_state['messages']))
 
     # Add user message to conversation with timestamp
     from datetime import datetime
 
     user_message = {"role": "user", "content": prompt, "timestamp": datetime.now()}
     conversation_state["messages"].append(user_message)
-    print(
-        f"[DEBUG] Added user message to langflow, now {len(conversation_state['messages'])} messages"
-    )
+    logger.debug("Added user message to langflow", message_count=len(conversation_state['messages']))
 
     response_text, response_id = await async_response(
         langflow_client,
@@ -414,9 +396,7 @@ async def async_langflow_chat(
         previous_response_id=previous_response_id,
         log_prefix="langflow",
     )
-    print(
-        f"[DEBUG] Got langflow response_text: {response_text[:50]}..., response_id: {response_id}"
-    )
+    logger.debug("Got langflow response", response_preview=response_text[:50], response_id=response_id)
 
     # Add assistant response to conversation with response_id and timestamp
     assistant_message = {
@@ -426,27 +406,19 @@ async def async_langflow_chat(
         "timestamp": datetime.now(),
     }
     conversation_state["messages"].append(assistant_message)
-    print(
-        f"[DEBUG] Added assistant message to langflow, now {len(conversation_state['messages'])} messages"
-    )
+    logger.debug("Added assistant message to langflow", message_count=len(conversation_state['messages']))
 
     # Store the conversation thread with its response_id
     if response_id:
         conversation_state["last_activity"] = datetime.now()
         store_conversation_thread(user_id, response_id, conversation_state)
-        print(
-            f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
-        )
+        logger.debug("Stored langflow conversation thread", user_id=user_id, response_id=response_id)
 
         # Debug: Check what's in user_conversations now
         conversations = get_user_conversations(user_id)
-        print(
-            f"[DEBUG] user_conversations now has {len(conversations)} conversations: {list(conversations.keys())}"
-        )
+        logger.debug("User conversations updated", user_id=user_id, conversation_count=len(conversations), conversation_ids=list(conversations.keys()))
     else:
-        print(
-            f"[DEBUG] WARNING: No response_id received from langflow, conversation not stored!"
-        )
+        logger.warning("No response_id received from langflow, conversation not stored")
 
     return response_text, response_id
 
@@ -460,9 +432,7 @@ async def async_langflow_chat_stream(
     extra_headers: dict = None,
     previous_response_id: str = None,
 ):
-    print(
-        f"[DEBUG] async_langflow_chat_stream called with user_id: {user_id}, previous_response_id: {previous_response_id}"
-    )
+    logger.debug("async_langflow_chat_stream called", user_id=user_id, previous_response_id=previous_response_id)
 
     # Get the specific conversation thread (or create new one)
     conversation_state = get_conversation_thread(user_id, previous_response_id)
@@ -513,6 +483,4 @@ async def async_langflow_chat_stream(
         if response_id:
             conversation_state["last_activity"] = datetime.now()
             store_conversation_thread(user_id, response_id, conversation_state)
-            print(
-                f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
-            )
+            logger.debug("Stored langflow conversation thread", user_id=user_id, response_id=response_id)

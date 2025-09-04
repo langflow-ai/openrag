@@ -6,6 +6,9 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass, asdict
 from pathlib import Path
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 from .base import BaseConnector
 from .google_drive import GoogleDriveConnector
@@ -318,21 +321,17 @@ class ConnectionManager:
         if connection_config.config.get(
             "webhook_channel_id"
         ) or connection_config.config.get("subscription_id"):
-            print(
-                f"[WEBHOOK] Subscription already exists for connection {connection_id}"
-            )
+            logger.info("Webhook subscription already exists", connection_id=connection_id)
             return
 
         # Check if webhook URL is configured
         webhook_url = connection_config.config.get("webhook_url")
         if not webhook_url:
-            print(
-                f"[WEBHOOK] No webhook URL configured for connection {connection_id}, skipping subscription setup"
-            )
+            logger.info("No webhook URL configured, skipping subscription setup", connection_id=connection_id)
             return
 
         try:
-            print(f"[WEBHOOK] Setting up subscription for connection {connection_id}")
+            logger.info("Setting up webhook subscription", connection_id=connection_id)
             subscription_id = await connector.setup_subscription()
 
             # Store the subscription and resource IDs in connection config
@@ -346,14 +345,10 @@ class ConnectionManager:
             # Save updated connection config
             await self.save_connections()
 
-            print(
-                f"[WEBHOOK] Successfully set up subscription {subscription_id} for connection {connection_id}"
-            )
+            logger.info("Successfully set up webhook subscription", connection_id=connection_id, subscription_id=subscription_id)
 
         except Exception as e:
-            print(
-                f"[ERROR] Failed to setup webhook subscription for connection {connection_id}: {e}"
-            )
+            logger.error("Failed to setup webhook subscription", connection_id=connection_id, error=str(e))
             # Don't fail the entire connection setup if webhook fails
 
     async def _setup_webhook_for_new_connection(
@@ -361,16 +356,12 @@ class ConnectionManager:
     ):
         """Setup webhook subscription for a newly authenticated connection"""
         try:
-            print(
-                f"[WEBHOOK] Setting up subscription for newly authenticated connection {connection_id}"
-            )
+            logger.info("Setting up subscription for newly authenticated connection", connection_id=connection_id)
 
             # Create and authenticate connector
             connector = self._create_connector(connection_config)
             if not await connector.authenticate():
-                print(
-                    f"[ERROR] Failed to authenticate connector for webhook setup: {connection_id}"
-                )
+                logger.error("Failed to authenticate connector for webhook setup", connection_id=connection_id)
                 return
 
             # Setup subscription
@@ -385,12 +376,8 @@ class ConnectionManager:
             # Save updated connection config
             await self.save_connections()
 
-            print(
-                f"[WEBHOOK] Successfully set up subscription {subscription_id} for connection {connection_id}"
-            )
+            logger.info("Successfully set up webhook subscription", connection_id=connection_id, subscription_id=subscription_id)
 
         except Exception as e:
-            print(
-                f"[ERROR] Failed to setup webhook subscription for new connection {connection_id}: {e}"
-            )
+            logger.error("Failed to setup webhook subscription for new connection", connection_id=connection_id, error=str(e))
             # Don't fail the connection setup if webhook fails

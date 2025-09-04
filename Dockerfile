@@ -33,6 +33,10 @@ RUN echo "asprof \$@" >> /usr/share/opensearch/profile.sh
 
 RUN chmod 777 /usr/share/opensearch/profile.sh
 
+# Copy OIDC and DLS security configuration (as root)
+COPY securityconfig/ /usr/share/opensearch/securityconfig/
+RUN chown -R opensearch:opensearch /usr/share/opensearch/securityconfig/
+
 USER opensearch
 
 RUN opensearch-plugin remove opensearch-neural-search
@@ -46,16 +50,13 @@ RUN echo y | opensearch-plugin install repository-gcs
 RUN echo y | opensearch-plugin install repository-azure
 RUN echo y | opensearch-plugin install repository-s3
 
-# Copy OIDC and DLS security configuration
-COPY securityconfig/ /usr/share/opensearch/securityconfig/
-
 # Create a script to apply security configuration after OpenSearch starts
 RUN echo '#!/bin/bash' > /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Waiting for OpenSearch to start..."' >> /usr/share/opensearch/setup-security.sh && \
     echo 'until curl -s -k -u admin:${OPENSEARCH_INITIAL_ADMIN_PASSWORD} https://localhost:9200; do sleep 1; done' >> /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Generating admin hash from OPENSEARCH_INITIAL_ADMIN_PASSWORD..."' >> /usr/share/opensearch/setup-security.sh && \
     echo 'if [ -z "${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" ]; then echo "[ERROR] OPENSEARCH_INITIAL_ADMIN_PASSWORD not set"; exit 1; fi' >> /usr/share/opensearch/setup-security.sh && \
-    echo 'HASH=$(/usr/share/opensearch/plugins/opensearch-security/tools/hash.sh -p "${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" | sed -n '\''s/^hash: //p'\'')' >> /usr/share/opensearch/setup-security.sh && \
+    echo 'HASH=$(/usr/share/opensearch/plugins/opensearch-security/tools/hash.sh -p "${OPENSEARCH_INITIAL_ADMIN_PASSWORD}")' >> /usr/share/opensearch/setup-security.sh && \
     echo 'if [ -z "$HASH" ]; then echo "[ERROR] Failed to generate admin hash"; exit 1; fi' >> /usr/share/opensearch/setup-security.sh && \
     echo 'sed -i "s|^  hash: \".*\"|  hash: \"$HASH\"|" /usr/share/opensearch/securityconfig/internal_users.yml' >> /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Updated internal_users.yml with runtime-generated admin hash"' >> /usr/share/opensearch/setup-security.sh && \
