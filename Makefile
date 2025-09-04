@@ -1,3 +1,47 @@
+# Podman compose for OpenSearch + Langflow (dev dependencies)
+
+COMPOSE_FILE ?= docker-compose-cpu.yml
+PODMAN_COMPOSE ?= podman compose -f $(COMPOSE_FILE)
+SERVICES ?= opensearch langflow
+ENV_FILE ?= .env
+
+.PHONY: check-env deps-up deps-stop deps-down deps-restart deps-logs deps-ps deps-pull deps-health
+
+check-env:
+	@test -f $(ENV_FILE) || (echo "Missing $(ENV_FILE). Create it with OPENSEARCH_PASSWORD and OPENAI_API_KEY."; exit 1)
+	@test -n "$$(grep -E '^OPENSEARCH_PASSWORD=' $(ENV_FILE) | cut -d= -f2)" || (echo "OPENSEARCH_PASSWORD not set in $(ENV_FILE)"; exit 1)
+	@test -n "$$(grep -E '^OPENAI_API_KEY=' $(ENV_FILE) | cut -d= -f2)" || (echo "OPENAI_API_KEY not set in $(ENV_FILE)"; exit 1)
+
+podman-deps-up: check-env
+	$(PODMAN_COMPOSE) pull $(SERVICES)
+	$(PODMAN_COMPOSE) up -d --no-deps $(SERVICES)
+	@echo "OpenSearch: https://localhost:9200"
+	@echo "Langflow:   http://localhost:7860"
+
+podman-deps-stop:
+	$(PODMAN_COMPOSE) stop $(SERVICES)
+
+podman-deps-down:
+	$(PODMAN_COMPOSE) down
+
+podman-deps-restart:
+	$(PODMAN_COMPOSE) restart $(SERVICES)
+
+podman-deps-logs:
+	$(PODMAN_COMPOSE) logs -f $(SERVICES)
+
+podman-deps-ps:
+	$(PODMAN_COMPOSE) ps
+
+podman-deps-pull:
+	$(PODMAN_COMPOSE) pull $(SERVICES)
+
+podman-deps-health:
+	@echo "Checking OpenSearch (expect 200 or 401)..."
+	@curl -k -u admin:$$OPENSEARCH_PASSWORD -sS -o /dev/null -w "%{http_code}\n" https://localhost:9200 || true
+	@echo "Checking Langflow (expect 200)..."
+	@curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:7860 || true
+
 # OpenRAG Makefile
 # Standard commands for running OpenRAG in production and development modes
 
