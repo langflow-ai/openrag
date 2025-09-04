@@ -1,3 +1,16 @@
+import sys
+
+# Check for TUI flag FIRST, before any heavy imports
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--tui":
+    from tui.main import run_tui
+    run_tui()
+    sys.exit(0)
+
+# Configure structured logging early
+from utils.logging_config import configure_from_env, get_logger
+configure_from_env()
+logger = get_logger(__name__)
+
 import asyncio
 import atexit
 import multiprocessing
@@ -49,8 +62,7 @@ from utils.process_pool import process_pool
 
 # API endpoints
 
-print("CUDA available:", torch.cuda.is_available())
-print("CUDA version PyTorch was built with:", torch.version.cuda)
+logger.info("CUDA device information", cuda_available=torch.cuda.is_available(), cuda_version=torch.version.cuda)
 
 
 async def wait_for_opensearch():
@@ -61,12 +73,10 @@ async def wait_for_opensearch():
     for attempt in range(max_retries):
         try:
             await clients.opensearch.info()
-            print("OpenSearch is ready!")
+            logger.info("OpenSearch is ready")
             return
         except Exception as e:
-            print(
-                f"Attempt {attempt + 1}/{max_retries}: OpenSearch not ready yet ({e})"
-            )
+            logger.warning("OpenSearch not ready yet", attempt=attempt + 1, max_retries=max_retries, error=str(e))
             if attempt < max_retries - 1:
                 await asyncio.sleep(retry_delay)
             else:
@@ -88,10 +98,9 @@ async def configure_alerting_security():
 
         # Use admin client (clients.opensearch uses admin credentials)
         response = await clients.opensearch.cluster.put_settings(body=alerting_settings)
-        print("Alerting security settings configured successfully")
-        print(f"Response: {response}")
+        logger.info("Alerting security settings configured successfully", response=response)
     except Exception as e:
-        print(f"Warning: Failed to configure alerting security settings: {e}")
+        logger.warning("Failed to configure alerting security settings", error=str(e))
         # Don't fail startup if alerting config fails
 
 
@@ -102,9 +111,9 @@ async def init_index():
     # Create documents index
     if not await clients.opensearch.indices.exists(index=INDEX_NAME):
         await clients.opensearch.indices.create(index=INDEX_NAME, body=INDEX_BODY)
-        print(f"Created index '{INDEX_NAME}'")
+        logger.info("Created OpenSearch index", index_name=INDEX_NAME)
     else:
-        print(f"Index '{INDEX_NAME}' already exists, skipping creation.")
+        logger.info("Index already exists, skipping creation", index_name=INDEX_NAME)
 
     # Create knowledge filters index
     knowledge_filter_index_name = "knowledge_filters"
@@ -129,11 +138,9 @@ async def init_index():
         await clients.opensearch.indices.create(
             index=knowledge_filter_index_name, body=knowledge_filter_index_body
         )
-        print(f"Created index '{knowledge_filter_index_name}'")
+        logger.info("Created knowledge filters index", index_name=knowledge_filter_index_name)
     else:
-        print(
-            f"Index '{knowledge_filter_index_name}' already exists, skipping creation."
-        )
+        logger.info("Knowledge filters index already exists, skipping creation", index_name=knowledge_filter_index_name)
 
     # Configure alerting plugin security settings
     await configure_alerting_security()
@@ -173,24 +180,22 @@ def generate_jwt_keys():
                 capture_output=True,
             )
 
-            print("Generated RSA keys for JWT signing")
+            logger.info("Generated RSA keys for JWT signing")
         except subprocess.CalledProcessError as e:
-            print(f"Failed to generate RSA keys: {e}")
+            logger.error("Failed to generate RSA keys", error=str(e))
             raise
     else:
-        print("RSA keys already exist, skipping generation")
+        logger.info("RSA keys already exist, skipping generation")
 
 
 async def init_index_when_ready():
     """Initialize OpenSearch index when it becomes available"""
     try:
         await init_index()
-        print("OpenSearch index initialization completed successfully")
+        logger.info("OpenSearch index initialization completed successfully")
     except Exception as e:
-        print(f"OpenSearch index initialization failed: {e}")
-        print(
-            "OIDC endpoints will still work, but document operations may fail until OpenSearch is ready"
-        )
+        logger.error("OpenSearch index initialization failed", error=str(e))
+        logger.warning("OIDC endpoints will still work, but document operations may fail until OpenSearch is ready")
 
 
 async def initialize_services():
@@ -237,18 +242,16 @@ async def initialize_services():
         try:
             await connector_service.initialize()
             loaded_count = len(connector_service.connection_manager.connections)
-            print(
-                f"[CONNECTORS] Loaded {loaded_count} persisted connection(s) on startup"
-            )
+            logger.info("Loaded persisted connector connections on startup", loaded_count=loaded_count)
         except Exception as e:
-            print(f"[WARNING] Failed to load persisted connections on startup: {e}")
+            logger.warning("Failed to load persisted connections on startup", error=str(e))
     else:
         print("[CONNECTORS] Skipping connection loading in no-auth mode")
 
+        logger.info("Skipping connector loading in no-auth mode")
     # New: Langflow file service
 
     langflow_file_service = LangflowFileService()
-
     return {
         "document_service": document_service,
         "search_service": search_service,
@@ -695,13 +698,13 @@ async def startup():
 def cleanup():
     """Cleanup on application shutdown"""
     # Cleanup process pools only (webhooks handled by Starlette shutdown)
-    print("[CLEANUP] Shutting down...")
+    logger.info("Application shutting down")
     pass
 
 
 async def cleanup_subscriptions_proper(services):
     """Cancel all active webhook subscriptions"""
-    print("[CLEANUP] Cancelling active webhook subscriptions...")
+    logger.info("Cancelling active webhook subscriptions")
 
     try:
         connector_service = services["connector_service"]
@@ -717,30 +720,27 @@ async def cleanup_subscriptions_proper(services):
 
         for connection in active_connections:
             try:
-                print(
-                    f"[CLEANUP] Cancelling subscription for connection {connection.connection_id}"
-                )
+                logger.info("Cancelling subscription for connection", connection_id=connection.connection_id)
                 connector = await connector_service.get_connector(
                     connection.connection_id
                 )
                 if connector:
                     subscription_id = connection.config.get("webhook_channel_id")
                     await connector.cleanup_subscription(subscription_id)
-                    print(f"[CLEANUP] Cancelled subscription {subscription_id}")
+                    logger.info("Cancelled subscription", subscription_id=subscription_id)
             except Exception as e:
-                print(
-                    f"[ERROR] Failed to cancel subscription for {connection.connection_id}: {e}"
-                )
+                logger.error("Failed to cancel subscription", connection_id=connection.connection_id, error=str(e))
 
-        print(f"[CLEANUP] Finished cancelling {len(active_connections)} subscriptions")
+        logger.info("Finished cancelling subscriptions", subscription_count=len(active_connections))
 
     except Exception as e:
-        print(f"[ERROR] Failed to cleanup subscriptions: {e}")
+        logger.error("Failed to cleanup subscriptions", error=str(e))
 
 
 if __name__ == "__main__":
     import uvicorn
 
+    # TUI check already handled at top of file
     # Register cleanup function
     atexit.register(cleanup)
 
