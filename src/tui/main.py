@@ -13,7 +13,9 @@ from .managers.env_manager import EnvManager
 from .managers.container_manager import ContainerManager
 from .utils.platform import PlatformDetector
 from .widgets.diagnostics_notification import notify_with_diagnostics
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 class OpenRAGTUI(App):
     """OpenRAG Terminal User Interface application."""
@@ -221,10 +223,10 @@ def run_tui():
         app = OpenRAGTUI()
         app.run()
     except KeyboardInterrupt:
-        print("\nOpenRAG TUI interrupted by user")
+        logger.info("\nOpenRAG TUI interrupted by user")
         sys.exit(0)
     except Exception as e:
-        print(f"Error running OpenRAG TUI: {e}")
+        logger.error(f"Error running OpenRAG TUI: {e}")
         sys.exit(1)
 
 

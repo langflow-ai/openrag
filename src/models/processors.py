@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 from .tasks import UploadTask, FileTask
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 class TaskProcessor(ABC):
     """Abstract base class for task processors"""
@@ -225,10 +227,10 @@ class S3FileProcessor(TaskProcessor):
                             index=INDEX_NAME, id=chunk_id, body=chunk_doc
                         )
                     except Exception as e:
-                        print(
+                        logger.error(
                             f"[ERROR] OpenSearch indexing failed for S3 chunk {chunk_id}: {e}"
                         )
-                        print(f"[ERROR] Chunk document: {chunk_doc}")
+                        logger.error(f"Chunk document: {chunk_doc}")
                         raise
 
                 result = {"status": "indexed", "id": slim_doc["id"]}

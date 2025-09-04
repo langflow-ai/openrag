@@ -11,7 +11,9 @@ from typing import Dict, List, Optional, AsyncIterator
 
 from ..utils.platform import PlatformDetector, RuntimeInfo, RuntimeType
 from utils.gpu_detection import detect_gpu_devices
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 class ServiceStatus(Enum):
     """Container service status."""
@@ -177,7 +179,7 @@ class ContainerManager:
     def _process_service_json(self, service: Dict, services: Dict[str, ServiceInfo]) -> None:
         """Process a service JSON object and add it to the services dict."""
         # Debug print to see the actual service data
-        print(f"DEBUG: Processing service data: {json.dumps(service, indent=2)}")
+        logger.debug(f"Processing service data: {json.dumps(service, indent=2)}")
         
         container_name = service.get("Name", "")
         

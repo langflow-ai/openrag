@@ -16,7 +16,9 @@ from ..utils.validation import (
     validate_documents_paths,
     sanitize_env_value
 )
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 @dataclass
 class EnvConfig:
@@ -115,7 +117,7 @@ class EnvManager:
             return True
             
         except Exception as e:
-            print(f"Error loading .env file: {e}")
+            logger.error(f"Error loading .env file: {e}")
             return False
     
     def setup_secure_defaults(self) -> None:
@@ -245,7 +247,7 @@ class EnvManager:
             return True
             
         except Exception as e:
-            print(f"Error saving .env file: {e}")
+            logger.error(f"Error saving .env file: {e}")
             return False
     
     def get_no_auth_setup_fields(self) -> List[tuple[str, str, str, bool]]:

@@ -2,6 +2,9 @@ import hashlib
 import os
 from collections import defaultdict
 from .gpu_detection import detect_gpu_devices
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Global converter cache for worker processes
 _worker_converter = None
@@ -37,11 +40,11 @@ def get_worker_converter():
                 "1"  # Still disable progress bars
             )
 
-        print(
+        logger.info(
             f"[WORKER {os.getpid()}] Initializing DocumentConverter in worker process"
         )
         _worker_converter = DocumentConverter()
-        print(f"[WORKER {os.getpid()}] DocumentConverter ready in worker process")
+        logger.info(f"[WORKER {os.getpid()}] DocumentConverter ready in worker process")
 
     return _worker_converter
 
@@ -118,33 +121,33 @@ def process_document_sync(file_path: str):
     start_memory = process.memory_info().rss / 1024 / 1024  # MB
 
     try:
-        print(f"[WORKER {os.getpid()}] Starting document processing: {file_path}")
-        print(f"[WORKER {os.getpid()}] Initial memory usage: {start_memory:.1f} MB")
+        logger.info(f"[WORKER {os.getpid()}] Starting document processing: {file_path}")
+        logger.info(f"[WORKER {os.getpid()}] Initial memory usage: {start_memory:.1f} MB")
 
         # Check file size
         try:
             file_size = os.path.getsize(file_path) / 1024 / 1024  # MB
-            print(f"[WORKER {os.getpid()}] File size: {file_size:.1f} MB")
+            logger.info(f"[WORKER {os.getpid()}] File size: {file_size:.1f} MB")
         except OSError as e:
-            print(f"[WORKER {os.getpid()}] WARNING: Cannot get file size: {e}")
+            logger.warning(f"[WORKER {os.getpid()}] WARNING: Cannot get file size: {e}")
             file_size = 0
 
         # Get the cached converter for this worker
         try:
-            print(f"[WORKER {os.getpid()}] Getting document converter...")
+            logger.info(f"[WORKER {os.getpid()}] Getting document converter...")
             converter = get_worker_converter()
             memory_after_converter = process.memory_info().rss / 1024 / 1024
-            print(
+            logger.info(
                 f"[WORKER {os.getpid()}] Memory after converter init: {memory_after_converter:.1f} MB"
             )
         except Exception as e:
-            print(f"[WORKER {os.getpid()}] ERROR: Failed to initialize converter: {e}")
+            logger.error(f"[WORKER {os.getpid()}] ERROR: Failed to initialize converter: {e}")
             traceback.print_exc()
             raise
 
         # Compute file hash
         try:
-            print(f"[WORKER {os.getpid()}] Computing file hash...")
+            logger.info(f"[WORKER {os.getpid()}] Computing file hash...")
             sha256 = hashlib.sha256()
             with open(file_path, "rb") as f:
                 while True:
@@ -153,39 +156,39 @@ def process_document_sync(file_path: str):
                         break
                     sha256.update(chunk)
             file_hash = sha256.hexdigest()
-            print(f"[WORKER {os.getpid()}] File hash computed: {file_hash[:12]}...")
+            logger.info(f"[WORKER {os.getpid()}] File hash computed: {file_hash[:12]}...")
         except Exception as e:
-            print(f"[WORKER {os.getpid()}] ERROR: Failed to compute file hash: {e}")
+            logger.error(f"[WORKER {os.getpid()}] ERROR: Failed to compute file hash: {e}")
             traceback.print_exc()
             raise
 
         # Convert with docling
         try:
-            print(f"[WORKER {os.getpid()}] Starting docling conversion...")
+            logger.info(f"[WORKER {os.getpid()}] Starting docling conversion...")
             memory_before_convert = process.memory_info().rss / 1024 / 1024
-            print(
+            logger.info(
                 f"[WORKER {os.getpid()}] Memory before conversion: {memory_before_convert:.1f} MB"
             )
 
             result = converter.convert(file_path)
 
             memory_after_convert = process.memory_info().rss / 1024 / 1024
-            print(
+            logger.info(
                 f"[WORKER {os.getpid()}] Memory after conversion: {memory_after_convert:.1f} MB"
             )
-            print(f"[WORKER {os.getpid()}] Docling conversion completed")
+            logger.info(f"[WORKER {os.getpid()}] Docling conversion completed")
 
             full_doc = result.document.export_to_dict()
             memory_after_export = process.memory_info().rss / 1024 / 1024
-            print(
+            logger.info(
                 f"[WORKER {os.getpid()}] Memory after export: {memory_after_export:.1f} MB"
             )
 
         except Exception as e:
-            print(
+            logger.error(
                 f"[WORKER {os.getpid()}] ERROR: Failed during docling conversion: {e}"
             )
-            print(
+            logger.info(
                 f"[WORKER {os.getpid()}] Current memory usage: {process.memory_info().rss / 1024 / 1024:.1f} MB"
             )
             traceback.print_exc()
@@ -193,10 +196,10 @@ def process_document_sync(file_path: str):
 
         # Extract relevant content (same logic as extract_relevant)
         try:
-            print(f"[WORKER {os.getpid()}] Extracting relevant content...")
+            logger.info(f"[WORKER {os.getpid()}] Extracting relevant content...")
             origin = full_doc.get("origin", {})
             texts = full_doc.get("texts", [])
-            print(f"[WORKER {os.getpid()}] Found {len(texts)} text fragments")
+            logger.info(f"[WORKER {os.getpid()}] Found {len(texts)} text fragments")
 
             page_texts = defaultdict(list)
             for txt in texts:
@@ -210,12 +213,12 @@ def process_document_sync(file_path: str):
                 joined = "\n".join(page_texts[page])
                 chunks.append({"page": page, "text": joined})
 
-            print(
+            logger.info(
                 f"[WORKER {os.getpid()}] Created {len(chunks)} chunks from {len(page_texts)} pages"
             )
 
         except Exception as e:
-            print(
+            logger.error(
                 f"[WORKER {os.getpid()}] ERROR: Failed during content extraction: {e}"
             )
             traceback.print_exc()
@@ -223,8 +226,8 @@ def process_document_sync(file_path: str):
 
         final_memory = process.memory_info().rss / 1024 / 1024
         memory_delta = final_memory - start_memory
-        print(f"[WORKER {os.getpid()}] Document processing completed successfully")
-        print(
+        logger.info(f"[WORKER {os.getpid()}] Document processing completed successfully")
+        logger.info(
             f"[WORKER {os.getpid()}] Final memory: {final_memory:.1f} MB (Delta +{memory_delta:.1f} MB)"
         )
 
@@ -239,24 +242,24 @@ def process_document_sync(file_path: str):
     except Exception as e:
         final_memory = process.memory_info().rss / 1024 / 1024
         memory_delta = final_memory - start_memory
-        print(f"[WORKER {os.getpid()}] FATAL ERROR in process_document_sync")
-        print(f"[WORKER {os.getpid()}] File: {file_path}")
-        print(f"[WORKER {os.getpid()}] Python version: {sys.version}")
-        print(
+        logger.error(f"[WORKER {os.getpid()}] FATAL ERROR in process_document_sync")
+        logger.info(f"[WORKER {os.getpid()}] File: {file_path}")
+        logger.info(f"[WORKER {os.getpid()}] Python version: {sys.version}")
+        logger.info(
             f"[WORKER {os.getpid()}] Memory at crash: {final_memory:.1f} MB (Delta +{memory_delta:.1f} MB)"
         )
-        print(f"[WORKER {os.getpid()}] Error: {type(e).__name__}: {e}")
-        print(f"[WORKER {os.getpid()}] Full traceback:")
+        logger.error(f"[WORKER {os.getpid()}] Error: {type(e).__name__}: {e}")
+        logger.error(f"[WORKER {os.getpid()}] Full traceback:")
         traceback.print_exc()
 
         # Try to get more system info before crashing
         try:
             import platform
 
-            print(
+            logger.info(
                 f"[WORKER {os.getpid()}] System: {platform.system()} {platform.release()}"
             )
-            print(f"[WORKER {os.getpid()}] Architecture: {platform.machine()}")
+            logger.info(f"[WORKER {os.getpid()}] Architecture: {platform.machine()}")
         except:
             pass
 

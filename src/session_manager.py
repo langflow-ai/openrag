@@ -6,7 +6,9 @@ from typing import Dict, Optional, Any
 from dataclasses import dataclass, asdict
 from cryptography.hazmat.primitives import serialization
 import os
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 @dataclass
 class User:
@@ -93,13 +95,13 @@ class SessionManager:
             if response.status_code == 200:
                 return response.json()
             else:
-                print(
+                logger.error(
                     f"Failed to get user info: {response.status_code} {response.text}"
                 )
                 return None
 
         except Exception as e:
-            print(f"Error getting user info: {e}")
+            logger.error(f"Error getting user info: {e}")
             return None
 
     async def create_user_session(
@@ -186,19 +188,19 @@ class SessionManager:
         """Get or create OpenSearch client for user with their JWT"""
         from config.settings import is_no_auth_mode
 
-        print(
-            f"[DEBUG] get_user_opensearch_client: user_id={user_id}, jwt_token={'None' if jwt_token is None else 'present'}, no_auth_mode={is_no_auth_mode()}"
+        logger.debug(
+            f"get_user_opensearch_client: user_id={user_id}, jwt_token={'None' if jwt_token is None else 'present'}, no_auth_mode={is_no_auth_mode()}"
         )
 
         # In no-auth mode, create anonymous JWT for OpenSearch DLS
         if is_no_auth_mode() and jwt_token is None:
             if not hasattr(self, "_anonymous_jwt"):
                 # Create anonymous JWT token for OpenSearch OIDC
-                print(f"[DEBUG] Creating anonymous JWT...")
+                logger.debug("Creating anonymous JWT...")
                 self._anonymous_jwt = self._create_anonymous_jwt()
-                print(f"[DEBUG] Anonymous JWT created: {self._anonymous_jwt[:50]}...")
+                logger.debug(f"Anonymous JWT created: {self._anonymous_jwt[:50]}...")
             jwt_token = self._anonymous_jwt
-            print(f"[DEBUG] Using anonymous JWT for OpenSearch")
+            logger.debug("Using anonymous JWT for OpenSearch")
 
         # Check if we have a cached client for this user
         if user_id not in self.user_opensearch_clients:

@@ -1,6 +1,8 @@
 import multiprocessing
 import os
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 def detect_gpu_devices():
     """Detect if GPU devices are actually available"""
@@ -30,12 +32,12 @@ def get_worker_count():
 
     if has_gpu_devices:
         default_workers = min(4, multiprocessing.cpu_count() // 2)
-        print(
+        logger.info(
             f"GPU mode enabled with {gpu_count} GPU(s) - using limited concurrency ({default_workers} workers)"
         )
     else:
         default_workers = multiprocessing.cpu_count()
-        print(
+        logger.info(
             f"CPU-only mode enabled - using full concurrency ({default_workers} workers)"
         )
 
