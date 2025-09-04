@@ -9,7 +9,7 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 
 # Set multiprocessing start method to 'spawn' for CUDA compatibility
-multiprocessing.set_start_method('spawn', force=True)
+multiprocessing.set_start_method("spawn", force=True)
 
 # Create process pool FIRST, before any torch/CUDA imports
 import torch
@@ -47,8 +47,11 @@ from services.task_service import TaskService
 from session_manager import SessionManager
 from utils.process_pool import process_pool
 
+# API endpoints
+
 print("CUDA available:", torch.cuda.is_available())
 print("CUDA version PyTorch was built with:", torch.version.cuda)
+
 
 async def wait_for_opensearch():
     """Wait for OpenSearch to be ready with retries"""
@@ -61,11 +64,14 @@ async def wait_for_opensearch():
             print("OpenSearch is ready!")
             return
         except Exception as e:
-            print(f"Attempt {attempt + 1}/{max_retries}: OpenSearch not ready yet ({e})")
+            print(
+                f"Attempt {attempt + 1}/{max_retries}: OpenSearch not ready yet ({e})"
+            )
             if attempt < max_retries - 1:
                 await asyncio.sleep(retry_delay)
             else:
                 raise Exception("OpenSearch failed to become ready")
+
 
 async def configure_alerting_security():
     """Configure OpenSearch alerting plugin security settings"""
@@ -76,7 +82,7 @@ async def configure_alerting_security():
             "persistent": {
                 "plugins.alerting.filter_by_backend_roles": "false",
                 "opendistro.alerting.filter_by_backend_roles": "false",
-                "opensearch.notifications.general.filter_by_backend_roles": "false"
+                "opensearch.notifications.general.filter_by_backend_roles": "false",
             }
         }
 
@@ -87,6 +93,7 @@ async def configure_alerting_security():
     except Exception as e:
         print(f"Warning: Failed to configure alerting security settings: {e}")
         # Don't fail startup if alerting config fails
+
 
 async def init_index():
     """Initialize OpenSearch index and security roles"""
@@ -113,19 +120,24 @@ async def init_index():
                 "allowed_groups": {"type": "keyword"},
                 "subscriptions": {"type": "object"},  # Store subscription data
                 "created_at": {"type": "date"},
-                "updated_at": {"type": "date"}
+                "updated_at": {"type": "date"},
             }
         }
     }
 
     if not await clients.opensearch.indices.exists(index=knowledge_filter_index_name):
-        await clients.opensearch.indices.create(index=knowledge_filter_index_name, body=knowledge_filter_index_body)
+        await clients.opensearch.indices.create(
+            index=knowledge_filter_index_name, body=knowledge_filter_index_body
+        )
         print(f"Created index '{knowledge_filter_index_name}'")
     else:
-        print(f"Index '{knowledge_filter_index_name}' already exists, skipping creation.")
+        print(
+            f"Index '{knowledge_filter_index_name}' already exists, skipping creation."
+        )
 
     # Configure alerting plugin security settings
     await configure_alerting_security()
+
 
 def generate_jwt_keys():
     """Generate RSA keys for JWT signing if they don't exist"""
@@ -140,14 +152,26 @@ def generate_jwt_keys():
     if not os.path.exists(private_key_path):
         try:
             # Generate private key
-            subprocess.run([
-                "openssl", "genrsa", "-out", private_key_path, "2048"
-            ], check=True, capture_output=True)
+            subprocess.run(
+                ["openssl", "genrsa", "-out", private_key_path, "2048"],
+                check=True,
+                capture_output=True,
+            )
 
             # Generate public key
-            subprocess.run([
-                "openssl", "rsa", "-in", private_key_path, "-pubout", "-out", public_key_path
-            ], check=True, capture_output=True)
+            subprocess.run(
+                [
+                    "openssl",
+                    "rsa",
+                    "-in",
+                    private_key_path,
+                    "-pubout",
+                    "-out",
+                    public_key_path,
+                ],
+                check=True,
+                capture_output=True,
+            )
 
             print("Generated RSA keys for JWT signing")
         except subprocess.CalledProcessError as e:
@@ -156,6 +180,7 @@ def generate_jwt_keys():
     else:
         print("RSA keys already exist, skipping generation")
 
+
 async def init_index_when_ready():
     """Initialize OpenSearch index when it becomes available"""
     try:
@@ -163,7 +188,9 @@ async def init_index_when_ready():
         print("OpenSearch index initialization completed successfully")
     except Exception as e:
         print(f"OpenSearch index initialization failed: {e}")
-        print("OIDC endpoints will still work, but document operations may fail until OpenSearch is ready")
+        print(
+            "OIDC endpoints will still work, but document operations may fail until OpenSearch is ready"
+        )
 
 
 async def initialize_services():
@@ -195,7 +222,7 @@ async def initialize_services():
         embed_model="text-embedding-3-small",
         index_name=INDEX_NAME,
         task_service=task_service,
-        session_manager=session_manager
+        session_manager=session_manager,
     )
 
     # Initialize auth service
@@ -205,11 +232,14 @@ async def initialize_services():
     # can resolve existing subscriptions immediately after server boot
     # Skip in no-auth mode since connectors require OAuth
     from config.settings import is_no_auth_mode
+
     if not is_no_auth_mode():
         try:
             await connector_service.initialize()
             loaded_count = len(connector_service.connection_manager.connections)
-            print(f"[CONNECTORS] Loaded {loaded_count} persisted connection(s) on startup")
+            print(
+                f"[CONNECTORS] Loaded {loaded_count} persisted connection(s) on startup"
+            )
         except Exception as e:
             print(f"[WARNING] Failed to load persisted connections on startup: {e}")
     else:
@@ -220,17 +250,18 @@ async def initialize_services():
     langflow_file_service = LangflowFileService()
 
     return {
-        'document_service': document_service,
-        'search_service': search_service,
-        'task_service': task_service,
-        'chat_service': chat_service,
-        'langflow_file_service': langflow_file_service,
-        'auth_service': auth_service,
-        'connector_service': connector_service,
-        'knowledge_filter_service': knowledge_filter_service,
-        'monitor_service': monitor_service,
-        'session_manager': session_manager
+        "document_service": document_service,
+        "search_service": search_service,
+        "task_service": task_service,
+        "chat_service": chat_service,
+        "langflow_file_service": langflow_file_service,
+        "auth_service": auth_service,
+        "connector_service": connector_service,
+        "knowledge_filter_service": knowledge_filter_service,
+        "monitor_service": monitor_service,
+        "session_manager": session_manager,
     }
+
 
 async def create_app():
     """Create and configure the Starlette application"""
@@ -239,267 +270,401 @@ async def create_app():
     # Create route handlers with service dependencies injected
     routes = [
         # Upload endpoints
-        Route("/upload",
-              require_auth(services['session_manager'])(
-                  partial(upload.upload,
-                         document_service=services['document_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
+        Route(
+            "/upload",
+            require_auth(services["session_manager"])(
+                partial(
+                    upload.upload,
+                    document_service=services["document_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
         # Langflow Files endpoints
-        Route("/langflow/files/upload",
-              optional_auth(services['session_manager'])(
-                  partial(langflow_files.upload_user_file,
-                         langflow_file_service=services['langflow_file_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/langflow/ingest",
-              require_auth(services['session_manager'])(
-                  partial(langflow_files.run_ingestion,
-                         langflow_file_service=services['langflow_file_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/langflow/files",
-              require_auth(services['session_manager'])(
-                  partial(langflow_files.delete_user_files,
-                         langflow_file_service=services['langflow_file_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["DELETE"]),
-
-        Route("/upload_context",
-              require_auth(services['session_manager'])(
-                  partial(upload.upload_context,
-                         document_service=services['document_service'],
-                         chat_service=services['chat_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/upload_path",
-              require_auth(services['session_manager'])(
-                  partial(upload.upload_path,
-                         task_service=services['task_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/upload_options",
-              require_auth(services['session_manager'])(
-                  partial(upload.upload_options,
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
-
-        Route("/upload_bucket",
-              require_auth(services['session_manager'])(
-                  partial(upload.upload_bucket,
-                         task_service=services['task_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/tasks/{task_id}",
-              require_auth(services['session_manager'])(
-                  partial(tasks.task_status,
-                         task_service=services['task_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
-
-        Route("/tasks",
-              require_auth(services['session_manager'])(
-                  partial(tasks.all_tasks,
-                         task_service=services['task_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
-
-        Route("/tasks/{task_id}/cancel",
-              require_auth(services['session_manager'])(
-                  partial(tasks.cancel_task,
-                         task_service=services['task_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
+        Route(
+            "/langflow/files/upload",
+            optional_auth(services["session_manager"])(
+                partial(
+                    langflow_files.upload_user_file,
+                    langflow_file_service=services["langflow_file_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/langflow/ingest",
+            require_auth(services["session_manager"])(
+                partial(
+                    langflow_files.run_ingestion,
+                    langflow_file_service=services["langflow_file_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/langflow/files",
+            require_auth(services["session_manager"])(
+                partial(
+                    langflow_files.delete_user_files,
+                    langflow_file_service=services["langflow_file_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
+        ),
+        Route(
+            "/upload_context",
+            require_auth(services["session_manager"])(
+                partial(
+                    upload.upload_context,
+                    document_service=services["document_service"],
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/upload_path",
+            require_auth(services["session_manager"])(
+                partial(
+                    upload.upload_path,
+                    task_service=services["task_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/upload_options",
+            require_auth(services["session_manager"])(
+                partial(
+                    upload.upload_options, session_manager=services["session_manager"]
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/upload_bucket",
+            require_auth(services["session_manager"])(
+                partial(
+                    upload.upload_bucket,
+                    task_service=services["task_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/tasks/{task_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    tasks.task_status,
+                    task_service=services["task_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/tasks",
+            require_auth(services["session_manager"])(
+                partial(
+                    tasks.all_tasks,
+                    task_service=services["task_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/tasks/{task_id}/cancel",
+            require_auth(services["session_manager"])(
+                partial(
+                    tasks.cancel_task,
+                    task_service=services["task_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
         # Search endpoint
-        Route("/search",
-              require_auth(services['session_manager'])(
-                  partial(search.search,
-                         search_service=services['search_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
+        Route(
+            "/search",
+            require_auth(services["session_manager"])(
+                partial(
+                    search.search,
+                    search_service=services["search_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
         # Knowledge Filter endpoints
-        Route("/knowledge-filter",
-              require_auth(services['session_manager'])(
-                  partial(knowledge_filter.create_knowledge_filter,
-                         knowledge_filter_service=services['knowledge_filter_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/knowledge-filter/search",
-              require_auth(services['session_manager'])(
-                  partial(knowledge_filter.search_knowledge_filters,
-                         knowledge_filter_service=services['knowledge_filter_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/knowledge-filter/{filter_id}",
-              require_auth(services['session_manager'])(
-                  partial(knowledge_filter.get_knowledge_filter,
-                         knowledge_filter_service=services['knowledge_filter_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
-
-        Route("/knowledge-filter/{filter_id}",
-              require_auth(services['session_manager'])(
-                  partial(knowledge_filter.update_knowledge_filter,
-                         knowledge_filter_service=services['knowledge_filter_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["PUT"]),
-
-        Route("/knowledge-filter/{filter_id}",
-              require_auth(services['session_manager'])(
-                  partial(knowledge_filter.delete_knowledge_filter,
-                         knowledge_filter_service=services['knowledge_filter_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["DELETE"]),
-
+        Route(
+            "/knowledge-filter",
+            require_auth(services["session_manager"])(
+                partial(
+                    knowledge_filter.create_knowledge_filter,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/knowledge-filter/search",
+            require_auth(services["session_manager"])(
+                partial(
+                    knowledge_filter.search_knowledge_filters,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/knowledge-filter/{filter_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    knowledge_filter.get_knowledge_filter,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/knowledge-filter/{filter_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    knowledge_filter.update_knowledge_filter,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["PUT"],
+        ),
+        Route(
+            "/knowledge-filter/{filter_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    knowledge_filter.delete_knowledge_filter,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
+        ),
         # Knowledge Filter Subscription endpoints
-        Route("/knowledge-filter/{filter_id}/subscribe",
-              require_auth(services['session_manager'])(
-                  partial(knowledge_filter.subscribe_to_knowledge_filter,
-                         knowledge_filter_service=services['knowledge_filter_service'],
-                         monitor_service=services['monitor_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/knowledge-filter/{filter_id}/subscriptions",
-              require_auth(services['session_manager'])(
-                  partial(knowledge_filter.list_knowledge_filter_subscriptions,
-                         knowledge_filter_service=services['knowledge_filter_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
-
-        Route("/knowledge-filter/{filter_id}/subscribe/{subscription_id}",
-              require_auth(services['session_manager'])(
-                  partial(knowledge_filter.cancel_knowledge_filter_subscription,
-                         knowledge_filter_service=services['knowledge_filter_service'],
-                         monitor_service=services['monitor_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["DELETE"]),
-
+        Route(
+            "/knowledge-filter/{filter_id}/subscribe",
+            require_auth(services["session_manager"])(
+                partial(
+                    knowledge_filter.subscribe_to_knowledge_filter,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    monitor_service=services["monitor_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/knowledge-filter/{filter_id}/subscriptions",
+            require_auth(services["session_manager"])(
+                partial(
+                    knowledge_filter.list_knowledge_filter_subscriptions,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/knowledge-filter/{filter_id}/subscribe/{subscription_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    knowledge_filter.cancel_knowledge_filter_subscription,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    monitor_service=services["monitor_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
+        ),
         # Knowledge Filter Webhook endpoint (no auth required - called by OpenSearch)
-        Route("/knowledge-filter/{filter_id}/webhook/{subscription_id}",
-              partial(knowledge_filter.knowledge_filter_webhook,
-                     knowledge_filter_service=services['knowledge_filter_service'],
-                     session_manager=services['session_manager']),
-              methods=["POST"]),
-
+        Route(
+            "/knowledge-filter/{filter_id}/webhook/{subscription_id}",
+            partial(
+                knowledge_filter.knowledge_filter_webhook,
+                knowledge_filter_service=services["knowledge_filter_service"],
+                session_manager=services["session_manager"],
+            ),
+            methods=["POST"],
+        ),
         # Chat endpoints
-        Route("/chat",
-              require_auth(services['session_manager'])(
-                  partial(chat.chat_endpoint,
-                         chat_service=services['chat_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/langflow",
-              require_auth(services['session_manager'])(
-                  partial(chat.langflow_endpoint,
-                         chat_service=services['chat_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
+        Route(
+            "/chat",
+            require_auth(services["session_manager"])(
+                partial(
+                    chat.chat_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/langflow",
+            require_auth(services["session_manager"])(
+                partial(
+                    chat.langflow_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
         # Chat history endpoints
-        Route("/chat/history",
-              require_auth(services['session_manager'])(
-                  partial(chat.chat_history_endpoint,
-                         chat_service=services['chat_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
-
-        Route("/langflow/history",
-              require_auth(services['session_manager'])(
-                  partial(chat.langflow_history_endpoint,
-                         chat_service=services['chat_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
-
+        Route(
+            "/chat/history",
+            require_auth(services["session_manager"])(
+                partial(
+                    chat.chat_history_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/langflow/history",
+            require_auth(services["session_manager"])(
+                partial(
+                    chat.langflow_history_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
         # Authentication endpoints
-        Route("/auth/init",
-              optional_auth(services['session_manager'])(
-                  partial(auth.auth_init,
-                         auth_service=services['auth_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/auth/callback",
-              partial(auth.auth_callback,
-                     auth_service=services['auth_service'],
-                     session_manager=services['session_manager']),
-              methods=["POST"]),
-
-        Route("/auth/me",
-              optional_auth(services['session_manager'])(
-                  partial(auth.auth_me,
-                         auth_service=services['auth_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
-
-        Route("/auth/logout",
-              require_auth(services['session_manager'])(
-                  partial(auth.auth_logout,
-                         auth_service=services['auth_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
+        Route(
+            "/auth/init",
+            optional_auth(services["session_manager"])(
+                partial(
+                    auth.auth_init,
+                    auth_service=services["auth_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/auth/callback",
+            partial(
+                auth.auth_callback,
+                auth_service=services["auth_service"],
+                session_manager=services["session_manager"],
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/auth/me",
+            optional_auth(services["session_manager"])(
+                partial(
+                    auth.auth_me,
+                    auth_service=services["auth_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/auth/logout",
+            require_auth(services["session_manager"])(
+                partial(
+                    auth.auth_logout,
+                    auth_service=services["auth_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
         # Connector endpoints
-        Route("/connectors",
-              require_auth(services['session_manager'])(
-                  partial(connectors.list_connectors,
-                         connector_service=services['connector_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
-
-        Route("/connectors/{connector_type}/sync",
-              require_auth(services['session_manager'])(
-                  partial(connectors.connector_sync,
-                         connector_service=services['connector_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["POST"]),
-
-        Route("/connectors/{connector_type}/status",
-              require_auth(services['session_manager'])(
-                  partial(connectors.connector_status,
-                         connector_service=services['connector_service'],
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
-
-        Route("/connectors/{connector_type}/webhook",
-              partial(connectors.connector_webhook,
-                     connector_service=services['connector_service'],
-                     session_manager=services['session_manager']),
-              methods=["POST", "GET"]),
-
+        Route(
+            "/connectors",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.list_connectors,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/connectors/{connector_type}/sync",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.connector_sync,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/connectors/{connector_type}/status",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.connector_status,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/connectors/{connector_type}/webhook",
+            partial(
+                connectors.connector_webhook,
+                connector_service=services["connector_service"],
+                session_manager=services["session_manager"],
+            ),
+            methods=["POST", "GET"],
+        ),
         # OIDC endpoints
-        Route("/.well-known/openid-configuration",
-              partial(oidc.oidc_discovery,
-                     session_manager=services['session_manager']),
-              methods=["GET"]),
-
-        Route("/auth/jwks",
-              partial(oidc.jwks_endpoint,
-                     session_manager=services['session_manager']),
-              methods=["GET"]),
-
-        Route("/auth/introspect",
-              partial(oidc.token_introspection,
-                     session_manager=services['session_manager']),
-              methods=["POST"]),
-
+        Route(
+            "/.well-known/openid-configuration",
+            partial(oidc.oidc_discovery, session_manager=services["session_manager"]),
+            methods=["GET"],
+        ),
+        Route(
+            "/auth/jwks",
+            partial(oidc.jwks_endpoint, session_manager=services["session_manager"]),
+            methods=["GET"],
+        ),
+        Route(
+            "/auth/introspect",
+            partial(
+                oidc.token_introspection, session_manager=services["session_manager"]
+            ),
+            methods=["POST"],
+        ),
         # Settings endpoint
-        Route("/settings",
-              require_auth(services['session_manager'])(
-                  partial(settings.get_settings,
-                         session_manager=services['session_manager'])
-              ), methods=["GET"]),
+        Route(
+            "/settings",
+            require_auth(services["session_manager"])(
+                partial(
+                    settings.get_settings, session_manager=services["session_manager"]
+                )
+            ),
+            methods=["GET"],
+        ),
     ]
 
     app = Starlette(debug=True, routes=routes)
@@ -518,6 +683,7 @@ async def create_app():
 
     return app
 
+
 async def startup():
     """Application startup tasks"""
     await init_index()
@@ -525,34 +691,46 @@ async def startup():
     # services = app.state.services
     # await services['connector_service'].initialize()
 
+
 def cleanup():
     """Cleanup on application shutdown"""
     # Cleanup process pools only (webhooks handled by Starlette shutdown)
     print("[CLEANUP] Shutting down...")
     pass
 
+
 async def cleanup_subscriptions_proper(services):
     """Cancel all active webhook subscriptions"""
     print("[CLEANUP] Cancelling active webhook subscriptions...")
 
     try:
-        connector_service = services['connector_service']
+        connector_service = services["connector_service"]
         await connector_service.connection_manager.load_connections()
 
         # Get all active connections with webhook subscriptions
         all_connections = await connector_service.connection_manager.list_connections()
-        active_connections = [c for c in all_connections if c.is_active and c.config.get('webhook_channel_id')]
+        active_connections = [
+            c
+            for c in all_connections
+            if c.is_active and c.config.get("webhook_channel_id")
+        ]
 
         for connection in active_connections:
             try:
-                print(f"[CLEANUP] Cancelling subscription for connection {connection.connection_id}")
-                connector = await connector_service.get_connector(connection.connection_id)
+                print(
+                    f"[CLEANUP] Cancelling subscription for connection {connection.connection_id}"
+                )
+                connector = await connector_service.get_connector(
+                    connection.connection_id
+                )
                 if connector:
-                    subscription_id = connection.config.get('webhook_channel_id')
+                    subscription_id = connection.config.get("webhook_channel_id")
                     await connector.cleanup_subscription(subscription_id)
                     print(f"[CLEANUP] Cancelled subscription {subscription_id}")
             except Exception as e:
-                print(f"[ERROR] Failed to cancel subscription for {connection.connection_id}: {e}")
+                print(
+                    f"[ERROR] Failed to cancel subscription for {connection.connection_id}: {e}"
+                )
 
         print(f"[CLEANUP] Finished cancelling {len(active_connections)} subscriptions")
 

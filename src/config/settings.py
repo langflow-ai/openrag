@@ -77,8 +77,8 @@ INDEX_BODY = {
                 "type": "knn_vector",
                 "dimension": VECTOR_DIM,
                 "method": {
-                    "name": "hnsw",
-                    "engine": "nmslib",
+                    "name": "disk_ann",
+                    "engine": "jvector",
                     "space_type": "l2",
                     "parameters": {"ef_construction": 100, "m": 16},
                 },
@@ -106,7 +106,9 @@ async def generate_langflow_api_key():
     """Generate Langflow API key using superuser credentials at startup"""
     global LANGFLOW_KEY
 
-    print(f"[DEBUG] generate_langflow_api_key called - current LANGFLOW_KEY: {'present' if LANGFLOW_KEY else 'None'}")
+    print(
+        f"[DEBUG] generate_langflow_api_key called - current LANGFLOW_KEY: {'present' if LANGFLOW_KEY else 'None'}"
+    )
 
     # If key already provided via env, do not attempt generation
     if LANGFLOW_KEY:
@@ -120,16 +122,22 @@ async def generate_langflow_api_key():
                 validation_response = requests.get(
                     f"{LANGFLOW_URL}/api/v1/users/whoami",
                     headers={"x-api-key": LANGFLOW_KEY},
-                    timeout=5
+                    timeout=5,
                 )
                 if validation_response.status_code == 200:
-                    print(f"[DEBUG] Cached API key is valid, returning: {LANGFLOW_KEY[:8]}...")
+                    print(
+                        f"[DEBUG] Cached API key is valid, returning: {LANGFLOW_KEY[:8]}..."
+                    )
                     return LANGFLOW_KEY
                 else:
-                    print(f"[WARNING] Cached API key is invalid ({validation_response.status_code}), generating fresh key")
+                    print(
+                        f"[WARNING] Cached API key is invalid ({validation_response.status_code}), generating fresh key"
+                    )
                     LANGFLOW_KEY = None  # Clear invalid key
             except Exception as e:
-                print(f"[WARNING] Cached API key validation failed ({e}), generating fresh key")
+                print(
+                    f"[WARNING] Cached API key validation failed ({e}), generating fresh key"
+                )
                 LANGFLOW_KEY = None  # Clear invalid key
 
     if not LANGFLOW_SUPERUSER or not LANGFLOW_SUPERUSER_PASSWORD:
@@ -179,15 +187,21 @@ async def generate_langflow_api_key():
                 validation_response = requests.get(
                     f"{LANGFLOW_URL}/api/v1/users/whoami",
                     headers={"x-api-key": api_key},
-                    timeout=10
+                    timeout=10,
                 )
                 if validation_response.status_code == 200:
                     LANGFLOW_KEY = api_key
-                    print(f"[INFO] Successfully generated and validated Langflow API key: {api_key[:8]}...")
+                    print(
+                        f"[INFO] Successfully generated and validated Langflow API key: {api_key[:8]}..."
+                    )
                     return api_key
                 else:
-                    print(f"[ERROR] Generated API key validation failed: {validation_response.status_code}")
-                    raise ValueError(f"API key validation failed: {validation_response.status_code}")
+                    print(
+                        f"[ERROR] Generated API key validation failed: {validation_response.status_code}"
+                    )
+                    raise ValueError(
+                        f"API key validation failed: {validation_response.status_code}"
+                    )
             except (requests.exceptions.RequestException, KeyError) as e:
                 print(
                     f"[WARN] Attempt {attempt}/{max_attempts} to generate Langflow API key failed: {e}"
@@ -280,7 +294,9 @@ class AppClients:
         """Create a global variable in Langflow via API"""
         api_key = await generate_langflow_api_key()
         if not api_key:
-            print(f"[WARNING] Cannot create Langflow global variable {name}: No API key")
+            print(
+                f"[WARNING] Cannot create Langflow global variable {name}: No API key"
+            )
             return
 
         url = f"{LANGFLOW_URL}/api/v1/variables/"
@@ -295,13 +311,17 @@ class AppClients:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(url, headers=headers, json=payload)
-                
+
                 if response.status_code in [200, 201]:
-                    print(f"[INFO] Successfully created Langflow global variable: {name}")
+                    print(
+                        f"[INFO] Successfully created Langflow global variable: {name}"
+                    )
                 elif response.status_code == 400 and "already exists" in response.text:
                     print(f"[INFO] Langflow global variable {name} already exists")
                 else:
-                    print(f"[WARNING] Failed to create Langflow global variable {name}: {response.status_code}")
+                    print(
+                        f"[WARNING] Failed to create Langflow global variable {name}: {response.status_code}"
+                    )
         except Exception as e:
             print(f"[ERROR] Exception creating Langflow global variable {name}: {e}")
 
