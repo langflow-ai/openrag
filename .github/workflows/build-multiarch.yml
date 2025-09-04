@@ -6,115 +6,126 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - platform: linux/amd64
+          # backend
+          - image: backend
+            file: ./Dockerfile.backend
+            tag: phact/openrag-backend
+            platform: linux/amd64
+            arch: amd64
             runs-on: ubuntu-latest
-            arch-suffix: amd64
-          - platform: linux/arm64
-            runs-on:  self-hosted
-            arch-suffix: arm64
-    
+          - image: backend
+            file: ./Dockerfile.backend
+            tag: phact/openrag-backend
+            platform: linux/arm64
+            arch: arm64
+            runs-on: self-hosted
+
+          # frontend
+          - image: frontend
+            file: ./Dockerfile.frontend
+            tag: phact/openrag-frontend
+            platform: linux/amd64
+            arch: amd64
+            runs-on: ubuntu-latest
+          - image: frontend
+            file: ./Dockerfile.frontend
+            tag: phact/openrag-frontend
+            platform: linux/arm64
+            arch: arm64
+            runs-on: self-hosted
+
+          # opensearch
+          - image: opensearch
+            file: ./Dockerfile
+            tag: phact/openrag-opensearch
+            platform: linux/amd64
+            arch: amd64
+            runs-on: ubuntu-latest
+          - image: opensearch
+            file: ./Dockerfile
+            tag: phact/openrag-opensearch
+            platform: linux/arm64
+            arch: arm64
+            runs-on: self-hosted
+
     runs-on: ${{ matrix.runs-on }}
-    
+
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Extract version from pyproject.toml
-      id: version
-      run: |
-        VERSION=$(grep '^version = ' pyproject.toml | cut -d '"' -f 2)
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Version: $VERSION"
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | cut -d '"' -f 2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Login to Docker Hub
-      if: github.event_name != 'pull_request'
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Build and push backend
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile.backend
-        platforms: ${{ matrix.platform }}
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: phact/openrag-backend:${{ steps.version.outputs.version }}-${{ matrix.arch-suffix }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-    - name: Build and push frontend
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile.frontend
-        platforms: ${{ matrix.platform }}
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: phact/openrag-frontend:${{ steps.version.outputs.version }}-${{ matrix.arch-suffix }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-    - name: Build and push OpenSearch
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile
-        platforms: ${{ matrix.platform }}
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: phact/openrag-opensearch:${{ steps.version.outputs.version }}-${{ matrix.arch-suffix }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - name: Build and push ${{ matrix.image }} (${{ matrix.arch }})
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          platforms: ${{ matrix.platform }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ matrix.tag }}:${{ steps.version.outputs.version }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
 
   manifest:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Extract version from pyproject.toml
-      id: version
-      run: |
-        VERSION=$(grep '^version = ' pyproject.toml | cut -d '"' -f 2)
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | cut -d '"' -f 2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Create and push multi-arch manifests
-      run: |
-        VERSION=${{ steps.version.outputs.version }}
-        
-        # Backend manifest
-        docker buildx imagetools create -t phact/openrag-backend:$VERSION \
-          phact/openrag-backend:$VERSION-amd64 \
-          phact/openrag-backend:$VERSION-arm64
-        docker buildx imagetools create -t phact/openrag-backend:latest \
-          phact/openrag-backend:$VERSION-amd64 \
-          phact/openrag-backend:$VERSION-arm64
-          
-        # Frontend manifest  
-        docker buildx imagetools create -t phact/openrag-frontend:$VERSION \
-          phact/openrag-frontend:$VERSION-amd64 \
-          phact/openrag-frontend:$VERSION-arm64
-        docker buildx imagetools create -t phact/openrag-frontend:latest \
-          phact/openrag-frontend:$VERSION-amd64 \
-          phact/openrag-frontend:$VERSION-arm64
-          
-        # OpenSearch manifest
-        docker buildx imagetools create -t phact/openrag-opensearch:$VERSION \
-          phact/openrag-opensearch:$VERSION-amd64 \
-          phact/openrag-opensearch:$VERSION-arm64
-        docker buildx imagetools create -t phact/openrag-opensearch:latest \
-          phact/openrag-opensearch:$VERSION-amd64 \
-          phact/openrag-opensearch:$VERSION-arm64
+      - name: Create and push multi-arch manifests
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+
+          docker buildx imagetools create -t phact/openrag-backend:$VERSION \
+            phact/openrag-backend:$VERSION-amd64 \
+            phact/openrag-backend:$VERSION-arm64
+          docker buildx imagetools create -t phact/openrag-backend:latest \
+            phact/openrag-backend:$VERSION-amd64 \
+            phact/openrag-backend:$VERSION-arm64
+
+          docker buildx imagetools create -t phact/openrag-frontend:$VERSION \
+            phact/openrag-frontend:$VERSION-amd64 \
+            phact/openrag-frontend:$VERSION-arm64
+          docker buildx imagetools create -t phact/openrag-frontend:latest \
+            phact/openrag-frontend:$VERSION-amd64 \
+            phact/openrag-frontend:$VERSION-arm64
+
+          docker buildx imagetools create -t phact/openrag-opensearch:$VERSION \
+            phact/openrag-opensearch:$VERSION-amd64 \
+            phact/openrag-opensearch:$VERSION-arm64
+          docker buildx imagetools create -t phact/openrag-opensearch:latest \
+            phact/openrag-opensearch:$VERSION-amd64 \
+            phact/openrag-opensearch:$VERSION-arm64
