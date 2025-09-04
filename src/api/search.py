@@ -1,5 +1,8 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 async def search(request: Request, search_service, session_manager):
@@ -20,9 +23,14 @@ async def search(request: Request, search_service, session_manager):
         # Extract JWT token from auth middleware
         jwt_token = request.state.jwt_token
 
-        print(
-            f"[DEBUG] search API: user={user}, user_id={user.user_id if user else None}, jwt_token={'None' if jwt_token is None else 'present'}"
-        )
+        logger.debug("Search API request", 
+                    user=str(user), 
+                    user_id=user.user_id if user else None, 
+                    has_jwt_token=jwt_token is not None,
+                    query=query,
+                    filters=filters,
+                    limit=limit,
+                    score_threshold=score_threshold)
 
         result = await search_service.search(
             query,

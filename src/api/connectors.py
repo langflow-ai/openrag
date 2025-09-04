@@ -1,5 +1,8 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 async def list_connectors(request: Request, connector_service, session_manager):
@@ -10,7 +13,7 @@ async def list_connectors(request: Request, connector_service, session_manager):
         )
         return JSONResponse({"connectors": connector_types})
     except Exception as e:
-        print(f"Error listing connectors: {e}")
+        logger.error("Error listing connectors", error=str(e))
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -21,13 +24,11 @@ async def connector_sync(request: Request, connector_service, session_manager):
     max_files = data.get("max_files")
 
     try:
-        print(
-            f"[DEBUG] Starting connector sync for connector_type={connector_type}, max_files={max_files}"
-        )
+        logger.debug("Starting connector sync", connector_type=connector_type, max_files=max_files)
 
         user = request.state.user
         jwt_token = request.state.jwt_token
-        print(f"[DEBUG] User: {user.user_id}")
+        logger.debug("User authenticated", user_id=user.user_id)
 
         # Get all active connections for this connector type and user
         connections = await connector_service.connection_manager.list_connections(
@@ -44,14 +45,12 @@ async def connector_sync(request: Request, connector_service, session_manager):
         # Start sync tasks for all active connections
         task_ids = []
         for connection in active_connections:
-            print(
-                f"[DEBUG] About to call sync_connector_files for connection {connection.connection_id}"
-            )
+            logger.debug("About to call sync_connector_files for connection", connection_id=connection.connection_id)
             task_id = await connector_service.sync_connector_files(
                 connection.connection_id, user.user_id, max_files, jwt_token=jwt_token
             )
             task_ids.append(task_id)
-            print(f"[DEBUG] Got task_id: {task_id}")
+            logger.debug("Got task ID", task_id=task_id)
 
         return JSONResponse(
             {
@@ -68,7 +67,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
         import traceback
 
         error_msg = f"[ERROR] Connector sync failed: {str(e)}"
-        print(error_msg, file=sys.stderr, flush=True)
+        logger.error(error_msg)
         traceback.print_exc(file=sys.stderr)
         sys.stderr.flush()
 
@@ -156,7 +155,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
         payload["_headers"] = headers
         payload["_method"] = request.method
 
-        print(f"[WEBHOOK] {connector_type} notification received")
+        logger.info("Webhook notification received", connector_type=connector_type)
 
         # Extract channel/subscription ID using connector-specific method
         try:
@@ -168,7 +167,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
             channel_id = None
 
         if not channel_id:
-            print(f"[WEBHOOK] No channel ID found in {connector_type} webhook")
+            logger.warning("No channel ID found in webhook", connector_type=connector_type)
             return JSONResponse({"status": "ignored", "reason": "no_channel_id"})
 
         # Find the specific connection for this webhook
@@ -178,9 +177,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
             )
         )
         if not connection or not connection.is_active:
-            print(
-                f"[WEBHOOK] Unknown channel {channel_id} - no cleanup attempted (will auto-expire)"
-            )
+            logger.info("Unknown webhook channel, will auto-expire", channel_id=channel_id)
             return JSONResponse(
                 {"status": "ignored_unknown_channel", "channel_id": channel_id}
             )
@@ -191,9 +188,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
             # Get the connector instance
             connector = await connector_service._get_connector(connection.connection_id)
             if not connector:
-                print(
-                    f"[WEBHOOK] Could not get connector for connection {connection.connection_id}"
-                )
+                logger.error("Could not get connector for connection", connection_id=connection.connection_id)
                 return JSONResponse(
                     {"status": "error", "reason": "connector_not_found"}
                 )
@@ -202,9 +197,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
             affected_files = await connector.handle_webhook(payload)
 
             if affected_files:
-                print(
-                    f"[WEBHOOK] Connection {connection.connection_id}: {len(affected_files)} files affected"
-                )
+                logger.info("Webhook connection files affected", connection_id=connection.connection_id, affected_count=len(affected_files))
 
                 # Generate JWT token for the user (needed for OpenSearch authentication)
                 user = session_manager.get_user(connection.user_id)
@@ -228,9 +221,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
                 }
             else:
                 # No specific files identified - just log the webhook
-                print(
-                    f"[WEBHOOK] Connection {connection.connection_id}: general change detected, no specific files to sync"
-                )
+                logger.info("Webhook general change detected, no specific files", connection_id=connection.connection_id)
 
                 result = {
                     "connection_id": connection.connection_id,
@@ -248,9 +239,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
             )
 
         except Exception as e:
-            print(
-                f"[ERROR] Failed to process webhook for connection {connection.connection_id}: {e}"
-            )
+            logger.error("Failed to process webhook for connection", connection_id=connection.connection_id, error=str(e))
             import traceback
 
             traceback.print_exc()
@@ -267,7 +256,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
     except Exception as e:
         import traceback
 
-        print(f"[ERROR] Webhook processing failed: {str(e)}")
+        logger.error("Webhook processing failed", error=str(e))
         traceback.print_exc()
         return JSONResponse(
             {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
