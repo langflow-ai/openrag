@@ -2,6 +2,9 @@ from typing import Any, Dict, Optional
 from agentd.tool_decorator import tool
 from config.settings import clients, INDEX_NAME, EMBED_MODEL
 from auth_context import get_auth_context
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class SearchService:
@@ -135,13 +138,9 @@ class SearchService:
             search_body["min_score"] = score_threshold
 
         # Authentication required - DLS will handle document filtering automatically
-        print(
-            f"[DEBUG] search_service: user_id={user_id}, jwt_token={'None' if jwt_token is None else 'present'}"
-        )
+        logger.debug("search_service authentication info", user_id=user_id, has_jwt_token=jwt_token is not None)
         if not user_id:
-            print(
-                f"[DEBUG] search_service: user_id is None/empty, returning auth error"
-            )
+            logger.debug("search_service: user_id is None/empty, returning auth error")
             return {"results": [], "error": "Authentication required"}
 
         # Get user's OpenSearch client with JWT for OIDC auth through session manager
@@ -152,8 +151,7 @@ class SearchService:
         try:
             results = await opensearch_client.search(index=INDEX_NAME, body=search_body)
         except Exception as e:
-            print(f"[ERROR] OpenSearch query failed: {e}")
-            print(f"[ERROR] Search body: {search_body}")
+            logger.error("OpenSearch query failed", error=str(e), search_body=search_body)
             # Re-raise the exception so the API returns the error to frontend
             raise
 

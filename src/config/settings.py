@@ -9,8 +9,12 @@ from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
+from utils.logging_config import get_logger
+
 load_dotenv()
 load_dotenv("../")
+
+logger = get_logger(__name__)
 
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
@@ -44,8 +48,11 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     result = not (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
-    print(
-        f"[DEBUG] is_no_auth_mode() = {result}, CLIENT_ID={GOOGLE_OAUTH_CLIENT_ID is not None}, CLIENT_SECRET={GOOGLE_OAUTH_CLIENT_SECRET is not None}"
+    logger.debug(
+        "Checking auth mode",
+        no_auth_mode=result,
+        has_client_id=GOOGLE_OAUTH_CLIENT_ID is not None,
+        has_client_secret=GOOGLE_OAUTH_CLIENT_SECRET is not None,
     )
     return result
 
@@ -141,13 +148,13 @@ async def generate_langflow_api_key():
                 LANGFLOW_KEY = None  # Clear invalid key
 
     if not LANGFLOW_SUPERUSER or not LANGFLOW_SUPERUSER_PASSWORD:
-        print(
-            "[WARNING] LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
+        logger.warning(
+            "LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
         )
         return None
 
     try:
-        print("[INFO] Generating Langflow API key using superuser credentials...")
+        logger.info("Generating Langflow API key using superuser credentials")
         max_attempts = int(os.getenv("LANGFLOW_KEY_RETRIES", "15"))
         delay_seconds = float(os.getenv("LANGFLOW_KEY_RETRY_DELAY", "2.0"))
 
@@ -212,13 +219,13 @@ async def generate_langflow_api_key():
                     raise
 
     except requests.exceptions.RequestException as e:
-        print(f"[ERROR] Failed to generate Langflow API key: {e}")
+        logger.error("Failed to generate Langflow API key", error=str(e))
         return None
     except KeyError as e:
-        print(f"[ERROR] Unexpected response format from Langflow: missing {e}")
+        logger.error("Unexpected response format from Langflow", missing_field=str(e))
         return None
     except Exception as e:
-        print(f"[ERROR] Unexpected error generating Langflow API key: {e}")
+        logger.error("Unexpected error generating Langflow API key", error=str(e))
         return None
 
 
@@ -258,11 +265,11 @@ class AppClients:
                         "[INFO] Langflow client initialized - OPENSEARCH_PASSWORD should be available via environment variables"
                     )
             except Exception as e:
-                print(f"[WARNING] Failed to initialize Langflow client: {e}")
+                logger.warning("Failed to initialize Langflow client", error=str(e))
                 self.langflow_client = None
         if self.langflow_client is None:
-            print(
-                "[WARNING] No Langflow client initialized yet; will attempt later on first use"
+            logger.warning(
+                "No Langflow client initialized yet, will attempt later on first use"
             )
 
         # Initialize patched OpenAI client
@@ -284,9 +291,11 @@ class AppClients:
                 self.langflow_client = AsyncOpenAI(
                     base_url=f"{LANGFLOW_URL}/api/v1", api_key=LANGFLOW_KEY
                 )
-                print("[INFO] Langflow client initialized on-demand")
+                logger.info("Langflow client initialized on-demand")
             except Exception as e:
-                print(f"[ERROR] Failed to initialize Langflow client on-demand: {e}")
+                logger.error(
+                    "Failed to initialize Langflow client on-demand", error=str(e)
+                )
                 self.langflow_client = None
         return self.langflow_client
 
