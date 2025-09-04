@@ -4,7 +4,7 @@ import asyncio
 import json
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, AsyncIterator
@@ -30,7 +30,7 @@ class ServiceInfo:
     name: str
     status: ServiceStatus
     health: Optional[str] = None
-    ports: List[str] = None
+    ports: List[str] = field(default_factory=list)
     image: Optional[str] = None
     image_digest: Optional[str] = None
     created: Optional[str] = None
@@ -139,6 +139,48 @@ class ContainerManager:
         except Exception as e:
             return False, "", f"Command execution failed: {e}"
     
+    def _process_service_json(self, service: Dict, services: Dict[str, ServiceInfo]) -> None:
+        """Process a service JSON object and add it to the services dict."""
+        # Debug print to see the actual service data
+        print(f"DEBUG: Processing service data: {json.dumps(service, indent=2)}")
+        
+        container_name = service.get("Name", "")
+        
+        # Map container name to service name
+        service_name = self.container_name_map.get(container_name)
+        if not service_name:
+            return
+            
+        state = service.get("State", "").lower()
+        
+        # Map compose states to our status enum
+        if "running" in state:
+            status = ServiceStatus.RUNNING
+        elif "exited" in state or "stopped" in state:
+            status = ServiceStatus.STOPPED
+        elif "starting" in state:
+            status = ServiceStatus.STARTING
+        else:
+            status = ServiceStatus.UNKNOWN
+        
+        # Extract health - use Status if Health is empty
+        health = service.get("Health", "") or service.get("Status", "N/A")
+        
+        # Extract ports
+        ports_str = service.get("Ports", "")
+        ports = [p.strip() for p in ports_str.split(",") if p.strip()] if ports_str else []
+        
+        # Extract image
+        image = service.get("Image", "N/A")
+        
+        services[service_name] = ServiceInfo(
+            name=service_name,
+            status=status,
+            health=health,
+            ports=ports,
+            image=image,
+        )
+    
     async def get_service_status(self, force_refresh: bool = False) -> Dict[str, ServiceInfo]:
         """Get current status of all services."""
         current_time = time.time()
@@ -149,75 +191,100 @@ class ContainerManager:
         
         services = {}
         
-        # Get compose service status
-        success, stdout, stderr = await self._run_compose_command(["ps", "--format", "json"])
-        
-        if success and stdout.strip():
-            try:
-                # Parse JSON output - each line is a separate JSON object
-                for line in stdout.strip().split('\n'):
-                    if line.strip() and line.startswith('{'):
-                        service = json.loads(line)
-                        container_name = service.get("Name", "")
+        # Different approach for Podman vs Docker
+        if self.runtime_info.runtime_type == RuntimeType.PODMAN:
+            # For Podman, use direct podman ps command instead of compose
+            cmd = ["ps", "--all", "--format", "json"]
+            success, stdout, stderr = await self._run_runtime_command(cmd)
+            
+            if success and stdout.strip():
+                try:
+                    containers = json.loads(stdout.strip())
+                    for container in containers:
+                        # Get container name and map to service name
+                        names = container.get("Names", [])
+                        if not names:
+                            continue
                         
-                        # Map container name to service name
+                        container_name = names[0]
                         service_name = self.container_name_map.get(container_name)
                         if not service_name:
                             continue
-                            
-                        state = service.get("State", "").lower()
                         
-                        # Map compose states to our status enum
+                        # Get container state
+                        state = container.get("State", "").lower()
                         if "running" in state:
                             status = ServiceStatus.RUNNING
                         elif "exited" in state or "stopped" in state:
                             status = ServiceStatus.STOPPED
-                        elif "starting" in state:
+                        elif "created" in state:
                             status = ServiceStatus.STARTING
                         else:
                             status = ServiceStatus.UNKNOWN
                         
-                        # Extract health - use Status if Health is empty
-                        health = service.get("Health", "") or service.get("Status", "N/A")
-                        
-                        # Extract ports
-                        ports_str = service.get("Ports", "")
-                        ports = [p.strip() for p in ports_str.split(",") if p.strip()] if ports_str else []
-                        
-                        # Extract image
-                        image = service.get("Image", "N/A")
+                        # Get other container info
+                        image = container.get("Image", "N/A")
+                        ports = []
+                        # Handle case where Ports might be None instead of an empty list
+                        container_ports = container.get("Ports") or []
+                        if isinstance(container_ports, list):
+                            for port in container_ports:
+                                host_port = port.get("host_port")
+                                container_port = port.get("container_port")
+                                if host_port and container_port:
+                                    ports.append(f"{host_port}:{container_port}")
                         
                         services[service_name] = ServiceInfo(
                             name=service_name,
                             status=status,
-                            health=health,
+                            health=state,
                             ports=ports,
                             image=image,
                         )
-                        
-            except json.JSONDecodeError:
-                # Fallback to parsing text output
-                lines = stdout.strip().split('\n')
-                for line in lines[1:]:  # Skip header
-                    if line.strip():
-                        parts = line.split()
-                        if len(parts) >= 3:
-                            name = parts[0]
-                            
-                            # Only include our expected services
-                            if name not in self.expected_services:
-                                continue
-                                
-                            state = parts[2].lower()
-                            
-                            if "up" in state:
-                                status = ServiceStatus.RUNNING
-                            elif "exit" in state:
-                                status = ServiceStatus.STOPPED
-                            else:
-                                status = ServiceStatus.UNKNOWN
-                            
-                            services[name] = ServiceInfo(name=name, status=status)
+                except json.JSONDecodeError:
+                    pass
+        else:
+            # For Docker, use compose ps command
+            success, stdout, stderr = await self._run_compose_command(["ps", "--format", "json"])
+            
+            if success and stdout.strip():
+                try:
+                    # Handle both single JSON object (Podman) and multiple JSON objects (Docker)
+                    if stdout.strip().startswith('[') and stdout.strip().endswith(']'):
+                        # JSON array format
+                        service_list = json.loads(stdout.strip())
+                        for service in service_list:
+                            self._process_service_json(service, services)
+                    else:
+                        # Line-by-line JSON format
+                        for line in stdout.strip().split('\n'):
+                            if line.strip() and line.startswith('{'):
+                                service = json.loads(line)
+                                self._process_service_json(service, services)
+                except json.JSONDecodeError:
+                    # Fallback to parsing text output
+                    lines = stdout.strip().split('\n')
+                    if len(lines) > 1:  # Make sure we have at least a header and one line
+                        for line in lines[1:]:  # Skip header
+                            if line.strip():
+                                parts = line.split()
+                                if len(parts) >= 3:
+                                    name = parts[0]
+                                    
+                                    # Only include our expected services
+                                    if name not in self.expected_services:
+                                        continue
+                                        
+                                    state = parts[2].lower()
+                                    
+                                    if "up" in state:
+                                        status = ServiceStatus.RUNNING
+                                    elif "exit" in state:
+                                        status = ServiceStatus.STOPPED
+                                    else:
+                                        status = ServiceStatus.UNKNOWN
+                                    
+                                    services[name] = ServiceInfo(name=name, status=status)
         
         # Add expected services that weren't found
         for expected in self.expected_services:
@@ -386,12 +453,15 @@ class ContainerManager:
                 cwd=Path.cwd()
             )
             
-            while True:
-                line = await process.stdout.readline()
-                if line:
-                    yield line.decode().rstrip()
-                else:
-                    break
+            if process.stdout:
+                while True:
+                    line = await process.stdout.readline()
+                    if line:
+                        yield line.decode().rstrip()
+                    else:
+                        break
+            else:
+                yield "Error: Unable to read process output"
                     
         except Exception as e:
             yield f"Error following logs: {e}"
@@ -422,9 +492,51 @@ class ContainerManager:
         
         return stats
     
+    async def debug_podman_services(self) -> str:
+        """Run a direct Podman command to check services status for debugging."""
+        if self.runtime_info.runtime_type != RuntimeType.PODMAN:
+            return "Not using Podman"
+        
+        # Try direct podman command
+        cmd = ["podman", "ps", "--all", "--format", "json"]
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=Path.cwd()
+            )
+            
+            stdout, stderr = await process.communicate()
+            stdout_text = stdout.decode() if stdout else ""
+            stderr_text = stderr.decode() if stderr else ""
+            
+            result = f"Command: {' '.join(cmd)}\n"
+            result += f"Return code: {process.returncode}\n"
+            result += f"Stdout: {stdout_text}\n"
+            result += f"Stderr: {stderr_text}\n"
+            
+            # Try to parse the output
+            if stdout_text.strip():
+                try:
+                    containers = json.loads(stdout_text)
+                    result += f"\nFound {len(containers)} containers:\n"
+                    for container in containers:
+                        name = container.get("Names", [""])[0]
+                        state = container.get("State", "")
+                        result += f"  - {name}: {state}\n"
+                except json.JSONDecodeError as e:
+                    result += f"\nFailed to parse JSON: {e}\n"
+            
+            return result
+            
+        except Exception as e:
+            return f"Error executing command: {e}"
+    
     def check_podman_macos_memory(self) -> tuple[bool, str]:
         """Check if Podman VM has sufficient memory on macOS."""
         if self.runtime_info.runtime_type != RuntimeType.PODMAN:
             return True, "Not using Podman"
         
-        return self.platform_detector.check_podman_macos_memory()[:2]  # Return is_sufficient, message
+        is_sufficient, memory_mb, message = self.platform_detector.check_podman_macos_memory()
+        return is_sufficient, message

@@ -2,6 +2,11 @@
 
 import asyncio
 import re
+from typing import Literal, Any
+
+# Define button variant type
+ButtonVariant = Literal["default", "primary", "success", "warning", "error"]
+
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.screen import Screen
@@ -12,6 +17,8 @@ from rich.table import Table
 
 from ..managers.container_manager import ContainerManager, ServiceStatus, ServiceInfo
 from ..utils.platform import RuntimeType
+from ..widgets.command_modal import CommandOutputModal
+from ..widgets.diagnostics_notification import notify_with_diagnostics
 
 
 class MonitorScreen(Screen):
@@ -160,6 +167,11 @@ class MonitorScreen(Screen):
         # Stop following logs if running
         self._stop_follow()
     
+    async def on_screen_resume(self) -> None:
+        """Called when the screen is resumed (e.g., after a modal is closed)."""
+        # Refresh services when returning from a modal
+        await self._refresh_services()
+    
     async def _refresh_services(self) -> None:
         """Refresh the services table."""
         if not self.container_manager.is_available():
@@ -229,31 +241,37 @@ class MonitorScreen(Screen):
     
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
-        if event.button.id == "start-btn":
+        button_id = event.button.id or ""
+        
+        if button_id.startswith("start-btn"):
             self.run_worker(self._start_services())
-        elif event.button.id == "stop-btn":
+        elif button_id.startswith("stop-btn"):
             self.run_worker(self._stop_services())
-        elif event.button.id == "restart-btn":
+        elif button_id.startswith("restart-btn"):
             self.run_worker(self._restart_services())
-        elif event.button.id == "upgrade-btn":
+        elif button_id.startswith("upgrade-btn"):
             self.run_worker(self._upgrade_services())
-        elif event.button.id == "reset-btn":
+        elif button_id.startswith("reset-btn"):
             self.run_worker(self._reset_services())
-        elif event.button.id == "toggle-mode-btn":
+        elif button_id == "toggle-mode-btn":
             self.action_toggle_mode()
-        elif event.button.id == "refresh-btn":
+        elif button_id == "refresh-btn":
             self.action_refresh()
-        elif event.button.id == "back-btn":
+        elif button_id == "back-btn":
             self.action_back()
-        elif event.button.id.startswith("logs-"):
+        elif button_id.startswith("logs-"):
             # Map button IDs to actual service names
             service_mapping = {
                 "logs-backend": "openrag-backend",
-                "logs-frontend": "openrag-frontend", 
+                "logs-frontend": "openrag-frontend",
                 "logs-opensearch": "opensearch",
                 "logs-langflow": "langflow"
             }
-            service_name = service_mapping.get(event.button.id)
+            
+            # Extract the base button ID (without any suffix)
+            button_base_id = button_id.split("-")[0] + "-" + button_id.split("-")[1]
+            
+            service_name = service_mapping.get(button_base_id)
             if service_name:
                 # Load recent logs then start following
                 self.run_worker(self._show_logs(service_name))
@@ -263,9 +281,14 @@ class MonitorScreen(Screen):
         """Start services with progress updates."""
         self.operation_in_progress = True
         try:
-            async for is_complete, message in self.container_manager.start_services(cpu_mode):
-                self.notify(message, severity="success" if is_complete else "info")
-            await self._refresh_services()
+            # Show command output in modal dialog
+            command_generator = self.container_manager.start_services(cpu_mode)
+            modal = CommandOutputModal(
+                "Starting Services",
+                command_generator,
+                on_complete=None  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
     
@@ -273,9 +296,14 @@ class MonitorScreen(Screen):
         """Stop services with progress updates."""
         self.operation_in_progress = True
         try:
-            async for is_complete, message in self.container_manager.stop_services():
-                self.notify(message, severity="success" if is_complete else "info")
-            await self._refresh_services()
+            # Show command output in modal dialog
+            command_generator = self.container_manager.stop_services()
+            modal = CommandOutputModal(
+                "Stopping Services",
+                command_generator,
+                on_complete=None  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
     
@@ -283,9 +311,14 @@ class MonitorScreen(Screen):
         """Restart services with progress updates."""
         self.operation_in_progress = True
         try:
-            async for is_complete, message in self.container_manager.restart_services():
-                self.notify(message, severity="success" if is_complete else "info")
-            await self._refresh_services()
+            # Show command output in modal dialog
+            command_generator = self.container_manager.restart_services()
+            modal = CommandOutputModal(
+                "Restarting Services",
+                command_generator,
+                on_complete=None  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
     
@@ -293,9 +326,14 @@ class MonitorScreen(Screen):
         """Upgrade services with progress updates."""
         self.operation_in_progress = True
         try:
-            async for is_complete, message in self.container_manager.upgrade_services():
-                self.notify(message, severity="success" if is_complete else "warning")
-            await self._refresh_services()
+            # Show command output in modal dialog
+            command_generator = self.container_manager.upgrade_services()
+            modal = CommandOutputModal(
+                "Upgrading Services",
+                command_generator,
+                on_complete=None  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
     
@@ -303,9 +341,14 @@ class MonitorScreen(Screen):
         """Reset services with progress updates."""
         self.operation_in_progress = True
         try:
-            async for is_complete, message in self.container_manager.reset_services():
-                self.notify(message, severity="success" if is_complete else "warning")
-            await self._refresh_services()
+            # Show command output in modal dialog
+            command_generator = self.container_manager.reset_services()
+            modal = CommandOutputModal(
+                "Resetting Services",
+                command_generator,
+                on_complete=None  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
     
@@ -332,14 +375,16 @@ class MonitorScreen(Screen):
             # Try to scroll to end of container
             try:
                 scroller = self.query_one("#logs-scroll", ScrollableContainer)
-                if hasattr(scroller, "scroll_end"):
-                    scroller.scroll_end(animate=False)
-                elif hasattr(scroller, "scroll_to_end"):
-                    scroller.scroll_to_end()
+                # Only use scroll_end which is the correct method
+                scroller.scroll_end(animate=False)
             except Exception:
                 pass
         else:
-            self.notify(f"Failed to get logs for {service_name}: {logs}", severity="error")
+            notify_with_diagnostics(
+                self.app,
+                f"Failed to get logs for {service_name}: {logs}",
+                severity="error"
+            )
 
     def _stop_follow(self) -> None:
         task = self._follow_task
@@ -377,12 +422,16 @@ class MonitorScreen(Screen):
                     logs_widget = self.query_one("#logs-content", Static)
                     logs_widget.update("\n".join(self._logs_buffer))
                     scroller = self.query_one("#logs-scroll", ScrollableContainer)
-                    if hasattr(scroller, "scroll_end"):
-                        scroller.scroll_end(animate=False)
+                    # Only use scroll_end which is the correct method
+                    scroller.scroll_end(animate=False)
                 except Exception:
                     pass
         except Exception as e:
-            self.notify(f"Error following logs: {e}", severity="error")
+            notify_with_diagnostics(
+                self.app,
+                f"Error following logs: {e}",
+                severity="error"
+            )
     
     def action_refresh(self) -> None:
         """Refresh services manually."""
@@ -405,36 +454,47 @@ class MonitorScreen(Screen):
         try:
             current = getattr(self.container_manager, "use_cpu_compose", True)
             self.container_manager.use_cpu_compose = not current
-            self.notify("Switched to GPU compose" if not current else "Switched to CPU compose", severity="info")
+            self.notify("Switched to GPU compose" if not current else "Switched to CPU compose", severity="information")
             self._update_mode_row()
             self.action_refresh()
         except Exception as e:
-            self.notify(f"Failed to toggle mode: {e}", severity="error")
+            notify_with_diagnostics(
+                self.app,
+                f"Failed to toggle mode: {e}",
+                severity="error"
+            )
 
     def _update_controls(self, services: list[ServiceInfo]) -> None:
         """Render control buttons based on running state and set default focus."""
         try:
+            # Get the controls container
             controls = self.query_one("#services-controls", Horizontal)
+            
+            # Remove all existing children
             controls.remove_children()
+            
+            # Check if any services are running
             any_running = any(s.status == ServiceStatus.RUNNING for s in services)
+            
+            # Add appropriate buttons based on service state
             if any_running:
+                # When services are running, show stop and restart
                 controls.mount(Button("Stop Services", variant="error", id="stop-btn"))
                 controls.mount(Button("Restart", variant="primary", id="restart-btn"))
-                controls.mount(Button("Upgrade", variant="warning", id="upgrade-btn"))
-                controls.mount(Button("Reset", variant="error", id="reset-btn"))
-                # Focus Stop by default when running
-                try:
-                    self.query_one("#stop-btn", Button).focus()
-                except Exception:
-                    pass
             else:
+                # When services are not running, show start
                 controls.mount(Button("Start Services", variant="success", id="start-btn"))
-                try:
-                    self.query_one("#start-btn", Button).focus()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+            
+            # Always show upgrade and reset buttons
+            controls.mount(Button("Upgrade", variant="warning", id="upgrade-btn"))
+            controls.mount(Button("Reset", variant="error", id="reset-btn"))
+            
+        except Exception as e:
+            notify_with_diagnostics(
+                self.app,
+                f"Error updating controls: {e}",
+                severity="error"
+            )
     
     def action_back(self) -> None:
         """Go back to previous screen."""

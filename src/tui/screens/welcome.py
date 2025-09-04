@@ -23,6 +23,7 @@ class WelcomeScreen(Screen):
         ("1", "no_auth_setup", "Basic Setup"),
         ("2", "full_setup", "Advanced Setup"),
         ("3", "monitor", "Monitor Services"),
+        ("4", "diagnostics", "Diagnostics"),
     ]
     
     def __init__(self):
@@ -96,6 +97,9 @@ class WelcomeScreen(Screen):
             # Always show monitor option
             buttons.append(Button("Monitor Services", variant="default", id="monitor-btn"))
         
+        # Always show diagnostics button
+        buttons.append(Button("Diagnostics", variant="default", id="diagnostics-btn"))
+        
         return Horizontal(*buttons, classes="button-row")
     
     async def on_mount(self) -> None:
@@ -124,7 +128,7 @@ class WelcomeScreen(Screen):
         # Update the welcome text and recompose with new state
         try:
             welcome_widget = self.query_one("#welcome-text")
-            welcome_widget.update(self._create_welcome_text())
+            welcome_widget.update(self._create_welcome_text())  # This is fine for Static widgets
             
             # Focus the appropriate button
             if self.services_running:
@@ -154,6 +158,8 @@ class WelcomeScreen(Screen):
             self.action_full_setup()
         elif event.button.id == "monitor-btn":
             self.action_monitor()
+        elif event.button.id == "diagnostics-btn":
+            self.action_diagnostics()
     
     def action_default_action(self) -> None:
         """Handle Enter key - go to default action based on state."""
@@ -178,6 +184,11 @@ class WelcomeScreen(Screen):
         """Switch to monitoring screen."""
         from .monitor import MonitorScreen
         self.app.push_screen(MonitorScreen())
+    
+    def action_diagnostics(self) -> None:
+        """Switch to diagnostics screen."""
+        from .diagnostics import DiagnosticsScreen
+        self.app.push_screen(DiagnosticsScreen())
     
     def action_quit(self) -> None:
         """Quit the application."""
