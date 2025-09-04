@@ -40,8 +40,8 @@ services:
   openrag-backend:
     image: phact/openrag-backend:latest
     #build:
-      #context: .
-      #dockerfile: Dockerfile.backend
+    #context: .
+    #dockerfile: Dockerfile.backend
     container_name: openrag-backend
     depends_on:
       - langflow
@@ -53,6 +53,7 @@ services:
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - FLOW_ID=${FLOW_ID}
+      - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
       - OPENSEARCH_PORT=9200
       - OPENSEARCH_USERNAME=admin
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
@@ -73,8 +74,8 @@ services:
   openrag-frontend:
     image: phact/openrag-frontend:latest
     #build:
-      #context: .
-      #dockerfile: Dockerfile.frontend
+    #context: .
+    #dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
     depends_on:
       - openrag-backend
