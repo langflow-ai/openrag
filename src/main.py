@@ -56,8 +56,8 @@ from api import (
 # Set multiprocessing start method to 'spawn' for CUDA compatibility
 multiprocessing.set_start_method("spawn", force=True)
 
-logger.info("CUDA available:", torch.cuda.is_available())
-logger.info("CUDA version PyTorch was built with:", torch.version.cuda)
+logger.info("CUDA available", cuda_available=torch.cuda.is_available())
+logger.info("CUDA version PyTorch was built with", cuda_version=torch.version.cuda)
 
 
 async def wait_for_opensearch():
