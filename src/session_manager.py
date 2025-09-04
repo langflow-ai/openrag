@@ -193,7 +193,7 @@ class SessionManager:
         )
 
         # In no-auth mode, create anonymous JWT for OpenSearch DLS
-        if jwt_token is None and (is_no_auth_mode() or user_id in (None, "anonymous","")):
+        if jwt_token is None and (is_no_auth_mode() or user_id in (None, AnonymousUser().user_id)):
             if not hasattr(self, "_anonymous_jwt"):
                 # Create anonymous JWT token for OpenSearch OIDC
                 logger.info("[DEBUG] Creating anonymous JWT...")
