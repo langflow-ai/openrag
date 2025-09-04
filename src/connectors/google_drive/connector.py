@@ -69,6 +69,10 @@ class GoogleDriveConnector(BaseConnector):
     CLIENT_ID_ENV_VAR: str = "GOOGLE_OAUTH_CLIENT_ID"
     CLIENT_SECRET_ENV_VAR: str = "GOOGLE_OAUTH_CLIENT_SECRET"
 
+    # Supported alias keys coming from various frontends / pickers
+    _FILE_ID_ALIASES = ("file_ids", "selected_file_ids", "selected_files")
+    _FOLDER_ID_ALIASES = ("folder_ids", "selected_folder_ids", "selected_folders")
+
     def log(self, message: str) -> None:
         print(message)
 
@@ -106,12 +110,24 @@ class GoogleDriveConnector(BaseConnector):
                 f"Provide config['client_secret'] or set {self.CLIENT_SECRET_ENV_VAR}."
             )
 
+        # Normalize incoming IDs from any of the supported alias keys
+        def _first_present_list(cfg: Dict[str, Any], keys: Iterable[str]) -> Optional[List[str]]:
+            for k in keys:
+                v = cfg.get(k)
+                if v:  # accept non-empty list
+                    return list(v)
+            return None
+
+        normalized_file_ids = _first_present_list(config, self._FILE_ID_ALIASES)
+        normalized_folder_ids = _first_present_list(config, self._FOLDER_ID_ALIASES)
+
         self.cfg = GoogleDriveConfig(
             client_id=client_id,
             client_secret=client_secret,
             token_file=token_file,
-            file_ids=config.get("file_ids") or config.get("selected_file_ids"),
-            folder_ids=config.get("folder_ids") or config.get("selected_folder_ids"),
+            # Accept "selected_files" and "selected_folders" used by the Drive Picker flow
+            file_ids=normalized_file_ids,
+            folder_ids=normalized_folder_ids,
             recursive=bool(config.get("recursive", True)),
             drive_id=config.get("drive_id"),
             corpora=config.get("corpora"),
@@ -417,7 +433,11 @@ class GoogleDriveConnector(BaseConnector):
             self.log(f"GoogleDriveConnector.authenticate failed: {e}")
             return False
 
-    async def list_files(self, page_token: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+    async def list_files(
+        self,
+        page_token: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
         List files in the currently selected scope (file_ids/folder_ids/recursive).
         Returns a dict with 'files' and 'next_page_token'.
@@ -428,6 +448,11 @@ class GoogleDriveConnector(BaseConnector):
         """
         try:
             items = self._iter_selected_items()
+
+            # Optionally honor a request-scoped max_files (e.g., from your API payload)
+            max_files = kwargs.get("max_files")
+            if isinstance(max_files, int) and max_files > 0:
+                items = items[:max_files]
 
             # Simplest: ignore page_token and just dump all
             # If you want real pagination, slice items here
