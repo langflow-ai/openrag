@@ -237,11 +237,9 @@ class UserBindingService:
         return self.bindings.copy()
         
     def is_langflow_user_id(self, user_id: str) -> bool:
-        """Check if user_id appears to be a Langflow UUID"""
-        import re
-        # Basic UUID pattern check (with or without dashes)
-        uuid_pattern = r'^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$'
-        return bool(re.match(uuid_pattern, user_id.lower().replace('-', '')))
+        """Check if user_id appears to be a Langflow UUID (vs Google numeric ID)"""
+        # Langflow IDs are UUID v4, Google IDs are purely numeric
+        return not user_id.isdigit()
         
     def get_user_type(self, user_id: str) -> str:
         """Determine user type: 'google_oauth', 'langflow_direct', or 'unknown'"""
