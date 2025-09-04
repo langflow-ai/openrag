@@ -199,8 +199,6 @@ async def init_index_when_ready():
 async def ingest_default_documents_when_ready(services):
     """Scan the local documents folder and ingest files like a non-auth upload."""
     try:
-        # Ensure OpenSearch is ready and indices exist
-        await init_index()
         
         base_dir = os.path.abspath(os.path.join(os.getcwd(), "documents"))
         if not os.path.isdir(base_dir):
