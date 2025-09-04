@@ -44,11 +44,9 @@ class LangflowHistoryService:
         return None
         
     def _is_uuid_format(self, user_id: str) -> bool:
-        """Check if string looks like a UUID (Langflow user ID format)"""
-        import re
-        # Basic UUID pattern check (with or without dashes)
-        uuid_pattern = r'^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$'
-        return bool(re.match(uuid_pattern, user_id.lower().replace('-', '')))
+        """Check if string looks like a UUID (Langflow user ID format vs Google numeric ID)"""
+        # Langflow IDs are UUID v4, Google IDs are purely numeric
+        return not user_id.isdigit()
         
     def _filter_sessions_by_ownership(self, session_ids: List[str], user_id: str, langflow_user_id: str) -> List[str]:
         """Filter sessions based on user type and ownership"""
