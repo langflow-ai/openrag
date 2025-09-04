@@ -69,6 +69,11 @@ class GoogleDriveConnector(BaseConnector):
     CLIENT_ID_ENV_VAR: str = "GOOGLE_OAUTH_CLIENT_ID"
     CLIENT_SECRET_ENV_VAR: str = "GOOGLE_OAUTH_CLIENT_SECRET"
 
+    # Connector metadata
+    CONNECTOR_NAME = "Google Drive"
+    CONNECTOR_DESCRIPTION = "Connect your Google Drive to automatically sync documents"
+    CONNECTOR_ICON = "google-drive"
+
     # Supported alias keys coming from various frontends / pickers
     _FILE_ID_ALIASES = ("file_ids", "selected_file_ids", "selected_files")
     _FOLDER_ID_ALIASES = ("folder_ids", "selected_folder_ids", "selected_folders")
