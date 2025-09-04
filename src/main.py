@@ -216,42 +216,19 @@ async def ingest_default_documents_when_ready(services):
             logger.info("No default documents found; nothing to ingest", base_dir=base_dir)
             return
 
-        # To make default docs visible to all users, omit the 'owner' field when indexing.
-        # We do this by using a custom processor with owner_user_id=None (DLS rule: documents
-        # without an 'owner' are readable by everyone), while still authenticating to OpenSearch.
-        if is_no_auth_mode():
-            user_id_for_tasks = "anonymous"
-            jwt_token = None  # SessionManager will inject anonymous JWT for OS client
-            owner_name = "Anonymous User"
-            owner_email = "anonymous@localhost"
-        else:
-            from session_manager import User
-
-            system_user = User(
-                user_id="system_ingest",
-                email="system@localhost",
-                name="System Ingest",
-                picture=None,
-                provider="system",
-            )
-            jwt_token = services["session_manager"].create_jwt_token(system_user)
-            user_id_for_tasks = system_user.user_id  # For task store only
-            owner_name = system_user.name
-            owner_email = system_user.email
-
         # Build a processor that DOES NOT set 'owner' on documents (owner_user_id=None)
         from models.processors import DocumentFileProcessor
 
         processor = DocumentFileProcessor(
             services["document_service"],
-            owner_user_id=None,  # omit 'owner' field -> globally readable per DLS
-            jwt_token=jwt_token,  # still authenticate to OpenSearch
-            owner_name=owner_name,
-            owner_email=owner_email,
+            owner_user_id=None,
+            jwt_token=None,
+            owner_name=None,
+            owner_email=None,
         )
 
         task_id = await services["task_service"].create_custom_task(
-            user_id_for_tasks, file_paths, processor
+            "anonymous", file_paths, processor
         )
         logger.info(
             "Started default documents ingestion task",
