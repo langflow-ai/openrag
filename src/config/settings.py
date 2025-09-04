@@ -24,6 +24,7 @@ LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 FLOW_ID = os.getenv("FLOW_ID")
+NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID")
 # Langflow superuser credentials for API key generation
 LANGFLOW_SUPERUSER = os.getenv("LANGFLOW_SUPERUSER")
 LANGFLOW_SUPERUSER_PASSWORD = os.getenv("LANGFLOW_SUPERUSER_PASSWORD")
@@ -37,7 +38,12 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     result = not (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
-    logger.debug("Checking auth mode", no_auth_mode=result, has_client_id=GOOGLE_OAUTH_CLIENT_ID is not None, has_client_secret=GOOGLE_OAUTH_CLIENT_SECRET is not None)
+    logger.debug(
+        "Checking auth mode",
+        no_auth_mode=result,
+        has_client_id=GOOGLE_OAUTH_CLIENT_ID is not None,
+        has_client_secret=GOOGLE_OAUTH_CLIENT_SECRET is not None,
+    )
     return result
 
 
@@ -100,7 +106,9 @@ async def generate_langflow_api_key():
         return LANGFLOW_KEY
 
     if not LANGFLOW_SUPERUSER or not LANGFLOW_SUPERUSER_PASSWORD:
-        logger.warning("LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation")
+        logger.warning(
+            "LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
+        )
         return None
 
     try:
@@ -142,11 +150,19 @@ async def generate_langflow_api_key():
                     raise KeyError("api_key")
 
                 LANGFLOW_KEY = api_key
-                logger.info("Successfully generated Langflow API key", api_key_preview=api_key[:8])
+                logger.info(
+                    "Successfully generated Langflow API key",
+                    api_key_preview=api_key[:8],
+                )
                 return api_key
             except (requests.exceptions.RequestException, KeyError) as e:
                 last_error = e
-                logger.warning("Attempt to generate Langflow API key failed", attempt=attempt, max_attempts=max_attempts, error=str(e))
+                logger.warning(
+                    "Attempt to generate Langflow API key failed",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    error=str(e),
+                )
                 if attempt < max_attempts:
                     time.sleep(delay_seconds)
                 else:
@@ -196,7 +212,9 @@ class AppClients:
                 logger.warning("Failed to initialize Langflow client", error=str(e))
                 self.langflow_client = None
         if self.langflow_client is None:
-            logger.warning("No Langflow client initialized yet, will attempt later on first use")
+            logger.warning(
+                "No Langflow client initialized yet, will attempt later on first use"
+            )
 
         # Initialize patched OpenAI client
         self.patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
@@ -219,7 +237,9 @@ class AppClients:
                 )
                 logger.info("Langflow client initialized on-demand")
             except Exception as e:
-                logger.error("Failed to initialize Langflow client on-demand", error=str(e))
+                logger.error(
+                    "Failed to initialize Langflow client on-demand", error=str(e)
+                )
                 self.langflow_client = None
         return self.langflow_client
 
