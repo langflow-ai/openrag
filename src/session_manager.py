@@ -38,17 +38,6 @@ class AnonymousUser(User):
             provider="none",
         )
 
-class SystemUser(User):
-    """System user"""
-
-    def __init__(self):
-        super().__init__(
-            user_id="system",
-            email="system@localhost",
-            name="System User",
-            picture=None,
-            provider="system",
-        )
 
 
 class SessionManager:
