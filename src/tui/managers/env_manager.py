@@ -40,6 +40,11 @@ class EnvConfig:
     aws_secret_access_key: str = ""
     langflow_public_url: str = ""
     
+    # Langflow auth settings
+    langflow_auto_login: str = "False"
+    langflow_new_user_is_active: str = "False"
+    langflow_enable_superuser_cli: str = "False"
+    
     # Document paths (comma-separated)
     openrag_documents_paths: str = "./documents"
     
@@ -98,6 +103,9 @@ class EnvManager:
                             'AWS_SECRET_ACCESS_KEY': 'aws_secret_access_key',
                             'LANGFLOW_PUBLIC_URL': 'langflow_public_url',
                             'OPENRAG_DOCUMENTS_PATHS': 'openrag_documents_paths',
+                            'LANGFLOW_AUTO_LOGIN': 'langflow_auto_login',
+                            'LANGFLOW_NEW_USER_IS_ACTIVE': 'langflow_new_user_is_active',
+                            'LANGFLOW_ENABLE_SUPERUSER_CLI': 'langflow_enable_superuser_cli',
                         }
                         
                         if key in attr_map:
@@ -191,6 +199,13 @@ class EnvManager:
                 f.write(f"OPENSEARCH_PASSWORD={self.config.opensearch_password}\n")
                 f.write(f"OPENAI_API_KEY={self.config.openai_api_key}\n")
                 f.write(f"OPENRAG_DOCUMENTS_PATHS={self.config.openrag_documents_paths}\n")
+                f.write("\n")
+                
+                # Langflow auth settings
+                f.write("# Langflow auth settings\n")
+                f.write(f"LANGFLOW_AUTO_LOGIN={self.config.langflow_auto_login}\n")
+                f.write(f"LANGFLOW_NEW_USER_IS_ACTIVE={self.config.langflow_new_user_is_active}\n")
+                f.write(f"LANGFLOW_ENABLE_SUPERUSER_CLI={self.config.langflow_enable_superuser_cli}\n")
                 f.write("\n")
                 
                 # OAuth settings

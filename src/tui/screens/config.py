@@ -282,6 +282,47 @@ class ConfigScreen(Screen):
         self.inputs["openrag_documents_paths"] = input_widget
         yield Static(" ")
         
+        # Langflow Auth Settings
+        yield Static("Langflow Auth Settings", classes="tab-header")
+        yield Static(" ")
+        
+        # Langflow Auto Login
+        yield Label("Langflow Auto Login")
+        current_value = getattr(self.env_manager.config, "langflow_auto_login", "False")
+        input_widget = Input(
+            placeholder="False",
+            value=current_value,
+            id="input-langflow_auto_login"
+        )
+        yield input_widget
+        self.inputs["langflow_auto_login"] = input_widget
+        yield Static(" ")
+        
+        # Langflow New User Is Active
+        yield Label("Langflow New User Is Active")
+        current_value = getattr(self.env_manager.config, "langflow_new_user_is_active", "False")
+        input_widget = Input(
+            placeholder="False",
+            value=current_value,
+            id="input-langflow_new_user_is_active"
+        )
+        yield input_widget
+        self.inputs["langflow_new_user_is_active"] = input_widget
+        yield Static(" ")
+        
+        # Langflow Enable Superuser CLI
+        yield Label("Langflow Enable Superuser CLI")
+        current_value = getattr(self.env_manager.config, "langflow_enable_superuser_cli", "False")
+        input_widget = Input(
+            placeholder="False",
+            value=current_value,
+            id="input-langflow_enable_superuser_cli"
+        )
+        yield input_widget
+        self.inputs["langflow_enable_superuser_cli"] = input_widget
+        yield Static(" ")
+        yield Static(" ")
+        
         # Langflow Secret Key removed from UI; generated automatically on save
         
         # Add optional fields only in full mode
@@ -379,7 +420,7 @@ class ConfigScreen(Screen):
                 new_value = getattr(self.env_manager.config, field_name)
                 input_widget.value = new_value
         
-        self.notify("Generated secure passwords", severity="info")
+        self.notify("Generated secure passwords", severity="information")
     
     def action_save(self) -> None:
         """Save the configuration."""
@@ -398,7 +439,7 @@ class ConfigScreen(Screen):
         
         # Save to file
         if self.env_manager.save_env_file():
-            self.notify("Configuration saved successfully!", severity="success")
+            self.notify("Configuration saved successfully!", severity="information")
             # Switch to monitor screen
             from .monitor import MonitorScreen
             self.app.push_screen(MonitorScreen())
