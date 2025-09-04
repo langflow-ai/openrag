@@ -166,10 +166,22 @@ class MonitorScreen(Screen):
             return
         
         services = await self.container_manager.get_service_status(force_refresh=True)
-        # Fetch image info independent of service state
-        project_images = await self.container_manager.get_project_images_info()
-        digest_map = {img: dig for img, dig in project_images}
-        images = [img for img, _ in project_images]
+        # Collect images actually reported by running/stopped containers so names match runtime
+        images_set = set()
+        for svc in services.values():
+            img = (svc.image or "").strip()
+            if img and img != "N/A":
+                images_set.add(img)
+        # Ensure compose-declared images are also shown (e.g., langflow when stopped)
+        try:
+            for img in self.container_manager._parse_compose_images():  # best-effort, no YAML dep
+                if img:
+                    images_set.add(img)
+        except Exception:
+            pass
+        images = list(images_set)
+        # Lookup digests/IDs for these image names
+        digest_map = await self.container_manager.get_images_digests(images)
         
         # Clear existing rows
         self.services_table.clear()
@@ -188,13 +200,9 @@ class MonitorScreen(Screen):
                 service_info.image or "N/A",
                 digest_map.get(service_info.image or "", "-")
             )
-        # Populate images table (unique images)
+        # Populate images table (unique images as reported by runtime)
         if self.images_table:
-            seen=set()
-            for image in images:
-                if not image or image in seen:
-                    continue
-                seen.add(image)
+            for image in sorted(images):
                 self.images_table.add_row(image, digest_map.get(image, "-"))
         # Update controls based on overall state
         self._update_controls(list(services.values()))
