@@ -194,6 +194,8 @@ class ConnectorService:
         user_id: str,
         max_files: int = None,
         jwt_token: str = None,
+        selected_files: List[str] = None,
+        selected_folders: List[str] = None,
     ) -> str:
         """Sync files from a connector connection using existing task tracking system"""
         if not self.task_service:
@@ -216,41 +218,6 @@ class ConnectorService:
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
 
-        # Collect files to process (limited by max_files)
-        files_to_process = []
-        page_token = None
-
-        # Calculate page size to minimize API calls
-        page_size = min(max_files or 100, 1000) if max_files else 100
-
-        while True:
-            # List files from connector with limit
-            print(
-                f"[DEBUG] Calling list_files with page_size={page_size}, page_token={page_token}"
-            )
-            file_list = await connector.list_files(page_token, limit=page_size)
-            print(f"[DEBUG] Got {len(file_list.get('files', []))} files")
-            files = file_list["files"]
-
-            if not files:
-                break
-
-            for file_info in files:
-                if max_files and len(files_to_process) >= max_files:
-                    break
-                files_to_process.append(file_info)
-
-            # Stop if we have enough files or no more pages
-            if (max_files and len(files_to_process) >= max_files) or not file_list.get(
-                "nextPageToken"
-            ):
-                break
-
-            page_token = file_list.get("nextPageToken")
-
-        if not files_to_process:
-            raise ValueError("No files found to sync")
-
         # Get user information
         user = self.session_manager.get_user(user_id) if self.session_manager else None
         owner_name = user.name if user else None
@@ -262,19 +229,16 @@ class ConnectorService:
         processor = ConnectorFileProcessor(
             self,
             connection_id,
-            files_to_process,
+            selected_files or [],
             user_id,
             jwt_token=jwt_token,
             owner_name=owner_name,
             owner_email=owner_email,
         )
 
-        # Use file IDs as items (no more fake file paths!)
-        file_ids = [file_info["id"] for file_info in files_to_process]
-
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(
-            user_id, file_ids, processor
+            user_id, selected_files, processor
         )
 
         return task_id
