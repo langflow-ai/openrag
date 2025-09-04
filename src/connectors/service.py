@@ -229,7 +229,7 @@ class ConnectorService:
         processor = ConnectorFileProcessor(
             self,
             connection_id,
-            selected_files,
+            selected_files or [],
             user_id,
             jwt_token=jwt_token,
             owner_name=owner_name,
