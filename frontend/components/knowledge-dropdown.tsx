@@ -80,24 +80,50 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
         const formData = new FormData()
         formData.append('file', files[0])
         
-        const response = await fetch('/api/upload', {
+        // 1) Upload to Langflow
+        const upRes = await fetch('/api/langflow/files/upload', {
           method: 'POST',
           body: formData,
         })
-
-        const result = await response.json()
-        
-        if (response.ok) {
-          window.dispatchEvent(new CustomEvent('fileUploaded', { 
-            detail: { file: files[0], result } 
-          }))
-          // Trigger search refresh after successful upload
-          window.dispatchEvent(new CustomEvent('knowledgeUpdated'))
-        } else {
-          window.dispatchEvent(new CustomEvent('fileUploadError', { 
-            detail: { filename: files[0].name, error: result.error || 'Upload failed' } 
-          }))
+        const upJson = await upRes.json()
+        if (!upRes.ok) {
+          throw new Error(upJson?.error || 'Upload to Langflow failed')
         }
+
+        const fileId = upJson?.id
+        const filePath = upJson?.path
+        if (!fileId || !filePath) {
+          throw new Error('Langflow did not return file id/path')
+        }
+
+        // 2) Run ingestion flow
+        const runRes = await fetch('/api/langflow/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_paths: [filePath] }),
+        })
+        const runJson = await runRes.json()
+        if (!runRes.ok) {
+          throw new Error(runJson?.error || 'Langflow ingestion failed')
+        }
+
+        // 3) Delete file from Langflow
+        const delRes = await fetch('/api/langflow/files', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_ids: [fileId] }),
+        })
+        const delJson = await delRes.json().catch(() => ({}))
+        if (!delRes.ok) {
+          throw new Error(delJson?.error || 'Langflow file delete failed')
+        }
+
+        // Notify UI
+        window.dispatchEvent(new CustomEvent('fileUploaded', { 
+          detail: { file: files[0], result: { file_id: fileId, file_path: filePath, run: runJson } } 
+        }))
+        // Trigger search refresh after successful ingestion
+        window.dispatchEvent(new CustomEvent('knowledgeUpdated'))
       } catch (error) {
         window.dispatchEvent(new CustomEvent('fileUploadError', { 
           detail: { filename: files[0].name, error: error instanceof Error ? error.message : 'Upload failed' } 
