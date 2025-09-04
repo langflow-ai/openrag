@@ -48,6 +48,7 @@ RUN echo y | opensearch-plugin install repository-s3
 
 # Copy OIDC and DLS security configuration
 COPY securityconfig/ /usr/share/opensearch/securityconfig/
+RUN chown -R opensearch:opensearch /usr/share/opensearch/securityconfig/
 
 # Create a script to apply security configuration after OpenSearch starts
 RUN echo '#!/bin/bash' > /usr/share/opensearch/setup-security.sh && \
