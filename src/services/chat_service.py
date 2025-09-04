@@ -1,5 +1,9 @@
-from config.settings import clients, LANGFLOW_URL, FLOW_ID
-from agent import async_chat, async_langflow, async_chat_stream, async_langflow_stream
+from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL, FLOW_ID
+from agent import (
+    async_chat,
+    async_langflow,
+    async_chat_stream,
+)
 from auth_context import set_auth_context
 import json
 from utils.logging_config import get_logger
@@ -111,7 +115,10 @@ class ChatService:
 
         # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
         if filter_expression:
-            logger.info("Sending OpenRAG query filter to Langflow", filter_expression=filter_expression)
+            logger.info(
+                "Sending OpenRAG query filter to Langflow",
+                filter_expression=filter_expression,
+            )
             extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
                 filter_expression
             )
@@ -149,6 +156,62 @@ class ChatService:
             if response_id:
                 response_data["response_id"] = response_id
             return response_data
+
+    async def langflow_nudges_chat(
+        self,
+        user_id: str = None,
+        jwt_token: str = None,
+        previous_response_id: str = None,
+    ):
+        """Handle Langflow chat requests"""
+
+        if not LANGFLOW_URL or not NUDGES_FLOW_ID:
+            raise ValueError(
+                "LANGFLOW_URL and NUDGES_FLOW_ID environment variables are required"
+            )
+
+        # Prepare extra headers for JWT authentication
+        extra_headers = {}
+        if jwt_token:
+            extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
+
+        # Ensure the Langflow client exists; try lazy init if needed
+        langflow_client = await clients.ensure_langflow_client()
+        if not langflow_client:
+            raise ValueError(
+                "Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY."
+            )
+        prompt = ""
+        if previous_response_id:
+            from agent import get_conversation_thread
+
+            conversation_history = get_conversation_thread(
+                user_id, previous_response_id
+            )
+            if conversation_history:
+                conversation_history = "\n".join(
+                    [
+                        f"{msg['role']}: {msg['content']}"
+                        for msg in conversation_history["messages"]
+                        if msg["role"] in ["user", "assistant"]
+                    ]
+                )
+                prompt = f"{conversation_history}"
+
+        from agent import async_langflow_chat
+
+        response_text, response_id = await async_langflow_chat(
+            langflow_client,
+            NUDGES_FLOW_ID,
+            prompt,
+            user_id,
+            extra_headers=extra_headers,
+            store_conversation=False,
+        )
+        response_data = {"response": response_text}
+        if response_id:
+            response_data["response_id"] = response_id
+        return response_data
 
     async def upload_context_chat(
         self,
@@ -201,7 +264,11 @@ class ChatService:
             return {"error": "User ID is required", "conversations": []}
 
         conversations_dict = get_user_conversations(user_id)
-        logger.debug("Getting chat history for user", user_id=user_id, conversation_count=len(conversations_dict))
+        logger.debug(
+            "Getting chat history for user",
+            user_id=user_id,
+            conversation_count=len(conversations_dict),
+        )
 
         # Convert conversations dict to list format with metadata
         conversations = []
@@ -270,16 +337,16 @@ class ChatService:
         from agent import get_user_conversations
         from services.langflow_history_service import langflow_history_service
         from services.user_binding_service import user_binding_service
-        
+
         if not user_id:
             return {"error": "User ID is required", "conversations": []}
-        
+
         all_conversations = []
-        
+
         try:
             # 1. Get in-memory OpenRAG conversations (current session)
             conversations_dict = get_user_conversations(user_id)
-            
+
             for response_id, conversation_state in conversations_dict.items():
                 # Filter out system messages
                 messages = []
@@ -295,7 +362,7 @@ class ChatService:
                         if msg.get("response_id"):
                             message_data["response_id"] = msg["response_id"]
                         messages.append(message_data)
-                
+
                 if messages:  # Only include conversations with actual messages
                     # Generate title from first user message
                     first_user_msg = next(
@@ -308,43 +375,59 @@ class ChatService:
                         if first_user_msg
                         else "New chat"
                     )
-                    
-                    all_conversations.append({
-                        "response_id": response_id,
-                        "title": title,
-                        "endpoint": "langflow",
-                        "messages": messages,
-                        "created_at": conversation_state.get("created_at").isoformat()
-                        if conversation_state.get("created_at")
-                        else None,
-                        "last_activity": conversation_state.get("last_activity").isoformat()
-                        if conversation_state.get("last_activity")
-                        else None,
-                        "previous_response_id": conversation_state.get("previous_response_id"),
-                        "total_messages": len(messages),
-                        "source": "openrag_memory"
-                    })
-            
-            # 2. Get historical conversations from Langflow database 
+
+                    all_conversations.append(
+                        {
+                            "response_id": response_id,
+                            "title": title,
+                            "endpoint": "langflow",
+                            "messages": messages,
+                            "created_at": conversation_state.get(
+                                "created_at"
+                            ).isoformat()
+                            if conversation_state.get("created_at")
+                            else None,
+                            "last_activity": conversation_state.get(
+                                "last_activity"
+                            ).isoformat()
+                            if conversation_state.get("last_activity")
+                            else None,
+                            "previous_response_id": conversation_state.get(
+                                "previous_response_id"
+                            ),
+                            "total_messages": len(messages),
+                            "source": "openrag_memory",
+                        }
+                    )
+
+            # 2. Get historical conversations from Langflow database
             # (works with both Google-bound users and direct Langflow users)
             print(f"[DEBUG] Attempting to fetch Langflow history for user: {user_id}")
-            langflow_history = await langflow_history_service.get_user_conversation_history(user_id, flow_id=FLOW_ID)
-            
+            langflow_history = (
+                await langflow_history_service.get_user_conversation_history(
+                    user_id, flow_id=FLOW_ID
+                )
+            )
+
             if langflow_history.get("conversations"):
                 for conversation in langflow_history["conversations"]:
                     # Convert Langflow format to OpenRAG format
                     messages = []
                     for msg in conversation.get("messages", []):
-                        messages.append({
-                            "role": msg["role"],
-                            "content": msg["content"],
-                            "timestamp": msg.get("timestamp"),
-                            "langflow_message_id": msg.get("langflow_message_id"),
-                            "source": "langflow"
-                        })
-                    
+                        messages.append(
+                            {
+                                "role": msg["role"],
+                                "content": msg["content"],
+                                "timestamp": msg.get("timestamp"),
+                                "langflow_message_id": msg.get("langflow_message_id"),
+                                "source": "langflow",
+                            }
+                        )
+
                     if messages:
-                        first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
+                        first_user_msg = next(
+                            (msg for msg in messages if msg["role"] == "user"), None
+                        )
                         title = (
                             first_user_msg["content"][:50] + "..."
                             if first_user_msg and len(first_user_msg["content"]) > 50
@@ -352,33 +435,39 @@ class ChatService:
                             if first_user_msg
                             else "Langflow chat"
                         )
-                        
-                        all_conversations.append({
-                            "response_id": conversation["session_id"],
-                            "title": title,
-                            "endpoint": "langflow",
-                            "messages": messages,
-                            "created_at": conversation.get("created_at"),
-                            "last_activity": conversation.get("last_activity"),
-                            "total_messages": len(messages),
-                            "source": "langflow_database",
-                            "langflow_session_id": conversation["session_id"],
-                            "langflow_flow_id": conversation.get("flow_id")
-                        })
-                
-                print(f"[DEBUG] Added {len(langflow_history['conversations'])} historical conversations from Langflow")
+
+                        all_conversations.append(
+                            {
+                                "response_id": conversation["session_id"],
+                                "title": title,
+                                "endpoint": "langflow",
+                                "messages": messages,
+                                "created_at": conversation.get("created_at"),
+                                "last_activity": conversation.get("last_activity"),
+                                "total_messages": len(messages),
+                                "source": "langflow_database",
+                                "langflow_session_id": conversation["session_id"],
+                                "langflow_flow_id": conversation.get("flow_id"),
+                            }
+                        )
+
+                print(
+                    f"[DEBUG] Added {len(langflow_history['conversations'])} historical conversations from Langflow"
+                )
             elif langflow_history.get("error"):
-                print(f"[DEBUG] Could not fetch Langflow history for user {user_id}: {langflow_history['error']}")
+                print(
+                    f"[DEBUG] Could not fetch Langflow history for user {user_id}: {langflow_history['error']}"
+                )
             else:
                 print(f"[DEBUG] No Langflow conversations found for user {user_id}")
-        
+
         except Exception as e:
             print(f"[ERROR] Failed to fetch Langflow history: {e}")
             # Continue with just in-memory conversations
-        
+
         # Deduplicate conversations by response_id (in-memory takes priority over database)
         deduplicated_conversations = {}
-        
+
         for conversation in all_conversations:
             response_id = conversation.get("response_id")
             if response_id:
@@ -390,37 +479,52 @@ class ChatService:
                     existing = deduplicated_conversations[response_id]
                     current_source = conversation.get("source")
                     existing_source = existing.get("source")
-                    
-                    if current_source == "openrag_memory" and existing_source == "langflow_database":
+
+                    if (
+                        current_source == "openrag_memory"
+                        and existing_source == "langflow_database"
+                    ):
                         # Replace database version with in-memory version
                         deduplicated_conversations[response_id] = conversation
-                        print(f"[DEBUG] Replaced database conversation {response_id} with in-memory version")
+                        print(
+                            f"[DEBUG] Replaced database conversation {response_id} with in-memory version"
+                        )
                     # Otherwise keep existing (in-memory has priority, or first database entry)
             else:
                 # No response_id - add with unique key based on content and timestamp
                 unique_key = f"no_id_{hash(conversation.get('title', ''))}{conversation.get('created_at', '')}"
                 if unique_key not in deduplicated_conversations:
                     deduplicated_conversations[unique_key] = conversation
-        
+
         final_conversations = list(deduplicated_conversations.values())
-        
+
         # Sort by last activity (most recent first)
         final_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
-        
+
         # Calculate source statistics after deduplication
         sources = {
-            "memory": len([c for c in final_conversations if c.get("source") == "openrag_memory"]),
-            "langflow_db": len([c for c in final_conversations if c.get("source") == "langflow_database"]),
-            "duplicates_removed": len(all_conversations) - len(final_conversations)
+            "memory": len(
+                [c for c in final_conversations if c.get("source") == "openrag_memory"]
+            ),
+            "langflow_db": len(
+                [
+                    c
+                    for c in final_conversations
+                    if c.get("source") == "langflow_database"
+                ]
+            ),
+            "duplicates_removed": len(all_conversations) - len(final_conversations),
         }
-        
+
         if sources["duplicates_removed"] > 0:
-            print(f"[DEBUG] Removed {sources['duplicates_removed']} duplicate conversations")
-        
+            print(
+                f"[DEBUG] Removed {sources['duplicates_removed']} duplicate conversations"
+            )
+
         return {
             "user_id": user_id,
             "endpoint": "langflow",
             "conversations": final_conversations,
             "total_conversations": len(final_conversations),
-            "sources": sources
+            "sources": sources,
         }
