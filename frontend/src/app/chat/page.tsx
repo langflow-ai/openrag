@@ -91,8 +91,10 @@ function ChatPage() {
     addConversationDoc,
     forkFromResponse,
     refreshConversations,
+    refreshConversationsSilent,
     previousResponseIds,
     setPreviousResponseIds,
+    placeholderConversation,
   } = useChat();
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -133,6 +135,7 @@ function ChatPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef(0);
+  const lastLoadedConversationRef = useRef<string | null>(null);
   const { addTask, isMenuOpen } = useTask();
   const { selectedFilter, parsedFilterData, isPanelOpen, setSelectedFilter } =
     useKnowledgeFilter();
@@ -241,11 +244,16 @@ function ChatPage() {
             ...prev,
             [endpoint]: result.response_id,
           }));
+          
+          // If this is a new conversation (no currentConversationId), set it now
+          if (!currentConversationId) {
+            setCurrentConversationId(result.response_id);
+            refreshConversations(true);
+          } else {
+            // For existing conversations, do a silent refresh to keep backend in sync
+            refreshConversationsSilent();
+          }
         }
-        // Sidebar should show this conversation after upload creates it
-        try {
-          refreshConversations();
-        } catch {}
       } else {
         throw new Error(`Upload failed: ${response.status}`);
       }
@@ -406,6 +414,7 @@ function ChatPage() {
       setExpandedFunctionCalls(new Set());
       setIsFilterHighlighted(false);
       setLoading(false);
+      lastLoadedConversationRef.current = null;
     };
 
     const handleFocusInput = () => {
@@ -420,25 +429,19 @@ function ChatPage() {
     };
   }, []);
 
-  // Load conversation when conversationData changes
+  // Load conversation only when user explicitly selects a conversation
   useEffect(() => {
-    const now = Date.now();
-
-    // Don't reset messages if user is in the middle of an interaction (like forking)
-    if (isUserInteracting || isForkingInProgress) {
-      console.log(
-        "Skipping conversation load due to user interaction or forking"
-      );
-      return;
-    }
-
-    // Don't reload if we just forked recently (within 1 second)
-    if (now - lastForkTimestamp < 1000) {
-      console.log("Skipping conversation load - recent fork detected");
-      return;
-    }
-
-    if (conversationData && conversationData.messages) {
+    // Only load conversation data when:
+    // 1. conversationData exists AND
+    // 2. It's different from the last loaded conversation AND
+    // 3. User is not in the middle of an interaction
+    if (
+      conversationData && 
+      conversationData.messages && 
+      lastLoadedConversationRef.current !== conversationData.response_id &&
+      !isUserInteracting &&
+      !isForkingInProgress
+    ) {
       console.log(
         "Loading conversation with",
         conversationData.messages.length,
@@ -460,6 +463,7 @@ function ChatPage() {
       );
 
       setMessages(convertedMessages);
+      lastLoadedConversationRef.current = conversationData.response_id;
 
       // Set the previous response ID for this conversation
       setPreviousResponseIds((prev) => ({
@@ -467,14 +471,16 @@ function ChatPage() {
         [conversationData.endpoint]: conversationData.response_id,
       }));
     }
-    // Reset messages when starting a new conversation (but not during forking)
-    else if (
-      currentConversationId === null &&
-      !isUserInteracting &&
-      !isForkingInProgress &&
-      now - lastForkTimestamp > 1000
-    ) {
-      console.log("Resetting to default message for new conversation");
+  }, [
+    conversationData,
+    isUserInteracting,
+    isForkingInProgress,
+  ]);
+
+  // Handle new conversation creation - only reset messages when placeholderConversation is set
+  useEffect(() => {
+    if (placeholderConversation && currentConversationId === null) {
+      console.log("Starting new conversation");
       setMessages([
         {
           role: "assistant",
@@ -482,15 +488,9 @@ function ChatPage() {
           timestamp: new Date(),
         },
       ]);
+      lastLoadedConversationRef.current = null;
     }
-  }, [
-    conversationData,
-    currentConversationId,
-    isUserInteracting,
-    isForkingInProgress,
-    lastForkTimestamp,
-    setPreviousResponseIds,
-  ]);
+  }, [placeholderConversation, currentConversationId]);
 
   // Listen for file upload events from navigation
   useEffect(() => {
@@ -1280,14 +1280,16 @@ function ChatPage() {
           ...prev,
           [endpoint]: newResponseId,
         }));
+        
+        // If this is a new conversation (no currentConversationId), set it now
+        if (!currentConversationId) {
+          setCurrentConversationId(newResponseId);
+          refreshConversations(true);
+        } else {
+          // For existing conversations, do a silent refresh to keep backend in sync
+          refreshConversationsSilent();
+        }
       }
-
-      // Trigger sidebar refresh to include this conversation (with small delay to ensure backend has processed)
-      setTimeout(() => {
-        try {
-          refreshConversations();
-        } catch {}
-      }, 100);
     } catch (error) {
       // If stream was aborted (e.g., starting new conversation), do not append errors or final messages
       if (streamAbortRef.current?.signal.aborted) {
@@ -1390,13 +1392,16 @@ function ChatPage() {
               ...prev,
               [endpoint]: result.response_id,
             }));
+            
+            // If this is a new conversation (no currentConversationId), set it now
+            if (!currentConversationId) {
+              setCurrentConversationId(result.response_id);
+              refreshConversations(true);
+            } else {
+              // For existing conversations, do a silent refresh to keep backend in sync
+              refreshConversationsSilent();
+            }
           }
-          // Trigger sidebar refresh to include/update this conversation (with small delay to ensure backend has processed)
-          setTimeout(() => {
-            try {
-              refreshConversations();
-            } catch {}
-          }, 100);
         } else {
           console.error("Chat failed:", result.error);
           const errorMessage: Message = {
@@ -2013,9 +2018,6 @@ function ChatPage() {
                   // Clear filter highlight when user starts typing
                   if (isFilterHighlighted) {
                     setIsFilterHighlighted(false);
-                    try {
-                      refreshConversations();
-                    } catch {}
                   }
 
                   // Find if there's an @ at the start of the last word
