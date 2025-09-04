@@ -7,7 +7,9 @@ from dataclasses import dataclass, asdict
 from cryptography.hazmat.primitives import serialization
 import os
 
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 @dataclass
 class User:
     """User information from OAuth provider"""
@@ -173,19 +175,19 @@ class SessionManager:
         """Get or create OpenSearch client for user with their JWT"""
         from config.settings import is_no_auth_mode
 
-        print(
+        logger.info(
             f"[DEBUG] get_user_opensearch_client: user_id={user_id}, jwt_token={'None' if jwt_token is None else 'present'}, no_auth_mode={is_no_auth_mode()}"
         )
 
         # In no-auth mode, create anonymous JWT for OpenSearch DLS
-        if is_no_auth_mode() and jwt_token is None:
+        if jwt_token is None and (is_no_auth_mode() or user_id in (None, "anonymous","")):
             if not hasattr(self, "_anonymous_jwt"):
                 # Create anonymous JWT token for OpenSearch OIDC
-                print(f"[DEBUG] Creating anonymous JWT...")
+                logger.info("[DEBUG] Creating anonymous JWT...")
                 self._anonymous_jwt = self._create_anonymous_jwt()
-                print(f"[DEBUG] Anonymous JWT created: {self._anonymous_jwt[:50]}...")
+                logger.info(f"[DEBUG] Anonymous JWT created: {self._anonymous_jwt[:50]}...")
             jwt_token = self._anonymous_jwt
-            print(f"[DEBUG] Using anonymous JWT for OpenSearch")
+            logger.info(f"[DEBUG] Using anonymous JWT for OpenSearch")
 
         # Check if we have a cached client for this user
         if user_id not in self.user_opensearch_clients:
