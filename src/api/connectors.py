@@ -111,6 +111,8 @@ async def connector_status(request: Request, connector_service, session_manager)
 async def connector_webhook(request: Request, connector_service, session_manager):
     """Handle webhook notifications from any connector type"""
     connector_type = request.path_params.get("connector_type")
+    if connector_type is None:
+        connector_type = "unknown"
 
     # Handle webhook validation (connector-specific)
     temp_config = {"token_file": "temp.json"}
@@ -118,7 +120,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
 
     temp_connection = ConnectionConfig(
         connection_id="temp",
-        connector_type=connector_type,
+        connector_type=str(connector_type),
         name="temp",
         config=temp_config,
     )
@@ -186,7 +188,6 @@ async def connector_webhook(request: Request, connector_service, session_manager
             )
 
         # Process webhook for the specific connection
-        results = []
         try:
             # Get the connector instance
             connector = await connector_service._get_connector(connection.connection_id)
@@ -272,3 +273,42 @@ async def connector_webhook(request: Request, connector_service, session_manager
         return JSONResponse(
             {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
         )
+
+async def connector_token(request: Request, connector_service, session_manager):
+    """Get access token for connector API calls (e.g., Google Picker)"""
+    connector_type = request.path_params.get("connector_type")
+    connection_id = request.query_params.get("connection_id")
+
+    if not connection_id:
+        return JSONResponse({"error": "connection_id is required"}, status_code=400)
+
+    user = request.state.user
+
+    try:
+        # Get the connection and verify it belongs to the user
+        connection = await connector_service.connection_manager.get_connection(connection_id)
+        if not connection or connection.user_id != user.user_id:
+            return JSONResponse({"error": "Connection not found"}, status_code=404)
+
+        # Get the connector instance
+        connector = await connector_service._get_connector(connection_id)
+        if not connector:
+            return JSONResponse({"error": "Connector not available"}, status_code=404)
+
+        # For Google Drive, get the access token
+        if connector_type == "google_drive" and hasattr(connector, 'oauth'):
+            await connector.oauth.load_credentials()
+            if connector.oauth.creds and connector.oauth.creds.valid:
+                return JSONResponse({
+                    "access_token": connector.oauth.creds.token,
+                    "expires_in": (connector.oauth.creds.expiry.timestamp() - 
+                                 __import__('time').time()) if connector.oauth.creds.expiry else None
+                })
+            else:
+                return JSONResponse({"error": "Invalid or expired credentials"}, status_code=401)
+
+        return JSONResponse({"error": "Token not available for this connector type"}, status_code=400)
+
+    except Exception as e:
+        print(f"Error getting connector token: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)

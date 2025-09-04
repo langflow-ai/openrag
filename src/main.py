@@ -6,18 +6,12 @@ import subprocess
 from functools import partial
 from starlette.applications import Starlette
 from starlette.routing import Route
-
-# Set multiprocessing start method to 'spawn' for CUDA compatibility
-multiprocessing.set_start_method("spawn", force=True)
-
-# Create process pool FIRST, before any torch/CUDA imports
 from utils.process_pool import process_pool
 
 import torch
 
 # Configuration and setup
 from config.settings import clients, INDEX_NAME, INDEX_BODY, SESSION_SECRET
-from utils.gpu_detection import detect_gpu_devices
 
 # Services
 from services.document_service import DocumentService
@@ -45,6 +39,9 @@ from api import (
     knowledge_filter,
     settings,
 )
+
+# Set multiprocessing start method to 'spawn' for CUDA compatibility
+multiprocessing.set_start_method("spawn", force=True)
 
 print("CUDA available:", torch.cuda.is_available())
 print("CUDA version PyTorch was built with:", torch.version.cuda)
@@ -240,7 +237,7 @@ async def initialize_services():
         except Exception as e:
             print(f"[WARNING] Failed to load persisted connections on startup: {e}")
     else:
-        print(f"[CONNECTORS] Skipping connection loading in no-auth mode")
+        print("[CONNECTORS] Skipping connection loading in no-auth mode")
 
     return {
         "document_service": document_service,
@@ -580,6 +577,17 @@ async def create_app():
             require_auth(services["session_manager"])(
                 partial(
                     connectors.connector_status,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/connectors/{connector_type}/token",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.connector_token,
                     connector_service=services["connector_service"],
                     session_manager=services["session_manager"],
                 )
