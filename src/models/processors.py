@@ -5,12 +5,14 @@ from .tasks import UploadTask, FileTask
 
 class TaskProcessor(ABC):
     """Abstract base class for task processors"""
-    
+
     @abstractmethod
-    async def process_item(self, upload_task: UploadTask, item: Any, file_task: FileTask) -> None:
+    async def process_item(
+        self, upload_task: UploadTask, item: Any, file_task: FileTask
+    ) -> None:
         """
         Process a single item in the task.
-        
+
         Args:
             upload_task: The overall upload task
             item: The item to process (could be file path, file info, etc.)
@@ -21,30 +23,49 @@ class TaskProcessor(ABC):
 
 class DocumentFileProcessor(TaskProcessor):
     """Default processor for regular file uploads"""
-    
-    def __init__(self, document_service, owner_user_id: str = None, jwt_token: str = None, owner_name: str = None, owner_email: str = None):
+
+    def __init__(
+        self,
+        document_service,
+        owner_user_id: str = None,
+        jwt_token: str = None,
+        owner_name: str = None,
+        owner_email: str = None,
+    ):
         self.document_service = document_service
         self.owner_user_id = owner_user_id
         self.jwt_token = jwt_token
         self.owner_name = owner_name
         self.owner_email = owner_email
-    
-    async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
+
+    async def process_item(
+        self, upload_task: UploadTask, item: str, file_task: FileTask
+    ) -> None:
         """Process a regular file path using DocumentService"""
         # This calls the existing logic with user context
         await self.document_service.process_single_file_task(
-            upload_task, item, 
-            owner_user_id=self.owner_user_id, 
+            upload_task,
+            item,
+            owner_user_id=self.owner_user_id,
             jwt_token=self.jwt_token,
             owner_name=self.owner_name,
-            owner_email=self.owner_email
+            owner_email=self.owner_email,
         )
 
 
 class ConnectorFileProcessor(TaskProcessor):
     """Processor for connector file uploads"""
-    
-    def __init__(self, connector_service, connection_id: str, files_to_process: list, user_id: str = None, jwt_token: str = None, owner_name: str = None, owner_email: str = None):
+
+    def __init__(
+        self,
+        connector_service,
+        connection_id: str,
+        files_to_process: list,
+        user_id: str = None,
+        jwt_token: str = None,
+        owner_name: str = None,
+        owner_email: str = None,
+    ):
         self.connector_service = connector_service
         self.connection_id = connection_id
         self.files_to_process = files_to_process
@@ -57,35 +78,46 @@ class ConnectorFileProcessor(TaskProcessor):
         for f in files_to_process:
             if isinstance(f, dict):
                 # Full file info objects
-                self.file_info_map[f['id']] = f
+                self.file_info_map[f["id"]] = f
             else:
                 # Just file IDs - will need to fetch metadata during processing
                 self.file_info_map[f] = None
-    
-    async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
+
+    async def process_item(
+        self, upload_task: UploadTask, item: str, file_task: FileTask
+    ) -> None:
         """Process a connector file using ConnectorService"""
         from models.tasks import TaskStatus
         import time
-        
+
         file_id = item  # item is the connector file ID
         file_info = self.file_info_map.get(file_id)
-        
+
         # Get the connector and connection info
         connector = await self.connector_service.get_connector(self.connection_id)
-        connection = await self.connector_service.connection_manager.get_connection(self.connection_id)
+        connection = await self.connector_service.connection_manager.get_connection(
+            self.connection_id
+        )
         if not connector or not connection:
             raise ValueError(f"Connection '{self.connection_id}' not found")
-        
+
         # Get file content from connector (the connector will fetch metadata if needed)
         document = await connector.get_file_content(file_id)
-        
+
         # Use the user_id passed during initialization
         if not self.user_id:
             raise ValueError("user_id not provided to ConnectorFileProcessor")
-        
+
         # Process using existing pipeline
-        result = await self.connector_service.process_connector_document(document, self.user_id, connection.connector_type, jwt_token=self.jwt_token, owner_name=self.owner_name, owner_email=self.owner_email)
-        
+        result = await self.connector_service.process_connector_document(
+            document,
+            self.user_id,
+            connection.connector_type,
+            jwt_token=self.jwt_token,
+            owner_name=self.owner_name,
+            owner_email=self.owner_email,
+        )
+
         file_task.status = TaskStatus.COMPLETED
         file_task.result = result
         upload_task.successful_files += 1
@@ -114,7 +146,9 @@ class S3FileProcessor(TaskProcessor):
         self.owner_name = owner_name
         self.owner_email = owner_email
 
-    async def process_item(self, upload_task: UploadTask, item: str, file_task: FileTask) -> None:
+    async def process_item(
+        self, upload_task: UploadTask, item: str, file_task: FileTask
+    ) -> None:
         """Download an S3 object and process it using DocumentService"""
         from models.tasks import TaskStatus
         import tempfile
@@ -140,8 +174,10 @@ class S3FileProcessor(TaskProcessor):
                 self.document_service.process_pool, process_document_sync, tmp.name
             )
 
-            opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
-                self.owner_user_id, self.jwt_token
+            opensearch_client = (
+                self.document_service.session_manager.get_user_opensearch_client(
+                    self.owner_user_id, self.jwt_token
+                )
             )
             exists = await opensearch_client.exists(index=INDEX_NAME, id=slim_doc["id"])
             if exists:
@@ -159,7 +195,7 @@ class S3FileProcessor(TaskProcessor):
                 # Get object size
                 try:
                     obj_info = self.s3_client.head_object(Bucket=self.bucket, Key=item)
-                    file_size = obj_info.get('ContentLength', 0)
+                    file_size = obj_info.get("ContentLength", 0)
                 except Exception:
                     file_size = 0
 
@@ -180,9 +216,13 @@ class S3FileProcessor(TaskProcessor):
                     }
                     chunk_id = f"{slim_doc['id']}_{i}"
                     try:
-                        await opensearch_client.index(index=INDEX_NAME, id=chunk_id, body=chunk_doc)
+                        await opensearch_client.index(
+                            index=INDEX_NAME, id=chunk_id, body=chunk_doc
+                        )
                     except Exception as e:
-                        print(f"[ERROR] OpenSearch indexing failed for S3 chunk {chunk_id}: {e}")
+                        print(
+                            f"[ERROR] OpenSearch indexing failed for S3 chunk {chunk_id}: {e}"
+                        )
                         print(f"[ERROR] Chunk document: {chunk_doc}")
                         raise
 

@@ -12,7 +12,7 @@ jobs:
             runs-on: ubuntu-latest
             arch-suffix: amd64
           - platform: linux/arm64
-            runs-on:  ubuntu-24.04-arm
+            runs-on:  self-hosted
             arch-suffix: arm64
     
     runs-on: ${{ matrix.runs-on }}
