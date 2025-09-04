@@ -207,13 +207,18 @@ class S3FileProcessor(TaskProcessor):
                         "page": chunk["page"],
                         "text": chunk["text"],
                         "chunk_embedding": vect,
-                        "owner": self.owner_user_id,
-                        "owner_name": self.owner_name,
-                        "owner_email": self.owner_email,
                         "file_size": file_size,
                         "connector_type": "s3",  # S3 uploads
                         "indexed_time": datetime.datetime.now().isoformat(),
                     }
+                    
+                    # Only set owner fields if owner_user_id is provided (for no-auth mode support)
+                    if self.owner_user_id is not None:
+                        chunk_doc["owner"] = self.owner_user_id
+                    if self.owner_name is not None:
+                        chunk_doc["owner_name"] = self.owner_name
+                    if self.owner_email is not None:
+                        chunk_doc["owner_email"] = self.owner_email
                     chunk_id = f"{slim_doc['id']}_{i}"
                     try:
                         await opensearch_client.index(

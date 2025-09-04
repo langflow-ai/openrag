@@ -32,15 +32,31 @@ class PlatformDetector:
 
     def detect_runtime(self) -> RuntimeInfo:
         """Detect available container runtime and compose capabilities."""
+        # First check if we have podman installed
+        podman_version = self._get_podman_version()
+        
+        # If we have podman, check if docker is actually podman in disguise
+        if podman_version:
+            docker_version = self._get_docker_version()
+            if docker_version and podman_version in docker_version:
+                # This is podman masquerading as docker
+                if self._check_command(["docker", "compose", "--help"]):
+                    return RuntimeInfo(RuntimeType.PODMAN, ["docker", "compose"], ["docker"], podman_version)
+                if self._check_command(["docker-compose", "--help"]):
+                    return RuntimeInfo(RuntimeType.PODMAN, ["docker-compose"], ["docker"], podman_version)
+            
+            # Check for native podman compose
+            if self._check_command(["podman", "compose", "--help"]):
+                return RuntimeInfo(RuntimeType.PODMAN, ["podman", "compose"], ["podman"], podman_version)
+        
+        # Check for actual docker
         if self._check_command(["docker", "compose", "--help"]):
             version = self._get_docker_version()
             return RuntimeInfo(RuntimeType.DOCKER, ["docker", "compose"], ["docker"], version)
         if self._check_command(["docker-compose", "--help"]):
             version = self._get_docker_version()
             return RuntimeInfo(RuntimeType.DOCKER_COMPOSE, ["docker-compose"], ["docker"], version)
-        if self._check_command(["podman", "compose", "--help"]):
-            version = self._get_podman_version()
-            return RuntimeInfo(RuntimeType.PODMAN, ["podman", "compose"], ["podman"], version)
+            
         return RuntimeInfo(RuntimeType.NONE, [], [])
 
     def detect_gpu_available(self) -> bool:
