@@ -47,7 +47,7 @@ async def upload_user_file(
         )
         import traceback
 
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        logger.error("Full traceback", traceback=traceback.format_exc())
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
