@@ -8,9 +8,11 @@ from .screens.welcome import WelcomeScreen
 from .screens.config import ConfigScreen
 from .screens.monitor import MonitorScreen
 from .screens.logs import LogsScreen
+from .screens.diagnostics import DiagnosticsScreen
 from .managers.env_manager import EnvManager
 from .managers.container_manager import ContainerManager
 from .utils.platform import PlatformDetector
+from .widgets.diagnostics_notification import notify_with_diagnostics
 
 
 class OpenRAGTUI(App):
@@ -181,7 +183,8 @@ class OpenRAGTUI(App):
         """Initialize the application."""
         # Check for runtime availability and show appropriate screen
         if not self.container_manager.is_available():
-            self.notify(
+            notify_with_diagnostics(
+                self,
                 "No container runtime found. Please install Docker or Podman.",
                 severity="warning",
                 timeout=10
@@ -193,7 +196,7 @@ class OpenRAGTUI(App):
         # Start with welcome screen
         self.push_screen(WelcomeScreen())
     
-    def action_quit(self) -> None:
+    async def action_quit(self) -> None:
         """Quit the application."""
         self.exit()
     
