@@ -3,6 +3,7 @@
 import os
 import secrets
 import string
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, List
 from dataclasses import dataclass, field
@@ -181,9 +182,10 @@ class EnvManager:
         try:
             # Ensure secure defaults (including Langflow secret key) are set before saving
             self.setup_secure_defaults()
-            # Create backup if file exists
+            # Create timestamped backup if file exists
             if self.env_file.exists():
-                backup_file = self.env_file.with_suffix('.env.backup')
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                backup_file = self.env_file.with_suffix(f'.env.backup.{timestamp}')
                 self.env_file.rename(backup_file)
             
             with open(self.env_file, 'w') as f:
