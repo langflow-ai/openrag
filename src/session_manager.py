@@ -26,6 +26,19 @@ class User:
         if self.last_login is None:
             self.last_login = datetime.now()
 
+class AnonymousUser(User):
+    """Anonymous user"""
+
+    def __init__(self):
+        super().__init__(
+            user_id="anonymous",
+            email="anonymous@localhost",
+            name="Anonymous User",
+            picture=None,
+            provider="none",
+        )
+
+
 
 class SessionManager:
     """Manages user sessions and JWT tokens"""
@@ -199,14 +212,5 @@ class SessionManager:
 
     def _create_anonymous_jwt(self) -> str:
         """Create JWT token for anonymous user in no-auth mode"""
-        anonymous_user = User(
-            user_id="anonymous",
-            email="anonymous@localhost",
-            name="Anonymous User",
-            picture=None,
-            provider="none",
-            created_at=datetime.now(),
-            last_login=datetime.now(),
-        )
-
+        anonymous_user = AnonymousUser()
         return self.create_jwt_token(anonymous_user)
