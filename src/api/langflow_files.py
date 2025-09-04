@@ -8,21 +8,39 @@ async def upload_user_file(
     request: Request, langflow_file_service: LangflowFileService, session_manager
 ):
     try:
+        print("[DEBUG] upload_user_file endpoint called")
         form = await request.form()
         upload_file = form.get("file")
         if upload_file is None:
+            print("[ERROR] No file provided in upload request")
             return JSONResponse({"error": "Missing file"}, status_code=400)
 
+        print(
+            f"[DEBUG] Processing file: {upload_file.filename}, size: {upload_file.size}"
+        )
+
         # starlette UploadFile provides file-like; httpx needs (filename, file, content_type)
+        content = await upload_file.read()
         file_tuple = (
             upload_file.filename,
-            await upload_file.read(),
+            content,
             upload_file.content_type or "application/octet-stream",
         )
 
-        result = await langflow_file_service.upload_user_file(file_tuple)
+        jwt_token = getattr(request.state, "jwt_token", None)
+        print(f"[DEBUG] JWT token present: {jwt_token is not None}")
+
+        print("[DEBUG] Calling langflow_file_service.upload_user_file...")
+        result = await langflow_file_service.upload_user_file(
+            file_tuple, jwt_token=jwt_token
+        )
+        print(f"[DEBUG] Upload successful: {result}")
         return JSONResponse(result, status_code=201)
     except Exception as e:
+        print(f"[ERROR] upload_user_file endpoint failed: {type(e).__name__}: {e}")
+        import traceback
+
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
