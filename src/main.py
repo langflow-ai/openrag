@@ -196,12 +196,7 @@ async def ingest_default_documents_when_ready(services):
     try:
         # Ensure OpenSearch is ready and indices exist
         await init_index()
-
-        # Only run in no-auth mode (mirrors non-auth upload behavior)
-        if not is_no_auth_mode():
-            print("[INGEST] Skipping default documents ingestion: auth mode enabled")
-            return
-
+        
         base_dir = os.path.abspath(os.path.join(os.getcwd(), "documents"))
         if not os.path.isdir(base_dir):
             print(f"[INGEST] Documents directory not found at {base_dir}; skipping")
