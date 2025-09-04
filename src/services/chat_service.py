@@ -328,7 +328,7 @@ class ChatService:
             # 2. Get historical conversations from Langflow database 
             # (works with both Google-bound users and direct Langflow users)
             print(f"[DEBUG] Attempting to fetch Langflow history for user: {user_id}")
-            langflow_history = await langflow_history_service.get_user_conversation_history(user_id)
+            langflow_history = await langflow_history_service.get_user_conversation_history(user_id, flow_id=FLOW_ID)
             
             if langflow_history.get("conversations"):
                 for conversation in langflow_history["conversations"]:
