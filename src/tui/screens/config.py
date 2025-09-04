@@ -399,6 +399,17 @@ class ConfigScreen(Screen):
         # Add spacing
         yield Static(" ")
     
+    def on_mount(self) -> None:
+        """Initialize the screen when mounted."""
+        # Focus the first input field
+        try:
+            # Find the first input field and focus it
+            inputs = self.query(Input)
+            if inputs:
+                inputs[0].focus()
+        except Exception:
+            pass
+    
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "generate-btn":

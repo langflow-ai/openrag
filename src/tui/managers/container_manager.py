@@ -115,6 +115,41 @@ class ContainerManager:
         except Exception as e:
             return False, "", f"Command execution failed: {e}"
     
+    async def _run_compose_command_streaming(self, args: List[str], cpu_mode: Optional[bool] = None) -> AsyncIterator[str]:
+        """Run a compose command and yield output lines in real-time."""
+        if not self.is_available():
+            yield "No container runtime available"
+            return
+        
+        if cpu_mode is None:
+            cpu_mode = self.use_cpu_compose
+        compose_file = self.cpu_compose_file if cpu_mode else self.compose_file
+        cmd = self.runtime_info.compose_command + ["-f", str(compose_file)] + args
+        
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,  # Combine stderr with stdout for unified output
+                cwd=Path.cwd()
+            )
+            
+            # Simple approach: read line by line and yield each one
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                    
+                line_text = line.decode().rstrip()
+                if line_text:
+                    yield line_text
+            
+            # Wait for process to complete
+            await process.wait()
+            
+        except Exception as e:
+            yield f"Command execution failed: {e}"
+    
     async def _run_runtime_command(self, args: List[str]) -> tuple[bool, str, str]:
         """Run a runtime command (docker/podman) and return (success, stdout, stderr)."""
         if not self.is_available():
@@ -386,22 +421,31 @@ class ContainerManager:
         """Upgrade services (pull latest images and restart) and yield progress updates."""
         yield False, "Pulling latest images..."
         
-        # Pull latest images
-        success, stdout, stderr = await self._run_compose_command(["pull"], cpu_mode)
+        # Pull latest images with streaming output
+        pull_success = True
+        async for line in self._run_compose_command_streaming(["pull"], cpu_mode):
+            yield False, line
+            # Check for error patterns in the output
+            if "error" in line.lower() or "failed" in line.lower():
+                pull_success = False
         
-        if not success:
-            yield False, f"Failed to pull images: {stderr}"
-            return
+        if not pull_success:
+            yield False, "Failed to pull some images, but continuing with restart..."
         
         yield False, "Images updated, restarting services..."
         
-        # Restart with new images
-        success, stdout, stderr = await self._run_compose_command(["up", "-d", "--force-recreate"], cpu_mode)
+        # Restart with new images using streaming output
+        restart_success = True
+        async for line in self._run_compose_command_streaming(["up", "-d", "--force-recreate"], cpu_mode):
+            yield False, line
+            # Check for error patterns in the output
+            if "error" in line.lower() or "failed" in line.lower():
+                restart_success = False
         
-        if success:
+        if restart_success:
             yield True, "Services upgraded and restarted successfully"
         else:
-            yield False, f"Failed to restart services after upgrade: {stderr}"
+            yield False, "Some errors occurred during service restart"
     
     async def reset_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Reset all services (stop, remove containers/volumes, clear data) and yield progress updates."""
