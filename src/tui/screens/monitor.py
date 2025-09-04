@@ -81,8 +81,8 @@ class MonitorScreen(Screen):
         self.services_table.add_columns("Service", "Status", "Health", "Ports", "Image", "Digest")
         yield self.services_table
         yield Horizontal(
-            Button("Refresh", variant="default", id="refresh-btn"),
-            Button("Back", variant="default", id="back-btn"),
+            Button("Refresh", variant="default", id="refresh-services-btn"),
+            Button("Back", variant="default", id="back-services-btn"),
             classes="button-row"
         )
     
@@ -242,7 +242,9 @@ class MonitorScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         button_id = event.button.id or ""
+        button_label = event.button.label or ""
         
+        # Use button ID prefixes to determine action, ignoring any random suffix
         if button_id.startswith("start-btn"):
             self.run_worker(self._start_services())
         elif button_id.startswith("stop-btn"):
@@ -255,9 +257,9 @@ class MonitorScreen(Screen):
             self.run_worker(self._reset_services())
         elif button_id == "toggle-mode-btn":
             self.action_toggle_mode()
-        elif button_id == "refresh-btn":
+        elif button_id == "refresh-services-btn" or button_id == "refresh-btn":
             self.action_refresh()
-        elif button_id == "back-btn":
+        elif button_id == "back-services-btn" or button_id == "back-btn":
             self.action_back()
         elif button_id.startswith("logs-"):
             # Map button IDs to actual service names
@@ -465,29 +467,34 @@ class MonitorScreen(Screen):
             )
 
     def _update_controls(self, services: list[ServiceInfo]) -> None:
-        """Render control buttons based on running state and set default focus."""
+        """Update control buttons based on running state."""
         try:
             # Get the controls container
             controls = self.query_one("#services-controls", Horizontal)
             
-            # Remove all existing children
-            controls.remove_children()
-            
             # Check if any services are running
             any_running = any(s.status == ServiceStatus.RUNNING for s in services)
+            
+            # Clear existing buttons by removing all children
+            controls.remove_children()
+            
+            # Use a single ID for each button type, but make them unique with a suffix
+            # This ensures we don't create duplicate IDs across refreshes
+            import random
+            suffix = f"-{random.randint(10000, 99999)}"
             
             # Add appropriate buttons based on service state
             if any_running:
                 # When services are running, show stop and restart
-                controls.mount(Button("Stop Services", variant="error", id="stop-btn"))
-                controls.mount(Button("Restart", variant="primary", id="restart-btn"))
+                controls.mount(Button("Stop Services", variant="error", id=f"stop-btn{suffix}"))
+                controls.mount(Button("Restart", variant="primary", id=f"restart-btn{suffix}"))
             else:
                 # When services are not running, show start
-                controls.mount(Button("Start Services", variant="success", id="start-btn"))
+                controls.mount(Button("Start Services", variant="success", id=f"start-btn{suffix}"))
             
             # Always show upgrade and reset buttons
-            controls.mount(Button("Upgrade", variant="warning", id="upgrade-btn"))
-            controls.mount(Button("Reset", variant="error", id="reset-btn"))
+            controls.mount(Button("Upgrade", variant="warning", id=f"upgrade-btn{suffix}"))
+            controls.mount(Button("Reset", variant="error", id=f"reset-btn{suffix}"))
             
         except Exception as e:
             notify_with_diagnostics(
