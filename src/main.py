@@ -199,7 +199,7 @@ async def init_index_when_ready():
 async def ingest_default_documents_when_ready(services):
     """Scan the local documents folder and ingest files like a non-auth upload."""
     try:
-        
+        logger.info("Ingesting default documents when ready")
         base_dir = os.path.abspath(os.path.join(os.getcwd(), "documents"))
         if not os.path.isdir(base_dir):
             logger.info("Default documents directory not found; skipping ingestion", base_dir=base_dir)
@@ -261,6 +261,11 @@ async def ingest_default_documents_when_ready(services):
     except Exception as e:
         logger.error("Default documents ingestion failed", error=str(e))
 
+async def startup_tasks(services):
+    """Startup tasks"""
+    logger.info("Starting startup tasks")
+    await init_index()
+    await ingest_default_documents_when_ready(services)
 
 async def initialize_services():
     """Initialize all services and their dependencies"""
@@ -703,13 +708,9 @@ async def create_app():
     @app.on_event("startup")
     async def startup_event():
         # Start index initialization in background to avoid blocking OIDC endpoints
-        t1 = asyncio.create_task(init_index_when_ready())
+        t1 = asyncio.create_task(startup_tasks(services))
         app.state.background_tasks.add(t1)
         t1.add_done_callback(app.state.background_tasks.discard)
-        # Start default documents ingestion in background
-        t2 = asyncio.create_task(ingest_default_documents_when_ready(services))
-        app.state.background_tasks.add(t2)
-        t2.add_done_callback(app.state.background_tasks.discard)
 
     # Add shutdown event handler
     @app.on_event("shutdown")
