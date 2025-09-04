@@ -2,16 +2,23 @@
 
 import asyncio
 import re
+from typing import Literal, Any
+
+# Define button variant type
+ButtonVariant = Literal["default", "primary", "success", "warning", "error"]
+
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Button, DataTable, TabbedContent, TabPane
+from textual.widgets import Header, Footer, Static, Button, DataTable
 from textual.timer import Timer
 from rich.text import Text
 from rich.table import Table
 
 from ..managers.container_manager import ContainerManager, ServiceStatus, ServiceInfo
 from ..utils.platform import RuntimeType
+from ..widgets.command_modal import CommandOutputModal
+from ..widgets.diagnostics_notification import notify_with_diagnostics
 
 
 class MonitorScreen(Screen):
@@ -24,6 +31,9 @@ class MonitorScreen(Screen):
         ("t", "stop", "Stop Services"),
         ("u", "upgrade", "Upgrade"),
         ("x", "reset", "Reset"),
+        ("l", "logs", "View Logs"),
+        ("j", "cursor_down", "Move Down"),
+        ("k", "cursor_up", "Move Up"),
     ]
     
     def __init__(self):
@@ -40,15 +50,8 @@ class MonitorScreen(Screen):
     
     def compose(self) -> ComposeResult:
         """Create the monitoring screen layout."""
-        yield Header()
-        
-        with TabbedContent(id="monitor-tabs"):
-            with TabPane("Services", id="services-tab"):
-                yield from self._create_services_tab()
-            with TabPane("Logs", id="logs-tab"):
-                yield from self._create_logs_tab()
-            with TabPane("System", id="system-tab"):
-                yield from self._create_system_tab()
+        # Just show the services content directly (no header, no tabs)
+        yield from self._create_services_tab()
         
         yield Footer()
     
@@ -63,7 +66,8 @@ class MonitorScreen(Screen):
         )
         # Images summary table (above services)
         yield Static("Container Images", classes="tab-header")
-        self.images_table = DataTable(id="images-table")
+        self.images_table = DataTable(id="images-table", show_cursor=False)
+        self.images_table.can_focus = False
         self.images_table.add_columns("Image", "Digest")
         yield self.images_table
         yield Static(" ")
@@ -73,32 +77,7 @@ class MonitorScreen(Screen):
         self.services_table = DataTable(id="services-table")
         self.services_table.add_columns("Service", "Status", "Health", "Ports", "Image", "Digest")
         yield self.services_table
-        yield Horizontal(
-            Button("Refresh", variant="default", id="refresh-btn"),
-            Button("Back", variant="default", id="back-btn"),
-            classes="button-row"
-        )
     
-    def _create_logs_tab(self) -> ComposeResult:
-        """Create the logs viewing tab."""
-        logs_content = Static("Select a service to view logs", id="logs-content", markup=False)
-
-        yield Static("Service Logs", id="logs-header")
-        yield Horizontal(
-            Button("Backend", variant="default", id="logs-backend"),
-            Button("Frontend", variant="default", id="logs-frontend"),
-            Button("OpenSearch", variant="default", id="logs-opensearch"),
-            Button("Langflow", variant="default", id="logs-langflow"),
-            classes="button-row"
-        )
-        yield ScrollableContainer(logs_content, id="logs-scroll")
-    
-    def _create_system_tab(self) -> ComposeResult:
-        """Create the system information tab."""
-        system_info = Static(self._get_system_info(), id="system-info")
-        
-        yield Static("System Information", id="system-header")
-        yield system_info
     
     def _get_runtime_status(self) -> Text:
         """Get container runtime status text."""
@@ -129,29 +108,18 @@ class MonitorScreen(Screen):
         
         return status_text
     
-    def _get_system_info(self) -> Text:
-        """Get system information text."""
-        info_text = Text()
-        
-        runtime_info = self.container_manager.get_runtime_info()
-        
-        info_text.append("Container Runtime Information\n", style="bold")
-        info_text.append("=" * 30 + "\n")
-        info_text.append(f"Type: {runtime_info.runtime_type.value}\n")
-        info_text.append(f"Compose Command: {' '.join(runtime_info.compose_command)}\n")
-        info_text.append(f"Runtime Command: {' '.join(runtime_info.runtime_command)}\n")
-        
-        if runtime_info.version:
-            info_text.append(f"Version: {runtime_info.version}\n")
-        # Removed compose files section for cleaner display
-
-        return info_text
     
     async def on_mount(self) -> None:
         """Initialize the screen when mounted."""
         await self._refresh_services()
         # Set up auto-refresh every 5 seconds
         self.refresh_timer = self.set_interval(5.0, self._auto_refresh)
+        
+        # Focus the services table
+        try:
+            self.services_table.focus()
+        except Exception:
+            pass
     
     def on_unmount(self) -> None:
         """Clean up when unmounting."""
@@ -159,6 +127,11 @@ class MonitorScreen(Screen):
             self.refresh_timer.stop()
         # Stop following logs if running
         self._stop_follow()
+    
+    async def on_screen_resume(self) -> None:
+        """Called when the screen is resumed (e.g., after a modal is closed)."""
+        # Refresh services when returning from a modal
+        await self._refresh_services()
     
     async def _refresh_services(self) -> None:
         """Refresh the services table."""
@@ -229,31 +202,39 @@ class MonitorScreen(Screen):
     
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
-        if event.button.id == "start-btn":
+        button_id = event.button.id or ""
+        button_label = event.button.label or ""
+        
+        # Use button ID prefixes to determine action, ignoring any random suffix
+        if button_id.startswith("start-btn"):
             self.run_worker(self._start_services())
-        elif event.button.id == "stop-btn":
+        elif button_id.startswith("stop-btn"):
             self.run_worker(self._stop_services())
-        elif event.button.id == "restart-btn":
+        elif button_id.startswith("restart-btn"):
             self.run_worker(self._restart_services())
-        elif event.button.id == "upgrade-btn":
+        elif button_id.startswith("upgrade-btn"):
             self.run_worker(self._upgrade_services())
-        elif event.button.id == "reset-btn":
+        elif button_id.startswith("reset-btn"):
             self.run_worker(self._reset_services())
-        elif event.button.id == "toggle-mode-btn":
+        elif button_id == "toggle-mode-btn":
             self.action_toggle_mode()
-        elif event.button.id == "refresh-btn":
+        elif button_id.startswith("refresh-btn"):
             self.action_refresh()
-        elif event.button.id == "back-btn":
+        elif button_id.startswith("back-btn"):
             self.action_back()
-        elif event.button.id.startswith("logs-"):
+        elif button_id.startswith("logs-"):
             # Map button IDs to actual service names
             service_mapping = {
                 "logs-backend": "openrag-backend",
-                "logs-frontend": "openrag-frontend", 
+                "logs-frontend": "openrag-frontend",
                 "logs-opensearch": "opensearch",
                 "logs-langflow": "langflow"
             }
-            service_name = service_mapping.get(event.button.id)
+            
+            # Extract the base button ID (without any suffix)
+            button_base_id = button_id.split("-")[0] + "-" + button_id.split("-")[1]
+            
+            service_name = service_mapping.get(button_base_id)
             if service_name:
                 # Load recent logs then start following
                 self.run_worker(self._show_logs(service_name))
@@ -263,9 +244,14 @@ class MonitorScreen(Screen):
         """Start services with progress updates."""
         self.operation_in_progress = True
         try:
-            async for is_complete, message in self.container_manager.start_services(cpu_mode):
-                self.notify(message, severity="success" if is_complete else "info")
-            await self._refresh_services()
+            # Show command output in modal dialog
+            command_generator = self.container_manager.start_services(cpu_mode)
+            modal = CommandOutputModal(
+                "Starting Services",
+                command_generator,
+                on_complete=None  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
     
@@ -273,9 +259,14 @@ class MonitorScreen(Screen):
         """Stop services with progress updates."""
         self.operation_in_progress = True
         try:
-            async for is_complete, message in self.container_manager.stop_services():
-                self.notify(message, severity="success" if is_complete else "info")
-            await self._refresh_services()
+            # Show command output in modal dialog
+            command_generator = self.container_manager.stop_services()
+            modal = CommandOutputModal(
+                "Stopping Services",
+                command_generator,
+                on_complete=None  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
     
@@ -283,9 +274,14 @@ class MonitorScreen(Screen):
         """Restart services with progress updates."""
         self.operation_in_progress = True
         try:
-            async for is_complete, message in self.container_manager.restart_services():
-                self.notify(message, severity="success" if is_complete else "info")
-            await self._refresh_services()
+            # Show command output in modal dialog
+            command_generator = self.container_manager.restart_services()
+            modal = CommandOutputModal(
+                "Restarting Services",
+                command_generator,
+                on_complete=None  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
     
@@ -293,9 +289,14 @@ class MonitorScreen(Screen):
         """Upgrade services with progress updates."""
         self.operation_in_progress = True
         try:
-            async for is_complete, message in self.container_manager.upgrade_services():
-                self.notify(message, severity="success" if is_complete else "warning")
-            await self._refresh_services()
+            # Show command output in modal dialog
+            command_generator = self.container_manager.upgrade_services()
+            modal = CommandOutputModal(
+                "Upgrading Services",
+                command_generator,
+                on_complete=None  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
     
@@ -303,9 +304,14 @@ class MonitorScreen(Screen):
         """Reset services with progress updates."""
         self.operation_in_progress = True
         try:
-            async for is_complete, message in self.container_manager.reset_services():
-                self.notify(message, severity="success" if is_complete else "warning")
-            await self._refresh_services()
+            # Show command output in modal dialog
+            command_generator = self.container_manager.reset_services()
+            modal = CommandOutputModal(
+                "Resetting Services",
+                command_generator,
+                on_complete=None  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
     
@@ -332,14 +338,16 @@ class MonitorScreen(Screen):
             # Try to scroll to end of container
             try:
                 scroller = self.query_one("#logs-scroll", ScrollableContainer)
-                if hasattr(scroller, "scroll_end"):
-                    scroller.scroll_end(animate=False)
-                elif hasattr(scroller, "scroll_to_end"):
-                    scroller.scroll_to_end()
+                # Only use scroll_end which is the correct method
+                scroller.scroll_end(animate=False)
             except Exception:
                 pass
         else:
-            self.notify(f"Failed to get logs for {service_name}: {logs}", severity="error")
+            notify_with_diagnostics(
+                self.app,
+                f"Failed to get logs for {service_name}: {logs}",
+                severity="error"
+            )
 
     def _stop_follow(self) -> None:
         task = self._follow_task
@@ -377,16 +385,34 @@ class MonitorScreen(Screen):
                     logs_widget = self.query_one("#logs-content", Static)
                     logs_widget.update("\n".join(self._logs_buffer))
                     scroller = self.query_one("#logs-scroll", ScrollableContainer)
-                    if hasattr(scroller, "scroll_end"):
-                        scroller.scroll_end(animate=False)
+                    # Only use scroll_end which is the correct method
+                    scroller.scroll_end(animate=False)
                 except Exception:
                     pass
         except Exception as e:
-            self.notify(f"Error following logs: {e}", severity="error")
+            notify_with_diagnostics(
+                self.app,
+                f"Error following logs: {e}",
+                severity="error"
+            )
     
     def action_refresh(self) -> None:
         """Refresh services manually."""
         self.run_worker(self._refresh_services())
+
+    def action_cursor_down(self) -> None:
+        """Move cursor down in services table."""
+        try:
+            self.services_table.action_cursor_down()
+        except Exception:
+            pass
+
+    def action_cursor_up(self) -> None:
+        """Move cursor up in services table."""
+        try:
+            self.services_table.action_cursor_up()
+        except Exception:
+            pass
 
     def _update_mode_row(self) -> None:
         """Update the mode indicator and toggle button label."""
@@ -405,36 +431,52 @@ class MonitorScreen(Screen):
         try:
             current = getattr(self.container_manager, "use_cpu_compose", True)
             self.container_manager.use_cpu_compose = not current
-            self.notify("Switched to GPU compose" if not current else "Switched to CPU compose", severity="info")
+            self.notify("Switched to GPU compose" if not current else "Switched to CPU compose", severity="information")
             self._update_mode_row()
             self.action_refresh()
         except Exception as e:
-            self.notify(f"Failed to toggle mode: {e}", severity="error")
+            notify_with_diagnostics(
+                self.app,
+                f"Failed to toggle mode: {e}",
+                severity="error"
+            )
 
     def _update_controls(self, services: list[ServiceInfo]) -> None:
-        """Render control buttons based on running state and set default focus."""
+        """Update control buttons based on running state."""
         try:
+            # Get the controls container
             controls = self.query_one("#services-controls", Horizontal)
-            controls.remove_children()
+            
+            # Check if any services are running
             any_running = any(s.status == ServiceStatus.RUNNING for s in services)
+            
+            # Clear existing buttons by removing all children
+            controls.remove_children()
+            
+            # Use a single ID for each button type, but make them unique with a suffix
+            # This ensures we don't create duplicate IDs across refreshes
+            import random
+            suffix = f"-{random.randint(10000, 99999)}"
+            
+            # Add appropriate buttons based on service state
             if any_running:
-                controls.mount(Button("Stop Services", variant="error", id="stop-btn"))
-                controls.mount(Button("Restart", variant="primary", id="restart-btn"))
-                controls.mount(Button("Upgrade", variant="warning", id="upgrade-btn"))
-                controls.mount(Button("Reset", variant="error", id="reset-btn"))
-                # Focus Stop by default when running
-                try:
-                    self.query_one("#stop-btn", Button).focus()
-                except Exception:
-                    pass
+                # When services are running, show stop and restart
+                controls.mount(Button("Stop Services", variant="error", id=f"stop-btn{suffix}"))
+                controls.mount(Button("Restart", variant="primary", id=f"restart-btn{suffix}"))
             else:
-                controls.mount(Button("Start Services", variant="success", id="start-btn"))
-                try:
-                    self.query_one("#start-btn", Button).focus()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                # When services are not running, show start
+                controls.mount(Button("Start Services", variant="success", id=f"start-btn{suffix}"))
+            
+            # Always show upgrade and reset buttons
+            controls.mount(Button("Upgrade", variant="warning", id=f"upgrade-btn{suffix}"))
+            controls.mount(Button("Reset", variant="error", id=f"reset-btn{suffix}"))
+            
+        except Exception as e:
+            notify_with_diagnostics(
+                self.app,
+                f"Error updating controls: {e}",
+                severity="error"
+            )
     
     def action_back(self) -> None:
         """Go back to previous screen."""
@@ -455,3 +497,37 @@ class MonitorScreen(Screen):
     def action_reset(self) -> None:
         """Reset services."""
         self.run_worker(self._reset_services())
+    
+    def action_logs(self) -> None:
+        """View logs for the selected service."""
+        try:
+            # Get the currently focused row in the services table
+            table = self.query_one("#services-table", DataTable)
+            
+            if table.cursor_row is not None and table.cursor_row >= 0:
+                # Get the service name from the first column of the selected row
+                row_data = table.get_row_at(table.cursor_row)
+                if row_data:
+                    service_name = str(row_data[0])  # First column is service name
+                    
+                    # Map display names to actual service names
+                    service_mapping = {
+                        "openrag-backend": "openrag-backend",
+                        "openrag-frontend": "openrag-frontend", 
+                        "opensearch": "opensearch",
+                        "langflow": "langflow",
+                        "dashboards": "dashboards"
+                    }
+                    
+                    actual_service_name = service_mapping.get(service_name, service_name)
+                    
+                    # Push the logs screen with the selected service
+                    from .logs import LogsScreen
+                    logs_screen = LogsScreen(initial_service=actual_service_name)
+                    self.app.push_screen(logs_screen)
+                else:
+                    self.notify("No service selected", severity="warning")
+            else:
+                self.notify("No service selected", severity="warning")
+        except Exception as e:
+            self.notify(f"Error opening logs: {e}", severity="error")

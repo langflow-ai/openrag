@@ -19,41 +19,36 @@ class LogsScreen(Screen):
         ("f", "follow", "Follow Logs"),
         ("c", "clear", "Clear"),
         ("r", "refresh", "Refresh"),
+        ("a", "toggle_auto_scroll", "Toggle Auto Scroll"),
+        ("g", "scroll_top", "Go to Top"),
+        ("G", "scroll_bottom", "Go to Bottom"),
+        ("j", "scroll_down", "Scroll Down"),
+        ("k", "scroll_up", "Scroll Up"),
+        ("ctrl+u", "scroll_page_up", "Page Up"),
+        ("ctrl+f", "scroll_page_down", "Page Down"),
     ]
     
     def __init__(self, initial_service: str = "openrag-backend"):
         super().__init__()
         self.container_manager = ContainerManager()
+        
+        # Validate the initial service against available options
+        valid_services = ["openrag-backend", "openrag-frontend", "opensearch", "langflow", "dashboards"]
+        if initial_service not in valid_services:
+            initial_service = "openrag-backend"  # fallback
+            
         self.current_service = initial_service
         self.logs_area = None
         self.following = False
         self.follow_task = None
+        self.auto_scroll = True
     
     def compose(self) -> ComposeResult:
         """Create the logs screen layout."""
-        yield Header()
         yield Container(
             Vertical(
-                Static("Service Logs", id="logs-title"),
-                Horizontal(
-                    Static("Service:", classes="label"),
-                    Select([
-                        ("openrag-backend", "Backend"),
-                        ("openrag-frontend", "Frontend"), 
-                        ("opensearch", "OpenSearch"),
-                        ("langflow", "Langflow"),
-                        ("dashboards", "Dashboards")
-                    ], value=self.current_service, id="service-select"),
-                    Button("Refresh", variant="default", id="refresh-btn"),
-                    Button("Follow", variant="primary", id="follow-btn"),
-                    Button("Clear", variant="default", id="clear-btn"),
-                    classes="controls-row"
-                ),
+                Static(f"Service Logs: {self.current_service}", id="logs-title"),
                 self._create_logs_area(),
-                Horizontal(
-                    Button("Back", variant="default", id="back-btn"),
-                    classes="button-row"
-                ),
                 id="logs-content"
             ),
             id="main-container"
@@ -72,29 +67,30 @@ class LogsScreen(Screen):
     
     async def on_mount(self) -> None:
         """Initialize the screen when mounted."""
+        # Set the correct service in the select widget after a brief delay
+        try:
+            select = self.query_one("#service-select")
+            # Set a default first, then set the desired value
+            select.value = "openrag-backend"
+            if self.current_service in ["openrag-backend", "openrag-frontend", "opensearch", "langflow", "dashboards"]:
+                select.value = self.current_service
+        except Exception as e:
+            # If setting the service fails, just use the default
+            pass
+            
         await self._load_logs()
+        
+        # Focus the logs area since there are no buttons
+        try:
+            self.logs_area.focus()
+        except Exception:
+            pass
     
     def on_unmount(self) -> None:
         """Clean up when unmounting."""
         self._stop_following()
     
-    def on_select_changed(self, event: Select.Changed) -> None:
-        """Handle service selection change."""
-        if event.select.id == "service-select":
-            self.current_service = event.value
-            self._stop_following()
-            self.run_worker(self._load_logs())
     
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses."""
-        if event.button.id == "refresh-btn":
-            self.action_refresh()
-        elif event.button.id == "follow-btn":
-            self.action_follow()
-        elif event.button.id == "clear-btn":
-            self.action_clear()
-        elif event.button.id == "back-btn":
-            self.action_back()
     
     async def _load_logs(self, lines: int = 200) -> None:
         """Load recent logs for the current service."""
@@ -106,21 +102,19 @@ class LogsScreen(Screen):
         
         if success:
             self.logs_area.text = logs
-            # Scroll to bottom
-            self.logs_area.cursor_position = len(logs)
+            # Scroll to bottom if auto scroll is enabled
+            if self.auto_scroll:
+                self.logs_area.scroll_end()
         else:
             self.logs_area.text = f"Failed to load logs: {logs}"
     
     def _stop_following(self) -> None:
         """Stop following logs."""
         self.following = False
-        if self.follow_task and not self.follow_task.done():
+        if self.follow_task and not self.follow_task.is_finished:
             self.follow_task.cancel()
         
-        # Update button text
-        follow_btn = self.query_one("#follow-btn")
-        follow_btn.label = "Follow"
-        follow_btn.variant = "primary"
+        # No button to update since we removed it
     
     async def _follow_logs(self) -> None:
         """Follow logs in real-time."""
@@ -143,8 +137,9 @@ class LogsScreen(Screen):
                     new_text = '\n'.join(lines)
                 
                 self.logs_area.text = new_text
-                # Scroll to bottom
-                self.logs_area.cursor_position = len(new_text)
+                # Scroll to bottom if auto scroll is enabled
+                if self.auto_scroll:
+                    self.logs_area.scroll_end()
                 
         except asyncio.CancelledError:
             pass
@@ -165,9 +160,6 @@ class LogsScreen(Screen):
             self._stop_following()
         else:
             self.following = True
-            follow_btn = self.query_one("#follow-btn")
-            follow_btn.label = "Stop Following"
-            follow_btn.variant = "error"
             
             # Start following
             self.follow_task = self.run_worker(self._follow_logs(), exclusive=False)
@@ -176,6 +168,51 @@ class LogsScreen(Screen):
         """Clear the logs area."""
         self.logs_area.text = ""
     
+    def action_toggle_auto_scroll(self) -> None:
+        """Toggle auto scroll on/off."""
+        self.auto_scroll = not self.auto_scroll
+        status = "enabled" if self.auto_scroll else "disabled"
+        self.notify(f"Auto scroll {status}", severity="information")
+
+    def action_scroll_top(self) -> None:
+        """Scroll to the top of logs."""
+        self.logs_area.scroll_home()
+
+    def action_scroll_bottom(self) -> None:
+        """Scroll to the bottom of logs."""
+        self.logs_area.scroll_end()
+
+    def action_scroll_down(self) -> None:
+        """Scroll down one line."""
+        self.logs_area.scroll_down()
+
+    def action_scroll_up(self) -> None:
+        """Scroll up one line."""
+        self.logs_area.scroll_up()
+
+    def action_scroll_page_up(self) -> None:
+        """Scroll up one page."""
+        self.logs_area.scroll_page_up()
+
+    def action_scroll_page_down(self) -> None:
+        """Scroll down one page."""
+        self.logs_area.scroll_page_down()
+
+    def on_key(self, event) -> None:
+        """Handle key presses that might be intercepted by TextArea."""
+        key = event.key
+        
+        # Handle keys that TextArea might intercept
+        if key == "ctrl+u":
+            self.action_scroll_page_up()
+            event.prevent_default()
+        elif key == "ctrl+f":
+            self.action_scroll_page_down()  
+            event.prevent_default()
+        elif key.upper() == "G":
+            self.action_scroll_bottom()
+            event.prevent_default()
+
     def action_back(self) -> None:
         """Go back to previous screen."""
         self._stop_following()
