@@ -47,7 +47,13 @@ async def connector_sync(request: Request, connector_service, session_manager):
         for connection in active_connections:
             logger.debug("About to call sync_connector_files for connection", connection_id=connection.connection_id)
             task_id = await connector_service.sync_connector_files(
-                connection.connection_id, user.user_id, max_files, jwt_token=jwt_token
+                connection.connection_id,
+                user.user_id,
+                max_files,
+                jwt_token=jwt_token,
+                # NEW: thread picker selections through
+                selected_files=data.get("selected_files"),
+                selected_folders=data.get("selected_folders"),
             )
             task_ids.append(task_id)
             logger.debug("Got task ID", task_id=task_id)
