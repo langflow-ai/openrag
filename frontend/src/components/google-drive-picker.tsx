@@ -241,7 +241,7 @@ export function GoogleDrivePicker({
           size="sm"
           variant="outline"
         >
-          {isPickerOpen ? 'Opening Picker...' : 'Select Files'}
+          {isPickerOpen ? 'Opening Picker...' : 'Add Files'}
         </Button>
       </div>
 
