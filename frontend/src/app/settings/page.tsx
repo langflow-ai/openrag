@@ -78,7 +78,6 @@ function KnowledgeSourcesPage() {
 		separator: "\\n",
 		embeddingModel: "text-embedding-3-small",
 	});
-	const [settingsLoaded, setSettingsLoaded] = useState(false);
 
 	// Fetch settings from backend
 	const fetchSettings = useCallback(async () => {
@@ -86,31 +85,18 @@ function KnowledgeSourcesPage() {
 			const response = await fetch("/api/settings");
 			if (response.ok) {
 				const settings = await response.json();
-				if (settings.flow_id) {
-					setFlowId(settings.flow_id);
-				}
-				if (settings.ingest_flow_id) {
-					console.log("Setting ingestFlowId to:", settings.ingest_flow_id);
-					setIngestFlowId(settings.ingest_flow_id);
-				} else {
-					console.log("No ingest_flow_id in settings:", settings);
-				}
-				if (settings.langflow_edit_url) {
-					setLangflowEditUrl(settings.langflow_edit_url);
-				}
-				if (settings.langflow_ingest_edit_url) {
-					setLangflowIngestEditUrl(settings.langflow_ingest_edit_url);
-				}
-				if (settings.langflow_public_url) {
-					setPublicLangflowUrl(settings.langflow_public_url);
-				}
+				// Update all state cleanly
+				settings.flow_id && setFlowId(settings.flow_id);
+				settings.ingest_flow_id && setIngestFlowId(settings.ingest_flow_id);
+				settings.langflow_edit_url && setLangflowEditUrl(settings.langflow_edit_url);
+				settings.langflow_ingest_edit_url && setLangflowIngestEditUrl(settings.langflow_ingest_edit_url);
+				settings.langflow_public_url && setPublicLangflowUrl(settings.langflow_public_url);
 				if (settings.ingestion_defaults) {
 					console.log(
 						"Loading ingestion defaults from backend:",
 						settings.ingestion_defaults,
 					);
 					setIngestionSettings(settings.ingestion_defaults);
-					setSettingsLoaded(true);
 				}
 			}
 		} catch (error) {
@@ -572,7 +558,6 @@ function KnowledgeSourcesPage() {
 									</option>
 								</select>
 							</div>
-
 						</CardContent>
 					</Card>
 				</div>
