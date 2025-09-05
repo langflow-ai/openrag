@@ -195,7 +195,9 @@ class MonitorService:
             return monitors
 
         except Exception as e:
-            logger.error("Error listing monitors for user", user_id=user_id, error=str(e))
+            logger.error(
+                "Error listing monitors for user", user_id=user_id, error=str(e)
+            )
             return []
 
     async def list_monitors_for_filter(
@@ -236,7 +238,9 @@ class MonitorService:
             return monitors
 
         except Exception as e:
-            logger.error("Error listing monitors for filter", filter_id=filter_id, error=str(e))
+            logger.error(
+                "Error listing monitors for filter", filter_id=filter_id, error=str(e)
+            )
             return []
 
     async def _get_or_create_webhook_destination(

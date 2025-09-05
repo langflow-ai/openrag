@@ -23,14 +23,16 @@ async def search(request: Request, search_service, session_manager):
         # Extract JWT token from auth middleware
         jwt_token = request.state.jwt_token
 
-        logger.debug("Search API request", 
-                    user=str(user), 
-                    user_id=user.user_id if user else None, 
-                    has_jwt_token=jwt_token is not None,
-                    query=query,
-                    filters=filters,
-                    limit=limit,
-                    score_threshold=score_threshold)
+        logger.debug(
+            "Search API request",
+            user=str(user),
+            user_id=user.user_id if user else None,
+            has_jwt_token=jwt_token is not None,
+            query=query,
+            filters=filters,
+            limit=limit,
+            score_threshold=score_threshold,
+        )
 
         result = await search_service.search(
             query,

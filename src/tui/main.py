@@ -3,6 +3,9 @@
 import sys
 from pathlib import Path
 from textual.app import App, ComposeResult
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 from .screens.welcome import WelcomeScreen
 from .screens.config import ConfigScreen
@@ -17,10 +20,10 @@ from .widgets.diagnostics_notification import notify_with_diagnostics
 
 class OpenRAGTUI(App):
     """OpenRAG Terminal User Interface application."""
-    
+
     TITLE = "OpenRAG TUI"
     SUB_TITLE = "Container Management & Configuration"
-    
+
     CSS = """
     Screen {
         background: $background;
@@ -172,13 +175,13 @@ class OpenRAGTUI(App):
         padding: 1;
     }
     """
-    
+
     def __init__(self):
         super().__init__()
         self.platform_detector = PlatformDetector()
         self.container_manager = ContainerManager()
         self.env_manager = EnvManager()
-    
+
     def on_mount(self) -> None:
         """Initialize the application."""
         # Check for runtime availability and show appropriate screen
@@ -187,31 +190,33 @@ class OpenRAGTUI(App):
                 self,
                 "No container runtime found. Please install Docker or Podman.",
                 severity="warning",
-                timeout=10
+                timeout=10,
             )
-        
+
         # Load existing config if available
         config_exists = self.env_manager.load_existing_env()
-        
+
         # Start with welcome screen
         self.push_screen(WelcomeScreen())
-    
+
     async def action_quit(self) -> None:
         """Quit the application."""
         self.exit()
-    
+
     def check_runtime_requirements(self) -> tuple[bool, str]:
         """Check if runtime requirements are met."""
         if not self.container_manager.is_available():
             return False, self.platform_detector.get_installation_instructions()
-        
+
         # Check Podman macOS memory if applicable
         runtime_info = self.container_manager.get_runtime_info()
         if runtime_info.runtime_type.value == "podman":
-            is_sufficient, _, message = self.platform_detector.check_podman_macos_memory()
+            is_sufficient, _, message = (
+                self.platform_detector.check_podman_macos_memory()
+            )
             if not is_sufficient:
                 return False, f"Podman VM memory insufficient:\n{message}"
-        
+
         return True, "Runtime requirements satisfied"
 
 
@@ -221,10 +226,10 @@ def run_tui():
         app = OpenRAGTUI()
         app.run()
     except KeyboardInterrupt:
-        print("\nOpenRAG TUI interrupted by user")
+        logger.info("OpenRAG TUI interrupted by user")
         sys.exit(0)
     except Exception as e:
-        print(f"Error running OpenRAG TUI: {e}")
+        logger.error("Error running OpenRAG TUI", error=str(e))
         sys.exit(1)
 
 
