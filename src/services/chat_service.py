@@ -198,21 +198,29 @@ class ChatService:
 
     async def get_chat_history(self, user_id: str):
         """Get chat conversation history for a user"""
-        from agent import get_user_conversations
+        from agent import get_user_conversations, active_conversations
 
         if not user_id:
             return {"error": "User ID is required", "conversations": []}
 
+        # Get metadata from persistent storage
         conversations_dict = get_user_conversations(user_id)
+        
+        # Get in-memory conversations (with function calls)
+        in_memory_conversations = active_conversations.get(user_id, {})
+        
         logger.debug(
             "Getting chat history for user",
             user_id=user_id,
-            conversation_count=len(conversations_dict),
+            persistent_count=len(conversations_dict),
+            in_memory_count=len(in_memory_conversations),
         )
 
         # Convert conversations dict to list format with metadata
         conversations = []
-        for response_id, conversation_state in conversations_dict.items():
+        
+        # First, process in-memory conversations (they have function calls)
+        for response_id, conversation_state in in_memory_conversations.items():
             # Filter out system messages
             messages = []
             for msg in conversation_state.get("messages", []):
@@ -266,11 +274,28 @@ class ChatService:
                             "previous_response_id"
                         ),
                         "total_messages": len(messages),
+                        "source": "in_memory"
                     }
                 )
+        
+        # Then, add any persistent metadata that doesn't have in-memory data
+        for response_id, metadata in conversations_dict.items():
+            if response_id not in in_memory_conversations:
+                # This is metadata-only conversation (no function calls)
+                conversations.append({
+                    "response_id": response_id,
+                    "title": metadata.get("title", "New Chat"),
+                    "endpoint": "chat",
+                    "messages": [],  # No messages in metadata-only
+                    "created_at": metadata.get("created_at"),
+                    "last_activity": metadata.get("last_activity"),
+                    "previous_response_id": metadata.get("previous_response_id"),
+                    "total_messages": metadata.get("total_messages", 0),
+                    "source": "metadata_only"
+                })
 
         # Sort by last activity (most recent first)
-        conversations.sort(key=lambda c: c["last_activity"], reverse=True)
+        conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
 
         return {
             "user_id": user_id,
@@ -290,28 +315,36 @@ class ChatService:
         all_conversations = []
         
         try:
-            # 1. Get in-memory OpenRAG conversations (current session)
+            # 1. Get local conversation metadata (no actual messages stored here)
             conversations_dict = get_user_conversations(user_id)
+            local_metadata = {}
             
-            for response_id, conversation_state in conversations_dict.items():
-                # Filter out system messages
-                messages = []
-                for msg in conversation_state.get("messages", []):
-                    if msg.get("role") in ["user", "assistant"]:
-                        # Handle timestamp - could be datetime object or string
-                        timestamp = msg.get("timestamp")
-                        if timestamp:
-                            if hasattr(timestamp, 'isoformat'):
-                                timestamp = timestamp.isoformat()
-                            # else it's already a string
-                        
+            for response_id, conversation_metadata in conversations_dict.items():
+                # Store metadata for later use with Langflow data
+                local_metadata[response_id] = conversation_metadata
+            
+            # 2. Get actual conversations from Langflow database (source of truth for messages)
+            print(f"[DEBUG] Attempting to fetch Langflow history for user: {user_id}")
+            langflow_history = await langflow_history_service.get_user_conversation_history(user_id, flow_id=FLOW_ID)
+            
+            if langflow_history.get("conversations"):
+                for conversation in langflow_history["conversations"]:
+                    session_id = conversation["session_id"]
+                    
+                    # Only process sessions that belong to this user (exist in local metadata)
+                    if session_id not in local_metadata:
+                        continue
+                    
+                    # Use Langflow messages (with function calls) as source of truth
+                    messages = []
+                    for msg in conversation.get("messages", []):
                         message_data = {
                             "role": msg["role"],
                             "content": msg["content"],
-                            "timestamp": timestamp,
+                            "timestamp": msg.get("timestamp"),
+                            "langflow_message_id": msg.get("langflow_message_id"),
+                            "source": "langflow"
                         }
-                        if msg.get("response_id"):
-                            message_data["response_id"] = msg["response_id"]
                         
                         # Include function call data if present
                         if msg.get("chunks"):
@@ -320,82 +353,51 @@ class ChatService:
                             message_data["response_data"] = msg["response_data"]
                             
                         messages.append(message_data)
-                
-                if messages:  # Only include conversations with actual messages
-                    # Generate title from first user message
-                    first_user_msg = next(
-                        (msg for msg in messages if msg["role"] == "user"), None
-                    )
-                    title = (
-                        first_user_msg["content"][:50] + "..."
-                        if first_user_msg and len(first_user_msg["content"]) > 50
-                        else first_user_msg["content"]
-                        if first_user_msg
-                        else "New chat"
-                    )
-                    
-                    # Handle conversation timestamps - could be datetime objects or strings
-                    created_at = conversation_state.get("created_at")
-                    if created_at and hasattr(created_at, 'isoformat'):
-                        created_at = created_at.isoformat()
-                    
-                    last_activity = conversation_state.get("last_activity")
-                    if last_activity and hasattr(last_activity, 'isoformat'):
-                        last_activity = last_activity.isoformat()
-                    
-                    all_conversations.append({
-                        "response_id": response_id,
-                        "title": title,
-                        "endpoint": "langflow",
-                        "messages": messages,
-                        "created_at": created_at,
-                        "last_activity": last_activity,
-                        "previous_response_id": conversation_state.get("previous_response_id"),
-                        "total_messages": len(messages),
-                        "source": "openrag_memory"
-                    })
-            
-            # 2. Get historical conversations from Langflow database 
-            # (works with both Google-bound users and direct Langflow users)
-            print(f"[DEBUG] Attempting to fetch Langflow history for user: {user_id}")
-            langflow_history = await langflow_history_service.get_user_conversation_history(user_id, flow_id=FLOW_ID)
-            
-            if langflow_history.get("conversations"):
-                for conversation in langflow_history["conversations"]:
-                    # Convert Langflow format to OpenRAG format
-                    messages = []
-                    for msg in conversation.get("messages", []):
-                        messages.append({
-                            "role": msg["role"],
-                            "content": msg["content"],
-                            "timestamp": msg.get("timestamp"),
-                            "langflow_message_id": msg.get("langflow_message_id"),
-                            "source": "langflow"
-                        })
                     
                     if messages:
-                        first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
-                        title = (
-                            first_user_msg["content"][:50] + "..."
-                            if first_user_msg and len(first_user_msg["content"]) > 50
-                            else first_user_msg["content"]
-                            if first_user_msg
-                            else "Langflow chat"
-                        )
+                        # Use local metadata if available, otherwise generate from Langflow data
+                        metadata = local_metadata.get(session_id, {})
+                        
+                        if not metadata.get("title"):
+                            first_user_msg = next((msg for msg in messages if msg["role"] == "user"), None)
+                            title = (
+                                first_user_msg["content"][:50] + "..."
+                                if first_user_msg and len(first_user_msg["content"]) > 50
+                                else first_user_msg["content"]
+                                if first_user_msg
+                                else "Langflow chat"
+                            )
+                        else:
+                            title = metadata["title"]
                         
                         all_conversations.append({
-                            "response_id": conversation["session_id"],
+                            "response_id": session_id,
                             "title": title,
                             "endpoint": "langflow",
-                            "messages": messages,
-                            "created_at": conversation.get("created_at"),
-                            "last_activity": conversation.get("last_activity"),
+                            "messages": messages,  # Function calls preserved from Langflow
+                            "created_at": metadata.get("created_at") or conversation.get("created_at"),
+                            "last_activity": metadata.get("last_activity") or conversation.get("last_activity"),
                             "total_messages": len(messages),
-                            "source": "langflow_database",
-                            "langflow_session_id": conversation["session_id"],
+                            "source": "langflow_enhanced",
+                            "langflow_session_id": session_id,
                             "langflow_flow_id": conversation.get("flow_id")
                         })
+            
+            # 3. Add any local metadata that doesn't have Langflow data yet (recent conversations)
+            for response_id, metadata in local_metadata.items():
+                if not any(c["response_id"] == response_id for c in all_conversations):
+                    all_conversations.append({
+                        "response_id": response_id,
+                        "title": metadata.get("title", "New Chat"),
+                        "endpoint": "langflow", 
+                        "messages": [],  # Will be filled when Langflow sync catches up
+                        "created_at": metadata.get("created_at"),
+                        "last_activity": metadata.get("last_activity"),
+                        "total_messages": metadata.get("total_messages", 0),
+                        "source": "metadata_only"
+                    })
                 
+            if langflow_history.get("conversations"):
                 print(f"[DEBUG] Added {len(langflow_history['conversations'])} historical conversations from Langflow")
             elif langflow_history.get("error"):
                 print(f"[DEBUG] Could not fetch Langflow history for user {user_id}: {langflow_history['error']}")
@@ -406,51 +408,14 @@ class ChatService:
             print(f"[ERROR] Failed to fetch Langflow history: {e}")
             # Continue with just in-memory conversations
         
-        # Deduplicate conversations by response_id (in-memory takes priority over database)
-        deduplicated_conversations = {}
-        
-        for conversation in all_conversations:
-            response_id = conversation.get("response_id")
-            if response_id:
-                if response_id not in deduplicated_conversations:
-                    # First occurrence - add it
-                    deduplicated_conversations[response_id] = conversation
-                else:
-                    # Duplicate found - prioritize in-memory (more recent) over database
-                    existing = deduplicated_conversations[response_id]
-                    current_source = conversation.get("source")
-                    existing_source = existing.get("source")
-                    
-                    if current_source == "openrag_memory" and existing_source == "langflow_database":
-                        # Replace database version with in-memory version
-                        deduplicated_conversations[response_id] = conversation
-                        print(f"[DEBUG] Replaced database conversation {response_id} with in-memory version")
-                    # Otherwise keep existing (in-memory has priority, or first database entry)
-            else:
-                # No response_id - add with unique key based on content and timestamp
-                unique_key = f"no_id_{hash(conversation.get('title', ''))}{conversation.get('created_at', '')}"
-                if unique_key not in deduplicated_conversations:
-                    deduplicated_conversations[unique_key] = conversation
-        
-        final_conversations = list(deduplicated_conversations.values())
-        
         # Sort by last activity (most recent first)
-        final_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
+        all_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
         
-        # Calculate source statistics after deduplication
-        sources = {
-            "memory": len([c for c in final_conversations if c.get("source") == "openrag_memory"]),
-            "langflow_db": len([c for c in final_conversations if c.get("source") == "langflow_database"]),
-            "duplicates_removed": len(all_conversations) - len(final_conversations)
-        }
-        
-        if sources["duplicates_removed"] > 0:
-            print(f"[DEBUG] Removed {sources['duplicates_removed']} duplicate conversations")
+        print(f"[DEBUG] Returning {len(all_conversations)} conversations ({len(local_metadata)} from local metadata)")
         
         return {
             "user_id": user_id,
             "endpoint": "langflow",
-            "conversations": final_conversations,
-            "total_conversations": len(final_conversations),
-            "sources": sources
+            "conversations": all_conversations,
+            "total_conversations": len(all_conversations),
         }
