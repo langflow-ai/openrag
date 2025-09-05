@@ -619,7 +619,7 @@ function ChatPage() {
     };
   }, [isFilterDropdownOpen]);
 
-  const { data: nudges = [], refetch: refetchNudges } = useGetNudgesQuery(
+  const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
     previousResponseIds[endpoint],
   );
 
@@ -1275,7 +1275,7 @@ function ChatPage() {
         setMessages((prev) => [...prev, finalMessage]);
         setStreamingMessage(null);
         if (previousResponseIds[endpoint]) {
-          refetchNudges();
+          cancelNudges();
         }
       }
 
@@ -1394,7 +1394,7 @@ function ChatPage() {
           };
           setMessages((prev) => [...prev, assistantMessage]);
           if (result.response_id) {
-            refetchNudges();
+            cancelNudges();
           }
 
           // Store the response ID if present for this endpoint
@@ -1968,7 +1968,7 @@ function ChatPage() {
       {/* Suggestion chips - always show unless streaming */}
       {!streamingMessage && (
         <Nudges
-          nudges={nudges as string[]}
+          nudges={loading ? [] : (nudges as string[])}
           handleSuggestionClick={handleSuggestionClick}
         />
       )}
