@@ -226,6 +226,13 @@ class ChatService:
                     }
                     if msg.get("response_id"):
                         message_data["response_id"] = msg["response_id"]
+                    
+                    # Include function call data if present
+                    if msg.get("chunks"):
+                        message_data["chunks"] = msg["chunks"]
+                    if msg.get("response_data"):
+                        message_data["response_data"] = msg["response_data"]
+                        
                     messages.append(message_data)
 
             if messages:  # Only include conversations with actual messages
@@ -305,6 +312,13 @@ class ChatService:
                         }
                         if msg.get("response_id"):
                             message_data["response_id"] = msg["response_id"]
+                        
+                        # Include function call data if present
+                        if msg.get("chunks"):
+                            message_data["chunks"] = msg["chunks"]
+                        if msg.get("response_data"):
+                            message_data["response_data"] = msg["response_data"]
+                            
                         messages.append(message_data)
                 
                 if messages:  # Only include conversations with actual messages

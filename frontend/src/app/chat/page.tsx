@@ -454,12 +454,99 @@ function ChatPage() {
           content: string;
           timestamp?: string;
           response_id?: string;
-        }) => ({
-          role: msg.role as "user" | "assistant",
-          content: msg.content,
-          timestamp: new Date(msg.timestamp || new Date()),
-          // Add any other necessary properties
-        })
+          chunks?: any[];
+          response_data?: any;
+        }) => {
+          const message: Message = {
+            role: msg.role as "user" | "assistant",
+            content: msg.content,
+            timestamp: new Date(msg.timestamp || new Date()),
+          };
+
+          // Extract function calls from chunks or response_data
+          if (msg.role === "assistant" && (msg.chunks || msg.response_data)) {
+            const functionCalls: FunctionCall[] = [];
+            console.log("Processing assistant message for function calls:", {
+              hasChunks: !!msg.chunks,
+              chunksLength: msg.chunks?.length,
+              hasResponseData: !!msg.response_data,
+            });
+
+            // Process chunks (streaming data)
+            if (msg.chunks && Array.isArray(msg.chunks)) {
+              for (const chunk of msg.chunks) {
+                // Handle Langflow format: chunks[].item.tool_call
+                if (chunk.item && chunk.item.type === "tool_call") {
+                  const toolCall = chunk.item;
+                  console.log("Found Langflow tool call:", toolCall);
+                  functionCalls.push({
+                    id: toolCall.id,
+                    name: toolCall.tool_name,
+                    arguments: toolCall.inputs || {},
+                    argumentsString: JSON.stringify(toolCall.inputs || {}),
+                    result: toolCall.results,
+                    status: toolCall.status || "completed",
+                    type: "tool_call",
+                  });
+                }
+                // Handle OpenAI format: chunks[].delta.tool_calls
+                else if (chunk.delta?.tool_calls) {
+                  for (const toolCall of chunk.delta.tool_calls) {
+                    if (toolCall.function) {
+                      functionCalls.push({
+                        id: toolCall.id,
+                        name: toolCall.function.name,
+                        arguments: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {},
+                        argumentsString: toolCall.function.arguments,
+                        status: "completed",
+                        type: toolCall.type || "function",
+                      });
+                    }
+                  }
+                }
+                // Process tool call results from chunks
+                if (chunk.type === "response.tool_call.result" || chunk.type === "tool_call_result") {
+                  const lastCall = functionCalls[functionCalls.length - 1];
+                  if (lastCall) {
+                    lastCall.result = chunk.result || chunk;
+                    lastCall.status = "completed";
+                  }
+                }
+              }
+            }
+
+            // Process response_data (non-streaming data)
+            if (msg.response_data && typeof msg.response_data === 'object') {
+              // Look for tool_calls in various places in the response data
+              const responseData = typeof msg.response_data === 'string' ? JSON.parse(msg.response_data) : msg.response_data;
+              
+              if (responseData.tool_calls && Array.isArray(responseData.tool_calls)) {
+                for (const toolCall of responseData.tool_calls) {
+                  functionCalls.push({
+                    id: toolCall.id,
+                    name: toolCall.function?.name || toolCall.name,
+                    arguments: toolCall.function?.arguments || toolCall.arguments,
+                    argumentsString: typeof (toolCall.function?.arguments || toolCall.arguments) === 'string' 
+                      ? toolCall.function?.arguments || toolCall.arguments
+                      : JSON.stringify(toolCall.function?.arguments || toolCall.arguments),
+                    result: toolCall.result,
+                    status: "completed",
+                    type: toolCall.type || "function",
+                  });
+                }
+              }
+            }
+
+            if (functionCalls.length > 0) {
+              console.log("Setting functionCalls on message:", functionCalls);
+              message.functionCalls = functionCalls;
+            } else {
+              console.log("No function calls found in message");
+            }
+          }
+
+          return message;
+        }
       );
 
       setMessages(convertedMessages);
