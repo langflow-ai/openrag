@@ -1,6 +1,7 @@
 import os
 import time
 
+import httpx
 import requests
 from agentd.patch import patch_openai_with_mcp
 from docling.document_converter import DocumentConverter
@@ -31,7 +32,7 @@ LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or _legacy_flow_id
 LANGFLOW_INGEST_FLOW_ID = os.getenv("LANGFLOW_INGEST_FLOW_ID") or _legacy_flow_id_ingest
 
 if _legacy_flow_id and not os.getenv("LANGFLOW_CHAT_FLOW_ID"):
-    print("[WARNING] FLOW_ID is deprecated. Please use LANGFLOW_CHAT_FLOW_ID instead")
+    logger.warning("FLOW_ID is deprecated. Please use LANGFLOW_CHAT_FLOW_ID instead")
     LANGFLOW_CHAT_FLOW_ID = _legacy_flow_id
 
 
@@ -113,18 +114,18 @@ async def generate_langflow_api_key():
     """Generate Langflow API key using superuser credentials at startup"""
     global LANGFLOW_KEY
 
-    print(
-        f"[DEBUG] generate_langflow_api_key called - current LANGFLOW_KEY: {'present' if LANGFLOW_KEY else 'None'}"
+    logger.debug(
+        "generate_langflow_api_key called", current_key_present=bool(LANGFLOW_KEY)
     )
 
     # If key already provided via env, do not attempt generation
     if LANGFLOW_KEY:
         if os.getenv("LANGFLOW_KEY"):
-            print("[INFO] Using LANGFLOW_KEY from environment; skipping generation")
+            logger.info("Using LANGFLOW_KEY from environment; skipping generation")
             return LANGFLOW_KEY
         else:
             # We have a cached key, but let's validate it first
-            print(f"[DEBUG] Validating cached LANGFLOW_KEY: {LANGFLOW_KEY[:8]}...")
+            logger.debug("Validating cached LANGFLOW_KEY", key_prefix=LANGFLOW_KEY[:8])
             try:
                 validation_response = requests.get(
                     f"{LANGFLOW_URL}/api/v1/users/whoami",
@@ -132,18 +133,18 @@ async def generate_langflow_api_key():
                     timeout=5,
                 )
                 if validation_response.status_code == 200:
-                    print(
-                        f"[DEBUG] Cached API key is valid, returning: {LANGFLOW_KEY[:8]}..."
-                    )
+                    logger.debug("Cached API key is valid", key_prefix=LANGFLOW_KEY[:8])
                     return LANGFLOW_KEY
                 else:
-                    print(
-                        f"[WARNING] Cached API key is invalid ({validation_response.status_code}), generating fresh key"
+                    logger.warning(
+                        "Cached API key is invalid, generating fresh key",
+                        status_code=validation_response.status_code,
                     )
                     LANGFLOW_KEY = None  # Clear invalid key
             except Exception as e:
-                print(
-                    f"[WARNING] Cached API key validation failed ({e}), generating fresh key"
+                logger.warning(
+                    "Cached API key validation failed, generating fresh key",
+                    error=str(e),
                 )
                 LANGFLOW_KEY = None  # Clear invalid key
 
@@ -198,20 +199,25 @@ async def generate_langflow_api_key():
                 )
                 if validation_response.status_code == 200:
                     LANGFLOW_KEY = api_key
-                    print(
-                        f"[INFO] Successfully generated and validated Langflow API key: {api_key[:8]}..."
+                    logger.info(
+                        "Successfully generated and validated Langflow API key",
+                        key_prefix=api_key[:8],
                     )
                     return api_key
                 else:
-                    print(
-                        f"[ERROR] Generated API key validation failed: {validation_response.status_code}"
+                    logger.error(
+                        "Generated API key validation failed",
+                        status_code=validation_response.status_code,
                     )
                     raise ValueError(
                         f"API key validation failed: {validation_response.status_code}"
                     )
             except (requests.exceptions.RequestException, KeyError) as e:
-                print(
-                    f"[WARN] Attempt {attempt}/{max_attempts} to generate Langflow API key failed: {e}"
+                logger.warning(
+                    "Attempt to generate Langflow API key failed",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    error=str(e),
                 )
                 if attempt < max_attempts:
                     time.sleep(delay_seconds)
@@ -261,8 +267,8 @@ class AppClients:
                     await self.ensure_langflow_client()
                     # Note: OPENSEARCH_PASSWORD global variable should be created automatically
                     # via LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT in docker-compose
-                    print(
-                        "[INFO] Langflow client initialized - OPENSEARCH_PASSWORD should be available via environment variables"
+                    logger.info(
+                        "Langflow client initialized - OPENSEARCH_PASSWORD should be available via environment variables"
                     )
             except Exception as e:
                 logger.warning("Failed to initialize Langflow client", error=str(e))
@@ -303,8 +309,8 @@ class AppClients:
         """Create a global variable in Langflow via API"""
         api_key = await generate_langflow_api_key()
         if not api_key:
-            print(
-                f"[WARNING] Cannot create Langflow global variable {name}: No API key"
+            logger.warning(
+                "Cannot create Langflow global variable: No API key", variable_name=name
             )
             return
 
@@ -322,17 +328,26 @@ class AppClients:
                 response = await client.post(url, headers=headers, json=payload)
 
                 if response.status_code in [200, 201]:
-                    print(
-                        f"[INFO] Successfully created Langflow global variable: {name}"
+                    logger.info(
+                        "Successfully created Langflow global variable",
+                        variable_name=name,
                     )
                 elif response.status_code == 400 and "already exists" in response.text:
-                    print(f"[INFO] Langflow global variable {name} already exists")
+                    logger.info(
+                        "Langflow global variable already exists", variable_name=name
+                    )
                 else:
-                    print(
-                        f"[WARNING] Failed to create Langflow global variable {name}: {response.status_code}"
+                    logger.warning(
+                        "Failed to create Langflow global variable",
+                        variable_name=name,
+                        status_code=response.status_code,
                     )
         except Exception as e:
-            print(f"[ERROR] Exception creating Langflow global variable {name}: {e}")
+            logger.error(
+                "Exception creating Langflow global variable",
+                variable_name=name,
+                error=str(e),
+            )
 
     def create_user_opensearch_client(self, jwt_token: str):
         """Create OpenSearch client with user's JWT token for OIDC auth"""

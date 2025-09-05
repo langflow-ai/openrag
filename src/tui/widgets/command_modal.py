@@ -65,13 +65,13 @@ class CommandOutputModal(ModalScreen):
     """
 
     def __init__(
-        self, 
-        title: str, 
+        self,
+        title: str,
         command_generator: AsyncIterator[tuple[bool, str]],
-        on_complete: Optional[Callable] = None
+        on_complete: Optional[Callable] = None,
     ):
         """Initialize the modal dialog.
-        
+
         Args:
             title: Title of the modal dialog
             command_generator: Async generator that yields (is_complete, message) tuples
@@ -104,29 +104,32 @@ class CommandOutputModal(ModalScreen):
     async def _run_command(self) -> None:
         """Run the command and update the output in real-time."""
         output = self.query_one("#command-output", RichLog)
-        
+
         try:
             async for is_complete, message in self.command_generator:
                 # Simple approach: just append each line as it comes
                 output.write(message + "\n")
-                
+
                 # Scroll to bottom
                 container = self.query_one("#output-container", ScrollableContainer)
                 container.scroll_end(animate=False)
-                
+
                 # If command is complete, update UI
                 if is_complete:
-                    output.write("[bold green]Command completed successfully[/bold green]\n")
+                    output.write(
+                        "[bold green]Command completed successfully[/bold green]\n"
+                    )
                     # Call the completion callback if provided
                     if self.on_complete:
                         await asyncio.sleep(0.5)  # Small delay for better UX
                         self.on_complete()
         except Exception as e:
             output.write(f"[bold red]Error: {e}[/bold red]\n")
-        
+
         # Enable the close button and focus it
         close_btn = self.query_one("#close-btn", Button)
         close_btn.disabled = False
         close_btn.focus()
+
 
 # Made with Bob

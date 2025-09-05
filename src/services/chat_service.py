@@ -112,7 +112,10 @@ class ChatService:
 
         # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
         if filter_expression:
-            logger.info("Sending OpenRAG query filter to Langflow", filter_expression=filter_expression)
+            logger.info(
+                "Sending OpenRAG query filter to Langflow",
+                filter_expression=filter_expression,
+            )
             extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
                 filter_expression
             )
@@ -202,7 +205,11 @@ class ChatService:
             return {"error": "User ID is required", "conversations": []}
 
         conversations_dict = get_user_conversations(user_id)
-        logger.debug("Getting chat history for user", user_id=user_id, conversation_count=len(conversations_dict))
+        logger.debug(
+            "Getting chat history for user",
+            user_id=user_id,
+            conversation_count=len(conversations_dict),
+        )
 
         # Convert conversations dict to list format with metadata
         conversations = []
