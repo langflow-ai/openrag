@@ -266,7 +266,7 @@ class TaskService:
 
         Supports cancellation of shared default tasks stored under the anonymous user.
         """
-        # Try user's own tasks first, then shared anonymous tasks
+        # Check candidate user IDs first, then anonymous to find which user ID the task is mapped to
         candidate_user_ids = [user_id, AnonymousUser().user_id]
 
         store_user_id = None
