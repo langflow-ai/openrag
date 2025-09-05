@@ -17,7 +17,11 @@ export const useGetNudgesQuery = (
   options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
-  console.log(chatId);
+
+  function cancel() {
+    queryClient.removeQueries({ queryKey: ["nudges", chatId] });
+  }
+
   async function getNudges(): Promise<Nudge[]> {
     try {
       const response = await fetch(`/api/nudges${chatId ? `/${chatId}` : ""}`);
@@ -38,5 +42,5 @@ export const useGetNudgesQuery = (
     queryClient,
   );
 
-  return queryResult;
+  return { ...queryResult, cancel };
 };
