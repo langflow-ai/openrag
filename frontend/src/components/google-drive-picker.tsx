@@ -10,6 +10,7 @@ interface GoogleDrivePickerProps {
   selectedFiles?: GoogleDriveFile[]
   isAuthenticated: boolean
   accessToken?: string
+  onPickerStateChange?: (isOpen: boolean) => void
 }
 
 interface GoogleDriveFile {
@@ -88,7 +89,8 @@ export function GoogleDrivePicker({
   onFileSelected, 
   selectedFiles = [], 
   isAuthenticated, 
-  accessToken 
+  accessToken,
+  onPickerStateChange
 }: GoogleDrivePickerProps) {
   const [isPickerLoaded, setIsPickerLoaded] = useState(false)
   const [isPickerOpen, setIsPickerOpen] = useState(false)
@@ -131,6 +133,7 @@ export function GoogleDrivePicker({
     }
   }, [])
 
+
   const openPicker = () => {
     if (!isPickerLoaded || !accessToken || !window.google?.picker) {
       return
@@ -138,7 +141,9 @@ export function GoogleDrivePicker({
 
     try {
       setIsPickerOpen(true)
+      onPickerStateChange?.(true)
 
+      // Create picker with higher z-index and focus handling
       const picker = new window.google.picker.PickerBuilder()
         .addView(window.google.picker.ViewId.DOCS)
         .addView(window.google.picker.ViewId.FOLDERS)
@@ -149,9 +154,23 @@ export function GoogleDrivePicker({
         .build()
 
       picker.setVisible(true)
+
+      // Apply z-index fix after a short delay to ensure picker is rendered
+      setTimeout(() => {
+        const pickerElements = document.querySelectorAll('.picker-dialog, .goog-modalpopup')
+        pickerElements.forEach(el => {
+          (el as HTMLElement).style.zIndex = '10000'
+        })
+        const bgElements = document.querySelectorAll('.picker-dialog-bg, .goog-modalpopup-bg')
+        bgElements.forEach(el => {
+          (el as HTMLElement).style.zIndex = '9999'
+        })
+      }, 100)
+      
     } catch (error) {
       console.error('Error creating picker:', error)
       setIsPickerOpen(false)
+      onPickerStateChange?.(false)
     }
   }
 
@@ -169,6 +188,7 @@ export function GoogleDrivePicker({
     }
     
     setIsPickerOpen(false)
+    onPickerStateChange?.(false)
   }
 
   const removeFile = (fileId: string) => {

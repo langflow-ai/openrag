@@ -24,11 +24,8 @@ async def connector_sync(request: Request, connector_service, session_manager):
     max_files = data.get("max_files")
 
     try:
-        logger.debug("Starting connector sync", connector_type=connector_type, max_files=max_files)
-
         user = request.state.user
         jwt_token = request.state.jwt_token
-        logger.debug("User authenticated", user_id=user.user_id)
 
         # Get all active connections for this connector type and user
         connections = await connector_service.connection_manager.list_connections(
@@ -45,18 +42,15 @@ async def connector_sync(request: Request, connector_service, session_manager):
         # Start sync tasks for all active connections
         task_ids = []
         for connection in active_connections:
-            logger.debug("About to call sync_connector_files for connection", connection_id=connection.connection_id)
             task_id = await connector_service.sync_connector_files(
                 connection.connection_id,
                 user.user_id,
                 max_files,
                 jwt_token=jwt_token,
-                # NEW: thread picker selections through
                 selected_files=data.get("selected_files"),
                 selected_folders=data.get("selected_folders"),
             )
             task_ids.append(task_id)
-            logger.debug("Got task ID", task_id=task_id)
 
         return JSONResponse(
             {
@@ -69,14 +63,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
         )
 
     except Exception as e:
-        import sys
-        import traceback
-
-        error_msg = f"[ERROR] Connector sync failed: {str(e)}"
-        logger.error(error_msg)
-        traceback.print_exc(file=sys.stderr)
-        sys.stderr.flush()
-
+        logger.error("Connector sync failed", error=str(e))
         return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
 
 
@@ -247,9 +234,6 @@ async def connector_webhook(request: Request, connector_service, session_manager
 
         except Exception as e:
             logger.error("Failed to process webhook for connection", connection_id=connection.connection_id, error=str(e))
-            import traceback
-
-            traceback.print_exc()
             return JSONResponse(
                 {
                     "status": "error",
@@ -261,10 +245,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
             )
 
     except Exception as e:
-        import traceback
-
         logger.error("Webhook processing failed", error=str(e))
-        traceback.print_exc()
         return JSONResponse(
             {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
         )
@@ -288,7 +269,7 @@ async def connector_token(request: Request, connector_service, session_manager):
         # Get the connector instance
         connector = await connector_service._get_connector(connection_id)
         if not connector:
-            return JSONResponse({"error": "Connector not available"}, status_code=404)
+            return JSONResponse({"error": f"Connector not available - authentication may have failed for {connector_type}"}, status_code=404)
 
         # For Google Drive, get the access token
         if connector_type == "google_drive" and hasattr(connector, 'oauth'):
@@ -301,9 +282,22 @@ async def connector_token(request: Request, connector_service, session_manager):
                 })
             else:
                 return JSONResponse({"error": "Invalid or expired credentials"}, status_code=401)
+        
+        # For OneDrive and SharePoint, get the access token
+        elif connector_type in ["onedrive", "sharepoint"] and hasattr(connector, 'oauth'):
+            try:
+                access_token = connector.oauth.get_access_token()
+                return JSONResponse({
+                    "access_token": access_token,
+                    "expires_in": None  # MSAL handles token expiry internally
+                })
+            except ValueError as e:
+                return JSONResponse({"error": f"Failed to get access token: {str(e)}"}, status_code=401)
+            except Exception as e:
+                return JSONResponse({"error": f"Authentication error: {str(e)}"}, status_code=500)
 
         return JSONResponse({"error": "Token not available for this connector type"}, status_code=400)
 
     except Exception as e:
-        print(f"Error getting connector token: {e}")
+        logger.error("Error getting connector token", error=str(e))
         return JSONResponse({"error": str(e)}, status_code=500)

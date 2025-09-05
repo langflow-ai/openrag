@@ -12,7 +12,6 @@ import { Loader2, PlugZap, RefreshCw } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useTask } from "@/contexts/task-context"
 import { useAuth } from "@/contexts/auth-context"
-import { GoogleDrivePicker } from "@/components/google-drive-picker"
 
 
 interface GoogleDriveFile {
@@ -21,6 +20,17 @@ interface GoogleDriveFile {
   mimeType: string
   webViewLink?: string
   iconLink?: string
+}
+
+interface OneDriveFile {
+  id: string
+  name: string
+  mimeType?: string
+  webUrl?: string
+  driveItem?: {
+    file?: { mimeType: string }
+    folder?: any
+  }
 }
 
 interface Connector {
@@ -32,7 +42,7 @@ interface Connector {
   type: string
   connectionId?: string
   access_token?: string
-  selectedFiles?: GoogleDriveFile[]
+  selectedFiles?: GoogleDriveFile[] | OneDriveFile[]
 }
 
 interface SyncResult {
@@ -63,8 +73,6 @@ function KnowledgeSourcesPage() {
   const [syncResults, setSyncResults] = useState<{[key: string]: SyncResult | null}>({})
   const [maxFiles, setMaxFiles] = useState<number>(10)
   const [syncAllFiles, setSyncAllFiles] = useState<boolean>(false)
-  const [selectedFiles, setSelectedFiles] = useState<{[connectorId: string]: GoogleDriveFile[]}>({})
-  const [connectorAccessTokens, setConnectorAccessTokens] = useState<{[connectorId: string]: string}>({})
   
   // Settings state
   // Note: backend internal Langflow URL is not needed on the frontend
@@ -155,23 +163,6 @@ function KnowledgeSourcesPage() {
           const activeConnection = connections.find((conn: Connection) => conn.is_active)
           const isConnected = activeConnection !== undefined
           
-          // For Google Drive, try to get access token for the picker
-          if (connectorType === 'google_drive' && activeConnection) {
-            try {
-              const tokenResponse = await fetch(`/api/connectors/${connectorType}/token?connection_id=${activeConnection.connection_id}`)
-              if (tokenResponse.ok) {
-                const tokenData = await tokenResponse.json()
-                if (tokenData.access_token) {
-                  setConnectorAccessTokens(prev => ({
-                    ...prev,
-                    [connectorType]: tokenData.access_token
-                  }))
-                }
-              }
-            } catch (e) {
-              console.log('Could not fetch access token for Google Drive picker:', e)
-            }
-          }
           
           setConnectors(prev => prev.map(c => 
             c.type === connectorType 
@@ -238,19 +229,6 @@ function KnowledgeSourcesPage() {
     }
   }
 
-  const handleFileSelection = (connectorId: string, files: GoogleDriveFile[]) => {
-    setSelectedFiles(prev => ({
-      ...prev,
-      [connectorId]: files
-    }))
-    
-    // Update the connector with selected files
-    setConnectors(prev => prev.map(c => 
-      c.id === connectorId 
-        ? { ...c, selectedFiles: files }
-        : c
-    ))
-  }
 
   const handleSync = async (connector: Connector) => {
     if (!connector.connectionId) return
@@ -268,10 +246,7 @@ function KnowledgeSourcesPage() {
         max_files: syncAllFiles ? 0 : (maxFiles || undefined)
       }
       
-      // Add selected files for Google Drive
-      if (connector.type === "google_drive" && selectedFiles[connector.id]?.length > 0) {
-        syncBody.selected_files = selectedFiles[connector.id].map(file => file.id)
-      }
+      // Note: File selection is now handled via the cloud connectors dialog
       
       const response = await fetch(`/api/connectors/${connector.type}/sync`, {
         method: 'POST',
@@ -488,16 +463,6 @@ function KnowledgeSourcesPage() {
               <CardContent className="flex-1 flex flex-col justify-end space-y-4">
                 {connector.status === "connected" ? (
                   <div className="space-y-3">
-                    {/* Google Drive file picker */}
-                    {connector.type === "google_drive" && (
-                      <GoogleDrivePicker
-                        onFileSelected={(files) => handleFileSelection(connector.id, files)}
-                        selectedFiles={selectedFiles[connector.id] || []}
-                        isAuthenticated={connector.status === "connected"}
-                        accessToken={connectorAccessTokens[connector.type]}
-                      />
-                    )}
-                    
                     <Button
                       onClick={() => handleSync(connector)}
                       disabled={isSyncing === connector.id}
