@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Folder, X } from "lucide-react"
+import { FileText, Folder, Plus, Trash2 } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
 
 interface GoogleDrivePickerProps {
   onFileSelected: (files: GoogleDriveFile[]) => void
@@ -19,6 +20,9 @@ interface GoogleDriveFile {
   mimeType: string
   webViewLink?: string
   iconLink?: string
+  size?: number
+  modifiedTime?: string
+  isFolder?: boolean
 }
 
 interface GoogleAPI {
@@ -174,17 +178,52 @@ export function GoogleDrivePicker({
     }
   }
 
-  const pickerCallback = (data: GooglePickerData) => {
+  const pickerCallback = async (data: GooglePickerData) => {
     if (data.action === window.google.picker.Action.PICKED) {
       const files: GoogleDriveFile[] = data.docs.map((doc: GooglePickerDocument) => ({
         id: doc[window.google.picker.Document.ID],
         name: doc[window.google.picker.Document.NAME],
         mimeType: doc[window.google.picker.Document.MIME_TYPE],
         webViewLink: doc[window.google.picker.Document.URL],
-        iconLink: doc[window.google.picker.Document.ICON_URL]
+        iconLink: doc[window.google.picker.Document.ICON_URL],
+        size: doc['sizeBytes'] ? parseInt(doc['sizeBytes']) : undefined,
+        modifiedTime: doc['lastEditedUtc'],
+        isFolder: doc[window.google.picker.Document.MIME_TYPE] === 'application/vnd.google-apps.folder'
       }))
       
-      onFileSelected(files)
+      // If size is still missing, try to fetch it via Google Drive API
+      if (accessToken && files.some(f => !f.size && !f.isFolder)) {
+        try {
+          const enrichedFiles = await Promise.all(files.map(async (file) => {
+            if (!file.size && !file.isFolder) {
+              try {
+                const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?fields=size,modifiedTime`, {
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                  }
+                })
+                if (response.ok) {
+                  const fileDetails = await response.json()
+                  return {
+                    ...file,
+                    size: fileDetails.size ? parseInt(fileDetails.size) : undefined,
+                    modifiedTime: fileDetails.modifiedTime || file.modifiedTime
+                  }
+                }
+              } catch (error) {
+                console.warn('Failed to fetch file details:', error)
+              }
+            }
+            return file
+          }))
+          onFileSelected(enrichedFiles)
+        } catch (error) {
+          console.warn('Failed to enrich file data:', error)
+          onFileSelected(files)
+        }
+      } else {
+        onFileSelected(files)
+      }
     }
     
     setIsPickerOpen(false)
@@ -218,6 +257,14 @@ export function GoogleDrivePicker({
     return typeMap[mimeType] || 'Document'
   }
 
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return ''
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+    if (bytes === 0) return '0 B'
+    const i = Math.floor(Math.log(bytes) / Math.log(1024))
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
@@ -228,29 +275,38 @@ export function GoogleDrivePicker({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h4 className="text-sm font-medium">File Selection</h4>
-          <p className="text-xs text-muted-foreground">
-            Choose specific files to sync instead of syncing everything
+      <Card>
+        <CardContent className="flex flex-col items-center text-center p-6">
+          <p className="text-sm text-muted-foreground mb-4">
+            Select files from Google Drive to ingest.
           </p>
-        </div>
-        <Button
-          onClick={openPicker}
-          disabled={!isPickerLoaded || isPickerOpen || !accessToken}
-          size="sm"
-          variant="outline"
-        >
-          {isPickerOpen ? 'Opening Picker...' : 'Add Files'}
-        </Button>
-      </div>
+          <Button
+            onClick={openPicker}
+            disabled={!isPickerLoaded || isPickerOpen || !accessToken}
+            className="bg-foreground text-background hover:bg-foreground/90"
+          >
+            <Plus className="h-4 w-4" />
+            {isPickerOpen ? 'Opening Picker...' : 'Add Files'}
+          </Button>
+        </CardContent>
+      </Card>
 
       {selectedFiles.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Selected files ({selectedFiles.length}):
-          </p>
-          <div className="max-h-32 overflow-y-auto space-y-1">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Added files
+            </p>
+            <Button
+              onClick={() => onFileSelected([])}
+              size="sm"
+              variant="ghost"
+              className="text-xs h-6"
+            >
+              Clear all
+            </Button>
+          </div>
+          <div className="max-h-64 overflow-y-auto space-y-1">
             {selectedFiles.map((file) => (
               <div
                 key={file.id}
@@ -263,25 +319,21 @@ export function GoogleDrivePicker({
                     {getMimeTypeLabel(file.mimeType)}
                   </Badge>
                 </div>
-                <Button
-                  onClick={() => removeFile(file.id)}
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                  <Button
+                    onClick={() => removeFile(file.id)}
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
-          <Button
-            onClick={() => onFileSelected([])}
-            size="sm"
-            variant="ghost"
-            className="text-xs h-6"
-          >
-            Clear all
-          </Button>
+          
         </div>
       )}
     </div>
