@@ -3,6 +3,9 @@ from starlette.responses import JSONResponse
 from typing import Optional
 from session_manager import User
 from config.settings import is_no_auth_mode
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_current_user(request: Request, session_manager) -> Optional[User]:
@@ -25,7 +28,7 @@ def require_auth(session_manager):
         async def wrapper(request: Request):
             # In no-auth mode, bypass authentication entirely
             if is_no_auth_mode():
-                print(f"[DEBUG] No-auth mode: Creating anonymous user")
+                logger.debug("No-auth mode: Creating anonymous user")
                 # Create an anonymous user object so endpoints don't break
                 from session_manager import User
                 from datetime import datetime
@@ -33,7 +36,7 @@ def require_auth(session_manager):
                 from session_manager import AnonymousUser
                 request.state.user = AnonymousUser()
                 request.state.jwt_token = None  # No JWT in no-auth mode
-                print(f"[DEBUG] Set user_id=anonymous, jwt_token=None")
+                logger.debug("Set user_id=anonymous, jwt_token=None")
                 return await handler(request)
 
             user = get_current_user(request, session_manager)
