@@ -3,11 +3,13 @@ import sys
 # Check for TUI flag FIRST, before any heavy imports
 if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--tui":
     from tui.main import run_tui
+
     run_tui()
     sys.exit(0)
 
 # Configure structured logging early
 from utils.logging_config import configure_from_env, get_logger
+
 configure_from_env()
 logger = get_logger(__name__)
 
@@ -60,7 +62,11 @@ from api import (
     settings,
 )
 
-logger.info("CUDA device information", cuda_available=torch.cuda.is_available(), cuda_version=torch.version.cuda)
+logger.info(
+    "CUDA device information",
+    cuda_available=torch.cuda.is_available(),
+    cuda_version=torch.version.cuda,
+)
 
 
 async def wait_for_opensearch():
@@ -74,7 +80,12 @@ async def wait_for_opensearch():
             logger.info("OpenSearch is ready")
             return
         except Exception as e:
-            logger.warning("OpenSearch not ready yet", attempt=attempt + 1, max_retries=max_retries, error=str(e))
+            logger.warning(
+                "OpenSearch not ready yet",
+                attempt=attempt + 1,
+                max_retries=max_retries,
+                error=str(e),
+            )
             if attempt < max_retries - 1:
                 await asyncio.sleep(retry_delay)
             else:
@@ -96,7 +107,9 @@ async def configure_alerting_security():
 
         # Use admin client (clients.opensearch uses admin credentials)
         response = await clients.opensearch.cluster.put_settings(body=alerting_settings)
-        logger.info("Alerting security settings configured successfully", response=response)
+        logger.info(
+            "Alerting security settings configured successfully", response=response
+        )
     except Exception as e:
         logger.warning("Failed to configure alerting security settings", error=str(e))
         # Don't fail startup if alerting config fails
@@ -136,9 +149,14 @@ async def init_index():
         await clients.opensearch.indices.create(
             index=knowledge_filter_index_name, body=knowledge_filter_index_body
         )
-        logger.info("Created knowledge filters index", index_name=knowledge_filter_index_name)
+        logger.info(
+            "Created knowledge filters index", index_name=knowledge_filter_index_name
+        )
     else:
-        logger.info("Knowledge filters index already exists, skipping creation", index_name=knowledge_filter_index_name)
+        logger.info(
+            "Knowledge filters index already exists, skipping creation",
+            index_name=knowledge_filter_index_name,
+        )
 
     # Configure alerting plugin security settings
     await configure_alerting_security()
@@ -193,7 +211,9 @@ async def init_index_when_ready():
         logger.info("OpenSearch index initialization completed successfully")
     except Exception as e:
         logger.error("OpenSearch index initialization failed", error=str(e))
-        logger.warning("OIDC endpoints will still work, but document operations may fail until OpenSearch is ready")
+        logger.warning(
+            "OIDC endpoints will still work, but document operations may fail until OpenSearch is ready"
+        )
 
 
 async def ingest_default_documents_when_ready(services):
@@ -288,9 +308,14 @@ async def initialize_services():
         try:
             await connector_service.initialize()
             loaded_count = len(connector_service.connection_manager.connections)
-            logger.info("Loaded persisted connector connections on startup", loaded_count=loaded_count)
+            logger.info(
+                "Loaded persisted connector connections on startup",
+                loaded_count=loaded_count,
+            )
         except Exception as e:
-            logger.warning("Failed to load persisted connections on startup", error=str(e))
+            logger.warning(
+                "Failed to load persisted connections on startup", error=str(e)
+            )
     else:
         logger.info("Skipping connector loading in no-auth mode")
 
@@ -730,18 +755,30 @@ async def cleanup_subscriptions_proper(services):
 
         for connection in active_connections:
             try:
-                logger.info("Cancelling subscription for connection", connection_id=connection.connection_id)
+                logger.info(
+                    "Cancelling subscription for connection",
+                    connection_id=connection.connection_id,
+                )
                 connector = await connector_service.get_connector(
                     connection.connection_id
                 )
                 if connector:
                     subscription_id = connection.config.get("webhook_channel_id")
                     await connector.cleanup_subscription(subscription_id)
-                    logger.info("Cancelled subscription", subscription_id=subscription_id)
+                    logger.info(
+                        "Cancelled subscription", subscription_id=subscription_id
+                    )
             except Exception as e:
-                logger.error("Failed to cancel subscription", connection_id=connection.connection_id, error=str(e))
+                logger.error(
+                    "Failed to cancel subscription",
+                    connection_id=connection.connection_id,
+                    error=str(e),
+                )
 
-        logger.info("Finished cancelling subscriptions", subscription_count=len(active_connections))
+        logger.info(
+            "Finished cancelling subscriptions",
+            subscription_count=len(active_connections),
+        )
 
     except Exception as e:
         logger.error("Failed to cleanup subscriptions", error=str(e))

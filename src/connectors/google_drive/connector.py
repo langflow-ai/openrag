@@ -23,7 +23,9 @@ def get_worker_drive_service(client_id: str, client_secret: str, token_file: str
     """Get or create a Google Drive service instance for this worker process"""
     global _worker_drive_service
     if _worker_drive_service is None:
-        logger.info("Initializing Google Drive service in worker process", pid=os.getpid())
+        logger.info(
+            "Initializing Google Drive service in worker process", pid=os.getpid()
+        )
 
         # Create OAuth instance and load credentials in worker
         from .oauth import GoogleDriveOAuth
@@ -481,7 +483,11 @@ class GoogleDriveConnector(BaseConnector):
 
         # Check if this webhook belongs to this connection
         if self.webhook_channel_id != channel_id:
-            logger.warning("Channel ID mismatch", expected=self.webhook_channel_id, received=channel_id)
+            logger.warning(
+                "Channel ID mismatch",
+                expected=self.webhook_channel_id,
+                received=channel_id,
+            )
             return []
 
         # Only process certain states (ignore 'sync' which is just a ping)
@@ -533,10 +539,18 @@ class GoogleDriveConnector(BaseConnector):
                 is_trashed = file_info.get("trashed", False)
 
                 if not is_trashed and mime_type in self.SUPPORTED_MIMETYPES:
-                    logger.info("File changed", filename=file_info.get('name', 'Unknown'), file_id=file_id)
+                    logger.info(
+                        "File changed",
+                        filename=file_info.get("name", "Unknown"),
+                        file_id=file_id,
+                    )
                     affected_files.append(file_id)
                 elif is_trashed:
-                    logger.info("File deleted/trashed", filename=file_info.get('name', 'Unknown'), file_id=file_id)
+                    logger.info(
+                        "File deleted/trashed",
+                        filename=file_info.get("name", "Unknown"),
+                        file_id=file_id,
+                    )
                     # TODO: Handle file deletion (remove from index)
                 else:
                     logger.debug("Ignoring unsupported file type", mime_type=mime_type)
