@@ -10,7 +10,9 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 @dataclass
 class User:
     """User information from OAuth provider"""
@@ -199,7 +201,7 @@ class SessionManager:
         )
 
         # In no-auth mode, create anonymous JWT for OpenSearch DLS
-        if is_no_auth_mode() and jwt_token is None:
+        if jwt_token is None and (is_no_auth_mode() or user_id in (None, AnonymousUser().user_id)):
             if not hasattr(self, "_anonymous_jwt"):
                 # Create anonymous JWT token for OpenSearch OIDC
                 logger.debug("Creating anonymous JWT")
