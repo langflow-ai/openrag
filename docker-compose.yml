@@ -5,9 +5,11 @@ services:
       #context: .
       #dockerfile: Dockerfile
     container_name: os
+    depends_on:
+      - openrag-backend
     environment:
       - discovery.type=single-node
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD:-admin123}
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
     # Run security setup in background after OpenSearch starts
     command: >
       bash -c "
@@ -32,7 +34,7 @@ services:
     environment:
       OPENSEARCH_HOSTS: '["https://opensearch:9200"]'
       OPENSEARCH_USERNAME: "admin"
-      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-admin123}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
     ports:
       - "5601:5601"
 
@@ -43,18 +45,17 @@ services:
       #dockerfile: Dockerfile.backend
     container_name: openrag-backend
     depends_on:
-      - opensearch
       - langflow
     environment:
       - OPENSEARCH_HOST=opensearch
       - LANGFLOW_URL=http://langflow:7860
       - LANGFLOW_PUBLIC_URL=${LANGFLOW_PUBLIC_URL}
-      - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER:-admin}
-      - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD:-admin123}
+      - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
+      - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - FLOW_ID=${FLOW_ID}
       - OPENSEARCH_PORT=9200
       - OPENSEARCH_USERNAME=admin
-      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD:-admin123}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NVIDIA_VISIBLE_DEVICES=all
@@ -68,8 +69,6 @@ services:
     volumes:
       - ./documents:/app/documents:Z
       - ./keys:/app/keys:Z
-    ports:
-      - "8000:8000"
     gpus: all
 
   openrag-frontend:
@@ -88,7 +87,7 @@ services:
   langflow:
     volumes:
       - ./flows:/app/flows:Z
-    image: langflowai/langflow:latest
+    image: phact/langflow:responses
     container_name: langflow
     ports:
       - "7860:7860"
@@ -100,8 +99,8 @@ services:
       - OPENRAG-QUERY-FILTER="{}"
       - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER
       - LANGFLOW_LOG_LEVEL=DEBUG
-      - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN:-true}
-      - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER:-admin}
-      - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD:-admin123}
-      - LANGFLOW_NEW_USER_IS_ACTIVE=${LANGFLOW_NEW_USER_IS_ACTIVE:-true}
-      - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI:-true}
+      - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
+      - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
+      - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
+      - LANGFLOW_NEW_USER_IS_ACTIVE=${LANGFLOW_NEW_USER_IS_ACTIVE}
+      - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI}
