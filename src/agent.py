@@ -180,7 +180,7 @@ async def async_response(
         response, "response_id", None
     )
 
-    return response_text, response_id
+    return response_text, response_id, response
 
 
 # Unified streaming function for both chat and langflow
@@ -211,7 +211,7 @@ async def async_langflow(
     extra_headers: dict = None,
     previous_response_id: str = None,
 ):
-    response_text, response_id = await async_response(
+    response_text, response_id, response_obj = await async_response(
         langflow_client,
         prompt,
         flow_id,
@@ -281,7 +281,7 @@ async def async_chat(
         "Added user message", message_count=len(conversation_state["messages"])
     )
 
-    response_text, response_id = await async_response(
+    response_text, response_id, response_obj = await async_response(
         async_client,
         prompt,
         model,
@@ -292,12 +292,13 @@ async def async_chat(
         "Got response", response_preview=response_text[:50], response_id=response_id
     )
 
-    # Add assistant response to conversation with response_id and timestamp
+    # Add assistant response to conversation with response_id, timestamp, and full response object
     assistant_message = {
         "role": "assistant",
         "content": response_text,
         "response_id": response_id,
         "timestamp": datetime.now(),
+        "response_data": response_obj.model_dump() if hasattr(response_obj, "model_dump") else str(response_obj),  # Store complete response for function calls
     }
     conversation_state["messages"].append(assistant_message)
     logger.debug(
@@ -419,7 +420,7 @@ async def async_langflow_chat(
         message_count=len(conversation_state["messages"]),
     )
 
-    response_text, response_id = await async_response(
+    response_text, response_id, response_obj = await async_response(
         langflow_client,
         prompt,
         flow_id,
@@ -433,12 +434,13 @@ async def async_langflow_chat(
         response_id=response_id,
     )
 
-    # Add assistant response to conversation with response_id and timestamp
+    # Add assistant response to conversation with response_id, timestamp, and full response object
     assistant_message = {
         "role": "assistant",
         "content": response_text,
         "response_id": response_id,
         "timestamp": datetime.now(),
+        "response_data": response_obj.model_dump() if hasattr(response_obj, "model_dump") else str(response_obj),  # Store complete response for function calls
     }
     conversation_state["messages"].append(assistant_message)
     logger.debug(
@@ -504,6 +506,8 @@ async def async_langflow_chat_stream(
 
     full_response = ""
     response_id = None
+    collected_chunks = []  # Store all chunks for function call data
+    
     async for chunk in async_stream(
         langflow_client,
         prompt,
@@ -517,6 +521,8 @@ async def async_langflow_chat_stream(
             import json
 
             chunk_data = json.loads(chunk.decode("utf-8"))
+            collected_chunks.append(chunk_data)  # Collect all chunk data
+            
             if "delta" in chunk_data and "content" in chunk_data["delta"]:
                 full_response += chunk_data["delta"]["content"]
             # Extract response_id from chunk
@@ -528,13 +534,14 @@ async def async_langflow_chat_stream(
             pass
         yield chunk
 
-    # Add the complete assistant response to message history with response_id and timestamp
+    # Add the complete assistant response to message history with response_id, timestamp, and function call data
     if full_response:
         assistant_message = {
             "role": "assistant",
             "content": full_response,
             "response_id": response_id,
             "timestamp": datetime.now(),
+            "chunks": collected_chunks,  # Store complete chunk data for function calls
         }
         conversation_state["messages"].append(assistant_message)
 
