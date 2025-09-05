@@ -32,6 +32,7 @@ import torch
 
 # Configuration and setup
 from config.settings import clients, INDEX_NAME, INDEX_BODY, SESSION_SECRET
+from config.settings import is_no_auth_mode
 from utils.gpu_detection import detect_gpu_devices
 
 # Services
@@ -214,6 +215,54 @@ async def init_index_when_ready():
             "OIDC endpoints will still work, but document operations may fail until OpenSearch is ready"
         )
 
+
+async def ingest_default_documents_when_ready(services):
+    """Scan the local documents folder and ingest files like a non-auth upload."""
+    try:
+        logger.info("Ingesting default documents when ready")
+        base_dir = os.path.abspath(os.path.join(os.getcwd(), "documents"))
+        if not os.path.isdir(base_dir):
+            logger.info("Default documents directory not found; skipping ingestion", base_dir=base_dir)
+            return
+
+        # Collect files recursively
+        file_paths = [
+            os.path.join(root, fn)
+            for root, _, files in os.walk(base_dir)
+            for fn in files
+        ]
+
+        if not file_paths:
+            logger.info("No default documents found; nothing to ingest", base_dir=base_dir)
+            return
+
+        # Build a processor that DOES NOT set 'owner' on documents (owner_user_id=None)
+        from models.processors import DocumentFileProcessor
+
+        processor = DocumentFileProcessor(
+            services["document_service"],
+            owner_user_id=None,
+            jwt_token=None,
+            owner_name=None,
+            owner_email=None,
+        )
+
+        task_id = await services["task_service"].create_custom_task(
+            "anonymous", file_paths, processor
+        )
+        logger.info(
+            "Started default documents ingestion task",
+            task_id=task_id,
+            file_count=len(file_paths),
+        )
+    except Exception as e:
+        logger.error("Default documents ingestion failed", error=str(e))
+
+async def startup_tasks(services):
+    """Startup tasks"""
+    logger.info("Starting startup tasks")
+    await init_index()
+    await ingest_default_documents_when_ready(services)
 
 async def initialize_services():
     """Initialize all services and their dependencies"""
@@ -655,12 +704,15 @@ async def create_app():
 
     app = Starlette(debug=True, routes=routes)
     app.state.services = services  # Store services for cleanup
+    app.state.background_tasks = set()
 
     # Add startup event handler
     @app.on_event("startup")
     async def startup_event():
         # Start index initialization in background to avoid blocking OIDC endpoints
-        asyncio.create_task(init_index_when_ready())
+        t1 = asyncio.create_task(startup_tasks(services))
+        app.state.background_tasks.add(t1)
+        t1.add_done_callback(app.state.background_tasks.discard)
 
     # Add shutdown event handler
     @app.on_event("shutdown")
