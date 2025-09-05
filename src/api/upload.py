@@ -14,7 +14,7 @@ async def upload(request: Request, document_service, session_manager):
         jwt_token = request.state.jwt_token
 
         from config.settings import is_no_auth_mode
-        
+
         # In no-auth mode, pass None for owner fields so documents have no owner
         # This allows all users to see them when switching to auth mode
         if is_no_auth_mode():
@@ -25,7 +25,7 @@ async def upload(request: Request, document_service, session_manager):
             owner_user_id = user.user_id
             owner_name = user.name
             owner_email = user.email
-        
+
         result = await document_service.process_upload_file(
             upload_file,
             owner_user_id=owner_user_id,
@@ -61,9 +61,9 @@ async def upload_path(request: Request, task_service, session_manager):
 
     user = request.state.user
     jwt_token = request.state.jwt_token
-    
+
     from config.settings import is_no_auth_mode
-    
+
     # In no-auth mode, pass None for owner fields so documents have no owner
     if is_no_auth_mode():
         owner_user_id = None
@@ -73,7 +73,7 @@ async def upload_path(request: Request, task_service, session_manager):
         owner_user_id = user.user_id
         owner_name = user.name
         owner_email = user.email
-    
+
     task_id = await task_service.create_upload_task(
         owner_user_id,
         file_paths,
