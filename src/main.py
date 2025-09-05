@@ -3,11 +3,13 @@ import sys
 # Check for TUI flag FIRST, before any heavy imports
 if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--tui":
     from tui.main import run_tui
+
     run_tui()
     sys.exit(0)
 
 # Configure structured logging early
 from utils.logging_config import configure_from_env, get_logger
+
 configure_from_env()
 logger = get_logger(__name__)
 
@@ -25,6 +27,8 @@ import torch
 
 # Configuration and setup
 from config.settings import clients, INDEX_NAME, INDEX_BODY, SESSION_SECRET
+from config.settings import is_no_auth_mode
+from utils.gpu_detection import detect_gpu_devices
 
 # Services
 from services.document_service import DocumentService
@@ -56,8 +60,11 @@ from api import (
 # Set multiprocessing start method to 'spawn' for CUDA compatibility
 multiprocessing.set_start_method("spawn", force=True)
 
-logger.info("CUDA available", cuda_available=torch.cuda.is_available())
-logger.info("CUDA version PyTorch was built with", cuda_version=torch.version.cuda)
+logger.info(
+    "CUDA device information",
+    cuda_available=torch.cuda.is_available(),
+    cuda_version=torch.version.cuda,
+)
 
 
 async def wait_for_opensearch():
@@ -71,7 +78,12 @@ async def wait_for_opensearch():
             logger.info("OpenSearch is ready")
             return
         except Exception as e:
-            logger.warning("OpenSearch not ready yet", attempt=attempt + 1, max_retries=max_retries, error=str(e))
+            logger.warning(
+                "OpenSearch not ready yet",
+                attempt=attempt + 1,
+                max_retries=max_retries,
+                error=str(e),
+            )
             if attempt < max_retries - 1:
                 await asyncio.sleep(retry_delay)
             else:
@@ -93,7 +105,9 @@ async def configure_alerting_security():
 
         # Use admin client (clients.opensearch uses admin credentials)
         response = await clients.opensearch.cluster.put_settings(body=alerting_settings)
-        logger.info("Alerting security settings configured successfully", response=response)
+        logger.info(
+            "Alerting security settings configured successfully", response=response
+        )
     except Exception as e:
         logger.warning("Failed to configure alerting security settings", error=str(e))
         # Don't fail startup if alerting config fails
@@ -133,9 +147,14 @@ async def init_index():
         await clients.opensearch.indices.create(
             index=knowledge_filter_index_name, body=knowledge_filter_index_body
         )
-        logger.info("Created knowledge filters index", index_name=knowledge_filter_index_name)
+        logger.info(
+            "Created knowledge filters index", index_name=knowledge_filter_index_name
+        )
     else:
-        logger.info("Knowledge filters index already exists, skipping creation", index_name=knowledge_filter_index_name)
+        logger.info(
+            "Knowledge filters index already exists, skipping creation",
+            index_name=knowledge_filter_index_name,
+        )
 
     # Configure alerting plugin security settings
     await configure_alerting_security()
@@ -190,8 +209,58 @@ async def init_index_when_ready():
         logger.info("OpenSearch index initialization completed successfully")
     except Exception as e:
         logger.error("OpenSearch index initialization failed", error=str(e))
-        logger.warning("OIDC endpoints will still work, but document operations may fail until OpenSearch is ready")
+        logger.warning(
+            "OIDC endpoints will still work, but document operations may fail until OpenSearch is ready"
+        )
 
+
+async def ingest_default_documents_when_ready(services):
+    """Scan the local documents folder and ingest files like a non-auth upload."""
+    try:
+        logger.info("Ingesting default documents when ready")
+        base_dir = os.path.abspath(os.path.join(os.getcwd(), "documents"))
+        if not os.path.isdir(base_dir):
+            logger.info("Default documents directory not found; skipping ingestion", base_dir=base_dir)
+            return
+
+        # Collect files recursively
+        file_paths = [
+            os.path.join(root, fn)
+            for root, _, files in os.walk(base_dir)
+            for fn in files
+        ]
+
+        if not file_paths:
+            logger.info("No default documents found; nothing to ingest", base_dir=base_dir)
+            return
+
+        # Build a processor that DOES NOT set 'owner' on documents (owner_user_id=None)
+        from models.processors import DocumentFileProcessor
+
+        processor = DocumentFileProcessor(
+            services["document_service"],
+            owner_user_id=None,
+            jwt_token=None,
+            owner_name=None,
+            owner_email=None,
+        )
+
+        task_id = await services["task_service"].create_custom_task(
+            "anonymous", file_paths, processor
+        )
+        logger.info(
+            "Started default documents ingestion task",
+            task_id=task_id,
+            file_count=len(file_paths),
+        )
+    except Exception as e:
+        logger.error("Default documents ingestion failed", error=str(e))
+
+async def startup_tasks(services):
+    """Startup tasks"""
+    logger.info("Starting startup tasks")
+    await init_index()
+    await ingest_default_documents_when_ready(services)
 
 async def initialize_services():
     """Initialize all services and their dependencies"""
@@ -237,9 +306,14 @@ async def initialize_services():
         try:
             await connector_service.initialize()
             loaded_count = len(connector_service.connection_manager.connections)
-            logger.info("Loaded persisted connector connections on startup", loaded_count=loaded_count)
+            logger.info(
+                "Loaded persisted connector connections on startup",
+                loaded_count=loaded_count,
+            )
         except Exception as e:
-            logger.warning("Failed to load persisted connections on startup", error=str(e))
+            logger.warning(
+                "Failed to load persisted connections on startup", error=str(e)
+            )
     else:
         logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
 
@@ -639,12 +713,15 @@ async def create_app():
 
     app = Starlette(debug=True, routes=routes)
     app.state.services = services  # Store services for cleanup
+    app.state.background_tasks = set()
 
     # Add startup event handler
     @app.on_event("startup")
     async def startup_event():
         # Start index initialization in background to avoid blocking OIDC endpoints
-        asyncio.create_task(init_index_when_ready())
+        t1 = asyncio.create_task(startup_tasks(services))
+        app.state.background_tasks.add(t1)
+        t1.add_done_callback(app.state.background_tasks.discard)
 
     # Add shutdown event handler
     @app.on_event("shutdown")
@@ -687,18 +764,30 @@ async def cleanup_subscriptions_proper(services):
 
         for connection in active_connections:
             try:
-                logger.info("Cancelling subscription for connection", connection_id=connection.connection_id)
+                logger.info(
+                    "Cancelling subscription for connection",
+                    connection_id=connection.connection_id,
+                )
                 connector = await connector_service.get_connector(
                     connection.connection_id
                 )
                 if connector:
                     subscription_id = connection.config.get("webhook_channel_id")
                     await connector.cleanup_subscription(subscription_id)
-                    logger.info("Cancelled subscription", subscription_id=subscription_id)
+                    logger.info(
+                        "Cancelled subscription", subscription_id=subscription_id
+                    )
             except Exception as e:
-                logger.error("Failed to cancel subscription", connection_id=connection.connection_id, error=str(e))
+                logger.error(
+                    "Failed to cancel subscription",
+                    connection_id=connection.connection_id,
+                    error=str(e),
+                )
 
-        logger.info("Finished cancelling subscriptions", subscription_count=len(active_connections))
+        logger.info(
+            "Finished cancelling subscriptions",
+            subscription_count=len(active_connections),
+        )
 
     except Exception as e:
         logger.error("Failed to cleanup subscriptions", error=str(e))
