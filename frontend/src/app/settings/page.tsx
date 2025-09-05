@@ -88,9 +88,12 @@ function KnowledgeSourcesPage() {
 				// Update all state cleanly
 				settings.flow_id && setFlowId(settings.flow_id);
 				settings.ingest_flow_id && setIngestFlowId(settings.ingest_flow_id);
-				settings.langflow_edit_url && setLangflowEditUrl(settings.langflow_edit_url);
-				settings.langflow_ingest_edit_url && setLangflowIngestEditUrl(settings.langflow_ingest_edit_url);
-				settings.langflow_public_url && setPublicLangflowUrl(settings.langflow_public_url);
+				settings.langflow_edit_url &&
+					setLangflowEditUrl(settings.langflow_edit_url);
+				settings.langflow_ingest_edit_url &&
+					setLangflowIngestEditUrl(settings.langflow_ingest_edit_url);
+				settings.langflow_public_url &&
+					setPublicLangflowUrl(settings.langflow_public_url);
 				if (settings.ingestion_defaults) {
 					console.log(
 						"Loading ingestion defaults from backend:",
