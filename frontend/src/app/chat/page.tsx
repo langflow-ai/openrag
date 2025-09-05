@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
+import Nudges from "./nudges";
 
 interface Message {
   role: "user" | "assistant";
@@ -128,7 +129,6 @@ function ChatPage() {
   const [dropdownDismissed, setDropdownDismissed] = useState(false);
   const [isUserInteracting, setIsUserInteracting] = useState(false);
   const [isForkingInProgress, setIsForkingInProgress] = useState(false);
-  const [lastForkTimestamp, setLastForkTimestamp] = useState<number>(0);
   const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -472,7 +472,12 @@ function ChatPage() {
         [conversationData.endpoint]: conversationData.response_id,
       }));
     }
-  }, [conversationData, isUserInteracting, isForkingInProgress]);
+  }, [
+    conversationData,
+    isUserInteracting,
+    isForkingInProgress,
+    setPreviousResponseIds,
+  ]);
 
   // Handle new conversation creation - only reset messages when placeholderConversation is set
   useEffect(() => {
@@ -1312,13 +1317,12 @@ function ChatPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
+  const handleSendMessage = async (inputMessage: string) => {
+    if (!inputMessage.trim() || loading) return;
 
     const userMessage: Message = {
       role: "user",
-      content: input.trim(),
+      content: inputMessage.trim(),
       timestamp: new Date(),
     };
 
@@ -1433,6 +1437,11 @@ function ChatPage() {
     setLoading(false);
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSendMessage(input);
+  };
+
   const toggleFunctionCall = (functionCallId: string) => {
     setExpandedFunctionCalls((prev) => {
       const newSet = new Set(prev);
@@ -1456,10 +1465,8 @@ function ChatPage() {
     }
 
     // Set interaction state to prevent auto-scroll interference
-    const forkTimestamp = Date.now();
     setIsUserInteracting(true);
     setIsForkingInProgress(true);
-    setLastForkTimestamp(forkTimestamp);
 
     console.log("Fork conversation called for message index:", messageIndex);
 
@@ -1472,7 +1479,6 @@ function ChatPage() {
       console.error("Fork button should only be on assistant messages");
       setIsUserInteracting(false);
       setIsForkingInProgress(false);
-      setLastForkTimestamp(0);
       return;
     }
 
@@ -1745,8 +1751,7 @@ function ChatPage() {
   };
 
   const handleSuggestionClick = (suggestion: string) => {
-    setInput(suggestion);
-    inputRef.current?.focus();
+    handleSendMessage(suggestion);
   };
 
   return (
@@ -1962,27 +1967,14 @@ function ChatPage() {
 
       {/* Suggestion chips - always show unless streaming */}
       {!streamingMessage && (
-        <div className="flex-shrink-0 p-6 pb-4 flex justify-center">
-          <div className="w-full max-w-[75%] relative">
-            <div className="flex gap-2 justify-start overflow-x-auto scrollbar-hide">
-              {(nudges as string[]).map((suggestion: string, index: number) => (
-                <button
-                  key={index}
-                  onClick={() => handleSuggestionClick(suggestion)}
-                  className="px-4 py-2 bg-muted/30 hover:bg-muted/50 rounded-lg text-sm text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-            {/* Fade out gradient on the right */}
-            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none"></div>
-          </div>
-        </div>
+        <Nudges
+          nudges={nudges as string[]}
+          handleSuggestionClick={handleSuggestionClick}
+        />
       )}
 
       {/* Input Area - Fixed at bottom */}
-      <div className="flex-shrink-0 p-6 pb-8 flex justify-center">
+      <div className="flex-shrink-0 p-6 pb-8 pt-4 flex justify-center">
         <div className="w-full max-w-[75%]">
           <form onSubmit={handleSubmit} className="relative">
             <div className="relative w-full bg-muted/20 rounded-lg border border-border/50 focus-within:ring-1 focus-within:ring-ring">
