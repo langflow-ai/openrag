@@ -9,13 +9,15 @@ def configure_logging(
     log_level: str = "INFO",
     json_logs: bool = False,
     include_timestamps: bool = True,
-    service_name: str = "openrag"
+    service_name: str = "openrag",
 ) -> None:
     """Configure structlog for the application."""
-    
+
     # Convert string log level to actual level
-    level = getattr(structlog.stdlib.logging, log_level.upper(), structlog.stdlib.logging.INFO)
-    
+    level = getattr(
+        structlog.stdlib.logging, log_level.upper(), structlog.stdlib.logging.INFO
+    )
+
     # Base processors
     shared_processors = [
         structlog.contextvars.merge_contextvars,
@@ -23,29 +25,65 @@ def configure_logging(
         structlog.processors.StackInfoRenderer(),
         structlog.dev.set_exc_info,
     ]
-    
+
     if include_timestamps:
         shared_processors.append(structlog.processors.TimeStamper(fmt="iso"))
-    
-    # Add service name to all logs
+
+    # Add service name and file location to all logs
     shared_processors.append(
         structlog.processors.CallsiteParameterAdder(
-            parameters=[structlog.processors.CallsiteParameter.FUNC_NAME]
+            parameters=[
+                structlog.processors.CallsiteParameter.FUNC_NAME,
+                structlog.processors.CallsiteParameter.FILENAME,
+                structlog.processors.CallsiteParameter.LINENO,
+                structlog.processors.CallsiteParameter.PATHNAME,
+            ]
         )
     )
-    
+
     # Console output configuration
     if json_logs or os.getenv("LOG_FORMAT", "").lower() == "json":
         # JSON output for production/containers
         shared_processors.append(structlog.processors.JSONRenderer())
         console_renderer = structlog.processors.JSONRenderer()
     else:
-        # Pretty colored output for development
-        console_renderer = structlog.dev.ConsoleRenderer(
-            colors=sys.stderr.isatty(),
-            exception_formatter=structlog.dev.plain_traceback,
-        )
-    
+        # Custom clean format: timestamp path/file:loc logentry
+        def custom_formatter(logger, log_method, event_dict):
+            timestamp = event_dict.pop("timestamp", "")
+            pathname = event_dict.pop("pathname", "")
+            filename = event_dict.pop("filename", "")
+            lineno = event_dict.pop("lineno", "")
+            level = event_dict.pop("level", "")
+
+            # Build file location - prefer pathname for full path, fallback to filename
+            if pathname and lineno:
+                location = f"{pathname}:{lineno}"
+            elif filename and lineno:
+                location = f"{filename}:{lineno}"
+            elif pathname:
+                location = pathname
+            elif filename:
+                location = filename
+            else:
+                location = "unknown"
+
+            # Build the main message
+            message_parts = []
+            event = event_dict.pop("event", "")
+            if event:
+                message_parts.append(event)
+
+            # Add any remaining context
+            for key, value in event_dict.items():
+                if key not in ["service", "func_name"]:  # Skip internal fields
+                    message_parts.append(f"{key}={value}")
+
+            message = " ".join(message_parts)
+
+            return f"{timestamp} {location} {message}"
+
+        console_renderer = custom_formatter
+
     # Configure structlog
     structlog.configure(
         processors=shared_processors + [console_renderer],
@@ -54,7 +92,7 @@ def configure_logging(
         logger_factory=structlog.WriteLoggerFactory(sys.stderr),
         cache_logger_on_first_use=True,
     )
-    
+
     # Add global context
     structlog.contextvars.clear_contextvars()
     structlog.contextvars.bind_contextvars(service=service_name)
@@ -73,9 +111,7 @@ def configure_from_env() -> None:
     log_level = os.getenv("LOG_LEVEL", "INFO")
     json_logs = os.getenv("LOG_FORMAT", "").lower() == "json"
     service_name = os.getenv("SERVICE_NAME", "openrag")
-    
+
     configure_logging(
-        log_level=log_level,
-        json_logs=json_logs,
-        service_name=service_name
+        log_level=log_level, json_logs=json_logs, service_name=service_name
     )

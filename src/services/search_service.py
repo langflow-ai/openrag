@@ -138,7 +138,11 @@ class SearchService:
             search_body["min_score"] = score_threshold
 
         # Authentication required - DLS will handle document filtering automatically
-        logger.debug("search_service authentication info", user_id=user_id, has_jwt_token=jwt_token is not None)
+        logger.debug(
+            "search_service authentication info",
+            user_id=user_id,
+            has_jwt_token=jwt_token is not None,
+        )
         if not user_id:
             logger.debug("search_service: user_id is None/empty, returning auth error")
             return {"results": [], "error": "Authentication required"}
@@ -151,7 +155,9 @@ class SearchService:
         try:
             results = await opensearch_client.search(index=INDEX_NAME, body=search_body)
         except Exception as e:
-            logger.error("OpenSearch query failed", error=str(e), search_body=search_body)
+            logger.error(
+                "OpenSearch query failed", error=str(e), search_body=search_body
+            )
             # Re-raise the exception so the API returns the error to frontend
             raise
 
