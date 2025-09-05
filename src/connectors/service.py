@@ -1,13 +1,12 @@
-import asyncio
 import tempfile
 import os
 from typing import Dict, Any, List, Optional
 
 from .base import BaseConnector, ConnectorDocument
-from .google_drive import GoogleDriveConnector
-from .sharepoint import SharePointConnector
-from .onedrive import OneDriveConnector
+from utils.logging_config import get_logger
 from .connection_manager import ConnectionManager
+
+logger = get_logger(__name__)
 
 
 class ConnectorService:
@@ -194,8 +193,6 @@ class ConnectorService:
         user_id: str,
         max_files: int = None,
         jwt_token: str = None,
-        selected_files: List[str] = None,
-        selected_folders: List[str] = None,
     ) -> str:
         """Sync files from a connector connection using existing task tracking system"""
         if not self.task_service:
@@ -203,8 +200,10 @@ class ConnectorService:
                 "TaskService not available - connector sync requires task service dependency"
             )
 
-        print(
-            f"[DEBUG] Starting sync for connection {connection_id}, max_files={max_files}"
+        logger.debug(
+            "Starting sync for connection",
+            connection_id=connection_id,
+            max_files=max_files,
         )
 
         connector = await self.get_connector(connection_id)
@@ -213,10 +212,44 @@ class ConnectorService:
                 f"Connection '{connection_id}' not found or not authenticated"
             )
 
-        print(f"[DEBUG] Got connector, authenticated: {connector.is_authenticated}")
+        logger.debug("Got connector", authenticated=connector.is_authenticated)
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
+
+        # Collect files to process (limited by max_files)
+        files_to_process = []
+        page_token = None
+
+        # Calculate page size to minimize API calls
+        page_size = min(max_files or 100, 1000) if max_files else 100
+
+        while True:
+            # List files from connector with limit
+            logger.info(
+                "Calling list_files", page_size=page_size, page_token=page_token
+            )
+            file_list = await connector.list_files(page_token, max_files=page_size)
+            logger.info(
+                "Got files from connector", file_count=len(file_list.get("files", []))
+            )
+            files = file_list["files"]
+
+            if not files:
+                break
+
+            for file_info in files:
+                if max_files and len(files_to_process) >= max_files:
+                    break
+                files_to_process.append(file_info)
+
+            # Stop if we have enough files or no more pages
+            if (max_files and len(files_to_process) >= max_files) or not file_list.get(
+                "nextPageToken"
+            ):
+                break
+
+            page_token = file_list.get("nextPageToken")
 
         # Get user information
         user = self.session_manager.get_user(user_id) if self.session_manager else None
@@ -229,16 +262,19 @@ class ConnectorService:
         processor = ConnectorFileProcessor(
             self,
             connection_id,
-            selected_files or [],
+            files_to_process,
             user_id,
             jwt_token=jwt_token,
             owner_name=owner_name,
             owner_email=owner_email,
         )
 
+        # Use file IDs as items (no more fake file paths!)
+        file_ids = [file_info["id"] for file_info in files_to_process]
+
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(
-            user_id, selected_files, processor
+            user_id, file_ids, processor
         )
 
         return task_id
