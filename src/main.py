@@ -334,7 +334,7 @@ async def initialize_services():
                 "Failed to load persisted connections on startup", error=str(e)
             )
     else:
-        print("[CONNECTORS] Skipping connection loading in no-auth mode")
+        logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
 
     # New: Langflow file service
 
