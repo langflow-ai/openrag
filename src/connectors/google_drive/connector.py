@@ -168,11 +168,18 @@ class GoogleDriveConnector(BaseConnector):
     # Helpers
     # -------------------------
     @property
-    def _drives_flags(self) -> Dict[str, Any]:
+    def _drives_get_flags(self) -> Dict[str, Any]:
         """
-        Common flags for ALL Drive calls to ensure Shared Drives are included.
+        Flags valid for GET-like calls (files.get, changes.getStartPageToken).
         """
-        return dict(supportsAllDrives=True, includeItemsFromAllDrives=True)
+        return {"supportsAllDrives": True}
+
+    @property
+    def _drives_list_flags(self) -> Dict[str, Any]:
+        """
+        Flags valid for LIST-like calls (files.list, changes.list).
+        """
+        return {"supportsAllDrives": True, "includeItemsFromAllDrives": True}
 
     def _pick_corpora_args(self) -> Dict[str, Any]:
         """
@@ -241,7 +248,7 @@ class GoogleDriveConnector(BaseConnector):
                         "id, name, mimeType, modifiedTime, createdTime, size, "
                         "webViewLink, parents, shortcutDetails, driveId)"
                     ),
-                    **self._drives_flags,
+                    **self._drives_list_flags,
                     **self._pick_corpora_args(),
                 )
                 .execute()
@@ -292,7 +299,7 @@ class GoogleDriveConnector(BaseConnector):
                         "id, name, mimeType, modifiedTime, createdTime, size, "
                         "webViewLink, parents, shortcutDetails, driveId"
                     ),
-                    **self._drives_flags,
+                    **self._drives_get_flags,
                 )
                 .execute()
             )
@@ -396,9 +403,10 @@ class GoogleDriveConnector(BaseConnector):
             # default fallback if not overridden
             if not export_mime:
                 export_mime = "application/pdf"
+            # NOTE: export_media does not accept supportsAllDrives/includeItemsFromAllDrives
             request = self.service.files().export_media(fileId=file_id, mimeType=export_mime)
         else:
-            # Binary download
+            # Binary download (get_media also doesn't accept the Drive flags)
             request = self.service.files().get_media(fileId=file_id)
 
         fh = io.BytesIO()
@@ -846,7 +854,8 @@ class GoogleDriveConnector(BaseConnector):
     # Changes API (polling or webhook-backed)
     # -------------------------
     def get_start_page_token(self) -> str:
-        resp = self.service.changes().getStartPageToken(**self._drives_flags).execute()
+        # getStartPageToken accepts supportsAllDrives (not includeItemsFromAllDrives)
+        resp = self.service.changes().getStartPageToken(**self._drives_get_flags).execute()
         return resp["startPageToken"]
 
     def poll_changes_and_sync(self) -> Optional[str]:
@@ -867,7 +876,7 @@ class GoogleDriveConnector(BaseConnector):
                         "changes(fileId, file(id, name, mimeType, trashed, parents, "
                         "shortcutDetails, driveId, modifiedTime, webViewLink))"
                     ),
-                    **self._drives_flags,
+                    **self._drives_list_flags,
                 )
                 .execute()
             )
