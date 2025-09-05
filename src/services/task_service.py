@@ -2,9 +2,13 @@ import asyncio
 import random
 import time
 import uuid
+from typing import Dict
 
 from models.tasks import FileTask, TaskStatus, UploadTask
-from utils.gpu_detection import get_worker_count
+from src.utils.gpu_detection import get_worker_count
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class TaskService:
@@ -102,7 +106,9 @@ class TaskService:
             await asyncio.gather(*tasks, return_exceptions=True)
 
         except Exception as e:
-            print(f"[ERROR] Background upload processor failed for task {task_id}: {e}")
+            logger.error(
+                "Background upload processor failed", task_id=task_id, error=str(e)
+            )
             import traceback
 
             traceback.print_exc()
@@ -134,7 +140,9 @@ class TaskService:
                     try:
                         await processor.process_item(upload_task, item, file_task)
                     except Exception as e:
-                        print(f"[ERROR] Failed to process item {item}: {e}")
+                        logger.error(
+                            "Failed to process item", item=str(item), error=str(e)
+                        )
                         import traceback
 
                         traceback.print_exc()
@@ -155,13 +163,15 @@ class TaskService:
             upload_task.updated_at = time.time()
 
         except asyncio.CancelledError:
-            print(f"[INFO] Background processor for task {task_id} was cancelled")
+            logger.info("Background processor cancelled", task_id=task_id)
             if user_id in self.task_store and task_id in self.task_store[user_id]:
                 # Task status and pending files already handled by cancel_task()
                 pass
             raise  # Re-raise to properly handle cancellation
         except Exception as e:
-            print(f"[ERROR] Background custom processor failed for task {task_id}: {e}")
+            logger.error(
+                "Background custom processor failed", task_id=task_id, error=str(e)
+            )
             import traceback
 
             traceback.print_exc()
