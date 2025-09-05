@@ -5,26 +5,28 @@ logger = get_logger(__name__)
 # Import persistent storage
 from services.conversation_persistence_service import conversation_persistence
 
+# In-memory storage for active conversation threads (preserves function calls)
+active_conversations = {}
 
 def get_user_conversations(user_id: str):
-    """Get all conversations for a user"""
+    """Get conversation metadata for a user from persistent storage"""
     return conversation_persistence.get_user_conversations(user_id)
 
 
 def get_conversation_thread(user_id: str, previous_response_id: str = None):
-    """Get or create a specific conversation thread"""
-    conversations = get_user_conversations(user_id)
-
-    if previous_response_id and previous_response_id in conversations:
-        # Update last activity and return existing conversation
-        conversations[previous_response_id]["last_activity"] = __import__(
-            "datetime"
-        ).datetime.now()
-        return conversations[previous_response_id]
-
-    # Create new conversation thread
+    """Get or create a specific conversation thread with function call preservation"""
     from datetime import datetime
 
+    # Create user namespace if it doesn't exist
+    if user_id not in active_conversations:
+        active_conversations[user_id] = {}
+
+    # If we have a previous_response_id, try to get the existing conversation
+    if previous_response_id and previous_response_id in active_conversations[user_id]:
+        logger.debug(f"Retrieved existing conversation for user {user_id}, response_id {previous_response_id}")
+        return active_conversations[user_id][previous_response_id]
+
+    # Create new conversation thread
     new_conversation = {
         "messages": [
             {
@@ -41,18 +43,49 @@ def get_conversation_thread(user_id: str, previous_response_id: str = None):
 
 
 def store_conversation_thread(user_id: str, response_id: str, conversation_state: dict):
-    """Store a conversation thread with its response_id"""
-    conversation_persistence.store_conversation_thread(user_id, response_id, conversation_state)
+    """Store conversation both in memory (with function calls) and persist metadata to disk"""
+    # 1. Store full conversation in memory for function call preservation
+    if user_id not in active_conversations:
+        active_conversations[user_id] = {}
+    active_conversations[user_id][response_id] = conversation_state
+    
+    # 2. Store only essential metadata to disk (simplified JSON)
+    messages = conversation_state.get("messages", [])
+    first_user_msg = next((msg for msg in messages if msg.get("role") == "user"), None)
+    title = "New Chat"
+    if first_user_msg:
+        content = first_user_msg.get("content", "")
+        title = content[:50] + "..." if len(content) > 50 else content
+    
+    metadata_only = {
+        "response_id": response_id,
+        "title": title,
+        "endpoint": "langflow",
+        "created_at": conversation_state.get("created_at"),
+        "last_activity": conversation_state.get("last_activity"),
+        "previous_response_id": conversation_state.get("previous_response_id"),
+        "total_messages": len([msg for msg in messages if msg.get("role") in ["user", "assistant"]]),
+        # Don't store actual messages - Langflow has them
+    }
+    
+    conversation_persistence.store_conversation_thread(user_id, response_id, metadata_only)
 
 
 # Legacy function for backward compatibility
 def get_user_conversation(user_id: str):
     """Get the most recent conversation for a user (for backward compatibility)"""
+    # Check in-memory conversations first (with function calls)
+    if user_id in active_conversations and active_conversations[user_id]:
+        latest_response_id = max(active_conversations[user_id].keys(), 
+                               key=lambda k: active_conversations[user_id][k]["last_activity"])
+        return active_conversations[user_id][latest_response_id]
+    
+    # Fallback to metadata-only conversations
     conversations = get_user_conversations(user_id)
     if not conversations:
         return get_conversation_thread(user_id)
 
-    # Return the most recently active conversation
+    # Return the most recently active conversation metadata
     latest_conversation = max(conversations.values(), key=lambda c: c["last_activity"])
     return latest_conversation
 

@@ -6,7 +6,7 @@ Simplified service that retrieves message history from Langflow using a single t
 import httpx
 from typing import List, Dict, Optional, Any
 
-from config.settings import LANGFLOW_URL, LANGFLOW_KEY, LANGFLOW_SUPERUSER, LANGFLOW_SUPERUSER_PASSWORD
+from config.settings import LANGFLOW_URL, LANGFLOW_SUPERUSER, LANGFLOW_SUPERUSER_PASSWORD
 
 
 class LangflowHistoryService:
@@ -19,11 +19,6 @@ class LangflowHistoryService:
     async def _authenticate(self) -> Optional[str]:
         """Authenticate with Langflow and get access token"""
         if self.auth_token:
-            return self.auth_token
-            
-        # Try using LANGFLOW_KEY first if available
-        if LANGFLOW_KEY:
-            self.auth_token = LANGFLOW_KEY
             return self.auth_token
             
         if not all([LANGFLOW_SUPERUSER, LANGFLOW_SUPERUSER_PASSWORD]):
@@ -146,6 +141,33 @@ class LangflowHistoryService:
                     "error": msg.get("error", False),
                     "edit": msg.get("edit", False)
                 }
+                
+                # Extract function calls from content_blocks if present
+                content_blocks = msg.get("content_blocks", [])
+                if content_blocks:
+                    chunks = []
+                    for block in content_blocks:
+                        if block.get("title") == "Agent Steps" and block.get("contents"):
+                            for content in block["contents"]:
+                                if content.get("type") == "tool_use":
+                                    # Convert Langflow tool_use format to OpenRAG chunks format
+                                    chunk = {
+                                        "type": "function",
+                                        "function": {
+                                            "name": content.get("name", ""),
+                                            "arguments": content.get("tool_input", {}),
+                                            "response": content.get("output", {})
+                                        },
+                                        "function_call_result": content.get("output", {}),
+                                        "duration": content.get("duration"),
+                                        "error": content.get("error")
+                                    }
+                                    chunks.append(chunk)
+                    
+                    if chunks:
+                        converted_msg["chunks"] = chunks
+                        converted_msg["response_data"] = {"tool_calls": chunks}
+                
                 converted_messages.append(converted_msg)
                 
             except Exception as e:
