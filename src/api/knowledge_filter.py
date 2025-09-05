@@ -395,15 +395,19 @@ async def knowledge_filter_webhook(
         # Get the webhook payload
         payload = await request.json()
 
-        logger.info("Knowledge filter webhook received", 
-                   filter_id=filter_id, 
-                   subscription_id=subscription_id,
-                   payload_size=len(str(payload)))
+        logger.info(
+            "Knowledge filter webhook received",
+            filter_id=filter_id,
+            subscription_id=subscription_id,
+            payload_size=len(str(payload)),
+        )
 
         # Extract findings from the payload
         findings = payload.get("findings", [])
         if not findings:
-            logger.info("No findings in webhook payload", subscription_id=subscription_id)
+            logger.info(
+                "No findings in webhook payload", subscription_id=subscription_id
+            )
             return JSONResponse({"status": "no_findings"})
 
         # Process the findings - these are the documents that matched the knowledge filter
@@ -420,14 +424,18 @@ async def knowledge_filter_webhook(
             )
 
         # Log the matched documents
-        logger.info("Knowledge filter matched documents", 
-                   filter_id=filter_id, 
-                   matched_count=len(matched_documents))
+        logger.info(
+            "Knowledge filter matched documents",
+            filter_id=filter_id,
+            matched_count=len(matched_documents),
+        )
         for doc in matched_documents:
-            logger.debug("Matched document", 
-                        document_id=doc['document_id'], 
-                        index=doc['index'],
-                        score=doc.get('score'))
+            logger.debug(
+                "Matched document",
+                document_id=doc["document_id"],
+                index=doc["index"],
+                score=doc.get("score"),
+            )
 
         # Here you could add additional processing:
         # - Send notifications to external webhooks
@@ -446,10 +454,12 @@ async def knowledge_filter_webhook(
         )
 
     except Exception as e:
-        logger.error("Failed to process knowledge filter webhook", 
-                    filter_id=filter_id,
-                    subscription_id=subscription_id,
-                    error=str(e))
+        logger.error(
+            "Failed to process knowledge filter webhook",
+            filter_id=filter_id,
+            subscription_id=subscription_id,
+            error=str(e),
+        )
         import traceback
 
         traceback.print_exc()

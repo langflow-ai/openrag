@@ -25,6 +25,11 @@ async def connector_sync(request: Request, connector_service, session_manager):
     selected_files = data.get("selected_files")
 
     try:
+        logger.debug(
+            "Starting connector sync",
+            connector_type=connector_type,
+            max_files=max_files,
+        )
         user = request.state.user
         jwt_token = request.state.jwt_token
 
@@ -44,6 +49,10 @@ async def connector_sync(request: Request, connector_service, session_manager):
         # Start sync tasks for all active connections
         task_ids = []
         for connection in active_connections:
+            logger.debug(
+                "About to call sync_connector_files for connection",
+                connection_id=connection.connection_id,
+            )
             if selected_files:
                 task_id = await connector_service.sync_specific_files(
                     connection.connection_id,
@@ -58,8 +67,6 @@ async def connector_sync(request: Request, connector_service, session_manager):
                     max_files,
                     jwt_token=jwt_token,
                 )
-            task_ids.append(task_id)
-
         return JSONResponse(
             {
                 "task_ids": task_ids,
@@ -170,7 +177,9 @@ async def connector_webhook(request: Request, connector_service, session_manager
             channel_id = None
 
         if not channel_id:
-            logger.warning("No channel ID found in webhook", connector_type=connector_type)
+            logger.warning(
+                "No channel ID found in webhook", connector_type=connector_type
+            )
             return JSONResponse({"status": "ignored", "reason": "no_channel_id"})
 
         # Find the specific connection for this webhook
@@ -180,7 +189,9 @@ async def connector_webhook(request: Request, connector_service, session_manager
             )
         )
         if not connection or not connection.is_active:
-            logger.info("Unknown webhook channel, will auto-expire", channel_id=channel_id)
+            logger.info(
+                "Unknown webhook channel, will auto-expire", channel_id=channel_id
+            )
             return JSONResponse(
                 {"status": "ignored_unknown_channel", "channel_id": channel_id}
             )
@@ -190,7 +201,10 @@ async def connector_webhook(request: Request, connector_service, session_manager
             # Get the connector instance
             connector = await connector_service._get_connector(connection.connection_id)
             if not connector:
-                logger.error("Could not get connector for connection", connection_id=connection.connection_id)
+                logger.error(
+                    "Could not get connector for connection",
+                    connection_id=connection.connection_id,
+                )
                 return JSONResponse(
                     {"status": "error", "reason": "connector_not_found"}
                 )
@@ -199,7 +213,11 @@ async def connector_webhook(request: Request, connector_service, session_manager
             affected_files = await connector.handle_webhook(payload)
 
             if affected_files:
-                logger.info("Webhook connection files affected", connection_id=connection.connection_id, affected_count=len(affected_files))
+                logger.info(
+                    "Webhook connection files affected",
+                    connection_id=connection.connection_id,
+                    affected_count=len(affected_files),
+                )
 
                 # Generate JWT token for the user (needed for OpenSearch authentication)
                 user = session_manager.get_user(connection.user_id)
@@ -223,7 +241,10 @@ async def connector_webhook(request: Request, connector_service, session_manager
                 }
             else:
                 # No specific files identified - just log the webhook
-                logger.info("Webhook general change detected, no specific files", connection_id=connection.connection_id)
+                logger.info(
+                    "Webhook general change detected, no specific files",
+                    connection_id=connection.connection_id,
+                )
 
                 result = {
                     "connection_id": connection.connection_id,
@@ -241,7 +262,15 @@ async def connector_webhook(request: Request, connector_service, session_manager
             )
 
         except Exception as e:
-            logger.error("Failed to process webhook for connection", connection_id=connection.connection_id, error=str(e))
+            logger.error(
+                "Failed to process webhook for connection",
+                connection_id=connection.connection_id,
+                error=str(e),
+            )
+            import traceback
+
+            traceback.print_exc()
+
             return JSONResponse(
                 {
                     "status": "error",
