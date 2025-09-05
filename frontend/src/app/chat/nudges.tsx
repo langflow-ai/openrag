@@ -6,7 +6,7 @@ export default function Nudges({
   handleSuggestionClick: (suggestion: string) => void;
 }) {
   return (
-    <div className="flex-shrink-0 px-6 flex justify-center">
+    <div className="flex-shrink-0 px-6 pt-4 flex justify-center">
       <div className="w-full max-w-[75%] relative">
         <div className="flex gap-3 justify-start overflow-x-auto scrollbar-hide">
           {nudges.map((suggestion: string, index: number) => (
