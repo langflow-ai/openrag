@@ -32,26 +32,68 @@ class PlatformDetector:
 
     def detect_runtime(self) -> RuntimeInfo:
         """Detect available container runtime and compose capabilities."""
+        # First check if we have podman installed
+        podman_version = self._get_podman_version()
+
+        # If we have podman, check if docker is actually podman in disguise
+        if podman_version:
+            docker_version = self._get_docker_version()
+            if docker_version and podman_version in docker_version:
+                # This is podman masquerading as docker
+                if self._check_command(["docker", "compose", "--help"]):
+                    return RuntimeInfo(
+                        RuntimeType.PODMAN,
+                        ["docker", "compose"],
+                        ["docker"],
+                        podman_version,
+                    )
+                if self._check_command(["docker-compose", "--help"]):
+                    return RuntimeInfo(
+                        RuntimeType.PODMAN,
+                        ["docker-compose"],
+                        ["docker"],
+                        podman_version,
+                    )
+
+            # Check for native podman compose
+            if self._check_command(["podman", "compose", "--help"]):
+                return RuntimeInfo(
+                    RuntimeType.PODMAN,
+                    ["podman", "compose"],
+                    ["podman"],
+                    podman_version,
+                )
+
+        # Check for actual docker
         if self._check_command(["docker", "compose", "--help"]):
             version = self._get_docker_version()
-            return RuntimeInfo(RuntimeType.DOCKER, ["docker", "compose"], ["docker"], version)
+            return RuntimeInfo(
+                RuntimeType.DOCKER, ["docker", "compose"], ["docker"], version
+            )
         if self._check_command(["docker-compose", "--help"]):
             version = self._get_docker_version()
-            return RuntimeInfo(RuntimeType.DOCKER_COMPOSE, ["docker-compose"], ["docker"], version)
-        if self._check_command(["podman", "compose", "--help"]):
-            version = self._get_podman_version()
-            return RuntimeInfo(RuntimeType.PODMAN, ["podman", "compose"], ["podman"], version)
+            return RuntimeInfo(
+                RuntimeType.DOCKER_COMPOSE, ["docker-compose"], ["docker"], version
+            )
+
         return RuntimeInfo(RuntimeType.NONE, [], [])
 
     def detect_gpu_available(self) -> bool:
         """Best-effort detection of NVIDIA GPU availability for containers."""
         try:
-            res = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True, timeout=5)
-            if res.returncode == 0 and any("GPU" in ln for ln in res.stdout.splitlines()):
+            res = subprocess.run(
+                ["nvidia-smi", "-L"], capture_output=True, text=True, timeout=5
+            )
+            if res.returncode == 0 and any(
+                "GPU" in ln for ln in res.stdout.splitlines()
+            ):
                 return True
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
-        for cmd in (["docker", "info", "--format", "{{json .Runtimes}}"], ["podman", "info", "--format", "json"]):
+        for cmd in (
+            ["docker", "info", "--format", "{{json .Runtimes}}"],
+            ["podman", "info", "--format", "json"],
+        ):
             try:
                 res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
                 if res.returncode == 0 and "nvidia" in res.stdout.lower():
@@ -69,7 +111,9 @@ class PlatformDetector:
 
     def _get_docker_version(self) -> Optional[str]:
         try:
-            res = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=5)
+            res = subprocess.run(
+                ["docker", "--version"], capture_output=True, text=True, timeout=5
+            )
             if res.returncode == 0:
                 return res.stdout.strip()
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -78,7 +122,9 @@ class PlatformDetector:
 
     def _get_podman_version(self) -> Optional[str]:
         try:
-            res = subprocess.run(["podman", "--version"], capture_output=True, text=True, timeout=5)
+            res = subprocess.run(
+                ["podman", "--version"], capture_output=True, text=True, timeout=5
+            )
             if res.returncode == 0:
                 return res.stdout.strip()
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -94,7 +140,12 @@ class PlatformDetector:
         if self.platform_system != "Darwin":
             return True, 0, "Not running on macOS"
         try:
-            result = subprocess.run(["podman", "machine", "inspect"], capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                ["podman", "machine", "inspect"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
             if result.returncode != 0:
                 return False, 0, "Could not inspect Podman machine"
             machines = json.loads(result.stdout)
@@ -108,7 +159,11 @@ class PlatformDetector:
             if not is_sufficient:
                 status += "\nTo increase: podman machine stop && podman machine rm && podman machine init --memory 8192 && podman machine start"
             return is_sufficient, memory_mb, status
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError) as e:
+        except (
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+            json.JSONDecodeError,
+        ) as e:
             return False, 0, f"Error checking Podman VM memory: {e}"
 
     def get_installation_instructions(self) -> str:
