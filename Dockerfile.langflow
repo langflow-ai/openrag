@@ -1,0 +1,99 @@
+# syntax=docker/dockerfile:1
+
+################################
+# BUILDER-BASE
+# Used to build deps + create our virtual environment
+################################
+
+# 1. use python:3.12.3-slim as the base image until https://github.com/pydantic/pydantic-core/issues/1292 gets resolved
+# 2. do not add --platform=$BUILDPLATFORM because the pydantic binaries must be resolved for the final architecture
+# Use a Python image with uv pre-installed
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+
+# Install the project into `/app/langflow`
+WORKDIR /app/langflow
+
+# Enable bytecode compilation
+ENV UV_COMPILE_BYTECODE=1
+
+# Copy from the cache instead of linking since it's a mounted volume
+ENV UV_LINK_MODE=copy
+
+# Increase Node heap to avoid OOM during Vite build
+ENV NODE_OPTIONS=--max-old-space-size=8192
+
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install --no-install-recommends -y \
+    # deps for building python deps
+    build-essential \
+    git \
+    ca-certificates \
+    # npm (includes nodejs)
+    npm \
+    # gcc
+    gcc \
+    && update-ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone Langflow from the requested branch
+RUN git clone --depth 1 --branch load_flows_autologin_false https://github.com/langflow-ai/langflow /app/langflow
+
+# First resolve and download dependencies only (no project install) for better caching
+ENV RUSTFLAGS="--cfg reqwest_unstable"
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-editable --extra postgresql
+
+# Build frontend and place built assets into the backend package so they are included when installing
+WORKDIR /app/langflow/src/frontend
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci \
+    && npm run build \
+    && mkdir -p /app/langflow/src/backend/langflow/frontend \
+    && if [ -d dist ]; then cp -r dist/* /app/langflow/src/backend/langflow/frontend/; \
+       elif [ -d build ]; then cp -r build/* /app/langflow/src/backend/langflow/frontend/; \
+       else echo "No frontend build output found" && exit 1; fi
+
+# Install the project into the virtual environment
+WORKDIR /app/langflow
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-editable --extra postgresql
+
+################################
+# RUNTIME
+# Setup user, utilities and copy the virtual environment only
+################################
+FROM python:3.12.3-slim AS runtime
+
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y curl git libpq5 gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd user -u 1000 -g 0 --no-create-home --home-dir /app/data
+
+COPY --from=builder --chown=1000 /app/langflow/.venv /app/.venv
+
+# Place executables in the environment at the front of the path
+ENV PATH="/app/.venv/bin:$PATH"
+
+LABEL org.opencontainers.image.title=langflow
+LABEL org.opencontainers.image.authors=['Langflow']
+LABEL org.opencontainers.image.licenses=MIT
+LABEL org.opencontainers.image.url=https://github.com/langflow-ai/langflow
+LABEL org.opencontainers.image.source=https://github.com/langflow-ai/langflow
+
+USER user
+WORKDIR /app
+
+ENV LANGFLOW_HOST=0.0.0.0
+ENV LANGFLOW_PORT=7860
+
+EXPOSE 7860
+
+CMD ["langflow", "run"]
+
+
