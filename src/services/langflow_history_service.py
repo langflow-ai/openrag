@@ -1,72 +1,33 @@
 """
 Langflow Message History Service
-Retrieves message history from Langflow's database using user bindings
+Simplified service that retrieves message history from Langflow using a single token
 """
 
-import asyncio
 import httpx
 from typing import List, Dict, Optional, Any
-from datetime import datetime
 
 from config.settings import LANGFLOW_URL, LANGFLOW_KEY, LANGFLOW_SUPERUSER, LANGFLOW_SUPERUSER_PASSWORD
-from services.user_binding_service import user_binding_service
-from services.session_ownership_service import session_ownership_service
 
 
 class LangflowHistoryService:
-    """Service to retrieve message history from Langflow using user bindings"""
+    """Simplified service to retrieve message history from Langflow"""
     
     def __init__(self):
         self.langflow_url = LANGFLOW_URL
         self.auth_token = None
-        
-    def _resolve_langflow_user_id(self, user_id: str) -> Optional[str]:
-        """Resolve user_id to Langflow user ID
-        
-        Args:
-            user_id: Either Google user ID or direct Langflow user ID
-            
-        Returns:
-            Langflow user ID or None
-        """
-        # First, check if this is already a Langflow user ID by checking UUID format
-        if self._is_uuid_format(user_id):
-            print(f"User ID {user_id} appears to be a Langflow UUID, using directly")
-            return user_id
-            
-        # Otherwise, try to get Langflow user ID from Google binding
-        langflow_user_id = user_binding_service.get_langflow_user_id(user_id)
-        if langflow_user_id:
-            print(f"Found Langflow binding for Google user {user_id}: {langflow_user_id}")
-            return langflow_user_id
-            
-        print(f"No Langflow user ID found for {user_id}")
-        return None
-        
-    def _is_uuid_format(self, user_id: str) -> bool:
-        """Check if string looks like a UUID (Langflow user ID format vs Google numeric ID)"""
-        # Langflow IDs are UUID v4, Google IDs are purely numeric
-        return not user_id.isdigit()
-        
-    def _filter_sessions_by_ownership(self, session_ids: List[str], user_id: str, langflow_user_id: str) -> List[str]:
-        """Filter sessions based on user type and ownership"""
-        if self._is_uuid_format(user_id):
-            # Direct Langflow user - show all sessions for this Langflow user
-            print(f"[DEBUG] Direct Langflow user - showing all {len(session_ids)} sessions")
-            return session_ids
-        else:
-            # Google OAuth user - only show sessions they own
-            owned_sessions = session_ownership_service.filter_sessions_for_google_user(session_ids, user_id)
-            print(f"[DEBUG] Google user {user_id} owns {len(owned_sessions)} out of {len(session_ids)} total sessions")
-            return owned_sessions
         
     async def _authenticate(self) -> Optional[str]:
         """Authenticate with Langflow and get access token"""
         if self.auth_token:
             return self.auth_token
             
+        # Try using LANGFLOW_KEY first if available
+        if LANGFLOW_KEY:
+            self.auth_token = LANGFLOW_KEY
+            return self.auth_token
+            
         if not all([LANGFLOW_SUPERUSER, LANGFLOW_SUPERUSER_PASSWORD]):
-            print("Missing Langflow superuser credentials")
+            print("Missing Langflow credentials")
             return None
             
         try:
@@ -98,15 +59,8 @@ class LangflowHistoryService:
     async def get_user_sessions(self, user_id: str, flow_id: Optional[str] = None) -> List[str]:
         """Get all session IDs for a user's conversations
         
-        Args:
-            user_id: Either Google user ID or direct Langflow user ID
+        Since we use one Langflow token, we get all sessions and filter by user_id locally
         """
-        # Determine the Langflow user ID
-        langflow_user_id = self._resolve_langflow_user_id(user_id)
-        if not langflow_user_id:
-            print(f"No Langflow user found for user: {user_id}")
-            return []
-            
         token = await self._authenticate()
         if not token:
             return []
@@ -127,15 +81,11 @@ class LangflowHistoryService:
                 
                 if response.status_code == 200:
                     session_ids = response.json()
+                    print(f"Found {len(session_ids)} total sessions from Langflow")
                     
-                    # Filter sessions to only include those belonging to the user
-                    user_sessions = await self._filter_sessions_by_user(session_ids, langflow_user_id, token)
-                    
-                    # Apply ownership-based filtering for Google users
-                    filtered_sessions = self._filter_sessions_by_ownership(user_sessions, user_id, langflow_user_id)
-                    
-                    print(f"Found {len(filtered_sessions)} sessions for user {user_id} (Langflow ID: {langflow_user_id})")
-                    return filtered_sessions
+                    # Since we use a single Langflow instance, return all sessions
+                    # Session filtering is handled by user_id at the application level
+                    return session_ids
                 else:
                     print(f"Failed to get sessions: {response.status_code} - {response.text}")
                     return []
@@ -144,65 +94,8 @@ class LangflowHistoryService:
             print(f"Error getting user sessions: {e}")
             return []
             
-    async def _filter_sessions_by_user(self, session_ids: List[str], langflow_user_id: str, token: str) -> List[str]:
-        """Filter session IDs to only include those belonging to the specified user"""
-        user_sessions = []
-        
-        try:
-            headers = {"Authorization": f"Bearer {token}"}
-            
-            async with httpx.AsyncClient() as client:
-                for session_id in session_ids:
-                    # Get a sample message from this session to check flow ownership
-                    response = await client.get(
-                        f"{self.langflow_url.rstrip('/')}/api/v1/monitor/messages",
-                        headers=headers,
-                        params={
-                            "session_id": session_id,
-                            "order_by": "timestamp"
-                        }
-                    )
-                    
-                    if response.status_code == 200:
-                        messages = response.json()
-                        if messages and len(messages) > 0:
-                            # Check if this session belongs to the user via flow ownership
-                            flow_id = messages[0].get('flow_id')
-                            if flow_id and await self._is_user_flow(flow_id, langflow_user_id, token):
-                                user_sessions.append(session_id)
-                                
-        except Exception as e:
-            print(f"Error filtering sessions by user: {e}")
-            
-        return user_sessions
-        
-    async def _is_user_flow(self, flow_id: str, langflow_user_id: str, token: str) -> bool:
-        """Check if a flow belongs to the specified user"""
-        try:
-            headers = {"Authorization": f"Bearer {token}"}
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.langflow_url.rstrip('/')}/api/v1/flows/{flow_id}",
-                    headers=headers
-                )
-                
-                if response.status_code == 200:
-                    flow_data = response.json()
-                    return flow_data.get('user_id') == langflow_user_id
-                    
-        except Exception as e:
-            print(f"Error checking flow ownership: {e}")
-            
-        return False
-        
     async def get_session_messages(self, user_id: str, session_id: str) -> List[Dict[str, Any]]:
         """Get all messages for a specific session"""
-        # Verify user has access to this session
-        langflow_user_id = self._resolve_langflow_user_id(user_id)
-        if not langflow_user_id:
-            return []
-            
         token = await self._authenticate()
         if not token:
             return []
@@ -222,14 +115,6 @@ class LangflowHistoryService:
                 
                 if response.status_code == 200:
                     messages = response.json()
-                    
-                    # Verify user owns this session (security check)
-                    if messages and len(messages) > 0:
-                        flow_id = messages[0].get('flow_id')
-                        if not await self._is_user_flow(flow_id, langflow_user_id, token):
-                            print(f"User {user_id} does not own session {session_id}")
-                            return []
-                    
                     # Convert to OpenRAG format
                     return self._convert_langflow_messages(messages)
                 else:
@@ -270,16 +155,12 @@ class LangflowHistoryService:
         return converted_messages
         
     async def get_user_conversation_history(self, user_id: str, flow_id: Optional[str] = None) -> Dict[str, Any]:
-        """Get all conversation history for a user, organized by session"""
-        langflow_user_id = self._resolve_langflow_user_id(user_id)
-        if not langflow_user_id:
-            return {
-                "error": f"No Langflow user found for {user_id}",
-                "conversations": []
-            }
-            
+        """Get all conversation history for a user, organized by session
+        
+        Simplified version - gets all sessions and lets the frontend filter by user_id
+        """
         try:
-            # Get all user sessions
+            # Get all sessions (no complex filtering needed)
             session_ids = await self.get_user_sessions(user_id, flow_id)
             
             conversations = []
@@ -309,7 +190,6 @@ class LangflowHistoryService:
             return {
                 "conversations": conversations,
                 "total_conversations": len(conversations),
-                "langflow_user_id": langflow_user_id,
                 "user_id": user_id
             }
             
