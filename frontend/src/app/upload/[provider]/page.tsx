@@ -3,11 +3,11 @@
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, AlertCircle } from "lucide-react"
 import { GoogleDrivePicker } from "@/components/google-drive-picker"
 import { OneDrivePicker } from "@/components/onedrive-picker"
 import { useTask } from "@/contexts/task-context"
+import { Toast } from "@/components/ui/toast"
 
 interface GoogleDriveFile {
   id: string
@@ -43,15 +43,16 @@ export default function UploadProviderPage() {
   const params = useParams()
   const router = useRouter()
   const provider = params.provider as string
-  const { addTask } = useTask()
+  const { addTask, tasks } = useTask()
 
   const [connector, setConnector] = useState<CloudConnector | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<GoogleDriveFile[] | OneDriveFile[]>([])
-  const [isSyncing, setIsSyncing] = useState<boolean>(false)
-  const [syncResult, setSyncResult] = useState<any>(null)
+  const [isIngesting, setIsIngesting] = useState<boolean>(false)
+  const [currentSyncTaskId, setCurrentSyncTaskId] = useState<string | null>(null)
+  const [showSuccessToast, setShowSuccessToast] = useState(false)
 
   useEffect(() => {
     const fetchConnectorInfo = async () => {
@@ -130,6 +131,26 @@ export default function UploadProviderPage() {
     }
   }, [provider])
 
+  // Watch for sync task completion and redirect
+  useEffect(() => {
+    if (!currentSyncTaskId) return
+    
+    const currentTask = tasks.find(task => task.task_id === currentSyncTaskId)
+    
+    if (currentTask && currentTask.status === 'completed') {
+      // Task completed successfully, show toast and redirect
+      setIsIngesting(false)
+      setShowSuccessToast(true)
+      setTimeout(() => {
+        router.push('/knowledge')
+      }, 2000) // 2 second delay to let user see toast
+    } else if (currentTask && currentTask.status === 'failed') {
+      // Task failed, clear the tracking but don't redirect
+      setIsIngesting(false)
+      setCurrentSyncTaskId(null)
+    }
+  }, [tasks, currentSyncTaskId, router])
+
   const handleFileSelected = (files: GoogleDriveFile[] | OneDriveFile[]) => {
     setSelectedFiles(files)
     console.log(`Selected ${files.length} files from ${provider}:`, files)
@@ -139,8 +160,7 @@ export default function UploadProviderPage() {
   const handleSync = async (connector: CloudConnector) => {
     if (!connector.connectionId || selectedFiles.length === 0) return
     
-    setIsSyncing(true)
-    setSyncResult(null)
+    setIsIngesting(true)
     
     try {
       const syncBody: {
@@ -163,26 +183,18 @@ export default function UploadProviderPage() {
       const result = await response.json()
       
       if (response.status === 201) {
-        const taskId = result.task_id
-        if (taskId) {
+        const taskIds = result.task_ids
+        if (taskIds && taskIds.length > 0) {
+          const taskId = taskIds[0] // Use the first task ID
           addTask(taskId)
-          setSyncResult({ 
-            processed: 0, 
-            total: selectedFiles.length,
-            status: 'started'
-          })
+          setCurrentSyncTaskId(taskId)
         }
-      } else if (response.ok) {
-        setSyncResult(result)
       } else {
         console.error('Sync failed:', result.error)
-        setSyncResult({ error: result.error || 'Sync failed' })
       }
     } catch (error) {
       console.error('Sync error:', error)
-      setSyncResult({ error: 'Network error occurred' })
-    } finally {
-      setIsSyncing(false)
+      setIsIngesting(false)
     }
   }
 
@@ -297,26 +309,18 @@ export default function UploadProviderPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6">
+    <div className="container mx-auto max-w-3xl p-6">
+      <div className="mb-6 flex gap-2 items-center">
         <Button 
           variant="ghost" 
           onClick={() => router.back()}
-          className="mb-4"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
+          <ArrowLeft className="h-4 w-4 scale-125 mr-2" />
         </Button>
-        
-        <div className="mb-6 max-w-4xl mx-auto">
-          <h1 className="text-2xl font-bold mb-2">Select Files from {connector.name}</h1>
-          <p className="text-muted-foreground">
-            Choose specific files from your {connector.name} account to add to your knowledge base.
-          </p>
-        </div>
+        <h2 className="text-2xl font-bold">Add Cloud Knowledge</h2>
       </div>
 
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-3xl mx-auto">
         {connector.type === "google_drive" && (
           <GoogleDrivePicker
             onFileSelected={handleFileSelected}
@@ -338,44 +342,29 @@ export default function UploadProviderPage() {
       </div>
 
       {selectedFiles.length > 0 && (
-        <div className="max-w-4xl mx-auto mt-8">
-          <div className="flex justify-center gap-3 mb-4">
+        <div className="max-w-3xl mx-auto mt-8">
+          <div className="flex justify-end gap-3 mb-4">
             <Button 
               onClick={() => handleSync(connector)}
-              disabled={selectedFiles.length === 0 || isSyncing}
+              disabled={selectedFiles.length === 0 || isIngesting}
             >
-              {isSyncing ? (
-                <>Syncing {selectedFiles.length} Selected Files...</>
+              {isIngesting ? (
+                <>Ingesting {selectedFiles.length} Files...</>
               ) : (
-                <>Sync Selected Files ({selectedFiles.length})</>
+                <>Ingest Files ({selectedFiles.length})</>
               )}
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={() => setSelectedFiles([])}>
-              Clear Selection
             </Button>
           </div>
-          
-          {syncResult && (
-            <div className="p-3 bg-gray-100 rounded text-sm text-center">
-              {syncResult.error ? (
-                <div className="text-red-600">Error: {syncResult.error}</div>
-              ) : syncResult.status === 'started' ? (
-                <div className="text-blue-600">
-                  Sync started for {syncResult.total} files. Check the task notification for progress.
-                </div>
-              ) : (
-                <div className="text-green-600">
-                  <div>Processed: {syncResult.processed || 0}</div>
-                  <div>Added: {syncResult.added || 0}</div>
-                  {syncResult.errors && <div>Errors: {syncResult.errors}</div>}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
+      
+      {/* Success toast notification */}
+      <Toast 
+        message="Ingested successfully!."
+        show={showSuccessToast}
+        onHide={() => setShowSuccessToast(false)}
+        duration={20000}
+      />
     </div>
   )
 }

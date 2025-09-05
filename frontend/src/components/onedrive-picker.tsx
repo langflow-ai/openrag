@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Folder, X } from "lucide-react"
+import { FileText, Folder, Trash2, X } from "lucide-react"
 
 interface OneDrivePickerProps {
   onFileSelected: (files: OneDriveFile[]) => void
@@ -283,7 +283,7 @@ export function OneDrivePicker({
           <p className="text-xs text-muted-foreground">
             Selected files ({selectedFiles.length}):
           </p>
-          <div className="max-h-32 overflow-y-auto space-y-1">
+          <div className="max-h-48 overflow-y-auto space-y-1">
             {selectedFiles.map((file) => (
               <div
                 key={file.id}
@@ -302,7 +302,7 @@ export function OneDrivePicker({
                   variant="ghost"
                   className="h-6 w-6 p-0"
                 >
-                  <X className="h-3 w-3" />
+                  <Trash2 className="h-3 w-3" />
                 </Button>
               </div>
             ))}
