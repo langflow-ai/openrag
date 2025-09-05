@@ -23,9 +23,6 @@ async def connector_sync(request: Request, connector_service, session_manager):
     data = await request.json()
     max_files = data.get("max_files")
 
-    if not data.get("selected_files"):
-        return JSONResponse({"error": "selected_files is required"}, status_code=400)
-
     try:
         user = request.state.user
         jwt_token = request.state.jwt_token
@@ -50,8 +47,6 @@ async def connector_sync(request: Request, connector_service, session_manager):
                 user.user_id,
                 max_files,
                 jwt_token=jwt_token,
-                selected_files=data.get("selected_files"),
-                selected_folders=data.get("selected_folders"),
             )
             task_ids.append(task_id)
 
