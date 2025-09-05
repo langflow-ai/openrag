@@ -1,16 +1,16 @@
 """
 Session Ownership Service
-Tracks which Google user owns which Langflow session to properly separate message history
+Simple service that tracks which user owns which session
 """
 
 import json
 import os
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 from datetime import datetime
 
 
 class SessionOwnershipService:
-    """Service to track session ownership for proper message history separation"""
+    """Simple service to track which user owns which session"""
     
     def __init__(self):
         self.ownership_file = "session_ownership.json"
@@ -36,73 +36,55 @@ class SessionOwnershipService:
         except Exception as e:
             print(f"Error saving session ownership data: {e}")
     
-    def claim_session(self, google_user_id: str, langflow_session_id: str, langflow_user_id: str):
-        """Claim a Langflow session for a Google user"""
-        if langflow_session_id not in self.ownership_data:
-            self.ownership_data[langflow_session_id] = {
-                "google_user_id": google_user_id,
-                "langflow_user_id": langflow_user_id,
+    def claim_session(self, user_id: str, session_id: str):
+        """Claim a session for a user"""
+        if session_id not in self.ownership_data:
+            self.ownership_data[session_id] = {
+                "user_id": user_id,
                 "created_at": datetime.now().isoformat(),
                 "last_accessed": datetime.now().isoformat()
             }
             self._save_ownership_data()
-            print(f"Claimed session {langflow_session_id} for Google user {google_user_id}")
+            print(f"Claimed session {session_id} for user {user_id}")
         else:
             # Update last accessed time
-            self.ownership_data[langflow_session_id]["last_accessed"] = datetime.now().isoformat()
+            self.ownership_data[session_id]["last_accessed"] = datetime.now().isoformat()
             self._save_ownership_data()
     
-    def get_session_owner(self, langflow_session_id: str) -> Optional[str]:
-        """Get the Google user ID that owns a Langflow session"""
-        session_data = self.ownership_data.get(langflow_session_id)
-        return session_data.get("google_user_id") if session_data else None
+    def get_session_owner(self, session_id: str) -> Optional[str]:
+        """Get the user ID that owns a session"""
+        session_data = self.ownership_data.get(session_id)
+        return session_data.get("user_id") if session_data else None
     
-    def get_user_sessions(self, google_user_id: str) -> List[str]:
-        """Get all Langflow sessions owned by a Google user"""
+    def get_user_sessions(self, user_id: str) -> List[str]:
+        """Get all sessions owned by a user"""
         return [
             session_id 
             for session_id, session_data in self.ownership_data.items()
-            if session_data.get("google_user_id") == google_user_id
+            if session_data.get("user_id") == user_id
         ]
     
-    def get_unowned_sessions_for_langflow_user(self, langflow_user_id: str) -> Set[str]:
-        """Get sessions for a Langflow user that aren't claimed by any Google user
-        
-        This requires querying the Langflow database to get all sessions for the user,
-        then filtering out the ones that are already claimed.
-        """
-        # This will be implemented when we have access to all sessions for a Langflow user
-        claimed_sessions = set()
-        for session_data in self.ownership_data.values():
-            if session_data.get("langflow_user_id") == langflow_user_id:
-                claimed_sessions.add(session_data.get("google_user_id"))
-        return claimed_sessions
+    def is_session_owned_by_user(self, session_id: str, user_id: str) -> bool:
+        """Check if a session is owned by a specific user"""
+        return self.get_session_owner(session_id) == user_id
     
-    def filter_sessions_for_google_user(self, all_sessions: List[str], google_user_id: str) -> List[str]:
-        """Filter a list of sessions to only include those owned by the Google user"""
-        user_sessions = self.get_user_sessions(google_user_id)
-        return [session for session in all_sessions if session in user_sessions]
-    
-    def is_session_owned_by_google_user(self, langflow_session_id: str, google_user_id: str) -> bool:
-        """Check if a session is owned by a specific Google user"""
-        return self.get_session_owner(langflow_session_id) == google_user_id
+    def filter_sessions_for_user(self, session_ids: List[str], user_id: str) -> List[str]:
+        """Filter a list of sessions to only include those owned by the user"""
+        user_sessions = self.get_user_sessions(user_id)
+        return [session for session in session_ids if session in user_sessions]
     
     def get_ownership_stats(self) -> Dict[str, any]:
         """Get statistics about session ownership"""
-        google_users = set()
-        langflow_users = set()
-        
+        users = set()
         for session_data in self.ownership_data.values():
-            google_users.add(session_data.get("google_user_id"))
-            langflow_users.add(session_data.get("langflow_user_id"))
+            users.add(session_data.get("user_id"))
         
         return {
             "total_tracked_sessions": len(self.ownership_data),
-            "unique_google_users": len(google_users),
-            "unique_langflow_users": len(langflow_users),
-            "sessions_per_google_user": {
-                google_user: len(self.get_user_sessions(google_user))
-                for google_user in google_users
+            "unique_users": len(users),
+            "sessions_per_user": {
+                user: len(self.get_user_sessions(user))
+                for user in users if user
             }
         }
 

@@ -269,7 +269,6 @@ class ChatService:
         """Get langflow conversation history for a user - now fetches from both OpenRAG memory and Langflow database"""
         from agent import get_user_conversations
         from services.langflow_history_service import langflow_history_service
-        from services.user_binding_service import user_binding_service
         
         if not user_id:
             return {"error": "User ID is required", "conversations": []}
@@ -285,12 +284,17 @@ class ChatService:
                 messages = []
                 for msg in conversation_state.get("messages", []):
                     if msg.get("role") in ["user", "assistant"]:
+                        # Handle timestamp - could be datetime object or string
+                        timestamp = msg.get("timestamp")
+                        if timestamp:
+                            if hasattr(timestamp, 'isoformat'):
+                                timestamp = timestamp.isoformat()
+                            # else it's already a string
+                        
                         message_data = {
                             "role": msg["role"],
                             "content": msg["content"],
-                            "timestamp": msg.get("timestamp").isoformat()
-                            if msg.get("timestamp")
-                            else None,
+                            "timestamp": timestamp,
                         }
                         if msg.get("response_id"):
                             message_data["response_id"] = msg["response_id"]
@@ -309,17 +313,22 @@ class ChatService:
                         else "New chat"
                     )
                     
+                    # Handle conversation timestamps - could be datetime objects or strings
+                    created_at = conversation_state.get("created_at")
+                    if created_at and hasattr(created_at, 'isoformat'):
+                        created_at = created_at.isoformat()
+                    
+                    last_activity = conversation_state.get("last_activity")
+                    if last_activity and hasattr(last_activity, 'isoformat'):
+                        last_activity = last_activity.isoformat()
+                    
                     all_conversations.append({
                         "response_id": response_id,
                         "title": title,
                         "endpoint": "langflow",
                         "messages": messages,
-                        "created_at": conversation_state.get("created_at").isoformat()
-                        if conversation_state.get("created_at")
-                        else None,
-                        "last_activity": conversation_state.get("last_activity").isoformat()
-                        if conversation_state.get("last_activity")
-                        else None,
+                        "created_at": created_at,
+                        "last_activity": last_activity,
                         "previous_response_id": conversation_state.get("previous_response_id"),
                         "total_messages": len(messages),
                         "source": "openrag_memory"

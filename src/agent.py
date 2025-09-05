@@ -2,15 +2,13 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# User-scoped conversation state - keyed by user_id -> response_id -> conversation
-user_conversations = {}  # user_id -> {response_id: {"messages": [...], "previous_response_id": parent_id, "created_at": timestamp, "last_activity": timestamp}}
+# Import persistent storage
+from services.conversation_persistence_service import conversation_persistence
 
 
 def get_user_conversations(user_id: str):
     """Get all conversations for a user"""
-    if user_id not in user_conversations:
-        user_conversations[user_id] = {}
-    return user_conversations[user_id]
+    return conversation_persistence.get_user_conversations(user_id)
 
 
 def get_conversation_thread(user_id: str, previous_response_id: str = None):
@@ -44,8 +42,7 @@ def get_conversation_thread(user_id: str, previous_response_id: str = None):
 
 def store_conversation_thread(user_id: str, response_id: str, conversation_state: dict):
     """Store a conversation thread with its response_id"""
-    conversations = get_user_conversations(user_id)
-    conversations[response_id] = conversation_state
+    conversation_persistence.store_conversation_thread(user_id, response_id, conversation_state)
 
 
 # Legacy function for backward compatibility
@@ -413,17 +410,11 @@ async def async_langflow_chat(
         conversation_state["last_activity"] = datetime.now()
         store_conversation_thread(user_id, response_id, conversation_state)
         
-        # Claim session ownership if this is a Google user
+        # Claim session ownership for this user
         try:
             from services.session_ownership_service import session_ownership_service
-            from services.user_binding_service import user_binding_service
-            
-            # Check if this is a Google user (Google IDs are numeric, Langflow IDs are UUID)
-            if user_id.isdigit() and user_binding_service.has_binding(user_id):
-                langflow_user_id = user_binding_service.get_langflow_user_id(user_id)
-                if langflow_user_id:
-                    session_ownership_service.claim_session(user_id, response_id, langflow_user_id)
-                    print(f"[DEBUG] Claimed session {response_id} for Google user {user_id}")
+            session_ownership_service.claim_session(user_id, response_id)
+            print(f"[DEBUG] Claimed session {response_id} for user {user_id}")
         except Exception as e:
             print(f"[WARNING] Failed to claim session ownership: {e}")
         
@@ -502,19 +493,13 @@ async def async_langflow_chat_stream(
             conversation_state["last_activity"] = datetime.now()
             store_conversation_thread(user_id, response_id, conversation_state)
             
-            # Claim session ownership if this is a Google user
-            try:
-                from services.session_ownership_service import session_ownership_service
-                from services.user_binding_service import user_binding_service
-                
-                # Check if this is a Google user (Google IDs are numeric, Langflow IDs are UUID)
-                if user_id.isdigit() and user_binding_service.has_binding(user_id):
-                    langflow_user_id = user_binding_service.get_langflow_user_id(user_id)
-                    if langflow_user_id:
-                        session_ownership_service.claim_session(user_id, response_id, langflow_user_id)
-                        print(f"[DEBUG] Claimed session {response_id} for Google user {user_id} (streaming)")
-            except Exception as e:
-                print(f"[WARNING] Failed to claim session ownership (streaming): {e}")
+            # Claim session ownership for this user
+        try:
+            from services.session_ownership_service import session_ownership_service
+            session_ownership_service.claim_session(user_id, response_id)
+            print(f"[DEBUG] Claimed session {response_id} for user {user_id}")
+        except Exception as e:
+            print(f"[WARNING] Failed to claim session ownership: {e}")
             
             print(
                 f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
