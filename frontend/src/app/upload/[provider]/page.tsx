@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, AlertCircle } from "lucide-react"
 import { GoogleDrivePicker } from "@/components/google-drive-picker"
 import { OneDrivePicker } from "@/components/onedrive-picker"
+import { useTask } from "@/contexts/task-context"
 
 interface GoogleDriveFile {
   id: string
@@ -42,12 +43,15 @@ export default function UploadProviderPage() {
   const params = useParams()
   const router = useRouter()
   const provider = params.provider as string
+  const { addTask } = useTask()
 
   const [connector, setConnector] = useState<CloudConnector | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<GoogleDriveFile[] | OneDriveFile[]>([])
+  const [isSyncing, setIsSyncing] = useState<boolean>(false)
+  const [syncResult, setSyncResult] = useState<any>(null)
 
   useEffect(() => {
     const fetchConnectorInfo = async () => {
@@ -130,6 +134,56 @@ export default function UploadProviderPage() {
     setSelectedFiles(files)
     console.log(`Selected ${files.length} files from ${provider}:`, files)
     // You can add additional handling here like triggering sync, etc.
+  }
+
+  const handleSync = async (connector: CloudConnector) => {
+    if (!connector.connectionId || selectedFiles.length === 0) return
+    
+    setIsSyncing(true)
+    setSyncResult(null)
+    
+    try {
+      const syncBody: {
+        connection_id: string;
+        max_files?: number;
+        selected_files?: string[];
+      } = {
+        connection_id: connector.connectionId,
+        selected_files: selectedFiles.map(file => file.id)
+      }
+      
+      const response = await fetch(`/api/connectors/${connector.type}/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(syncBody),
+      })
+      
+      const result = await response.json()
+      
+      if (response.status === 201) {
+        const taskId = result.task_id
+        if (taskId) {
+          addTask(taskId)
+          setSyncResult({ 
+            processed: 0, 
+            total: selectedFiles.length,
+            status: 'started'
+          })
+        }
+      } else if (response.ok) {
+        setSyncResult(result)
+      } else {
+        console.error('Sync failed:', result.error)
+        setSyncResult({ error: result.error || 'Sync failed' })
+      }
+    } catch (error) {
+      console.error('Sync error:', error)
+      setSyncResult({ error: 'Network error occurred' })
+    } finally {
+      setIsSyncing(false)
+    }
   }
 
   const getProviderDisplayName = () => {
@@ -284,22 +338,42 @@ export default function UploadProviderPage() {
       </div>
 
       {selectedFiles.length > 0 && (
-        <div className="max-w-4xl mx-auto mt-8 flex justify-center gap-3">
-          <Button 
-            onClick={() => {
-              // Handle sync/upload action here
-              console.log('Starting sync for selected files:', selectedFiles)
-              // You can add API call to trigger sync
-            }}
-            disabled={selectedFiles.length === 0}
-          >
-            Sync Selected Files ({selectedFiles.length})
-          </Button>
-          <Button 
-            variant="outline"
-            onClick={() => setSelectedFiles([])}>
-            Clear Selection
-          </Button>
+        <div className="max-w-4xl mx-auto mt-8">
+          <div className="flex justify-center gap-3 mb-4">
+            <Button 
+              onClick={() => handleSync(connector)}
+              disabled={selectedFiles.length === 0 || isSyncing}
+            >
+              {isSyncing ? (
+                <>Syncing {selectedFiles.length} Selected Files...</>
+              ) : (
+                <>Sync Selected Files ({selectedFiles.length})</>
+              )}
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => setSelectedFiles([])}>
+              Clear Selection
+            </Button>
+          </div>
+          
+          {syncResult && (
+            <div className="p-3 bg-gray-100 rounded text-sm text-center">
+              {syncResult.error ? (
+                <div className="text-red-600">Error: {syncResult.error}</div>
+              ) : syncResult.status === 'started' ? (
+                <div className="text-blue-600">
+                  Sync started for {syncResult.total} files. Check the task notification for progress.
+                </div>
+              ) : (
+                <div className="text-green-600">
+                  <div>Processed: {syncResult.processed || 0}</div>
+                  <div>Added: {syncResult.added || 0}</div>
+                  {syncResult.errors && <div>Errors: {syncResult.errors}</div>}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
