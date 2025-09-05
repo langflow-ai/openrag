@@ -33,15 +33,8 @@ def require_auth(session_manager):
                 from session_manager import User
                 from datetime import datetime
 
-                request.state.user = User(
-                    user_id="anonymous",
-                    email="anonymous@localhost",
-                    name="Anonymous User",
-                    picture=None,
-                    provider="none",
-                    created_at=datetime.now(),
-                    last_login=datetime.now(),
-                )
+                from session_manager import AnonymousUser
+                request.state.user = AnonymousUser()
                 request.state.jwt_token = None  # No JWT in no-auth mode
                 logger.debug("Set user_id=anonymous, jwt_token=None")
                 return await handler(request)
@@ -75,15 +68,8 @@ def optional_auth(session_manager):
                 from session_manager import User
                 from datetime import datetime
 
-                request.state.user = User(
-                    user_id="anonymous",
-                    email="anonymous@localhost",
-                    name="Anonymous User",
-                    picture=None,
-                    provider="none",
-                    created_at=datetime.now(),
-                    last_login=datetime.now(),
-                )
+                from session_manager import AnonymousUser
+                request.state.user = AnonymousUser()
                 request.state.jwt_token = None  # No JWT in no-auth mode
             else:
                 user = get_current_user(request, session_manager)
