@@ -452,6 +452,7 @@ class GoogleDriveConnector(BaseConnector):
     async def list_files(
         self,
         page_token: Optional[str] = None,
+        max_files: Optional[int] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -466,7 +467,6 @@ class GoogleDriveConnector(BaseConnector):
             items = self._iter_selected_items()
 
             # Optionally honor a request-scoped max_files (e.g., from your API payload)
-            max_files = kwargs.get("max_files")
             if isinstance(max_files, int) and max_files > 0:
                 items = items[:max_files]
 
