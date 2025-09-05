@@ -22,9 +22,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
     connector_type = request.path_params.get("connector_type", "google_drive")
     data = await request.json()
     max_files = data.get("max_files")
-
-    if not data.get("selected_files"):
-        return JSONResponse({"error": "selected_files is required"}, status_code=400)
+    selected_files = data.get("selected_files")
 
     try:
         user = request.state.user
@@ -36,6 +34,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
         )
 
         active_connections = [conn for conn in connections if conn.is_active]
+        active_connections = active_connections[:1]  # TODO: Temporary workaround for duplicate connections
         if not active_connections:
             return JSONResponse(
                 {"error": f"No active {connector_type} connections found"},
@@ -45,14 +44,20 @@ async def connector_sync(request: Request, connector_service, session_manager):
         # Start sync tasks for all active connections
         task_ids = []
         for connection in active_connections:
-            task_id = await connector_service.sync_connector_files(
-                connection.connection_id,
-                user.user_id,
-                max_files,
-                jwt_token=jwt_token,
-                selected_files=data.get("selected_files"),
-                selected_folders=data.get("selected_folders"),
-            )
+            if selected_files:
+                task_id = await connector_service.sync_specific_files(
+                    connection.connection_id,
+                    user.user_id,
+                    selected_files,
+                    jwt_token=jwt_token,
+                )
+            else:
+                task_id = await connector_service.sync_connector_files(
+                    connection.connection_id,
+                    user.user_id,
+                    max_files,
+                    jwt_token=jwt_token,
+                )
             task_ids.append(task_id)
 
         return JSONResponse(
