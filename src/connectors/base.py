@@ -108,7 +108,7 @@ class BaseConnector(ABC):
         pass
 
     @abstractmethod
-    async def list_files(self, page_token: Optional[str] = None) -> Dict[str, Any]:
+    async def list_files(self, page_token: Optional[str] = None, max_files: Optional[int] = None) -> Dict[str, Any]:
         """List all files. Returns files and next_page_token if any."""
         pass
 
