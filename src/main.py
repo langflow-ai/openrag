@@ -14,11 +14,6 @@ import subprocess
 from functools import partial
 from starlette.applications import Starlette
 from starlette.routing import Route
-
-# Set multiprocessing start method to 'spawn' for CUDA compatibility
-multiprocessing.set_start_method("spawn", force=True)
-
-# Create process pool FIRST, before any torch/CUDA imports
 from utils.process_pool import process_pool
 
 import torch
@@ -54,6 +49,9 @@ from api import (
     knowledge_filter,
     settings,
 )
+
+# Set multiprocessing start method to 'spawn' for CUDA compatibility
+multiprocessing.set_start_method("spawn", force=True)
 
 logger.info(
     "CUDA device information",
@@ -310,7 +308,7 @@ async def initialize_services():
                 "Failed to load persisted connections on startup", error=str(e)
             )
     else:
-        logger.info("Skipping connector loading in no-auth mode")
+        logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
 
     return {
         "document_service": document_service,
@@ -650,6 +648,17 @@ async def create_app():
             require_auth(services["session_manager"])(
                 partial(
                     connectors.connector_status,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/connectors/{connector_type}/token",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.connector_token,
                     connector_service=services["connector_service"],
                     session_manager=services["session_manager"],
                 )
