@@ -39,7 +39,6 @@ async def connector_sync(request: Request, connector_service, session_manager):
         )
 
         active_connections = [conn for conn in connections if conn.is_active]
-        active_connections = active_connections[:1]  # TODO: Temporary workaround for duplicate connections
         if not active_connections:
             return JSONResponse(
                 {"error": f"No active {connector_type} connections found"},
