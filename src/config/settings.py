@@ -1,6 +1,5 @@
 import os
 import requests
-import asyncio
 import time
 from dotenv import load_dotenv
 from utils.logging_config import get_logger

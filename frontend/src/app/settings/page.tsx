@@ -14,6 +14,25 @@ import { useTask } from "@/contexts/task-context"
 import { useAuth } from "@/contexts/auth-context"
 
 
+interface GoogleDriveFile {
+  id: string
+  name: string
+  mimeType: string
+  webViewLink?: string
+  iconLink?: string
+}
+
+interface OneDriveFile {
+  id: string
+  name: string
+  mimeType?: string
+  webUrl?: string
+  driveItem?: {
+    file?: { mimeType: string }
+    folder?: any
+  }
+}
+
 interface Connector {
   id: string
   name: string
@@ -23,6 +42,7 @@ interface Connector {
   type: string
   connectionId?: string
   access_token?: string
+  selectedFiles?: GoogleDriveFile[] | OneDriveFile[]
 }
 
 interface SyncResult {
@@ -143,6 +163,7 @@ function KnowledgeSourcesPage() {
           const activeConnection = connections.find((conn: Connection) => conn.is_active)
           const isConnected = activeConnection !== undefined
           
+          
           setConnectors(prev => prev.map(c => 
             c.type === connectorType 
               ? { 
@@ -208,6 +229,7 @@ function KnowledgeSourcesPage() {
     }
   }
 
+
   const handleSync = async (connector: Connector) => {
     if (!connector.connectionId) return
     
@@ -215,15 +237,23 @@ function KnowledgeSourcesPage() {
     setSyncResults(prev => ({ ...prev, [connector.id]: null }))
     
     try {
+      const syncBody: {
+        connection_id: string;
+        max_files?: number;
+        selected_files?: string[];
+      } = {
+        connection_id: connector.connectionId,
+        max_files: syncAllFiles ? 0 : (maxFiles || undefined)
+      }
+      
+      // Note: File selection is now handled via the cloud connectors dialog
+      
       const response = await fetch(`/api/connectors/${connector.type}/sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          connection_id: connector.connectionId,
-          max_files: syncAllFiles ? 0 : (maxFiles || undefined)
-        }),
+        body: JSON.stringify(syncBody),
       })
       
       const result = await response.json()

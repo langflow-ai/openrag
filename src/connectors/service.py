@@ -1,4 +1,3 @@
-import asyncio
 import tempfile
 import os
 from typing import Dict, Any, List, Optional
@@ -11,6 +10,8 @@ from .google_drive import GoogleDriveConnector
 from .sharepoint import SharePointConnector
 from .onedrive import OneDriveConnector
 from .connection_manager import ConnectionManager
+
+logger = get_logger(__name__)
 
 
 class ConnectorService:
@@ -266,9 +267,6 @@ class ConnectorService:
                 break
 
             page_token = file_list.get("nextPageToken")
-
-        if not files_to_process:
-            raise ValueError("No files found to sync")
 
         # Get user information
         user = self.session_manager.get_user(user_id) if self.session_manager else None
