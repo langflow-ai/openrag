@@ -107,11 +107,27 @@ class AuthService:
         auth_endpoint = oauth_class.AUTH_ENDPOINT
         token_endpoint = oauth_class.TOKEN_ENDPOINT
 
-        # Get client_id from environment variable using connector's env var name
-        client_id = os.getenv(connector_class.CLIENT_ID_ENV_VAR)
-        if not client_id:
-            raise ValueError(
-                f"{connector_class.CLIENT_ID_ENV_VAR} environment variable not set"
+        # src/services/auth_service.py
+        client_key = getattr(connector_class, "CLIENT_ID_ENV_VAR", None)
+        secret_key = getattr(connector_class, "CLIENT_SECRET_ENV_VAR", None)
+
+        def _assert_env_key(name, val):
+            if not isinstance(val, str) or not val.strip():
+                raise RuntimeError(
+                    f"{connector_class.__name__} misconfigured: {name} must be a non-empty string "
+                    f"(got {val!r}). Define it as a class attribute on the connector."
+                )
+
+        _assert_env_key("CLIENT_ID_ENV_VAR", client_key)
+        _assert_env_key("CLIENT_SECRET_ENV_VAR", secret_key)
+
+        client_id = os.getenv(client_key)
+        client_secret = os.getenv(secret_key)
+
+        if not client_id or not client_secret:
+            raise RuntimeError(
+                f"Missing OAuth env vars for {connector_class.__name__}. "
+                f"Set {client_key} and {secret_key} in the environment."
             )
 
         oauth_config = {
