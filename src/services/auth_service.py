@@ -283,12 +283,11 @@ class AuthService:
         )
 
         if jwt_token:
-            # Get the user info to create a persistent Google Drive connection
+            # Get the user info to create a persistent connector connection
             user_info = await self.session_manager.get_user_info_from_token(
                 token_data["access_token"]
             )
-            user_id = user_info["id"] if user_info else None
-
+            
             response_data = {
                 "status": "authenticated",
                 "purpose": "app_auth",
@@ -296,13 +295,13 @@ class AuthService:
                 "jwt_token": jwt_token,  # Include JWT token in response
             }
 
-            if user_id:
-                # Convert the temporary auth connection to a persistent Google Drive connection
+            if user_info and user_info.get("id"):
+                # Convert the temporary auth connection to a persistent OAuth connection
                 await self.connector_service.connection_manager.update_connection(
                     connection_id=connection_id,
                     connector_type="google_drive",
                     name=f"Google Drive ({user_info.get('email', 'Unknown')})",
-                    user_id=user_id,
+                    user_id=user_info.get("id"),
                     config={
                         **connection_config.config,
                         "purpose": "data_source",
@@ -351,7 +350,7 @@ class AuthService:
         user = getattr(request.state, "user", None)
 
         if user:
-            return {
+            user_data = {
                 "authenticated": True,
                 "user": {
                     "user_id": user.user_id,
@@ -364,5 +363,7 @@ class AuthService:
                     else None,
                 },
             }
+            
+            return user_data
         else:
             return {"authenticated": False, "user": None}
