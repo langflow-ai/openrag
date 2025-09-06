@@ -1,12 +1,5 @@
 import sys
 
-# Check for TUI flag FIRST, before any heavy imports
-if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--tui":
-    from tui.main import run_tui
-
-    run_tui()
-    sys.exit(0)
-
 # Configure structured logging early
 from utils.logging_config import configure_from_env, get_logger
 
