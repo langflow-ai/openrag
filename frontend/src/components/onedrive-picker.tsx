@@ -29,15 +29,6 @@ interface GraphResponse {
   value: OneDriveFile[]
 }
 
-declare global {
-  interface Window {
-    mgt?: {
-      Providers: {
-        globalProvider: any
-      }
-    }
-  }
-}
 
 export function OneDrivePicker({ 
   onFileSelected, 
@@ -59,15 +50,12 @@ export function OneDrivePicker({
   
   useEffect(() => {
     const loadMGT = async () => {
-      if (typeof window !== 'undefined' && !window.mgt) {
+      if (typeof window !== 'undefined') {
         try {
-          const mgtModule = await import('@microsoft/mgt-components')
-          const mgtProvider = await import('@microsoft/mgt-msal2-provider')
+          await import('@microsoft/mgt-components')
+          await import('@microsoft/mgt-msal2-provider')
           
-          // Initialize provider if needed
-          if (!window.mgt?.Providers?.globalProvider && accessToken) {
-            // For simplicity, we'll use direct Graph API calls instead of MGT components
-          }
+          // For simplicity, we'll use direct Graph API calls instead of MGT components
         } catch (error) {
           console.warn('MGT not available, falling back to direct API calls')
         }
