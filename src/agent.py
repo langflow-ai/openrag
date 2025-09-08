@@ -189,35 +189,42 @@ async def async_response(
     previous_response_id: str = None,
     log_prefix: str = "response",
 ):
-    logger.info("User prompt received", prompt=prompt)
+    try:
+        logger.info("User prompt received", prompt=prompt)
 
-    # Build request parameters
-    request_params = {
-        "model": model,
-        "input": prompt,
-        "stream": False,
-        "include": ["tool_call.results"],
-    }
-    if previous_response_id is not None:
-        request_params["previous_response_id"] = previous_response_id
-    if extra_headers:
-        request_params["extra_headers"] = extra_headers
+        # Build request parameters
+        request_params = {
+            "model": model,
+            "input": prompt,
+            "stream": False,
+            "include": ["tool_call.results"],
+        }
+        if previous_response_id is not None:
+            request_params["previous_response_id"] = previous_response_id
+        if extra_headers:
+            request_params["extra_headers"] = extra_headers
 
-    if "x-api-key" not in client.default_headers:
-        if hasattr(client, "api_key") and extra_headers is not None:
-            extra_headers["x-api-key"] = client.api_key
+        if "x-api-key" not in client.default_headers:
+            if hasattr(client, "api_key") and extra_headers is not None:
+                extra_headers["x-api-key"] = client.api_key
 
-    response = await client.responses.create(**request_params)
+        response = await client.responses.create(**request_params)
 
-    response_text = response.output_text
-    logger.info("Response generated", log_prefix=log_prefix, response=response_text)
+        response_text = response.output_text
+        logger.info("Response generated", log_prefix=log_prefix, response=response_text)
 
-    # Extract and store response_id if available
-    response_id = getattr(response, "id", None) or getattr(
-        response, "response_id", None
-    )
+        # Extract and store response_id if available
+        response_id = getattr(response, "id", None) or getattr(
+            response, "response_id", None
+        )
 
-    return response_text, response_id, response
+        return response_text, response_id, response
+    except Exception as e:
+        logger.error("Exception in non-streaming response", error=str(e))
+        import traceback
+
+        traceback.print_exc()
+        raise
 
 
 # Unified streaming function for both chat and langflow
