@@ -7,6 +7,7 @@ from models.tasks import TaskStatus, UploadTask, FileTask
 from utils.gpu_detection import get_worker_count
 from session_manager import AnonymousUser
 from utils.logging_config import get_logger
+import time
 
 logger = get_logger(__name__)
 
