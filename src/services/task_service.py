@@ -5,7 +5,7 @@ import uuid
 from typing import Dict
 
 from models.tasks import FileTask, TaskStatus, UploadTask
-from src.utils.gpu_detection import get_worker_count
+from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
