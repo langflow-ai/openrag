@@ -102,9 +102,8 @@ class GoogleDriveConnector(BaseConnector):
         client_secret = config.get("client_secret") or env_client_secret
 
         # Token file default (so callback & workers don’t need to pass it)
-        token_file = config.get("token_file") or os.getenv("GOOGLE_DRIVE_TOKEN_FILE")
-        if not token_file:
-            token_file = str(Path.home() / ".config" / "openrag" / "google_drive" / "token.json")
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
+        token_file = config.get("token_file") or str(project_root / "google_drive_token.json")
         Path(token_file).parent.mkdir(parents=True, exist_ok=True)
 
         if not isinstance(client_id, str) or not client_id.strip():

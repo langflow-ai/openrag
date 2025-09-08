@@ -1,8 +1,9 @@
 services:
   opensearch:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: phact/openrag-opensearch:${OPENRAG_VERSION:-latest}
+    #build:
+    #  context: .
+    #  dockerfile: Dockerfile
     container_name: os
     depends_on:
       - openrag-backend
@@ -38,10 +39,10 @@ services:
       - "5601:5601"
 
   openrag-backend:
-    image: phact/openrag-backend:latest
+    image: phact/openrag-backend:${OPENRAG_VERSION:-latest}
     #build:
-      #context: .
-      #dockerfile: Dockerfile.backend
+    #context: .
+    #dockerfile: Dockerfile.backend
     container_name: openrag-backend
     depends_on:
       - langflow
@@ -53,6 +54,7 @@ services:
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - LANGFLOW_CHAT_FLOW_ID=${LANGFLOW_CHAT_FLOW_ID}
+      - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
       - OPENSEARCH_PORT=9200
       - OPENSEARCH_USERNAME=admin
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
@@ -71,10 +73,10 @@ services:
       - ./keys:/app/keys:Z
 
   openrag-frontend:
-    image: phact/openrag-frontend:latest
+    image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
     #build:
-      #context: .
-      #dockerfile: Dockerfile.frontend
+    #context: .
+    #dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
     depends_on:
       - openrag-backend
@@ -86,7 +88,7 @@ services:
   langflow:
     volumes:
       - ./flows:/app/flows:Z
-    image: phact/langflow:responses
+    image: phact/langflow:${LANGFLOW_VERSION:-responses}
     container_name: langflow
     ports:
       - "7860:7860"
