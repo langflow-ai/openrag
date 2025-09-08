@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -29,7 +28,7 @@ interface OneDriveFile {
   webUrl?: string
   driveItem?: {
     file?: { mimeType: string }
-    folder?: any
+    folder?: unknown
   }
 }
 
@@ -61,7 +60,6 @@ export function CloudConnectorsDialog({
   const [selectedFiles, setSelectedFiles] = useState<{[connectorId: string]: GoogleDriveFile[] | OneDriveFile[]}>({})
   const [connectorAccessTokens, setConnectorAccessTokens] = useState<{[connectorType: string]: string}>({})
   const [activePickerType, setActivePickerType] = useState<string | null>(null)
-  const [isGooglePickerOpen, setIsGooglePickerOpen] = useState(false)
 
   const getConnectorIcon = (iconName: string) => {
     const iconMap: { [key: string]: React.ReactElement } = {
@@ -129,7 +127,7 @@ export function CloudConnectorsDialog({
           if (response.ok) {
             const data = await response.json()
             const connections = data.connections || []
-            const activeConnection = connections.find((conn: any) => conn.is_active)
+            const activeConnection = connections.find((conn: { connection_id: string; is_active: boolean }) => conn.is_active)
             const isConnected = activeConnection !== undefined
             
             let hasAccessToken = false
@@ -152,7 +150,7 @@ export function CloudConnectorsDialog({
                   const errorData = await tokenResponse.json().catch(() => ({ error: 'Token unavailable' }))
                   accessTokenError = errorData.error || 'Access token unavailable'
                 }
-              } catch (e) {
+              } catch {
                 accessTokenError = 'Failed to fetch access token'
               }
             }
@@ -260,12 +258,11 @@ export function CloudConnectorsDialog({
                         onFileSelected={(files) => {
                           handleFileSelection(connector.id, files)
                           setActivePickerType(null)
-                          setIsGooglePickerOpen(false)
                         }}
                         selectedFiles={selectedFiles[connector.id] as GoogleDriveFile[] || []}
                         isAuthenticated={connector.status === "connected"}
                         accessToken={connectorAccessTokens[connector.type]}
-                        onPickerStateChange={setIsGooglePickerOpen}
+                        onPickerStateChange={() => {}}
                       />
                     </div>
                   )
