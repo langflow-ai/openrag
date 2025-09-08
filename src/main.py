@@ -43,6 +43,7 @@ from auth_middleware import optional_auth, require_auth
 from config.settings import (
     INDEX_BODY,
     INDEX_NAME,
+    INGEST_MODE,
     SESSION_SECRET,
     clients,
     is_no_auth_mode,
@@ -226,7 +227,7 @@ async def init_index_when_ready():
 async def ingest_default_documents_when_ready(services):
     """Scan the local documents folder and ingest files like a non-auth upload."""
     try:
-        logger.info("Ingesting default documents when ready")
+        logger.info("Ingesting default documents when ready", ingest_mode=INGEST_MODE)
         base_dir = os.path.abspath(os.path.join(os.getcwd(), "documents"))
         if not os.path.isdir(base_dir):
             logger.info(
@@ -248,27 +249,101 @@ async def ingest_default_documents_when_ready(services):
             )
             return
 
-        # Build a processor that DOES NOT set 'owner' on documents (owner_user_id=None)
-        from models.processors import DocumentFileProcessor
+        if INGEST_MODE == "langflow":
+            await _ingest_default_documents_langflow(services, file_paths)
+        else:
+            await _ingest_default_documents_openrag(services, file_paths)
 
-        processor = DocumentFileProcessor(
-            services["document_service"],
-            owner_user_id=None,
-            jwt_token=None,
-            owner_name=None,
-            owner_email=None,
-        )
-
-        task_id = await services["task_service"].create_custom_task(
-            "anonymous", file_paths, processor
-        )
-        logger.info(
-            "Started default documents ingestion task",
-            task_id=task_id,
-            file_count=len(file_paths),
-        )
     except Exception as e:
         logger.error("Default documents ingestion failed", error=str(e))
+
+
+async def _ingest_default_documents_langflow(services, file_paths):
+    """Ingest default documents using Langflow upload-ingest-delete pipeline."""
+    langflow_file_service = services["langflow_file_service"]
+    
+    logger.info(
+        "Using Langflow ingestion pipeline for default documents",
+        file_count=len(file_paths),
+    )
+    
+    success_count = 0
+    error_count = 0
+    
+    for file_path in file_paths:
+        try:
+            logger.debug("Processing file with Langflow pipeline", file_path=file_path)
+            
+            # Read file content
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            
+            # Create file tuple for upload
+            filename = os.path.basename(file_path)
+            # Determine content type based on file extension
+            import mimetypes
+            content_type, _ = mimetypes.guess_type(filename)
+            if not content_type:
+                content_type = 'application/octet-stream'
+            
+            file_tuple = (filename, content, content_type)
+            
+            # Use langflow upload_and_ingest_file method
+            result = await langflow_file_service.upload_and_ingest_file(
+                file_tuple=file_tuple,
+                jwt_token=None,  # No auth for default documents
+                delete_after_ingest=True,  # Clean up after ingestion
+            )
+            
+            logger.info(
+                "Successfully ingested file via Langflow",
+                file_path=file_path,
+                result_status=result.get("status"),
+            )
+            success_count += 1
+            
+        except Exception as e:
+            logger.error(
+                "Failed to ingest file via Langflow",
+                file_path=file_path,
+                error=str(e),
+            )
+            error_count += 1
+    
+    logger.info(
+        "Langflow ingestion completed",
+        success_count=success_count,
+        error_count=error_count,
+        total_files=len(file_paths),
+    )
+
+
+async def _ingest_default_documents_openrag(services, file_paths):
+    """Ingest default documents using traditional OpenRAG processor."""
+    logger.info(
+        "Using traditional OpenRAG ingestion for default documents",
+        file_count=len(file_paths),
+    )
+    
+    # Build a processor that DOES NOT set 'owner' on documents (owner_user_id=None)
+    from models.processors import DocumentFileProcessor
+
+    processor = DocumentFileProcessor(
+        services["document_service"],
+        owner_user_id=None,
+        jwt_token=None,
+        owner_name=None,
+        owner_email=None,
+    )
+
+    task_id = await services["task_service"].create_custom_task(
+        "anonymous", file_paths, processor
+    )
+    logger.info(
+        "Started traditional OpenRAG ingestion task",
+        task_id=task_id,
+        file_count=len(file_paths),
+    )
 
 
 async def startup_tasks(services):
