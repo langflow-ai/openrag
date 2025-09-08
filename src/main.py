@@ -1,6 +1,6 @@
-import sys
 
 # Configure structured logging early
+from services.flows_service import FlowsService
 from utils.logging_config import configure_from_env, get_logger
 
 configure_from_env()
@@ -43,6 +43,7 @@ from auth_middleware import require_auth, optional_auth
 
 # API endpoints
 from api import (
+    flows,
     nudges,
     upload,
     search,
@@ -274,6 +275,7 @@ async def initialize_services():
     search_service = SearchService(session_manager)
     task_service = TaskService(document_service, process_pool)
     chat_service = ChatService()
+    flows_service = FlowsService()
     knowledge_filter_service = KnowledgeFilterService(session_manager)
     monitor_service = MonitorService(session_manager)
 
@@ -318,6 +320,7 @@ async def initialize_services():
         "search_service": search_service,
         "task_service": task_service,
         "chat_service": chat_service,
+        "flows_service": flows_service,
         "auth_service": auth_service,
         "connector_service": connector_service,
         "knowledge_filter_service": knowledge_filter_service,
@@ -726,6 +729,17 @@ async def create_app():
                 )
             ),
             methods=["GET"],
+        ),
+        # Reset Flow endpoint
+        Route(
+            "/reset-flow/{flow_type}",
+            require_auth(services["session_manager"])(
+                partial(
+                    flows.reset_flow_endpoint,
+                    chat_service=services["flows_service"],
+                )
+            ),
+            methods=["POST"],
         ),
     ]
 
