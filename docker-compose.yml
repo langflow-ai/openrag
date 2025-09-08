@@ -1,6 +1,6 @@
 services:
   opensearch:
-    image: phact/openrag-opensearch:latest
+    image: phact/openrag-opensearch:${OPENRAG_VERSION:-latest}
     #build:
     #context: .
     #dockerfile: Dockerfile
@@ -39,7 +39,7 @@ services:
       - "5601:5601"
 
   openrag-backend:
-    image: phact/openrag-backend:latest
+    image: phact/openrag-backend:${OPENRAG_VERSION:-latest}
     #build:
     #context: .
     #dockerfile: Dockerfile.backend
@@ -73,7 +73,7 @@ services:
     gpus: all
 
   openrag-frontend:
-    image: phact/openrag-frontend:latest
+    image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
     #build:
     #context: .
     #dockerfile: Dockerfile.frontend
@@ -88,7 +88,7 @@ services:
   langflow:
     volumes:
       - ./flows:/app/flows:Z
-    image: phact/langflow:responses
+    image: phact/langflow:${LANGFLOW_VERSION:-responses}
     container_name: langflow
     ports:
       - "7860:7860"
