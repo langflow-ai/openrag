@@ -47,9 +47,9 @@ cp .env.example .env
 - `LANGFLOW_INGEST_FLOW_ID`: ID of your Langflow ingestion flow
 
 **Ingestion Configuration:**
-- `INGEST_MODE`: Controls how default documents are ingested (default: `langflow`)
-  - `langflow`: Uses Langflow pipeline for document ingestion (upload → ingest → delete)
-  - `openrag`: Uses traditional OpenRAG processor for document ingestion
+- `DISABLE_INGEST_WITH_LANGFLOW`: Disable Langflow ingestion pipeline (default: `false`)
+  - `false` or unset: Uses Langflow pipeline (upload → ingest → delete)
+  - `true`: Uses traditional OpenRAG processor for document ingestion
 
 **Optional:**
 - `LANGFLOW_PUBLIC_URL`: Public URL for Langflow (default: `http://localhost:7860`)

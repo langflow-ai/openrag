@@ -45,8 +45,8 @@ SESSION_SECRET = os.getenv("SESSION_SECRET", "your-secret-key-change-in-producti
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
-# Ingestion mode configuration
-INGEST_MODE = os.getenv("INGEST_MODE", "langflow").lower()  # "langflow" or "openrag"
+# Ingestion configuration
+DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in ("true", "1", "yes")
 
 
 def is_no_auth_mode():
