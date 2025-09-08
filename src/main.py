@@ -67,6 +67,18 @@ from session_manager import SessionManager
 from utils.process_pool import process_pool
 
 # API endpoints
+from api import (
+    nudges,
+    upload,
+    search,
+    chat,
+    auth,
+    connectors,
+    tasks,
+    oidc,
+    knowledge_filter,
+    settings,
+)
 
 
 logger.info(
@@ -753,6 +765,28 @@ async def create_app():
             require_auth(services["session_manager"])(
                 partial(
                     settings.get_settings, session_manager=services["session_manager"]
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/nudges",
+            require_auth(services["session_manager"])(
+                partial(
+                    nudges.nudges_from_kb_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/nudges/{chat_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    nudges.nudges_from_chat_id_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
                 )
             ),
             methods=["GET"],

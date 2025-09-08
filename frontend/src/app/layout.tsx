@@ -8,6 +8,7 @@ import { KnowledgeFilterProvider } from "@/contexts/knowledge-filter-context";
 import { ChatProvider } from "@/contexts/chat-context";
 import { LayoutWrapper } from "@/components/layout-wrapper";
 import { Toaster } from "@/components/ui/sonner";
+import Providers from "./providers";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -28,7 +29,6 @@ export const metadata: Metadata = {
   title: "OpenRAG",
   description: "Open source RAG (Retrieval Augmented Generation) system",
 };
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -45,17 +45,17 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthProvider>
-            <TaskProvider>
-              <KnowledgeFilterProvider>
-                <ChatProvider>
-                  <LayoutWrapper>
-                    {children}
-                  </LayoutWrapper>
-                </ChatProvider>
-              </KnowledgeFilterProvider>
-            </TaskProvider>
-          </AuthProvider>
+          <Providers>
+            <AuthProvider>
+              <TaskProvider>
+                <KnowledgeFilterProvider>
+                  <ChatProvider>
+                    <LayoutWrapper>{children}</LayoutWrapper>
+                  </ChatProvider>
+                </KnowledgeFilterProvider>
+              </TaskProvider>
+            </AuthProvider>
+          </Providers>
         </ThemeProvider>
         <Toaster />
       </body>
