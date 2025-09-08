@@ -2,31 +2,31 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# User-scoped conversation state - keyed by user_id -> response_id -> conversation
-user_conversations = {}  # user_id -> {response_id: {"messages": [...], "previous_response_id": parent_id, "created_at": timestamp, "last_activity": timestamp}}
+# Import persistent storage
+from services.conversation_persistence_service import conversation_persistence
 
+# In-memory storage for active conversation threads (preserves function calls)
+active_conversations = {}
 
 def get_user_conversations(user_id: str):
-    """Get all conversations for a user"""
-    if user_id not in user_conversations:
-        user_conversations[user_id] = {}
-    return user_conversations[user_id]
+    """Get conversation metadata for a user from persistent storage"""
+    return conversation_persistence.get_user_conversations(user_id)
 
 
 def get_conversation_thread(user_id: str, previous_response_id: str = None):
-    """Get or create a specific conversation thread"""
-    conversations = get_user_conversations(user_id)
-
-    if previous_response_id and previous_response_id in conversations:
-        # Update last activity and return existing conversation
-        conversations[previous_response_id]["last_activity"] = __import__(
-            "datetime"
-        ).datetime.now()
-        return conversations[previous_response_id]
-
-    # Create new conversation thread
+    """Get or create a specific conversation thread with function call preservation"""
     from datetime import datetime
 
+    # Create user namespace if it doesn't exist
+    if user_id not in active_conversations:
+        active_conversations[user_id] = {}
+
+    # If we have a previous_response_id, try to get the existing conversation
+    if previous_response_id and previous_response_id in active_conversations[user_id]:
+        logger.debug(f"Retrieved existing conversation for user {user_id}, response_id {previous_response_id}")
+        return active_conversations[user_id][previous_response_id]
+
+    # Create new conversation thread
     new_conversation = {
         "messages": [
             {
@@ -43,19 +43,49 @@ def get_conversation_thread(user_id: str, previous_response_id: str = None):
 
 
 def store_conversation_thread(user_id: str, response_id: str, conversation_state: dict):
-    """Store a conversation thread with its response_id"""
-    conversations = get_user_conversations(user_id)
-    conversations[response_id] = conversation_state
+    """Store conversation both in memory (with function calls) and persist metadata to disk"""
+    # 1. Store full conversation in memory for function call preservation
+    if user_id not in active_conversations:
+        active_conversations[user_id] = {}
+    active_conversations[user_id][response_id] = conversation_state
+    
+    # 2. Store only essential metadata to disk (simplified JSON)
+    messages = conversation_state.get("messages", [])
+    first_user_msg = next((msg for msg in messages if msg.get("role") == "user"), None)
+    title = "New Chat"
+    if first_user_msg:
+        content = first_user_msg.get("content", "")
+        title = content[:50] + "..." if len(content) > 50 else content
+    
+    metadata_only = {
+        "response_id": response_id,
+        "title": title,
+        "endpoint": "langflow",
+        "created_at": conversation_state.get("created_at"),
+        "last_activity": conversation_state.get("last_activity"),
+        "previous_response_id": conversation_state.get("previous_response_id"),
+        "total_messages": len([msg for msg in messages if msg.get("role") in ["user", "assistant"]]),
+        # Don't store actual messages - Langflow has them
+    }
+    
+    conversation_persistence.store_conversation_thread(user_id, response_id, metadata_only)
 
 
 # Legacy function for backward compatibility
 def get_user_conversation(user_id: str):
     """Get the most recent conversation for a user (for backward compatibility)"""
+    # Check in-memory conversations first (with function calls)
+    if user_id in active_conversations and active_conversations[user_id]:
+        latest_response_id = max(active_conversations[user_id].keys(), 
+                               key=lambda k: active_conversations[user_id][k]["last_activity"])
+        return active_conversations[user_id][latest_response_id]
+    
+    # Fallback to metadata-only conversations
     conversations = get_user_conversations(user_id)
     if not conversations:
         return get_conversation_thread(user_id)
 
-    # Return the most recently active conversation
+    # Return the most recently active conversation metadata
     latest_conversation = max(conversations.values(), key=lambda c: c["last_activity"])
     return latest_conversation
 
@@ -183,7 +213,7 @@ async def async_response(
         response, "response_id", None
     )
 
-    return response_text, response_id
+    return response_text, response_id, response
 
 
 # Unified streaming function for both chat and langflow
@@ -214,7 +244,7 @@ async def async_langflow(
     extra_headers: dict = None,
     previous_response_id: str = None,
 ):
-    response_text, response_id = await async_response(
+    response_text, response_id, response_obj = await async_response(
         langflow_client,
         prompt,
         flow_id,
@@ -284,7 +314,7 @@ async def async_chat(
         "Added user message", message_count=len(conversation_state["messages"])
     )
 
-    response_text, response_id = await async_response(
+    response_text, response_id, response_obj = await async_response(
         async_client,
         prompt,
         model,
@@ -295,12 +325,13 @@ async def async_chat(
         "Got response", response_preview=response_text[:50], response_id=response_id
     )
 
-    # Add assistant response to conversation with response_id and timestamp
+    # Add assistant response to conversation with response_id, timestamp, and full response object
     assistant_message = {
         "role": "assistant",
         "content": response_text,
         "response_id": response_id,
         "timestamp": datetime.now(),
+        "response_data": response_obj.model_dump() if hasattr(response_obj, "model_dump") else str(response_obj),  # Store complete response for function calls
     }
     conversation_state["messages"].append(assistant_message)
     logger.debug(
@@ -422,7 +453,7 @@ async def async_langflow_chat(
         message_count=len(conversation_state["messages"]),
     )
 
-    response_text, response_id = await async_response(
+    response_text, response_id, response_obj = await async_response(
         langflow_client,
         prompt,
         flow_id,
@@ -436,12 +467,13 @@ async def async_langflow_chat(
         response_id=response_id,
     )
 
-    # Add assistant response to conversation with response_id and timestamp
+    # Add assistant response to conversation with response_id, timestamp, and full response object
     assistant_message = {
         "role": "assistant",
         "content": response_text,
         "response_id": response_id,
         "timestamp": datetime.now(),
+        "response_data": response_obj.model_dump() if hasattr(response_obj, "model_dump") else str(response_obj),  # Store complete response for function calls
     }
     conversation_state["messages"].append(assistant_message)
     logger.debug(
@@ -453,11 +485,19 @@ async def async_langflow_chat(
     if response_id:
         conversation_state["last_activity"] = datetime.now()
         store_conversation_thread(user_id, response_id, conversation_state)
-        logger.debug(
-            "Stored langflow conversation thread",
-            user_id=user_id,
-            response_id=response_id,
+        
+        # Claim session ownership for this user
+        try:
+            from services.session_ownership_service import session_ownership_service
+            session_ownership_service.claim_session(user_id, response_id)
+            print(f"[DEBUG] Claimed session {response_id} for user {user_id}")
+        except Exception as e:
+            print(f"[WARNING] Failed to claim session ownership: {e}")
+        
+        print(
+            f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
         )
+        logger.debug("Stored langflow conversation thread", user_id=user_id, response_id=response_id)
 
         # Debug: Check what's in user_conversations now
         conversations = get_user_conversations(user_id)
@@ -499,6 +539,8 @@ async def async_langflow_chat_stream(
 
     full_response = ""
     response_id = None
+    collected_chunks = []  # Store all chunks for function call data
+    
     async for chunk in async_stream(
         langflow_client,
         prompt,
@@ -512,6 +554,8 @@ async def async_langflow_chat_stream(
             import json
 
             chunk_data = json.loads(chunk.decode("utf-8"))
+            collected_chunks.append(chunk_data)  # Collect all chunk data
+            
             if "delta" in chunk_data and "content" in chunk_data["delta"]:
                 full_response += chunk_data["delta"]["content"]
             # Extract response_id from chunk
@@ -523,13 +567,14 @@ async def async_langflow_chat_stream(
             pass
         yield chunk
 
-    # Add the complete assistant response to message history with response_id and timestamp
+    # Add the complete assistant response to message history with response_id, timestamp, and function call data
     if full_response:
         assistant_message = {
             "role": "assistant",
             "content": full_response,
             "response_id": response_id,
             "timestamp": datetime.now(),
+            "chunks": collected_chunks,  # Store complete chunk data for function calls
         }
         conversation_state["messages"].append(assistant_message)
 
@@ -537,8 +582,16 @@ async def async_langflow_chat_stream(
         if response_id:
             conversation_state["last_activity"] = datetime.now()
             store_conversation_thread(user_id, response_id, conversation_state)
-            logger.debug(
-                "Stored langflow conversation thread",
-                user_id=user_id,
-                response_id=response_id,
+            
+            # Claim session ownership for this user
+        try:
+            from services.session_ownership_service import session_ownership_service
+            session_ownership_service.claim_session(user_id, response_id)
+            print(f"[DEBUG] Claimed session {response_id} for user {user_id}")
+        except Exception as e:
+            print(f"[WARNING] Failed to claim session ownership: {e}")
+            
+            print(
+                f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
             )
+            logger.debug("Stored langflow conversation thread", user_id=user_id, response_id=response_id)

@@ -85,6 +85,14 @@ export function Navigation() {
       if (!response.ok) {
         const errorText = await response.text()
         console.error("Upload failed:", errorText)
+        
+        // Trigger error event for chat page to handle
+        window.dispatchEvent(new CustomEvent('fileUploadError', { 
+          detail: { filename: file.name, error: 'Failed to process document' } 
+        }))
+        
+        // Trigger loading end event
+        window.dispatchEvent(new CustomEvent('fileUploadComplete'))
         return
       }
       
@@ -111,7 +119,7 @@ export function Navigation() {
       
       // Trigger error event for chat page to handle
       window.dispatchEvent(new CustomEvent('fileUploadError', { 
-        detail: { filename: file.name, error: error instanceof Error ? error.message : 'Unknown error' } 
+        detail: { filename: file.name, error: 'Failed to process document' } 
       }))
     }
   }
