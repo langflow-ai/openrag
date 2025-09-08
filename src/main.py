@@ -41,9 +41,9 @@ from auth_middleware import optional_auth, require_auth
 
 # Configuration and setup
 from config.settings import (
+    DISABLE_INGEST_WITH_LANGFLOW,
     INDEX_BODY,
     INDEX_NAME,
-    INGEST_MODE,
     SESSION_SECRET,
     clients,
     is_no_auth_mode,
@@ -227,7 +227,7 @@ async def init_index_when_ready():
 async def ingest_default_documents_when_ready(services):
     """Scan the local documents folder and ingest files like a non-auth upload."""
     try:
-        logger.info("Ingesting default documents when ready", ingest_mode=INGEST_MODE)
+        logger.info("Ingesting default documents when ready", disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW)
         base_dir = os.path.abspath(os.path.join(os.getcwd(), "documents"))
         if not os.path.isdir(base_dir):
             logger.info(
@@ -249,10 +249,10 @@ async def ingest_default_documents_when_ready(services):
             )
             return
 
-        if INGEST_MODE == "langflow":
-            await _ingest_default_documents_langflow(services, file_paths)
-        else:
+        if DISABLE_INGEST_WITH_LANGFLOW:
             await _ingest_default_documents_openrag(services, file_paths)
+        else:
+            await _ingest_default_documents_langflow(services, file_paths)
 
     except Exception as e:
         logger.error("Default documents ingestion failed", error=str(e))
