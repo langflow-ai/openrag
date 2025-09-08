@@ -32,6 +32,7 @@ class EnvConfig:
     langflow_superuser: str = "admin"
     langflow_superuser_password: str = ""
     flow_id: str = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+    langflow_ingest_flow_id: str = "5488df7c-b93f-4f87-a446-b67028bc0813"
 
     # OAuth settings
     google_oauth_client_id: str = ""
@@ -99,6 +100,7 @@ class EnvManager:
                             "LANGFLOW_SUPERUSER": "langflow_superuser",
                             "LANGFLOW_SUPERUSER_PASSWORD": "langflow_superuser_password",
                             "FLOW_ID": "flow_id",
+                            "LANGFLOW_INGEST_FLOW_ID": "langflow_ingest_flow_id",
                             "GOOGLE_OAUTH_CLIENT_ID": "google_oauth_client_id",
                             "GOOGLE_OAUTH_CLIENT_SECRET": "google_oauth_client_secret",
                             "MICROSOFT_GRAPH_OAUTH_CLIENT_ID": "microsoft_graph_oauth_client_id",
@@ -235,6 +237,7 @@ class EnvManager:
                     f"LANGFLOW_SUPERUSER_PASSWORD={self.config.langflow_superuser_password}\n"
                 )
                 f.write(f"FLOW_ID={self.config.flow_id}\n")
+                f.write(f"LANGFLOW_INGEST_FLOW_ID={self.config.langflow_ingest_flow_id}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self.config.opensearch_password}\n")
                 f.write(f"OPENAI_API_KEY={self.config.openai_api_key}\n")
                 f.write(
