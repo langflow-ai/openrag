@@ -2,6 +2,7 @@ import sys
 
 # Configure structured logging early
 from connectors.langflow_connector_service import LangflowConnectorService
+from connectors.service import ConnectorService
 from utils.logging_config import configure_from_env, get_logger
 
 configure_from_env()
@@ -44,6 +45,7 @@ from auth_middleware import optional_auth, require_auth
 # Configuration and setup
 from config.settings import (
     DISABLE_INGEST_WITH_LANGFLOW,
+    EMBED_MODEL,
     INDEX_BODY,
     INDEX_NAME,
     SESSION_SECRET,
@@ -52,6 +54,7 @@ from config.settings import (
 )
 
 # Existing services
+from api.connector_router import ConnectorRouter
 from services.auth_service import AuthService
 from services.chat_service import ChatService
 
@@ -390,9 +393,25 @@ async def initialize_services():
     document_service.process_pool = process_pool
 
     # Initialize connector service
-    connector_service = LangflowConnectorService(
+
+    # Initialize both connector services
+    langflow_connector_service = LangflowConnectorService(
         task_service=task_service,
         session_manager=session_manager,
+    )
+    openrag_connector_service = ConnectorService(
+        patched_async_client=clients.patched_async_client,
+        process_pool=process_pool,
+        embed_model=EMBED_MODEL,
+        index_name=INDEX_NAME,
+        task_service=task_service,
+        session_manager=session_manager,
+    )
+    
+    # Create connector router that chooses based on configuration
+    connector_service = ConnectorRouter(
+        langflow_connector_service=langflow_connector_service,
+        openrag_connector_service=openrag_connector_service
     )
 
     # Initialize auth service

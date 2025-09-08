@@ -33,6 +33,10 @@ async def upload_ingest_router(
             disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW
         )
         
+        # Route directly without task creation
+        # Note: Single file uploads are processed synchronously and don't need task tracking
+        # Tasks are only used for bulk operations (folders, S3 buckets, etc.)
+        
         if DISABLE_INGEST_WITH_LANGFLOW:
             # Route to traditional OpenRAG upload
             logger.debug("Routing to traditional OpenRAG upload")

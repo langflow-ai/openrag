@@ -133,8 +133,8 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
         const formData = new FormData()
         formData.append('file', files[0])
         
-        // Use unified upload and ingest endpoint
-        const uploadIngestRes = await fetch('/api/langflow/upload_ingest', {
+        // Use router upload and ingest endpoint (automatically routes based on configuration)
+        const uploadIngestRes = await fetch('/api/router/upload_ingest', {
           method: 'POST',
           body: formData,
         })
