@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
 import { ChevronDown, Upload, FolderOpen, Cloud, PlugZap, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -9,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { useTask } from "@/contexts/task-context"
+import { useRouter } from "next/navigation"
 
 interface KnowledgeDropdownProps {
   active?: boolean
@@ -16,8 +16,8 @@ interface KnowledgeDropdownProps {
 }
 
 export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeDropdownProps) {
-  const router = useRouter()
   const { addTask } = useTask()
+  const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [showFolderDialog, setShowFolderDialog] = useState(false)
   const [showS3Dialog, setShowS3Dialog] = useState(false)
@@ -27,23 +27,76 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
   const [folderLoading, setFolderLoading] = useState(false)
   const [s3Loading, setS3Loading] = useState(false)
   const [fileUploading, setFileUploading] = useState(false)
+  const [cloudConnectors, setCloudConnectors] = useState<{[key: string]: {name: string, available: boolean, connected: boolean, hasToken: boolean}}>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Check AWS availability on mount
+  // Check AWS availability and cloud connectors on mount
   useEffect(() => {
-    const checkAws = async () => {
+    const checkAvailability = async () => {
       try {
-        const res = await fetch("/api/upload_options")
-        if (res.ok) {
-          const data = await res.json()
-          setAwsEnabled(Boolean(data.aws))
+        // Check AWS
+        const awsRes = await fetch("/api/upload_options")
+        if (awsRes.ok) {
+          const awsData = await awsRes.json()
+          setAwsEnabled(Boolean(awsData.aws))
+        }
+
+        // Check cloud connectors
+        const connectorsRes = await fetch('/api/connectors')
+        if (connectorsRes.ok) {
+          const connectorsResult = await connectorsRes.json()
+          const cloudConnectorTypes = ['google_drive', 'onedrive', 'sharepoint']
+          const connectorInfo: {[key: string]: {name: string, available: boolean, connected: boolean, hasToken: boolean}} = {}
+          
+          for (const type of cloudConnectorTypes) {
+            if (connectorsResult.connectors[type]) {
+              connectorInfo[type] = {
+                name: connectorsResult.connectors[type].name,
+                available: connectorsResult.connectors[type].available,
+                connected: false,
+                hasToken: false
+              }
+
+              // Check connection status
+              try {
+                const statusRes = await fetch(`/api/connectors/${type}/status`)
+                if (statusRes.ok) {
+                  const statusData = await statusRes.json()
+                  const connections = statusData.connections || []
+                  const activeConnection = connections.find((conn: {is_active: boolean, connection_id: string}) => conn.is_active)
+                  const isConnected = activeConnection !== undefined
+
+                  if (isConnected && activeConnection) {
+                    connectorInfo[type].connected = true
+                    
+                    // Check token availability
+                    try {
+                      const tokenRes = await fetch(`/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`)
+                      if (tokenRes.ok) {
+                        const tokenData = await tokenRes.json()
+                        if (tokenData.access_token) {
+                          connectorInfo[type].hasToken = true
+                        }
+                      }
+                    } catch {
+                      // Token check failed
+                    }
+                  }
+                }
+              } catch {
+                // Status check failed
+              }
+            }
+          }
+
+          setCloudConnectors(connectorInfo)
         }
       } catch (err) {
-        console.error("Failed to check AWS availability", err)
+        console.error("Failed to check availability", err)
       }
     }
-    checkAws()
+    checkAvailability()
   }, [])
 
   // Handle click outside to close dropdown
@@ -220,6 +273,25 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
     }
   }
 
+  const cloudConnectorItems = Object.entries(cloudConnectors)
+    .filter(([, info]) => info.available)
+    .map(([type, info]) => ({
+      label: info.name,
+      icon: PlugZap,
+      onClick: () => {
+        setIsOpen(false)
+        if (info.connected && info.hasToken) {
+          router.push(`/upload/${type}`)
+        } else {
+          router.push('/settings')
+        }
+      },
+      disabled: !info.connected || !info.hasToken,
+      tooltip: !info.connected ? `Connect ${info.name} in Settings first` : 
+               !info.hasToken ? `Reconnect ${info.name} - access token required` : 
+               undefined
+    }))
+
   const menuItems = [
     {
       label: "Add File",
@@ -242,14 +314,7 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
         setShowS3Dialog(true)
       }
     }] : []),
-    {
-      label: "Cloud Connectors",
-      icon: PlugZap,
-      onClick: () => {
-        setIsOpen(false)
-        router.push("/settings")
-      }
-    }
+    ...cloudConnectorItems
   ]
 
   return (
@@ -291,7 +356,12 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
                 <button
                   key={index}
                   onClick={item.onClick}
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  disabled={'disabled' in item ? item.disabled : false}
+                  title={'tooltip' in item ? item.tooltip : undefined}
+                  className={cn(
+                    "w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+                    'disabled' in item && item.disabled && "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-current"
+                  )}
                 >
                   {item.label}
                 </button>
@@ -390,6 +460,7 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
           </div>
         </DialogContent>
       </Dialog>
+
     </>
   )
 }
