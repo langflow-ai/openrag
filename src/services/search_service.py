@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from agentd.tool_decorator import tool
 from config.settings import clients, INDEX_NAME, EMBED_MODEL
 from auth_context import get_auth_context
@@ -166,11 +166,11 @@ class SearchService:
         for hit in results["hits"]["hits"]:
             chunks.append(
                 {
-                    "filename": hit["_source"]["filename"],
-                    "mimetype": hit["_source"]["mimetype"],
-                    "page": hit["_source"]["page"],
-                    "text": hit["_source"]["text"],
-                    "score": hit["_score"],
+                    "filename": hit["_source"].get("filename"),
+                    "mimetype": hit["_source"].get("mimetype"),
+                    "page": hit["_source"].get("page"),
+                    "text": hit["_source"].get("text"),
+                    "score": hit.get("_score"),
                     "source_url": hit["_source"].get("source_url"),
                     "owner": hit["_source"].get("owner"),
                     "owner_name": hit["_source"].get("owner_name"),
