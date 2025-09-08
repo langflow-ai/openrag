@@ -1,12 +1,5 @@
 import sys
 
-# Check for TUI flag FIRST, before any heavy imports
-if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--tui":
-    from tui.main import run_tui
-
-    run_tui()
-    sys.exit(0)
-
 # Configure structured logging early
 from utils.logging_config import configure_from_env, get_logger
 
@@ -27,6 +20,8 @@ from starlette.routing import Route
 multiprocessing.set_start_method("spawn", force=True)
 
 # Create process pool FIRST, before any torch/CUDA imports
+from utils.process_pool import process_pool
+
 import torch
 
 # API endpoints
@@ -72,6 +67,7 @@ from session_manager import SessionManager
 from utils.process_pool import process_pool
 
 # API endpoints
+
 
 logger.info(
     "CUDA device information",
@@ -335,10 +331,6 @@ async def initialize_services():
             )
     else:
         logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
-
-    # New: Langflow file service
-
-    langflow_file_service = LangflowFileService()
 
     return {
         "document_service": document_service,
@@ -713,6 +705,17 @@ async def create_app():
             require_auth(services["session_manager"])(
                 partial(
                     connectors.connector_status,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/connectors/{connector_type}/token",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.connector_token,
                     connector_service=services["connector_service"],
                     session_manager=services["session_manager"],
                 )

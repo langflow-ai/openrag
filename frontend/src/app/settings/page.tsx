@@ -19,6 +19,25 @@ import { ProtectedRoute } from "@/components/protected-route";
 import { useTask } from "@/contexts/task-context";
 import { useAuth } from "@/contexts/auth-context";
 
+interface GoogleDriveFile {
+  id: string
+  name: string
+  mimeType: string
+  webViewLink?: string
+  iconLink?: string
+}
+
+interface OneDriveFile {
+  id: string
+  name: string
+  mimeType?: string
+  webUrl?: string
+  driveItem?: {
+    file?: { mimeType: string }
+    folder?: any
+  }
+}
+
 interface Connector {
 	id: string;
 	name: string;
