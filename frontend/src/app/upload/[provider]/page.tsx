@@ -24,7 +24,7 @@ interface OneDriveFile {
   webUrl?: string
   driveItem?: {
     file?: { mimeType: string }
-    folder?: object
+    folder?: unknown
   }
 }
 
@@ -155,6 +155,14 @@ export default function UploadProviderPage() {
     setSelectedFiles(files)
     console.log(`Selected ${files.length} files from ${provider}:`, files)
     // You can add additional handling here like triggering sync, etc.
+  }
+
+  const handleGoogleDriveFileSelected = (files: GoogleDriveFile[]) => {
+    handleFileSelected(files)
+  }
+
+  const handleOneDriveFileSelected = (files: OneDriveFile[]) => {
+    handleFileSelected(files)
   }
 
   const handleSync = async (connector: CloudConnector) => {
@@ -323,7 +331,7 @@ export default function UploadProviderPage() {
       <div className="max-w-3xl mx-auto">
         {connector.type === "google_drive" && (
           <GoogleDrivePicker
-            onFileSelected={handleFileSelected}
+            onFileSelected={handleGoogleDriveFileSelected}
             selectedFiles={selectedFiles as GoogleDriveFile[]}
             isAuthenticated={true}
             accessToken={accessToken || undefined}
@@ -332,7 +340,7 @@ export default function UploadProviderPage() {
         
         {(connector.type === "onedrive" || connector.type === "sharepoint") && (
           <OneDrivePicker
-            onFileSelected={handleFileSelected}
+            onFileSelected={handleOneDriveFileSelected}
             selectedFiles={selectedFiles as OneDriveFile[]}
             isAuthenticated={true}
             accessToken={accessToken || undefined}
