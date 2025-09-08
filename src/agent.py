@@ -203,6 +203,10 @@ async def async_response(
     if extra_headers:
         request_params["extra_headers"] = extra_headers
 
+    if "x-api-key" not in client.default_headers:
+        if hasattr(client, "api_key") and extra_headers is not None:
+            extra_headers["x-api-key"] = client.api_key
+
     response = await client.responses.create(**request_params)
 
     response_text = response.output_text
@@ -429,29 +433,35 @@ async def async_langflow_chat(
     user_id: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    store_conversation: bool = True,
 ):
     logger.debug(
+        
         "async_langflow_chat called",
+       
         user_id=user_id,
+       
         previous_response_id=previous_response_id,
     )
 
-    # Get the specific conversation thread (or create new one)
-    conversation_state = get_conversation_thread(user_id, previous_response_id)
-    logger.debug(
-        "Got langflow conversation state",
-        message_count=len(conversation_state["messages"]),
-    )
+    if store_conversation:
+        # Get the specific conversation thread (or create new one)
+        conversation_state = get_conversation_thread(user_id, previous_response_id)
+        logger.debug(
+            "Got langflow conversation state",
+            message_count=len(conversation_state["messages"]),
+        )
 
     # Add user message to conversation with timestamp
     from datetime import datetime
 
-    user_message = {"role": "user", "content": prompt, "timestamp": datetime.now()}
-    conversation_state["messages"].append(user_message)
-    logger.debug(
-        "Added user message to langflow",
-        message_count=len(conversation_state["messages"]),
-    )
+    if store_conversation:
+        user_message = {"role": "user", "content": prompt, "timestamp": datetime.now()}
+        conversation_state["messages"].append(user_message)
+        logger.debug(
+            "Added user message to langflow",
+            message_count=len(conversation_state["messages"]),
+        )
 
     response_text, response_id, response_obj = await async_response(
         langflow_client,
@@ -466,20 +476,29 @@ async def async_langflow_chat(
         response_preview=response_text[:50],
         response_id=response_id,
     )
-
-    # Add assistant response to conversation with response_id, timestamp, and full response object
-    assistant_message = {
-        "role": "assistant",
-        "content": response_text,
-        "response_id": response_id,
-        "timestamp": datetime.now(),
-        "response_data": response_obj.model_dump() if hasattr(response_obj, "model_dump") else str(response_obj),  # Store complete response for function calls
-    }
-    conversation_state["messages"].append(assistant_message)
     logger.debug(
-        "Added assistant message to langflow",
-        message_count=len(conversation_state["messages"]),
+        "Got langflow response",
+        response_preview=response_text[:50],
+        response_id=response_id,
     )
+
+    if store_conversation:
+        # Add assistant response to conversation with response_id and timestamp
+        assistant_message = {
+            "role": "assistant",
+            "content": response_text,
+            "response_id": response_id,
+            "timestamp": datetime.now(),
+            "response_data": response_obj.model_dump() if hasattr(response_obj, "model_dump") else str(response_obj),  # Store complete response for function calls
+        }
+        conversation_state["messages"].append(assistant_message)
+        logger.debug(
+            "Added assistant message to langflow",
+            message_count=len(conversation_state["messages"]),
+        )
+
+    if not store_conversation:
+        return response_text, response_id
 
     # Store the conversation thread with its response_id
     if response_id:
@@ -493,11 +512,15 @@ async def async_langflow_chat(
             print(f"[DEBUG] Claimed session {response_id} for user {user_id}")
         except Exception as e:
             print(f"[WARNING] Failed to claim session ownership: {e}")
-        
+
         print(
             f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
         )
-        logger.debug("Stored langflow conversation thread", user_id=user_id, response_id=response_id)
+        logger.debug(
+            "Stored langflow conversation thread",
+            user_id=user_id,
+            response_id=response_id,
+        )
 
         # Debug: Check what's in user_conversations now
         conversations = get_user_conversations(user_id)
@@ -594,4 +617,8 @@ async def async_langflow_chat_stream(
             print(
                 f"[DEBUG] Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
             )
-            logger.debug("Stored langflow conversation thread", user_id=user_id, response_id=response_id)
+            logger.debug(
+                "Stored langflow conversation thread",
+                user_id=user_id,
+                response_id=response_id,
+            )

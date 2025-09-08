@@ -1,5 +1,9 @@
-from config.settings import clients, LANGFLOW_URL, FLOW_ID
-from agent import async_chat, async_langflow, async_chat_stream, async_langflow_stream
+from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL, FLOW_ID
+from agent import (
+    async_chat,
+    async_langflow,
+    async_chat_stream,
+)
 from auth_context import set_auth_context
 import json
 from utils.logging_config import get_logger
@@ -152,6 +156,62 @@ class ChatService:
             if response_id:
                 response_data["response_id"] = response_id
             return response_data
+
+    async def langflow_nudges_chat(
+        self,
+        user_id: str = None,
+        jwt_token: str = None,
+        previous_response_id: str = None,
+    ):
+        """Handle Langflow chat requests"""
+
+        if not LANGFLOW_URL or not NUDGES_FLOW_ID:
+            raise ValueError(
+                "LANGFLOW_URL and NUDGES_FLOW_ID environment variables are required"
+            )
+
+        # Prepare extra headers for JWT authentication
+        extra_headers = {}
+        if jwt_token:
+            extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
+
+        # Ensure the Langflow client exists; try lazy init if needed
+        langflow_client = await clients.ensure_langflow_client()
+        if not langflow_client:
+            raise ValueError(
+                "Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY."
+            )
+        prompt = ""
+        if previous_response_id:
+            from agent import get_conversation_thread
+
+            conversation_history = get_conversation_thread(
+                user_id, previous_response_id
+            )
+            if conversation_history:
+                conversation_history = "\n".join(
+                    [
+                        f"{msg['role']}: {msg['content']}"
+                        for msg in conversation_history["messages"]
+                        if msg["role"] in ["user", "assistant"]
+                    ]
+                )
+                prompt = f"{conversation_history}"
+
+        from agent import async_langflow_chat
+
+        response_text, response_id = await async_langflow_chat(
+            langflow_client,
+            NUDGES_FLOW_ID,
+            prompt,
+            user_id,
+            extra_headers=extra_headers,
+            store_conversation=False,
+        )
+        response_data = {"response": response_text}
+        if response_id:
+            response_data["response_id"] = response_id
+        return response_data
 
     async def upload_context_chat(
         self,
@@ -311,9 +371,9 @@ class ChatService:
         
         if not user_id:
             return {"error": "User ID is required", "conversations": []}
-        
+
         all_conversations = []
-        
+
         try:
             # 1. Get local conversation metadata (no actual messages stored here)
             conversations_dict = get_user_conversations(user_id)
@@ -325,8 +385,12 @@ class ChatService:
             
             # 2. Get actual conversations from Langflow database (source of truth for messages)
             print(f"[DEBUG] Attempting to fetch Langflow history for user: {user_id}")
-            langflow_history = await langflow_history_service.get_user_conversation_history(user_id, flow_id=FLOW_ID)
-            
+            langflow_history = (
+                await langflow_history_service.get_user_conversation_history(
+                    user_id, flow_id=FLOW_ID
+                )
+            )
+
             if langflow_history.get("conversations"):
                 for conversation in langflow_history["conversations"]:
                     session_id = conversation["session_id"]
@@ -400,10 +464,12 @@ class ChatService:
             if langflow_history.get("conversations"):
                 print(f"[DEBUG] Added {len(langflow_history['conversations'])} historical conversations from Langflow")
             elif langflow_history.get("error"):
-                print(f"[DEBUG] Could not fetch Langflow history for user {user_id}: {langflow_history['error']}")
+                print(
+                    f"[DEBUG] Could not fetch Langflow history for user {user_id}: {langflow_history['error']}"
+                )
             else:
                 print(f"[DEBUG] No Langflow conversations found for user {user_id}")
-        
+
         except Exception as e:
             print(f"[ERROR] Failed to fetch Langflow history: {e}")
             # Continue with just in-memory conversations
