@@ -19,24 +19,6 @@ import { ProtectedRoute } from "@/components/protected-route";
 import { useTask } from "@/contexts/task-context";
 import { useAuth } from "@/contexts/auth-context";
 
-interface GoogleDriveFile {
-  id: string
-  name: string
-  mimeType: string
-  webViewLink?: string
-  iconLink?: string
-}
-
-interface OneDriveFile {
-  id: string
-  name: string
-  mimeType?: string
-  webUrl?: string
-  driveItem?: {
-    file?: { mimeType: string }
-    folder?: unknown
-  }
-}
 
 interface Connector {
 	id: string;
@@ -105,14 +87,11 @@ function KnowledgeSourcesPage() {
 			if (response.ok) {
 				const settings = await response.json();
 				// Update all state cleanly
-				settings.flow_id && setFlowId(settings.flow_id);
-				settings.ingest_flow_id && setIngestFlowId(settings.ingest_flow_id);
-				settings.langflow_edit_url &&
-					setLangflowEditUrl(settings.langflow_edit_url);
-				settings.langflow_ingest_edit_url &&
-					setLangflowIngestEditUrl(settings.langflow_ingest_edit_url);
-				settings.langflow_public_url &&
-					setPublicLangflowUrl(settings.langflow_public_url);
+				if (settings.flow_id) setFlowId(settings.flow_id);
+				if (settings.ingest_flow_id) setIngestFlowId(settings.ingest_flow_id);
+				if (settings.langflow_edit_url) setLangflowEditUrl(settings.langflow_edit_url);
+				if (settings.langflow_ingest_edit_url) setLangflowIngestEditUrl(settings.langflow_ingest_edit_url);
+				if (settings.langflow_public_url) setPublicLangflowUrl(settings.langflow_public_url);
 				if (settings.ingestion_defaults) {
 					console.log(
 						"Loading ingestion defaults from backend:",
