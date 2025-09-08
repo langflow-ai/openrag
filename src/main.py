@@ -407,6 +407,17 @@ async def create_app():
             methods=["DELETE"],
         ),
         Route(
+            "/langflow/upload_ingest",
+            require_auth(services["session_manager"])(
+                partial(
+                    langflow_files.upload_and_ingest_user_file,
+                    langflow_file_service=services["langflow_file_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
             "/upload_context",
             require_auth(services["session_manager"])(
                 partial(

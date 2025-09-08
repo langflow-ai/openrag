@@ -114,6 +114,89 @@ async def run_ingestion(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def upload_and_ingest_user_file(
+    request: Request, langflow_file_service: LangflowFileService, session_manager
+):
+    """Combined upload and ingest endpoint - uploads file then runs ingestion"""
+    try:
+        logger.debug("upload_and_ingest_user_file endpoint called")
+        form = await request.form()
+        upload_file = form.get("file")
+        if upload_file is None:
+            logger.error("No file provided in upload_and_ingest request")
+            return JSONResponse({"error": "Missing file"}, status_code=400)
+
+        # Extract optional parameters
+        session_id = form.get("session_id")
+        settings_json = form.get("settings")
+        tweaks_json = form.get("tweaks")
+        delete_after_ingest = form.get("delete_after_ingest", "true").lower() == "true"
+
+        # Parse JSON fields if provided
+        settings = None
+        tweaks = None
+        
+        if settings_json:
+            try:
+                import json
+                settings = json.loads(settings_json)
+            except json.JSONDecodeError as e:
+                logger.error("Invalid settings JSON", error=str(e))
+                return JSONResponse({"error": "Invalid settings JSON"}, status_code=400)
+
+        if tweaks_json:
+            try:
+                import json
+                tweaks = json.loads(tweaks_json)
+            except json.JSONDecodeError as e:
+                logger.error("Invalid tweaks JSON", error=str(e))
+                return JSONResponse({"error": "Invalid tweaks JSON"}, status_code=400)
+
+        logger.debug(
+            "Processing file for combined upload and ingest",
+            filename=upload_file.filename,
+            size=upload_file.size,
+            session_id=session_id,
+            has_settings=bool(settings),
+            has_tweaks=bool(tweaks),
+            delete_after_ingest=delete_after_ingest
+        )
+
+        # Prepare file tuple for upload
+        content = await upload_file.read()
+        file_tuple = (
+            upload_file.filename,
+            content,
+            upload_file.content_type or "application/octet-stream",
+        )
+
+        jwt_token = getattr(request.state, "jwt_token", None)
+        logger.debug("JWT token status", jwt_present=jwt_token is not None)
+
+        logger.debug("Calling langflow_file_service.upload_and_ingest_file")
+        result = await langflow_file_service.upload_and_ingest_file(
+            file_tuple=file_tuple,
+            session_id=session_id,
+            tweaks=tweaks,
+            settings=settings,
+            jwt_token=jwt_token,
+            delete_after_ingest=delete_after_ingest
+        )
+        
+        logger.debug("Upload and ingest successful", result=result)
+        return JSONResponse(result, status_code=201)
+        
+    except Exception as e:
+        logger.error(
+            "upload_and_ingest_user_file endpoint failed",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        import traceback
+        logger.error("Full traceback", traceback=traceback.format_exc())
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 async def delete_user_files(
     request: Request, langflow_file_service: LangflowFileService, session_manager
 ):

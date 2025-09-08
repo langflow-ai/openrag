@@ -107,3 +107,132 @@ class LangflowFileService:
             )
         resp.raise_for_status()
         return resp.json()
+
+    async def upload_and_ingest_file(
+        self,
+        file_tuple,
+        session_id: Optional[str] = None,
+        tweaks: Optional[Dict[str, Any]] = None,
+        settings: Optional[Dict[str, Any]] = None,
+        jwt_token: Optional[str] = None,
+        delete_after_ingest: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Combined upload, ingest, and delete operation.
+        First uploads the file, then runs ingestion on it, then optionally deletes the file.
+        
+        Args:
+            file_tuple: File tuple (filename, content, content_type)
+            session_id: Optional session ID for the ingestion flow
+            tweaks: Optional tweaks for the ingestion flow
+            settings: Optional UI settings to convert to component tweaks
+            jwt_token: Optional JWT token for authentication
+            delete_after_ingest: Whether to delete the file from Langflow after ingestion (default: True)
+            
+        Returns:
+            Combined result with upload info, ingestion result, and deletion status
+        """
+        self.logger.debug("[LF] Starting combined upload and ingest operation")
+        
+        # Step 1: Upload the file
+        try:
+            upload_result = await self.upload_user_file(file_tuple, jwt_token=jwt_token)
+            self.logger.debug(
+                "[LF] Upload completed successfully",
+                file_id=upload_result.get("id"),
+                file_path=upload_result.get("path"),
+            )
+        except Exception as e:
+            self.logger.error("[LF] Upload failed during combined operation", error=str(e))
+            raise Exception(f"Upload failed: {str(e)}")
+
+        # Step 2: Prepare for ingestion
+        file_path = upload_result.get("path")
+        if not file_path:
+            raise ValueError("Upload successful but no file path returned")
+
+        # Convert UI settings to component tweaks if provided
+        final_tweaks = tweaks.copy() if tweaks else {}
+        
+        if settings:
+            self.logger.debug("[LF] Applying ingestion settings", settings=settings)
+
+            # Split Text component tweaks (SplitText-QIKhg)
+            if (
+                settings.get("chunkSize")
+                or settings.get("chunkOverlap")
+                or settings.get("separator")
+            ):
+                if "SplitText-QIKhg" not in final_tweaks:
+                    final_tweaks["SplitText-QIKhg"] = {}
+                if settings.get("chunkSize"):
+                    final_tweaks["SplitText-QIKhg"]["chunk_size"] = settings["chunkSize"]
+                if settings.get("chunkOverlap"):
+                    final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings[
+                        "chunkOverlap"
+                    ]
+                if settings.get("separator"):
+                    final_tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
+
+            # OpenAI Embeddings component tweaks (OpenAIEmbeddings-joRJ6)
+            if settings.get("embeddingModel"):
+                if "OpenAIEmbeddings-joRJ6" not in final_tweaks:
+                    final_tweaks["OpenAIEmbeddings-joRJ6"] = {}
+                final_tweaks["OpenAIEmbeddings-joRJ6"]["model"] = settings["embeddingModel"]
+
+            self.logger.debug("[LF] Final tweaks with settings applied", tweaks=final_tweaks)
+
+        # Step 3: Run ingestion
+        try:
+            ingest_result = await self.run_ingestion_flow(
+                file_paths=[file_path],
+                session_id=session_id,
+                tweaks=final_tweaks,
+                jwt_token=jwt_token,
+            )
+            self.logger.debug("[LF] Ingestion completed successfully")
+        except Exception as e:
+            self.logger.error(
+                "[LF] Ingestion failed during combined operation",
+                error=str(e),
+                file_path=file_path
+            )
+            # Note: We could optionally delete the uploaded file here if ingestion fails
+            raise Exception(f"Ingestion failed: {str(e)}")
+
+        # Step 4: Delete file from Langflow (optional)
+        file_id = upload_result.get("id")
+        delete_result = None
+        delete_error = None
+        
+        if delete_after_ingest and file_id:
+            try:
+                self.logger.debug("[LF] Deleting file after successful ingestion", file_id=file_id)
+                await self.delete_user_file(file_id)
+                delete_result = {"status": "deleted", "file_id": file_id}
+                self.logger.debug("[LF] File deleted successfully")
+            except Exception as e:
+                delete_error = str(e)
+                self.logger.warning(
+                    "[LF] Failed to delete file after ingestion",
+                    error=delete_error,
+                    file_id=file_id
+                )
+                delete_result = {"status": "delete_failed", "file_id": file_id, "error": delete_error}
+
+        # Return combined result
+        result = {
+            "status": "success",
+            "upload": upload_result,
+            "ingestion": ingest_result,
+            "message": f"File '{upload_result.get('name')}' uploaded and ingested successfully"
+        }
+        
+        if delete_after_ingest:
+            result["deletion"] = delete_result
+            if delete_result and delete_result.get("status") == "deleted":
+                result["message"] += " and cleaned up"
+            elif delete_error:
+                result["message"] += f" (cleanup warning: {delete_error})"
+        
+        return result
