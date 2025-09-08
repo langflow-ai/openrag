@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 from .tasks import UploadTask, FileTask
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class TaskProcessor(ABC):
@@ -207,23 +210,30 @@ class S3FileProcessor(TaskProcessor):
                         "page": chunk["page"],
                         "text": chunk["text"],
                         "chunk_embedding": vect,
-                        "owner": self.owner_user_id,
-                        "owner_name": self.owner_name,
-                        "owner_email": self.owner_email,
                         "file_size": file_size,
                         "connector_type": "s3",  # S3 uploads
                         "indexed_time": datetime.datetime.now().isoformat(),
                     }
+
+                    # Only set owner fields if owner_user_id is provided (for no-auth mode support)
+                    if self.owner_user_id is not None:
+                        chunk_doc["owner"] = self.owner_user_id
+                    if self.owner_name is not None:
+                        chunk_doc["owner_name"] = self.owner_name
+                    if self.owner_email is not None:
+                        chunk_doc["owner_email"] = self.owner_email
                     chunk_id = f"{slim_doc['id']}_{i}"
                     try:
                         await opensearch_client.index(
                             index=INDEX_NAME, id=chunk_id, body=chunk_doc
                         )
                     except Exception as e:
-                        print(
-                            f"[ERROR] OpenSearch indexing failed for S3 chunk {chunk_id}: {e}"
+                        logger.error(
+                            "OpenSearch indexing failed for S3 chunk",
+                            chunk_id=chunk_id,
+                            error=str(e),
+                            chunk_doc=chunk_doc,
                         )
-                        print(f"[ERROR] Chunk document: {chunk_doc}")
                         raise
 
                 result = {"status": "indexed", "id": slim_doc["id"]}

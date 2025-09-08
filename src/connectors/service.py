@@ -1,13 +1,17 @@
-import asyncio
 import tempfile
 import os
 from typing import Dict, Any, List, Optional
 
 from .base import BaseConnector, ConnectorDocument
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 from .google_drive import GoogleDriveConnector
 from .sharepoint import SharePointConnector
 from .onedrive import OneDriveConnector
 from .connection_manager import ConnectionManager
+
+logger = get_logger(__name__)
 
 
 class ConnectorService:
@@ -63,7 +67,7 @@ class ConnectorService:
 
                 doc_service = DocumentService(session_manager=self.session_manager)
 
-                print(f"[DEBUG] Processing connector document with ID: {document.id}")
+                logger.debug("Processing connector document", document_id=document.id)
 
                 # Process using the existing pipeline but with connector document metadata
                 result = await doc_service.process_file_common(
@@ -78,7 +82,7 @@ class ConnectorService:
                     connector_type=connector_type,
                 )
 
-                print(f"[DEBUG] Document processing result: {result}")
+                logger.debug("Document processing result", result=result)
 
                 # If successfully indexed or already exists, update the indexed documents with connector metadata
                 if result["status"] in ["indexed", "unchanged"]:
@@ -105,7 +109,7 @@ class ConnectorService:
         jwt_token: str = None,
     ):
         """Update indexed chunks with connector-specific metadata"""
-        print(f"[DEBUG] Looking for chunks with document_id: {document.id}")
+        logger.debug("Looking for chunks", document_id=document.id)
 
         # Find all chunks for this document
         query = {"query": {"term": {"document_id": document.id}}}
@@ -118,26 +122,34 @@ class ConnectorService:
         try:
             response = await opensearch_client.search(index=self.index_name, body=query)
         except Exception as e:
-            print(
-                f"[ERROR] OpenSearch search failed for connector metadata update: {e}"
+            logger.error(
+                "OpenSearch search failed for connector metadata update",
+                error=str(e),
+                query=query,
             )
-            print(f"[ERROR] Search query: {query}")
             raise
 
-        print(f"[DEBUG] Search query: {query}")
-        print(
-            f"[DEBUG] Found {len(response['hits']['hits'])} chunks matching document_id: {document.id}"
+        logger.debug(
+            "Search query executed",
+            query=query,
+            chunks_found=len(response["hits"]["hits"]),
+            document_id=document.id,
         )
 
         # Update each chunk with connector metadata
-        print(
-            f"[DEBUG] Updating {len(response['hits']['hits'])} chunks with connector_type: {connector_type}"
+        logger.debug(
+            "Updating chunks with connector_type",
+            chunk_count=len(response["hits"]["hits"]),
+            connector_type=connector_type,
         )
         for hit in response["hits"]["hits"]:
             chunk_id = hit["_id"]
             current_connector_type = hit["_source"].get("connector_type", "unknown")
-            print(
-                f"[DEBUG] Chunk {chunk_id}: current connector_type = {current_connector_type}, updating to {connector_type}"
+            logger.debug(
+                "Updating chunk connector metadata",
+                chunk_id=chunk_id,
+                current_connector_type=current_connector_type,
+                new_connector_type=connector_type,
             )
 
             update_body = {
@@ -165,10 +177,14 @@ class ConnectorService:
                 await opensearch_client.update(
                     index=self.index_name, id=chunk_id, body=update_body
                 )
-                print(f"[DEBUG] Updated chunk {chunk_id} with connector metadata")
+                logger.debug("Updated chunk with connector metadata", chunk_id=chunk_id)
             except Exception as e:
-                print(f"[ERROR] OpenSearch update failed for chunk {chunk_id}: {e}")
-                print(f"[ERROR] Update body: {update_body}")
+                logger.error(
+                    "OpenSearch update failed for chunk",
+                    chunk_id=chunk_id,
+                    error=str(e),
+                    update_body=update_body,
+                )
                 raise
 
     def _get_file_extension(self, mimetype: str) -> str:
@@ -201,8 +217,10 @@ class ConnectorService:
                 "TaskService not available - connector sync requires task service dependency"
             )
 
-        print(
-            f"[DEBUG] Starting sync for connection {connection_id}, max_files={max_files}"
+        logger.debug(
+            "Starting sync for connection",
+            connection_id=connection_id,
+            max_files=max_files,
         )
 
         connector = await self.get_connector(connection_id)
@@ -211,7 +229,7 @@ class ConnectorService:
                 f"Connection '{connection_id}' not found or not authenticated"
             )
 
-        print(f"[DEBUG] Got connector, authenticated: {connector.is_authenticated}")
+        logger.debug("Got connector", authenticated=connector.is_authenticated)
 
         if not connector.is_authenticated:
             raise ValueError(f"Connection '{connection_id}' not authenticated")
@@ -225,11 +243,13 @@ class ConnectorService:
 
         while True:
             # List files from connector with limit
-            print(
-                f"[DEBUG] Calling list_files with page_size={page_size}, page_token={page_token}"
+            logger.debug(
+                "Calling list_files", page_size=page_size, page_token=page_token
             )
             file_list = await connector.list_files(page_token, limit=page_size)
-            print(f"[DEBUG] Got {len(file_list.get('files', []))} files")
+            logger.debug(
+                "Got files from connector", file_count=len(file_list.get("files", []))
+            )
             files = file_list["files"]
 
             if not files:
@@ -247,9 +267,6 @@ class ConnectorService:
                 break
 
             page_token = file_list.get("nextPageToken")
-
-        if not files_to_process:
-            raise ValueError("No files found to sync")
 
         # Get user information
         user = self.session_manager.get_user(user_id) if self.session_manager else None

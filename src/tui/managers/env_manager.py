@@ -3,9 +3,13 @@
 import os
 import secrets
 import string
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, List
 from dataclasses import dataclass, field
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 from ..utils.validation import (
     validate_openai_api_key,
@@ -116,7 +120,7 @@ class EnvManager:
             return True
 
         except Exception as e:
-            print(f"Error loading .env file: {e}")
+            logger.error("Error loading .env file", error=str(e))
             return False
 
     def setup_secure_defaults(self) -> None:
@@ -214,9 +218,10 @@ class EnvManager:
         try:
             # Ensure secure defaults (including Langflow secret key) are set before saving
             self.setup_secure_defaults()
-            # Create backup if file exists
+            # Create timestamped backup if file exists
             if self.env_file.exists():
-                backup_file = self.env_file.with_suffix(".env.backup")
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_file = self.env_file.with_suffix(f".env.backup.{timestamp}")
                 self.env_file.rename(backup_file)
 
             with open(self.env_file, "w") as f:
@@ -299,7 +304,7 @@ class EnvManager:
             return True
 
         except Exception as e:
-            print(f"Error saving .env file: {e}")
+            logger.error("Error saving .env file", error=str(e))
             return False
 
     def get_no_auth_setup_fields(self) -> List[tuple[str, str, str, bool]]:

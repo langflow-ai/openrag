@@ -196,7 +196,11 @@ class DocumentService:
                     index=INDEX_NAME, id=chunk_id, body=chunk_doc
                 )
             except Exception as e:
-                logger.error("OpenSearch indexing failed for chunk", chunk_id=chunk_id, error=str(e))
+                logger.error(
+                    "OpenSearch indexing failed for chunk",
+                    chunk_id=chunk_id,
+                    error=str(e),
+                )
                 logger.error("Chunk document details", chunk_doc=chunk_doc)
                 raise
         return {"status": "indexed", "id": file_hash}
@@ -232,7 +236,9 @@ class DocumentService:
             try:
                 exists = await opensearch_client.exists(index=INDEX_NAME, id=file_hash)
             except Exception as e:
-                logger.error("OpenSearch exists check failed", file_hash=file_hash, error=str(e))
+                logger.error(
+                    "OpenSearch exists check failed", file_hash=file_hash, error=str(e)
+                )
                 raise
             if exists:
                 return {"status": "unchanged", "id": file_hash}
@@ -372,7 +378,11 @@ class DocumentService:
                             index=INDEX_NAME, id=chunk_id, body=chunk_doc
                         )
                     except Exception as e:
-                        logger.error("OpenSearch indexing failed for batch chunk", chunk_id=chunk_id, error=str(e))
+                        logger.error(
+                            "OpenSearch indexing failed for batch chunk",
+                            chunk_id=chunk_id,
+                            error=str(e),
+                        )
                         logger.error("Chunk document details", chunk_doc=chunk_doc)
                         raise
 
@@ -388,9 +398,13 @@ class DocumentService:
             from concurrent.futures import BrokenExecutor
 
             if isinstance(e, BrokenExecutor):
-                logger.error("Process pool broken while processing file", file_path=file_path)
+                logger.error(
+                    "Process pool broken while processing file", file_path=file_path
+                )
                 logger.info("Worker process likely crashed")
-                logger.info("You should see detailed crash logs above from the worker process")
+                logger.info(
+                    "You should see detailed crash logs above from the worker process"
+                )
 
                 # Mark pool as broken for potential recreation
                 self._process_pool_broken = True
@@ -399,11 +413,15 @@ class DocumentService:
                 if self._recreate_process_pool():
                     logger.info("Process pool successfully recreated")
                 else:
-                    logger.warning("Failed to recreate process pool - future operations may fail")
+                    logger.warning(
+                        "Failed to recreate process pool - future operations may fail"
+                    )
 
                 file_task.error = f"Worker process crashed: {str(e)}"
             else:
-                logger.error("Failed to process file", file_path=file_path, error=str(e))
+                logger.error(
+                    "Failed to process file", file_path=file_path, error=str(e)
+                )
                 file_task.error = str(e)
 
             logger.error("Full traceback available")
