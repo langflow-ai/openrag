@@ -1,9 +1,9 @@
-import logging
 from typing import Any, Dict, List, Optional
 
 from config.settings import LANGFLOW_INGEST_FLOW_ID, clients
+from utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LangflowFileService:
@@ -24,14 +24,16 @@ class LangflowFileService:
             headers={"Content-Type": None},
         )
         logger.debug(
-            "[LF] Upload response: %s %s", resp.status_code, resp.reason_phrase
+            "[LF] Upload response",
+            status_code=resp.status_code,
+            reason=resp.reason_phrase,
         )
         if resp.status_code >= 400:
             logger.error(
-                "[LF] Upload failed: %s %s | body=%s",
-                resp.status_code,
-                resp.reason_phrase,
-                resp.text[:500],
+                "[LF] Upload failed",
+                status_code=resp.status_code,
+                reason=resp.reason_phrase,
+                body=resp.text[:500],
             )
         resp.raise_for_status()
         return resp.json()
@@ -39,17 +41,19 @@ class LangflowFileService:
     async def delete_user_file(self, file_id: str) -> None:
         """Delete a file by id using v2: DELETE /api/v2/files/{id}."""
         # NOTE: use v2 root, not /api/v1
-        logger.debug("[LF] Delete (v2) -> /api/v2/files/%s", file_id)
+        logger.debug("[LF] Delete (v2) -> /api/v2/files/{id}", file_id=file_id)
         resp = await clients.langflow_request("DELETE", f"/api/v2/files/{file_id}")
         logger.debug(
-            "[LF] Delete response: %s %s", resp.status_code, resp.reason_phrase
+            "[LF] Delete response",
+            status_code=resp.status_code,
+            reason=resp.reason_phrase,
         )
         if resp.status_code >= 400:
             logger.error(
-                "[LF] Delete failed: %s %s | body=%s",
-                resp.status_code,
-                resp.reason_phrase,
-                resp.text[:500],
+                "[LF] Delete failed",
+                status_code=resp.status_code,
+                reason=resp.reason_phrase,
+                body=resp.text[:500],
             )
         resp.raise_for_status()
 
@@ -84,9 +88,11 @@ class LangflowFileService:
         if jwt_token:
             # Using the global variable pattern that Langflow expects for OpenSearch components
             tweaks["OpenSearchHybrid-Ve6bS"] = {"jwt_token": jwt_token}
-            logger.error("[LF] Adding JWT token to tweaks for OpenSearch components")
+            logger.debug(
+                "[LF] Added JWT token to tweaks for OpenSearch components"
+            )
         else:
-            logger.error("[LF] No JWT token provided")
+            logger.warning("[LF] No JWT token provided")
         if tweaks:
             payload["tweaks"] = tweaks
         if session_id:
@@ -101,19 +107,29 @@ class LangflowFileService:
             bool(jwt_token),
         )
 
-        # Log the full payload for debugging
-        logger.debug("[LF] Request payload: %s", payload)
+        # Avoid logging full payload to prevent leaking sensitive data (e.g., JWT)
 
         resp = await clients.langflow_request(
             "POST", f"/api/v1/run/{self.flow_id_ingest}", json=payload
         )
-        logger.debug("[LF] Run response: %s %s", resp.status_code, resp.reason_phrase)
+        logger.debug(
+            "[LF] Run response", status_code=resp.status_code, reason=resp.reason_phrase
+        )
         if resp.status_code >= 400:
             logger.error(
-                "[LF] Run failed: %s %s | body=%s",
-                resp.status_code,
-                resp.reason_phrase,
-                resp.text[:1000],
+                "[LF] Run failed",
+                status_code=resp.status_code,
+                reason=resp.reason_phrase,
+                body=resp.text[:1000],
             )
         resp.raise_for_status()
-        return resp.json()
+        try:
+            resp_json = resp.json()
+        except Exception as e:
+            logger.error(
+                "[LF] Failed to parse run response as JSON",
+                body=resp.text[:1000],
+                error=str(e),
+            )
+            raise
+        return resp_json
