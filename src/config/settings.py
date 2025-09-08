@@ -322,6 +322,10 @@ class AppClients:
         existing_headers = kwargs.pop("headers", {})
         headers = {**default_headers, **existing_headers}
 
+        # Remove Content-Type if explicitly set to None (for file uploads)
+        if headers.get("Content-Type") is None:
+            headers.pop("Content-Type", None)
+
         url = f"{LANGFLOW_URL}{endpoint}"
 
         return await self.langflow_http_client.request(
