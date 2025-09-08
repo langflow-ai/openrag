@@ -65,6 +65,7 @@ class LangflowFileService:
         The flow must expose a File component path in input schema or accept files parameter.
         """
         if not self.flow_id_ingest:
+            logger.error("[LF] LANGFLOW_INGEST_FLOW_ID is not configured")
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
 
         payload: Dict[str, Any] = {
