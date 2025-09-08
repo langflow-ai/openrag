@@ -1,6 +1,7 @@
 import asyncio
 import random
 from typing import Dict, Optional
+import uuid
 
 from models.tasks import TaskStatus, UploadTask, FileTask
 from utils.gpu_detection import get_worker_count
