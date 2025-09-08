@@ -1,23 +1,23 @@
 """Environment configuration manager for OpenRAG TUI."""
 
-import os
 import secrets
 import string
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, List
-from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 from ..utils.validation import (
-    validate_openai_api_key,
+    sanitize_env_value,
+    validate_documents_paths,
     validate_google_oauth_client_id,
     validate_non_empty,
+    validate_openai_api_key,
     validate_url,
-    validate_documents_paths,
-    sanitize_env_value,
 )
 
 
@@ -31,7 +31,7 @@ class EnvConfig:
     langflow_secret_key: str = ""
     langflow_superuser: str = "admin"
     langflow_superuser_password: str = ""
-    flow_id: str = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+    langflow_chat_flow_id: str = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
     langflow_ingest_flow_id: str = "5488df7c-b93f-4f87-a446-b67028bc0813"
 
     # OAuth settings
@@ -99,7 +99,7 @@ class EnvManager:
                             "LANGFLOW_SECRET_KEY": "langflow_secret_key",
                             "LANGFLOW_SUPERUSER": "langflow_superuser",
                             "LANGFLOW_SUPERUSER_PASSWORD": "langflow_superuser_password",
-                            "FLOW_ID": "flow_id",
+                            "LANGFLOW_CHAT_FLOW_ID": "langflow_chat_flow_id",
                             "LANGFLOW_INGEST_FLOW_ID": "langflow_ingest_flow_id",
                             "GOOGLE_OAUTH_CLIENT_ID": "google_oauth_client_id",
                             "GOOGLE_OAUTH_CLIENT_SECRET": "google_oauth_client_secret",
@@ -236,8 +236,10 @@ class EnvManager:
                 f.write(
                     f"LANGFLOW_SUPERUSER_PASSWORD={self.config.langflow_superuser_password}\n"
                 )
-                f.write(f"FLOW_ID={self.config.flow_id}\n")
-                f.write(f"LANGFLOW_INGEST_FLOW_ID={self.config.langflow_ingest_flow_id}\n")
+                f.write(f"LANGFLOW_CHAT_FLOW_ID={self.config.langflow_chat_flow_id}\n")
+                f.write(
+                    f"LANGFLOW_INGEST_FLOW_ID={self.config.langflow_ingest_flow_id}\n"
+                )
                 f.write(f"OPENSEARCH_PASSWORD={self.config.opensearch_password}\n")
                 f.write(f"OPENAI_API_KEY={self.config.openai_api_key}\n")
                 f.write(
