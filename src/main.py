@@ -332,6 +332,8 @@ async def initialize_services():
     else:
         logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
 
+    langflow_file_service = LangflowFileService()
+
     return {
         "document_service": document_service,
         "search_service": search_service,
