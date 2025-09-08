@@ -1,3 +1,10 @@
+from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL
+from agent import (
+    async_chat,
+    async_langflow,
+    async_chat_stream,
+)
+from auth_context import set_auth_context
 import json
 
 from utils.logging_config import get_logger
@@ -154,6 +161,62 @@ class ChatService:
             if response_id:
                 response_data["response_id"] = response_id
             return response_data
+
+    async def langflow_nudges_chat(
+        self,
+        user_id: str = None,
+        jwt_token: str = None,
+        previous_response_id: str = None,
+    ):
+        """Handle Langflow chat requests"""
+
+        if not LANGFLOW_URL or not NUDGES_FLOW_ID:
+            raise ValueError(
+                "LANGFLOW_URL and NUDGES_FLOW_ID environment variables are required"
+            )
+
+        # Prepare extra headers for JWT authentication
+        extra_headers = {}
+        if jwt_token:
+            extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
+
+        # Ensure the Langflow client exists; try lazy init if needed
+        langflow_client = await clients.ensure_langflow_client()
+        if not langflow_client:
+            raise ValueError(
+                "Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY."
+            )
+        prompt = ""
+        if previous_response_id:
+            from agent import get_conversation_thread
+
+            conversation_history = get_conversation_thread(
+                user_id, previous_response_id
+            )
+            if conversation_history:
+                conversation_history = "\n".join(
+                    [
+                        f"{msg['role']}: {msg['content']}"
+                        for msg in conversation_history["messages"]
+                        if msg["role"] in ["user", "assistant"]
+                    ]
+                )
+                prompt = f"{conversation_history}"
+
+        from agent import async_langflow_chat
+
+        response_text, response_id = await async_langflow_chat(
+            langflow_client,
+            NUDGES_FLOW_ID,
+            prompt,
+            user_id,
+            extra_headers=extra_headers,
+            store_conversation=False,
+        )
+        response_data = {"response": response_text}
+        if response_id:
+            response_data["response_id"] = response_id
+        return response_data
 
     async def upload_context_chat(
         self,

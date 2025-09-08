@@ -1,6 +1,7 @@
 import sys
 
 # Configure structured logging early
+from connectors.langflow_connector_service import LangflowConnectorService
 from utils.logging_config import configure_from_env, get_logger
 
 configure_from_env()
@@ -50,7 +51,6 @@ from config.settings import (
 )
 
 # Existing services
-from connectors.service import ConnectorService
 from services.auth_service import AuthService
 from services.chat_service import ChatService
 
@@ -68,6 +68,18 @@ from session_manager import SessionManager
 from utils.process_pool import process_pool
 
 # API endpoints
+from api import (
+    nudges,
+    upload,
+    search,
+    chat,
+    auth,
+    connectors,
+    tasks,
+    oidc,
+    knowledge_filter,
+    settings,
+)
 
 
 logger.info(
@@ -376,11 +388,7 @@ async def initialize_services():
     document_service.process_pool = process_pool
 
     # Initialize connector service
-    connector_service = ConnectorService(
-        patched_async_client=clients.patched_async_client,
-        process_pool=process_pool,
-        embed_model="text-embedding-3-small",
-        index_name=INDEX_NAME,
+    connector_service = LangflowConnectorService(
         task_service=task_service,
         session_manager=session_manager,
     )
@@ -843,6 +851,28 @@ async def create_app():
             require_auth(services["session_manager"])(
                 partial(
                     settings.get_settings, session_manager=services["session_manager"]
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/nudges",
+            require_auth(services["session_manager"])(
+                partial(
+                    nudges.nudges_from_kb_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/nudges/{chat_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    nudges.nudges_from_chat_id_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
                 )
             ),
             methods=["GET"],
