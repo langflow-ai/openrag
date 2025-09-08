@@ -127,7 +127,6 @@ function ChatPage() {
   const [dropdownDismissed, setDropdownDismissed] = useState(false);
   const [isUserInteracting, setIsUserInteracting] = useState(false);
   const [isForkingInProgress, setIsForkingInProgress] = useState(false);
-  const [lastForkTimestamp, setLastForkTimestamp] = useState<number>(0);
   const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -454,8 +453,15 @@ function ChatPage() {
           content: string;
           timestamp?: string;
           response_id?: string;
-          chunks?: any[];
-          response_data?: any;
+          chunks?: Array<{
+            item?: { type?: string; tool_name?: string; id?: string; inputs?: unknown; results?: unknown; status?: string };
+            delta?: { tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string }; type?: string }> };
+            type?: string;
+            result?: unknown;
+            output?: unknown;
+            response?: unknown;
+          }>;
+          response_data?: unknown;
         }) => {
           const message: Message = {
             role: msg.role as "user" | "assistant",
@@ -480,12 +486,12 @@ function ChatPage() {
                   const toolCall = chunk.item;
                   console.log("Found Langflow tool call:", toolCall);
                   functionCalls.push({
-                    id: toolCall.id,
-                    name: toolCall.tool_name,
-                    arguments: toolCall.inputs || {},
+                    id: toolCall.id || "",
+                    name: toolCall.tool_name || "unknown",
+                    arguments: (toolCall.inputs as Record<string, unknown>) || {},
                     argumentsString: JSON.stringify(toolCall.inputs || {}),
-                    result: toolCall.results,
-                    status: toolCall.status || "completed",
+                    result: toolCall.results as Record<string, unknown> | ToolCallResult[],
+                    status: (toolCall.status as "pending" | "completed" | "error") || "completed",
                     type: "tool_call",
                   });
                 }
@@ -494,10 +500,10 @@ function ChatPage() {
                   for (const toolCall of chunk.delta.tool_calls) {
                     if (toolCall.function) {
                       functionCalls.push({
-                        id: toolCall.id,
-                        name: toolCall.function.name,
+                        id: toolCall.id || "",
+                        name: toolCall.function.name || "unknown",
                         arguments: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {},
-                        argumentsString: toolCall.function.arguments,
+                        argumentsString: toolCall.function.arguments || "",
                         status: "completed",
                         type: toolCall.type || "function",
                       });
@@ -508,7 +514,7 @@ function ChatPage() {
                 if (chunk.type === "response.tool_call.result" || chunk.type === "tool_call_result") {
                   const lastCall = functionCalls[functionCalls.length - 1];
                   if (lastCall) {
-                    lastCall.result = chunk.result || chunk;
+                    lastCall.result = (chunk.result as Record<string, unknown> | ToolCallResult[]) || (chunk as Record<string, unknown>);
                     lastCall.status = "completed";
                   }
                 }
@@ -562,6 +568,7 @@ function ChatPage() {
     conversationData,
     isUserInteracting,
     isForkingInProgress,
+    setPreviousResponseIds,
   ]);
 
   // Handle new conversation creation - only reset messages when placeholderConversation is set
@@ -1536,10 +1543,8 @@ function ChatPage() {
     }
 
     // Set interaction state to prevent auto-scroll interference
-    const forkTimestamp = Date.now();
     setIsUserInteracting(true);
     setIsForkingInProgress(true);
-    setLastForkTimestamp(forkTimestamp);
 
     console.log("Fork conversation called for message index:", messageIndex);
 
@@ -1552,7 +1557,6 @@ function ChatPage() {
       console.error("Fork button should only be on assistant messages");
       setIsUserInteracting(false);
       setIsForkingInProgress(false);
-      setLastForkTimestamp(0);
       return;
     }
 

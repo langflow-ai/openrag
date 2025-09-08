@@ -16,7 +16,14 @@ export default function ConnectorsPage() {
   const { addTask } = useTask()
   const [selectedFiles, setSelectedFiles] = useState<GoogleDriveFile[]>([]);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [syncResult, setSyncResult] = useState<any>(null);
+  const [syncResult, setSyncResult] = useState<{
+    processed?: number;
+    total?: number;
+    status?: string;
+    error?: string;
+    added?: number;
+    errors?: number;
+  } | null>(null);
 
   const handleFileSelection = (files: GoogleDriveFile[]) => {
     setSelectedFiles(files);
