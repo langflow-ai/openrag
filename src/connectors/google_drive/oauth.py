@@ -1,7 +1,6 @@
 import os
 import json
-import asyncio
-from typing import Dict, Any, Optional
+from typing import Optional
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -25,8 +24,8 @@ class GoogleDriveOAuth:
 
     def __init__(
         self,
-        client_id: str = None,
-        client_secret: str = None,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
         token_file: str = "token.json",
     ):
         self.client_id = client_id
@@ -133,7 +132,7 @@ class GoogleDriveOAuth:
         if not self.creds:
             await self.load_credentials()
 
-        return self.creds and self.creds.valid
+        return bool(self.creds and self.creds.valid)
 
     def get_service(self):
         """Get authenticated Google Drive service"""
