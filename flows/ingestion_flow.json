@@ -884,7 +884,7 @@
             ],
             "frozen": false,
             "icon": "file-text",
-            "last_updated": "2025-09-08T11:35:39.784Z",
+            "last_updated": "2025-09-08T17:45:33.714Z",
             "legacy": false,
             "lf_version": "1.5.0.post2",
             "metadata": {},
@@ -898,23 +898,6 @@
                 "group_outputs": false,
                 "method": "load_files_message",
                 "name": "message",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Message",
-                "tool_mode": true,
-                "types": [
-                  "Message"
-                ],
-                "value": "__UNDEFINED__"
-              },
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "File Path",
-                "group_outputs": false,
-                "hidden": null,
-                "method": "load_files_path",
-                "name": "path",
                 "options": null,
                 "required_inputs": null,
                 "selected": "Message",
@@ -1069,9 +1052,7 @@
                   "bz2",
                   "gz"
                 ],
-                "file_path": [
-                  "242b5797-4104-4a01-8da1-b8036813100d/test_ingestion.txt"
-                ],
+                "file_path": [],
                 "info": "Supported file extensions: txt, md, mdx, csv, json, yaml, yml, xml, html, htm, pdf, docx, py, sh, sql, js, ts, tsx; optionally bundled in file extensions: zip, tar, tgz, bz2, gz",
                 "list": true,
                 "list_add_label": "Add More",
@@ -1151,7 +1132,7 @@
         "dragging": false,
         "id": "File-PSU37",
         "measured": {
-          "height": 234,
+          "height": 230,
           "width": 320
         },
         "position": {
@@ -1735,7 +1716,7 @@
           "x": 2218.9287723423276,
           "y": 1332.2598463956504
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       }
     ],
