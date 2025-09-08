@@ -1,4 +1,4 @@
-from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL, FLOW_ID
+from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL
 from agent import (
     async_chat,
     async_langflow,
