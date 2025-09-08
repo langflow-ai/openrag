@@ -442,7 +442,6 @@ async def async_langflow_chat(
         user_id=user_id,
        
         previous_response_id=previous_response_id,
-    ,
     )
 
     if store_conversation:
