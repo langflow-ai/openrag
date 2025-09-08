@@ -42,7 +42,7 @@ dev:
 	docker-compose up -d
 	@echo "✅ Services started!"
 	@echo "   Backend: http://localhost:8000"
-	@echo "   Frontend: http://localhost:3000"  
+	@echo "   Frontend: http://localhost:3000"
 	@echo "   Langflow: http://localhost:7860"
 	@echo "   OpenSearch: http://localhost:9200"
 	@echo "   Dashboards: http://localhost:5601"
@@ -93,7 +93,7 @@ clean: stop
 backend:
 	@echo "🐍 Starting backend locally..."
 	@if [ ! -f .env ]; then echo "⚠️  .env file not found. Copy .env.example to .env first"; exit 1; fi
-	cd src && uv run python main.py
+	uv run python src/main.py
 
 frontend:
 	@echo "⚛️  Starting frontend locally..."
@@ -187,7 +187,7 @@ db-reset:
 	curl -X DELETE "http://localhost:9200/knowledge_filters" -u admin:$$(grep OPENSEARCH_PASSWORD .env | cut -d= -f2) || true
 	@echo "Indices reset. Restart backend to recreate."
 
-# Flow management  
+# Flow management
 flow-upload:
 	@echo "📁 Uploading flow to Langflow..."
 	@if [ -z "$(FLOW_FILE)" ]; then echo "Usage: make flow-upload FLOW_FILE=path/to/flow.json"; exit 1; fi
