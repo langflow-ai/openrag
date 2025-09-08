@@ -34,9 +34,7 @@ async def upload_user_file(
         logger.debug("JWT token status", jwt_present=jwt_token is not None)
 
         logger.debug("Calling langflow_file_service.upload_user_file")
-        result = await langflow_file_service.upload_user_file(
-            file_tuple, jwt_token=jwt_token
-        )
+        result = await langflow_file_service.upload_user_file(file_tuple, jwt_token)
         logger.debug("Upload successful", result=result)
         return JSONResponse(result, status_code=201)
     except Exception as e:
@@ -99,15 +97,20 @@ async def run_ingestion(
             # (search parameters are for retrieval, not document processing)
 
             logger.debug("Final tweaks with settings applied", tweaks=tweaks)
-
         # Include user JWT if available
         jwt_token = getattr(request.state, "jwt_token", None)
+        if jwt_token:
+            # Set auth context for downstream services
+            from auth_context import set_auth_context
+
+            user_id = getattr(request.state, "user_id", None)
+            set_auth_context(user_id, jwt_token)
 
         result = await langflow_file_service.run_ingestion_flow(
             file_paths=file_paths or [],
+            jwt_token=jwt_token,
             session_id=session_id,
             tweaks=tweaks,
-            jwt_token=jwt_token,
         )
         return JSONResponse(result)
     except Exception as e:
