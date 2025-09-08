@@ -1,50 +1,55 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react"
-import { useSearchParams } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Switch } from "@/components/ui/switch"
-import { Loader2, PlugZap, RefreshCw } from "lucide-react"
-import { ProtectedRoute } from "@/components/protected-route"
-import { useTask } from "@/contexts/task-context"
-import { useAuth } from "@/contexts/auth-context"
-import { ConfirmationDialog } from "@/components/confirmation-dialog"
-
+import { Loader2, PlugZap, RefreshCw } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
+import { ProtectedRoute } from "@/components/protected-route";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/contexts/auth-context";
+import { useTask } from "@/contexts/task-context";
 
 interface GoogleDriveFile {
-  id: string
-  name: string
-  mimeType: string
-  webViewLink?: string
-  iconLink?: string
+  id: string;
+  name: string;
+  mimeType: string;
+  webViewLink?: string;
+  iconLink?: string;
 }
 
 interface OneDriveFile {
-  id: string
-  name: string
-  mimeType?: string
-  webUrl?: string
+  id: string;
+  name: string;
+  mimeType?: string;
+  webUrl?: string;
   driveItem?: {
-    file?: { mimeType: string }
-    folder?: unknown
-  }
+    file?: { mimeType: string };
+    folder?: unknown;
+  };
 }
 
 interface Connector {
-  id: string
-  name: string
-  description: string
-  icon: React.ReactNode
-  status: "not_connected" | "connecting" | "connected" | "error"
-  type: string
-  connectionId?: string
-  access_token?: string
-  selectedFiles?: GoogleDriveFile[] | OneDriveFile[]
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  status: "not_connected" | "connecting" | "connected" | "error";
+  type: string;
+  connectionId?: string;
+  access_token?: string;
+  selectedFiles?: GoogleDriveFile[] | OneDriveFile[];
 }
 
 interface SyncResult {
@@ -56,192 +61,203 @@ interface SyncResult {
 }
 
 interface Connection {
-  connection_id: string
-  is_active: boolean
-  created_at: string
-  last_sync?: string
+  connection_id: string;
+  is_active: boolean;
+  created_at: string;
+  last_sync?: string;
 }
 
 function KnowledgeSourcesPage() {
-  const { isAuthenticated, isNoAuthMode } = useAuth()
-  const { addTask, tasks } = useTask()
-  const searchParams = useSearchParams()
-  
-  
+  const { isAuthenticated, isNoAuthMode } = useAuth();
+  const { addTask, tasks } = useTask();
+  const searchParams = useSearchParams();
+
   // Connectors state
-  const [connectors, setConnectors] = useState<Connector[]>([])
-  const [isConnecting, setIsConnecting] = useState<string | null>(null)
-  const [isSyncing, setIsSyncing] = useState<string | null>(null)
-  const [syncResults, setSyncResults] = useState<{[key: string]: SyncResult | null}>({})
-  const [maxFiles, setMaxFiles] = useState<number>(10)
-  const [syncAllFiles, setSyncAllFiles] = useState<boolean>(false)
-  
+  const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [isConnecting, setIsConnecting] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState<string | null>(null);
+  const [syncResults, setSyncResults] = useState<{
+    [key: string]: SyncResult | null;
+  }>({});
+  const [maxFiles, setMaxFiles] = useState<number>(10);
+  const [syncAllFiles, setSyncAllFiles] = useState<boolean>(false);
+
   // Settings state
   // Note: backend internal Langflow URL is not needed on the frontend
-  const [flowId, setFlowId] = useState<string>('1098eea1-6649-4e1d-aed1-b77249fb8dd0')
-  const [langflowEditUrl, setLangflowEditUrl] = useState<string>('')
-  const [publicLangflowUrl, setPublicLangflowUrl] = useState<string>('')
-  
+  const [flowId, setFlowId] = useState<string>(
+    "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
+  );
+  const [langflowEditUrl, setLangflowEditUrl] = useState<string>("");
+  const [publicLangflowUrl, setPublicLangflowUrl] = useState<string>("");
+
   // Knowledge Ingest settings
-  const [ocrEnabled, setOcrEnabled] = useState<boolean>(false)
-  const [pictureDescriptionsEnabled, setPictureDescriptionsEnabled] = useState<boolean>(false)
+  const [ocrEnabled, setOcrEnabled] = useState<boolean>(false);
+  const [pictureDescriptionsEnabled, setPictureDescriptionsEnabled] =
+    useState<boolean>(false);
 
   // Fetch settings from backend
   const fetchSettings = useCallback(async () => {
     try {
-      const response = await fetch('/api/settings')
+      const response = await fetch("/api/settings");
       if (response.ok) {
-        const settings = await response.json()
+        const settings = await response.json();
         if (settings.flow_id) {
-          setFlowId(settings.flow_id)
+          setFlowId(settings.flow_id);
         }
         if (settings.langflow_edit_url) {
-          setLangflowEditUrl(settings.langflow_edit_url)
+          setLangflowEditUrl(settings.langflow_edit_url);
         }
         if (settings.langflow_public_url) {
-          setPublicLangflowUrl(settings.langflow_public_url)
+          setPublicLangflowUrl(settings.langflow_public_url);
         }
       }
     } catch (error) {
-      console.error('Failed to fetch settings:', error)
+      console.error("Failed to fetch settings:", error);
     }
-  }, [])
+  }, []);
 
   // Helper function to get connector icon
   const getConnectorIcon = (iconName: string) => {
     const iconMap: { [key: string]: React.ReactElement } = {
-      'google-drive': (
+      "google-drive": (
         <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
           G
         </div>
       ),
-      'sharepoint': (
+      sharepoint: (
         <div className="w-8 h-8 bg-blue-700 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
           SP
         </div>
       ),
-      'onedrive': (
+      onedrive: (
         <div className="w-8 h-8 bg-blue-400 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
           OD
         </div>
       ),
-    }
-    return iconMap[iconName] || (
-      <div className="w-8 h-8 bg-gray-500 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
-        ?
-      </div>
-    )
-  }
+    };
+    return (
+      iconMap[iconName] || (
+        <div className="w-8 h-8 bg-gray-500 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
+          ?
+        </div>
+      )
+    );
+  };
 
   // Connector functions
   const checkConnectorStatuses = useCallback(async () => {
     try {
       // Fetch available connectors from backend
-      const connectorsResponse = await fetch('/api/connectors')
+      const connectorsResponse = await fetch("/api/connectors");
       if (!connectorsResponse.ok) {
-        throw new Error('Failed to load connectors')
+        throw new Error("Failed to load connectors");
       }
-      
-      const connectorsResult = await connectorsResponse.json()
-      const connectorTypes = Object.keys(connectorsResult.connectors)
-      
+
+      const connectorsResult = await connectorsResponse.json();
+      const connectorTypes = Object.keys(connectorsResult.connectors);
+
       // Initialize connectors list with metadata from backend
       const initialConnectors = connectorTypes
-        .filter(type => connectorsResult.connectors[type].available) // Only show available connectors
-        .map(type => ({
+        .filter((type) => connectorsResult.connectors[type].available) // Only show available connectors
+        .map((type) => ({
           id: type,
           name: connectorsResult.connectors[type].name,
           description: connectorsResult.connectors[type].description,
           icon: getConnectorIcon(connectorsResult.connectors[type].icon),
           status: "not_connected" as const,
-          type: type
-        }))
-      
-      setConnectors(initialConnectors)
+          type: type,
+        }));
+
+      setConnectors(initialConnectors);
 
       // Check status for each connector type
-      
+
       for (const connectorType of connectorTypes) {
-        const response = await fetch(`/api/connectors/${connectorType}/status`)
+        const response = await fetch(`/api/connectors/${connectorType}/status`);
         if (response.ok) {
-          const data = await response.json()
-          const connections = data.connections || []
-          const activeConnection = connections.find((conn: Connection) => conn.is_active)
-          const isConnected = activeConnection !== undefined
-          
-          
-          setConnectors(prev => prev.map(c => 
-            c.type === connectorType 
-              ? { 
-                  ...c, 
-                  status: isConnected ? "connected" : "not_connected",
-                  connectionId: activeConnection?.connection_id
-                } 
-              : c
-          ))
+          const data = await response.json();
+          const connections = data.connections || [];
+          const activeConnection = connections.find(
+            (conn: Connection) => conn.is_active,
+          );
+          const isConnected = activeConnection !== undefined;
+
+          setConnectors((prev) =>
+            prev.map((c) =>
+              c.type === connectorType
+                ? {
+                    ...c,
+                    status: isConnected ? "connected" : "not_connected",
+                    connectionId: activeConnection?.connection_id,
+                  }
+                : c,
+            ),
+          );
         }
       }
     } catch (error) {
-      console.error('Failed to check connector statuses:', error)
+      console.error("Failed to check connector statuses:", error);
     }
-  }, [])
+  }, []);
 
   const handleConnect = async (connector: Connector) => {
-    setIsConnecting(connector.id)
-    setSyncResults(prev => ({ ...prev, [connector.id]: null }))
-    
+    setIsConnecting(connector.id);
+    setSyncResults((prev) => ({ ...prev, [connector.id]: null }));
+
     try {
       // Use the shared auth callback URL, same as connectors page
-      const redirectUri = `${window.location.origin}/auth/callback`
-      
-      const response = await fetch('/api/auth/init', {
-        method: 'POST',
+      const redirectUri = `${window.location.origin}/auth/callback`;
+
+      const response = await fetch("/api/auth/init", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           connector_type: connector.type,
           purpose: "data_source",
           name: `${connector.name} Connection`,
-          redirect_uri: redirectUri
+          redirect_uri: redirectUri,
         }),
-      })
-      
+      });
+
       if (response.ok) {
-        const result = await response.json()
-        
+        const result = await response.json();
+
         if (result.oauth_config) {
-          localStorage.setItem('connecting_connector_id', result.connection_id)
-          localStorage.setItem('connecting_connector_type', connector.type)
-          
-          const authUrl = `${result.oauth_config.authorization_endpoint}?` +
+          localStorage.setItem("connecting_connector_id", result.connection_id);
+          localStorage.setItem("connecting_connector_type", connector.type);
+
+          const authUrl =
+            `${result.oauth_config.authorization_endpoint}?` +
             `client_id=${result.oauth_config.client_id}&` +
             `response_type=code&` +
-            `scope=${result.oauth_config.scopes.join(' ')}&` +
-            `redirect_uri=${encodeURIComponent(result.oauth_config.redirect_uri)}&` +
+            `scope=${result.oauth_config.scopes.join(" ")}&` +
+            `redirect_uri=${encodeURIComponent(
+              result.oauth_config.redirect_uri,
+            )}&` +
             `access_type=offline&` +
             `prompt=consent&` +
-            `state=${result.connection_id}`
-          
-          window.location.href = authUrl
+            `state=${result.connection_id}`;
+
+          window.location.href = authUrl;
         }
       } else {
-        console.error('Failed to initiate connection')
-        setIsConnecting(null)
+        console.error("Failed to initiate connection");
+        setIsConnecting(null);
       }
     } catch (error) {
-      console.error('Connection error:', error)
-      setIsConnecting(null)
+      console.error("Connection error:", error);
+      setIsConnecting(null);
     }
-  }
-
+  };
 
   const handleSync = async (connector: Connector) => {
-    if (!connector.connectionId) return
-    
-    setIsSyncing(connector.id)
-    setSyncResults(prev => ({ ...prev, [connector.id]: null }))
-    
+    if (!connector.connectionId) return;
+
+    setIsSyncing(connector.id);
+    setSyncResults((prev) => ({ ...prev, [connector.id]: null }));
+
     try {
       const syncBody: {
         connection_id: string;
@@ -249,123 +265,156 @@ function KnowledgeSourcesPage() {
         selected_files?: string[];
       } = {
         connection_id: connector.connectionId,
-        max_files: syncAllFiles ? 0 : (maxFiles || undefined)
-      }
-      
+        max_files: syncAllFiles ? 0 : maxFiles || undefined,
+      };
+
       // Note: File selection is now handled via the cloud connectors dialog
-      
+
       const response = await fetch(`/api/connectors/${connector.type}/sync`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(syncBody),
-      })
-      
-      const result = await response.json()
-      
+      });
+
+      const result = await response.json();
+
       if (response.status === 201) {
-        const taskId = result.task_id
+        const taskId = result.task_id;
         if (taskId) {
-          addTask(taskId)
-          setSyncResults(prev => ({ 
-            ...prev, 
-            [connector.id]: { 
-              processed: 0, 
-              total: result.total_files || 0 
-            }
-          }))
+          addTask(taskId);
+          setSyncResults((prev) => ({
+            ...prev,
+            [connector.id]: {
+              processed: 0,
+              total: result.total_files || 0,
+            },
+          }));
         }
       } else if (response.ok) {
-        setSyncResults(prev => ({ ...prev, [connector.id]: result }))
+        setSyncResults((prev) => ({ ...prev, [connector.id]: result }));
         // Note: Stats will auto-refresh via task completion watcher for async syncs
       } else {
-        console.error('Sync failed:', result.error)
+        console.error("Sync failed:", result.error);
       }
     } catch (error) {
-      console.error('Sync error:', error)
+      console.error("Sync error:", error);
     } finally {
-      setIsSyncing(null)
+      setIsSyncing(null);
     }
-  }
+  };
 
   const getStatusBadge = (status: Connector["status"]) => {
     switch (status) {
       case "connected":
-        return <Badge variant="default" className="bg-green-500/20 text-green-400 border-green-500/30">Connected</Badge>
+        return (
+          <Badge
+            variant="default"
+            className="bg-green-500/20 text-green-400 border-green-500/30"
+          >
+            Connected
+          </Badge>
+        );
       case "connecting":
-        return <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Connecting...</Badge>
+        return (
+          <Badge
+            variant="secondary"
+            className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+          >
+            Connecting...
+          </Badge>
+        );
       case "error":
-        return <Badge variant="destructive">Error</Badge>
+        return <Badge variant="destructive">Error</Badge>;
       default:
-        return <Badge variant="outline" className="bg-muted/20 text-muted-foreground border-muted whitespace-nowrap">Not Connected</Badge>
+        return (
+          <Badge
+            variant="outline"
+            className="bg-muted/20 text-muted-foreground border-muted whitespace-nowrap"
+          >
+            Not Connected
+          </Badge>
+        );
     }
-  }
+  };
 
   // Fetch settings on mount when authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      fetchSettings()
+      fetchSettings();
     }
-  }, [isAuthenticated, fetchSettings])
+  }, [isAuthenticated, fetchSettings]);
 
   // Check connector status on mount and when returning from OAuth
   useEffect(() => {
     if (isAuthenticated) {
-      checkConnectorStatuses()
+      checkConnectorStatuses();
     }
-    
-    if (searchParams.get('oauth_success') === 'true') {
-      const url = new URL(window.location.href)
-      url.searchParams.delete('oauth_success')
-      window.history.replaceState({}, '', url.toString())
+
+    if (searchParams.get("oauth_success") === "true") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("oauth_success");
+      window.history.replaceState({}, "", url.toString());
     }
-  }, [searchParams, isAuthenticated, checkConnectorStatuses])
-
-
-
+  }, [searchParams, isAuthenticated, checkConnectorStatuses]);
 
   // Track previous tasks to detect new completions
-  const [prevTasks, setPrevTasks] = useState<typeof tasks>([])
-  
+  const [prevTasks, setPrevTasks] = useState<typeof tasks>([]);
+
   // Watch for task completions and refresh stats
   useEffect(() => {
     // Find newly completed tasks by comparing with previous state
-    const newlyCompletedTasks = tasks.filter(task => {
-      const wasCompleted = prevTasks.find(prev => prev.task_id === task.task_id)?.status === 'completed'
-      return task.status === 'completed' && !wasCompleted
-    })
-    
+    const newlyCompletedTasks = tasks.filter((task) => {
+      const wasCompleted =
+        prevTasks.find((prev) => prev.task_id === task.task_id)?.status ===
+        "completed";
+      return task.status === "completed" && !wasCompleted;
+    });
+
     if (newlyCompletedTasks.length > 0) {
       // Task completed - could refresh data here if needed
       const timeoutId = setTimeout(() => {
         // Stats refresh removed
-      }, 1000)
-      
+      }, 1000);
+
       // Update previous tasks state
-      setPrevTasks(tasks)
-      
-      return () => clearTimeout(timeoutId)
+      setPrevTasks(tasks);
+
+      return () => clearTimeout(timeoutId);
     } else {
       // Always update previous tasks state
-      setPrevTasks(tasks)
+      setPrevTasks(tasks);
     }
-  }, [tasks, prevTasks])
+  }, [tasks, prevTasks]);
 
   const handleEditInLangflow = () => {
-    const derivedFromWindow = typeof window !== 'undefined' 
-      ? `${window.location.protocol}//${window.location.hostname}:7860` 
-      : ''
-    const base = (publicLangflowUrl || derivedFromWindow || 'http://localhost:7860').replace(/\/$/, '')
-    const computed = flowId ? `${base}/flow/${flowId}` : base
-    const url = langflowEditUrl || computed
-    window.open(url, '_blank')
-  }
+    const derivedFromWindow =
+      typeof window !== "undefined"
+        ? `${window.location.protocol}//${window.location.hostname}:7860`
+        : "";
+    const base = (
+      publicLangflowUrl ||
+      derivedFromWindow ||
+      "http://localhost:7860"
+    ).replace(/\/$/, "");
+    const computed = flowId ? `${base}/flow/${flowId}` : base;
+    const url = langflowEditUrl || computed;
+    window.open(url, "_blank");
+  };
 
   const handleRestoreFlow = () => {
-    // TODO: Implement restore flow functionality
-    console.log('Restore flow confirmed')
-  }
+    fetch(`/api/reset-flow/retrieval`, {
+      method: "POST",
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        console.log(data);
+      })
+      .catch((error) => {
+        console.error("Error restoring flow:", error);
+      });
+  };
 
   return (
     <div className="space-y-8">
@@ -375,15 +424,13 @@ function KnowledgeSourcesPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-lg">Knowledge Ingest</CardTitle>
-              <CardDescription>Quick ingest options. Edit in Langflow for full control.</CardDescription>
+              <CardDescription>
+                Quick ingest options. Edit in Langflow for full control.
+              </CardDescription>
             </div>
             <div className="flex gap-2">
               <ConfirmationDialog
-                trigger={
-                  <Button variant="secondary">
-                    Restore flow
-                  </Button>
-                }
+                trigger={<Button variant="secondary">Restore flow</Button>}
                 title="Restore default Ingest flow"
                 description="This restores defaults and discards all custom settings and overrides. This can't be undone."
                 confirmText="Restore"
@@ -393,10 +440,25 @@ function KnowledgeSourcesPage() {
               <ConfirmationDialog
                 trigger={
                   <Button>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="22" viewBox="0 0 24 22" className="h-4 w-4 mr-2">
-                      <path fill="currentColor" d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"></path>
-                      <path fill="currentColor" d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"></path>
-                      <path fill="currentColor" d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"></path>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="22"
+                      viewBox="0 0 24 22"
+                      className="h-4 w-4 mr-2"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"
+                      ></path>
+                      <path
+                        fill="currentColor"
+                        d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"
+                      ></path>
+                      <path
+                        fill="currentColor"
+                        d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"
+                      ></path>
                     </svg>
                     Edit in Langflow
                   </Button>
@@ -420,25 +482,31 @@ function KnowledgeSourcesPage() {
                   Extracts text from images/PDFs. Ingest is slower when enabled.
                 </div>
               </div>
-              <Switch 
-                id="ocrEnabled" 
+              <Switch
+                id="ocrEnabled"
                 checked={ocrEnabled}
                 onCheckedChange={(checked) => setOcrEnabled(checked)}
               />
             </div>
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label htmlFor="pictureDescriptions" className="text-base font-medium">
+                <Label
+                  htmlFor="pictureDescriptions"
+                  className="text-base font-medium"
+                >
                   Picture descriptions
                 </Label>
                 <div className="text-sm text-muted-foreground">
-                  Adds captions for images. Ingest is more expensive when enabled.
+                  Adds captions for images. Ingest is more expensive when
+                  enabled.
                 </div>
               </div>
-              <Switch 
-                id="pictureDescriptions" 
+              <Switch
+                id="pictureDescriptions"
                 checked={pictureDescriptionsEnabled}
-                onCheckedChange={(checked) => setPictureDescriptionsEnabled(checked)}
+                onCheckedChange={(checked) =>
+                  setPictureDescriptionsEnabled(checked)
+                }
               />
             </div>
           </div>
@@ -451,23 +519,45 @@ function KnowledgeSourcesPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-lg">Agent behavior</CardTitle>
-              <CardDescription>Adjust your retrieval agent flow</CardDescription>
+              <CardDescription>
+                Adjust your retrieval agent flow
+              </CardDescription>
             </div>
             <Button
               onClick={() => {
-                const derivedFromWindow = typeof window !== 'undefined' 
-                  ? `${window.location.protocol}//${window.location.hostname}:7860` 
-                  : ''
-                const base = (publicLangflowUrl || derivedFromWindow || 'http://localhost:7860').replace(/\/$/, '')
-                const computed = flowId ? `${base}/flow/${flowId}` : base
-                const url = langflowEditUrl || computed
-                window.open(url, '_blank')
+                const derivedFromWindow =
+                  typeof window !== "undefined"
+                    ? `${window.location.protocol}//${window.location.hostname}:7860`
+                    : "";
+                const base = (
+                  publicLangflowUrl ||
+                  derivedFromWindow ||
+                  "http://localhost:7860"
+                ).replace(/\/$/, "");
+                const computed = flowId ? `${base}/flow/${flowId}` : base;
+                const url = langflowEditUrl || computed;
+                window.open(url, "_blank");
               }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="22" viewBox="0 0 24 22" className="h-4 w-4 mr-2">
-                <path fill="currentColor" d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"></path>
-                <path fill="currentColor" d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"></path>
-                <path fill="currentColor" d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"></path>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="22"
+                viewBox="0 0 24 22"
+                className="h-4 w-4 mr-2"
+              >
+                <path
+                  fill="currentColor"
+                  d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"
+                ></path>
+                <path
+                  fill="currentColor"
+                  d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"
+                ></path>
+                <path
+                  fill="currentColor"
+                  d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"
+                ></path>
               </svg>
               Edit in Langflow
             </Button>
@@ -475,25 +565,30 @@ function KnowledgeSourcesPage() {
         </CardHeader>
       </Card>
 
-
       {/* Connectors Section */}
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight mb-2">Cloud Connectors</h2>
+          <h2 className="text-2xl font-semibold tracking-tight mb-2">
+            Cloud Connectors
+          </h2>
         </div>
 
         {/* Conditional Sync Settings or No-Auth Message */}
         {isNoAuthMode ? (
           <Card className="border-yellow-500/50 bg-yellow-500/5">
             <CardHeader>
-              <CardTitle className="text-lg text-yellow-600">Cloud connectors are only available with auth mode enabled</CardTitle>
+              <CardTitle className="text-lg text-yellow-600">
+                Cloud connectors are only available with auth mode enabled
+              </CardTitle>
               <CardDescription className="text-sm">
                 Please provide the following environment variables and restart:
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="bg-muted rounded-md p-4 font-mono text-sm">
-                <div className="text-muted-foreground mb-2"># make here https://console.cloud.google.com/apis/credentials</div>
+                <div className="text-muted-foreground mb-2">
+                  # make here https://console.cloud.google.com/apis/credentials
+                </div>
                 <div>GOOGLE_OAUTH_CLIENT_ID=</div>
                 <div>GOOGLE_OAUTH_CLIENT_SECRET=</div>
               </div>
@@ -503,27 +598,35 @@ function KnowledgeSourcesPage() {
           <div className="flex items-center justify-between py-4">
             <div>
               <h3 className="text-lg font-medium">Sync Settings</h3>
-              <p className="text-sm text-muted-foreground">Configure how many files to sync when manually triggering a sync</p>
+              <p className="text-sm text-muted-foreground">
+                Configure how many files to sync when manually triggering a sync
+              </p>
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="syncAllFiles" 
+                <Checkbox
+                  id="syncAllFiles"
                   checked={syncAllFiles}
                   onCheckedChange={(checked) => {
-                    setSyncAllFiles(!!checked)
+                    setSyncAllFiles(!!checked);
                     if (checked) {
-                      setMaxFiles(0)
+                      setMaxFiles(0);
                     } else {
-                      setMaxFiles(10)
+                      setMaxFiles(10);
                     }
                   }}
                 />
-                <Label htmlFor="syncAllFiles" className="font-medium whitespace-nowrap">
+                <Label
+                  htmlFor="syncAllFiles"
+                  className="font-medium whitespace-nowrap"
+                >
                   Sync all files
                 </Label>
               </div>
-              <Label htmlFor="maxFiles" className="font-medium whitespace-nowrap">
+              <Label
+                htmlFor="maxFiles"
+                className="font-medium whitespace-nowrap"
+              >
                 Max files per sync:
               </Label>
               <div className="relative">
@@ -536,7 +639,11 @@ function KnowledgeSourcesPage() {
                   className="w-16 min-w-16 max-w-16 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                   min="1"
                   max="100"
-                  title={syncAllFiles ? "Disabled when 'Sync all files' is checked" : "Leave blank or set to 0 for unlimited"}
+                  title={
+                    syncAllFiles
+                      ? "Disabled when 'Sync all files' is checked"
+                      : "Leave blank or set to 0 for unlimited"
+                  }
                 />
               </div>
             </div>
@@ -552,7 +659,9 @@ function KnowledgeSourcesPage() {
                   <div className="flex items-center gap-3">
                     {connector.icon}
                     <div>
-                      <CardTitle className="text-lg">{connector.name}</CardTitle>
+                      <CardTitle className="text-lg">
+                        {connector.name}
+                      </CardTitle>
                       <CardDescription className="text-sm">
                         {connector.description}
                       </CardDescription>
@@ -582,11 +691,15 @@ function KnowledgeSourcesPage() {
                         </>
                       )}
                     </Button>
-                    
+
                     {syncResults[connector.id] && (
                       <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                        <div>Processed: {syncResults[connector.id]?.processed || 0}</div>
-                        <div>Added: {syncResults[connector.id]?.added || 0}</div>
+                        <div>
+                          Processed: {syncResults[connector.id]?.processed || 0}
+                        </div>
+                        <div>
+                          Added: {syncResults[connector.id]?.added || 0}
+                        </div>
                         {syncResults[connector.id]?.errors && (
                           <div>Errors: {syncResults[connector.id]?.errors}</div>
                         )}
@@ -616,10 +729,9 @@ function KnowledgeSourcesPage() {
             </Card>
           ))}
         </div>
-
       </div>
     </div>
-  )
+  );
 }
 
 export default function ProtectedKnowledgeSourcesPage() {
@@ -629,5 +741,5 @@ export default function ProtectedKnowledgeSourcesPage() {
         <KnowledgeSourcesPage />
       </Suspense>
     </ProtectedRoute>
-  )
+  );
 }
