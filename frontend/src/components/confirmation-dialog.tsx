@@ -1,6 +1,6 @@
 "use client"
 
-import { ReactNode } from "react"
+import { ReactNode, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,7 @@ interface ConfirmationDialogProps {
   description: string
   confirmText?: string
   cancelText?: string
-  onConfirm: () => void
+  onConfirm: (closeDialog: () => void) => void
   onCancel?: () => void
   variant?: "default" | "destructive"
 }
@@ -33,8 +33,20 @@ export function ConfirmationDialog({
   onCancel,
   variant = "default"
 }: ConfirmationDialogProps) {
+  const [open, setOpen] = useState(false)
+
+  const handleConfirm = () => {
+    const closeDialog = () => setOpen(false)
+    onConfirm(closeDialog)
+  }
+
+  const handleCancel = () => {
+    onCancel?.()
+    setOpen(false)
+  }
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>
@@ -48,13 +60,13 @@ export function ConfirmationDialog({
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={onCancel}
+            onClick={handleCancel}
           >
             {cancelText}
           </Button>
           <Button
             variant={variant}
-            onClick={onConfirm}
+            onClick={handleConfirm}
           >
             {confirmText}
           </Button>
