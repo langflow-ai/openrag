@@ -23,6 +23,7 @@ LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
 FLOW_ID = os.getenv("FLOW_ID")
+NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID")
 # Langflow superuser credentials for API key generation
 LANGFLOW_SUPERUSER = os.getenv("LANGFLOW_SUPERUSER")
 LANGFLOW_SUPERUSER_PASSWORD = os.getenv("LANGFLOW_SUPERUSER_PASSWORD")

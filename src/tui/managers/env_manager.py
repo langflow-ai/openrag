@@ -99,6 +99,7 @@ class EnvManager:
                             "LANGFLOW_SUPERUSER": "langflow_superuser",
                             "LANGFLOW_SUPERUSER_PASSWORD": "langflow_superuser_password",
                             "FLOW_ID": "flow_id",
+                            "NUDGES_FLOW_ID": "nudges_flow_id",
                             "GOOGLE_OAUTH_CLIENT_ID": "google_oauth_client_id",
                             "GOOGLE_OAUTH_CLIENT_SECRET": "google_oauth_client_secret",
                             "MICROSOFT_GRAPH_OAUTH_CLIENT_ID": "microsoft_graph_oauth_client_id",
@@ -235,6 +236,7 @@ class EnvManager:
                     f"LANGFLOW_SUPERUSER_PASSWORD={self.config.langflow_superuser_password}\n"
                 )
                 f.write(f"FLOW_ID={self.config.flow_id}\n")
+                f.write(f"NUDGES_FLOW_ID={self.config.nudges_flow_id}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self.config.opensearch_password}\n")
                 f.write(f"OPENAI_API_KEY={self.config.openai_api_key}\n")
                 f.write(
