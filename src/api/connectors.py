@@ -22,13 +22,16 @@ async def connector_sync(request: Request, connector_service, session_manager):
     connector_type = request.path_params.get("connector_type", "google_drive")
     data = await request.json()
     max_files = data.get("max_files")
+    selected_files = data.get("selected_files")
 
     try:
-        logger.debug("Starting connector sync", connector_type=connector_type, max_files=max_files)
-
+        logger.debug(
+            "Starting connector sync",
+            connector_type=connector_type,
+            max_files=max_files,
+        )
         user = request.state.user
         jwt_token = request.state.jwt_token
-        logger.debug("User authenticated", user_id=user.user_id)
 
         # Get all active connections for this connector type and user
         connections = await connector_service.connection_manager.list_connections(
@@ -45,13 +48,24 @@ async def connector_sync(request: Request, connector_service, session_manager):
         # Start sync tasks for all active connections
         task_ids = []
         for connection in active_connections:
-            logger.debug("About to call sync_connector_files for connection", connection_id=connection.connection_id)
-            task_id = await connector_service.sync_connector_files(
-                connection.connection_id, user.user_id, max_files, jwt_token=jwt_token
+            logger.debug(
+                "About to call sync_connector_files for connection",
+                connection_id=connection.connection_id,
             )
-            task_ids.append(task_id)
-            logger.debug("Got task ID", task_id=task_id)
-
+            if selected_files:
+                task_id = await connector_service.sync_specific_files(
+                    connection.connection_id,
+                    user.user_id,
+                    selected_files,
+                    jwt_token=jwt_token,
+                )
+            else:
+                task_id = await connector_service.sync_connector_files(
+                    connection.connection_id,
+                    user.user_id,
+                    max_files,
+                    jwt_token=jwt_token,
+                )
         return JSONResponse(
             {
                 "task_ids": task_ids,
@@ -63,14 +77,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
         )
 
     except Exception as e:
-        import sys
-        import traceback
-
-        error_msg = f"[ERROR] Connector sync failed: {str(e)}"
-        logger.error(error_msg)
-        traceback.print_exc(file=sys.stderr)
-        sys.stderr.flush()
-
+        logger.error("Connector sync failed", error=str(e))
         return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
 
 
@@ -110,6 +117,8 @@ async def connector_status(request: Request, connector_service, session_manager)
 async def connector_webhook(request: Request, connector_service, session_manager):
     """Handle webhook notifications from any connector type"""
     connector_type = request.path_params.get("connector_type")
+    if connector_type is None:
+        connector_type = "unknown"
 
     # Handle webhook validation (connector-specific)
     temp_config = {"token_file": "temp.json"}
@@ -117,7 +126,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
 
     temp_connection = ConnectionConfig(
         connection_id="temp",
-        connector_type=connector_type,
+        connector_type=str(connector_type),
         name="temp",
         config=temp_config,
     )
@@ -167,7 +176,9 @@ async def connector_webhook(request: Request, connector_service, session_manager
             channel_id = None
 
         if not channel_id:
-            logger.warning("No channel ID found in webhook", connector_type=connector_type)
+            logger.warning(
+                "No channel ID found in webhook", connector_type=connector_type
+            )
             return JSONResponse({"status": "ignored", "reason": "no_channel_id"})
 
         # Find the specific connection for this webhook
@@ -177,18 +188,22 @@ async def connector_webhook(request: Request, connector_service, session_manager
             )
         )
         if not connection or not connection.is_active:
-            logger.info("Unknown webhook channel, will auto-expire", channel_id=channel_id)
+            logger.info(
+                "Unknown webhook channel, will auto-expire", channel_id=channel_id
+            )
             return JSONResponse(
                 {"status": "ignored_unknown_channel", "channel_id": channel_id}
             )
 
         # Process webhook for the specific connection
-        results = []
         try:
             # Get the connector instance
             connector = await connector_service._get_connector(connection.connection_id)
             if not connector:
-                logger.error("Could not get connector for connection", connection_id=connection.connection_id)
+                logger.error(
+                    "Could not get connector for connection",
+                    connection_id=connection.connection_id,
+                )
                 return JSONResponse(
                     {"status": "error", "reason": "connector_not_found"}
                 )
@@ -197,7 +212,11 @@ async def connector_webhook(request: Request, connector_service, session_manager
             affected_files = await connector.handle_webhook(payload)
 
             if affected_files:
-                logger.info("Webhook connection files affected", connection_id=connection.connection_id, affected_count=len(affected_files))
+                logger.info(
+                    "Webhook connection files affected",
+                    connection_id=connection.connection_id,
+                    affected_count=len(affected_files),
+                )
 
                 # Generate JWT token for the user (needed for OpenSearch authentication)
                 user = session_manager.get_user(connection.user_id)
@@ -221,7 +240,10 @@ async def connector_webhook(request: Request, connector_service, session_manager
                 }
             else:
                 # No specific files identified - just log the webhook
-                logger.info("Webhook general change detected, no specific files", connection_id=connection.connection_id)
+                logger.info(
+                    "Webhook general change detected, no specific files",
+                    connection_id=connection.connection_id,
+                )
 
                 result = {
                     "connection_id": connection.connection_id,
@@ -239,10 +261,15 @@ async def connector_webhook(request: Request, connector_service, session_manager
             )
 
         except Exception as e:
-            logger.error("Failed to process webhook for connection", connection_id=connection.connection_id, error=str(e))
+            logger.error(
+                "Failed to process webhook for connection",
+                connection_id=connection.connection_id,
+                error=str(e),
+            )
             import traceback
 
             traceback.print_exc()
+
             return JSONResponse(
                 {
                     "status": "error",
@@ -254,10 +281,59 @@ async def connector_webhook(request: Request, connector_service, session_manager
             )
 
     except Exception as e:
-        import traceback
-
         logger.error("Webhook processing failed", error=str(e))
-        traceback.print_exc()
         return JSONResponse(
             {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
         )
+
+async def connector_token(request: Request, connector_service, session_manager):
+    """Get access token for connector API calls (e.g., Google Picker)"""
+    connector_type = request.path_params.get("connector_type")
+    connection_id = request.query_params.get("connection_id")
+
+    if not connection_id:
+        return JSONResponse({"error": "connection_id is required"}, status_code=400)
+
+    user = request.state.user
+
+    try:
+        # Get the connection and verify it belongs to the user
+        connection = await connector_service.connection_manager.get_connection(connection_id)
+        if not connection or connection.user_id != user.user_id:
+            return JSONResponse({"error": "Connection not found"}, status_code=404)
+
+        # Get the connector instance
+        connector = await connector_service._get_connector(connection_id)
+        if not connector:
+            return JSONResponse({"error": f"Connector not available - authentication may have failed for {connector_type}"}, status_code=404)
+
+        # For Google Drive, get the access token
+        if connector_type == "google_drive" and hasattr(connector, 'oauth'):
+            await connector.oauth.load_credentials()
+            if connector.oauth.creds and connector.oauth.creds.valid:
+                return JSONResponse({
+                    "access_token": connector.oauth.creds.token,
+                    "expires_in": (connector.oauth.creds.expiry.timestamp() - 
+                                 __import__('time').time()) if connector.oauth.creds.expiry else None
+                })
+            else:
+                return JSONResponse({"error": "Invalid or expired credentials"}, status_code=401)
+        
+        # For OneDrive and SharePoint, get the access token
+        elif connector_type in ["onedrive", "sharepoint"] and hasattr(connector, 'oauth'):
+            try:
+                access_token = connector.oauth.get_access_token()
+                return JSONResponse({
+                    "access_token": access_token,
+                    "expires_in": None  # MSAL handles token expiry internally
+                })
+            except ValueError as e:
+                return JSONResponse({"error": f"Failed to get access token: {str(e)}"}, status_code=401)
+            except Exception as e:
+                return JSONResponse({"error": f"Authentication error: {str(e)}"}, status_code=500)
+
+        return JSONResponse({"error": "Token not available for this connector type"}, status_code=400)
+
+    except Exception as e:
+        logger.error("Error getting connector token", error=str(e))
+        return JSONResponse({"error": str(e)}, status_code=500)

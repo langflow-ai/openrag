@@ -321,13 +321,18 @@ class ConnectionManager:
         if connection_config.config.get(
             "webhook_channel_id"
         ) or connection_config.config.get("subscription_id"):
-            logger.info("Webhook subscription already exists", connection_id=connection_id)
+            logger.info(
+                "Webhook subscription already exists", connection_id=connection_id
+            )
             return
 
         # Check if webhook URL is configured
         webhook_url = connection_config.config.get("webhook_url")
         if not webhook_url:
-            logger.info("No webhook URL configured, skipping subscription setup", connection_id=connection_id)
+            logger.info(
+                "No webhook URL configured, skipping subscription setup",
+                connection_id=connection_id,
+            )
             return
 
         try:
@@ -345,10 +350,18 @@ class ConnectionManager:
             # Save updated connection config
             await self.save_connections()
 
-            logger.info("Successfully set up webhook subscription", connection_id=connection_id, subscription_id=subscription_id)
+            logger.info(
+                "Successfully set up webhook subscription",
+                connection_id=connection_id,
+                subscription_id=subscription_id,
+            )
 
         except Exception as e:
-            logger.error("Failed to setup webhook subscription", connection_id=connection_id, error=str(e))
+            logger.error(
+                "Failed to setup webhook subscription",
+                connection_id=connection_id,
+                error=str(e),
+            )
             # Don't fail the entire connection setup if webhook fails
 
     async def _setup_webhook_for_new_connection(
@@ -356,12 +369,18 @@ class ConnectionManager:
     ):
         """Setup webhook subscription for a newly authenticated connection"""
         try:
-            logger.info("Setting up subscription for newly authenticated connection", connection_id=connection_id)
+            logger.info(
+                "Setting up subscription for newly authenticated connection",
+                connection_id=connection_id,
+            )
 
             # Create and authenticate connector
             connector = self._create_connector(connection_config)
             if not await connector.authenticate():
-                logger.error("Failed to authenticate connector for webhook setup", connection_id=connection_id)
+                logger.error(
+                    "Failed to authenticate connector for webhook setup",
+                    connection_id=connection_id,
+                )
                 return
 
             # Setup subscription
@@ -376,8 +395,16 @@ class ConnectionManager:
             # Save updated connection config
             await self.save_connections()
 
-            logger.info("Successfully set up webhook subscription", connection_id=connection_id, subscription_id=subscription_id)
+            logger.info(
+                "Successfully set up webhook subscription",
+                connection_id=connection_id,
+                subscription_id=subscription_id,
+            )
 
         except Exception as e:
-            logger.error("Failed to setup webhook subscription for new connection", connection_id=connection_id, error=str(e))
+            logger.error(
+                "Failed to setup webhook subscription for new connection",
+                connection_id=connection_id,
+                error=str(e),
+            )
             # Don't fail the connection setup if webhook fails

@@ -2,11 +2,14 @@ import asyncio
 import uuid
 import time
 import random
-from typing import Dict
+from typing import Dict, Optional
 
 from models.tasks import TaskStatus, UploadTask, FileTask
+from utils.gpu_detection import get_worker_count
+from session_manager import AnonymousUser
+from utils.logging_config import get_logger
 
-from src.utils.gpu_detection import get_worker_count
+logger = get_logger(__name__)
 
 
 class TaskService:
@@ -104,7 +107,9 @@ class TaskService:
             await asyncio.gather(*tasks, return_exceptions=True)
 
         except Exception as e:
-            print(f"[ERROR] Background upload processor failed for task {task_id}: {e}")
+            logger.error(
+                "Background upload processor failed", task_id=task_id, error=str(e)
+            )
             import traceback
 
             traceback.print_exc()
@@ -136,7 +141,9 @@ class TaskService:
                     try:
                         await processor.process_item(upload_task, item, file_task)
                     except Exception as e:
-                        print(f"[ERROR] Failed to process item {item}: {e}")
+                        logger.error(
+                            "Failed to process item", item=str(item), error=str(e)
+                        )
                         import traceback
 
                         traceback.print_exc()
@@ -157,13 +164,15 @@ class TaskService:
             upload_task.updated_at = time.time()
 
         except asyncio.CancelledError:
-            print(f"[INFO] Background processor for task {task_id} was cancelled")
+            logger.info("Background processor cancelled", task_id=task_id)
             if user_id in self.task_store and task_id in self.task_store[user_id]:
                 # Task status and pending files already handled by cancel_task()
                 pass
             raise  # Re-raise to properly handle cancellation
         except Exception as e:
-            print(f"[ERROR] Background custom processor failed for task {task_id}: {e}")
+            logger.error(
+                "Background custom processor failed", task_id=task_id, error=str(e)
+            )
             import traceback
 
             traceback.print_exc()
@@ -171,16 +180,29 @@ class TaskService:
                 self.task_store[user_id][task_id].status = TaskStatus.FAILED
                 self.task_store[user_id][task_id].updated_at = time.time()
 
-    def get_task_status(self, user_id: str, task_id: str) -> dict:
-        """Get the status of a specific upload task"""
-        if (
-            not task_id
-            or user_id not in self.task_store
-            or task_id not in self.task_store[user_id]
-        ):
+    def get_task_status(self, user_id: str, task_id: str) -> Optional[dict]:
+        """Get the status of a specific upload task
+
+        Includes fallback to shared tasks stored under the "anonymous" user key
+        so default system tasks are visible to all users.
+        """
+        if not task_id:
             return None
 
-        upload_task = self.task_store[user_id][task_id]
+        # Prefer the caller's user_id; otherwise check shared/anonymous tasks
+        candidate_user_ids = [user_id, AnonymousUser().user_id]
+
+        upload_task = None
+        for candidate_user_id in candidate_user_ids:
+            if (
+                candidate_user_id in self.task_store
+                and task_id in self.task_store[candidate_user_id]
+            ):
+                upload_task = self.task_store[candidate_user_id][task_id]
+                break
+
+        if upload_task is None:
+            return None
 
         file_statuses = {}
         for file_path, file_task in upload_task.file_tasks.items():
@@ -206,14 +228,21 @@ class TaskService:
         }
 
     def get_all_tasks(self, user_id: str) -> list:
-        """Get all tasks for a user"""
-        if user_id not in self.task_store:
-            return []
+        """Get all tasks for a user
 
-        tasks = []
-        for task_id, upload_task in self.task_store[user_id].items():
-            tasks.append(
-                {
+        Returns the union of the user's own tasks and shared default tasks stored
+        under the "anonymous" user key. User-owned tasks take precedence
+        if a task_id overlaps.
+        """
+        tasks_by_id = {}
+
+        def add_tasks_from_store(store_user_id):
+            if store_user_id not in self.task_store:
+                return
+            for task_id, upload_task in self.task_store[store_user_id].items():
+                if task_id in tasks_by_id:
+                    continue
+                tasks_by_id[task_id] = {
                     "task_id": upload_task.task_id,
                     "status": upload_task.status.value,
                     "total_files": upload_task.total_files,
@@ -223,18 +252,36 @@ class TaskService:
                     "created_at": upload_task.created_at,
                     "updated_at": upload_task.updated_at,
                 }
-            )
 
-        # Sort by creation time, most recent first
+        # First, add user-owned tasks; then shared anonymous;
+        add_tasks_from_store(user_id)
+        add_tasks_from_store(AnonymousUser().user_id)
+
+        tasks = list(tasks_by_id.values())
         tasks.sort(key=lambda x: x["created_at"], reverse=True)
         return tasks
 
     def cancel_task(self, user_id: str, task_id: str) -> bool:
-        """Cancel a task if it exists and is not already completed"""
-        if user_id not in self.task_store or task_id not in self.task_store[user_id]:
+        """Cancel a task if it exists and is not already completed.
+
+        Supports cancellation of shared default tasks stored under the anonymous user.
+        """
+        # Check candidate user IDs first, then anonymous to find which user ID the task is mapped to
+        candidate_user_ids = [user_id, AnonymousUser().user_id]
+
+        store_user_id = None
+        for candidate_user_id in candidate_user_ids:
+            if (
+                candidate_user_id in self.task_store
+                and task_id in self.task_store[candidate_user_id]
+            ):
+                store_user_id = candidate_user_id
+                break
+
+        if store_user_id is None:
             return False
 
-        upload_task = self.task_store[user_id][task_id]
+        upload_task = self.task_store[store_user_id][task_id]
 
         # Can only cancel pending or running tasks
         if upload_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:

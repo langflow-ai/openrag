@@ -14,7 +14,6 @@ from connectors.sharepoint.oauth import SharePointOAuth
 from connectors.google_drive import GoogleDriveConnector
 from connectors.onedrive import OneDriveConnector
 from connectors.sharepoint import SharePointConnector
-from services.user_binding_service import user_binding_service
 
 
 class AuthService:
@@ -108,11 +107,27 @@ class AuthService:
         auth_endpoint = oauth_class.AUTH_ENDPOINT
         token_endpoint = oauth_class.TOKEN_ENDPOINT
 
-        # Get client_id from environment variable using connector's env var name
-        client_id = os.getenv(connector_class.CLIENT_ID_ENV_VAR)
-        if not client_id:
-            raise ValueError(
-                f"{connector_class.CLIENT_ID_ENV_VAR} environment variable not set"
+        # src/services/auth_service.py
+        client_key = getattr(connector_class, "CLIENT_ID_ENV_VAR", None)
+        secret_key = getattr(connector_class, "CLIENT_SECRET_ENV_VAR", None)
+
+        def _assert_env_key(name, val):
+            if not isinstance(val, str) or not val.strip():
+                raise RuntimeError(
+                    f"{connector_class.__name__} misconfigured: {name} must be a non-empty string "
+                    f"(got {val!r}). Define it as a class attribute on the connector."
+                )
+
+        _assert_env_key("CLIENT_ID_ENV_VAR", client_key)
+        _assert_env_key("CLIENT_SECRET_ENV_VAR", secret_key)
+
+        client_id = os.getenv(client_key)
+        client_secret = os.getenv(secret_key)
+
+        if not client_id or not client_secret:
+            raise RuntimeError(
+                f"Missing OAuth env vars for {connector_class.__name__}. "
+                f"Set {client_key} and {secret_key} in the environment."
             )
 
         oauth_config = {
@@ -268,24 +283,10 @@ class AuthService:
         )
 
         if jwt_token:
-            # Get the user info to create a persistent Google Drive connection
+            # Get the user info to create a persistent connector connection
             user_info = await self.session_manager.get_user_info_from_token(
                 token_data["access_token"]
             )
-            google_user_id = user_info["id"] if user_info else None
-            
-            # Create or update user binding between Google ID and Langflow ID
-            if google_user_id and user_info:
-                try:
-                    print(f"[DEBUG] Creating/updating user binding for Google ID: {google_user_id}")
-                    binding_created = await user_binding_service.ensure_binding(google_user_id, user_info)
-                    if binding_created:
-                        print(f"[DEBUG] Successfully ensured user binding for Google ID: {google_user_id}")
-                    else:
-                        print(f"[DEBUG] Failed to create user binding for Google ID: {google_user_id}")
-                except Exception as e:
-                    print(f"[WARNING] Failed to create user binding for Google ID {google_user_id}: {e}")
-                    # Don't fail authentication if binding creation fails
             
             response_data = {
                 "status": "authenticated",
@@ -294,13 +295,13 @@ class AuthService:
                 "jwt_token": jwt_token,  # Include JWT token in response
             }
 
-            if google_user_id:
-                # Convert the temporary auth connection to a persistent Google Drive connection
+            if user_info and user_info.get("id"):
+                # Convert the temporary auth connection to a persistent OAuth connection
                 await self.connector_service.connection_manager.update_connection(
                     connection_id=connection_id,
                     connector_type="google_drive",
                     name=f"Google Drive ({user_info.get('email', 'Unknown')})",
-                    user_id=google_user_id,
+                    user_id=user_info.get("id"),
                     config={
                         **connection_config.config,
                         "purpose": "data_source",
@@ -349,10 +350,6 @@ class AuthService:
         user = getattr(request.state, "user", None)
 
         if user:
-            # Get user binding info if available
-            binding_info = user_binding_service.get_binding_info(user.user_id)
-            langflow_user_id = user_binding_service.get_langflow_user_id(user.user_id)
-            
             user_data = {
                 "authenticated": True,
                 "user": {
@@ -366,13 +363,6 @@ class AuthService:
                     else None,
                 },
             }
-            
-            # Add binding information if available
-            if langflow_user_id:
-                user_data["user"]["langflow_user_id"] = langflow_user_id
-            if binding_info:
-                user_data["user"]["binding_created_at"] = binding_info.get("created_at")
-                user_data["user"]["binding_last_updated"] = binding_info.get("last_updated")
             
             return user_data
         else:
