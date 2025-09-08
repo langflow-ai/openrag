@@ -34,7 +34,7 @@ interface OneDriveFile {
   webUrl?: string
   driveItem?: {
     file?: { mimeType: string }
-    folder?: any
+    folder?: unknown
   }
 }
 
