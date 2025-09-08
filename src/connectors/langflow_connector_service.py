@@ -288,3 +288,7 @@ class LangflowConnectorService:
         )
 
         return task_id
+
+    async def _get_connector(self, connection_id: str) -> Optional[BaseConnector]:
+        """Get a connector by connection ID (alias for get_connector)"""
+        return await self.get_connector(connection_id)
