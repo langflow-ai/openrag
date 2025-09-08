@@ -93,29 +93,6 @@ class ConnectionManager:
                 return connection
         return None
 
-    async def _delete_old_connections(
-        self, connector_type: str, user_id: Optional[str] = None, exclude_id: str = None
-    ):
-        """Delete old connections for the same connector type and user"""
-        connections_to_delete = []
-        
-        for connection_id, connection in self.connections.items():
-            if (
-                connection.connector_type == connector_type
-                and connection.user_id == user_id
-                and connection.is_active
-                and connection_id != exclude_id
-            ):
-                connections_to_delete.append(connection_id)
-        
-        # Delete old connections
-        for connection_id in connections_to_delete:
-            logger.info(
-                f"Deleting old connection for {connector_type}",
-                connection_id=connection_id
-            )
-            await self.delete_connection(connection_id)
-
     async def cleanup_duplicate_connections(self, remove_duplicates=False):
         """
         Clean up duplicate connections, keeping only the most recent connection 
@@ -259,10 +236,10 @@ class ConnectionManager:
 
         self.connections[connection_id] = connection_config
         
-        # Deactivate/remove any old connections for this provider and user
-        await self._delete_old_connections(connector_type, user_id, connection_id)
+        # Clean up duplicates (will keep the newest, which is the one we just created)
+        await self.cleanup_duplicate_connections(remove_duplicates=True)
+        
         await self.save_connections()
-
         return connection_id
 
     async def list_connections(
