@@ -1,5 +1,6 @@
 import asyncio
 import random
+from typing import Dict, Optional
 import time
 import uuid
 
@@ -7,6 +8,7 @@ from models.tasks import FileTask, TaskStatus, UploadTask
 from session_manager import AnonymousUser
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
+
 
 logger = get_logger(__name__)
 
@@ -46,6 +48,38 @@ class TaskService:
             jwt_token=jwt_token,
             owner_name=owner_name,
             owner_email=owner_email,
+        )
+        return await self.create_custom_task(user_id, file_paths, processor)
+
+    async def create_langflow_upload_task(
+        self,
+        user_id: str,
+        file_paths: list,
+        langflow_file_service,
+        session_manager,
+        jwt_token: str = None,
+        owner_name: str = None,
+        owner_email: str = None,
+        session_id: str = None,
+        tweaks: dict = None,
+        settings: dict = None,
+        delete_after_ingest: bool = True,
+    ) -> str:
+        """Create a new upload task for Langflow file processing with upload and ingest"""
+        # Use LangflowFileProcessor with user context
+        from models.processors import LangflowFileProcessor
+
+        processor = LangflowFileProcessor(
+            langflow_file_service=langflow_file_service,
+            session_manager=session_manager,
+            owner_user_id=user_id,
+            jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            session_id=session_id,
+            tweaks=tweaks,
+            settings=settings,
+            delete_after_ingest=delete_after_ingest,
         )
         return await self.create_custom_task(user_id, file_paths, processor)
 
@@ -190,6 +224,7 @@ class TaskService:
                 "retry_count": file_task.retry_count,
                 "created_at": file_task.created_at,
                 "updated_at": file_task.updated_at,
+                "duration_seconds": file_task.duration_seconds,
             }
 
         return {
@@ -201,6 +236,7 @@ class TaskService:
             "failed_files": upload_task.failed_files,
             "created_at": upload_task.created_at,
             "updated_at": upload_task.updated_at,
+            "duration_seconds": upload_task.duration_seconds,
             "files": file_statuses,
         }
 
@@ -228,6 +264,7 @@ class TaskService:
                     "failed_files": upload_task.failed_files,
                     "created_at": upload_task.created_at,
                     "updated_at": upload_task.updated_at,
+                    "duration_seconds": upload_task.duration_seconds,
                 }
 
         # First, add user-owned tasks; then shared anonymous;
