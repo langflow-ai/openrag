@@ -82,7 +82,7 @@ class LangflowFileService:
 
         # Pass files via tweaks to File component (File-PSU37 from the flow)
         if file_paths:
-            tweaks["File-PSU37"] = {"file_path": file_paths}
+            tweaks["File-PSU37"] = {"path": file_paths}
 
         # Pass JWT token via tweaks using the x-langflow-global-var- pattern
         if jwt_token:
