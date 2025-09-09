@@ -1,6 +1,7 @@
 import sys
 
 # Configure structured logging early
+from connectors.langflow_connector_service import LangflowConnectorService
 from utils.logging_config import configure_from_env, get_logger
 
 configure_from_env()
@@ -12,34 +13,58 @@ import multiprocessing
 import os
 import subprocess
 from functools import partial
+
 from starlette.applications import Starlette
 from starlette.routing import Route
 
 # Set multiprocessing start method to 'spawn' for CUDA compatibility
 multiprocessing.set_start_method("spawn", force=True)
 
+# Create process pool FIRST, before any torch/CUDA imports
 from utils.process_pool import process_pool
 
 import torch
 
+# API endpoints
+from api import (
+    auth,
+    chat,
+    connectors,
+    knowledge_filter,
+    langflow_files,
+    oidc,
+    search,
+    settings,
+    tasks,
+    upload,
+)
+from auth_middleware import optional_auth, require_auth
+
 # Configuration and setup
-from config.settings import clients, INDEX_NAME, INDEX_BODY, SESSION_SECRET
-from config.settings import is_no_auth_mode
-from utils.gpu_detection import detect_gpu_devices
+from config.settings import (
+    INDEX_BODY,
+    INDEX_NAME,
+    SESSION_SECRET,
+    clients,
+    is_no_auth_mode,
+)
+
+# Existing services
+from services.auth_service import AuthService
+from services.chat_service import ChatService
 
 # Services
 from services.document_service import DocumentService
+from services.knowledge_filter_service import KnowledgeFilterService
+
+# Configuration and setup
+# Services
+from services.langflow_file_service import LangflowFileService
+from services.monitor_service import MonitorService
 from services.search_service import SearchService
 from services.task_service import TaskService
-from services.auth_service import AuthService
-from services.chat_service import ChatService
-from services.knowledge_filter_service import KnowledgeFilterService
-from services.monitor_service import MonitorService
-
-# Existing services
-from connectors.service import ConnectorService
 from session_manager import SessionManager
-from auth_middleware import require_auth, optional_auth
+from utils.process_pool import process_pool
 
 # API endpoints
 from api import (
@@ -216,7 +241,10 @@ async def ingest_default_documents_when_ready(services):
         logger.info("Ingesting default documents when ready")
         base_dir = os.path.abspath(os.path.join(os.getcwd(), "documents"))
         if not os.path.isdir(base_dir):
-            logger.info("Default documents directory not found; skipping ingestion", base_dir=base_dir)
+            logger.info(
+                "Default documents directory not found; skipping ingestion",
+                base_dir=base_dir,
+            )
             return
 
         # Collect files recursively
@@ -227,7 +255,9 @@ async def ingest_default_documents_when_ready(services):
         ]
 
         if not file_paths:
-            logger.info("No default documents found; nothing to ingest", base_dir=base_dir)
+            logger.info(
+                "No default documents found; nothing to ingest", base_dir=base_dir
+            )
             return
 
         # Build a processor that DOES NOT set 'owner' on documents (owner_user_id=None)
@@ -252,11 +282,13 @@ async def ingest_default_documents_when_ready(services):
     except Exception as e:
         logger.error("Default documents ingestion failed", error=str(e))
 
+
 async def startup_tasks(services):
     """Startup tasks"""
     logger.info("Starting startup tasks")
     await init_index()
     await ingest_default_documents_when_ready(services)
+
 
 async def initialize_services():
     """Initialize all services and their dependencies"""
@@ -281,11 +313,7 @@ async def initialize_services():
     document_service.process_pool = process_pool
 
     # Initialize connector service
-    connector_service = ConnectorService(
-        patched_async_client=clients.patched_async_client,
-        process_pool=process_pool,
-        embed_model="text-embedding-3-small",
-        index_name=INDEX_NAME,
+    connector_service = LangflowConnectorService(
         task_service=task_service,
         session_manager=session_manager,
     )
@@ -296,7 +324,6 @@ async def initialize_services():
     # Load persisted connector connections at startup so webhooks and syncs
     # can resolve existing subscriptions immediately after server boot
     # Skip in no-auth mode since connectors require OAuth
-    from config.settings import is_no_auth_mode
 
     if not is_no_auth_mode():
         try:
@@ -313,11 +340,14 @@ async def initialize_services():
     else:
         logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
 
+    langflow_file_service = LangflowFileService()
+
     return {
         "document_service": document_service,
         "search_service": search_service,
         "task_service": task_service,
         "chat_service": chat_service,
+        "langflow_file_service": langflow_file_service,
         "auth_service": auth_service,
         "connector_service": connector_service,
         "knowledge_filter_service": knowledge_filter_service,
@@ -343,6 +373,40 @@ async def create_app():
                 )
             ),
             methods=["POST"],
+        ),
+        # Langflow Files endpoints
+        Route(
+            "/langflow/files/upload",
+            optional_auth(services["session_manager"])(
+                partial(
+                    langflow_files.upload_user_file,
+                    langflow_file_service=services["langflow_file_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/langflow/ingest",
+            require_auth(services["session_manager"])(
+                partial(
+                    langflow_files.run_ingestion,
+                    langflow_file_service=services["langflow_file_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/langflow/files",
+            require_auth(services["session_manager"])(
+                partial(
+                    langflow_files.delete_user_files,
+                    langflow_file_service=services["langflow_file_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
         ),
         Route(
             "/upload_context",

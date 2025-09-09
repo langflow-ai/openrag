@@ -66,6 +66,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
                     max_files,
                     jwt_token=jwt_token,
                 )
+            task_ids.append(task_id)
         return JSONResponse(
             {
                 "task_ids": task_ids,
