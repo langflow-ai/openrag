@@ -10,6 +10,7 @@ logger = get_logger(__name__)
 
 import asyncio
 import atexit
+import mimetypes
 import multiprocessing
 import os
 import subprocess
@@ -278,6 +279,7 @@ async def ingest_default_documents_when_ready(services):
 async def _ingest_default_documents_langflow(services, file_paths):
     """Ingest default documents using Langflow upload-ingest-delete pipeline."""
     langflow_file_service = services["langflow_file_service"]
+    session_manager = services["session_manager"]
     
     logger.info(
         "Using Langflow ingestion pipeline for default documents",
@@ -298,17 +300,49 @@ async def _ingest_default_documents_langflow(services, file_paths):
             # Create file tuple for upload
             filename = os.path.basename(file_path)
             # Determine content type based on file extension
-            import mimetypes
             content_type, _ = mimetypes.guess_type(filename)
             if not content_type:
                 content_type = 'application/octet-stream'
             
             file_tuple = (filename, content, content_type)
             
-            # Use langflow upload_and_ingest_file method
+            # Use AnonymousUser details for default documents
+            from session_manager import AnonymousUser
+            anonymous_user = AnonymousUser()
+            
+            # Get JWT token using same logic as DocumentFileProcessor
+            # This will handle anonymous JWT creation if needed for anonymous user
+            effective_jwt = None
+            
+            # Let session manager handle anonymous JWT creation if needed
+            if session_manager:
+                # This call will create anonymous JWT if needed (same as DocumentFileProcessor)
+                session_manager.get_user_opensearch_client(
+                    anonymous_user.user_id, effective_jwt
+                )
+                # Get the JWT that was created by session manager
+                if hasattr(session_manager, '_anonymous_jwt'):
+                    effective_jwt = session_manager._anonymous_jwt
+            
+            # Prepare tweaks for default documents with anonymous user metadata
+            default_tweaks = {
+                "OpenSearchHybrid-Ve6bS": {
+                    "docs_metadata": [
+                        {"key": "owner", "value": None},
+                        {"key": "owner_name", "value": anonymous_user.name},
+                        {"key": "owner_email", "value": anonymous_user.email},
+                        {"key": "connector_type", "value": "system_default"}
+                    ]
+                }
+            }
+            
+            # Use langflow upload_and_ingest_file method with JWT token
             result = await langflow_file_service.upload_and_ingest_file(
                 file_tuple=file_tuple,
-                jwt_token=None,  # No auth for default documents
+                session_id=None,  # No session for default documents
+                tweaks=default_tweaks,  # Add anonymous user metadata
+                settings=None,  # Use default ingestion settings
+                jwt_token=effective_jwt,  # Use JWT token (anonymous if needed)
                 delete_after_ingest=True,  # Clean up after ingestion
             )
             
@@ -511,6 +545,7 @@ async def create_app():
                     langflow_files.upload_and_ingest_user_file,
                     langflow_file_service=services["langflow_file_service"],
                     session_manager=services["session_manager"],
+                    task_service=services["task_service"],
                 )
             ),
             methods=["POST"],
@@ -906,6 +941,7 @@ async def create_app():
                     document_service=services["document_service"],
                     langflow_file_service=services["langflow_file_service"],
                     session_manager=services["session_manager"],
+                    task_service=services["task_service"],
                 )
             ),
             methods=["POST"],
