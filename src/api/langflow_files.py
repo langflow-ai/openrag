@@ -2,6 +2,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from services.langflow_file_service import LangflowFileService
+from session_manager import AnonymousUser
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -35,11 +36,11 @@ async def upload_user_file(
 
         # Get user info for task management
         user = getattr(request.state, "user", None)
-        user_id = getattr(user, "user_id", "anonymous")
+        user_id = getattr(user, "user_id", AnonymousUser().user_id)
 
         # Create processor for Langflow file upload
         from models.processors import LangflowFileProcessor
-        processor = LangflowFileProcessor(
+        processor = LangflowFileProcessor(  
             langflow_file_service=langflow_file_service,
             jwt_token=jwt_token,
         )
