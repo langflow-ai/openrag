@@ -35,7 +35,7 @@ async def upload_user_file(
 
         # Get user info for task management
         user = getattr(request.state, "user", None)
-        user_id = user.user_id if user else "anonymous"
+        user_id = getattr(user, "user_id", "anonymous")
 
         # Create processor for Langflow file upload
         from models.processors import LangflowFileProcessor
