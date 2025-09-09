@@ -15,10 +15,10 @@ services:
       bash -c "
         # Start OpenSearch in background
         /usr/share/opensearch/opensearch-docker-entrypoint.sh opensearch &
-        
+
         # Wait a bit for OpenSearch to start, then apply security config
         sleep 10 && /usr/share/opensearch/setup-security.sh &
-        
+
         # Wait for background processes
         wait
       "
@@ -52,7 +52,8 @@ services:
       - LANGFLOW_PUBLIC_URL=${LANGFLOW_PUBLIC_URL}
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
-      - FLOW_ID=${FLOW_ID}
+      - LANGFLOW_CHAT_FLOW_ID=${LANGFLOW_CHAT_FLOW_ID}
+      - LANGFLOW_INGEST_FLOW_ID=${LANGFLOW_INGEST_FLOW_ID}
       - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
       - OPENSEARCH_PORT=9200
       - OPENSEARCH_USERNAME=admin
@@ -98,7 +99,8 @@ services:
       - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
       - JWT="dummy"
       - OPENRAG-QUERY-FILTER="{}"
-      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD
       - LANGFLOW_LOG_LEVEL=DEBUG
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}

@@ -57,7 +57,7 @@ function AdminPage() {
       })
 
       const result = await response.json()
-      
+
       if (response.ok) {
         setUploadStatus(`File uploaded successfully! ID: ${result.id}`)
         setSelectedFile(null)
@@ -132,23 +132,23 @@ function AdminPage() {
       })
 
       const result = await response.json()
-      
+
       if (response.status === 201) {
         // New flow: Got task ID, use centralized tracking
         const taskId = result.task_id || result.id
         const totalFiles = result.total_files || 0
-        
+
         if (!taskId) {
           throw new Error("No task ID received from server")
         }
-        
+
         // Add task to centralized tracking
         addTask(taskId)
-        
+
         setUploadStatus(`🔄 Processing started for ${totalFiles} files. Check the task notification panel for real-time progress. (Task ID: ${taskId})`)
         setFolderPath("")
         setPathUploadLoading(false)
-        
+
       } else if (response.ok) {
         // Original flow: Direct response with results
         const successful = result.results?.filter((r: {status: string}) => r.status === "indexed").length || 0
