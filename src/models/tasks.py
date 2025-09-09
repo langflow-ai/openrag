@@ -20,6 +20,11 @@ class FileTask:
     retry_count: int = 0
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    
+    @property
+    def duration_seconds(self) -> float:
+        """Duration in seconds from creation to last update"""
+        return self.updated_at - self.created_at
 
 
 @dataclass
@@ -33,3 +38,8 @@ class UploadTask:
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    
+    @property
+    def duration_seconds(self) -> float:
+        """Duration in seconds from creation to last update"""
+        return self.updated_at - self.created_at

@@ -13,6 +13,7 @@ export interface Task {
   failed_files?: number
   created_at: string
   updated_at: string
+  duration_seconds?: number
   result?: Record<string, unknown>
   error?: string
   files?: Record<string, Record<string, unknown>>

@@ -76,6 +76,22 @@ export function TaskNotificationMenu() {
     return null
   }
 
+  const formatDuration = (seconds?: number) => {
+    if (!seconds || seconds < 0) return null
+    
+    if (seconds < 60) {
+      return `${Math.round(seconds)}s`
+    } else if (seconds < 3600) {
+      const mins = Math.floor(seconds / 60)
+      const secs = Math.round(seconds % 60)
+      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`
+    } else {
+      const hours = Math.floor(seconds / 3600)
+      const mins = Math.floor((seconds % 3600) / 60)
+      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
+    }
+  }
+
   const formatRelativeTime = (dateString: string) => {
     // Handle different timestamp formats
     let date: Date
@@ -153,6 +169,11 @@ export function TaskNotificationMenu() {
                     </div>
                     <CardDescription className="text-xs">
                       Started {formatRelativeTime(task.created_at)}
+                      {formatDuration(task.duration_seconds) && (
+                        <span className="ml-2 text-muted-foreground">
+                          • {formatDuration(task.duration_seconds)}
+                        </span>
+                      )}
                     </CardDescription>
                   </CardHeader>
                   {formatTaskProgress(task) && (
@@ -256,6 +277,11 @@ export function TaskNotificationMenu() {
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {formatRelativeTime(task.updated_at)}
+                          {formatDuration(task.duration_seconds) && (
+                            <span className="ml-2">
+                              • {formatDuration(task.duration_seconds)}
+                            </span>
+                          )}
                         </div>
                         {/* Show final results for completed tasks */}
                         {task.status === 'completed' && formatTaskProgress(task)?.detailed && (
