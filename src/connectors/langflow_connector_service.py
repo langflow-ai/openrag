@@ -53,9 +53,11 @@ class LangflowConnectorService:
             filename=document.filename,
         )
 
+        suffix = self._get_file_extension(document.mimetype)
+
         # Create temporary file from document content
         with tempfile.NamedTemporaryFile(
-            delete=False, suffix=self._get_file_extension(document.mimetype)
+            delete=False, suffix=suffix
         ) as tmp_file:
             tmp_file.write(document.content)
             tmp_file.flush()
@@ -65,7 +67,7 @@ class LangflowConnectorService:
                 logger.debug("Uploading file to Langflow", filename=document.filename)
                 content = document.content
                 file_tuple = (
-                    document.filename,
+                    document.filename+suffix,
                     content,
                     document.mimetype or "application/octet-stream",
                 )
