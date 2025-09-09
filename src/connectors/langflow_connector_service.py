@@ -67,7 +67,7 @@ class LangflowConnectorService:
                 logger.debug("Uploading file to Langflow", filename=document.filename)
                 content = document.content
                 file_tuple = (
-                    document.filename+suffix,
+                    document.filename.replace(" ", "_").replace("/", "_")+suffix,
                     content,
                     document.mimetype or "application/octet-stream",
                 )

@@ -33,7 +33,7 @@ class LangflowFileService:
                 "[LF] Upload failed",
                 status_code=resp.status_code,
                 reason=resp.reason_phrase,
-                body=resp.text[:500],
+                body=resp.text,
             )
         resp.raise_for_status()
         return resp.json()
