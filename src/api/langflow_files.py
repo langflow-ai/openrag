@@ -70,35 +70,33 @@ async def run_ingestion(
         if settings:
             logger.debug("Applying ingestion settings", settings=settings)
 
-            # Split Text component tweaks (SplitText-QIKhg)
+            # Split Text component tweaks
             if (
                 settings.get("chunkSize")
                 or settings.get("chunkOverlap")
                 or settings.get("separator")
             ):
-                if "SplitText-QIKhg" not in tweaks:
-                    tweaks["SplitText-QIKhg"] = {}
+                if "Split Text" not in tweaks:
+                    tweaks["Split Text"] = {}
                 if settings.get("chunkSize"):
-                    tweaks["SplitText-QIKhg"]["chunk_size"] = settings["chunkSize"]
+                    tweaks["Split Text"]["chunk_size"] = settings["chunkSize"]
                 if settings.get("chunkOverlap"):
-                    tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings[
-                        "chunkOverlap"
-                    ]
+                    tweaks["Split Text"]["chunk_overlap"] = settings["chunkOverlap"]
                 if settings.get("separator"):
-                    tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
+                    tweaks["Split Text"]["separator"] = settings["separator"]
 
-            # OpenAI Embeddings component tweaks (OpenAIEmbeddings-joRJ6)
+            # OpenAI Embeddings component tweaks
             if settings.get("embeddingModel"):
-                if "OpenAIEmbeddings-joRJ6" not in tweaks:
-                    tweaks["OpenAIEmbeddings-joRJ6"] = {}
-                tweaks["OpenAIEmbeddings-joRJ6"]["model"] = settings["embeddingModel"]
+                if "OpenAI Embeddings" not in tweaks:
+                    tweaks["OpenAI Embeddings"] = {}
+                tweaks["OpenAI Embeddings"]["model"] = settings["embeddingModel"]
 
             # Note: OpenSearch component tweaks not needed for ingestion
             # (search parameters are for retrieval, not document processing)
 
             logger.debug("Final tweaks with settings applied", tweaks=tweaks)
         # Include user JWT if available
-        jwt_token = getattr(request.state, "jwt_token", None)
+        jwt_token: str | None = getattr(request.state, "jwt_token", None)
 
         # Extract user info from User object
         user = getattr(request.state, "user", None)
@@ -128,7 +126,10 @@ async def run_ingestion(
 
 
 async def upload_and_ingest_user_file(
-    request: Request, langflow_file_service: LangflowFileService, session_manager, task_service
+    request: Request,
+    langflow_file_service: LangflowFileService,
+    session_manager,
+    task_service,
 ):
     """Combined upload and ingest endpoint - uses task service for tracking and cancellation"""
     try:
@@ -148,10 +149,11 @@ async def upload_and_ingest_user_file(
         # Parse JSON fields if provided
         settings = None
         tweaks = None
-        
+
         if settings_json:
             try:
                 import json
+
                 settings = json.loads(settings_json)
             except json.JSONDecodeError as e:
                 logger.error("Invalid settings JSON", error=str(e))
@@ -160,6 +162,7 @@ async def upload_and_ingest_user_file(
         if tweaks_json:
             try:
                 import json
+
                 tweaks = json.loads(tweaks_json)
             except json.JSONDecodeError as e:
                 logger.error("Invalid tweaks JSON", error=str(e))
@@ -173,7 +176,9 @@ async def upload_and_ingest_user_file(
         jwt_token = getattr(request.state, "jwt_token", None)
 
         if not user_id:
-            return JSONResponse({"error": "User authentication required"}, status_code=401)
+            return JSONResponse(
+                {"error": "User authentication required"}, status_code=401
+            )
 
         logger.debug(
             "Processing file for task-based upload and ingest",
@@ -183,28 +188,28 @@ async def upload_and_ingest_user_file(
             has_settings=bool(settings),
             has_tweaks=bool(tweaks),
             delete_after_ingest=delete_after_ingest,
-            user_id=user_id
+            user_id=user_id,
         )
 
         # Create temporary file for task processing
-        import tempfile
         import os
-        
+        import tempfile
+
         # Read file content
         content = await upload_file.read()
-        
+
         # Create temporary file
         safe_filename = upload_file.filename.replace(" ", "_").replace("/", "_")
-        temp_fd, temp_path = tempfile.mkstemp(
-            suffix=f"_{safe_filename}"
-        )
-        
+        temp_fd, temp_path = tempfile.mkstemp(suffix=f"_{safe_filename}")
+
         try:
             # Write content to temp file
-            with os.fdopen(temp_fd, 'wb') as temp_file:
+            with os.fdopen(temp_fd, "wb") as temp_file:
                 temp_file.write(content)
 
-            logger.debug("Created temporary file for task processing", temp_path=temp_path)
+            logger.debug(
+                "Created temporary file for task processing", temp_path=temp_path
+            )
 
             # Create langflow upload task for single file
             task_id = await task_service.create_langflow_upload_task(
@@ -222,12 +227,15 @@ async def upload_and_ingest_user_file(
             )
 
             logger.debug("Langflow upload task created successfully", task_id=task_id)
-            
-            return JSONResponse({
-                "task_id": task_id,
-                "message": f"Langflow upload task created for file '{upload_file.filename}'",
-                "filename": upload_file.filename
-            }, status_code=202)  # 202 Accepted for async processing
+
+            return JSONResponse(
+                {
+                    "task_id": task_id,
+                    "message": f"Langflow upload task created for file '{upload_file.filename}'",
+                    "filename": upload_file.filename,
+                },
+                status_code=202,
+            )  # 202 Accepted for async processing
 
         except Exception:
             # Clean up temp file on error
@@ -237,7 +245,7 @@ async def upload_and_ingest_user_file(
             except Exception:
                 pass  # Ignore cleanup errors
             raise
-        
+
     except Exception as e:
         logger.error(
             "upload_and_ingest_user_file endpoint failed",
@@ -245,6 +253,7 @@ async def upload_and_ingest_user_file(
             error=str(e),
         )
         import traceback
+
         logger.error("Full traceback", traceback=traceback.format_exc())
         return JSONResponse({"error": str(e)}, status_code=500)
 

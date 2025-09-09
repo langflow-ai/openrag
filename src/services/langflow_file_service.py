@@ -84,14 +84,13 @@ class LangflowFileService:
         if not tweaks:
             tweaks = {}
 
-        # Pass files via tweaks to File component (File-PSU37 from the flow)
+        # Pass files via tweaks to File component
         if file_paths:
-            tweaks["File-PSU37"] = {"path": file_paths}
+            tweaks["File"] = {"path": file_paths}
 
-        # Pass JWT token via tweaks using the x-langflow-global-var- pattern
+        # Pass JWT token via tweaks to OpenSearch component
         if jwt_token:
-            # Using the global variable pattern that Langflow expects for OpenSearch components
-            tweaks["OpenSearchHybrid-Ve6bS"] = {"jwt_token": jwt_token}
+            tweaks["OpenSearch (Hybrid)"] = {"jwt_token": jwt_token}
             logger.debug("[LF] Added JWT token to tweaks for OpenSearch components")
         else:
             logger.warning("[LF] No JWT token provided")
@@ -109,9 +108,9 @@ class LangflowFileService:
 
         if metadata_tweaks:
             # Initialize the OpenSearch component tweaks if not already present
-            if "OpenSearchHybrid-Ve6bS" not in tweaks:
-                tweaks["OpenSearchHybrid-Ve6bS"] = {}
-            tweaks["OpenSearchHybrid-Ve6bS"]["docs_metadata"] = metadata_tweaks
+            if "OpenSearch (Hybrid)" not in tweaks:
+                tweaks["OpenSearch (Hybrid)"] = {}
+            tweaks["OpenSearch (Hybrid)"]["docs_metadata"] = metadata_tweaks
             logger.debug(
                 "[LF] Added metadata to tweaks", metadata_count=len(metadata_tweaks)
             )
@@ -168,7 +167,7 @@ class LangflowFileService:
         """
         Combined upload, ingest, and delete operation.
         First uploads the file, then runs ingestion on it, then optionally deletes the file.
-        
+
         Args:
             file_tuple: File tuple (filename, content, content_type)
             session_id: Optional session ID for the ingestion flow
@@ -176,12 +175,12 @@ class LangflowFileService:
             settings: Optional UI settings to convert to component tweaks
             jwt_token: Optional JWT token for authentication
             delete_after_ingest: Whether to delete the file from Langflow after ingestion (default: True)
-            
+
         Returns:
             Combined result with upload info, ingestion result, and deletion status
         """
         logger.debug("[LF] Starting combined upload and ingest operation")
-        
+
         # Step 1: Upload the file
         try:
             upload_result = await self.upload_user_file(file_tuple, jwt_token=jwt_token)
@@ -190,10 +189,12 @@ class LangflowFileService:
                 extra={
                     "file_id": upload_result.get("id"),
                     "file_path": upload_result.get("path"),
-                }
+                },
             )
         except Exception as e:
-            logger.error("[LF] Upload failed during combined operation", extra={"error": str(e)})
+            logger.error(
+                "[LF] Upload failed during combined operation", extra={"error": str(e)}
+            )
             raise Exception(f"Upload failed: {str(e)}")
 
         # Step 2: Prepare for ingestion
@@ -203,34 +204,39 @@ class LangflowFileService:
 
         # Convert UI settings to component tweaks if provided
         final_tweaks = tweaks.copy() if tweaks else {}
-        
-        if settings:
-            logger.debug("[LF] Applying ingestion settings", extra={"settings": settings})
 
-            # Split Text component tweaks (SplitText-QIKhg)
+        if settings:
+            logger.debug(
+                "[LF] Applying ingestion settings", extra={"settings": settings}
+            )
+
+            # Split Text component tweaks
             if (
                 settings.get("chunkSize")
                 or settings.get("chunkOverlap")
                 or settings.get("separator")
             ):
-                if "SplitText-QIKhg" not in final_tweaks:
-                    final_tweaks["SplitText-QIKhg"] = {}
+                if "Split Text" not in final_tweaks:
+                    final_tweaks["Split Text"] = {}
                 if settings.get("chunkSize"):
-                    final_tweaks["SplitText-QIKhg"]["chunk_size"] = settings["chunkSize"]
+                    final_tweaks["Split Text"]["chunk_size"] = settings["chunkSize"]
                 if settings.get("chunkOverlap"):
-                    final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings[
+                    final_tweaks["Split Text"]["chunk_overlap"] = settings[
                         "chunkOverlap"
                     ]
                 if settings.get("separator"):
-                    final_tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
+                    final_tweaks["Split Text"]["separator"] = settings["separator"]
 
-            # OpenAI Embeddings component tweaks (OpenAIEmbeddings-joRJ6)
+            # OpenAI Embeddings component tweaks
             if settings.get("embeddingModel"):
-                if "OpenAIEmbeddings-joRJ6" not in final_tweaks:
-                    final_tweaks["OpenAIEmbeddings-joRJ6"] = {}
-                final_tweaks["OpenAIEmbeddings-joRJ6"]["model"] = settings["embeddingModel"]
+                if "OpenAI Embeddings" not in final_tweaks:
+                    final_tweaks["OpenAI Embeddings"] = {}
+                final_tweaks["OpenAI Embeddings"]["model"] = settings["embeddingModel"]
 
-            logger.debug("[LF] Final tweaks with settings applied", extra={"tweaks": final_tweaks})
+            logger.debug(
+                "[LF] Final tweaks with settings applied",
+                extra={"tweaks": final_tweaks},
+            )
 
         # Step 3: Run ingestion
         try:
@@ -244,10 +250,7 @@ class LangflowFileService:
         except Exception as e:
             logger.error(
                 "[LF] Ingestion failed during combined operation",
-                extra={
-                    "error": str(e),
-                    "file_path": file_path
-                }
+                extra={"error": str(e), "file_path": file_path},
             )
             # Note: We could optionally delete the uploaded file here if ingestion fails
             raise Exception(f"Ingestion failed: {str(e)}")
@@ -256,10 +259,13 @@ class LangflowFileService:
         file_id = upload_result.get("id")
         delete_result = None
         delete_error = None
-        
+
         if delete_after_ingest and file_id:
             try:
-                logger.debug("[LF] Deleting file after successful ingestion", extra={"file_id": file_id})
+                logger.debug(
+                    "[LF] Deleting file after successful ingestion",
+                    extra={"file_id": file_id},
+                )
                 await self.delete_user_file(file_id)
                 delete_result = {"status": "deleted", "file_id": file_id}
                 logger.debug("[LF] File deleted successfully")
@@ -267,26 +273,27 @@ class LangflowFileService:
                 delete_error = str(e)
                 logger.warning(
                     "[LF] Failed to delete file after ingestion",
-                    extra={
-                        "error": delete_error,
-                        "file_id": file_id
-                    }
+                    extra={"error": delete_error, "file_id": file_id},
                 )
-                delete_result = {"status": "delete_failed", "file_id": file_id, "error": delete_error}
+                delete_result = {
+                    "status": "delete_failed",
+                    "file_id": file_id,
+                    "error": delete_error,
+                }
 
         # Return combined result
         result = {
             "status": "success",
             "upload": upload_result,
             "ingestion": ingest_result,
-            "message": f"File '{upload_result.get('name')}' uploaded and ingested successfully"
+            "message": f"File '{upload_result.get('name')}' uploaded and ingested successfully",
         }
-        
+
         if delete_after_ingest:
             result["deletion"] = delete_result
             if delete_result and delete_result.get("status") == "deleted":
                 result["message"] += " and cleaned up"
             elif delete_error:
                 result["message"] += f" (cleanup warning: {delete_error})"
-        
+
         return result
