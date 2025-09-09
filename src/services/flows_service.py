@@ -1,4 +1,4 @@
-from config.settings import NUDGES_FLOW_ID, LANGFLOW_URL, FLOW_ID
+from config.settings import NUDGES_FLOW_ID, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID, LANGFLOW_INGEST_FLOW_ID
 import json
 import os
 import aiohttp
@@ -13,7 +13,7 @@ class FlowsService:
         """Reset a Langflow flow by uploading the corresponding JSON file
         
         Args:
-            flow_type: Either 'nudges' or 'retrieval'
+            flow_type: Either 'nudges', 'retrieval', or 'ingest'
             
         Returns:
             dict: Success/error response
@@ -27,9 +27,12 @@ class FlowsService:
             flow_id = NUDGES_FLOW_ID
         elif flow_type == "retrieval":
             flow_file = "flows/openrag_agent.json" 
-            flow_id = FLOW_ID
+            flow_id = LANGFLOW_CHAT_FLOW_ID
+        elif flow_type == "ingest":
+            flow_file = "flows/ingestion_flow.json"
+            flow_id = LANGFLOW_INGEST_FLOW_ID
         else:
-            raise ValueError("flow_type must be either 'nudges' or 'retrieval'")
+            raise ValueError("flow_type must be either 'nudges', 'retrieval', or 'ingest'")
             
         # Load flow JSON file
         try:

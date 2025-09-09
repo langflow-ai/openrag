@@ -11,16 +11,16 @@ async def reset_flow_endpoint(
     request: Request,
     chat_service,
 ):
-    """Reset a Langflow flow by type (nudges or retrieval)"""
+    """Reset a Langflow flow by type (nudges, retrieval, or ingest)"""
     
     # Get flow type from path parameter
     flow_type = request.path_params.get("flow_type")
     
-    if flow_type not in ["nudges", "retrieval"]:
+    if flow_type not in ["nudges", "retrieval", "ingest"]:
         return JSONResponse(
             {
                 "success": False,
-                "error": "Invalid flow type. Must be 'nudges' or 'retrieval'"
+                "error": "Invalid flow type. Must be 'nudges', 'retrieval', or 'ingest'"
             },
             status_code=400
         )

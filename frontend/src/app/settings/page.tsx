@@ -83,10 +83,14 @@ function KnowledgeSourcesPage() {
 
   // Settings state
   // Note: backend internal Langflow URL is not needed on the frontend
-  const [flowId, setFlowId] = useState<string>(
+  const [chatFlowId, setChatFlowId] = useState<string>(
     "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   );
+  const [ingestFlowId, setIngestFlowId] = useState<string>(
+    "5488df7c-b93f-4f87-a446-b67028bc0813",
+  );
   const [langflowEditUrl, setLangflowEditUrl] = useState<string>("");
+  const [langflowIngestEditUrl, setLangflowIngestEditUrl] = useState<string>("");
   const [publicLangflowUrl, setPublicLangflowUrl] = useState<string>("");
 
 
@@ -97,10 +101,16 @@ function KnowledgeSourcesPage() {
       if (response.ok) {
         const settings = await response.json();
         if (settings.flow_id) {
-          setFlowId(settings.flow_id);
+          setChatFlowId(settings.flow_id);
+        }
+        if (settings.ingest_flow_id) {
+          setIngestFlowId(settings.ingest_flow_id);
         }
         if (settings.langflow_edit_url) {
           setLangflowEditUrl(settings.langflow_edit_url);
+        }
+        if (settings.langflow_ingest_edit_url) {
+          setLangflowIngestEditUrl(settings.langflow_ingest_edit_url);
         }
         if (settings.langflow_public_url) {
           setPublicLangflowUrl(settings.langflow_public_url);
@@ -383,7 +393,11 @@ function KnowledgeSourcesPage() {
     }
   }, [tasks, prevTasks]);
 
-  const handleEditInLangflow = (targetFlowId: string, closeDialog: () => void) => {
+  const handleEditInLangflow = (flowType: "chat" | "ingest", closeDialog: () => void) => {
+    // Select the appropriate flow ID and edit URL based on flow type
+    const targetFlowId = flowType === "ingest" ? ingestFlowId : chatFlowId;
+    const editUrl = flowType === "ingest" ? langflowIngestEditUrl : langflowEditUrl;
+    
     const derivedFromWindow =
       typeof window !== "undefined"
         ? `${window.location.protocol}//${window.location.hostname}:7860`
@@ -394,37 +408,37 @@ function KnowledgeSourcesPage() {
       "http://localhost:7860"
     ).replace(/\/$/, "");
     const computed = targetFlowId ? `${base}/flow/${targetFlowId}` : base;
-    const url = langflowEditUrl || computed;
+    
+    const url = editUrl || computed;
+    
     window.open(url, "_blank");
     closeDialog(); // Close immediately after opening Langflow
   };
 
-  const handleRestoreFlow = (closeDialog: () => void) => {
+  const handleRestoreRetrievalFlow = (closeDialog: () => void) => {
     fetch(`/api/reset-flow/retrieval`, {
       method: "POST",
     })
       .then((response) => response.json())
-      .then((data) => {
-        console.log(data);
+      .then(() => {
         closeDialog(); // Close after successful completion
       })
       .catch((error) => {
-        console.error("Error restoring flow:", error);
+        console.error("Error restoring retrieval flow:", error);
         closeDialog(); // Close even on error (could show error toast instead)
       });
   };
 
-  const handleRestoreAgentFlow = (closeDialog: () => void) => {
-    fetch(`/api/reset-flow/agent`, {
+  const handleRestoreIngestFlow = (closeDialog: () => void) => {
+    fetch(`/api/reset-flow/ingest`, {
       method: "POST",
     })
       .then((response) => response.json())
-      .then((data) => {
-        console.log(data);
+      .then(() => {
         closeDialog(); // Close after successful completion
       })
       .catch((error) => {
-        console.error("Error restoring agent flow:", error);
+        console.error("Error restoring ingest flow:", error);
         closeDialog(); // Close even on error (could show error toast instead)
       });
   };
@@ -448,7 +462,7 @@ function KnowledgeSourcesPage() {
                 description="This restores defaults and discards all custom settings and overrides. This can't be undone."
                 confirmText="Restore"
                 variant="destructive"
-                onConfirm={handleRestoreFlow}
+                onConfirm={handleRestoreIngestFlow}
               />
               <ConfirmationDialog
                 trigger={
@@ -479,7 +493,7 @@ function KnowledgeSourcesPage() {
                 title="Edit Ingest flow in Langflow"
                 description="You're entering Langflow. You can edit the Ingest flow and other underlying flows. Manual changes to components, wiring, or I/O can break this experience."
                 confirmText="Proceed"
-                onConfirm={(closeDialog) => handleEditInLangflow(flowId, closeDialog)}
+                onConfirm={(closeDialog) => handleEditInLangflow("ingest", closeDialog)}
               />
             </div>
           </div>
@@ -544,7 +558,7 @@ function KnowledgeSourcesPage() {
                 description="This restores defaults and discards all custom settings and overrides. This can't be undone."
                 confirmText="Restore"
                 variant="destructive"
-                onConfirm={handleRestoreAgentFlow}
+                onConfirm={handleRestoreRetrievalFlow}
               />
               <ConfirmationDialog
                 trigger={
@@ -575,7 +589,7 @@ function KnowledgeSourcesPage() {
                 title="Edit Agent flow in Langflow"
                 description="You're entering Langflow. You can edit the Agent flow and other underlying flows. Manual changes to components, wiring, or I/O can break this experience."
                 confirmText="Proceed"
-                onConfirm={(closeDialog) => handleEditInLangflow(flowId, closeDialog)}
+                onConfirm={(closeDialog) => handleEditInLangflow("chat", closeDialog)}
               />
             </div>
           </div>
