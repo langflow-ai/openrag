@@ -381,6 +381,7 @@ async def create_app():
                 partial(
                     langflow_files.upload_user_file,
                     langflow_file_service=services["langflow_file_service"],
+                    task_service=services["task_service"],
                     session_manager=services["session_manager"],
                 )
             ),

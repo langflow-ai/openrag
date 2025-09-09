@@ -198,6 +198,44 @@ class LangflowConnectorFileProcessor(TaskProcessor):
         upload_task.successful_files += 1
 
 
+class LangflowFileProcessor(TaskProcessor):
+    """Processor for files uploaded via Langflow API"""
+
+    def __init__(
+        self,
+        langflow_file_service,
+        jwt_token: str = None,
+    ):
+        self.langflow_file_service = langflow_file_service
+        self.jwt_token = jwt_token
+
+    async def process_item(
+        self, upload_task: UploadTask, item: tuple, file_task: FileTask
+    ) -> None:
+        """Process a file upload via Langflow API"""
+        from models.tasks import TaskStatus
+        import time
+
+        file_task.status = TaskStatus.RUNNING
+        file_task.updated_at = time.time()
+
+        try:
+            # item is the file_tuple: (filename, content, content_type)
+            result = await self.langflow_file_service.upload_user_file(item, self.jwt_token)
+            
+            file_task.status = TaskStatus.COMPLETED
+            file_task.result = result
+            upload_task.successful_files += 1
+
+        except Exception as e:
+            logger.error("Failed to process langflow file upload", error=str(e))
+            file_task.status = TaskStatus.FAILED
+            file_task.error = str(e)
+            upload_task.failed_files += 1
+        finally:
+            file_task.updated_at = time.time()
+
+
 class S3FileProcessor(TaskProcessor):
     """Processor for files stored in S3 buckets"""
 

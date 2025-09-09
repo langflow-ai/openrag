@@ -8,7 +8,7 @@ logger = get_logger(__name__)
 
 
 async def upload_user_file(
-    request: Request, langflow_file_service: LangflowFileService, session_manager
+    request: Request, langflow_file_service: LangflowFileService, task_service, session_manager
 ):
     try:
         logger.debug("upload_user_file endpoint called")
@@ -33,10 +33,30 @@ async def upload_user_file(
         jwt_token = getattr(request.state, "jwt_token", None)
         logger.debug("JWT token status", jwt_present=jwt_token is not None)
 
-        logger.debug("Calling langflow_file_service.upload_user_file")
-        result = await langflow_file_service.upload_user_file(file_tuple, jwt_token)
-        logger.debug("Upload successful", result=result)
-        return JSONResponse(result, status_code=201)
+        # Get user info for task management
+        user = getattr(request.state, "user", None)
+        user_id = user.user_id if user else "anonymous"
+
+        # Create processor for Langflow file upload
+        from models.processors import LangflowFileProcessor
+        processor = LangflowFileProcessor(
+            langflow_file_service=langflow_file_service,
+            jwt_token=jwt_token,
+        )
+
+        # Create task for file upload
+        logger.debug("Creating task for langflow file upload")
+        task_id = await task_service.create_custom_task(
+            user_id, [file_tuple], processor
+        )
+
+        logger.debug("Task created successfully", task_id=task_id)
+        return JSONResponse({
+            "task_id": task_id,
+            "total_files": 1,
+            "status": "accepted"
+        }, status_code=201)
+        
     except Exception as e:
         logger.error(
             "upload_user_file endpoint failed",
