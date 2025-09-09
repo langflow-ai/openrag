@@ -127,6 +127,128 @@ async def run_ingestion(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def upload_and_ingest_user_file(
+    request: Request, langflow_file_service: LangflowFileService, session_manager, task_service
+):
+    """Combined upload and ingest endpoint - uses task service for tracking and cancellation"""
+    try:
+        logger.debug("upload_and_ingest_user_file endpoint called - using task service")
+        form = await request.form()
+        upload_file = form.get("file")
+        if upload_file is None:
+            logger.error("No file provided in upload_and_ingest request")
+            return JSONResponse({"error": "Missing file"}, status_code=400)
+
+        # Extract optional parameters
+        session_id = form.get("session_id")
+        settings_json = form.get("settings")
+        tweaks_json = form.get("tweaks")
+        delete_after_ingest = form.get("delete_after_ingest", "true").lower() == "true"
+
+        # Parse JSON fields if provided
+        settings = None
+        tweaks = None
+        
+        if settings_json:
+            try:
+                import json
+                settings = json.loads(settings_json)
+            except json.JSONDecodeError as e:
+                logger.error("Invalid settings JSON", error=str(e))
+                return JSONResponse({"error": "Invalid settings JSON"}, status_code=400)
+
+        if tweaks_json:
+            try:
+                import json
+                tweaks = json.loads(tweaks_json)
+            except json.JSONDecodeError as e:
+                logger.error("Invalid tweaks JSON", error=str(e))
+                return JSONResponse({"error": "Invalid tweaks JSON"}, status_code=400)
+
+        # Get user info from request state
+        user = getattr(request.state, "user", None)
+        user_id = user.user_id if user else None
+        user_name = user.name if user else None
+        user_email = user.email if user else None
+        jwt_token = getattr(request.state, "jwt_token", None)
+
+        if not user_id:
+            return JSONResponse({"error": "User authentication required"}, status_code=401)
+
+        logger.debug(
+            "Processing file for task-based upload and ingest",
+            filename=upload_file.filename,
+            size=upload_file.size,
+            session_id=session_id,
+            has_settings=bool(settings),
+            has_tweaks=bool(tweaks),
+            delete_after_ingest=delete_after_ingest,
+            user_id=user_id
+        )
+
+        # Create temporary file for task processing
+        import tempfile
+        import os
+        
+        # Read file content
+        content = await upload_file.read()
+        
+        # Create temporary file
+        safe_filename = upload_file.filename.replace(" ", "_").replace("/", "_")
+        temp_fd, temp_path = tempfile.mkstemp(
+            suffix=f"_{safe_filename}"
+        )
+        
+        try:
+            # Write content to temp file
+            with os.fdopen(temp_fd, 'wb') as temp_file:
+                temp_file.write(content)
+
+            logger.debug("Created temporary file for task processing", temp_path=temp_path)
+
+            # Create langflow upload task for single file
+            task_id = await task_service.create_langflow_upload_task(
+                user_id=user_id,
+                file_paths=[temp_path],
+                langflow_file_service=langflow_file_service,
+                session_manager=session_manager,
+                jwt_token=jwt_token,
+                owner_name=user_name,
+                owner_email=user_email,
+                session_id=session_id,
+                tweaks=tweaks,
+                settings=settings,
+                delete_after_ingest=delete_after_ingest,
+            )
+
+            logger.debug("Langflow upload task created successfully", task_id=task_id)
+            
+            return JSONResponse({
+                "task_id": task_id,
+                "message": f"Langflow upload task created for file '{upload_file.filename}'",
+                "filename": upload_file.filename
+            }, status_code=202)  # 202 Accepted for async processing
+
+        except Exception:
+            # Clean up temp file on error
+            try:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+            except Exception:
+                pass  # Ignore cleanup errors
+            raise
+        
+    except Exception as e:
+        logger.error(
+            "upload_and_ingest_user_file endpoint failed",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        import traceback
+        logger.error("Full traceback", traceback=traceback.format_exc())
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 async def delete_user_files(
     request: Request, langflow_file_service: LangflowFileService, session_manager
 ):

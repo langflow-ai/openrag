@@ -35,13 +35,14 @@ easyocr.Reader(['fr','de','es','en'],
 print("EasyOCR cache ready at", cache)
 PY
 
-RUN uv run python warm_up_docling.py && rm warm_up_docling.py warmup_ocr.pdf
+# RUN uv run python warm_up_docling.py && rm warm_up_docling.py warmup_ocr.pdf
 
 
 #ENV EASYOCR_MODULE_PATH=~/.cache/docling/models/EasyOcr/
 
-# Copy Python source
+# Copy Python source and flows
 COPY src/ ./src/
+COPY flows/ ./flows/
 
 # Expose backend port
 EXPOSE 8000
