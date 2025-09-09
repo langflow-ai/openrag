@@ -424,10 +424,12 @@ class LangflowFileProcessor(TaskProcessor):
             file_task.status = TaskStatus.COMPLETED
             file_task.result = result
             file_task.updated_at = time.time()
+            upload_task.successful_files += 1
 
         except Exception as e:
             # Update task with failure
             file_task.status = TaskStatus.FAILED
             file_task.error_message = str(e)
             file_task.updated_at = time.time()
+            upload_task.failed_files += 1
             raise
