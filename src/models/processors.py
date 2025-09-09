@@ -371,7 +371,12 @@ class LangflowFileProcessor(TaskProcessor):
                 content = f.read()
 
             # Create file tuple for upload
-            filename = os.path.basename(item)
+            temp_filename = os.path.basename(item)
+            # Extract original filename from temp file suffix (remove tmp prefix)
+            if "_" in temp_filename:
+                filename = temp_filename.split("_", 1)[1]  # Get everything after first _
+            else:
+                filename = temp_filename
             content_type, _ = mimetypes.guess_type(filename)
             if not content_type:
                 content_type = 'application/octet-stream'
