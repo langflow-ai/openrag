@@ -1,2 +1,49 @@
+# Environment files
 .env
+.env.local
+.env.development
+.env.production
+
+# Auth files
 .drive.json
+*.json
+
+# Dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Python cache
+__pycache__/
+*/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Build outputs
+build/
+dist/
+.next/
+out/
+
+# Development files
+.git/
+.gitignore
+README.md
+*.md
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
