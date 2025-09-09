@@ -1,5 +1,6 @@
-from docling.document_converter import DocumentConverter
 import logging
+
+from docling.document_converter import DocumentConverter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -1,18 +1,21 @@
 import os
-import requests
 import time
-from dotenv import load_dotenv
-from utils.logging_config import get_logger
 
-logger = get_logger(__name__)
+import httpx
+import requests
+from agentd.patch import patch_openai_with_mcp
+from docling.document_converter import DocumentConverter
+from dotenv import load_dotenv
+from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
-from docling.document_converter import DocumentConverter
-from agentd.patch import patch_openai_with_mcp
-from openai import AsyncOpenAI
+
+from utils.logging_config import get_logger
 
 load_dotenv()
 load_dotenv("../")
+
+logger = get_logger(__name__)
 
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
@@ -22,8 +25,18 @@ OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
 # Optional: public URL for browser links (e.g., http://localhost:7860)
 LANGFLOW_PUBLIC_URL = os.getenv("LANGFLOW_PUBLIC_URL")
-FLOW_ID = os.getenv("FLOW_ID")
+# Backwards compatible flow ID handling with deprecation warnings
+_legacy_flow_id = os.getenv("FLOW_ID")
+
+LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or _legacy_flow_id
+LANGFLOW_INGEST_FLOW_ID = os.getenv("LANGFLOW_INGEST_FLOW_ID")
 NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID")
+
+if _legacy_flow_id and not os.getenv("LANGFLOW_CHAT_FLOW_ID"):
+    logger.warning("FLOW_ID is deprecated. Please use LANGFLOW_CHAT_FLOW_ID instead")
+    LANGFLOW_CHAT_FLOW_ID = _legacy_flow_id
+
+
 # Langflow superuser credentials for API key generation
 LANGFLOW_SUPERUSER = os.getenv("LANGFLOW_SUPERUSER")
 LANGFLOW_SUPERUSER_PASSWORD = os.getenv("LANGFLOW_SUPERUSER_PASSWORD")
@@ -94,15 +107,47 @@ INDEX_BODY = {
     },
 }
 
+# Convenience base URL for Langflow REST API
+LANGFLOW_BASE_URL = f"{LANGFLOW_URL}/api/v1"
+
 
 async def generate_langflow_api_key():
     """Generate Langflow API key using superuser credentials at startup"""
     global LANGFLOW_KEY
 
+    logger.debug(
+        "generate_langflow_api_key called", current_key_present=bool(LANGFLOW_KEY)
+    )
+
     # If key already provided via env, do not attempt generation
     if LANGFLOW_KEY:
-        logger.info("Using LANGFLOW_KEY from environment, skipping generation")
-        return LANGFLOW_KEY
+        if os.getenv("LANGFLOW_KEY"):
+            logger.info("Using LANGFLOW_KEY from environment; skipping generation")
+            return LANGFLOW_KEY
+        else:
+            # We have a cached key, but let's validate it first
+            logger.debug("Validating cached LANGFLOW_KEY", key_prefix=LANGFLOW_KEY[:8])
+            try:
+                validation_response = requests.get(
+                    f"{LANGFLOW_URL}/api/v1/users/whoami",
+                    headers={"x-api-key": LANGFLOW_KEY},
+                    timeout=5,
+                )
+                if validation_response.status_code == 200:
+                    logger.debug("Cached API key is valid", key_prefix=LANGFLOW_KEY[:8])
+                    return LANGFLOW_KEY
+                else:
+                    logger.warning(
+                        "Cached API key is invalid, generating fresh key",
+                        status_code=validation_response.status_code,
+                    )
+                    LANGFLOW_KEY = None  # Clear invalid key
+            except Exception as e:
+                logger.warning(
+                    "Cached API key validation failed, generating fresh key",
+                    error=str(e),
+                )
+                LANGFLOW_KEY = None  # Clear invalid key
 
     if not LANGFLOW_SUPERUSER or not LANGFLOW_SUPERUSER_PASSWORD:
         logger.warning(
@@ -115,7 +160,6 @@ async def generate_langflow_api_key():
         max_attempts = int(os.getenv("LANGFLOW_KEY_RETRIES", "15"))
         delay_seconds = float(os.getenv("LANGFLOW_KEY_RETRY_DELAY", "2.0"))
 
-        last_error = None
         for attempt in range(1, max_attempts + 1):
             try:
                 # Login to get access token
@@ -148,14 +192,28 @@ async def generate_langflow_api_key():
                 if not api_key:
                     raise KeyError("api_key")
 
-                LANGFLOW_KEY = api_key
-                logger.info(
-                    "Successfully generated Langflow API key",
-                    api_key_preview=api_key[:8],
+                # Validate the API key works
+                validation_response = requests.get(
+                    f"{LANGFLOW_URL}/api/v1/users/whoami",
+                    headers={"x-api-key": api_key},
+                    timeout=10,
                 )
-                return api_key
+                if validation_response.status_code == 200:
+                    LANGFLOW_KEY = api_key
+                    logger.info(
+                        "Successfully generated and validated Langflow API key",
+                        key_prefix=api_key[:8],
+                    )
+                    return api_key
+                else:
+                    logger.error(
+                        "Generated API key validation failed",
+                        status_code=validation_response.status_code,
+                    )
+                    raise ValueError(
+                        f"API key validation failed: {validation_response.status_code}"
+                    )
             except (requests.exceptions.RequestException, KeyError) as e:
-                last_error = e
                 logger.warning(
                     "Attempt to generate Langflow API key failed",
                     attempt=attempt,
@@ -182,6 +240,7 @@ class AppClients:
     def __init__(self):
         self.opensearch = None
         self.langflow_client = None
+        self.langflow_http_client = None
         self.patched_async_client = None
         self.converter = None
 
@@ -204,9 +263,15 @@ class AppClients:
         # Initialize Langflow client with generated/provided API key
         if LANGFLOW_KEY and self.langflow_client is None:
             try:
-                self.langflow_client = AsyncOpenAI(
-                    base_url=f"{LANGFLOW_URL}/api/v1", api_key=LANGFLOW_KEY
-                )
+                if not OPENSEARCH_PASSWORD:
+                    raise ValueError("OPENSEARCH_PASSWORD is not set")
+                else:
+                    await self.ensure_langflow_client()
+                    # Note: OPENSEARCH_PASSWORD global variable should be created automatically
+                    # via LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT in docker-compose
+                    logger.info(
+                        "Langflow client initialized - OPENSEARCH_PASSWORD should be available via environment variables"
+                    )
             except Exception as e:
                 logger.warning("Failed to initialize Langflow client", error=str(e))
                 self.langflow_client = None
@@ -220,6 +285,11 @@ class AppClients:
 
         # Initialize document converter
         self.converter = DocumentConverter()
+
+        # Initialize Langflow HTTP client
+        self.langflow_http_client = httpx.AsyncClient(
+            base_url=LANGFLOW_URL, timeout=60.0
+        )
 
         return self
 
@@ -241,6 +311,71 @@ class AppClients:
                 )
                 self.langflow_client = None
         return self.langflow_client
+
+    async def langflow_request(self, method: str, endpoint: str, **kwargs):
+        """Central method for all Langflow API requests"""
+        api_key = await generate_langflow_api_key()
+        if not api_key:
+            raise ValueError("No Langflow API key available")
+
+        # Merge headers properly - passed headers take precedence over defaults
+        default_headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+        existing_headers = kwargs.pop("headers", {})
+        headers = {**default_headers, **existing_headers}
+
+        # Remove Content-Type if explicitly set to None (for file uploads)
+        if headers.get("Content-Type") is None:
+            headers.pop("Content-Type", None)
+
+        url = f"{LANGFLOW_URL}{endpoint}"
+
+        return await self.langflow_http_client.request(
+            method=method, url=url, headers=headers, **kwargs
+        )
+
+    async def _create_langflow_global_variable(self, name: str, value: str):
+        """Create a global variable in Langflow via API"""
+        api_key = await generate_langflow_api_key()
+        if not api_key:
+            logger.warning(
+                "Cannot create Langflow global variable: No API key", variable_name=name
+            )
+            return
+
+        url = f"{LANGFLOW_URL}/api/v1/variables/"
+        payload = {
+            "name": name,
+            "value": value,
+            "default_fields": [],
+            "type": "Credential",
+        }
+        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=headers, json=payload)
+
+                if response.status_code in [200, 201]:
+                    logger.info(
+                        "Successfully created Langflow global variable",
+                        variable_name=name,
+                    )
+                elif response.status_code == 400 and "already exists" in response.text:
+                    logger.info(
+                        "Langflow global variable already exists", variable_name=name
+                    )
+                else:
+                    logger.warning(
+                        "Failed to create Langflow global variable",
+                        variable_name=name,
+                        status_code=response.status_code,
+                    )
+        except Exception as e:
+            logger.error(
+                "Exception creating Langflow global variable",
+                variable_name=name,
+                error=str(e),
+            )
 
     def create_user_opensearch_client(self, jwt_token: str):
         """Create OpenSearch client with user's JWT token for OIDC auth"""

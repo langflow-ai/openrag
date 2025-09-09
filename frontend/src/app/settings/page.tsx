@@ -52,11 +52,11 @@ interface Connector {
 }
 
 interface SyncResult {
-  processed?: number;
-  added?: number;
-  errors?: number;
-  skipped?: number;
-  total?: number;
+	processed?: number;
+	added?: number;
+	errors?: number;
+	skipped?: number;
+	total?: number;
 }
 
 interface Connection {
