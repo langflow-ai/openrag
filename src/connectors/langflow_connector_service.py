@@ -53,9 +53,11 @@ class LangflowConnectorService:
             filename=document.filename,
         )
 
+        suffix = self._get_file_extension(document.mimetype)
+
         # Create temporary file from document content
         with tempfile.NamedTemporaryFile(
-            delete=False, suffix=self._get_file_extension(document.mimetype)
+            delete=False, suffix=suffix
         ) as tmp_file:
             tmp_file.write(document.content)
             tmp_file.flush()
@@ -65,7 +67,7 @@ class LangflowConnectorService:
                 logger.debug("Uploading file to Langflow", filename=document.filename)
                 content = document.content
                 file_tuple = (
-                    document.filename,
+                    document.filename.replace(" ", "_").replace("/", "_")+suffix,
                     content,
                     document.mimetype or "application/octet-stream",
                 )
@@ -91,7 +93,13 @@ class LangflowConnectorService:
                 tweaks = {}  # Let Langflow handle the ingestion with default settings
 
                 ingestion_result = await self.langflow_service.run_ingestion_flow(
-                    file_paths=[langflow_file_path], jwt_token=jwt_token, tweaks=tweaks
+                    file_paths=[langflow_file_path],
+                    jwt_token=jwt_token,
+                    tweaks=tweaks,
+                    owner=owner_user_id,
+                    owner_name=owner_name,
+                    owner_email=owner_email,
+                    connector_type=connector_type,
                 )
 
                 logger.debug("Ingestion flow completed", result=ingestion_result)
