@@ -194,9 +194,9 @@ async def upload_and_ingest_user_file(
         content = await upload_file.read()
         
         # Create temporary file
+        safe_filename = upload_file.filename.replace(" ", "_").replace("/", "_")
         temp_fd, temp_path = tempfile.mkstemp(
-            suffix=f"_{upload_file.filename}",
-            prefix="langflow_upload_"
+            suffix=f"_{safe_filename}"
         )
         
         try:
