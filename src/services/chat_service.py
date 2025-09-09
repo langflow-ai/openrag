@@ -461,22 +461,6 @@ class ChatService:
                             }
                         )
 
-            # 3. Add any local metadata that doesn't have Langflow data yet (recent conversations)
-            for response_id, metadata in local_metadata.items():
-                if not any(c["response_id"] == response_id for c in all_conversations):
-                    all_conversations.append(
-                        {
-                            "response_id": response_id,
-                            "title": metadata.get("title", "New Chat"),
-                            "endpoint": "langflow",
-                            "messages": [],  # Will be filled when Langflow sync catches up
-                            "created_at": metadata.get("created_at"),
-                            "last_activity": metadata.get("last_activity"),
-                            "total_messages": metadata.get("total_messages", 0),
-                            "source": "metadata_only",
-                        }
-                    )
-
             if langflow_history.get("conversations"):
                 print(
                     f"[DEBUG] Added {len(langflow_history['conversations'])} historical conversations from Langflow"
@@ -505,3 +489,4 @@ class ChatService:
             "conversations": all_conversations,
             "total_conversations": len(all_conversations),
         }
+
