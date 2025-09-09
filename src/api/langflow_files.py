@@ -128,11 +128,11 @@ async def run_ingestion(
 
 
 async def upload_and_ingest_user_file(
-    request: Request, langflow_file_service: LangflowFileService, session_manager
+    request: Request, langflow_file_service: LangflowFileService, session_manager, task_service
 ):
-    """Combined upload and ingest endpoint - uploads file then runs ingestion"""
+    """Combined upload and ingest endpoint - uses task service for tracking and cancellation"""
     try:
-        logger.debug("upload_and_ingest_user_file endpoint called")
+        logger.debug("upload_and_ingest_user_file endpoint called - using task service")
         form = await request.form()
         upload_file = form.get("file")
         if upload_file is None:
@@ -165,39 +165,78 @@ async def upload_and_ingest_user_file(
                 logger.error("Invalid tweaks JSON", error=str(e))
                 return JSONResponse({"error": "Invalid tweaks JSON"}, status_code=400)
 
+        # Get user info from request state
+        user = getattr(request.state, "user", None)
+        user_id = user.user_id if user else None
+        user_name = user.name if user else None
+        user_email = user.email if user else None
+        jwt_token = getattr(request.state, "jwt_token", None)
+
+        if not user_id:
+            return JSONResponse({"error": "User authentication required"}, status_code=401)
+
         logger.debug(
-            "Processing file for combined upload and ingest",
+            "Processing file for task-based upload and ingest",
             filename=upload_file.filename,
             size=upload_file.size,
             session_id=session_id,
             has_settings=bool(settings),
             has_tweaks=bool(tweaks),
-            delete_after_ingest=delete_after_ingest
+            delete_after_ingest=delete_after_ingest,
+            user_id=user_id
         )
 
-        # Prepare file tuple for upload
+        # Create temporary file for task processing
+        import tempfile
+        import os
+        
+        # Read file content
         content = await upload_file.read()
-        file_tuple = (
-            upload_file.filename,
-            content,
-            upload_file.content_type or "application/octet-stream",
-        )
-
-        jwt_token = getattr(request.state, "jwt_token", None)
-        logger.debug("JWT token status", jwt_present=jwt_token is not None)
-
-        logger.debug("Calling langflow_file_service.upload_and_ingest_file")
-        result = await langflow_file_service.upload_and_ingest_file(
-            file_tuple=file_tuple,
-            session_id=session_id,
-            tweaks=tweaks,
-            settings=settings,
-            jwt_token=jwt_token,
-            delete_after_ingest=delete_after_ingest
+        
+        # Create temporary file
+        temp_fd, temp_path = tempfile.mkstemp(
+            suffix=f"_{upload_file.filename}",
+            prefix="langflow_upload_"
         )
         
-        logger.debug("Upload and ingest successful", result=result)
-        return JSONResponse(result, status_code=201)
+        try:
+            # Write content to temp file
+            with os.fdopen(temp_fd, 'wb') as temp_file:
+                temp_file.write(content)
+
+            logger.debug("Created temporary file for task processing", temp_path=temp_path)
+
+            # Create langflow upload task for single file
+            task_id = await task_service.create_langflow_upload_task(
+                user_id=user_id,
+                file_paths=[temp_path],
+                langflow_file_service=langflow_file_service,
+                session_manager=session_manager,
+                jwt_token=jwt_token,
+                owner_name=user_name,
+                owner_email=user_email,
+                session_id=session_id,
+                tweaks=tweaks,
+                settings=settings,
+                delete_after_ingest=delete_after_ingest,
+            )
+
+            logger.debug("Langflow upload task created successfully", task_id=task_id)
+            
+            return JSONResponse({
+                "task_id": task_id,
+                "message": f"Langflow upload task created for file '{upload_file.filename}'",
+                "filename": upload_file.filename
+            }, status_code=202)  # 202 Accepted for async processing
+
+        except Exception:
+            # Clean up temp file on error
+            try:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+            except Exception:
+                pass  # Ignore cleanup errors
+            raise
         
     except Exception as e:
         logger.error(

@@ -51,6 +51,38 @@ class TaskService:
         )
         return await self.create_custom_task(user_id, file_paths, processor)
 
+    async def create_langflow_upload_task(
+        self,
+        user_id: str,
+        file_paths: list,
+        langflow_file_service,
+        session_manager,
+        jwt_token: str = None,
+        owner_name: str = None,
+        owner_email: str = None,
+        session_id: str = None,
+        tweaks: dict = None,
+        settings: dict = None,
+        delete_after_ingest: bool = True,
+    ) -> str:
+        """Create a new upload task for Langflow file processing with upload and ingest"""
+        # Use LangflowFileProcessor with user context
+        from models.processors import LangflowFileProcessor
+
+        processor = LangflowFileProcessor(
+            langflow_file_service=langflow_file_service,
+            session_manager=session_manager,
+            owner_user_id=user_id,
+            jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            session_id=session_id,
+            tweaks=tweaks,
+            settings=settings,
+            delete_after_ingest=delete_after_ingest,
+        )
+        return await self.create_custom_task(user_id, file_paths, processor)
+
     async def create_custom_task(self, user_id: str, items: list, processor) -> str:
         """Create a new task with custom processor for any type of items"""
         task_id = str(uuid.uuid4())
