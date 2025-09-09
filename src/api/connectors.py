@@ -45,28 +45,63 @@ async def connector_sync(request: Request, connector_service, session_manager):
                 status_code=404,
             )
 
-        # Start sync tasks for all active connections
-        task_ids = []
+        # Find the first connection that actually works
+        working_connection = None
         for connection in active_connections:
             logger.debug(
-                "About to call sync_connector_files for connection",
+                "Testing connection authentication",
                 connection_id=connection.connection_id,
             )
-            if selected_files:
-                task_id = await connector_service.sync_specific_files(
-                    connection.connection_id,
-                    user.user_id,
-                    selected_files,
-                    jwt_token=jwt_token,
+            try:
+                # Get the connector instance and test authentication
+                connector = await connector_service.get_connector(connection.connection_id)
+                if connector and await connector.authenticate():
+                    working_connection = connection
+                    logger.debug(
+                        "Found working connection",
+                        connection_id=connection.connection_id,
+                    )
+                    break
+                else:
+                    logger.debug(
+                        "Connection authentication failed",
+                        connection_id=connection.connection_id,
+                    )
+            except Exception as e:
+                logger.debug(
+                    "Connection validation failed",
+                    connection_id=connection.connection_id,
+                    error=str(e),
                 )
-            else:
-                task_id = await connector_service.sync_connector_files(
-                    connection.connection_id,
-                    user.user_id,
-                    max_files,
-                    jwt_token=jwt_token,
-                )
-            task_ids.append(task_id)
+                continue
+
+        if not working_connection:
+            return JSONResponse(
+                {"error": f"No working {connector_type} connections found"},
+                status_code=404,
+            )
+
+        # Use the working connection
+        logger.debug(
+            "Starting sync with working connection",
+            connection_id=working_connection.connection_id,
+        )
+        
+        if selected_files:
+            task_id = await connector_service.sync_specific_files(
+                working_connection.connection_id,
+                user.user_id,
+                selected_files,
+                jwt_token=jwt_token,
+            )
+        else:
+            task_id = await connector_service.sync_connector_files(
+                working_connection.connection_id,
+                user.user_id,
+                max_files,
+                jwt_token=jwt_token,
+            )
+        task_ids = [task_id]
         return JSONResponse(
             {
                 "task_ids": task_ids,

@@ -133,47 +133,47 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
         const formData = new FormData()
         formData.append('file', files[0])
         
-        // 1) Upload to Langflow
-        const upRes = await fetch('/api/langflow/files/upload', {
+        // Use router upload and ingest endpoint (automatically routes based on configuration)
+        const uploadIngestRes = await fetch('/api/router/upload_ingest', {
           method: 'POST',
           body: formData,
         })
-        const upJson = await upRes.json()
-        if (!upRes.ok) {
-          throw new Error(upJson?.error || 'Upload to Langflow failed')
+        const uploadIngestJson = await uploadIngestRes.json()
+        if (!uploadIngestRes.ok) {
+          throw new Error(uploadIngestJson?.error || 'Upload and ingest failed')
         }
 
-        const fileId = upJson?.id
-        const filePath = upJson?.path
+        // Extract results from the unified response
+        const fileId = uploadIngestJson?.upload?.id
+        const filePath = uploadIngestJson?.upload?.path
+        const runJson = uploadIngestJson?.ingestion
+        const deleteResult = uploadIngestJson?.deletion
+        
         if (!fileId || !filePath) {
-          throw new Error('Langflow did not return file id/path')
+          throw new Error('Upload successful but no file id/path returned')
         }
 
-        // 2) Run ingestion flow
-        const runRes = await fetch('/api/langflow/ingest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file_paths: [filePath] }),
-        })
-        const runJson = await runRes.json()
-        if (!runRes.ok) {
-          throw new Error(runJson?.error || 'Langflow ingestion failed')
-        }
-
-        // 3) Delete file from Langflow
-        const delRes = await fetch('/api/langflow/files', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file_ids: [fileId] }),
-        })
-        const delJson = await delRes.json().catch(() => ({}))
-        if (!delRes.ok) {
-          throw new Error(delJson?.error || 'Langflow file delete failed')
+        // Log deletion status if provided
+        if (deleteResult) {
+          if (deleteResult.status === 'deleted') {
+            console.log('File successfully cleaned up from Langflow:', deleteResult.file_id)
+          } else if (deleteResult.status === 'delete_failed') {
+            console.warn('Failed to cleanup file from Langflow:', deleteResult.error)
+          }
         }
 
         // Notify UI
         window.dispatchEvent(new CustomEvent('fileUploaded', { 
-          detail: { file: files[0], result: { file_id: fileId, file_path: filePath, run: runJson } } 
+          detail: { 
+            file: files[0], 
+            result: { 
+              file_id: fileId, 
+              file_path: filePath, 
+              run: runJson, 
+              deletion: deleteResult,
+              unified: true 
+            } 
+          } 
         }))
         // Trigger search refresh after successful ingestion
         window.dispatchEvent(new CustomEvent('knowledgeUpdated'))
