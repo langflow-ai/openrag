@@ -33,7 +33,7 @@ class LangflowFileService:
                 "[LF] Upload failed",
                 status_code=resp.status_code,
                 reason=resp.reason_phrase,
-                body=resp.text[:500],
+                body=resp.text,
             )
         resp.raise_for_status()
         return resp.json()
@@ -63,6 +63,10 @@ class LangflowFileService:
         jwt_token: str,
         session_id: Optional[str] = None,
         tweaks: Optional[Dict[str, Any]] = None,
+        owner: Optional[str] = None,
+        owner_name: Optional[str] = None,
+        owner_email: Optional[str] = None,
+        connector_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
@@ -91,6 +95,26 @@ class LangflowFileService:
             logger.debug("[LF] Added JWT token to tweaks for OpenSearch components")
         else:
             logger.warning("[LF] No JWT token provided")
+
+        # Pass metadata via tweaks to OpenSearch component
+        metadata_tweaks = []
+        if owner:
+            metadata_tweaks.append({"key": "owner", "value": owner})
+        if owner_name:
+            metadata_tweaks.append({"key": "owner_name", "value": owner_name})
+        if owner_email:
+            metadata_tweaks.append({"key": "owner_email", "value": owner_email})
+        if connector_type:
+            metadata_tweaks.append({"key": "connector_type", "value": connector_type})
+
+        if metadata_tweaks:
+            # Initialize the OpenSearch component tweaks if not already present
+            if "OpenSearchHybrid-Ve6bS" not in tweaks:
+                tweaks["OpenSearchHybrid-Ve6bS"] = {}
+            tweaks["OpenSearchHybrid-Ve6bS"]["docs_metadata"] = metadata_tweaks
+            logger.debug(
+                "[LF] Added metadata to tweaks", metadata_count=len(metadata_tweaks)
+            )
         if tweaks:
             payload["tweaks"] = tweaks
         if session_id:

@@ -400,8 +400,9 @@ class GoogleDriveConnector(BaseConnector):
         export_mime = self._pick_export_mime(mime_type)
         if mime_type.startswith("application/vnd.google-apps."):
             # default fallback if not overridden
-            if not export_mime:
-                export_mime = "application/pdf"
+            #if not export_mime:
+            #    export_mime = "application/pdf"
+            export_mime = "application/pdf"
             # NOTE: export_media does not accept supportsAllDrives/includeItemsFromAllDrives
             request = self.service.files().export_media(fileId=file_id, mimeType=export_mime)
         else:
