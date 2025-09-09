@@ -224,6 +224,7 @@ class TaskService:
                 "retry_count": file_task.retry_count,
                 "created_at": file_task.created_at,
                 "updated_at": file_task.updated_at,
+                "duration_seconds": file_task.duration_seconds,
             }
 
         return {
@@ -235,6 +236,7 @@ class TaskService:
             "failed_files": upload_task.failed_files,
             "created_at": upload_task.created_at,
             "updated_at": upload_task.updated_at,
+            "duration_seconds": upload_task.duration_seconds,
             "files": file_statuses,
         }
 
@@ -262,6 +264,7 @@ class TaskService:
                     "failed_files": upload_task.failed_files,
                     "created_at": upload_task.created_at,
                     "updated_at": upload_task.updated_at,
+                    "duration_seconds": upload_task.duration_seconds,
                 }
 
         # First, add user-owned tasks; then shared anonymous;
