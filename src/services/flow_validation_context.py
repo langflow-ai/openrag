@@ -3,8 +3,10 @@
 import asyncio
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -33,12 +35,16 @@ class ComponentInfo:
     parameters: Dict[str, ComponentParameter] = field(default_factory=dict)
 
 
+def get_datetime_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 @dataclass
 class FlowComponentInfo:
     """Information about all components available in a flow."""
 
     components: Dict[str, List[ComponentInfo]] = field(default_factory=dict)
-    validated_at: Optional[float] = None
+    validated_at: Optional[str] = field(default_factory=get_datetime_now)
     flow_id: Optional[str] = None
 
     @property
@@ -60,10 +66,9 @@ class FlowComponentInfo:
     @property
     def is_valid_for_ingestion(self) -> bool:
         """Check if flow has minimum required components for ingestion."""
+
         return (
-            self.has_file
-            and self.has_opensearch_hybrid
-            and len(self.components.get("File", [])) == 1
+            self.has_file and self.has_opensearch_hybrid and self.has_openai_embeddings
         )
 
     def get_available_parameters(
