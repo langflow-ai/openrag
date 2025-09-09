@@ -99,11 +99,17 @@ async def run_ingestion(
             logger.debug("Final tweaks with settings applied", tweaks=tweaks)
         # Include user JWT if available
         jwt_token = getattr(request.state, "jwt_token", None)
+
+        # Extract user info from User object
+        user = getattr(request.state, "user", None)
+        user_id = user.user_id if user else None
+        user_name = user.name if user else None
+        user_email = user.email if user else None
+
         if jwt_token:
             # Set auth context for downstream services
             from auth_context import set_auth_context
 
-            user_id = getattr(request.state, "user_id", None)
             set_auth_context(user_id, jwt_token)
 
         result = await langflow_file_service.run_ingestion_flow(
@@ -111,6 +117,10 @@ async def run_ingestion(
             jwt_token=jwt_token,
             session_id=session_id,
             tweaks=tweaks,
+            owner=user_id,
+            owner_name=user_name,
+            owner_email=user_email,
+            connector_type="local",
         )
         return JSONResponse(result)
     except Exception as e:

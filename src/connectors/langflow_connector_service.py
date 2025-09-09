@@ -91,7 +91,13 @@ class LangflowConnectorService:
                 tweaks = {}  # Let Langflow handle the ingestion with default settings
 
                 ingestion_result = await self.langflow_service.run_ingestion_flow(
-                    file_paths=[langflow_file_path], jwt_token=jwt_token, tweaks=tweaks
+                    file_paths=[langflow_file_path],
+                    jwt_token=jwt_token,
+                    tweaks=tweaks,
+                    owner=owner_user_id,
+                    owner_name=owner_name,
+                    owner_email=owner_email,
+                    connector_type=connector_type,
                 )
 
                 logger.debug("Ingestion flow completed", result=ingestion_result)
