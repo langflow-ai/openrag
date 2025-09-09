@@ -942,6 +942,10 @@ async def create_app():
                 partial(
                     flows.reset_flow_endpoint,
                     chat_service=services["flows_service"],
+                )
+            ),
+            methods=["POST"],
+        ),
         Route(
             "/router/upload_ingest",
             require_auth(services["session_manager"])(
