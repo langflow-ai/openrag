@@ -7,7 +7,9 @@ import httpx
 from typing import List, Dict, Optional, Any
 
 from config.settings import LANGFLOW_URL, LANGFLOW_SUPERUSER, LANGFLOW_SUPERUSER_PASSWORD
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 class LangflowHistoryService:
     """Simplified service to retrieve message history from Langflow"""
@@ -22,7 +24,7 @@ class LangflowHistoryService:
             return self.auth_token
             
         if not all([LANGFLOW_SUPERUSER, LANGFLOW_SUPERUSER_PASSWORD]):
-            print("Missing Langflow credentials")
+            logger.error("Missing Langflow credentials")
             return None
             
         try:
@@ -41,14 +43,14 @@ class LangflowHistoryService:
                 if response.status_code == 200:
                     result = response.json()
                     self.auth_token = result.get('access_token')
-                    print(f"Successfully authenticated with Langflow for history retrieval")
+                    logger.debug(f"Successfully authenticated with Langflow for history retrieval")
                     return self.auth_token
                 else:
-                    print(f"Langflow authentication failed: {response.status_code}")
+                    logger.error(f"Langflow authentication failed: {response.status_code}")
                     return None
                     
         except Exception as e:
-            print(f"Error authenticating with Langflow: {e}")
+            logger.error(f"Error authenticating with Langflow: {e}")
             return None
             
     async def get_user_sessions(self, user_id: str, flow_id: Optional[str] = None) -> List[str]:
@@ -76,17 +78,17 @@ class LangflowHistoryService:
                 
                 if response.status_code == 200:
                     session_ids = response.json()
-                    print(f"Found {len(session_ids)} total sessions from Langflow")
+                    logger.debug(f"Found {len(session_ids)} total sessions from Langflow")
                     
                     # Since we use a single Langflow instance, return all sessions
                     # Session filtering is handled by user_id at the application level
                     return session_ids
                 else:
-                    print(f"Failed to get sessions: {response.status_code} - {response.text}")
+                    logger.error(f"Failed to get sessions: {response.status_code} - {response.text}")
                     return []
                     
         except Exception as e:
-            print(f"Error getting user sessions: {e}")
+            logger.error(f"Error getting user sessions: {e}")
             return []
             
     async def get_session_messages(self, user_id: str, session_id: str) -> List[Dict[str, Any]]:
@@ -113,11 +115,11 @@ class LangflowHistoryService:
                     # Convert to OpenRAG format
                     return self._convert_langflow_messages(messages)
                 else:
-                    print(f"Failed to get messages for session {session_id}: {response.status_code}")
+                    logger.error(f"Failed to get messages for session {session_id}: {response.status_code}")
                     return []
                     
         except Exception as e:
-            print(f"Error getting session messages: {e}")
+            logger.error(f"Error getting session messages: {e}")
             return []
             
     def _convert_langflow_messages(self, langflow_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -171,7 +173,7 @@ class LangflowHistoryService:
                 converted_messages.append(converted_msg)
                 
             except Exception as e:
-                print(f"Error converting message: {e}")
+                logger.error(f"Error converting message: {e}")
                 continue
                 
         return converted_messages
@@ -216,7 +218,7 @@ class LangflowHistoryService:
             }
             
         except Exception as e:
-            print(f"Error getting user conversation history: {e}")
+            logger.error(f"Error getting user conversation history: {e}")
             return {
                 "error": str(e),
                 "conversations": []
