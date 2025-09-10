@@ -1,125 +1,66 @@
 """
 Langflow Message History Service
-Simplified service that retrieves message history from Langflow using a single token
+Simplified service that retrieves message history from Langflow using shared client infrastructure
 """
 
-import httpx
 from typing import List, Dict, Optional, Any
 
-from config.settings import LANGFLOW_URL, LANGFLOW_SUPERUSER, LANGFLOW_SUPERUSER_PASSWORD
-from utils.logging_config import get_logger
+from config.settings import clients
 
-logger = get_logger(__name__)
 
 class LangflowHistoryService:
     """Simplified service to retrieve message history from Langflow"""
     
     def __init__(self):
-        self.langflow_url = LANGFLOW_URL
-        self.auth_token = None
-        
-    async def _authenticate(self) -> Optional[str]:
-        """Authenticate with Langflow and get access token"""
-        if self.auth_token:
-            return self.auth_token
-            
-        if not all([LANGFLOW_SUPERUSER, LANGFLOW_SUPERUSER_PASSWORD]):
-            logger.error("Missing Langflow credentials")
-            return None
-            
-        try:
-            login_data = {
-                "username": LANGFLOW_SUPERUSER,
-                "password": LANGFLOW_SUPERUSER_PASSWORD
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.langflow_url.rstrip('/')}/api/v1/login",
-                    data=login_data,
-                    headers={"Content-Type": "application/x-www-form-urlencoded"}
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    self.auth_token = result.get('access_token')
-                    logger.debug(f"Successfully authenticated with Langflow for history retrieval")
-                    return self.auth_token
-                else:
-                    logger.error(f"Langflow authentication failed: {response.status_code}")
-                    return None
-                    
-        except Exception as e:
-            logger.error(f"Error authenticating with Langflow: {e}")
-            return None
+        pass
             
     async def get_user_sessions(self, user_id: str, flow_id: Optional[str] = None) -> List[str]:
-        """Get all session IDs for a user's conversations
-        
-        Since we use one Langflow token, we get all sessions and filter by user_id locally
-        """
-        token = await self._authenticate()
-        if not token:
-            return []
-            
+        """Get all session IDs for a user's conversations"""
         try:
-            headers = {"Authorization": f"Bearer {token}"}
             params = {}
-            
             if flow_id:
                 params["flow_id"] = flow_id
                 
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.langflow_url.rstrip('/')}/api/v1/monitor/messages/sessions",
-                    headers=headers,
-                    params=params
-                )
+            response = await clients.langflow_request(
+                "GET",
+                "/api/v1/monitor/messages/sessions",
+                params=params
+            )
+            
+            if response.status_code == 200:
+                session_ids = response.json()
+                print(f"Found {len(session_ids)} total sessions from Langflow")
+                return session_ids
+            else:
+                print(f"Failed to get sessions: {response.status_code} - {response.text}")
+                return []
                 
-                if response.status_code == 200:
-                    session_ids = response.json()
-                    logger.debug(f"Found {len(session_ids)} total sessions from Langflow")
-                    
-                    # Since we use a single Langflow instance, return all sessions
-                    # Session filtering is handled by user_id at the application level
-                    return session_ids
-                else:
-                    logger.error(f"Failed to get sessions: {response.status_code} - {response.text}")
-                    return []
-                    
         except Exception as e:
-            logger.error(f"Error getting user sessions: {e}")
+            print(f"Error getting user sessions: {e}")
             return []
             
     async def get_session_messages(self, user_id: str, session_id: str) -> List[Dict[str, Any]]:
         """Get all messages for a specific session"""
-        token = await self._authenticate()
-        if not token:
-            return []
-            
         try:
-            headers = {"Authorization": f"Bearer {token}"}
+            response = await clients.langflow_request(
+                "GET",
+                "/api/v1/monitor/messages",
+                params={
+                    "session_id": session_id,
+                    "order_by": "timestamp"
+                }
+            )
             
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.langflow_url.rstrip('/')}/api/v1/monitor/messages",
-                    headers=headers,
-                    params={
-                        "session_id": session_id,
-                        "order_by": "timestamp"
-                    }
-                )
+            if response.status_code == 200:
+                messages = response.json()
+                # Convert to OpenRAG format
+                return self._convert_langflow_messages(messages)
+            else:
+                print(f"Failed to get messages for session {session_id}: {response.status_code}")
+                return []
                 
-                if response.status_code == 200:
-                    messages = response.json()
-                    # Convert to OpenRAG format
-                    return self._convert_langflow_messages(messages)
-                else:
-                    logger.error(f"Failed to get messages for session {session_id}: {response.status_code}")
-                    return []
-                    
         except Exception as e:
-            logger.error(f"Error getting session messages: {e}")
+            print(f"Error getting session messages: {e}")
             return []
             
     def _convert_langflow_messages(self, langflow_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -173,7 +114,7 @@ class LangflowHistoryService:
                 converted_messages.append(converted_msg)
                 
             except Exception as e:
-                logger.error(f"Error converting message: {e}")
+                print(f"Error converting message: {e}")
                 continue
                 
         return converted_messages
@@ -218,7 +159,7 @@ class LangflowHistoryService:
             }
             
         except Exception as e:
-            logger.error(f"Error getting user conversation history: {e}")
+            print(f"Error getting user conversation history: {e}")
             return {
                 "error": str(e),
                 "conversations": []
