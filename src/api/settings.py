@@ -1,10 +1,14 @@
 from starlette.responses import JSONResponse
+from utils.logging_config import get_logger
 from config.settings import (
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
 )
+
+logger = get_logger(__name__)
+
 
 
 async def get_settings(request, session_manager):
@@ -96,7 +100,7 @@ async def get_settings(request, session_manager):
                             settings["ingestion_defaults"] = ingestion_defaults
 
             except Exception as e:
-                print(f"[WARNING] Failed to fetch ingestion flow defaults: {e}")
+                logger.warning(f"Failed to fetch ingestion flow defaults: {e}")
                 # Continue without ingestion defaults
 
         return JSONResponse(settings)
