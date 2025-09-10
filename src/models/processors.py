@@ -367,20 +367,22 @@ class LangflowFileProcessor(TaskProcessor):
 
         try:
             # Read file content
-            with open(item, 'rb') as f:
+            with open(item, "rb") as f:
                 content = f.read()
 
             # Create file tuple for upload
             temp_filename = os.path.basename(item)
             # Extract original filename from temp file suffix (remove tmp prefix)
             if "_" in temp_filename:
-                filename = temp_filename.split("_", 1)[1]  # Get everything after first _
+                filename = temp_filename.split("_", 1)[
+                    1
+                ]  # Get everything after first _
             else:
                 filename = temp_filename
             content_type, _ = mimetypes.guess_type(filename)
             if not content_type:
-                content_type = 'application/octet-stream'
-            
+                content_type = "application/octet-stream"
+
             file_tuple = (filename, content, content_type)
 
             # Get JWT token using same logic as DocumentFileProcessor
@@ -393,27 +395,29 @@ class LangflowFileProcessor(TaskProcessor):
                 )
                 # The session manager would have created anonymous JWT if needed
                 # Get it from the session manager's internal state
-                if hasattr(self.session_manager, '_anonymous_jwt'):
+                if hasattr(self.session_manager, "_anonymous_jwt"):
                     effective_jwt = self.session_manager._anonymous_jwt
 
             # Prepare metadata tweaks similar to API endpoint
             final_tweaks = self.tweaks.copy() if self.tweaks else {}
-            
+
             metadata_tweaks = []
             if self.owner_user_id:
                 metadata_tweaks.append({"key": "owner", "value": self.owner_user_id})
             if self.owner_name:
                 metadata_tweaks.append({"key": "owner_name", "value": self.owner_name})
             if self.owner_email:
-                metadata_tweaks.append({"key": "owner_email", "value": self.owner_email})
+                metadata_tweaks.append(
+                    {"key": "owner_email", "value": self.owner_email}
+                )
             # Mark as local upload for connector_type
             metadata_tweaks.append({"key": "connector_type", "value": "local"})
 
             if metadata_tweaks:
                 # Initialize the OpenSearch component tweaks if not already present
-                if "OpenSearchHybrid-Ve6bS" not in final_tweaks:
-                    final_tweaks["OpenSearchHybrid-Ve6bS"] = {}
-                final_tweaks["OpenSearchHybrid-Ve6bS"]["docs_metadata"] = metadata_tweaks
+                if "OpenSearch (Hybrid)" not in final_tweaks:
+                    final_tweaks["OpenSearch (Hybrid)"] = {}
+                final_tweaks["OpenSearch (Hybrid)"]["docs_metadata"] = metadata_tweaks
 
             # Process file using langflow service
             result = await self.langflow_file_service.upload_and_ingest_file(
@@ -422,7 +426,7 @@ class LangflowFileProcessor(TaskProcessor):
                 tweaks=final_tweaks,
                 settings=self.settings,
                 jwt_token=effective_jwt,
-                delete_after_ingest=self.delete_after_ingest
+                delete_after_ingest=self.delete_after_ingest,
             )
 
             # Update task with success

@@ -52,11 +52,11 @@ interface Connector {
 }
 
 interface SyncResult {
-	processed?: number;
-	added?: number;
-	errors?: number;
-	skipped?: number;
-	total?: number;
+  processed?: number;
+  added?: number;
+  errors?: number;
+  skipped?: number;
+  total?: number;
 }
 
 interface Connection {
@@ -90,12 +90,24 @@ function KnowledgeSourcesPage() {
     "5488df7c-b93f-4f87-a446-b67028bc0813",
   );
   const [langflowEditUrl, setLangflowEditUrl] = useState<string>("");
-  const [langflowIngestEditUrl, setLangflowIngestEditUrl] = useState<string>("");
+  const [langflowIngestEditUrl, setLangflowIngestEditUrl] =
+    useState<string>("");
   const [publicLangflowUrl, setPublicLangflowUrl] = useState<string>("");
 
+  // Flow validation and ingestion settings state
+  const [flowValidation, setFlowValidation] = useState<any>(null);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [ingestionSettings, setIngestionSettings] = useState({
+    chunkSize: 1000,
+    chunkOverlap: 200,
+    separator: "\\n",
+    embeddingModel: "text-embedding-3-small",
+  });
 
   // Fetch settings from backend
   const fetchSettings = useCallback(async () => {
+    if (settingsLoaded) return; // Prevent multiple calls
+
     try {
       const response = await fetch("/api/settings");
       if (response.ok) {
@@ -115,11 +127,56 @@ function KnowledgeSourcesPage() {
         if (settings.langflow_public_url) {
           setPublicLangflowUrl(settings.langflow_public_url);
         }
+
+        // Handle flow validation data
+        if (settings.flow_validation) {
+          setFlowValidation(settings.flow_validation);
+
+          // Update ingestion settings with flow defaults
+          const availableSettings =
+            settings.flow_validation.available_ui_settings || {};
+
+          const newSettings = { ...ingestionSettings };
+
+          if (
+            availableSettings.chunkSize?.available &&
+            availableSettings.chunkSize.param_info?.value
+          ) {
+            newSettings.chunkSize =
+              availableSettings.chunkSize.param_info.value;
+          }
+          if (
+            availableSettings.chunkOverlap?.available &&
+            availableSettings.chunkOverlap.param_info?.value
+          ) {
+            newSettings.chunkOverlap =
+              availableSettings.chunkOverlap.param_info.value;
+          }
+          if (
+            availableSettings.separator?.available &&
+            availableSettings.separator.param_info?.value
+          ) {
+            newSettings.separator =
+              availableSettings.separator.param_info.value;
+          }
+          if (
+            availableSettings.embeddingModel?.available &&
+            availableSettings.embeddingModel.param_info?.value
+          ) {
+            newSettings.embeddingModel =
+              availableSettings.embeddingModel.param_info.value;
+          }
+
+          setIngestionSettings(newSettings);
+        }
+
+        setSettingsLoaded(true);
       }
     } catch (error) {
       console.error("Failed to fetch settings:", error);
+      setSettingsLoaded(true);
     }
-  }, []);
+  }, [settingsLoaded]);
 
   // Helper function to get connector icon
   const getConnectorIcon = (iconName: string) => {
@@ -393,11 +450,15 @@ function KnowledgeSourcesPage() {
     }
   }, [tasks, prevTasks]);
 
-  const handleEditInLangflow = (flowType: "chat" | "ingest", closeDialog: () => void) => {
+  const handleEditInLangflow = (
+    flowType: "chat" | "ingest",
+    closeDialog: () => void,
+  ) => {
     // Select the appropriate flow ID and edit URL based on flow type
     const targetFlowId = flowType === "ingest" ? ingestFlowId : chatFlowId;
-    const editUrl = flowType === "ingest" ? langflowIngestEditUrl : langflowEditUrl;
-    
+    const editUrl =
+      flowType === "ingest" ? langflowIngestEditUrl : langflowEditUrl;
+
     const derivedFromWindow =
       typeof window !== "undefined"
         ? `${window.location.protocol}//${window.location.hostname}:7860`
@@ -408,9 +469,9 @@ function KnowledgeSourcesPage() {
       "http://localhost:7860"
     ).replace(/\/$/, "");
     const computed = targetFlowId ? `${base}/flow/${targetFlowId}` : base;
-    
+
     const url = editUrl || computed;
-    
+
     window.open(url, "_blank");
     closeDialog(); // Close immediately after opening Langflow
   };
@@ -421,6 +482,10 @@ function KnowledgeSourcesPage() {
     })
       .then((response) => response.json())
       .then(() => {
+        // Reload settings after successful restore
+        setSettingsLoaded(false);
+        setFlowValidation(null);
+        fetchSettings();
         closeDialog(); // Close after successful completion
       })
       .catch((error) => {
@@ -435,6 +500,10 @@ function KnowledgeSourcesPage() {
     })
       .then((response) => response.json())
       .then(() => {
+        // Reload settings after successful restore
+        setSettingsLoaded(false);
+        setFlowValidation(null);
+        fetchSettings();
         closeDialog(); // Close after successful completion
       })
       .catch((error) => {
@@ -493,7 +562,9 @@ function KnowledgeSourcesPage() {
                 title="Edit Ingest flow in Langflow"
                 description="You're entering Langflow. You can edit the Ingest flow and other underlying flows. Manual changes to components, wiring, or I/O can break this experience."
                 confirmText="Proceed"
-                onConfirm={(closeDialog) => handleEditInLangflow("ingest", closeDialog)}
+                onConfirm={(closeDialog) =>
+                  handleEditInLangflow("ingest", closeDialog)
+                }
               />
             </div>
           </div>
@@ -539,6 +610,144 @@ function KnowledgeSourcesPage() {
             </div>
           </div>
         </CardContent> */}
+        {flowValidation &&
+          Object.keys(flowValidation.available_ui_settings || {}).some(
+            (key) => flowValidation.available_ui_settings[key]?.available,
+          ) && (
+            <CardContent>
+              <div className="space-y-6">
+                {flowValidation.available_ui_settings?.chunkSize?.available && (
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="chunkSize"
+                      className="text-base font-medium"
+                    >
+                      {flowValidation.available_ui_settings.chunkSize.param_info
+                        ?.display_name || "Chunk Size"}
+                    </Label>
+                    <div className="text-sm text-muted-foreground mb-3">
+                      {flowValidation.available_ui_settings.chunkSize.param_info
+                        ?.info || "Maximum length of each text chunk"}
+                    </div>
+                    <Input
+                      id="chunkSize"
+                      type="number"
+                      value={ingestionSettings.chunkSize}
+                      onChange={(e) =>
+                        setIngestionSettings((prev) => ({
+                          ...prev,
+                          chunkSize: parseInt(e.target.value) || 1000,
+                        }))
+                      }
+                      className="max-w-32"
+                      min="100"
+                      max="8000"
+                    />
+                  </div>
+                )}
+
+                {flowValidation.available_ui_settings?.chunkOverlap
+                  ?.available && (
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="chunkOverlap"
+                      className="text-base font-medium"
+                    >
+                      {flowValidation.available_ui_settings.chunkOverlap
+                        .param_info?.display_name || "Chunk Overlap"}
+                    </Label>
+                    <div className="text-sm text-muted-foreground mb-3">
+                      {flowValidation.available_ui_settings.chunkOverlap
+                        .param_info?.info ||
+                        "Number of characters to overlap between chunks"}
+                    </div>
+                    <Input
+                      id="chunkOverlap"
+                      type="number"
+                      value={ingestionSettings.chunkOverlap}
+                      onChange={(e) =>
+                        setIngestionSettings((prev) => ({
+                          ...prev,
+                          chunkOverlap: parseInt(e.target.value) || 200,
+                        }))
+                      }
+                      className="max-w-32"
+                      min="0"
+                      max="1000"
+                    />
+                  </div>
+                )}
+
+                {flowValidation.available_ui_settings?.separator?.available && (
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="separator"
+                      className="text-base font-medium"
+                    >
+                      {flowValidation.available_ui_settings.separator.param_info
+                        ?.display_name || "Text Separator"}
+                    </Label>
+                    <div className="text-sm text-muted-foreground mb-3">
+                      {flowValidation.available_ui_settings.separator.param_info
+                        ?.info || "Character(s) to split text on"}
+                    </div>
+                    <Input
+                      id="separator"
+                      value={ingestionSettings.separator}
+                      onChange={(e) =>
+                        setIngestionSettings((prev) => ({
+                          ...prev,
+                          separator: e.target.value,
+                        }))
+                      }
+                      className="max-w-48"
+                      placeholder="\\n"
+                    />
+                  </div>
+                )}
+
+                {flowValidation.available_ui_settings?.embeddingModel
+                  ?.available && (
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="embeddingModel"
+                      className="text-base font-medium"
+                    >
+                      {flowValidation.available_ui_settings.embeddingModel
+                        .param_info?.display_name || "Embedding Model"}
+                    </Label>
+                    <div className="text-sm text-muted-foreground mb-3">
+                      {flowValidation.available_ui_settings.embeddingModel
+                        .param_info?.info || "OpenAI embedding model to use"}
+                    </div>
+                    <select
+                      id="embeddingModel"
+                      value={ingestionSettings.embeddingModel}
+                      onChange={(e) =>
+                        setIngestionSettings((prev) => ({
+                          ...prev,
+                          embeddingModel: e.target.value,
+                        }))
+                      }
+                      className="flex h-10 w-full max-w-64 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {flowValidation.available_ui_settings.embeddingModel.param_info?.options?.map(
+                        (option: string) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ),
+                      ) || (
+                        <option value="text-embedding-3-small">
+                          text-embedding-3-small
+                        </option>
+                      )}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          )}
       </Card>
 
       {/* Agent Behavior Section */}
@@ -589,7 +798,9 @@ function KnowledgeSourcesPage() {
                 title="Edit Agent flow in Langflow"
                 description="You're entering Langflow. You can edit the Agent flow and other underlying flows. Manual changes to components, wiring, or I/O can break this experience."
                 confirmText="Proceed"
-                onConfirm={(closeDialog) => handleEditInLangflow("chat", closeDialog)}
+                onConfirm={(closeDialog) =>
+                  handleEditInLangflow("chat", closeDialog)
+                }
               />
             </div>
           </div>
