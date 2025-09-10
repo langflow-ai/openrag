@@ -7,9 +7,10 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 ## 📋 Table of Contents
 
 - [Quick Start](#quick-start)
-- [Development](#development)
+- [TUI Interface](#tui-interface)
 - [Configuration](#configuration)
 - [Docker Deployment](#docker-deployment)
+- [Development](#development)
 - [Troubleshooting](#troubleshooting)
 
 ## 🚀 Quick Start
@@ -60,85 +61,72 @@ Access the services:
 - **OpenSearch**: http://localhost:9200
 - **OpenSearch Dashboards**: http://localhost:5601
 
-## 🛠️ Development
+## 🖥️ TUI Interface
 
-### Development Commands
+OpenRAG includes a powerful Terminal User Interface (TUI) for easy setup, configuration, and monitoring. The TUI provides a user-friendly way to manage your OpenRAG installation without complex command-line operations.
 
-All development tasks are managed through the Makefile. Run `make help` to see all available commands.
+![OpenRAG TUI Interface](assets/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
-#### Environment Management
+### Launching the TUI
 
 ```bash
-# Setup development environment
-make setup                    # Initial setup: creates .env, installs dependencies
+# Install dependencies first
+uv sync
 
-# Start development environments
-make dev                     # Full stack with GPU support
-make dev-cpu                 # Full stack with CPU only
-make dev-local               # Infrastructure only (for local development)
-make infra                   # Alias for dev-local
-
-# Container management
-make stop                    # Stop all containers
-make restart                 # Restart all containers
-make clean                   # Stop and remove containers/volumes
-make status                  # Show container status
-make health                  # Check service health
+# Launch the TUI
+uv run openrag
 ```
 
-#### Local Development
+### TUI Features
 
-For faster development iteration, run infrastructure in Docker and backend/frontend locally:
+The TUI provides several screens and capabilities:
 
-```bash
-# Terminal 1: Start infrastructure
-make dev-local
+#### Welcome Screen
+- **Quick Setup Options**: Choose between basic setup (no authentication) or advanced setup (with OAuth)
+- **Service Monitoring**: Check if containers are running and their status
+- **Quick Actions**: Access diagnostics, logs, and configuration screens
 
-# Terminal 2: Run backend locally
-make backend
+#### Configuration Screen
+- **Environment Variables**: Easy-to-use forms for setting up required configuration
+- **API Keys**: Secure input for OpenAI API keys with validation
+- **OAuth Setup**: Configure Google and Microsoft authentication
+- **Document Paths**: Set up document ingestion directories
+- **Auto-Save**: Automatically generates and saves `.env` file
 
-# Terminal 3: Run frontend locally  
-make frontend
-```
+#### Service Monitor
+- **Container Status**: Real-time view of all OpenRAG services
+- **Resource Usage**: Monitor CPU, memory, and network usage
+- **Service Control**: Start, stop, and restart individual services
+- **Health Checks**: Built-in health monitoring for all components
 
-#### Dependency Management
+#### Log Viewer
+- **Real-time Logs**: Live streaming of container logs
+- **Service Filtering**: View logs for specific services (backend, frontend, Langflow, OpenSearch)
+- **Log Levels**: Filter by log levels (DEBUG, INFO, WARNING, ERROR)
+- **Export Options**: Save logs to files for analysis
 
-```bash
-make install                 # Install all dependencies
-make install-be             # Install backend dependencies (uv)
-make install-fe             # Install frontend dependencies (npm)
-```
+#### Diagnostics
+- **System Check**: Verify Docker/Podman installation and configuration
+- **Environment Validation**: Check required environment variables
+- **Network Testing**: Test connectivity between services
+- **Performance Metrics**: System resource availability and recommendations
 
-#### Building and Testing
+### TUI Navigation
 
-```bash
-# Build Docker images
-make build                   # Build all images
-make build-be               # Build backend image only
-make build-fe               # Build frontend image only
+- **Arrow Keys**: Navigate between options and screens
+- **Tab/Shift+Tab**: Move between form fields and buttons
+- **Enter**: Select/activate options
+- **Escape**: Go back to previous screen
+- **Q**: Quit the application
+- **Number Keys (1-4)**: Quick access to main screens from welcome
 
-# Testing and quality
-make test                   # Run backend tests
-make lint                   # Run linting checks
-```
+### Benefits of Using the TUI
 
-#### Debugging
-
-```bash
-# View logs
-make logs                   # All container logs
-make logs-be                # Backend logs only
-make logs-fe                # Frontend logs only
-make logs-lf                # Langflow logs only
-make logs-os                # OpenSearch logs only
-
-
-#### Database Operations
-
-```bash
-# Reset OpenSearch indices
-make db-reset               # Delete and recreate indices
-```
+1. **Simplified Setup**: No need to manually edit configuration files
+2. **Visual Feedback**: Clear status indicators and error messages
+3. **Integrated Monitoring**: Everything in one interface
+4. **Cross-Platform**: Works on Linux, macOS, and Windows
+5. **No Browser Required**: Fully terminal-based interface
 
 
 ## ⚙️ Configuration
@@ -239,8 +227,26 @@ podman machine start
 
 
 
-### Development Tips
+## 🛠️ Development
 
-- Use `make infra` + `make backend` + `make frontend` for faster development iteration
-- Run `make help` to see all available commands
-- Check `.env.example` for complete environment variable documentation
+For developers wanting to contribute to OpenRAG or set up a development environment, please see our comprehensive development guide:
+
+**[📚 See CONTRIBUTING.md for detailed development instructions](CONTRIBUTING.md)**
+
+The contributing guide includes:
+- Complete development environment setup
+- Local development workflows  
+- Testing and debugging procedures
+- Code style guidelines
+- Architecture overview
+- Pull request guidelines
+
+### Quick Development Commands
+
+```bash
+make help                    # See all available commands
+make setup                   # Initial development setup
+make infra                   # Start infrastructure services
+make backend                 # Run backend locally
+make frontend                # Run frontend locally
+```
