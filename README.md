@@ -45,6 +45,7 @@ cp .env.example .env
 - `LANGFLOW_SUPERUSER_PASSWORD`: Langflow admin password
 - `LANGFLOW_CHAT_FLOW_ID`: ID of your Langflow chat flow
 - `LANGFLOW_INGEST_FLOW_ID`: ID of your Langflow ingestion flow
+- `NUDGES_FLOW_ID`: ID of your Langflow nudges/suggestions flow
 
 **Ingestion Configuration:**
 - `DISABLE_INGEST_WITH_LANGFLOW`: Disable Langflow ingestion pipeline (default: `false`)
@@ -57,6 +58,9 @@ cp .env.example .env
 - `MICROSOFT_GRAPH_OAUTH_CLIENT_ID` / `MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET`: For Microsoft OAuth
 - `WEBHOOK_BASE_URL`: Base URL for webhook endpoints
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`: For AWS integrations
+- `SESSION_SECRET`: Secret key for session management (default: auto-generated, change in production)
+- `LANGFLOW_KEY`: Explicit Langflow API key (auto-generated if not provided)
+- `LANGFLOW_SECRET_KEY`: Secret key for Langflow internal operations
 
 See `.env.example` for a complete list with descriptions, or check the docker-compose.yml files.
 
