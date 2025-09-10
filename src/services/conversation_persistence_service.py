@@ -8,7 +8,9 @@ import os
 from typing import Dict, Any
 from datetime import datetime
 import threading
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 class ConversationPersistenceService:
     """Simple service to persist conversations to disk"""
@@ -24,10 +26,10 @@ class ConversationPersistenceService:
             try:
                 with open(self.storage_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    print(f"Loaded {self._count_total_conversations(data)} conversations from {self.storage_file}")
+                    logger.debug(f"Loaded {self._count_total_conversations(data)} conversations from {self.storage_file}")
                     return data
             except Exception as e:
-                print(f"Error loading conversations from {self.storage_file}: {e}")
+                logger.error(f"Error loading conversations from {self.storage_file}: {e}")
                 return {}
         return {}
     
@@ -37,9 +39,9 @@ class ConversationPersistenceService:
             with self.lock:
                 with open(self.storage_file, 'w', encoding='utf-8') as f:
                     json.dump(self._conversations, f, indent=2, ensure_ascii=False, default=str)
-                print(f"Saved {self._count_total_conversations(self._conversations)} conversations to {self.storage_file}")
+                logger.debug(f"Saved {self._count_total_conversations(self._conversations)} conversations to {self.storage_file}")
         except Exception as e:
-            print(f"Error saving conversations to {self.storage_file}: {e}")
+            logger.error(f"Error saving conversations to {self.storage_file}: {e}")
     
     def _count_total_conversations(self, data: Dict[str, Any]) -> int:
         """Count total conversations across all users"""
@@ -89,14 +91,14 @@ class ConversationPersistenceService:
         if user_id in self._conversations and response_id in self._conversations[user_id]:
             del self._conversations[user_id][response_id]
             self._save_conversations()
-            print(f"Deleted conversation {response_id} for user {user_id}")
+            logger.debug(f"Deleted conversation {response_id} for user {user_id}")
     
     def clear_user_conversations(self, user_id: str):
         """Clear all conversations for a user"""
         if user_id in self._conversations:
             del self._conversations[user_id]
             self._save_conversations()
-            print(f"Cleared all conversations for user {user_id}")
+            logger.debug(f"Cleared all conversations for user {user_id}")
     
     def get_storage_stats(self) -> Dict[str, Any]:
         """Get statistics about stored conversations"""
