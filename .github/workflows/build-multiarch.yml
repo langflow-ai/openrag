@@ -37,6 +37,20 @@ jobs:
             arch: arm64
             runs-on: self-hosted
 
+          # langflow
+          - image: langflow
+            file: ./Dockerfile.langflow
+            tag: phact/openrag-langflow
+            platform: linux/amd64
+            arch: amd64
+            runs-on: ubuntu-latest
+          - image: langflow
+            file: ./Dockerfile.langflow
+            tag: phact/openrag-langflow
+            platform: linux/arm64
+            arch: arm64
+            runs-on: self-hosted
+
           # opensearch
           - image: opensearch
             file: ./Dockerfile
@@ -122,6 +136,13 @@ jobs:
           docker buildx imagetools create -t phact/openrag-frontend:latest \
             phact/openrag-frontend:$VERSION-amd64 \
             phact/openrag-frontend:$VERSION-arm64
+
+          docker buildx imagetools create -t phact/openrag-langflow:$VERSION \
+            phact/openrag-langflow:$VERSION-amd64 \
+            phact/openrag-langflow:$VERSION-arm64
+          docker buildx imagetools create -t phact/openrag-langflow:latest \
+            phact/openrag-langflow:$VERSION-amd64 \
+            phact/openrag-langflow:$VERSION-arm64
 
           docker buildx imagetools create -t phact/openrag-opensearch:$VERSION \
             phact/openrag-opensearch:$VERSION-amd64 \
