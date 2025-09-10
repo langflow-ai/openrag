@@ -1,7 +1,6 @@
-from config.settings import NUDGES_FLOW_ID, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID, LANGFLOW_INGEST_FLOW_ID
+from config.settings import NUDGES_FLOW_ID, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID, LANGFLOW_INGEST_FLOW_ID, clients
 import json
 import os
-import aiohttp
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -71,54 +70,41 @@ class FlowsService:
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in flow file {flow_file}: {e}")
             
-        # Get API key for Langflow
-        from config.settings import LANGFLOW_KEY
-        if not LANGFLOW_KEY:
-            raise ValueError("LANGFLOW_KEY is required for flow reset")
-            
-        # Make PATCH request to Langflow API to update the flow
-        url = f"{LANGFLOW_URL}/api/v1/flows/{flow_id}"
-        headers = {
-            "x-api-key": LANGFLOW_KEY,
-            "Content-Type": "application/json"
-        }
-        
+        # Make PATCH request to Langflow API to update the flow using shared client
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.patch(url, json=flow_data, headers=headers) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        logger.info(
-                            f"Successfully reset {flow_type} flow",
-                            flow_id=flow_id,
-                            flow_file=flow_file
-                        )
-                        return {
-                            "success": True,
-                            "message": f"Successfully reset {flow_type} flow",
-                            "flow_id": flow_id,
-                            "flow_type": flow_type
-                        }
-                    else:
-                        error_text = await response.text()
-                        logger.error(
-                            f"Failed to reset {flow_type} flow",
-                            status_code=response.status,
-                            error=error_text
-                        )
-                        return {
-                            "success": False,
-                            "error": f"Failed to reset flow: HTTP {response.status} - {error_text}"
-                        }
-        except aiohttp.ClientError as e:
-            logger.error(f"Network error while resetting {flow_type} flow", error=str(e))
-            return {
-                "success": False,
-                "error": f"Network error: {str(e)}"
-            }
+            response = await clients.langflow_request(
+                "PATCH",
+                f"/api/v1/flows/{flow_id}",
+                json=flow_data
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(
+                    f"Successfully reset {flow_type} flow",
+                    flow_id=flow_id,
+                    flow_file=flow_file
+                )
+                return {
+                    "success": True,
+                    "message": f"Successfully reset {flow_type} flow",
+                    "flow_id": flow_id,
+                    "flow_type": flow_type
+                }
+            else:
+                error_text = response.text
+                logger.error(
+                    f"Failed to reset {flow_type} flow",
+                    status_code=response.status_code,
+                    error=error_text
+                )
+                return {
+                    "success": False,
+                    "error": f"Failed to reset flow: HTTP {response.status_code} - {error_text}"
+                }
         except Exception as e:
-            logger.error(f"Unexpected error while resetting {flow_type} flow", error=str(e))
+            logger.error(f"Error while resetting {flow_type} flow", error=str(e))
             return {
                 "success": False,
-                "error": f"Unexpected error: {str(e)}"
+                "error": f"Error: {str(e)}"
             }
