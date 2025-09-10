@@ -82,7 +82,8 @@ class GoogleDriveConnector(BaseConnector):
     _FOLDER_ID_ALIASES = ("folder_ids", "selected_folder_ids", "selected_folders")
 
     def log(self, message: str) -> None:
-        print(message)
+        #NOTE: TBD Remove
+        logger.debug(message)   # TBD Remove
 
     def emit(self, doc: ConnectorDocument) -> None:
         """
@@ -91,7 +92,7 @@ class GoogleDriveConnector(BaseConnector):
         """
         # If BaseConnector has an emit method, call super().emit(doc)
         # Otherwise, implement your custom logic here.
-        print(f"Emitting document: {doc.id} ({doc.filename})")
+        logger.debug(f"Emitting document: {doc.id} ({doc.filename})")
 
     def __init__(self, config: Dict[str, Any]) -> None:
         # Read from config OR env (backend env, not NEXT_PUBLIC_*):
@@ -433,7 +434,7 @@ class GoogleDriveConnector(BaseConnector):
 
             # If still not authenticated, bail (caller should kick off OAuth init)
             if not await self.oauth.is_authenticated():
-                self.log("authenticate: no valid credentials; run OAuth init/callback first.")
+                logger.debug("authenticate: no valid credentials; run OAuth init/callback first.")
                 return False
 
             # Build Drive service from OAuth helper
@@ -482,7 +483,7 @@ class GoogleDriveConnector(BaseConnector):
         except Exception as e:
             # Optionally log error with your base class logger
             try:
-                self.log(f"GoogleDriveConnector.list_files failed: {e}")
+                logger.error(f"GoogleDriveConnector.list_files failed: {e}")
             except Exception:
                 pass
             return {"files": [], "next_page_token": None}
@@ -500,7 +501,8 @@ class GoogleDriveConnector(BaseConnector):
         except Exception as e:
             # Use your base class logger if available
             try:
-                self.log(f"Download failed for {file_id}: {e}")
+                #NOTE: TBD Remove the try catch
+                logger.error(f"Download failed for {file_id}: {e}")
             except Exception:
                 pass
             raise
@@ -567,7 +569,7 @@ class GoogleDriveConnector(BaseConnector):
         except Exception as e:
             # Optional: use your base logger
             try:
-                self.log(f"Failed to get start page token: {e}")
+                logger.error(f"Failed to get start page token: {e}")
             except Exception:
                 pass
             raise
@@ -634,7 +636,7 @@ class GoogleDriveConnector(BaseConnector):
         ok = await self.authenticate()
         if not ok:
             try:
-                self.log("cleanup_subscription: not authenticated")
+                logger.error("cleanup_subscription: not authenticated")
             except Exception:
                 pass
             return False
@@ -662,7 +664,7 @@ class GoogleDriveConnector(BaseConnector):
 
         if not resource_id:
             try:
-                self.log(
+                logger.error(
                     f"cleanup_subscription: missing resource_id for channel {subscription_id}. "
                     f"Persist (channel_id, resource_id) when creating the subscription."
                 )
@@ -684,7 +686,7 @@ class GoogleDriveConnector(BaseConnector):
 
         except Exception as e:
             try:
-                self.log(f"cleanup_subscription failed for {subscription_id}: {e}")
+                logger.error(f"cleanup_subscription failed for {subscription_id}: {e}")
             except Exception:
                 pass
             return False
@@ -708,7 +710,7 @@ class GoogleDriveConnector(BaseConnector):
             ok = await self.authenticate()
             if not ok:
                 try:
-                    self.log("handle_webhook: not authenticated")
+                    logger.error("handle_webhook: not authenticated")
                 except Exception:
                     pass
                 return affected
@@ -728,7 +730,7 @@ class GoogleDriveConnector(BaseConnector):
             except Exception as e:
                 selected_ids = set()
                 try:
-                    self.log(f"handle_webhook: scope build failed, proceeding unfiltered: {e}")
+                    logger.error(f"handle_webhook: scope build failed, proceeding unfiltered: {e}")
                 except Exception:
                     pass
 
@@ -797,7 +799,7 @@ class GoogleDriveConnector(BaseConnector):
 
         except Exception as e:
             try:
-                self.log(f"handle_webhook failed: {e}")
+                logger.error(f"handle_webhook failed: {e}")
             except Exception:
                 pass
             return []
@@ -814,7 +816,7 @@ class GoogleDriveConnector(BaseConnector):
                 blob = self._download_file_bytes(meta)
             except HttpError as e:
                 # Skip/record failures
-                self.log(f"Failed to download {meta.get('name')} ({meta.get('id')}): {e}")
+                logger.error(f"Failed to download {meta.get('name')} ({meta.get('id')}): {e}")
                 continue
 
             from datetime import datetime
