@@ -1,4 +1,4 @@
-from config.settings import NUDGES_FLOW_ID, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID, LANGFLOW_INGEST_FLOW_ID, clients
+from config.settings import LANGFLOW_NUDGES_FLOW_ID, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID, LANGFLOW_INGEST_FLOW_ID, clients
 import json
 import os
 from utils.logging_config import get_logger
@@ -23,7 +23,7 @@ class FlowsService:
         # Determine flow file and ID based on type
         if flow_type == "nudges":
             flow_file = "flows/openrag_nudges.json"
-            flow_id = NUDGES_FLOW_ID
+            flow_id = LANGFLOW_NUDGES_FLOW_ID
         elif flow_type == "retrieval":
             flow_file = "flows/openrag_agent.json" 
             flow_id = LANGFLOW_CHAT_FLOW_ID

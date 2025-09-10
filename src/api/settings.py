@@ -5,6 +5,7 @@ from config.settings import (
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
+    LANGFLOW_NUDGES_FLOW_ID,
     clients,
 )
 
@@ -20,6 +21,7 @@ async def get_settings(request, session_manager):
             "langflow_url": LANGFLOW_URL,
             "flow_id": LANGFLOW_CHAT_FLOW_ID,
             "ingest_flow_id": LANGFLOW_INGEST_FLOW_ID,
+            "langflow_nudges_flow_id": LANGFLOW_NUDGES_FLOW_ID,
             "langflow_public_url": LANGFLOW_PUBLIC_URL,
         }
 
@@ -32,6 +34,11 @@ async def get_settings(request, session_manager):
         if LANGFLOW_PUBLIC_URL and LANGFLOW_INGEST_FLOW_ID:
             settings["langflow_ingest_edit_url"] = (
                 f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{LANGFLOW_INGEST_FLOW_ID}"
+            )
+
+        if LANGFLOW_PUBLIC_URL and LANGFLOW_NUDGES_FLOW_ID:
+            settings["langflow_nudges_edit_url"] = (
+                f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{LANGFLOW_NUDGES_FLOW_ID}"
             )
 
         # Fetch ingestion flow configuration to get actual component defaults

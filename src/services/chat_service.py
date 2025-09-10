@@ -1,4 +1,4 @@
-from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL
+from config.settings import LANGFLOW_NUDGES_FLOW_ID, clients, LANGFLOW_URL
 from agent import (
     async_chat,
     async_langflow,
@@ -170,9 +170,9 @@ class ChatService:
     ):
         """Handle Langflow chat requests"""
 
-        if not LANGFLOW_URL or not NUDGES_FLOW_ID:
+        if not LANGFLOW_URL or not LANGFLOW_NUDGES_FLOW_ID:
             raise ValueError(
-                "LANGFLOW_URL and NUDGES_FLOW_ID environment variables are required"
+                "LANGFLOW_URL and LANGFLOW_NUDGES_FLOW_ID environment variables are required"
             )
 
         # Prepare extra headers for JWT authentication
@@ -207,7 +207,7 @@ class ChatService:
 
         response_text, response_id = await async_langflow_chat(
             langflow_client,
-            NUDGES_FLOW_ID,
+            LANGFLOW_NUDGES_FLOW_ID,
             prompt,
             user_id,
             extra_headers=extra_headers,
