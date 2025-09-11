@@ -430,8 +430,4 @@ class DocumentService:
             upload_task.failed_files += 1
         finally:
             file_task.updated_at = time.time()
-            upload_task.processed_files += 1
             upload_task.updated_at = time.time()
-
-            if upload_task.processed_files >= upload_task.total_files:
-                upload_task.status = TaskStatus.COMPLETED
