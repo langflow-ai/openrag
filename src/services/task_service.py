@@ -109,33 +109,6 @@ class TaskService:
 
         return task_id
 
-    async def background_upload_processor(self, user_id: str, task_id: str) -> None:
-        """Background task to process all files in an upload job with concurrency control"""
-        try:
-            upload_task = self.task_store[user_id][task_id]
-            upload_task.status = TaskStatus.RUNNING
-            upload_task.updated_at = time.time()
-
-            # Process files with limited concurrency to avoid overwhelming the system
-            max_workers = get_worker_count()
-            semaphore = asyncio.Semaphore(max_workers * 2)  # Allow 2x process pool size for async I/O
-
-            async def process_with_semaphore(file_path: str):
-                async with semaphore:
-                    await self.document_service.process_single_file_task(upload_task, file_path)
-
-            tasks = [process_with_semaphore(file_path) for file_path in upload_task.file_tasks.keys()]
-
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-        except Exception as e:
-            logger.error("Background upload processor failed", task_id=task_id, error=str(e))
-            import traceback
-
-            traceback.print_exc()
-            if user_id in self.task_store and task_id in self.task_store[user_id]:
-                self.task_store[user_id][task_id].status = TaskStatus.FAILED
-                self.task_store[user_id][task_id].updated_at = time.time()
 
     async def background_custom_processor(self, user_id: str, task_id: str, items: list) -> None:
         """Background task to process items using custom processor"""
