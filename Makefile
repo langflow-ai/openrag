@@ -1,7 +1,7 @@
 # OpenRAG Development Makefile
 # Provides easy commands for development workflow
 
-.PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install test backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup
+.PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install test test-integration test-unit test-ingest test-search test-coverage backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup
 
 # Default target
 help:
@@ -32,14 +32,19 @@ help:
 	@echo "  shell-lf     - Shell into langflow container"
 	@echo ""
 	@echo "Testing:"
-	@echo "  test         - Run backend tests"
+	@echo "  test         - Run all backend tests"
+	@echo "  test-integration - Run integration tests (requires infra)"
+	@echo "  test-unit    - Run unit tests only"
+	@echo "  test-ingest  - Test file ingestion flows"
+	@echo "  test-search  - Test search functionality"
+	@echo "  test-coverage - Run tests with coverage report"
 	@echo "  lint         - Run linting checks"
 	@echo ""
 
 # Development environments
 dev:
 	@echo "🚀 Starting OpenRAG with GPU support..."
-	docker-compose up -d
+	docker compose up -d
 	@echo "✅ Services started!"
 	@echo "   Backend: http://localhost:8000"
 	@echo "   Frontend: http://localhost:3000"
@@ -49,7 +54,7 @@ dev:
 
 dev-cpu:
 	@echo "🚀 Starting OpenRAG with CPU only..."
-	docker-compose -f docker-compose-cpu.yml up -d
+	docker compose -f docker-compose-cpu.yml up -d
 	@echo "✅ Services started!"
 	@echo "   Backend: http://localhost:8000"
 	@echo "   Frontend: http://localhost:3000"
@@ -59,7 +64,7 @@ dev-cpu:
 
 dev-local:
 	@echo "🔧 Starting infrastructure only (for local development)..."
-	docker-compose up -d opensearch dashboards langflow
+	docker compose up -d opensearch dashboards langflow
 	@echo "✅ Infrastructure started!"
 	@echo "   Langflow: http://localhost:7860"
 	@echo "   OpenSearch: http://localhost:9200"
@@ -69,7 +74,7 @@ dev-local:
 
 infra:
 	@echo "🔧 Starting infrastructure services only..."
-	docker-compose up -d opensearch dashboards langflow
+	docker compose up -d opensearch dashboards langflow
 	@echo "✅ Infrastructure services started!"
 	@echo "   Langflow: http://localhost:7860"
 	@echo "   OpenSearch: http://localhost:9200"
@@ -78,15 +83,15 @@ infra:
 # Container management
 stop:
 	@echo "🛑 Stopping all containers..."
-	docker-compose down
-	docker-compose -f docker-compose-cpu.yml down 2>/dev/null || true
+	docker compose down
+	docker compose -f docker-compose-cpu.yml down 2>/dev/null || true
 
 restart: stop dev
 
 clean: stop
 	@echo "🧹 Cleaning up containers and volumes..."
-	docker-compose down -v --remove-orphans
-	docker-compose -f docker-compose-cpu.yml down -v --remove-orphans 2>/dev/null || true
+	docker compose down -v --remove-orphans
+	docker compose -f docker-compose-cpu.yml down -v --remove-orphans 2>/dev/null || true
 	docker system prune -f
 
 # Local development
@@ -115,7 +120,7 @@ install-fe:
 # Building
 build:
 	@echo "🔨 Building Docker images..."
-	docker-compose build
+	docker compose build
 
 build-be:
 	@echo "🔨 Building backend image..."
@@ -128,41 +133,62 @@ build-fe:
 # Logging and debugging
 logs:
 	@echo "📋 Showing all container logs..."
-	docker-compose logs -f
+	docker compose logs -f
 
 logs-be:
 	@echo "📋 Showing backend logs..."
-	docker-compose logs -f openrag-backend
+	docker compose logs -f openrag-backend
 
 logs-fe:
 	@echo "📋 Showing frontend logs..."
-	docker-compose logs -f openrag-frontend
+	docker compose logs -f openrag-frontend
 
 logs-lf:
 	@echo "📋 Showing langflow logs..."
-	docker-compose logs -f langflow
+	docker compose logs -f langflow
 
 logs-os:
 	@echo "📋 Showing opensearch logs..."
-	docker-compose logs -f opensearch
+	docker compose logs -f opensearch
 
 # Shell access
 shell-be:
 	@echo "🐚 Opening shell in backend container..."
-	docker-compose exec openrag-backend /bin/bash
+	docker compose exec openrag-backend /bin/bash
 
 shell-lf:
 	@echo "🐚 Opening shell in langflow container..."
-	docker-compose exec langflow /bin/bash
+	docker compose exec langflow /bin/bash
 
 shell-os:
 	@echo "🐚 Opening shell in opensearch container..."
-	docker-compose exec opensearch /bin/bash
+	docker compose exec opensearch /bin/bash
 
 # Testing and quality
 test:
-	@echo "🧪 Running backend tests..."
-	uv run pytest
+	@echo "🧪 Running all backend tests..."
+	uv run pytest tests/ -v
+
+test-integration:
+	@echo "🧪 Running integration tests (requires infrastructure)..."
+	@echo "💡 Make sure to run 'make infra' first!"
+	uv run pytest tests/integration/ -v
+
+test-unit:
+	@echo "🧪 Running unit tests..."
+	uv run pytest tests/unit/ -v
+
+test-ingest:
+	@echo "🧪 Testing file ingestion flows..."
+	uv run pytest tests/integration/test_file_ingest.py -v
+
+test-search:
+	@echo "🧪 Testing search functionality..."
+	uv run pytest tests/integration/test_search_flow.py -v
+
+test-coverage:
+	@echo "🧪 Running tests with coverage report..."
+	uv run pytest tests/ --cov=src --cov-report=term-missing --cov-report=html:htmlcov
 
 lint:
 	@echo "🔍 Running linting checks..."
@@ -172,7 +198,7 @@ lint:
 # Service status
 status:
 	@echo "📊 Container status:"
-	@docker-compose ps 2>/dev/null || echo "No containers running"
+	@docker compose ps 2>/dev/null || echo "No containers running"
 
 health:
 	@echo "🏥 Health check:"
