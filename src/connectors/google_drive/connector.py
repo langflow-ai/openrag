@@ -497,7 +497,6 @@ class GoogleDriveConnector(BaseConnector):
         except Exception as e:
             # Use your base class logger if available
             try:
-                #NOTE: TBD Remove the try catch
                 logger.error(f"Download failed for {file_id}: {e}")
             except Exception:
                 pass
