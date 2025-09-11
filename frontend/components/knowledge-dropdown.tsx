@@ -134,7 +134,7 @@ export function KnowledgeDropdown({ active, variant = 'navigation' }: KnowledgeD
         formData.append('file', files[0])
         
         // Use router upload and ingest endpoint (automatically routes based on configuration)
-        const uploadIngestRes = await fetch('/api/router/upload_ingest', {
+        const uploadIngestRes = await fetch('/api/upload', {
           method: 'POST',
           body: formData,
         })

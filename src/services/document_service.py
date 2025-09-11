@@ -215,7 +215,12 @@ class DocumentService:
     ):
         """Process an uploaded file from form data"""
         sha256 = hashlib.sha256()
-        tmp = tempfile.NamedTemporaryFile(delete=False)
+        # Preserve file extension so the converter can detect format
+        try:
+            _, ext = os.path.splitext(getattr(upload_file, "filename", "") or "")
+        except Exception:
+            ext = ""
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
         file_size = 0
         try:
             while True:
