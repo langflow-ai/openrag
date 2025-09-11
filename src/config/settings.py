@@ -48,6 +48,7 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
 # Ingestion configuration
 DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in ("true", "1", "yes")
+DISABLE_STARTUP_INGEST = os.getenv("DISABLE_STARTUP_INGEST", "false").lower() in ("true", "1", "yes")
 
 
 def is_no_auth_mode():
