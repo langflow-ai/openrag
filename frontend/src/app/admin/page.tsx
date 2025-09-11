@@ -51,7 +51,7 @@ function AdminPage() {
       const formData = new FormData()
       formData.append("file", selectedFile)
 
-      const response = await fetch("/api/router/upload_ingest", {
+      const response = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       })

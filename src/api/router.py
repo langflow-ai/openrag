@@ -3,11 +3,8 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from config.settings import DISABLE_INGEST_WITH_LANGFLOW
 from utils.logging_config import get_logger
-
-# Import the actual endpoint implementations
-from .upload import upload as traditional_upload
+from .upload_utils import extract_user_context, create_temp_files_from_form_files
 
 logger = get_logger(__name__)
 
@@ -29,20 +26,57 @@ async def upload_ingest_router(
     All langflow uploads are processed as background tasks for better scalability.
     """
     try:
-        logger.debug(
-            "Router upload_ingest endpoint called", 
-            disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW
-        )
+        # Read setting at request time to avoid stale module-level values
+        from config import settings as cfg
+        disable_langflow_ingest = cfg.DISABLE_INGEST_WITH_LANGFLOW
+        logger.debug("Router upload_ingest endpoint called", disable_langflow_ingest=disable_langflow_ingest)
         
         # Route based on configuration
-        if DISABLE_INGEST_WITH_LANGFLOW:
-            # Route to traditional OpenRAG upload
-            logger.debug("Routing to traditional OpenRAG upload")
-            return await traditional_upload(request, document_service, session_manager)
+        if disable_langflow_ingest:
+            # Traditional OpenRAG path: create a background task via TaskService
+            logger.debug("Routing to traditional OpenRAG upload via task service (async)")
+            form = await request.form()
+            upload_files = form.getlist("file")
+            if not upload_files:
+                return JSONResponse({"error": "Missing file"}, status_code=400)
+            # Extract user context
+            ctx = await extract_user_context(request)
+
+            # Create temporary files
+            temp_file_paths = await create_temp_files_from_form_files(upload_files)
+            try:
+                # Create traditional upload task for all files
+                task_id = await task_service.create_upload_task(
+                    ctx["owner_user_id"],
+                    temp_file_paths,
+                    jwt_token=ctx["jwt_token"],
+                    owner_name=ctx["owner_name"],
+                    owner_email=ctx["owner_email"],
+                )
+                return JSONResponse(
+                    {
+                        "task_id": task_id,
+                        "message": f"Traditional upload task created for {len(upload_files)} file(s)",
+                        "file_count": len(upload_files),
+                    },
+                    status_code=201,
+                )
+            except Exception:
+                # Clean up temp files on error
+                import os
+                for p in temp_file_paths:
+                    try:
+                        if os.path.exists(p):
+                            os.unlink(p)
+                    except Exception:
+                        pass
+                raise
         else:
-            # Route to Langflow upload and ingest using task service
-            logger.debug("Routing to Langflow upload-ingest pipeline via task service")
-            return await langflow_upload_ingest_task(request, langflow_file_service, session_manager, task_service)
+            # Route to Langflow upload-ingest via task service for async processing (202 + task_id)
+            logger.debug("Routing to Langflow upload-ingest pipeline via task service (async)")
+            return await langflow_upload_ingest_task(
+                request, langflow_file_service, session_manager, task_service
+            )
             
     except Exception as e:
         logger.error("Error in upload_ingest_router", error=str(e))
@@ -98,37 +132,19 @@ async def langflow_upload_ingest_task(
                 logger.error("Invalid tweaks JSON", error=str(e))
                 return JSONResponse({"error": "Invalid tweaks JSON"}, status_code=400)
 
-        # Get user info from request state
-        user = getattr(request.state, "user", None)
-        user_id = user.user_id if user else None
-        user_name = user.name if user else None
-        user_email = user.email if user else None
-        jwt_token = getattr(request.state, "jwt_token", None)
-
-        if not user_id:
-            return JSONResponse({"error": "User authentication required"}, status_code=401)
+        # Get user/auth context (allows no-auth mode)
+        ctx = await extract_user_context(request)
+        user_id = ctx["owner_user_id"]
+        user_name = ctx["owner_name"]
+        user_email = ctx["owner_email"]
+        jwt_token = ctx["jwt_token"]
 
         # Create temporary files for task processing
-        import tempfile
         import os
         temp_file_paths = []
         
         try:
-            for upload_file in upload_files:
-                # Read file content
-                content = await upload_file.read()
-                
-                # Create temporary file
-                safe_filename = upload_file.filename.replace(" ", "_").replace("/", "_")
-                temp_fd, temp_path = tempfile.mkstemp(
-                    suffix=f"_{safe_filename}"
-                )
-                
-                # Write content to temp file
-                with os.fdopen(temp_fd, 'wb') as temp_file:
-                    temp_file.write(content)
-                
-                temp_file_paths.append(temp_path)
+            temp_file_paths = await create_temp_files_from_form_files(upload_files)
 
             logger.debug(
                 "Created temporary files for task-based processing",
@@ -160,7 +176,7 @@ async def langflow_upload_ingest_task(
                 "task_id": task_id,
                 "message": f"Langflow upload task created for {len(upload_files)} file(s)",
                 "file_count": len(upload_files)
-            }, status_code=202)  # 202 Accepted for async processing
+            }, status_code=201)
             
         except Exception:
             # Clean up temp files on error

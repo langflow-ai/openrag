@@ -263,96 +263,60 @@ async def ingest_default_documents_when_ready(services):
 
 
 async def _ingest_default_documents_langflow(services, file_paths):
-    """Ingest default documents using Langflow upload-ingest-delete pipeline."""
+    """Ingest default documents using Langflow via a single background task (aligned with router semantics)."""
     langflow_file_service = services["langflow_file_service"]
     session_manager = services["session_manager"]
 
     logger.info(
-        "Using Langflow ingestion pipeline for default documents",
+        "Using Langflow ingestion pipeline for default documents (task-based)",
         file_count=len(file_paths),
     )
 
-    success_count = 0
-    error_count = 0
+    # Use AnonymousUser for default documents
+    from session_manager import AnonymousUser
 
-    for file_path in file_paths:
-        try:
-            logger.debug("Processing file with Langflow pipeline", file_path=file_path)
+    anonymous_user = AnonymousUser()
 
-            # Read file content
-            with open(file_path, "rb") as f:
-                content = f.read()
+    # Ensure an (anonymous) JWT is available for OpenSearch/flow auth
+    effective_jwt = None
+    try:
+        session_manager.get_user_opensearch_client(anonymous_user.user_id, None)
+        if hasattr(session_manager, "_anonymous_jwt"):
+            effective_jwt = session_manager._anonymous_jwt
+    except Exception:
+        pass
 
-            # Create file tuple for upload
-            filename = os.path.basename(file_path)
-            # Determine content type based on file extension
-            content_type, _ = mimetypes.guess_type(filename)
-            if not content_type:
-                content_type = "application/octet-stream"
+    # Prepare tweaks with anonymous metadata for OpenSearch component
+    default_tweaks = {
+        "OpenSearchHybrid-Ve6bS": {
+            "docs_metadata": [
+                {"key": "owner", "value": None},
+                {"key": "owner_name", "value": anonymous_user.name},
+                {"key": "owner_email", "value": anonymous_user.email},
+                {"key": "connector_type", "value": "system_default"},
+            ]
+        }
+    }
 
-            file_tuple = (filename, content, content_type)
-
-            # Use AnonymousUser details for default documents
-            from session_manager import AnonymousUser
-
-            anonymous_user = AnonymousUser()
-
-            # Get JWT token using same logic as DocumentFileProcessor
-            # This will handle anonymous JWT creation if needed for anonymous user
-            effective_jwt = None
-
-            # Let session manager handle anonymous JWT creation if needed
-            if session_manager:
-                # This call will create anonymous JWT if needed (same as DocumentFileProcessor)
-                session_manager.get_user_opensearch_client(
-                    anonymous_user.user_id, effective_jwt
-                )
-                # Get the JWT that was created by session manager
-                if hasattr(session_manager, "_anonymous_jwt"):
-                    effective_jwt = session_manager._anonymous_jwt
-
-            # Prepare tweaks for default documents with anonymous user metadata
-            default_tweaks = {
-                "OpenSearchHybrid-Ve6bS": {
-                    "docs_metadata": [
-                        {"key": "owner", "value": None},
-                        {"key": "owner_name", "value": anonymous_user.name},
-                        {"key": "owner_email", "value": anonymous_user.email},
-                        {"key": "connector_type", "value": "system_default"},
-                    ]
-                }
-            }
-
-            # Use langflow upload_and_ingest_file method with JWT token
-            result = await langflow_file_service.upload_and_ingest_file(
-                file_tuple=file_tuple,
-                session_id=None,  # No session for default documents
-                tweaks=default_tweaks,  # Add anonymous user metadata
-                settings=None,  # Use default ingestion settings
-                jwt_token=effective_jwt,  # Use JWT token (anonymous if needed)
-                delete_after_ingest=True,  # Clean up after ingestion
-            )
-
-            logger.info(
-                "Successfully ingested file via Langflow",
-                file_path=file_path,
-                result_status=result.get("status"),
-            )
-            success_count += 1
-
-        except Exception as e:
-            logger.error(
-                "Failed to ingest file via Langflow",
-                file_path=file_path,
-                error=str(e),
-            )
-            error_count += 1
+    # Create a single task to process all default documents through Langflow
+    task_id = await services["task_service"].create_langflow_upload_task(
+        user_id=anonymous_user.user_id,
+        file_paths=file_paths,
+        langflow_file_service=langflow_file_service,
+        session_manager=session_manager,
+        jwt_token=effective_jwt,
+        owner_name=anonymous_user.name,
+        owner_email=anonymous_user.email,
+        session_id=None,
+        tweaks=default_tweaks,
+        settings=None,
+        delete_after_ingest=True,
+    )
 
     logger.info(
-        "Langflow ingestion completed",
-        success_count=success_count,
-        error_count=error_count,
-        total_files=len(file_paths),
+        "Started Langflow ingestion task for default documents",
+        task_id=task_id,
+        file_count=len(file_paths),
     )
 
 
@@ -486,41 +450,7 @@ async def create_app():
 
     # Create route handlers with service dependencies injected
     routes = [
-        # Upload endpoints
-        Route(
-            "/upload",
-            require_auth(services["session_manager"])(
-                partial(
-                    upload.upload,
-                    document_service=services["document_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        # Langflow Files endpoints
-        Route(
-            "/langflow/files/upload",
-            optional_auth(services["session_manager"])(
-                partial(
-                    langflow_files.upload_user_file,
-                    langflow_file_service=services["langflow_file_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
-        Route(
-            "/langflow/ingest",
-            require_auth(services["session_manager"])(
-                partial(
-                    langflow_files.run_ingestion,
-                    langflow_file_service=services["langflow_file_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
+        # Langflow direct upload/ingest endpoints removed in favor of router (/router/upload_ingest)
         Route(
             "/langflow/files",
             require_auth(services["session_manager"])(
@@ -531,18 +461,6 @@ async def create_app():
                 )
             ),
             methods=["DELETE"],
-        ),
-        Route(
-            "/langflow/upload_ingest",
-            require_auth(services["session_manager"])(
-                partial(
-                    langflow_files.upload_and_ingest_user_file,
-                    langflow_file_service=services["langflow_file_service"],
-                    session_manager=services["session_manager"],
-                    task_service=services["task_service"],
-                )
-            ),
-            methods=["POST"],
         ),
         Route(
             "/upload_context",
@@ -939,7 +857,7 @@ async def create_app():
             methods=["POST"],
         ),
         Route(
-            "/router/upload_ingest",
+            "/upload",
             require_auth(services["session_manager"])(
                 partial(
                     router.upload_ingest_router,
@@ -969,6 +887,33 @@ async def create_app():
     @app.on_event("shutdown")
     async def shutdown_event():
         await cleanup_subscriptions_proper(services)
+        # Close HTTP/OpenSearch clients cleanly
+        try:
+            from config.settings import clients as _clients
+
+            if getattr(_clients, "langflow_http_client", None):
+                try:
+                    await _clients.langflow_http_client.aclose()
+                except Exception:
+                    pass
+            if getattr(_clients, "opensearch", None):
+                try:
+                    await _clients.opensearch.close()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # Close any per-user OpenSearch clients
+        try:
+            sm = services.get("session_manager")
+            if sm and getattr(sm, "user_opensearch_clients", None):
+                for oc in sm.user_opensearch_clients.values():
+                    try:
+                        await oc.close()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     return app
 
