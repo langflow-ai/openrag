@@ -50,6 +50,10 @@ class EnvConfig:
     langflow_auto_login: str = "False"
     langflow_new_user_is_active: str = "False"
     langflow_enable_superuser_cli: str = "False"
+    
+    # Ingestion settings
+    disable_ingest_with_langflow: str = "False"
+    nudges_flow_id: str = "ebc01d31-1976-46ce-a385-b0240327226c"
 
     # Document paths (comma-separated)
     openrag_documents_paths: str = "./documents"
@@ -114,6 +118,7 @@ class EnvManager:
                             "LANGFLOW_AUTO_LOGIN": "langflow_auto_login",
                             "LANGFLOW_NEW_USER_IS_ACTIVE": "langflow_new_user_is_active",
                             "LANGFLOW_ENABLE_SUPERUSER_CLI": "langflow_enable_superuser_cli",
+                            "DISABLE_INGEST_WITH_LANGFLOW": "disable_ingest_with_langflow",
                         }
 
                         if key in attr_map:
@@ -249,6 +254,11 @@ class EnvManager:
                 )
                 f.write("\n")
 
+                # Ingestion settings
+                f.write("# Ingestion settings\n")
+                f.write(f"DISABLE_INGEST_WITH_LANGFLOW={self.config.disable_ingest_with_langflow}\n")
+                f.write("\n")
+
                 # Langflow auth settings
                 f.write("# Langflow auth settings\n")
                 f.write(f"LANGFLOW_AUTO_LOGIN={self.config.langflow_auto_login}\n")
@@ -357,7 +367,22 @@ class EnvManager:
             ),
         ]
 
+        flow_fields = [
+            (
+                "nudges_flow_id",
+                "Nudges Flow ID",
+                "ebc01d31-1976-46ce-a385-b0240327226c",
+                False,
+            ),
+        ]
+
         optional_fields = [
+            (
+                "disable_ingest_with_langflow",
+                "Disable Langflow Ingestion (optional)",
+                "False",
+                False,
+            ),
             (
                 "webhook_base_url",
                 "Webhook Base URL (optional)",
@@ -374,7 +399,7 @@ class EnvManager:
             ),
         ]
 
-        return base_fields + oauth_fields + optional_fields
+        return base_fields + oauth_fields + flow_fields + optional_fields
 
     def generate_compose_volume_mounts(self) -> List[str]:
         """Generate Docker Compose volume mount strings from documents paths."""
