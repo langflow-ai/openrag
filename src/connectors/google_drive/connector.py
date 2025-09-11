@@ -64,7 +64,6 @@ class GoogleDriveConnector(BaseConnector):
     Integration points:
       - `BaseConnector` is your project’s base class; minimum methods used here:
           * self.emit(doc: ConnectorDocument) -> None  (or adapt to your ingestion pipeline)
-          * self.log/info/warn/error (optional)
       - Adjust paths, logging, and error handling to match your project style.
     """
 
@@ -81,9 +80,6 @@ class GoogleDriveConnector(BaseConnector):
     _FILE_ID_ALIASES = ("file_ids", "selected_file_ids", "selected_files")
     _FOLDER_ID_ALIASES = ("folder_ids", "selected_folder_ids", "selected_folders")
 
-    def log(self, message: str) -> None:
-        #NOTE: TBD Remove
-        logger.debug(message)   # TBD Remove
 
     def emit(self, doc: ConnectorDocument) -> None:
         """
