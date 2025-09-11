@@ -450,7 +450,6 @@ async def create_app():
 
     # Create route handlers with service dependencies injected
     routes = [
-        # Langflow direct upload/ingest endpoints removed in favor of router (/router/upload_ingest)
         Route(
             "/langflow/files",
             require_auth(services["session_manager"])(
