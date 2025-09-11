@@ -386,9 +386,14 @@ async def _ingest_default_documents_openrag(services, file_paths):
 
 async def startup_tasks(services):
     """Startup tasks"""
+    from config.settings import DISABLE_STARTUP_INGEST
+
     logger.info("Starting startup tasks")
     await init_index()
-    await ingest_default_documents_when_ready(services)
+    if DISABLE_STARTUP_INGEST:
+        logger.info("Startup ingest disabled via DISABLE_STARTUP_INGEST; skipping default documents ingestion")
+    else:
+        await ingest_default_documents_when_ready(services)
 
 
 async def initialize_services():
