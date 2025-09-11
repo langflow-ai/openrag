@@ -1,0 +1,80 @@
+import asyncio
+import os
+import tempfile
+from pathlib import Path
+
+import pytest
+import pytest_asyncio
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Force no-auth mode for testing by removing OAuth credentials
+# This ensures anonymous JWT tokens are created automatically
+os.environ.pop('GOOGLE_OAUTH_CLIENT_ID', None)
+os.environ.pop('GOOGLE_OAUTH_CLIENT_SECRET', None)
+
+from src.config.settings import clients
+from src.session_manager import SessionManager
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an instance of the default event loop for the test session."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+
+@pytest_asyncio.fixture
+async def opensearch_client():
+    """OpenSearch client for testing - requires running OpenSearch."""
+    await clients.initialize()
+    yield clients.opensearch
+    # Cleanup test indices after tests
+    try:
+        await clients.opensearch.indices.delete(index="test_documents")
+    except Exception:
+        pass
+
+
+@pytest.fixture
+def session_manager():
+    """Session manager for testing."""
+    return SessionManager("test-secret-key")
+
+
+@pytest.fixture
+def test_documents_dir():
+    """Create a temporary directory with test documents."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        test_dir = Path(temp_dir)
+        
+        # Create some test files in supported formats
+        (test_dir / "test1.md").write_text("# Machine Learning Document\n\nThis is a test document about machine learning.")
+        (test_dir / "test2.md").write_text("# AI Document\n\nAnother document discussing artificial intelligence.")
+        (test_dir / "test3.md").write_text("# Data Science Document\n\nThis is a markdown file about data science.")
+        
+        # Create subdirectory with files
+        sub_dir = test_dir / "subdir"
+        sub_dir.mkdir()
+        (sub_dir / "nested.md").write_text("# Neural Networks\n\nNested document about neural networks.")
+        
+        yield test_dir
+
+
+@pytest.fixture
+def test_single_file():
+    """Create a single test file."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='_test_document.md', delete=False) as f:
+        f.write("# Single Test Document\n\nThis is a test document about OpenRAG testing framework. This document contains multiple sentences to ensure proper chunking. The content should be indexed and searchable in OpenSearch after processing.")
+        temp_path = f.name
+    
+    yield temp_path
+    
+    # Cleanup
+    try:
+        os.unlink(temp_path)
+    except FileNotFoundError:
+        pass
