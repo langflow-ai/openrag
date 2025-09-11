@@ -391,7 +391,7 @@ class ChatService:
                 local_metadata[response_id] = conversation_metadata
 
             # 2. Get actual conversations from Langflow database (source of truth for messages)
-            print(f"[DEBUG] Attempting to fetch Langflow history for user: {user_id}")
+            logger.debug(f"Attempting to fetch Langflow history for user: {user_id}")
             langflow_history = (
                 await langflow_history_service.get_user_conversation_history(
                     user_id, flow_id=LANGFLOW_CHAT_FLOW_ID
@@ -462,24 +462,24 @@ class ChatService:
                         )
 
             if langflow_history.get("conversations"):
-                print(
-                    f"[DEBUG] Added {len(langflow_history['conversations'])} historical conversations from Langflow"
+                logger.debug(
+                    f"Added {len(langflow_history['conversations'])} historical conversations from Langflow"
                 )
             elif langflow_history.get("error"):
-                print(
-                    f"[DEBUG] Could not fetch Langflow history for user {user_id}: {langflow_history['error']}"
+                logger.debug(
+                    f"Could not fetch Langflow history for user {user_id}: {langflow_history['error']}"
                 )
             else:
-                print(f"[DEBUG] No Langflow conversations found for user {user_id}")
+                logger.debug(f"No Langflow conversations found for user {user_id}")
 
         except Exception as e:
-            print(f"[ERROR] Failed to fetch Langflow history: {e}")
+            logger.error(f"Failed to fetch Langflow history: {e}")
             # Continue with just in-memory conversations
 
         # Sort by last activity (most recent first)
         all_conversations.sort(key=lambda c: c.get("last_activity", ""), reverse=True)
 
-        print(
+        logger.debug(
             f"[DEBUG] Returning {len(all_conversations)} conversations ({len(local_metadata)} from local metadata)"
         )
 
