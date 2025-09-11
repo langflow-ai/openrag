@@ -45,7 +45,7 @@ async def upload(request: Request, document_service, session_manager):
             return JSONResponse({"error": error_msg}, status_code=500)
 
 
-async def upload_path(request: Request, task_service, session_manager):
+async def upload_path(request: Request, task_service, session_manager, langflow_file_service):
     """Upload all files from a directory path"""
     payload = await request.json()
     base_dir = payload.get("path")
@@ -74,13 +74,29 @@ async def upload_path(request: Request, task_service, session_manager):
         owner_name = user.name
         owner_email = user.email
 
-    task_id = await task_service.create_upload_task(
-        owner_user_id,
-        file_paths,
-        jwt_token=jwt_token,
-        owner_name=owner_name,
-        owner_email=owner_email,
-    )
+    from config.settings import DISABLE_INGEST_WITH_LANGFLOW
+    
+    # Use same logic as single file uploads - respect the Langflow setting
+    if DISABLE_INGEST_WITH_LANGFLOW:
+        # Use direct DocumentFileProcessor (no Langflow)
+        task_id = await task_service.create_upload_task(
+            owner_user_id,
+            file_paths,
+            jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
+        )
+    else:
+        # Use Langflow pipeline for processing
+        task_id = await task_service.create_langflow_upload_task(
+            user_id=owner_user_id,
+            file_paths=file_paths,
+            langflow_file_service=langflow_file_service,
+            session_manager=session_manager,
+            jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
+        )
 
     return JSONResponse(
         {"task_id": task_id, "total_files": len(file_paths), "status": "accepted"},

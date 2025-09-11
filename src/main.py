@@ -558,6 +558,7 @@ async def create_app():
                     upload.upload_path,
                     task_service=services["task_service"],
                     session_manager=services["session_manager"],
+                    langflow_file_service=services["langflow_file_service"],
                 )
             ),
             methods=["POST"],
