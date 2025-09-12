@@ -16,6 +16,7 @@ from rich.text import Text
 from rich.table import Table
 
 from ..managers.container_manager import ContainerManager, ServiceStatus, ServiceInfo
+from ..managers.docling_manager import DoclingManager
 from ..utils.platform import RuntimeType
 from ..widgets.command_modal import CommandOutputModal
 from ..widgets.diagnostics_notification import notify_with_diagnostics
@@ -39,6 +40,7 @@ class MonitorScreen(Screen):
     def __init__(self):
         super().__init__()
         self.container_manager = ContainerManager()
+        self.docling_manager = DoclingManager()
         self.services_table = None
         self.images_table = None
         self.status_text = None
@@ -179,6 +181,22 @@ class MonitorScreen(Screen):
                 service_info.image or "N/A",
                 digest_map.get(service_info.image or "", "-"),
             )
+        
+        # Add docling serve as a service
+        docling_status = self.docling_manager.get_status()
+        docling_running = docling_status["status"] == "running"
+        docling_status_text = "running" if docling_running else "stopped"
+        docling_style = "bold green" if docling_running else "bold red"
+        docling_port = f"{docling_status['host']}:{docling_status['port']}" if docling_running else "N/A"
+        
+        self.services_table.add_row(
+            "docling-serve",
+            Text(docling_status_text, style=docling_style),
+            "N/A",
+            docling_port,
+            "docling-serve (in-process)",
+            "N/A",
+        )
         # Populate images table (unique images as reported by runtime)
         if self.images_table:
             for image in sorted(images):
@@ -222,6 +240,10 @@ class MonitorScreen(Screen):
             self.run_worker(self._upgrade_services())
         elif button_id.startswith("reset-btn"):
             self.run_worker(self._reset_services())
+        elif button_id.startswith("docling-start-btn"):
+            self.run_worker(self._start_docling_serve())
+        elif button_id.startswith("docling-stop-btn"):
+            self.run_worker(self._stop_docling_serve())
         elif button_id == "toggle-mode-btn":
             self.action_toggle_mode()
         elif button_id.startswith("refresh-btn"):
@@ -318,6 +340,38 @@ class MonitorScreen(Screen):
                 on_complete=None,  # We'll refresh in on_screen_resume instead
             )
             self.app.push_screen(modal)
+        finally:
+            self.operation_in_progress = False
+
+    async def _start_docling_serve(self) -> None:
+        """Start docling serve."""
+        self.operation_in_progress = True
+        try:
+            success, message = await self.docling_manager.start()
+            if success:
+                self.notify(message, severity="information")
+            else:
+                self.notify(f"Failed to start docling serve: {message}", severity="error")
+            # Refresh the services table to show updated status
+            await self._refresh_services()
+        except Exception as e:
+            self.notify(f"Error starting docling serve: {str(e)}", severity="error")
+        finally:
+            self.operation_in_progress = False
+
+    async def _stop_docling_serve(self) -> None:
+        """Stop docling serve."""
+        self.operation_in_progress = True
+        try:
+            success, message = await self.docling_manager.stop()
+            if success:
+                self.notify(message, severity="information")
+            else:
+                self.notify(f"Failed to stop docling serve: {message}", severity="error")
+            # Refresh the services table to show updated status
+            await self._refresh_services()
+        except Exception as e:
+            self.notify(f"Error stopping docling serve: {str(e)}", severity="error")
         finally:
             self.operation_in_progress = False
 
@@ -484,6 +538,17 @@ class MonitorScreen(Screen):
                 Button("Upgrade", variant="warning", id=f"upgrade-btn{suffix}")
             )
             controls.mount(Button("Reset", variant="error", id=f"reset-btn{suffix}"))
+            
+            # Add docling serve controls
+            docling_running = self.docling_manager.is_running()
+            if docling_running:
+                controls.mount(
+                    Button("Stop Docling", variant="error", id=f"docling-stop-btn{suffix}")
+                )
+            else:
+                controls.mount(
+                    Button("Start Docling", variant="success", id=f"docling-start-btn{suffix}")
+                )
 
         except Exception as e:
             notify_with_diagnostics(
