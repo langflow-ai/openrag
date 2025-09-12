@@ -118,7 +118,7 @@ install: install-be install-fe
 
 install-be:
 	@echo "📦 Installing backend dependencies..."
-	uv sync
+	uv sync --extra torch-cu128
 
 install-fe:
 	@echo "📦 Installing frontend dependencies..."
@@ -184,6 +184,8 @@ test-integration:
 # CI-friendly integration test target: brings up infra, waits, runs tests, tears down
 test-ci:
 	@set -e; \
+	echo "📦 Installing test dependencies..."; \
+	uv sync --group dev; \
 	echo "🚀 Starting infra (OpenSearch + Dashboards + Langflow)"; \
 	make infra; \
 	echo "⏳ Waiting for OpenSearch..."; \

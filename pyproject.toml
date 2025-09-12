@@ -18,7 +18,6 @@ dependencies = [
     "pyjwt>=2.8.0",
     "python-multipart>=0.0.20",
     "starlette>=0.47.1",
-    "torch>=2.7.1",
     "uvicorn>=0.35.0",
     "boto3>=1.35.0",
     "psutil>=7.0.0",
@@ -27,11 +26,14 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-mock>=3.12.0",
-    "pytest-cov>=4.0.0",
 ]
+
+[project.optional-dependencies]
+torch = ["torch", "torchvision"]
+torch-cu128 = ["torch", "torchvision"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.21.0", "pytest-mock>=3.12.0", "pytest-cov>=4.0.0"]
 
 [project.scripts]
 openrag = "tui.main:run_tui"
@@ -41,13 +43,20 @@ package = true
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+  { index = "pytorch-cu128", extra = "torch-cu128" },
+  { index = "pytorch-cpu",   extra = "torch" }
 ]
 torchvision = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+  { index = "pytorch-cu128", extra = "torch-cu128" },
+  { index = "pytorch-cpu",   extra = "torch" }
 ]
 
 [[tool.uv.index]]
-name     = "pytorch-cu128"
-url      = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
 explicit = true
