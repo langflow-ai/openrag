@@ -7,7 +7,9 @@ import json
 import os
 from typing import Dict, List, Optional
 from datetime import datetime
+from utils.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 class SessionOwnershipService:
     """Simple service to track which user owns which session"""
@@ -23,7 +25,7 @@ class SessionOwnershipService:
                 with open(self.ownership_file, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                print(f"Error loading session ownership data: {e}")
+                logger.error(f"Error loading session ownership data: {e}")
                 return {}
         return {}
     
@@ -32,9 +34,9 @@ class SessionOwnershipService:
         try:
             with open(self.ownership_file, 'w') as f:
                 json.dump(self.ownership_data, f, indent=2)
-            print(f"Saved session ownership data to {self.ownership_file}")
+            logger.debug(f"Saved session ownership data to {self.ownership_file}")
         except Exception as e:
-            print(f"Error saving session ownership data: {e}")
+            logger.error(f"Error saving session ownership data: {e}")
     
     def claim_session(self, user_id: str, session_id: str):
         """Claim a session for a user"""
@@ -45,7 +47,7 @@ class SessionOwnershipService:
                 "last_accessed": datetime.now().isoformat()
             }
             self._save_ownership_data()
-            print(f"Claimed session {session_id} for user {user_id}")
+            logger.debug(f"Claimed session {session_id} for user {user_id}")
         else:
             # Update last accessed time
             self.ownership_data[session_id]["last_accessed"] = datetime.now().isoformat()
