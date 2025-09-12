@@ -254,7 +254,14 @@ Ensure these ports are available:
 ### Memory Issues
 - Use `make dev-cpu` for CPU-only mode
 - Increase Docker memory allocation
-- For Podman on macOS: see troubleshooting in main README
+- Podman on macOS: increase the VM memory if needed
+
+```bash
+podman machine stop
+podman machine rm
+podman machine init --memory 8192   # 8 GB example
+podman machine start
+```
 
 ### Environment Issues
 ```bash
