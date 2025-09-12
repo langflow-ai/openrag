@@ -1,0 +1,61 @@
+# OpenRAG TUI Guide
+
+The OpenRAG Terminal User Interface (TUI) provides a streamlined way to set up, configure, and monitor your OpenRAG deployment directly from the terminal.
+
+![OpenRAG TUI Interface](../assets/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
+
+## Launch
+
+```bash
+uv sync
+uv run openrag
+```
+
+## Features
+
+### Welcome Screen
+- Quick setup options: basic (no auth) or advanced (OAuth)
+- Service monitoring: container status at a glance
+- Quick actions: diagnostics, logs, configuration
+
+### Configuration Screen
+- Environment variables: guided forms for required settings
+- API keys: secure input with validation
+- OAuth setup: Google and Microsoft
+- Document paths: configure ingestion directories
+- Auto-save: generates and updates `.env`
+
+### Service Monitor
+- Container status: real-time state of services
+- Resource usage: CPU, memory, network
+- Service control: start/stop/restart
+- Health checks: health indicators for all components
+
+### Log Viewer
+- Live logs: stream logs across services
+- Filtering: by service (backend, frontend, Langflow, OpenSearch)
+- Levels: DEBUG/INFO/WARNING/ERROR
+- Export: save logs for later analysis
+
+### Diagnostics
+- System checks: Docker/Podman availability and configuration
+- Environment validation: verify required variables
+- Network tests: connectivity between services
+- Performance metrics: system capacity and recommendations
+
+## Navigation
+- Arrow keys: move between options
+- Tab/Shift+Tab: switch fields and buttons
+- Enter: select/confirm
+- Escape: back
+- Q: quit
+- Number keys (1-4): quick access to main screens
+
+## Benefits
+1. Simplified setup without manual file edits
+2. Clear visual feedback and error messages
+3. Integrated monitoring and control
+4. Cross-platform: Linux, macOS, Windows
+5. Fully terminal-based; no browser required
+
+
