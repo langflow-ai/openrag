@@ -70,45 +70,44 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool):
     await startup_tasks(app.state.services)
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await wait_for_ready(client)
-
-        expected_files = count_files_in_documents()
-
-        # Poll /tasks until we see at least one startup ingest task
-        async def _wait_for_task(timeout_s: float = 60.0):
-            deadline = asyncio.get_event_loop().time() + timeout_s
-            last = None
-            while asyncio.get_event_loop().time() < deadline:
-                resp = await client.get("/tasks")
-                if resp.status_code == 200:
-                    data = resp.json()
-                    last = data
-                    tasks = data.get("tasks") if isinstance(data, dict) else None
-                    if isinstance(tasks, list) and len(tasks) > 0:
-                        return tasks
-                await asyncio.sleep(0.5)
-            return last.get("tasks") if isinstance(last, dict) else last
-
-        tasks = await _wait_for_task()
-        if expected_files == 0:
-            return  # Nothing to do
-        if not (isinstance(tasks, list) and len(tasks) > 0):
-            # Fallback: verify that documents were indexed as a sign of startup ingest
-            sr = await client.post("/search", json={"query": "*", "limit": 1})
-            assert sr.status_code == 200, sr.text
-            total = sr.json().get("total")
-            assert isinstance(total, int) and total >= 0, "Startup ingest did not index documents"
-            return
-        newest = tasks[0]
-        assert "task_id" in newest
-        assert newest.get("total_files") == expected_files
-    # Explicitly close global clients to avoid aiohttp warnings
-    from src.config.settings import clients
     try:
-        if getattr(clients, "opensearch", None):
-            await clients.opensearch.close()
-        if getattr(clients, "langflow_http_client", None):
-            await clients.langflow_http_client.aclose()
-    except Exception:
-        pass
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            await wait_for_ready(client)
+
+            expected_files = count_files_in_documents()
+
+            # Poll /tasks until we see at least one startup ingest task
+            async def _wait_for_task(timeout_s: float = 60.0):
+                deadline = asyncio.get_event_loop().time() + timeout_s
+                last = None
+                while asyncio.get_event_loop().time() < deadline:
+                    resp = await client.get("/tasks")
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        last = data
+                        tasks = data.get("tasks") if isinstance(data, dict) else None
+                        if isinstance(tasks, list) and len(tasks) > 0:
+                            return tasks
+                    await asyncio.sleep(0.5)
+                return last.get("tasks") if isinstance(last, dict) else last
+
+            tasks = await _wait_for_task()
+            if expected_files == 0:
+                return  # Nothing to do
+            if not (isinstance(tasks, list) and len(tasks) > 0):
+                # Fallback: verify that documents were indexed as a sign of startup ingest
+                sr = await client.post("/search", json={"query": "*", "limit": 1})
+                assert sr.status_code == 200, sr.text
+                total = sr.json().get("total")
+                assert isinstance(total, int) and total >= 0, "Startup ingest did not index documents"
+                return
+            newest = tasks[0]
+            assert "task_id" in newest
+            assert newest.get("total_files") == expected_files
+    finally:
+        # Explicitly close global clients to avoid aiohttp warnings
+        from src.config.settings import clients
+        try:
+            await clients.close()
+        except Exception:
+            pass

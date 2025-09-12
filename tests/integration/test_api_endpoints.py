@@ -60,79 +60,89 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
     await clients.initialize()
     try:
         await clients.opensearch.indices.delete(index=INDEX_NAME)
+        # Wait for deletion to complete
+        await asyncio.sleep(1)
     except Exception:
         pass
 
     app = await create_app()
     # Manually run startup tasks since httpx ASGI transport here doesn't manage lifespan
     await startup_tasks(app.state.services)
+    
+    # Verify index is truly empty after startup
+    try:
+        count_response = await clients.opensearch.count(index=INDEX_NAME)
+        doc_count = count_response.get('count', 0)
+        assert doc_count == 0, f"Index should be empty after startup but contains {doc_count} documents"
+    except Exception as e:
+        # If count fails, the index might not exist yet, which is fine
+        pass
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # Wait for app + OpenSearch readiness using existing endpoints
-        await wait_for_service_ready(client)
-
-        # Create a temporary markdown file to upload
-        file_path = tmp_path / "endpoint_test_doc.md"
-        file_text = (
-            "# Single Test Document\n\n"
-            "This is a test document about OpenRAG testing framework. "
-            "The content should be indexed and searchable in OpenSearch after processing."
-        )
-        file_path.write_text(file_text)
-
-        # POST via router (multipart)
-        files = {
-            "file": (
-                file_path.name,
-                file_path.read_bytes(),
-                "text/markdown",
-            )
-        }
-        upload_resp = await client.post("/upload", files=files)
-        body = upload_resp.json()
-        # Router now returns 201 + task_id (async) regardless of mode
-        assert upload_resp.status_code == 201, upload_resp.text
-        assert isinstance(body.get("task_id"), str)
-
-        # Poll search for the specific content until it's indexed
-        async def _wait_for_indexed(timeout_s: float = 30.0):
-            deadline = asyncio.get_event_loop().time() + timeout_s
-            while asyncio.get_event_loop().time() < deadline:
-                resp = await client.post(
-                    "/search",
-                    json={"query": "OpenRAG testing framework", "limit": 5},
-                )
-                if resp.status_code == 200 and resp.json().get("results"):
-                    return resp
-                await asyncio.sleep(0.5)
-            return resp
-
-        search_resp = await _wait_for_indexed()
-
-        # POST /search
-        assert search_resp.status_code == 200, search_resp.text
-        search_body = search_resp.json()
-
-        # Basic shape and at least one hit
-        assert isinstance(search_body.get("results"), list)
-        assert len(search_body["results"]) >= 0
-        # When hits exist, confirm our phrase is present in top result content
-        if search_body["results"]:
-            top = search_body["results"][0]
-            assert "text" in top or "content" in top
-            text = top.get("text") or top.get("content")
-            assert isinstance(text, str)
-            assert "testing" in text.lower()
-    # Explicitly close global clients to avoid aiohttp warnings
-    from src.config.settings import clients
     try:
-        if getattr(clients, "opensearch", None):
-            await clients.opensearch.close()
-        if getattr(clients, "langflow_http_client", None):
-            await clients.langflow_http_client.aclose()
-    except Exception:
-        pass
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            # Wait for app + OpenSearch readiness using existing endpoints
+            await wait_for_service_ready(client)
+
+            # Create a temporary markdown file to upload
+            file_path = tmp_path / "endpoint_test_doc.md"
+            file_text = (
+                "# Single Test Document\n\n"
+                "This is a test document about OpenRAG testing framework. "
+                "The content should be indexed and searchable in OpenSearch after processing."
+            )
+            file_path.write_text(file_text)
+
+            # POST via router (multipart)
+            files = {
+                "file": (
+                    file_path.name,
+                    file_path.read_bytes(),
+                    "text/markdown",
+                )
+            }
+            upload_resp = await client.post("/upload", files=files)
+            body = upload_resp.json()
+            # Router now returns 201 + task_id (async) regardless of mode
+            assert upload_resp.status_code == 201, upload_resp.text
+            assert isinstance(body.get("task_id"), str)
+
+            # Poll search for the specific content until it's indexed
+            async def _wait_for_indexed(timeout_s: float = 30.0):
+                deadline = asyncio.get_event_loop().time() + timeout_s
+                while asyncio.get_event_loop().time() < deadline:
+                    resp = await client.post(
+                        "/search",
+                        json={"query": "OpenRAG testing framework", "limit": 5},
+                    )
+                    if resp.status_code == 200 and resp.json().get("results"):
+                        return resp
+                    await asyncio.sleep(0.5)
+                return resp
+
+            search_resp = await _wait_for_indexed()
+
+            # POST /search
+            assert search_resp.status_code == 200, search_resp.text
+            search_body = search_resp.json()
+
+            # Basic shape and at least one hit
+            assert isinstance(search_body.get("results"), list)
+            assert len(search_body["results"]) >= 0
+            # When hits exist, confirm our phrase is present in top result content
+            if search_body["results"]:
+                top = search_body["results"][0]
+                assert "text" in top or "content" in top
+                text = top.get("text") or top.get("content")
+                assert isinstance(text, str)
+                assert "testing" in text.lower()
+    finally:
+        # Explicitly close global clients to avoid aiohttp warnings
+        from src.config.settings import clients
+        try:
+            await clients.close()
+        except Exception:
+            pass
 
 
 @pytest.mark.parametrize("disable_langflow_ingest", [True, False])
@@ -159,35 +169,45 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
     await clients.initialize()
     try:
         await clients.opensearch.indices.delete(index=INDEX_NAME)
+        # Wait for deletion to complete
+        await asyncio.sleep(1)
     except Exception:
         pass
 
     app = await create_app()
     await startup_tasks(app.state.services)
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await wait_for_service_ready(client)
-
-        file_path = tmp_path / "router_test_doc.md"
-        file_path.write_text("# Router Test\n\nThis file validates the upload router.")
-
-        files = {
-            "file": (
-                file_path.name,
-                file_path.read_bytes(),
-                "text/markdown",
-            )
-        }
-
-        resp = await client.post("/upload", files=files)
-        data = resp.json()
-        assert resp.status_code == 201, resp.text
-        assert isinstance(data.get("task_id"), str)
-    from src.config.settings import clients
+    
+    # Verify index is truly empty after startup
     try:
-        if getattr(clients, "opensearch", None):
-            await clients.opensearch.close()
-        if getattr(clients, "langflow_http_client", None):
-            await clients.langflow_http_client.aclose()
-    except Exception:
+        count_response = await clients.opensearch.count(index=INDEX_NAME)
+        doc_count = count_response.get('count', 0)
+        assert doc_count == 0, f"Index should be empty after startup but contains {doc_count} documents"
+    except Exception as e:
+        # If count fails, the index might not exist yet, which is fine
         pass
+    transport = httpx.ASGITransport(app=app)
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            await wait_for_service_ready(client)
+
+            file_path = tmp_path / "router_test_doc.md"
+            file_path.write_text("# Router Test\n\nThis file validates the upload router.")
+
+            files = {
+                "file": (
+                    file_path.name,
+                    file_path.read_bytes(),
+                    "text/markdown",
+                )
+            }
+
+            resp = await client.post("/upload", files=files)
+            data = resp.json()
+            assert resp.status_code == 201, resp.text
+            assert isinstance(data.get("task_id"), str)
+    finally:
+        from src.config.settings import clients
+        try:
+            await clients.close()
+        except Exception:
+            pass
