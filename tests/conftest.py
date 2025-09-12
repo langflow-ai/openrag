@@ -17,6 +17,7 @@ os.environ.pop('GOOGLE_OAUTH_CLIENT_SECRET', None)
 
 from src.config.settings import clients
 from src.session_manager import SessionManager
+from src.main import generate_jwt_keys
 
 
 @pytest.fixture(scope="session")
@@ -42,6 +43,8 @@ async def opensearch_client():
 @pytest.fixture
 def session_manager():
     """Session manager for testing."""
+    # Generate RSA keys before creating SessionManager
+    generate_jwt_keys()
     return SessionManager("test-secret-key")
 
 
