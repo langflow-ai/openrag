@@ -1,0 +1,45 @@
+name: Integration Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    env:
+      # Prefer repository/environment variable first, then secret, then a sane fallback
+      OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Python version
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run integration tests
+        env:
+          OPENSEARCH_HOST: localhost
+          OPENSEARCH_PORT: 9200
+          OPENSEARCH_USERNAME: admin
+          OPENSEARCH_PASSWORD: ${{ env.OPENSEARCH_PASSWORD }}
+          LOG_LEVEL: DEBUG
+          # Force no-auth mode so tests bypass OAuth
+          GOOGLE_OAUTH_CLIENT_ID: ""
+          GOOGLE_OAUTH_CLIENT_SECRET: ""
+          # Disable startup ingest noise unless a test enables it
+          DISABLE_STARTUP_INGEST: "true"
+        run: |
+          make test-ci
