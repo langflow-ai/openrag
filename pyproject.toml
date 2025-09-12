@@ -43,12 +43,12 @@ package = true
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cu128", extra = "torch-cu128" },
-  { index = "pytorch-cpu",   extra = "torch" }
+  { index = "pytorch-cu128", extra = "torch-cu128", marker = "sys_platform == 'linux'" },
+  { index = "pytorch-cpu",   extra = "torch", marker = "sys_platform != 'linux'" }
 ]
 torchvision = [
-  { index = "pytorch-cu128", extra = "torch-cu128" },
-  { index = "pytorch-cpu",   extra = "torch" }
+  { index = "pytorch-cu128", extra = "torch-cu128", marker = "sys_platform == 'linux'" },
+  { index = "pytorch-cpu",   extra = "torch", marker = "sys_platform != 'linux'" }
 ]
 
 [[tool.uv.index]]
