@@ -297,6 +297,29 @@ class AppClients:
 
         return self
 
+    async def close(self):
+        """Close all client connections"""
+        try:
+            if hasattr(self, 'opensearch') and self.opensearch:
+                await self.opensearch.close()
+                self.opensearch = None
+        except Exception as e:
+            logger.warning("Error closing OpenSearch client", error=str(e))
+            
+        try:
+            if hasattr(self, 'langflow_http_client') and self.langflow_http_client:
+                await self.langflow_http_client.aclose()
+                self.langflow_http_client = None
+        except Exception as e:
+            logger.warning("Error closing Langflow HTTP client", error=str(e))
+            
+        try:
+            if hasattr(self, 'patched_async_client') and self.patched_async_client:
+                await self.patched_async_client.close()
+                self.patched_async_client = None
+        except Exception as e:
+            logger.warning("Error closing OpenAI client", error=str(e))
+
     async def ensure_langflow_client(self):
         """Ensure Langflow client exists; try to generate key and create client lazily."""
         if self.langflow_client is not None:
