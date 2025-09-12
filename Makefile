@@ -186,8 +186,8 @@ test-ci:
 	@set -e; \
 	echo "📦 Installing test dependencies..."; \
 	uv sync --group dev; \
-	echo "🚀 Starting infra (OpenSearch + Dashboards + Langflow)"; \
-	make infra; \
+	echo "🚀 Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
+	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow; \
 	echo "⏳ Waiting for OpenSearch..."; \
 	for i in $$(seq 1 60); do \
 		curl -k -s https://localhost:9200 -u admin:$${OPENSEARCH_PASSWORD} >/dev/null 2>&1 && break || sleep 2; \
