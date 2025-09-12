@@ -36,13 +36,6 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Debug keys directory
-        run: |
-          ls -la keys/ || echo "keys dir doesn't exist"
-          whoami
-          pwd
-          id
-
       - name: Run integration tests
         env:
           OPENSEARCH_HOST: localhost
