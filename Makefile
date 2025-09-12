@@ -1,7 +1,17 @@
 # OpenRAG Development Makefile
 # Provides easy commands for development workflow
 
-.PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install test test-integration test-unit test-ingest test-search test-coverage backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup
+# Load variables from .env if present so `make` commands pick them up
+ifneq (,$(wildcard .env))
+  include .env
+  # Export all simple KEY=VALUE pairs to the environment for child processes
+  export $(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env)
+endif
+
+.PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install \
+       test test-integration test-ci \
+       backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
+       shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup
 
 # Default target
 help:
@@ -32,12 +42,9 @@ help:
 	@echo "  shell-lf     - Shell into langflow container"
 	@echo ""
 	@echo "Testing:"
-	@echo "  test         - Run all backend tests"
+	@echo "  test             - Run all backend tests"
 	@echo "  test-integration - Run integration tests (requires infra)"
-	@echo "  test-unit    - Run unit tests only"
-	@echo "  test-ingest  - Test file ingestion flows"
-	@echo "  test-search  - Test search functionality"
-	@echo "  test-coverage - Run tests with coverage report"
+	@echo "  test-ci          - Start infra, run integration tests, tear down"
 	@echo "  lint         - Run linting checks"
 	@echo ""
 
@@ -174,21 +181,29 @@ test-integration:
 	@echo "💡 Make sure to run 'make infra' first!"
 	uv run pytest tests/integration/ -v
 
-test-unit:
-	@echo "🧪 Running unit tests..."
-	uv run pytest tests/unit/ -v
-
-test-ingest:
-	@echo "🧪 Testing file ingestion flows..."
-	uv run pytest tests/integration/test_file_ingest.py -v
-
-test-search:
-	@echo "🧪 Testing search functionality..."
-	uv run pytest tests/integration/test_search_flow.py -v
-
-test-coverage:
-	@echo "🧪 Running tests with coverage report..."
-	uv run pytest tests/ --cov=src --cov-report=term-missing --cov-report=html:htmlcov
+# CI-friendly integration test target: brings up infra, waits, runs tests, tears down
+test-ci:
+	@set -e; \
+	echo "🚀 Starting infra (OpenSearch + Dashboards + Langflow)"; \
+	make infra; \
+	echo "⏳ Waiting for OpenSearch..."; \
+	for i in $$(seq 1 60); do \
+		curl -k -s https://localhost:9200 -u admin:$${OPENSEARCH_PASSWORD} >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "⏳ Waiting for Langflow..."; \
+	for i in $$(seq 1 60); do \
+		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "🧪 Running integration tests"; \
+	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
+	GOOGLE_OAUTH_CLIENT_ID="" \
+	GOOGLE_OAUTH_CLIENT_SECRET="" \
+	OPENSEARCH_HOST=localhost OPENSEARCH_PORT=9200 \
+	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
+	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
+	uv run pytest tests/integration -vv -s -o log_cli=true --log-cli-level=DEBUG; \
+	echo "🧹 Tearing down infra"; \
+	docker compose down -v || true
 
 lint:
 	@echo "🔍 Running linting checks..."
@@ -204,13 +219,13 @@ health:
 	@echo "🏥 Health check:"
 	@echo "Backend: $$(curl -s http://localhost:8000/health 2>/dev/null || echo 'Not responding')"
 	@echo "Langflow: $$(curl -s http://localhost:7860/health 2>/dev/null || echo 'Not responding')"
-	@echo "OpenSearch: $$(curl -s -k -u admin:$(shell grep OPENSEARCH_PASSWORD .env | cut -d= -f2) https://localhost:9200 2>/dev/null | jq -r .tagline 2>/dev/null || echo 'Not responding')"
+	@echo "OpenSearch: $$(curl -s -k -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200 2>/dev/null | jq -r .tagline 2>/dev/null || echo 'Not responding')"
 
 # Database operations
 db-reset:
 	@echo "🗄️ Resetting OpenSearch indices..."
-	curl -X DELETE "http://localhost:9200/documents" -u admin:$$(grep OPENSEARCH_PASSWORD .env | cut -d= -f2) || true
-	curl -X DELETE "http://localhost:9200/knowledge_filters" -u admin:$$(grep OPENSEARCH_PASSWORD .env | cut -d= -f2) || true
+	curl -X DELETE "http://localhost:9200/documents" -u admin:$${OPENSEARCH_PASSWORD} || true
+	curl -X DELETE "http://localhost:9200/knowledge_filters" -u admin:$${OPENSEARCH_PASSWORD} || true
 	@echo "Indices reset. Restart backend to recreate."
 
 # Flow management
