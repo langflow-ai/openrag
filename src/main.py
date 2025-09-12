@@ -183,15 +183,19 @@ def generate_jwt_keys():
     # Generate keys if they don't exist
     if not os.path.exists(private_key_path):
         try:
+            logger.info("Generating RSA keys", private_key_path=private_key_path, public_key_path=public_key_path)
+            
             # Generate private key
-            subprocess.run(
+            result = subprocess.run(
                 ["openssl", "genrsa", "-out", private_key_path, "2048"],
                 check=True,
                 capture_output=True,
+                text=True,
             )
+            logger.info("Private key generation completed", stdout=result.stdout, stderr=result.stderr)
 
             # Generate public key
-            subprocess.run(
+            result = subprocess.run(
                 [
                     "openssl",
                     "rsa",
@@ -203,11 +207,21 @@ def generate_jwt_keys():
                 ],
                 check=True,
                 capture_output=True,
+                text=True,
             )
+            logger.info("Public key generation completed", stdout=result.stdout, stderr=result.stderr)
+            
+            # Verify files were created and are readable
+            logger.info("Verifying generated keys")
+            logger.info("Private key exists", exists=os.path.exists(private_key_path))
+            logger.info("Public key exists", exists=os.path.exists(public_key_path))
+            if os.path.exists(private_key_path):
+                stat_info = os.stat(private_key_path)
+                logger.info("Private key permissions", mode=oct(stat_info.st_mode), uid=stat_info.st_uid, gid=stat_info.st_gid)
 
             logger.info("Generated RSA keys for JWT signing")
         except subprocess.CalledProcessError as e:
-            logger.error("Failed to generate RSA keys", error=str(e))
+            logger.error("Failed to generate RSA keys", error=str(e), stdout=e.stdout, stderr=e.stderr)
             raise
     else:
         logger.info("RSA keys already exist, skipping generation")
