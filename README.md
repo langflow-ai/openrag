@@ -1,8 +1,8 @@
+<div align="center">
+
 # OpenRAG
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/phact/openrag)
-
-OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with Starlette, Next.js, OpenSearch, and Langflow integration.
+</div>
 <div align="center">
   <a href="#quick-start" style="color: #0366d6;">🚀 Quick Start</a> &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#tui-interface" style="color: #0366d6;">💻 TUI Interface</a> &nbsp;&nbsp;|&nbsp;&nbsp;
@@ -10,6 +10,27 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
   <a href="#development" style="color: #0366d6;">⚙️ Development</a> &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#troubleshooting" style="color: #0366d6;">🔧 Troubleshooting</a>
 </div>
+
+
+
+OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with Starlette, Next.js, OpenSearch, and Langflow integration. [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/phact/openrag)
+
+
+<div align="center">
+  <a href="https://github.com/langflow-ai/langflow"><img src="https://img.shields.io/badge/Langflow-1C1C1E?style=flat&logo=langflow" alt="Langflow"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/opensearch-project/OpenSearch"><img src="https://img.shields.io/badge/OpenSearch-005EB8?style=flat&logo=opensearch&logoColor=white" alt="OpenSearch"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/encode/starlette"><img src="https://img.shields.io/badge/Starlette-009639?style=flat&logo=fastapi&logoColor=white" alt="Starlette"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/vercel/next.js"><img src="https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js&logoColor=white" alt="Next.js"></a>
+
+</div>
+
+
+
+
+
 
 ## 🚀 Quick Start
 
