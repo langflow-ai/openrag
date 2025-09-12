@@ -22,7 +22,7 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 
 ```bash
 # Clone and setup environment
-git clone <repository-url>
+git clone https://github.com/langflow-ai/openrag.git
 cd openrag
 make setup  # Creates .env and installs dependencies
 ```
