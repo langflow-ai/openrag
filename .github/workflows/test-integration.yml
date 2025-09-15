@@ -50,3 +50,5 @@ jobs:
           DISABLE_STARTUP_INGEST: "true"
         run: |
           make test-ci
+          echo "Keys directory after tests:"
+          ls -la keys/ || echo "No keys directory"
