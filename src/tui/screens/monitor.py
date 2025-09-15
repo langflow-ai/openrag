@@ -594,6 +594,7 @@ class MonitorScreen(Screen):
                         "opensearch": "opensearch",
                         "langflow": "langflow",
                         "dashboards": "dashboards",
+                        "docling-serve": "docling-serve",  # Add docling-serve mapping
                     }
 
                     actual_service_name = service_mapping.get(

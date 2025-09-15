@@ -9,6 +9,7 @@ from textual.timer import Timer
 from rich.text import Text
 
 from ..managers.container_manager import ContainerManager
+from ..managers.docling_manager import DoclingManager
 
 
 class LogsScreen(Screen):
@@ -31,6 +32,7 @@ class LogsScreen(Screen):
     def __init__(self, initial_service: str = "openrag-backend"):
         super().__init__()
         self.container_manager = ContainerManager()
+        self.docling_manager = DoclingManager()
 
         # Validate the initial service against available options
         valid_services = [
@@ -39,6 +41,7 @@ class LogsScreen(Screen):
             "opensearch",
             "langflow",
             "dashboards",
+            "docling-serve",  # Add docling-serve as a valid service
         ]
         if initial_service not in valid_services:
             initial_service = "openrag-backend"  # fallback
@@ -104,6 +107,19 @@ class LogsScreen(Screen):
 
     async def _load_logs(self, lines: int = 200) -> None:
         """Load recent logs for the current service."""
+        # Special handling for docling-serve
+        if self.current_service == "docling-serve":
+            success, logs = self.docling_manager.get_logs(lines)
+            if success:
+                self.logs_area.text = logs
+                # Scroll to bottom if auto scroll is enabled
+                if self.auto_scroll:
+                    self.logs_area.scroll_end()
+            else:
+                self.logs_area.text = f"Failed to load logs: {logs}"
+            return
+            
+        # Regular container services
         if not self.container_manager.is_available():
             self.logs_area.text = "No container runtime available"
             return
@@ -130,6 +146,37 @@ class LogsScreen(Screen):
 
     async def _follow_logs(self) -> None:
         """Follow logs in real-time."""
+        # Special handling for docling-serve
+        if self.current_service == "docling-serve":
+            try:
+                async for log_lines in self.docling_manager.follow_logs():
+                    if not self.following:
+                        break
+                    
+                    # Update logs area with new content
+                    current_text = self.logs_area.text
+                    new_text = current_text + "\n" + log_lines if current_text else log_lines
+                    
+                    # Keep only last 1000 lines to prevent memory issues
+                    lines = new_text.split("\n")
+                    if len(lines) > 1000:
+                        lines = lines[-1000:]
+                        new_text = "\n".join(lines)
+                    
+                    self.logs_area.text = new_text
+                    # Scroll to bottom if auto scroll is enabled
+                    if self.auto_scroll:
+                        self.logs_area.scroll_end()
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                if self.following:  # Only show error if we're still supposed to be following
+                    self.notify(f"Error following docling logs: {e}", severity="error")
+            finally:
+                self.following = False
+            return
+            
+        # Regular container services
         if not self.container_manager.is_available():
             return
 
