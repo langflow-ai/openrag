@@ -27,7 +27,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
-    "docling-serve>=0.16.1",
+    "docling-serve>=1.4.1",
 ]
 
 [project.scripts]
