@@ -1,36 +1,74 @@
+name: mystack
+
 services:
+  # ============== INIT UI (Next.js + Tailwind) ==============
+  init-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.init-ui
+    container_name: init-ui
+    profiles: ["setup"]
+    environment:
+      # Caminho do .env no host, montado dentro do container via bind-mount
+      APP_ENV_FILE: /project/.env
+      # precisa bater com "name:" acima
+      COMPOSE_PROJECT_NAME: mystack
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/project
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      # fica healthy somente quando já trocamos para app
+      test:
+        [
+          "CMD-SHELL",
+          "[ -s /project/.env ] && grep -q '^COMPOSE_PROFILES=app' /project/.env",
+        ]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  # =================== OPENRAG STACK (profile: app) ===================
   opensearch:
     image: phact/openrag-opensearch:${OPENRAG_VERSION:-latest}
-    #build:
-    #  context: .
-    #  dockerfile: Dockerfile
     container_name: os
+    profiles: ["app"]
     depends_on:
-      - openrag-backend
+      langflow:
+        condition: service_started
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
-    # Run security setup in background after OpenSearch starts
     command: >
       bash -c "
-        # Start OpenSearch in background
         /usr/share/opensearch/opensearch-docker-entrypoint.sh opensearch &
-
-        # Wait a bit for OpenSearch to start, then apply security config
         sleep 10 && /usr/share/opensearch/setup-security.sh &
-
-        # Wait for background processes
         wait
       "
     ports:
       - "9200:9200"
       - "9600:9600"
+    healthcheck:
+      # espera cluster responder (ignora certificado)
+      test:
+        [
+          "CMD-SHELL",
+          "curl -k -u admin:${OPENSEARCH_PASSWORD} --silent --fail https://localhost:9200/_cluster/health || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
 
   dashboards:
     image: opensearchproject/opensearch-dashboards:3.0.0
     container_name: osdash
+    profiles: ["app"]
     depends_on:
-      - opensearch
+      opensearch:
+        condition: service_healthy
     environment:
       OPENSEARCH_HOSTS: '["https://opensearch:9200"]'
       OPENSEARCH_USERNAME: "admin"
@@ -40,12 +78,15 @@ services:
 
   openrag-backend:
     image: phact/openrag-backend:${OPENRAG_VERSION:-latest}
-    #build:
-    #context: .
-    #dockerfile: Dockerfile.backend
     container_name: openrag-backend
+    profiles: ["app"]
+    ports:
+      - "8000:8000"
     depends_on:
-      - langflow
+      langflow:
+        condition: service_started
+      opensearch:
+        condition: service_healthy
     environment:
       - OPENSEARCH_HOST=opensearch
       - LANGFLOW_URL=http://langflow:7860
@@ -74,15 +115,24 @@ services:
       - ./documents:/app/documents:Z
       - ./keys:/app/keys:Z
       - ./flows:/app/flows:Z
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:8000/settings >/dev/null 2>&1",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+      start_period: 10s
 
   openrag-frontend:
     image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
-    #build:
-    #context: .
-    #dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
+    profiles: ["app"]
     depends_on:
-      - openrag-backend
+      openrag-backend:
+        condition: service_healthy
     environment:
       - OPENRAG_BACKEND_HOST=openrag-backend
     ports:
@@ -93,14 +143,15 @@ services:
       - ./flows:/app/flows:Z
     image: phact/langflow:${LANGFLOW_VERSION:-responses}
     container_name: langflow
+    profiles: ["app"]
     ports:
       - "7860:7860"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
       - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
-      - JWT="dummy"
-      - OPENRAG-QUERY-FILTER="{}"
+      - JWT=dummy
+      - OPENRAG-QUERY-FILTER={}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD
       - LANGFLOW_LOG_LEVEL=DEBUG
@@ -109,3 +160,9 @@ services:
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - LANGFLOW_NEW_USER_IS_ACTIVE=${LANGFLOW_NEW_USER_IS_ACTIVE}
       - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"] # Or a more specific endpoint
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
