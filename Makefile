@@ -1,7 +1,7 @@
 # OpenRAG Development Makefile
 # Provides easy commands for development workflow
 
-.PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install test backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup
+.PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install test backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup setup-with-ui
 
 # Default target
 help:
@@ -21,6 +21,10 @@ help:
 	@echo "  install      - Install all dependencies"
 	@echo "  install-be   - Install backend dependencies (uv)"
 	@echo "  install-fe   - Install frontend dependencies (npm)"
+	@echo ""
+	@echo "Setup:"
+	@echo "  setup        - Install dependencies and create .env from template"
+	@echo "  setup-with-ui - Full setup with configuration UI (recommended)"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  build        - Build all Docker images"
@@ -208,3 +212,28 @@ setup:
 	@if [ ! -f .env ]; then cp .env.example .env && echo "📝 Created .env from template"; fi
 	@$(MAKE) install
 	@echo "✅ Setup complete! Run 'make dev' to start."
+
+setup-with-ui:
+	@echo "🚀 Starting OpenRAG setup with configuration UI..."
+	@echo "📝 Starting init-ui container for configuration..."
+	docker-compose -f docker-compose-cpu.yml --profile setup up -d --force-recreate --build
+	@echo "🌐 Configuration UI started at http://localhost:8080"
+	@echo "⏳ Waiting for configuration to be completed..."
+	@echo "   Please configure your settings in the web interface."
+	@echo "   The setup will automatically continue once configuration is saved."
+	@while ! docker-compose -f docker-compose-cpu.yml exec -T init-ui test -f /project/.env || \
+	       ! docker-compose -f docker-compose-cpu.yml exec -T init-ui grep -q "^COMPOSE_PROFILES=app" /project/.env 2>/dev/null; do \
+		echo "   Still waiting for configuration... (checking every 5 seconds)"; \
+		sleep 5; \
+	done
+	@echo "✅ Configuration completed!"
+	@echo "🚀 Starting OpenRAG application stack..."
+	docker-compose -f docker-compose-cpu.yml --profile app up -d --wait
+	@echo "✅ OpenRAG is now running!"
+	@echo "   Backend: http://localhost:8000"
+	@echo "   Frontend: http://localhost:3000"
+	@echo "   Langflow: http://localhost:7860"
+	@echo "   OpenSearch: http://localhost:9200"
+	@echo "   Dashboards: http://localhost:5601"
+	@echo "🔄 Stopping setup container..."
+	docker-compose -f docker-compose-cpu.yml down init-ui
