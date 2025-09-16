@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 
 from ..managers.container_manager import ContainerManager, ServiceStatus
 from ..managers.env_manager import EnvManager
+from ..managers.docling_manager import DoclingManager
+from ..widgets.command_modal import CommandOutputModal
 
 
 class WelcomeScreen(Screen):
@@ -22,15 +24,19 @@ class WelcomeScreen(Screen):
         ("enter", "default_action", "Continue"),
         ("1", "no_auth_setup", "Basic Setup"),
         ("2", "full_setup", "Advanced Setup"),
-        ("3", "monitor", "Monitor Services"),
+        ("3", "monitor", "Status"),
         ("4", "diagnostics", "Diagnostics"),
+        ("5", "start_stop_services", "Start/Stop Services"),
+        ("6", "open_app", "Open App"),
     ]
 
     def __init__(self):
         super().__init__()
         self.container_manager = ContainerManager()
         self.env_manager = EnvManager()
+        self.docling_manager = DoclingManager()
         self.services_running = False
+        self.docling_running = False
         self.has_oauth_config = False
         self.default_button_id = "basic-setup-btn"
         self._state_checked = False
@@ -38,8 +44,16 @@ class WelcomeScreen(Screen):
         # Load .env file if it exists
         load_dotenv()
 
+        # Check OAuth config immediately
+        self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
+            os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
+        )
+
     def compose(self) -> ComposeResult:
         """Create the welcome screen layout."""
+        # Try to detect services synchronously before creating buttons
+        self._detect_services_sync()
+
         yield Container(
             Vertical(
                 Static(self._create_welcome_text(), id="welcome-text"),
@@ -49,6 +63,46 @@ class WelcomeScreen(Screen):
             id="main-container",
         )
         yield Footer()
+
+    def _detect_services_sync(self) -> None:
+        """Synchronously detect if services are running."""
+        if not self.container_manager.is_available():
+            self.services_running = False
+            self.docling_running = self.docling_manager.is_running()
+            return
+
+        try:
+            # Use synchronous docker command to check services
+            import subprocess
+            result = subprocess.run(
+                ["docker", "compose", "ps", "--format", "json"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                import json
+                services = []
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        try:
+                            service = json.loads(line)
+                            services.append(service)
+                        except json.JSONDecodeError:
+                            continue
+
+                # Check if any services are running
+                running_services = [s for s in services if s.get('State') == 'running']
+                self.services_running = len(running_services) > 0
+            else:
+                self.services_running = False
+        except Exception:
+            # Fallback to False if detection fails
+            self.services_running = False
+
+        # Update native service state as part of detection
+        self.docling_running = self.docling_manager.is_running()
 
     def _create_welcome_text(self) -> Text:
         """Create a minimal welcome message."""
@@ -61,7 +115,7 @@ class WelcomeScreen(Screen):
 ╚██████╔╝██║     ███████╗██║ ╚████║██║  ██║██║  ██║╚██████╔╝
 ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝
 """
-        welcome_text.append(ascii_art, style="bold blue")
+        welcome_text.append(ascii_art, style="bold white")
         welcome_text.append("Terminal User Interface for OpenRAG\n\n", style="dim")
 
         if self.services_running:
@@ -87,27 +141,55 @@ class WelcomeScreen(Screen):
         buttons = []
 
         if self.services_running:
-            # Services running - only show monitor
+            # Services running - show app link first, then stop services
             buttons.append(
-                Button("Monitor Services", variant="success", id="monitor-btn")
+                Button("Launch OpenRAG", variant="success", id="open-app-btn")
+            )
+            buttons.append(
+                Button("Stop Container Services", variant="error", id="stop-services-btn")
             )
         else:
-            # Services not running - show setup options
+            # Services not running - show setup options and start services
             if has_oauth:
-                # Only show advanced setup if OAuth is configured
+                # If OAuth is configured, only show advanced setup
                 buttons.append(
                     Button("Advanced Setup", variant="success", id="advanced-setup-btn")
                 )
             else:
-                # Only show basic setup if no OAuth
+                # If no OAuth, show both options with basic as primary
                 buttons.append(
                     Button("Basic Setup", variant="success", id="basic-setup-btn")
                 )
+                buttons.append(
+                    Button("Advanced Setup", variant="default", id="advanced-setup-btn")
+                )
 
-            # Always show monitor option
             buttons.append(
-                Button("Monitor Services", variant="default", id="monitor-btn")
+                Button("Start Container Services", variant="primary", id="start-services-btn")
             )
+
+        # Native services controls
+        if self.docling_running:
+            buttons.append(
+                Button(
+                    "Stop Native Services",
+                    variant="warning",
+                    id="stop-native-services-btn",
+                )
+            )
+        else:
+            buttons.append(
+                Button(
+                    "Start Native Services",
+                    variant="primary",
+                    id="start-native-services-btn",
+                )
+            )
+
+        # Always show status option
+        buttons.append(
+            Button("Status", variant="default", id="status-btn")
+        )
 
         return Horizontal(*buttons, classes="button-row")
 
@@ -121,6 +203,10 @@ class WelcomeScreen(Screen):
             ]
             self.services_running = len(running_services) > 0
 
+        # Check native service state
+        self.docling_running = self.docling_manager.is_running()
+
+
         # Check for OAuth configuration
         self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
             os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
@@ -128,38 +214,34 @@ class WelcomeScreen(Screen):
 
         # Set default button focus
         if self.services_running:
-            self.default_button_id = "monitor-btn"
+            self.default_button_id = "open-app-btn"
         elif self.has_oauth_config:
             self.default_button_id = "advanced-setup-btn"
         else:
             self.default_button_id = "basic-setup-btn"
 
-        # Update the welcome text and recompose with new state
+        # Update the welcome text
         try:
             welcome_widget = self.query_one("#welcome-text")
-            welcome_widget.update(
-                self._create_welcome_text()
-            )  # This is fine for Static widgets
-
-            # Focus the appropriate button
-            if self.services_running:
-                try:
-                    self.query_one("#monitor-btn").focus()
-                except:
-                    pass
-            elif self.has_oauth_config:
-                try:
-                    self.query_one("#advanced-setup-btn").focus()
-                except:
-                    pass
-            else:
-                try:
-                    self.query_one("#basic-setup-btn").focus()
-                except:
-                    pass
-
+            welcome_widget.update(self._create_welcome_text())
         except:
-            pass  # Widgets might not be mounted yet
+            pass  # Widget might not be mounted yet
+
+        # Focus the appropriate button (the buttons are created correctly in compose,
+        # the issue was they weren't being updated after service operations)
+        self.call_after_refresh(self._focus_appropriate_button)
+
+    def _focus_appropriate_button(self) -> None:
+        """Focus the appropriate button based on current state."""
+        try:
+            if self.services_running:
+                self.query_one("#open-app-btn").focus()
+            elif self.has_oauth_config:
+                self.query_one("#advanced-setup-btn").focus()
+            else:
+                self.query_one("#basic-setup-btn").focus()
+        except:
+            pass  # Button might not exist
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -167,15 +249,25 @@ class WelcomeScreen(Screen):
             self.action_no_auth_setup()
         elif event.button.id == "advanced-setup-btn":
             self.action_full_setup()
-        elif event.button.id == "monitor-btn":
+        elif event.button.id == "status-btn":
             self.action_monitor()
         elif event.button.id == "diagnostics-btn":
             self.action_diagnostics()
+        elif event.button.id == "start-services-btn":
+            self.action_start_stop_services()
+        elif event.button.id == "stop-services-btn":
+            self.action_start_stop_services()
+        elif event.button.id == "start-native-services-btn":
+            self.action_start_native_services()
+        elif event.button.id == "stop-native-services-btn":
+            self.action_stop_native_services()
+        elif event.button.id == "open-app-btn":
+            self.action_open_app()
 
     def action_default_action(self) -> None:
         """Handle Enter key - go to default action based on state."""
         if self.services_running:
-            self.action_monitor()
+            self.action_open_app()
         elif self.has_oauth_config:
             self.action_full_setup()
         else:
@@ -204,6 +296,126 @@ class WelcomeScreen(Screen):
         from .diagnostics import DiagnosticsScreen
 
         self.app.push_screen(DiagnosticsScreen())
+
+    def action_start_stop_services(self) -> None:
+        """Start or stop all services (containers + docling)."""
+        if self.services_running:
+            # Stop services - show modal with progress
+            if self.container_manager.is_available():
+                command_generator = self.container_manager.stop_services()
+                modal = CommandOutputModal(
+                    "Stopping Services",
+                    command_generator,
+                    on_complete=self._on_services_operation_complete,
+                )
+                self.app.push_screen(modal)
+        else:
+            # Start services - show modal with progress
+            if self.container_manager.is_available():
+                command_generator = self.container_manager.start_services()
+                modal = CommandOutputModal(
+                    "Starting Services",
+                    command_generator,
+                    on_complete=self._on_services_operation_complete,
+                )
+                self.app.push_screen(modal)
+
+    async def _on_services_operation_complete(self) -> None:
+        """Handle completion of services start/stop operation."""
+        # Use the same sync detection method that worked on startup
+        self._detect_services_sync()
+
+        # Update OAuth config state
+        self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
+            os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
+        )
+
+        await self._refresh_welcome_content()
+
+    def _update_default_button(self) -> None:
+        """Update the default button target based on state."""
+        if self.services_running:
+            self.default_button_id = "open-app-btn"
+        elif self.has_oauth_config:
+            self.default_button_id = "advanced-setup-btn"
+        else:
+            self.default_button_id = "basic-setup-btn"
+
+    async def _refresh_welcome_content(self) -> None:
+        """Refresh welcome text and buttons based on current state."""
+        self._update_default_button()
+
+        try:
+            welcome_widget = self.query_one("#welcome-text", Static)
+            welcome_widget.update(self._create_welcome_text())
+
+            welcome_container = self.query_one("#welcome-container")
+
+            # Remove existing button rows before mounting updated row
+            for button_row in list(welcome_container.query(".button-row")):
+                await button_row.remove()
+
+            await welcome_container.mount(self._create_dynamic_buttons())
+        except Exception:
+            # Fallback - just refresh the whole screen
+            self.refresh(layout=True)
+
+        self.call_after_refresh(self._focus_appropriate_button)
+
+    def action_start_native_services(self) -> None:
+        """Start native services (docling)."""
+        if self.docling_running:
+            self.notify("Native services are already running.", severity="warning")
+            return
+
+        self.run_worker(self._start_native_services())
+
+    async def _start_native_services(self) -> None:
+        """Worker task to start native services."""
+        try:
+            success, message = await self.docling_manager.start()
+            if success:
+                self.docling_running = True
+                self.notify(message, severity="information")
+            else:
+                self.notify(f"Failed to start native services: {message}", severity="error")
+        except Exception as exc:
+            self.notify(f"Error starting native services: {exc}", severity="error")
+        finally:
+            self.docling_running = self.docling_manager.is_running()
+            await self._refresh_welcome_content()
+
+    def action_stop_native_services(self) -> None:
+        """Stop native services (docling)."""
+        if not self.docling_running and not self.docling_manager.is_running():
+            self.notify("Native services are not running.", severity="warning")
+            return
+
+        self.run_worker(self._stop_native_services())
+
+    async def _stop_native_services(self) -> None:
+        """Worker task to stop native services."""
+        try:
+            success, message = await self.docling_manager.stop()
+            if success:
+                self.docling_running = False
+                self.notify(message, severity="information")
+            else:
+                self.notify(f"Failed to stop native services: {message}", severity="error")
+        except Exception as exc:
+            self.notify(f"Error stopping native services: {exc}", severity="error")
+        finally:
+            self.docling_running = self.docling_manager.is_running()
+            await self._refresh_welcome_content()
+
+    def action_open_app(self) -> None:
+        """Open the OpenRAG app in the default browser."""
+        import webbrowser
+        try:
+            webbrowser.open("http://localhost:3000")
+            self.notify("Opening OpenRAG app in browser...", severity="information")
+        except Exception as e:
+            self.notify(f"Error opening app: {e}", severity="error")
 
     def action_quit(self) -> None:
         """Quit the application."""

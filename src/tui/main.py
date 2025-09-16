@@ -27,7 +27,7 @@ class OpenRAGTUI(App):
 
     CSS = """
     Screen {
-        background: $background;
+        background: #0f172a;
     }
     
     #main-container {
@@ -115,7 +115,8 @@ class OpenRAGTUI(App):
     }
     
     #services-table {
-        height: 1fr;
+        height: auto;
+        max-height: 12;
         margin-bottom: 1;
     }
 
@@ -174,6 +175,82 @@ class OpenRAGTUI(App):
     TabPane ScrollableContainer {
         height: 100%;
         padding: 1;
+    }
+
+    /* Frontend-inspired color scheme */
+    Static {
+        color: #f1f5f9;
+    }
+
+    Button.success {
+        background: #4ade80;
+        color: #000;
+    }
+
+    Button.error {
+        background: #ef4444;
+        color: #fff;
+    }
+
+    Button.warning {
+        background: #eab308;
+        color: #000;
+    }
+
+    Button.primary {
+        background: #2563eb;
+        color: #fff;
+    }
+
+    Button.default {
+        background: #475569;
+        color: #f1f5f9;
+        border: solid #64748b;
+    }
+
+    DataTable {
+        background: #1e293b;
+        color: #f1f5f9;
+    }
+
+    DataTable > .datatable--header {
+        background: #334155;
+        color: #f1f5f9;
+    }
+
+    DataTable > .datatable--cursor {
+        background: #475569;
+    }
+
+    Input {
+        background: #334155;
+        color: #f1f5f9;
+        border: solid #64748b;
+    }
+
+    Label {
+        color: #f1f5f9;
+    }
+
+    Footer {
+        background: #334155;
+        color: #f1f5f9;
+    }
+
+    #runtime-status {
+        background: #1e293b;
+        border: solid #64748b;
+        color: #f1f5f9;
+    }
+
+    #system-info {
+        background: #1e293b;
+        border: solid #64748b;
+        color: #f1f5f9;
+    }
+
+    #services-table, #images-table {
+        background: #1e293b;
     }
     """
 
