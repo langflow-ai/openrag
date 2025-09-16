@@ -729,21 +729,19 @@ class MonitorScreen(Screen):
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle row selection events to ensure mutual exclusivity."""
         selected_table = event.data_table
-        self.notify(f"DEBUG: Row selected in {selected_table.id}", severity="information")
 
         try:
             # Track which table was selected
             if selected_table.id == "services-table":
                 self._last_selected_table = "services"
-                self.notify(f"DEBUG: Set last_selected_table to services", severity="information")
                 # Clear docling table selection
                 if self.docling_table:
                     self.docling_table.cursor_row = -1
             elif selected_table.id == "docling-table":
                 self._last_selected_table = "docling"
-                self.notify(f"DEBUG: Set last_selected_table to docling", severity="information")
                 # Clear services table selection
                 services_table = self.query_one("#services-table", DataTable)
                 services_table.cursor_row = -1
-        except Exception as e:
-            self.notify(f"DEBUG: Error in row selection handler: {e}", severity="error")
+        except Exception:
+            # Ignore errors during table manipulation
+            pass
