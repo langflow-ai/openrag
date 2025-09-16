@@ -47,6 +47,12 @@ class MonitorScreen(Screen):
         self.refresh_timer = None
         self.operation_in_progress = False
         self._follow_task = None
+
+    def on_unmount(self) -> None:
+        """Clean up when the screen is unmounted."""
+        if hasattr(self, 'docling_manager'):
+            self.docling_manager.cleanup()
+        super().on_unmount()
         self._follow_service = None
         self._logs_buffer = []
 
@@ -194,7 +200,7 @@ class MonitorScreen(Screen):
             Text(docling_status_text, style=docling_style),
             "N/A",
             docling_port,
-            "docling-serve (in-process)",
+            "docling-serve (subprocess)",
             "N/A",
         )
         # Populate images table (unique images as reported by runtime)

@@ -1,190 +1,79 @@
 """Docling serve manager for local document processing service."""
 
 import asyncio
-import io
-import queue
+import os
+import subprocess
 import sys
 import threading
 import time
 from typing import Optional, Tuple, Dict, Any, List, AsyncIterator
-import uvicorn
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
-class LogCaptureHandler:
-    """Custom handler to capture logs from docling-serve."""
-    
-    def __init__(self, log_queue: queue.Queue):
-        self.log_queue = log_queue
-        self.buffer = ""
-        # Store original stdout for direct printing
-        self.original_stdout = sys.__stdout__
-        
-    def write(self, message):
-        if not message:
-            return
-            
-        # Add to buffer and process complete lines
-        self.buffer += message
-        
-        # Process complete lines
-        if '\n' in self.buffer:
-            lines = self.buffer.split('\n')
-            # Keep the last incomplete line in the buffer
-            self.buffer = lines.pop()
-            
-            # Process complete lines
-            for line in lines:
-                if line.strip():  # Skip empty lines
-                    # Print directly to original stdout for debugging
-                    print(f"[DOCLING] {line}", file=self.original_stdout)
-                    self.log_queue.put(line)
-        
-        # If message ends with newline, process the buffer too
-        elif message.endswith('\n') and self.buffer.strip():
-            print(f"[DOCLING] {self.buffer.strip()}", file=self.original_stdout)
-            self.log_queue.put(self.buffer.strip())
-            self.buffer = ""
-            
-    def flush(self):
-        # Process any remaining content in the buffer
-        if self.buffer.strip():
-            print(f"[DOCLING] {self.buffer.strip()}", file=self.original_stdout)
-            self.log_queue.put(self.buffer.strip())
-            self.buffer = ""
-
 
 class DoclingManager:
-    """Manages local docling serve instance running in-process."""
+    """Manages local docling serve instance as external process."""
+
+    _instance = None
+    _initialized = False
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
-        self._server: Optional[uvicorn.Server] = None
-        self._server_thread: Optional[threading.Thread] = None
+        # Only initialize once
+        if self._initialized:
+            return
+
+        self._process: Optional[subprocess.Popen] = None
         self._port = 5001
         self._host = "127.0.0.1"
         self._running = False
         self._external_process = False
-        
-        # Log storage
-        self._log_queue = queue.Queue()
-        self._log_handler = LogCaptureHandler(self._log_queue)
+
+        # Log storage - simplified, no queue
         self._log_buffer: List[str] = []
         self._max_log_lines = 1000
-        self._log_processor_running = False
-        self._log_processor_thread = None
-        
-        # Start log processor thread
-        self._start_log_processor()
-        
-        # Configure Python logging to capture docling-serve logs
-        self._setup_logging_capture()
-    
-    def _setup_logging_capture(self):
-        """Configure Python logging to capture docling-serve logs."""
-        try:
-            import logging
-            
-            # Create a handler that writes to our log queue
-            class DoclingLogHandler(logging.Handler):
-                def __init__(self, docling_manager):
-                    super().__init__()
-                    self.docling_manager = docling_manager
-                    
-                def emit(self, record):
-                    msg = self.format(record)
-                    self.docling_manager._add_log_entry(f"LOG: {msg}")
-            
-            # Configure root logger to capture all logs
-            root_logger = logging.getLogger()
-            root_logger.setLevel(logging.DEBUG)
-            
-            # Add our handler
-            handler = DoclingLogHandler(self)
-            formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            root_logger.addHandler(handler)
-            
-            # Specifically configure uvicorn and docling_serve loggers
-            for logger_name in ["uvicorn", "docling_serve", "fastapi"]:
-                logger = logging.getLogger(logger_name)
-                logger.setLevel(logging.DEBUG)
-                # Make sure our handler is added
-                if not any(isinstance(h, DoclingLogHandler) for h in logger.handlers):
-                    logger.addHandler(handler)
-            
-            self._add_log_entry("Configured logging capture for docling-serve")
-            
-        except Exception as e:
-            self._add_log_entry(f"Failed to configure logging capture: {e}")
-    
-    def _start_log_processor(self) -> None:
-        """Start a thread to process logs from the queue."""
-        if self._log_processor_running:
-            return
-            
-        self._log_processor_running = True
-        self._log_processor_thread = threading.Thread(
-            target=self._process_logs,
-            name="docling-log-processor",
-            daemon=True
-        )
-        self._log_processor_thread.start()
-        
-    def _process_logs(self) -> None:
-        """Process logs from the queue and add them to the buffer."""
-        # Add a debug entry to confirm the processor started
-        self._add_log_entry("Log processor started")
-        logger.info("Docling log processor started")
-        
-        while True:
+        self._log_lock = threading.Lock()  # Thread-safe access to log buffer
+
+        self._initialized = True
+
+    def cleanup(self):
+        """Cleanup resources and stop any running processes."""
+        if self._process and self._process.poll() is None:
+            self._add_log_entry("Cleaning up docling-serve process on exit")
             try:
-                # Get log message from queue with timeout
-                try:
-                    message = self._log_queue.get(timeout=0.5)
-                    if message:
-                        # Add to our buffer
-                        self._add_log_entry(message.rstrip())
-                    self._log_queue.task_done()
-                except queue.Empty:
-                    # No logs in queue, just continue
-                    pass
-                    
-                # If we're not running and queue is empty, exit
-                if not self._running and self._log_queue.empty():
-                    time.sleep(1)  # Give a chance for final logs
-                    if self._log_queue.empty():
-                        break
-                        
-                # Brief pause to avoid CPU spinning
-                time.sleep(0.01)
-                
+                self._process.terminate()
+                self._process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                self._process.wait()
             except Exception as e:
-                # Log the error but keep the processor running
-                error_msg = f"Error processing logs: {e}"
-                logger.error(error_msg)
-                self._add_log_entry(f"ERROR: {error_msg}")
-                time.sleep(1)  # Pause after error
-                
-        self._log_processor_running = False
-        logger.info("Docling log processor stopped")
+                self._add_log_entry(f"Error during cleanup: {e}")
+
+        self._running = False
+        self._process = None
         
     def _add_log_entry(self, message: str) -> None:
-        """Add a log entry to the buffer."""
+        """Add a log entry to the buffer (thread-safe)."""
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         entry = f"[{timestamp}] {message}"
-        self._log_buffer.append(entry)
-        
-        # Keep buffer size limited
-        if len(self._log_buffer) > self._max_log_lines:
-            self._log_buffer = self._log_buffer[-self._max_log_lines:]
+
+        with self._log_lock:
+            self._log_buffer.append(entry)
+            # Keep buffer size limited
+            if len(self._log_buffer) > self._max_log_lines:
+                self._log_buffer = self._log_buffer[-self._max_log_lines:]
         
     def is_running(self) -> bool:
         """Check if docling serve is running."""
         # First check our internal state
-        internal_running = self._running and self._server_thread is not None and self._server_thread.is_alive()
-        
+        internal_running = self._running and self._process is not None and self._process.poll() is None
+
         # If we think it's not running, check if something is listening on the port
         # This handles cases where docling-serve was started outside the TUI
         if not internal_running:
@@ -194,21 +83,24 @@ class DoclingManager:
                 s.settimeout(0.5)
                 result = s.connect_ex((self._host, self._port))
                 s.close()
-                
+
                 # If port is in use, something is running there
                 if result == 0:
-                    # Add a log entry about this
-                    self._add_log_entry(f"Detected external docling-serve running on {self._host}:{self._port}")
+                    # Only log this once when we first detect external process
+                    if not self._external_process:
+                        self._add_log_entry(f"Detected external docling-serve running on {self._host}:{self._port}")
                     # Set a flag to indicate this is an external process
                     self._external_process = True
                     return True
             except Exception as e:
-                # If there's an error checking, fall back to internal state
-                logger.error(f"Error checking port: {e}")
+                # Only log errors occasionally to avoid spam
+                if not hasattr(self, '_last_port_error') or self._last_port_error != str(e):
+                    self._add_log_entry(f"Error checking port: {e}")
+                    self._last_port_error = str(e)
         else:
             # If we started it, it's not external
             self._external_process = False
-                
+
         return internal_running
     
     def get_status(self) -> Dict[str, Any]:
@@ -233,223 +125,208 @@ class DoclingManager:
             }
     
     async def start(self, port: int = 5001, host: str = "127.0.0.1", enable_ui: bool = True) -> Tuple[bool, str]:
-        """Start docling serve in a separate thread."""
+        """Start docling serve as external process."""
         if self.is_running():
             return False, "Docling serve is already running"
-        
+
         self._port = port
         self._host = host
-        
+
         # Clear log buffer when starting
         self._log_buffer = []
-        
+        self._add_log_entry("Starting docling serve as external process...")
+
         try:
-            logger.info(f"Starting docling serve on {host}:{port}")
-            
-            # Import and create the FastAPI app
-            from docling_serve.app import create_app
-            from docling_serve.settings import docling_serve_settings
-            
-            # Configure settings
-            docling_serve_settings.enable_ui = enable_ui
-            
-            # Enable verbose logging in docling-serve if possible
-            try:
-                import logging
-                docling_logger = logging.getLogger("docling_serve")
-                docling_logger.setLevel(logging.DEBUG)
-                self._add_log_entry("Set docling_serve logger to DEBUG level")
-            except Exception as e:
-                self._add_log_entry(f"Failed to set docling_serve logger level: {e}")
-            
-            # Create the FastAPI app
-            app = create_app()
-            
-            # Create uvicorn server configuration
-            config = uvicorn.Config(
-                app=app,
-                host=host,
-                port=port,
-                log_level="debug",  # Use debug level for more verbose output
-                access_log=True,    # Enable access logs
+            # Build command to run docling-serve
+            # Check if we should use uv run (look for uv in environment or check if we're in a uv project)
+            import shutil
+            if shutil.which("uv") and (os.path.exists("pyproject.toml") or os.getenv("VIRTUAL_ENV")):
+                cmd = [
+                    "uv", "run", "python", "-m", "docling_serve", "run",
+                    "--host", host,
+                    "--port", str(port),
+                ]
+            else:
+                cmd = [
+                    sys.executable, "-m", "docling_serve", "run",
+                    "--host", host,
+                    "--port", str(port),
+                ]
+
+            if enable_ui:
+                cmd.append("--enable-ui")
+
+            self._add_log_entry(f"Starting process: {' '.join(cmd)}")
+
+            # Start as subprocess
+            self._process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                bufsize=0  # Unbuffered for real-time output
             )
-            
-            self._server = uvicorn.Server(config)
-            
-            # Add log entry
-            self._add_log_entry(f"Starting docling-serve on {host}:{port}")
-            
-            # Start server in a separate thread
-            self._server_thread = threading.Thread(
-                target=self._run_server,
-                name="docling-serve-thread",
-                daemon=True  # Dies when main thread dies
-            )
-            
+
             self._running = True
-            self._server_thread.start()
-            
-            # Wait a moment to see if it starts successfully
-            await asyncio.sleep(2)
-            
-            if not self._server_thread.is_alive():
+            self._add_log_entry("External process started")
+
+            # Start a thread to capture output
+            self._start_output_capture()
+
+            # Wait for the process to start and begin listening
+            self._add_log_entry("Waiting for docling-serve to start listening...")
+
+            # Wait up to 10 seconds for the service to start listening
+            for i in range(10):
+                await asyncio.sleep(1.0)
+
+                # Check if process is still alive
+                if self._process.poll() is not None:
+                    break
+
+                # Check if it's listening on the port
+                try:
+                    import socket
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(0.5)
+                    result = s.connect_ex((host, port))
+                    s.close()
+
+                    if result == 0:
+                        self._add_log_entry(f"Docling-serve is now listening on {host}:{port}")
+                        break
+                except:
+                    pass
+
+                self._add_log_entry(f"Waiting for startup... ({i+1}/10)")
+
+            # Add a test message to verify logging is working
+            self._add_log_entry(f"Process PID: {self._process.pid}, Poll: {self._process.poll()}")
+
+            if self._process.poll() is not None:
+                # Process already exited - get return code and any output
+                return_code = self._process.returncode
+                self._add_log_entry(f"Process exited with code: {return_code}")
+
+                try:
+                    # Try to read any remaining output
+                    stdout_data = ""
+                    stderr_data = ""
+
+                    if self._process.stdout:
+                        stdout_data = self._process.stdout.read()
+                    if self._process.stderr:
+                        stderr_data = self._process.stderr.read()
+
+                    if stdout_data:
+                        self._add_log_entry(f"Final stdout: {stdout_data[:500]}")
+                    if stderr_data:
+                        self._add_log_entry(f"Final stderr: {stderr_data[:500]}")
+
+                except Exception as e:
+                    self._add_log_entry(f"Error reading final output: {e}")
+
                 self._running = False
-                self._server = None
-                self._server_thread = None
-                return False, "Failed to start docling serve thread"
-            
-            logger.info(f"Docling serve started successfully on {host}:{port}")
-            return True, f"Docling serve started on http://{host}:{port}"
-            
-        except ImportError as e:
-            logger.error(f"Failed to import docling_serve: {e}")
+                return False, f"Docling serve process exited immediately (code: {return_code})"
+
+            return True, f"Docling serve starting on http://{host}:{port}"
+
+        except FileNotFoundError:
             return False, "docling-serve not available. Please install: uv add docling-serve"
         except Exception as e:
-            logger.error(f"Error starting docling serve: {e}")
             self._running = False
-            self._server = None
-            self._server_thread = None
+            self._process = None
             return False, f"Error starting docling serve: {str(e)}"
-    
-    def _run_server(self):
-        """Run the uvicorn server in the current thread."""
-        # Save original stdout/stderr before any possible exceptions
-        original_stdout = sys.stdout
-        original_stderr = sys.stderr
-        
-        try:
-            logger.info("Starting uvicorn server in thread")
-            
-            # Create new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            # Create temporary stdout/stderr handlers that don't use logging
-            # to avoid recursion when logging tries to write to stdout
-            class SimpleHandler:
-                def __init__(self, prefix, queue):
-                    self.prefix = prefix
-                    self.queue = queue
-                    self.original_stdout = sys.__stdout__
-                    
-                def write(self, message):
-                    if message and message.strip():
-                        # Print directly to original stdout for debugging
-                        print(f"[{self.prefix}] {message.rstrip()}", file=self.original_stdout)
-                        # Also add to queue for the log buffer
-                        self.queue.put(f"{self.prefix}: {message.rstrip()}")
-                        
-                def flush(self):
-                    pass
-            
-            # Add a test message to the log queue
-            self._add_log_entry("Starting docling-serve with improved logging")
-            self._log_queue.put("TEST: Direct message to queue before redirection")
-            
-            # Create simple handlers
-            stdout_simple = SimpleHandler("STDOUT", self._log_queue)
-            stderr_simple = SimpleHandler("STDERR", self._log_queue)
-            
-            # Redirect stdout/stderr to our simple handlers
-            sys.stdout = stdout_simple
-            sys.stderr = stderr_simple
-            
-            # Test if redirection works
-            print("TEST: Print after redirection in _run_server")
-            sys.stderr.write("TEST: stderr write after redirection\n")
-            
-            # Add log entry
-            self._add_log_entry("Docling serve starting")
-            
-            # Run the server
-            if self._server:
-                self._add_log_entry("Starting server.serve()")
-                logger.info("About to run server.serve()")
-                
-                # Configure Python logging to capture uvicorn logs
-                try:
-                    import logging
-                    
-                    # Create a handler that writes to our log queue
-                    class DoclingLogHandler(logging.Handler):
-                        def __init__(self, queue):
-                            super().__init__()
-                            self.queue = queue
-                            
-                        def emit(self, record):
-                            msg = self.format(record)
-                            self.queue.put(f"LOG: {msg}")
-                    
-                    # Configure uvicorn logger
-                    uvicorn_logger = logging.getLogger("uvicorn")
-                    uvicorn_logger.setLevel(logging.DEBUG)
-                    
-                    # Add our handler
-                    handler = DoclingLogHandler(self._log_queue)
-                    formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
-                    handler.setFormatter(formatter)
-                    uvicorn_logger.addHandler(handler)
-                    
-                    self._add_log_entry("Added custom handler to uvicorn logger")
-                except Exception as e:
-                    self._add_log_entry(f"Failed to configure uvicorn logger: {e}")
-                
-                loop.run_until_complete(self._server.serve())
-                self._add_log_entry("server.serve() completed")
-            else:
-                self._add_log_entry("Error: Server not initialized")
-                
-        except Exception as e:
-            error_msg = f"Error in server thread: {e}"
-            logger.error(error_msg)
-            self._add_log_entry(error_msg)
-        finally:
-            # Add log entry before restoring stdout/stderr
-            self._add_log_entry("Restoring stdout/stderr")
-            
-            # Restore stdout/stderr
-            sys.stdout = original_stdout
-            sys.stderr = original_stderr
-            
-            logger.info("Stdout/stderr restored")
-            
-            self._running = False
-            self._add_log_entry("Docling serve stopped")
-            logger.info("Server thread stopped")
-    
+
+    def _start_output_capture(self):
+        """Start threads to capture subprocess stdout and stderr."""
+        def capture_stdout():
+            if not self._process or not self._process.stdout:
+                self._add_log_entry("No stdout pipe available")
+                return
+
+            self._add_log_entry("Starting stdout capture thread")
+            try:
+                while self._running and self._process and self._process.poll() is None:
+                    line = self._process.stdout.readline()
+                    if line:
+                        self._add_log_entry(f"STDOUT: {line.rstrip()}")
+                    else:
+                        # No more output, wait a bit
+                        time.sleep(0.1)
+            except Exception as e:
+                self._add_log_entry(f"Error capturing stdout: {e}")
+            finally:
+                self._add_log_entry("Stdout capture thread ended")
+
+        def capture_stderr():
+            if not self._process or not self._process.stderr:
+                self._add_log_entry("No stderr pipe available")
+                return
+
+            self._add_log_entry("Starting stderr capture thread")
+            try:
+                while self._running and self._process and self._process.poll() is None:
+                    line = self._process.stderr.readline()
+                    if line:
+                        self._add_log_entry(f"STDERR: {line.rstrip()}")
+                    else:
+                        # No more output, wait a bit
+                        time.sleep(0.1)
+            except Exception as e:
+                self._add_log_entry(f"Error capturing stderr: {e}")
+            finally:
+                self._add_log_entry("Stderr capture thread ended")
+
+        # Start both capture threads
+        stdout_thread = threading.Thread(target=capture_stdout, daemon=True)
+        stderr_thread = threading.Thread(target=capture_stderr, daemon=True)
+
+        stdout_thread.start()
+        stderr_thread.start()
+
+        self._add_log_entry("Output capture threads started")
+
     async def stop(self) -> Tuple[bool, str]:
         """Stop docling serve."""
         if not self.is_running():
             return False, "Docling serve is not running"
-        
+
         try:
-            logger.info("Stopping docling serve")
-            
-            # Add a log entry before stopping
-            self._add_log_entry("Stopping docling-serve via API call")
-            
-            # Signal the server to shut down
-            if self._server:
-                self._server.should_exit = True
-            
+            self._add_log_entry("Stopping docling-serve process")
+
+            if self._process:
+                # We started this process, so we can stop it directly
+                self._add_log_entry(f"Terminating our process (PID: {self._process.pid})")
+                self._process.terminate()
+
+                # Wait for it to stop
+                try:
+                    self._process.wait(timeout=10)
+                    self._add_log_entry("Process terminated gracefully")
+                except subprocess.TimeoutExpired:
+                    # Force kill if it doesn't stop gracefully
+                    self._add_log_entry("Process didn't stop gracefully, force killing")
+                    self._process.kill()
+                    self._process.wait()
+                    self._add_log_entry("Process force killed")
+
+            elif self._external_process:
+                # This is an external process, we can't stop it directly
+                self._add_log_entry("Cannot stop external docling-serve process - it was started outside the TUI")
+                self._running = False
+                self._external_process = False
+                return False, "Cannot stop external docling-serve process. Please stop it manually."
+
             self._running = False
-            
-            # Wait for the thread to finish (with timeout)
-            if self._server_thread:
-                self._server_thread.join(timeout=10)
-                
-                if self._server_thread.is_alive():
-                    logger.warning("Server thread did not stop gracefully")
-                    return False, "Docling serve did not stop gracefully"
-            
-            self._server = None
-            self._server_thread = None
-            
-            logger.info("Docling serve stopped")
+            self._process = None
+            self._external_process = False
+
+            self._add_log_entry("Docling serve stopped successfully")
             return True, "Docling serve stopped successfully"
-            
+
         except Exception as e:
-            logger.error(f"Error stopping docling serve: {e}")
+            self._add_log_entry(f"Error stopping docling serve: {e}")
             return False, f"Error stopping docling serve: {str(e)}"
     
     async def restart(self, port: Optional[int] = None, host: Optional[str] = None, enable_ui: bool = True) -> Tuple[bool, str]:
@@ -479,56 +356,45 @@ class DoclingManager:
     def get_logs(self, lines: int = 50) -> Tuple[bool, str]:
         """Get logs from the docling-serve process."""
         if self.is_running():
-            # Create a status message but don't add it to the log buffer
-            status_msg = f"Docling serve is running on http://{self._host}:{self._port}"
-            
-            # If we have no logs but the service is running, it might have been started externally
-            if not self._log_buffer:
-                # Return informative message without modifying the log buffer
-                return True, (
-                    f"{status_msg}\n\n"
-                    "No logs available - service may have been started externally.\n"
-                    "You can restart the service from the Monitor screen to capture logs."
-                )
-                
-            # Return the most recent logs with status message at the top
-            log_count = min(lines, len(self._log_buffer))
-            logs = "\n".join(self._log_buffer[-log_count:])
-            return True, f"{status_msg}\n\n{logs}"
+            with self._log_lock:
+                # If we have no logs but the service is running, it might have been started externally
+                if not self._log_buffer:
+                    return True, "No logs available yet..."
+
+                # Return the most recent logs
+                log_count = min(lines, len(self._log_buffer))
+                logs = "\n".join(self._log_buffer[-log_count:])
+                return True, logs
         else:
-            # Return success with a message instead of an error
-            # This allows viewing the message without an error notification
-            return True, "Docling serve is not running. Start it from the Monitor screen to view logs."
+            return True, "Docling serve is not running."
     
     async def follow_logs(self) -> AsyncIterator[str]:
         """Follow logs from the docling-serve process in real-time."""
         # First yield status message and any existing logs
         status_msg = f"Docling serve is running on http://{self._host}:{self._port}"
-        
-        if self._log_buffer:
-            yield f"{status_msg}\n\n" + "\n".join(self._log_buffer)
-        else:
-            yield (
-                f"{status_msg}\n\n"
-                "Waiting for logs...\n"
-                "If no logs appear, the service may have been started externally.\n"
-                "You can restart the service from the Monitor screen to capture logs."
-            )
-        
-        # Then start monitoring for new logs
-        last_log_index = len(self._log_buffer)
-        
-        while self.is_running():
-            # Check if we have new logs
-            if len(self._log_buffer) > last_log_index:
-                # Yield only the new logs
-                new_logs = self._log_buffer[last_log_index:]
-                yield "\n".join(new_logs)
+
+        with self._log_lock:
+            if self._log_buffer:
+                yield "\n".join(self._log_buffer)
                 last_log_index = len(self._log_buffer)
-            
+            else:
+                yield "Waiting for logs..."
+                last_log_index = 0
+
+        # Then start monitoring for new logs
+        while self.is_running():
+            with self._log_lock:
+                # Check if we have new logs
+                if len(self._log_buffer) > last_log_index:
+                    # Yield only the new logs
+                    new_logs = self._log_buffer[last_log_index:]
+                    yield "\n".join(new_logs)
+                    last_log_index = len(self._log_buffer)
+
             # Wait a bit before checking again
             await asyncio.sleep(0.1)
-        
+
         # Final check for any logs that came in during shutdown
-        if len(self._log_buffer) > last_log_index:
-            yield "\n".join(self._log_buffer[last_log_index:])
+        with self._log_lock:
+            if len(self._log_buffer) > last_log_index:
+                yield "\n".join(self._log_buffer[last_log_index:])
