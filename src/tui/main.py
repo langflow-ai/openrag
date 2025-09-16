@@ -14,6 +14,7 @@ from .screens.logs import LogsScreen
 from .screens.diagnostics import DiagnosticsScreen
 from .managers.env_manager import EnvManager
 from .managers.container_manager import ContainerManager
+from .managers.docling_manager import DoclingManager
 from .utils.platform import PlatformDetector
 from .widgets.diagnostics_notification import notify_with_diagnostics
 
@@ -26,7 +27,7 @@ class OpenRAGTUI(App):
 
     CSS = """
     Screen {
-        background: $background;
+        background: #0f172a;
     }
     
     #main-container {
@@ -114,7 +115,8 @@ class OpenRAGTUI(App):
     }
     
     #services-table {
-        height: 1fr;
+        height: auto;
+        max-height: 12;
         margin-bottom: 1;
     }
 
@@ -174,6 +176,82 @@ class OpenRAGTUI(App):
         height: 100%;
         padding: 1;
     }
+
+    /* Frontend-inspired color scheme */
+    Static {
+        color: #f1f5f9;
+    }
+
+    Button.success {
+        background: #4ade80;
+        color: #000;
+    }
+
+    Button.error {
+        background: #ef4444;
+        color: #fff;
+    }
+
+    Button.warning {
+        background: #eab308;
+        color: #000;
+    }
+
+    Button.primary {
+        background: #2563eb;
+        color: #fff;
+    }
+
+    Button.default {
+        background: #475569;
+        color: #f1f5f9;
+        border: solid #64748b;
+    }
+
+    DataTable {
+        background: #1e293b;
+        color: #f1f5f9;
+    }
+
+    DataTable > .datatable--header {
+        background: #334155;
+        color: #f1f5f9;
+    }
+
+    DataTable > .datatable--cursor {
+        background: #475569;
+    }
+
+    Input {
+        background: #334155;
+        color: #f1f5f9;
+        border: solid #64748b;
+    }
+
+    Label {
+        color: #f1f5f9;
+    }
+
+    Footer {
+        background: #334155;
+        color: #f1f5f9;
+    }
+
+    #runtime-status {
+        background: #1e293b;
+        border: solid #64748b;
+        color: #f1f5f9;
+    }
+
+    #system-info {
+        background: #1e293b;
+        border: solid #64748b;
+        color: #f1f5f9;
+    }
+
+    #services-table, #images-table {
+        background: #1e293b;
+    }
     """
 
     def __init__(self):
@@ -181,6 +259,7 @@ class OpenRAGTUI(App):
         self.platform_detector = PlatformDetector()
         self.container_manager = ContainerManager()
         self.env_manager = EnvManager()
+        self.docling_manager = DoclingManager()  # Initialize singleton instance
 
     def on_mount(self) -> None:
         """Initialize the application."""
@@ -201,6 +280,8 @@ class OpenRAGTUI(App):
 
     async def action_quit(self) -> None:
         """Quit the application."""
+        # Cleanup docling manager before exiting
+        self.docling_manager.cleanup()
         self.exit()
 
     def check_runtime_requirements(self) -> tuple[bool, str]:
@@ -222,15 +303,19 @@ class OpenRAGTUI(App):
 
 def run_tui():
     """Run the OpenRAG TUI application."""
+    app = None
     try:
         app = OpenRAGTUI()
         app.run()
     except KeyboardInterrupt:
         logger.info("OpenRAG TUI interrupted by user")
-        sys.exit(0)
     except Exception as e:
         logger.error("Error running OpenRAG TUI", error=str(e))
-        sys.exit(1)
+    finally:
+        # Ensure cleanup happens even on exceptions
+        if app and hasattr(app, 'docling_manager'):
+            app.docling_manager.cleanup()
+        sys.exit(0)
 
 
 if __name__ == "__main__":
