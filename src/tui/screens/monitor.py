@@ -273,8 +273,6 @@ class MonitorScreen(Screen):
             self.run_worker(self._stop_docling_serve())
         elif button_id.startswith("docling-restart-btn"):
             self.run_worker(self._restart_docling_serve())
-        elif button_id.startswith("docling-logs-btn"):
-            self._view_docling_logs()
         elif button_id == "toggle-mode-btn":
             self.action_toggle_mode()
         elif button_id.startswith("refresh-btn"):
@@ -620,9 +618,6 @@ class MonitorScreen(Screen):
                 )
                 docling_controls.mount(
                     Button("Restart", variant="primary", id=f"docling-restart-btn{suffix}")
-                )
-                docling_controls.mount(
-                    Button("View Logs", variant="default", id=f"docling-logs-btn{suffix}")
                 )
             else:
                 docling_controls.mount(
