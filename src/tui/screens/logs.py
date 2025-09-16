@@ -95,6 +95,10 @@ class LogsScreen(Screen):
 
         await self._load_logs()
 
+        # Start following logs by default
+        if not self.following:
+            self.action_follow()
+
         # Focus the logs area since there are no buttons
         try:
             self.logs_area.focus()

@@ -14,6 +14,7 @@ from .screens.logs import LogsScreen
 from .screens.diagnostics import DiagnosticsScreen
 from .managers.env_manager import EnvManager
 from .managers.container_manager import ContainerManager
+from .managers.docling_manager import DoclingManager
 from .utils.platform import PlatformDetector
 from .widgets.diagnostics_notification import notify_with_diagnostics
 
@@ -181,6 +182,7 @@ class OpenRAGTUI(App):
         self.platform_detector = PlatformDetector()
         self.container_manager = ContainerManager()
         self.env_manager = EnvManager()
+        self.docling_manager = DoclingManager()  # Initialize singleton instance
 
     def on_mount(self) -> None:
         """Initialize the application."""
@@ -201,6 +203,8 @@ class OpenRAGTUI(App):
 
     async def action_quit(self) -> None:
         """Quit the application."""
+        # Cleanup docling manager before exiting
+        self.docling_manager.cleanup()
         self.exit()
 
     def check_runtime_requirements(self) -> tuple[bool, str]:
@@ -222,15 +226,19 @@ class OpenRAGTUI(App):
 
 def run_tui():
     """Run the OpenRAG TUI application."""
+    app = None
     try:
         app = OpenRAGTUI()
         app.run()
     except KeyboardInterrupt:
         logger.info("OpenRAG TUI interrupted by user")
-        sys.exit(0)
     except Exception as e:
         logger.error("Error running OpenRAG TUI", error=str(e))
-        sys.exit(1)
+    finally:
+        # Ensure cleanup happens even on exceptions
+        if app and hasattr(app, 'docling_manager'):
+            app.docling_manager.cleanup()
+        sys.exit(0)
 
 
 if __name__ == "__main__":
