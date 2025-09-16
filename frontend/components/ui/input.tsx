@@ -1,7 +1,8 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+export interface InputProps
+  extends React.InputHTMLAttributes<HTMLInputElement> {
   icon?: React.ReactNode;
   inputClassName?: string;
 }
@@ -9,7 +10,12 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, inputClassName, icon, type, placeholder, ...props }, ref) => {
     return (
-      <label className={cn("relative block h-fit w-full text-sm", icon ? className : "")}>
+      <label
+        className={cn(
+          "relative block h-fit w-full text-sm",
+          icon ? className : ""
+        )}
+      >
         {icon && (
           <div className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground">
             {icon}
@@ -22,7 +28,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className={cn(
             "primary-input !placeholder-transparent",
             icon && "pl-9",
-            icon ? inputClassName : className,
+            icon ? inputClassName : className
           )}
           ref={ref}
           {...props}
@@ -31,14 +37,14 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className={cn(
             "pointer-events-none absolute top-1/2 -translate-y-1/2 pl-px text-placeholder-foreground",
             icon ? "left-9" : "left-3",
-            props.value && "hidden",
+            props.value && "hidden"
           )}
         >
           {placeholder}
         </span>
       </label>
     );
-  },
+  }
 );
 
 Input.displayName = "Input";
