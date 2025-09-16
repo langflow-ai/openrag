@@ -1,6 +1,7 @@
 """Command output modal dialog for OpenRAG TUI."""
 
 import asyncio
+import inspect
 from typing import Callable, List, Optional, AsyncIterator, Any
 
 from textual.app import ComposeResult
@@ -122,7 +123,13 @@ class CommandOutputModal(ModalScreen):
                     # Call the completion callback if provided
                     if self.on_complete:
                         await asyncio.sleep(0.5)  # Small delay for better UX
-                        self.on_complete()
+
+                        def _invoke_callback() -> None:
+                            callback_result = self.on_complete()
+                            if inspect.isawaitable(callback_result):
+                                asyncio.create_task(callback_result)
+
+                        self.call_after_refresh(_invoke_callback)
         except Exception as e:
             output.write(f"[bold red]Error: {e}[/bold red]\n")
 
