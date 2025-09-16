@@ -64,31 +64,31 @@ export const MarkdownRenderer = ({ chatMessage }: MarkdownRendererProps) => {
         rehypePlugins={[rehypeMathjax, rehypeRaw]}
         linkTarget="_blank"
         components={{
-          p({ node, ...props }) {
+          p: ({ node, ...props }: any) => {
             return <p className="w-fit max-w-full">{props.children}</p>;
           },
-          ol({ node, ...props }) {
+          ol: ({ node, ...props }: any) => {
             return <ol className="max-w-full">{props.children}</ol>;
           },
-          h1({ node, ...props }) {
+          h1: ({ node, ...props }: any) => {
             return <h1 className="mb-6 mt-4">{props.children}</h1>;
           },
-          h2({ node, ...props }) {
+          h2: ({ node, ...props }: any) => {
             return <h2 className="mb-4 mt-4">{props.children}</h2>;
           },
-          h3({ node, ...props }) {
+          h3: ({ node, ...props }: any) => {
             return <h3 className="mb-2 mt-4">{props.children}</h3>;
           },
-          hr({ node, ...props }) {
+          hr: ({ node, ...props }: any) => {
             return <hr className="w-full mt-4 mb-8" />;
           },
-          ul({ node, ...props }) {
+          ul: ({ node, ...props }: any) => {
             return <ul className="max-w-full mb-2">{props.children}</ul>;
           },
-          pre({ node, ...props }) {
+          pre: ({ node, ...props }: any) => {
             return <>{props.children}</>;
           },
-          table: ({ node, ...props }) => {
+          table: ({ node, ...props }: any) => {
             return (
               <div className="max-w-full overflow-hidden rounded-md border bg-muted">
                 <div className="max-h-[600px] w-full overflow-auto p-4">
@@ -98,7 +98,7 @@ export const MarkdownRenderer = ({ chatMessage }: MarkdownRendererProps) => {
             );
           },
 
-          code: ({ node, className, inline, children, ...props }) => {
+          code: ({ node, className, inline, children, ...props }: any) => {
             let content = children as string;
             if (
               Array.isArray(children) &&
