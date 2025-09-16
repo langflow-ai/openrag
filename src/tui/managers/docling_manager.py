@@ -106,13 +106,15 @@ class DoclingManager:
     def get_status(self) -> Dict[str, Any]:
         """Get current status of docling serve."""
         if self.is_running():
+            pid = self._process.pid if self._process else None
             return {
                 "status": "running",
                 "port": self._port,
                 "host": self._host,
                 "endpoint": f"http://{self._host}:{self._port}",
                 "docs_url": f"http://{self._host}:{self._port}/docs",
-                "ui_url": f"http://{self._host}:{self._port}/ui"
+                "ui_url": f"http://{self._host}:{self._port}/ui",
+                "pid": pid
             }
         else:
             return {
@@ -121,10 +123,11 @@ class DoclingManager:
                 "host": self._host,
                 "endpoint": None,
                 "docs_url": None,
-                "ui_url": None
+                "ui_url": None,
+                "pid": None
             }
     
-    async def start(self, port: int = 5001, host: str = "127.0.0.1", enable_ui: bool = True) -> Tuple[bool, str]:
+    async def start(self, port: int = 5001, host: str = "127.0.0.1", enable_ui: bool = False) -> Tuple[bool, str]:
         """Start docling serve as external process."""
         if self.is_running():
             return False, "Docling serve is already running"
@@ -329,7 +332,7 @@ class DoclingManager:
             self._add_log_entry(f"Error stopping docling serve: {e}")
             return False, f"Error stopping docling serve: {str(e)}"
     
-    async def restart(self, port: Optional[int] = None, host: Optional[str] = None, enable_ui: bool = True) -> Tuple[bool, str]:
+    async def restart(self, port: Optional[int] = None, host: Optional[str] = None, enable_ui: bool = False) -> Tuple[bool, str]:
         """Restart docling serve."""
         # Use current settings if not specified
         if port is None:
