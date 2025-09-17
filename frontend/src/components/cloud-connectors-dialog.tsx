@@ -40,6 +40,7 @@ interface CloudConnector {
   status: "not_connected" | "connecting" | "connected" | "error"
   type: string
   connectionId?: string
+  clientId: string
   hasAccessToken: boolean
   accessTokenError?: string
 }
@@ -115,7 +116,8 @@ export function CloudConnectorsDialog({
         status: "not_connected" as const,
         type: type,
         hasAccessToken: false,
-        accessTokenError: undefined
+        accessTokenError: undefined,
+        clientId: ""
       }))
       
       setConnectors(initialConnectors)
@@ -161,6 +163,7 @@ export function CloudConnectorsDialog({
                     ...c, 
                     status: isConnected ? "connected" : "not_connected",
                     connectionId: activeConnection?.connection_id,
+                    clientId: activeConnection?.client_id,
                     hasAccessToken,
                     accessTokenError
                   } 
@@ -280,6 +283,7 @@ export function CloudConnectorsDialog({
                         isAuthenticated={connector.status === "connected"}
                         accessToken={connectorAccessTokens[connector.type]}
                         connectorType={connector.type as "onedrive" | "sharepoint"}
+                        clientId={connector.clientId}
                       />
                     </div>
                   )

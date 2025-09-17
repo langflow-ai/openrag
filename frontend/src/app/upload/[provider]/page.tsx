@@ -35,6 +35,7 @@ interface CloudConnector {
   status: "not_connected" | "connecting" | "connected" | "error"
   type: string
   connectionId?: string
+  clientId: string
   hasAccessToken: boolean
   accessTokenError?: string
 }
@@ -114,6 +115,7 @@ export default function UploadProviderPage() {
           status: isConnected ? "connected" : "not_connected",
           type: provider,
           connectionId: activeConnection?.connection_id,
+          clientId: activeConnection?.client_id,
           hasAccessToken,
           accessTokenError
         })
@@ -345,6 +347,7 @@ export default function UploadProviderPage() {
             isAuthenticated={true}
             accessToken={accessToken || undefined}
             connectorType={connector.type as "onedrive" | "sharepoint"}
+            clientId={connector.clientId}
           />
         )}
       </div>

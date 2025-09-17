@@ -1,33 +1,26 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
-import { FileText, Folder, Plus, Trash2, ArrowLeft } from "lucide-react"
+import { Plus, Trash2, FileText } from "lucide-react"
 
 interface OneDrivePickerProps {
-  onFileSelected: (files: OneDriveFile[]) => void
-  selectedFiles?: OneDriveFile[]
+  onFileSelected: (files: SelectedFile[]) => void
+  selectedFiles?: SelectedFile[]
   isAuthenticated: boolean
   accessToken?: string
   connectorType?: "onedrive" | "sharepoint"
-  onPickerStateChange?: (isOpen: boolean) => void
+  baseUrl?: string // e.g., "https://tenant.sharepoint.com/sites/sitename" or "https://tenant-my.sharepoint.com"
+  clientId: string
 }
 
-interface OneDriveFile {
+interface SelectedFile {
   id: string
   name: string
   mimeType?: string
   webUrl?: string
-  driveItem?: {
-    file?: { mimeType: string }
-    folder?: unknown
-  }
-}
-
-interface GraphResponse {
-  value: OneDriveFile[]
+  downloadUrl?: string
 }
 
 export function OneDrivePicker({ 
@@ -36,94 +29,209 @@ export function OneDrivePicker({
   isAuthenticated, 
   accessToken,
   connectorType = "onedrive",
-  onPickerStateChange
+  baseUrl: providedBaseUrl,
+  clientId
 }: OneDrivePickerProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [files, setFiles] = useState<OneDriveFile[]>([])
+  // Debug all props
+  console.log('All OneDrivePicker props:', {
+    onFileSelected: !!onFileSelected,
+    selectedFiles: selectedFiles?.length,
+    isAuthenticated,
+    accessToken: !!accessToken,
+    connectorType,
+    providedBaseUrl,
+    clientId
+  })
   const [isPickerOpen, setIsPickerOpen] = useState(false)
-  const [currentPath, setCurrentPath] = useState<string>(
-    connectorType === "sharepoint" ? 'sites?search=' : 'me/drive/root/children'
-  )
-  const [breadcrumbs, setBreadcrumbs] = useState<{id: string, name: string}[]>([
-    {id: 'root', name: connectorType === "sharepoint" ? 'SharePoint' : 'OneDrive'}
-  ])
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const [channelId] = useState(() => crypto.randomUUID())
 
-  const fetchFiles = async (path: string = currentPath) => {
-    if (!accessToken) return
-    
-    setIsLoading(true)
-    try {
-      const response = await fetch(`https://graph.microsoft.com/v1.0/${path}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      if (response.ok) {
-        const data: GraphResponse = await response.json()
-        setFiles(data.value || [])
-      } else {
-        console.error('Failed to fetch OneDrive files:', response.statusText)
+  const [autoBaseUrl, setAutoBaseUrl] = useState<string | null>(null)
+  const [isLoadingBaseUrl, setIsLoadingBaseUrl] = useState(false)
+  const baseUrl = providedBaseUrl || autoBaseUrl
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Only process messages from Microsoft domains
+      if (!event.origin.includes('.sharepoint.com') && 
+          !event.origin.includes('onedrive.live.com')) {
+        return
       }
-    } catch (error) {
-      console.error('Error fetching OneDrive files:', error)
-    } finally {
-      setIsLoading(false)
+
+      const message = event.data
+      
+      if (message.type === 'initialize') {
+        // Picker is ready
+        console.log('Picker initialized')
+      } else if (message.type === 'pick') {
+        // Files were selected
+        const files: SelectedFile[] = message.items?.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          mimeType: item.mimeType,
+          webUrl: item.webUrl,
+          downloadUrl: item.downloadUrl
+        })) || []
+        
+        onFileSelected([...selectedFiles, ...files])
+        closePicker()
+      } else if (message.type === 'cancel') {
+        // User cancelled
+        closePicker()
+      } else if (message.type === 'authenticate') {
+        // Picker needs authentication token
+        if (accessToken && iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage({
+            type: 'token',
+            token: accessToken
+          }, '*')
+        }
+      }
     }
+
+    if (isPickerOpen) {
+      window.addEventListener('message', handleMessage)
+      return () => window.removeEventListener('message', handleMessage)
+    }
+  }, [isPickerOpen, accessToken, selectedFiles, onFileSelected])
+
+  useEffect(() => {
+    if (providedBaseUrl || !accessToken || autoBaseUrl) return
+
+      const getBaseUrl = async () => {
+        setIsLoadingBaseUrl(true)
+        try {
+          // For personal accounts, use the picker URL directly
+          setAutoBaseUrl("https://onedrive.live.com/picker")
+        } catch (error) {
+          console.error('Auto-detect baseUrl failed:', error)
+        } finally {
+          setIsLoadingBaseUrl(false)
+        }
+      }
+    
+    getBaseUrl()
+  }, [accessToken, providedBaseUrl, autoBaseUrl])
+
+  useEffect(() => {
+    const handlePopupMessage = (event: MessageEvent) => {
+      // Only process messages from Microsoft domains
+      if (!event.origin.includes('onedrive.live.com') && 
+          !event.origin.includes('.live.com')) {
+        return
+      }
+
+      const message = event.data
+      console.log('Received message from popup:', message) // Debug log
+      
+      if (message.type === 'pick' && message.items) {
+        // Files were selected
+        const files: SelectedFile[] = message.items.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          mimeType: item.mimeType,
+          webUrl: item.webUrl,
+          downloadUrl: item.downloadUrl || item['@microsoft.graph.downloadUrl']
+        }))
+        
+        console.log('Selected files:', files) // Debug log
+        onFileSelected([...selectedFiles, ...files])
+        setIsPickerOpen(false)
+        
+        // Close popup if it's still open
+        const popups = window.open('', 'OneDrivePicker')
+        if (popups && !popups.closed) {
+          popups.close()
+        }
+      } else if (message.type === 'cancel') {
+        // User cancelled
+        setIsPickerOpen(false)
+      }
+    }
+
+    if (isPickerOpen) {
+      window.addEventListener('message', handlePopupMessage)
+      return () => window.removeEventListener('message', handlePopupMessage)
+    }
+  }, [isPickerOpen, selectedFiles, onFileSelected])
+
+  // Add this loading check before your existing checks:
+  if (isLoadingBaseUrl) {
+    return (
+      <div className="border rounded-lg shadow-sm bg-white">
+        <div className="flex flex-col items-center text-center p-6">
+          <p className="text-sm text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
   }
+
+  const [popupRef, setPopupRef] = useState<Window | null>(null) // Add this state
 
   const openPicker = () => {
-    if (!accessToken) return
-    
+    if (!accessToken) {
+      console.error('Access token required')
+      return
+    }
+
     setIsPickerOpen(true)
-    onPickerStateChange?.(true)
-    fetchFiles()
+
+    // Use OneDrive.js SDK approach instead of form POST
+    const script = document.createElement('script')
+    script.src = 'https://js.live.net/v7.2/OneDrive.js'
+    script.onload = () => {
+      // @ts-ignore
+      const OneDrive = window.OneDrive
+      
+      if (OneDrive) {
+        OneDrive.open({
+          clientId: clientId,
+          action: 'query',
+          multiSelect: true,
+          advanced: {
+            endpointHint: 'api.onedrive.com',
+            accessToken: accessToken,
+          },
+          success: (files: any) => {
+            console.log('Files selected:', files)
+            const selectedFiles: SelectedFile[] = files.value.map((file: any) => ({
+              id: file.id,
+              name: file.name,
+              mimeType: file.file?.mimeType || 'application/octet-stream',
+              webUrl: file.webUrl,
+              downloadUrl: file['@microsoft.graph.downloadUrl']
+            }))
+            
+            onFileSelected([...selectedFiles, ...selectedFiles])
+            setIsPickerOpen(false)
+          },
+          cancel: () => {
+            console.log('Picker cancelled')
+            setIsPickerOpen(false)
+          },
+          error: (error: any) => {
+            console.error('Picker error:', error)
+            setIsPickerOpen(false)
+          }
+        })
+      }
+    }
+    
+    script.onerror = () => {
+      console.error('Failed to load OneDrive SDK')
+      setIsPickerOpen(false)
+    }
+    
+    document.head.appendChild(script)
   }
 
+  // Update closePicker to close the popup
   const closePicker = () => {
     setIsPickerOpen(false)
-    onPickerStateChange?.(false)
-    setFiles([])
-    setCurrentPath(
-      connectorType === "sharepoint" ? 'sites?search=' : 'me/drive/root/children'
-    )
-    setBreadcrumbs([
-      {id: 'root', name: connectorType === "sharepoint" ? 'SharePoint' : 'OneDrive'}
-    ])
-  }
-
-  const handleFileClick = (file: OneDriveFile) => {
-    if (file.driveItem?.folder) {
-      // Navigate to folder
-      const newPath = `me/drive/items/${file.id}/children`
-      setCurrentPath(newPath)
-      setBreadcrumbs([...breadcrumbs, {id: file.id, name: file.name}])
-      fetchFiles(newPath)
-    } else {
-      // Select file
-      const isAlreadySelected = selectedFiles.some(f => f.id === file.id)
-      if (!isAlreadySelected) {
-        onFileSelected([...selectedFiles, file])
-      }
+    if (popupRef && !popupRef.closed) {
+      popupRef.close()
     }
-  }
-
-  const navigateBack = () => {
-    if (breadcrumbs.length > 1) {
-      const newBreadcrumbs = breadcrumbs.slice(0, -1)
-      setBreadcrumbs(newBreadcrumbs)
-      
-      if (newBreadcrumbs.length === 1) {
-        setCurrentPath('me/drive/root/children')
-        fetchFiles('me/drive/root/children')
-      } else {
-        const parentCrumb = newBreadcrumbs[newBreadcrumbs.length - 1]
-        const newPath = `me/drive/items/${parentCrumb.id}/children`
-        setCurrentPath(newPath)
-        fetchFiles(newPath)
-      }
-    }
+    setPopupRef(null)
   }
 
   const removeFile = (fileId: string) => {
@@ -131,145 +239,75 @@ export function OneDrivePicker({
     onFileSelected(updatedFiles)
   }
 
-  const getFileIcon = (file: OneDriveFile) => {
-    if (file.driveItem?.folder) {
-      return <Folder className="h-4 w-4 text-blue-600" />
-    }
-    return <FileText className="h-4 w-4 text-gray-600" />
-  }
-
-  const getMimeTypeLabel = (file: OneDriveFile) => {
-    const mimeType = file.driveItem?.file?.mimeType || file.mimeType || ''
-    const typeMap: { [key: string]: string } = {
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word Doc',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PowerPoint',
-      'application/pdf': 'PDF',
-      'text/plain': 'Text',
-      'image/jpeg': 'Image',
-      'image/png': 'Image',
-    }
-    
-    if (file.driveItem?.folder) return 'Folder'
-    return typeMap[mimeType] || 'Document'
-  }
-
   const serviceName = connectorType === "sharepoint" ? "SharePoint" : "OneDrive"
   
   if (!isAuthenticated) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center text-center p-6">
+      <div className="border rounded-lg shadow-sm bg-white">
+        <div className="flex flex-col items-center text-center p-6">
           <p className="text-sm text-gray-600">
-            Please connect to {serviceName} first to select specific files.
+            Please connect to {serviceName} first to select files.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
-  if (!accessToken) {
+  if (!accessToken || !baseUrl) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center text-center p-6">
+      <div className="border rounded-lg shadow-sm bg-white">
+        <div className="flex flex-col items-center text-center p-6">
           <p className="text-sm text-gray-600 mb-2">
-            Access token unavailable
+            Configuration required
           </p>
           <p className="text-xs text-amber-600">
-            Try disconnecting and reconnecting your {serviceName} account.
+            {!accessToken && "Access token required. "}
+            {!baseUrl && "Base URL required."}
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   return (
     <div className="space-y-4">
-      {!isPickerOpen ? (
-        <Card>
-          <CardContent className="flex flex-col items-center text-center p-6">
+      {isPickerOpen ? (
+        <div className="border rounded-lg shadow-sm bg-white">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">OneDrive Picker is open in popup</h3>
+              <Button onClick={closePicker} size="sm" variant="outline">
+                Cancel
+              </Button>
+            </div>
+            <p className="text-sm text-gray-600">
+              Please select your files in the popup window. This window will update when you're done.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="border rounded-lg shadow-sm bg-white">
+          <div className="flex flex-col items-center text-center p-6">
             <p className="text-sm text-gray-600 mb-4">
-              Select files from {serviceName} to ingest.
+              Select files from {serviceName} to ingest into OpenRAG.
             </p>
             <Button
               onClick={openPicker}
-              className="bg-black text-white hover:bg-gray-800"
+              className="bg-blue-600 text-white hover:bg-blue-700 border-0"
+              style={{ backgroundColor: '#2563eb', color: '#ffffff' }}
             >
               <Plus className="h-4 w-4 mr-2" />
               Add Files
             </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Select Files from {serviceName}</h3>
-              <Button onClick={closePicker} size="sm" variant="outline">
-                Done
-              </Button>
-            </div>
-            
-            {/* Navigation */}
-            <div className="flex items-center space-x-2 mb-4">
-              {breadcrumbs.length > 1 && (
-                <Button
-                  onClick={navigateBack}
-                  size="sm"
-                  variant="ghost"
-                  className="p-1"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
-              <div className="text-sm text-gray-600">
-                {breadcrumbs.map((crumb, index) => (
-                  <span key={crumb.id}>
-                    {index > 0 && <span className="mx-1">/</span>}
-                    {crumb.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* File List */}
-            <div className="border rounded-md max-h-96 overflow-y-auto">
-              {isLoading ? (
-                <div className="p-4 text-center text-gray-600">Loading...</div>
-              ) : files.length === 0 ? (
-                <div className="p-4 text-center text-gray-600">No files found</div>
-              ) : (
-                <div className="divide-y">
-                  {files.map((file) => (
-                    <div
-                      key={file.id}
-                      className="flex items-center p-3 hover:bg-gray-50 cursor-pointer"
-                      onClick={() => handleFileClick(file)}
-                    >
-                      <div className="flex items-center gap-3 flex-1">
-                        {getFileIcon(file)}
-                        <span className="font-medium">{file.name}</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {getMimeTypeLabel(file)}
-                        </Badge>
-                      </div>
-                      {selectedFiles.some(f => f.id === file.id) && (
-                        <Badge className="text-xs bg-green-100 text-green-800">Selected</Badge>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {selectedFiles.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-600">
-              Added files
+              Selected files ({selectedFiles.length})
             </p>
             <Button
               onClick={() => onFileSelected([])}
@@ -287,11 +325,13 @@ export function OneDrivePicker({
                 className="flex items-center justify-between p-2 bg-gray-100 rounded-md text-xs"
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {getFileIcon(file)}
+                  <FileText className="h-4 w-4 text-gray-600" />
                   <span className="truncate font-medium">{file.name}</span>
-                  <Badge variant="secondary" className="text-xs px-1 py-0.5 h-auto">
-                    {getMimeTypeLabel(file)}
-                  </Badge>
+                  {file.mimeType && (
+                    <Badge variant="secondary" className="text-xs px-1 py-0.5 h-auto">
+                      {file.mimeType.split('/').pop() || 'File'}
+                    </Badge>
+                  )}
                 </div>
                 <Button
                   onClick={() => removeFile(file.id)}
