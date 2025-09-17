@@ -909,6 +909,16 @@ async def create_app():
             ),
             methods=["POST"],
         ),
+        # Onboarding endpoint
+        Route(
+            "/onboarding",
+            require_auth(services["session_manager"])(
+                partial(
+                    settings.onboarding, session_manager=services["session_manager"]
+                )
+            ),
+            methods=["POST"],
+        ),
         Route(
             "/nudges",
             require_auth(services["session_manager"])(

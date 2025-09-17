@@ -231,3 +231,110 @@ async def update_settings(request, session_manager):
         return JSONResponse(
             {"error": f"Failed to update settings: {str(e)}"}, status_code=500
         )
+
+
+async def onboarding(request, session_manager):
+    """Handle onboarding configuration setup"""
+    try:
+        # Get current configuration
+        current_config = get_openrag_config()
+        
+        # Check if config is NOT marked as edited (only allow onboarding if not yet configured)
+        if current_config.edited:
+            return JSONResponse(
+                {"error": "Configuration has already been edited. Use /settings endpoint for updates."}, 
+                status_code=403
+            )
+        
+        # Parse request body
+        body = await request.json()
+        
+        # Validate allowed fields
+        allowed_fields = {
+            "model_provider", "api_key", "embedding_model", "llm_model", "sample_data"
+        }
+        
+        # Check for invalid fields
+        invalid_fields = set(body.keys()) - allowed_fields
+        if invalid_fields:
+            return JSONResponse(
+                {"error": f"Invalid fields: {', '.join(invalid_fields)}. Allowed fields: {', '.join(allowed_fields)}"}, 
+                status_code=400
+            )
+        
+        # Update configuration
+        config_updated = False
+        
+        # Update provider settings
+        if "model_provider" in body:
+            if not isinstance(body["model_provider"], str) or not body["model_provider"].strip():
+                return JSONResponse(
+                    {"error": "model_provider must be a non-empty string"}, 
+                    status_code=400
+                )
+            current_config.provider.model_provider = body["model_provider"].strip()
+            config_updated = True
+            
+        if "api_key" in body:
+            if not isinstance(body["api_key"], str):
+                return JSONResponse(
+                    {"error": "api_key must be a string"}, 
+                    status_code=400
+                )
+            current_config.provider.api_key = body["api_key"]
+            config_updated = True
+        
+        # Update knowledge settings
+        if "embedding_model" in body:
+            if not isinstance(body["embedding_model"], str) or not body["embedding_model"].strip():
+                return JSONResponse(
+                    {"error": "embedding_model must be a non-empty string"}, 
+                    status_code=400
+                )
+            current_config.knowledge.embedding_model = body["embedding_model"].strip()
+            config_updated = True
+        
+        # Update agent settings
+        if "llm_model" in body:
+            if not isinstance(body["llm_model"], str) or not body["llm_model"].strip():
+                return JSONResponse(
+                    {"error": "llm_model must be a non-empty string"}, 
+                    status_code=400
+                )
+            current_config.agent.llm_model = body["llm_model"].strip()
+            config_updated = True
+        
+        # Handle sample_data (unused for now but validate)
+        if "sample_data" in body:
+            if not isinstance(body["sample_data"], bool):
+                return JSONResponse(
+                    {"error": "sample_data must be a boolean value"}, 
+                    status_code=400
+                )
+            # Note: sample_data is accepted but not used as requested
+        
+        if not config_updated:
+            return JSONResponse(
+                {"error": "No valid fields provided for update"}, 
+                status_code=400
+            )
+        
+        # Save the updated configuration (this will mark it as edited)
+        if config_manager.save_config_file(current_config):
+            updated_fields = [k for k in body.keys() if k != "sample_data"]  # Exclude sample_data from log
+            logger.info("Onboarding configuration updated successfully", updated_fields=updated_fields)
+            return JSONResponse({
+                "message": "Onboarding configuration updated successfully",
+                "edited": True  # Confirm that config is now marked as edited
+            })
+        else:
+            return JSONResponse(
+                {"error": "Failed to save configuration"}, 
+                status_code=500
+            )
+        
+    except Exception as e:
+        logger.error("Failed to update onboarding settings", error=str(e))
+        return JSONResponse(
+            {"error": f"Failed to update onboarding settings: {str(e)}"}, status_code=500
+        )
