@@ -127,6 +127,20 @@ async def connector_status(request: Request, connector_service, session_manager)
         user_id=user.user_id, connector_type=connector_type
     )
 
+    # Get the connector for each connection
+    connection_client_ids = {}
+    for connection in connections:
+        try:
+            connector = await connector_service._get_connector(connection.connection_id)
+            connection_client_ids[connection.connection_id] = connector.get_client_id()
+        except Exception as e:
+            logger.warning(
+                "Could not get connector for connection",
+                connection_id=connection.connection_id,
+                error=str(e),
+            )
+            connection.connector = None
+
     # Check if there are any active connections
     active_connections = [conn for conn in connections if conn.is_active]
     has_authenticated_connection = len(active_connections) > 0
@@ -140,6 +154,7 @@ async def connector_status(request: Request, connector_service, session_manager)
                 {
                     "connection_id": conn.connection_id,
                     "name": conn.name,
+                    "client_id": connection_client_ids.get(conn.connection_id),
                     "is_active": conn.is_active,
                     "created_at": conn.created_at.isoformat(),
                     "last_sync": conn.last_sync.isoformat() if conn.last_sync else None,
