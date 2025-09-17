@@ -1,0 +1,33 @@
+# OpenRAG Configuration File
+# This file allows you to configure OpenRAG settings.
+# Environment variables will override these settings unless edited is true.
+
+# Track if this config has been manually edited (prevents env var overrides)
+edited: false
+
+# Model provider configuration
+provider:
+  # Supported providers: "openai", "anthropic", "azure", etc.
+  model_provider: "openai"
+  # API key for the model provider (can also be set via OPENAI_API_KEY env var)
+  api_key: ""
+
+# Knowledge base and document processing configuration
+knowledge:
+  # Embedding model for vector search
+  embedding_model: "text-embedding-3-small"
+  # Text chunk size for document processing
+  chunk_size: 1000
+  # Overlap between chunks
+  chunk_overlap: 200
+  # Enable OCR for image processing
+  ocr: true
+  # Enable picture descriptions using vision models
+  picture_descriptions: false
+
+# AI agent configuration
+agent:
+  # Language model for the chat agent
+  llm_model: "gpt-4o-mini"
+  # System prompt for the agent
+  system_prompt: "You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context."
