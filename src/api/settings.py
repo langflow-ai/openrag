@@ -233,7 +233,7 @@ async def update_settings(request, session_manager):
         )
 
 
-async def onboarding(request, session_manager, flows_service):
+async def onboarding(request, flows_service):
     """Handle onboarding configuration setup"""
     try:
         # Get current configuration

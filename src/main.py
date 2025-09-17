@@ -915,7 +915,6 @@ async def create_app():
             require_auth(services["session_manager"])(
                 partial(
                     settings.onboarding, 
-                    session_manager=services["session_manager"],
                     flows_service=services["flows_service"]
                 )
             ),
