@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Folder, Trash2, X } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
+import { FileText, Folder, Plus, Trash2, ArrowLeft } from "lucide-react"
 
 interface OneDrivePickerProps {
   onFileSelected: (files: OneDriveFile[]) => void
@@ -29,16 +30,6 @@ interface GraphResponse {
   value: OneDriveFile[]
 }
 
-declare global {
-  interface Window {
-    mgt?: {
-      Providers?: {
-        globalProvider?: unknown
-      }
-    }
-  }
-}
-
 export function OneDrivePicker({ 
   onFileSelected, 
   selectedFiles = [], 
@@ -56,25 +47,6 @@ export function OneDrivePicker({
   const [breadcrumbs, setBreadcrumbs] = useState<{id: string, name: string}[]>([
     {id: 'root', name: connectorType === "sharepoint" ? 'SharePoint' : 'OneDrive'}
   ])
-  
-  useEffect(() => {
-  const loadMGT = async () => {
-    if (typeof window !== 'undefined' && !window.mgt) {
-      try {
-        await import('@microsoft/mgt-components')
-        await import('@microsoft/mgt-msal2-provider')
-        
-        // For simplicity, we'll use direct Graph API calls instead of MGT components
-        // MGT provider initialization would go here if needed
-      } catch {
-        console.warn('MGT not available, falling back to direct API calls')
-      }
-    }
-  }
-    
-    loadMGT()
-  }, [accessToken])
-
 
   const fetchFiles = async (path: string = currentPath) => {
     if (!accessToken) return
@@ -137,17 +109,20 @@ export function OneDrivePicker({
     }
   }
 
-  const navigateToBreadcrumb = (index: number) => {
-    if (index === 0) {
-      setCurrentPath('me/drive/root/children')
-      setBreadcrumbs([{id: 'root', name: 'OneDrive'}])
-      fetchFiles('me/drive/root/children')
-    } else {
-      const targetCrumb = breadcrumbs[index]
-      const newPath = `me/drive/items/${targetCrumb.id}/children`
-      setCurrentPath(newPath)
-      setBreadcrumbs(breadcrumbs.slice(0, index + 1))
-      fetchFiles(newPath)
+  const navigateBack = () => {
+    if (breadcrumbs.length > 1) {
+      const newBreadcrumbs = breadcrumbs.slice(0, -1)
+      setBreadcrumbs(newBreadcrumbs)
+      
+      if (newBreadcrumbs.length === 1) {
+        setCurrentPath('me/drive/root/children')
+        fetchFiles('me/drive/root/children')
+      } else {
+        const parentCrumb = newBreadcrumbs[newBreadcrumbs.length - 1]
+        const newPath = `me/drive/items/${parentCrumb.id}/children`
+        setCurrentPath(newPath)
+        fetchFiles(newPath)
+      }
     }
   }
 
@@ -158,9 +133,9 @@ export function OneDrivePicker({
 
   const getFileIcon = (file: OneDriveFile) => {
     if (file.driveItem?.folder) {
-      return <Folder className="h-4 w-4" />
+      return <Folder className="h-4 w-4 text-blue-600" />
     }
-    return <FileText className="h-4 w-4" />
+    return <FileText className="h-4 w-4 text-gray-600" />
   }
 
   const getMimeTypeLabel = (file: OneDriveFile) => {
@@ -183,72 +158,86 @@ export function OneDrivePicker({
   
   if (!isAuthenticated) {
     return (
-      <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
-        Please connect to {serviceName} first to select specific files.
-      </div>
+      <Card>
+        <CardContent className="flex flex-col items-center text-center p-6">
+          <p className="text-sm text-gray-600">
+            Please connect to {serviceName} first to select specific files.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!accessToken) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center text-center p-6">
+          <p className="text-sm text-gray-600 mb-2">
+            Access token unavailable
+          </p>
+          <p className="text-xs text-amber-600">
+            Try disconnecting and reconnecting your {serviceName} account.
+          </p>
+        </CardContent>
+      </Card>
     )
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h4 className="text-sm font-medium">{serviceName} File Selection</h4>
-          <p className="text-xs text-muted-foreground">
-            Choose specific files to sync instead of syncing everything
-          </p>
-        </div>
-        <Button
-          onClick={openPicker}
-          disabled={!accessToken}
-          size="sm"
-          variant="outline"
-          title={!accessToken ? `Access token required - try disconnecting and reconnecting ${serviceName}` : ""}
-        >
-          {!accessToken ? "No Access Token" : "Select Files"}
-        </Button>
-      </div>
-
-      {/* Status message when access token is missing */}
-      {isAuthenticated && !accessToken && (
-        <div className="text-xs text-amber-600 bg-amber-50 p-3 rounded-md border border-amber-200">
-          <div className="font-medium mb-1">Access token unavailable</div>
-          <div>The file picker requires an access token. Try disconnecting and reconnecting your {serviceName} account.</div>
-        </div>
-      )}
-
-      {/* File Picker Modal */}
-      {isPickerOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+      {!isPickerOpen ? (
+        <Card>
+          <CardContent className="flex flex-col items-center text-center p-6">
+            <p className="text-sm text-gray-600 mb-4">
+              Select files from {serviceName} to ingest.
+            </p>
+            <Button
+              onClick={openPicker}
+              className="bg-black text-white hover:bg-gray-800"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Files
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Select Files from {serviceName}</h3>
-              <Button onClick={closePicker} size="sm" variant="ghost">
-                <X className="h-4 w-4" />
+              <Button onClick={closePicker} size="sm" variant="outline">
+                Done
               </Button>
             </div>
             
-            {/* Breadcrumbs */}
-            <div className="flex items-center space-x-2 mb-4 text-sm">
-              {breadcrumbs.map((crumb, index) => (
-                <div key={crumb.id} className="flex items-center">
-                  {index > 0 && <span className="mx-2 text-gray-400">/</span>}
-                  <button
-                    onClick={() => navigateToBreadcrumb(index)}
-                    className="text-blue-600 hover:underline"
-                  >
+            {/* Navigation */}
+            <div className="flex items-center space-x-2 mb-4">
+              {breadcrumbs.length > 1 && (
+                <Button
+                  onClick={navigateBack}
+                  size="sm"
+                  variant="ghost"
+                  className="p-1"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              )}
+              <div className="text-sm text-gray-600">
+                {breadcrumbs.map((crumb, index) => (
+                  <span key={crumb.id}>
+                    {index > 0 && <span className="mx-1">/</span>}
                     {crumb.name}
-                  </button>
-                </div>
-              ))}
+                  </span>
+                ))}
+              </div>
             </div>
 
             {/* File List */}
-            <div className="flex-1 overflow-y-auto border rounded-md">
+            <div className="border rounded-md max-h-96 overflow-y-auto">
               {isLoading ? (
-                <div className="p-4 text-center text-muted-foreground">Loading...</div>
+                <div className="p-4 text-center text-gray-600">Loading...</div>
               ) : files.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">No files found</div>
+                <div className="p-4 text-center text-gray-600">No files found</div>
               ) : (
                 <div className="divide-y">
                   {files.map((file) => (
@@ -265,27 +254,37 @@ export function OneDrivePicker({
                         </Badge>
                       </div>
                       {selectedFiles.some(f => f.id === file.id) && (
-                        <Badge variant="default" className="text-xs">Selected</Badge>
+                        <Badge className="text-xs bg-green-100 text-green-800">Selected</Badge>
                       )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {selectedFiles.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Selected files ({selectedFiles.length}):
-          </p>
-          <div className="max-h-48 overflow-y-auto space-y-1">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-600">
+              Added files
+            </p>
+            <Button
+              onClick={() => onFileSelected([])}
+              size="sm"
+              variant="ghost"
+              className="text-xs h-6"
+            >
+              Clear all
+            </Button>
+          </div>
+          <div className="max-h-64 overflow-y-auto space-y-1">
             {selectedFiles.map((file) => (
               <div
                 key={file.id}
-                className="flex items-center justify-between p-2 bg-muted/30 rounded-md text-xs"
+                className="flex items-center justify-between p-2 bg-gray-100 rounded-md text-xs"
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   {getFileIcon(file)}
@@ -305,14 +304,6 @@ export function OneDrivePicker({
               </div>
             ))}
           </div>
-          <Button
-            onClick={() => onFileSelected([])}
-            size="sm"
-            variant="ghost"
-            className="text-xs h-6"
-          >
-            Clear all
-          </Button>
         </div>
       )}
     </div>
