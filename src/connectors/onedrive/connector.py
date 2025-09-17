@@ -1,3 +1,4 @@
+from pathlib import Path
 import httpx
 import uuid
 from datetime import datetime, timedelta
@@ -20,10 +21,12 @@ class OneDriveConnector(BaseConnector):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
+        token_file = config.get("token_file") or str(project_root / "onedrive_token.json")
         self.oauth = OneDriveOAuth(
             client_id=self.get_client_id(),
             client_secret=self.get_client_secret(),
-            token_file=config.get("token_file", "onedrive_token.json"),
+            token_file=token_file,
         )
         self.subscription_id = config.get("subscription_id") or config.get(
             "webhook_channel_id"
