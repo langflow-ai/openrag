@@ -35,7 +35,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         />
         <span
           className={cn(
-            "pointer-events-none absolute top-1/2 -translate-y-1/2 pl-px text-placeholder-foreground",
+            "pointer-events-none absolute top-1/2 -translate-y-1/2 pl-px text-placeholder-foreground font-mono",
             icon ? "left-9" : "left-3",
             props.value && "hidden"
           )}
