@@ -1,0 +1,141 @@
+{
+  "data": {
+    "id": "OllamaEmbeddings-4ah5Q",
+    "node": {
+      "base_classes": ["Embeddings"],
+      "beta": false,
+      "conditional_paths": [],
+      "custom_fields": {},
+      "description": "Generate embeddings using Ollama models.",
+      "display_name": "Ollama Embeddings",
+      "documentation": "https://python.langchain.com/docs/integrations/text_embedding/ollama",
+      "edited": false,
+      "field_order": ["model_name", "base_url"],
+      "frozen": false,
+      "icon": "Ollama",
+      "last_updated": "2025-09-17T20:01:59.954Z",
+      "legacy": false,
+      "metadata": {
+        "code_hash": "0db0f99e91e9",
+        "dependencies": {
+          "dependencies": [
+            {
+              "name": "httpx",
+              "version": "0.28.1"
+            },
+            {
+              "name": "langchain_ollama",
+              "version": "0.2.1"
+            },
+            {
+              "name": "langflow",
+              "version": "1.5.0.post2"
+            }
+          ],
+          "total_dependencies": 3
+        },
+        "keywords": ["model", "llm", "language model", "large language model"],
+        "module": "langflow.components.ollama.ollama_embeddings.OllamaEmbeddingsComponent"
+      },
+      "minimized": false,
+      "output_types": [],
+      "outputs": [
+        {
+          "allows_loop": false,
+          "cache": true,
+          "display_name": "Embeddings",
+          "group_outputs": false,
+          "method": "build_embeddings",
+          "name": "embeddings",
+          "options": null,
+          "required_inputs": null,
+          "selected": "Embeddings",
+          "tool_mode": true,
+          "types": ["Embeddings"],
+          "value": "__UNDEFINED__"
+        }
+      ],
+      "pinned": false,
+      "template": {
+        "_type": "Component",
+        "base_url": {
+          "_input_type": "MessageTextInput",
+          "advanced": false,
+          "display_name": "Ollama Base URL",
+          "dynamic": false,
+          "info": "",
+          "input_types": ["Message"],
+          "list": false,
+          "list_add_label": "Add More",
+          "load_from_db": false,
+          "name": "base_url",
+          "placeholder": "",
+          "required": true,
+          "show": true,
+          "title_case": false,
+          "tool_mode": false,
+          "trace_as_input": true,
+          "trace_as_metadata": true,
+          "type": "str",
+          "value": ""
+        },
+        "code": {
+          "advanced": true,
+          "dynamic": true,
+          "fileTypes": [],
+          "file_path": "",
+          "info": "",
+          "list": false,
+          "load_from_db": false,
+          "multiline": true,
+          "name": "code",
+          "password": false,
+          "placeholder": "",
+          "required": true,
+          "show": true,
+          "title_case": false,
+          "type": "code",
+          "value": "from typing import Any\nfrom urllib.parse import urljoin\n\nimport httpx\nfrom langchain_ollama import OllamaEmbeddings\n\nfrom langflow.base.models.model import LCModelComponent\nfrom langflow.base.models.ollama_constants import OLLAMA_EMBEDDING_MODELS, URL_LIST\nfrom langflow.field_typing import Embeddings\nfrom langflow.io import DropdownInput, MessageTextInput, Output\n\nHTTP_STATUS_OK = 200\n\n\nclass OllamaEmbeddingsComponent(LCModelComponent):\n    display_name: str = \"Ollama Embeddings\"\n    description: str = \"Generate embeddings using Ollama models.\"\n    documentation = \"https://python.langchain.com/docs/integrations/text_embedding/ollama\"\n    icon = \"Ollama\"\n    name = \"OllamaEmbeddings\"\n\n    inputs = [\n        DropdownInput(\n            name=\"model_name\",\n            display_name=\"Ollama Model\",\n            value=\"\",\n            options=[],\n            real_time_refresh=True,\n            refresh_button=True,\n            combobox=True,\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"base_url\",\n            display_name=\"Ollama Base URL\",\n            value=\"\",\n            required=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Embeddings\", name=\"embeddings\", method=\"build_embeddings\"),\n    ]\n\n    def build_embeddings(self) -> Embeddings:\n        try:\n            output = OllamaEmbeddings(model=self.model_name, base_url=self.base_url)\n        except Exception as e:\n            msg = (\n                \"Unable to connect to the Ollama API. \",\n                \"Please verify the base URL, ensure the relevant Ollama model is pulled, and try again.\",\n            )\n            raise ValueError(msg) from e\n        return output\n\n    async def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None):\n        if field_name in {\"base_url\", \"model_name\"} and not await self.is_valid_ollama_url(field_value):\n            # Check if any URL in the list is valid\n            valid_url = \"\"\n            for url in URL_LIST:\n                if await self.is_valid_ollama_url(url):\n                    valid_url = url\n                    break\n            build_config[\"base_url\"][\"value\"] = valid_url\n        if field_name in {\"model_name\", \"base_url\", \"tool_model_enabled\"}:\n            if await self.is_valid_ollama_url(self.base_url):\n                build_config[\"model_name\"][\"options\"] = await self.get_model(self.base_url)\n            elif await self.is_valid_ollama_url(build_config[\"base_url\"].get(\"value\", \"\")):\n                build_config[\"model_name\"][\"options\"] = await self.get_model(build_config[\"base_url\"].get(\"value\", \"\"))\n            else:\n                build_config[\"model_name\"][\"options\"] = []\n\n        return build_config\n\n    async def get_model(self, base_url_value: str) -> list[str]:\n        \"\"\"Get the model names from Ollama.\"\"\"\n        model_ids = []\n        try:\n            url = urljoin(base_url_value, \"/api/tags\")\n            async with httpx.AsyncClient() as client:\n                response = await client.get(url)\n                response.raise_for_status()\n                data = response.json()\n\n            model_ids = [model[\"name\"] for model in data.get(\"models\", [])]\n            # this to ensure that not embedding models are included.\n            # not even the base models since models can have 1b 2b etc\n            # handles cases when embeddings models have tags like :latest - etc.\n            model_ids = [\n                model\n                for model in model_ids\n                if any(model.startswith(f\"{embedding_model}\") for embedding_model in OLLAMA_EMBEDDING_MODELS)\n            ]\n\n        except (ImportError, ValueError, httpx.RequestError) as e:\n            msg = \"Could not get model names from Ollama.\"\n            raise ValueError(msg) from e\n\n        return model_ids\n\n    async def is_valid_ollama_url(self, url: str) -> bool:\n        try:\n            async with httpx.AsyncClient() as client:\n                return (await client.get(f\"{url}/api/tags\")).status_code == HTTP_STATUS_OK\n        except httpx.RequestError:\n            return False\n"
+        },
+        "model_name": {
+          "_input_type": "DropdownInput",
+          "advanced": false,
+          "combobox": true,
+          "dialog_inputs": {},
+          "display_name": "Ollama Model",
+          "dynamic": false,
+          "info": "",
+          "name": "model_name",
+          "options": [],
+          "options_metadata": [],
+          "placeholder": "",
+          "real_time_refresh": true,
+          "refresh_button": true,
+          "required": true,
+          "show": true,
+          "title_case": false,
+          "toggle": false,
+          "tool_mode": false,
+          "trace_as_metadata": true,
+          "type": "str",
+          "value": ""
+        }
+      },
+      "tool_mode": false
+    },
+    "showNode": true,
+    "type": "OllamaEmbeddings"
+  },
+  "dragging": false,
+  "id": "OllamaEmbeddings-4ah5Q",
+  "measured": {
+    "height": 286,
+    "width": 320
+  },
+  "position": {
+    "x": 964,
+    "y": 248
+  },
+  "selected": false,
+  "type": "genericNode"
+}
