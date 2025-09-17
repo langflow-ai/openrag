@@ -89,8 +89,8 @@ INDEX_BODY = {
                 "type": "knn_vector",
                 "dimension": VECTOR_DIM,
                 "method": {
-                    "name": "disk_ann",
-                    "engine": "jvector",
+                    "name": "hnsw",
+                    "engine": "lucene",
                     "space_type": "l2",
                     "parameters": {"ef_construction": 100, "m": 16},
                 },
@@ -255,8 +255,8 @@ class AppClients:
         self.opensearch = AsyncOpenSearch(
             hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
             connection_class=AIOHttpConnection,
-            scheme="https",
-            use_ssl=True,
+            scheme="http",
+            use_ssl=False,
             verify_certs=False,
             ssl_assert_fingerprint=None,
             http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),
@@ -381,17 +381,18 @@ class AppClients:
             )
 
     def create_user_opensearch_client(self, jwt_token: str):
-        """Create OpenSearch client with user's JWT token for OIDC auth"""
-        headers = {"Authorization": f"Bearer {jwt_token}"}
+        """Create OpenSearch client with basic auth (JWT not used in current setup)"""
+        # Note: jwt_token parameter kept for compatibility but not used
+        # Using basic auth instead of JWT Bearer tokens
 
         return AsyncOpenSearch(
             hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
             connection_class=AIOHttpConnection,
-            scheme="https",
-            use_ssl=True,
+            scheme="http",
+            use_ssl=False,
             verify_certs=False,
             ssl_assert_fingerprint=None,
-            headers=headers,
+            http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),  # Use basic auth
             http_compress=True,
         )
 
