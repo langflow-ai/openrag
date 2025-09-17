@@ -133,8 +133,8 @@ function SearchPage() {
       },
     },
     {
-      cellRenderer: () => {
-        return <KnowledgeActionsDropdown />;
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+        return <KnowledgeActionsDropdown filename={data?.filename || ""} />;
       },
       cellStyle: {
         alignItems: "center",
