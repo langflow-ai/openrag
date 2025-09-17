@@ -7,6 +7,8 @@ import {
   HardDrive,
   Loader2,
   Search,
+  Trash2,
+  X,
 } from "lucide-react";
 import { AgGridReact, CustomCellRendererProps } from "ag-grid-react";
 import {
@@ -29,6 +31,9 @@ import { ColDef, RowClickedEvent } from "ag-grid-community";
 import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
+import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
+import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import { toast } from "sonner";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -52,6 +57,10 @@ function SearchPage() {
   const [query, setQuery] = useState("");
   const [queryInputText, setQueryInputText] = useState("");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [selectedRows, setSelectedRows] = useState<File[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+
+  const deleteDocumentMutation = useDeleteDocument();
 
   const {
     data = [],
@@ -86,15 +95,21 @@ function SearchPage() {
     {
       field: "filename",
       headerName: "Source",
+      checkboxSelection: true,
+      headerCheckboxSelection: true,
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-2">
             {getSourceIcon(data?.connector_type)}
             <span className="font-medium text-foreground truncate">
               {value}
             </span>
           </div>
         );
+      },
+      cellStyle: {
+        display: "flex",
+        alignItems: "center",
       },
     },
     {
@@ -163,6 +178,52 @@ function SearchPage() {
     suppressMovable: true,
   };
 
+  const onSelectionChanged = useCallback(() => {
+    if (gridRef.current) {
+      const selectedNodes = gridRef.current.api.getSelectedRows();
+      setSelectedRows(selectedNodes);
+    }
+  }, []);
+
+  const handleBulkDelete = async () => {
+    if (selectedRows.length === 0) return;
+
+    try {
+      // Delete each file individually since the API expects one filename at a time
+      const deletePromises = selectedRows.map(row =>
+        deleteDocumentMutation.mutateAsync({ filename: row.filename })
+      );
+
+      await Promise.all(deletePromises);
+
+      toast.success(
+        `Successfully deleted ${selectedRows.length} document${
+          selectedRows.length > 1 ? "s" : ""
+        }`
+      );
+      setSelectedRows([]);
+      setShowBulkDeleteDialog(false);
+
+      // Clear selection in the grid
+      if (gridRef.current) {
+        gridRef.current.api.deselectAll();
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete some documents"
+      );
+    }
+  };
+
+  const clearSelection = useCallback(() => {
+    setSelectedRows([]);
+    if (gridRef.current) {
+      gridRef.current.api.deselectAll();
+    }
+  }, []);
+
   return (
     <div
       className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
@@ -183,6 +244,33 @@ function SearchPage() {
           <h2 className="text-lg font-semibold">Project Knowledge</h2>
           <KnowledgeDropdown variant="button" />
         </div>
+
+        {/* Bulk Actions Bar */}
+        {selectedRows.length > 0 && (
+          <div className="flex items-center justify-between bg-muted/20 rounded-lg border border-border/50 px-4 py-3 mb-6">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium">
+                {selectedRows.length} document
+                {selectedRows.length > 1 ? "s" : ""} selected
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowBulkDeleteDialog(true)}
+                className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Selected
+              </Button>
+              <Button variant="ghost" size="sm" onClick={clearSelection}>
+                <X className="h-4 w-4 mr-2" />
+                Clear Selection
+              </Button>
+            </div>
+          </div>
+        )}
         {/* Search Input Area */}
         <div className="flex-shrink-0 mb-6 lg:max-w-[75%] xl:max-w-[50%]">
           <form onSubmit={handleSearch} className="flex gap-3">
@@ -259,8 +347,15 @@ function SearchPage() {
             loading={isFetching}
             ref={gridRef}
             rowData={fileResults}
+            rowSelection="multiple"
+            suppressRowClickSelection={true}
+            getRowId={params => params.data.filename}
+            onSelectionChanged={onSelectionChanged}
             onRowClicked={(params: RowClickedEvent<File>) => {
-              setSelectedFile(params.data?.filename ?? "");
+              // Only navigate to chunks if no rows are selected and not clicking on checkbox
+              if (selectedRows.length === 0) {
+                setSelectedFile(params.data?.filename ?? "");
+              }
             }}
             noRowsOverlayComponent={() => (
               <div className="text-center">
@@ -276,6 +371,24 @@ function SearchPage() {
           />
         )}
       </div>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={showBulkDeleteDialog}
+        onOpenChange={setShowBulkDeleteDialog}
+        title="Delete Documents"
+        description={`Are you sure you want to delete ${
+          selectedRows.length
+        } document${
+          selectedRows.length > 1 ? "s" : ""
+        }? This will remove all chunks and data associated with these documents. This action cannot be undone.
+
+Documents to be deleted:
+${selectedRows.map(row => `• ${row.filename}`).join("\n")}`}
+        confirmText="Delete All"
+        onConfirm={handleBulkDelete}
+        isLoading={deleteDocumentMutation.isPending}
+      />
     </div>
   );
 }
