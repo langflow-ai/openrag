@@ -43,57 +43,9 @@ export function OneDrivePicker({
     clientId
   })
   const [isPickerOpen, setIsPickerOpen] = useState(false)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [channelId] = useState(() => crypto.randomUUID())
-
   const [autoBaseUrl, setAutoBaseUrl] = useState<string | null>(null)
   const [isLoadingBaseUrl, setIsLoadingBaseUrl] = useState(false)
   const baseUrl = providedBaseUrl || autoBaseUrl
-
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      // Only process messages from Microsoft domains
-      if (!event.origin.includes('.sharepoint.com') && 
-          !event.origin.includes('onedrive.live.com')) {
-        return
-      }
-
-      const message = event.data
-      
-      if (message.type === 'initialize') {
-        // Picker is ready
-        console.log('Picker initialized')
-      } else if (message.type === 'pick') {
-        // Files were selected
-        const files: SelectedFile[] = message.items?.map((item: any) => ({
-          id: item.id,
-          name: item.name,
-          mimeType: item.mimeType,
-          webUrl: item.webUrl,
-          downloadUrl: item.downloadUrl
-        })) || []
-        
-        onFileSelected([...selectedFiles, ...files])
-        closePicker()
-      } else if (message.type === 'cancel') {
-        // User cancelled
-        closePicker()
-      } else if (message.type === 'authenticate') {
-        // Picker needs authentication token
-        if (accessToken && iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage({
-            type: 'token',
-            token: accessToken
-          }, '*')
-        }
-      }
-    }
-
-    if (isPickerOpen) {
-      window.addEventListener('message', handleMessage)
-      return () => window.removeEventListener('message', handleMessage)
-    }
-  }, [isPickerOpen, accessToken, selectedFiles, onFileSelected])
 
   useEffect(() => {
     if (providedBaseUrl || !accessToken || autoBaseUrl) return
@@ -113,48 +65,6 @@ export function OneDrivePicker({
     getBaseUrl()
   }, [accessToken, providedBaseUrl, autoBaseUrl])
 
-  useEffect(() => {
-    const handlePopupMessage = (event: MessageEvent) => {
-      // Only process messages from Microsoft domains
-      if (!event.origin.includes('onedrive.live.com') && 
-          !event.origin.includes('.live.com')) {
-        return
-      }
-
-      const message = event.data
-      console.log('Received message from popup:', message) // Debug log
-      
-      if (message.type === 'pick' && message.items) {
-        // Files were selected
-        const files: SelectedFile[] = message.items.map((item: any) => ({
-          id: item.id,
-          name: item.name,
-          mimeType: item.mimeType,
-          webUrl: item.webUrl,
-          downloadUrl: item.downloadUrl || item['@microsoft.graph.downloadUrl']
-        }))
-        
-        console.log('Selected files:', files) // Debug log
-        onFileSelected([...selectedFiles, ...files])
-        setIsPickerOpen(false)
-        
-        // Close popup if it's still open
-        const popups = window.open('', 'OneDrivePicker')
-        if (popups && !popups.closed) {
-          popups.close()
-        }
-      } else if (message.type === 'cancel') {
-        // User cancelled
-        setIsPickerOpen(false)
-      }
-    }
-
-    if (isPickerOpen) {
-      window.addEventListener('message', handlePopupMessage)
-      return () => window.removeEventListener('message', handlePopupMessage)
-    }
-  }, [isPickerOpen, selectedFiles, onFileSelected])
-
   // Add this loading check before your existing checks:
   if (isLoadingBaseUrl) {
     return (
@@ -166,17 +76,14 @@ export function OneDrivePicker({
     )
   }
 
-  const [popupRef, setPopupRef] = useState<Window | null>(null) // Add this state
-
   const openPicker = () => {
-    if (!accessToken) {
-      console.error('Access token required')
+    if (!accessToken || !clientId) {
+      console.error('Access token and client ID required')
       return
     }
 
     setIsPickerOpen(true)
 
-    // Use OneDrive.js SDK approach instead of form POST
     const script = document.createElement('script')
     script.src = 'https://js.live.net/v7.2/OneDrive.js'
     script.onload = () => {
@@ -192,17 +99,19 @@ export function OneDrivePicker({
             endpointHint: 'api.onedrive.com',
             accessToken: accessToken,
           },
-          success: (files: any) => {
-            console.log('Files selected:', files)
-            const selectedFiles: SelectedFile[] = files.value.map((file: any) => ({
-              id: file.id,
-              name: file.name,
-              mimeType: file.file?.mimeType || 'application/octet-stream',
-              webUrl: file.webUrl,
-              downloadUrl: file['@microsoft.graph.downloadUrl']
-            }))
+          success: (response: any) => {
+            console.log('Raw OneDrive response:', response)
             
-            onFileSelected([...selectedFiles, ...selectedFiles])
+            const newFiles: SelectedFile[] = response.value?.map((item: any, index: number) => ({
+              id: item.id,
+              name: `OneDrive File ${index + 1} (${item.id.slice(-8)})`,
+              mimeType: 'application/pdf',
+              webUrl: item.webUrl || '',
+              downloadUrl: ''
+            })) || []
+            
+            console.log('Mapped files:', newFiles)
+            onFileSelected([...selectedFiles, ...newFiles])
             setIsPickerOpen(false)
           },
           cancel: () => {
@@ -217,21 +126,11 @@ export function OneDrivePicker({
       }
     }
     
-    script.onerror = () => {
-      console.error('Failed to load OneDrive SDK')
-      setIsPickerOpen(false)
-    }
-    
     document.head.appendChild(script)
   }
 
-  // Update closePicker to close the popup
   const closePicker = () => {
     setIsPickerOpen(false)
-    if (popupRef && !popupRef.closed) {
-      popupRef.close()
-    }
-    setPopupRef(null)
   }
 
   const removeFile = (fileId: string) => {
@@ -276,7 +175,13 @@ export function OneDrivePicker({
           <div className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">OneDrive Picker is open in popup</h3>
-              <Button onClick={closePicker} size="sm" variant="outline">
+              <Button 
+                onClick={closePicker} 
+                size="sm" 
+                variant="outline"
+                className="text-black"
+                style={{ color: '#000000' }}
+              >
                 Cancel
               </Button>
             </div>
@@ -326,12 +231,12 @@ export function OneDrivePicker({
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <FileText className="h-4 w-4 text-gray-600" />
-                  <span className="truncate font-medium">{file.name}</span>
-                  {file.mimeType && (
-                    <Badge variant="secondary" className="text-xs px-1 py-0.5 h-auto">
-                      {file.mimeType.split('/').pop() || 'File'}
-                    </Badge>
-                  )}
+                  <span className="truncate font-medium text-black" style={{ color: '#000000' }}>{file.name}</span>
+                    {file.mimeType && (
+                      <Badge variant="secondary" className="text-xs px-1 py-0.5 h-auto">
+                        {file.mimeType.split('/').pop() || 'File'}
+                      </Badge>
+                    )}
                 </div>
                 <Button
                   onClick={() => removeFile(file.id)}
