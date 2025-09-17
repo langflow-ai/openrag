@@ -6,6 +6,8 @@ from config.settings import (
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
     clients,
+    get_openrag_config,
+    config_manager,
 )
 
 logger = get_logger(__name__)
@@ -15,12 +17,34 @@ logger = get_logger(__name__)
 async def get_settings(request, session_manager):
     """Get application settings"""
     try:
+        openrag_config = get_openrag_config()
+
+        provider_config = openrag_config.provider
+        knowledge_config = openrag_config.knowledge
+        agent_config = openrag_config.agent
         # Return public settings that are safe to expose to frontend
         settings = {
             "langflow_url": LANGFLOW_URL,
             "flow_id": LANGFLOW_CHAT_FLOW_ID,
             "ingest_flow_id": LANGFLOW_INGEST_FLOW_ID,
             "langflow_public_url": LANGFLOW_PUBLIC_URL,
+            "edited": openrag_config.edited,
+            # OpenRAG configuration
+            "provider": {
+                "model_provider": provider_config.model_provider,
+                # Note: API key is not exposed for security
+            },
+            "knowledge": {
+                "embedding_model": knowledge_config.embedding_model,
+                "chunk_size": knowledge_config.chunk_size,
+                "chunk_overlap": knowledge_config.chunk_overlap,
+                "ocr": knowledge_config.ocr,
+                "picture_descriptions": knowledge_config.picture_descriptions,
+            },
+            "agent": {
+                "llm_model": agent_config.llm_model,
+                "system_prompt": agent_config.system_prompt,
+            },
         }
 
         # Only expose edit URLs when a public URL is configured
@@ -35,7 +59,7 @@ async def get_settings(request, session_manager):
             )
 
         # Fetch ingestion flow configuration to get actual component defaults
-        if LANGFLOW_INGEST_FLOW_ID:
+        if LANGFLOW_INGEST_FLOW_ID and openrag_config.edited:
             try:
                 response = await clients.langflow_request(
                     "GET",
@@ -45,11 +69,12 @@ async def get_settings(request, session_manager):
                     flow_data = response.json()
 
                     # Extract component defaults (ingestion-specific settings only)
+                    # Start with configured defaults
                     ingestion_defaults = {
-                        "chunkSize": 1000,
-                        "chunkOverlap": 200,
-                        "separator": "\\n",
-                        "embeddingModel": "text-embedding-3-small",
+                        "chunkSize": knowledge_config.chunk_size,
+                        "chunkOverlap": knowledge_config.chunk_overlap,
+                        "separator": "\\n",  # Keep hardcoded for now as it's not in config
+                        "embeddingModel": knowledge_config.embedding_model,
                     }
 
                     if flow_data.get("data", {}).get("nodes"):
@@ -103,4 +128,106 @@ async def get_settings(request, session_manager):
     except Exception as e:
         return JSONResponse(
             {"error": f"Failed to retrieve settings: {str(e)}"}, status_code=500
+        )
+
+
+async def update_settings(request, session_manager):
+    """Update application settings"""
+    try:
+        # Get current configuration
+        current_config = get_openrag_config()
+        
+        # Check if config is marked as edited
+        if not current_config.edited:
+            return JSONResponse(
+                {"error": "Configuration must be marked as edited before updates are allowed"}, 
+                status_code=403
+            )
+        
+        # Parse request body
+        body = await request.json()
+        
+        # Validate allowed fields
+        allowed_fields = {
+            "llm_model", "system_prompt", "ocr", "picture_descriptions", 
+            "chunk_size", "chunk_overlap"
+        }
+        
+        # Check for invalid fields
+        invalid_fields = set(body.keys()) - allowed_fields
+        if invalid_fields:
+            return JSONResponse(
+                {"error": f"Invalid fields: {', '.join(invalid_fields)}. Allowed fields: {', '.join(allowed_fields)}"}, 
+                status_code=400
+            )
+        
+        # Update configuration
+        config_updated = False
+        
+        # Update agent settings
+        if "llm_model" in body:
+            current_config.agent.llm_model = body["llm_model"]
+            config_updated = True
+            
+        if "system_prompt" in body:
+            current_config.agent.system_prompt = body["system_prompt"]
+            config_updated = True
+        
+        # Update knowledge settings
+        if "ocr" in body:
+            if not isinstance(body["ocr"], bool):
+                return JSONResponse(
+                    {"error": "ocr must be a boolean value"}, 
+                    status_code=400
+                )
+            current_config.knowledge.ocr = body["ocr"]
+            config_updated = True
+            
+        if "picture_descriptions" in body:
+            if not isinstance(body["picture_descriptions"], bool):
+                return JSONResponse(
+                    {"error": "picture_descriptions must be a boolean value"}, 
+                    status_code=400
+                )
+            current_config.knowledge.picture_descriptions = body["picture_descriptions"]
+            config_updated = True
+            
+        if "chunk_size" in body:
+            if not isinstance(body["chunk_size"], int) or body["chunk_size"] <= 0:
+                return JSONResponse(
+                    {"error": "chunk_size must be a positive integer"}, 
+                    status_code=400
+                )
+            current_config.knowledge.chunk_size = body["chunk_size"]
+            config_updated = True
+            
+        if "chunk_overlap" in body:
+            if not isinstance(body["chunk_overlap"], int) or body["chunk_overlap"] < 0:
+                return JSONResponse(
+                    {"error": "chunk_overlap must be a non-negative integer"}, 
+                    status_code=400
+                )
+            current_config.knowledge.chunk_overlap = body["chunk_overlap"]
+            config_updated = True
+        
+        if not config_updated:
+            return JSONResponse(
+                {"error": "No valid fields provided for update"}, 
+                status_code=400
+            )
+        
+        # Save the updated configuration
+        if config_manager.save_config_file(current_config):
+            logger.info("Configuration updated successfully", updated_fields=list(body.keys()))
+            return JSONResponse({"message": "Configuration updated successfully"})
+        else:
+            return JSONResponse(
+                {"error": "Failed to save configuration"}, 
+                status_code=500
+            )
+        
+    except Exception as e:
+        logger.error("Failed to update settings", error=str(e))
+        return JSONResponse(
+            {"error": f"Failed to update settings: {str(e)}"}, status_code=500
         )

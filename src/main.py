@@ -890,7 +890,7 @@ async def create_app():
             ),
             methods=["POST"],
         ),
-        # Settings endpoint
+        # Settings endpoints
         Route(
             "/settings",
             require_auth(services["session_manager"])(
@@ -899,6 +899,15 @@ async def create_app():
                 )
             ),
             methods=["GET"],
+        ),
+        Route(
+            "/settings",
+            require_auth(services["session_manager"])(
+                partial(
+                    settings.update_settings, session_manager=services["session_manager"]
+                )
+            ),
+            methods=["POST"],
         ),
         Route(
             "/nudges",

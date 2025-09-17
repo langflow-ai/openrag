@@ -17,6 +17,9 @@ load_dotenv("../")
 
 logger = get_logger(__name__)
 
+# Import configuration manager
+from .config_manager import config_manager
+
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = int(os.getenv("OPENSEARCH_PORT", "9200"))
@@ -398,3 +401,21 @@ class AppClients:
 
 # Global clients instance
 clients = AppClients()
+
+# Configuration access
+def get_openrag_config():
+    """Get current OpenRAG configuration."""
+    return config_manager.get_config()
+
+# Expose configuration settings for backward compatibility and easy access
+def get_provider_config():
+    """Get provider configuration."""
+    return get_openrag_config().provider
+
+def get_knowledge_config():
+    """Get knowledge configuration."""
+    return get_openrag_config().knowledge
+
+def get_agent_config():
+    """Get agent configuration."""
+    return get_openrag_config().agent
