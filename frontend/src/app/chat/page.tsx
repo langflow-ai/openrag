@@ -26,6 +26,7 @@ import { useTask } from "@/contexts/task-context";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import Nudges from "./nudges";
+import { ContentBlockDisplay, ContentBlock } from "@langflow/ui-components";
 
 interface Message {
   role: "user" | "assistant";
@@ -1660,7 +1661,30 @@ function ChatPage() {
   ) => {
     if (!functionCalls || functionCalls.length === 0) return null;
 
+    const contentBlocks: ContentBlock[] = functionCalls.map((fc) => {
+      return {
+        title: fc.name,
+        type: fc.type,
+        contents: [{
+          name: fc.name,
+          type: "tool_use",
+          tool_input: fc.arguments || {},
+          output: fc.result,
+          duration: 1000,
+        }],
+        allow_markdown: true,
+        component: "agent"
+      };
+    });
     return (
+      <>
+      <ContentBlockDisplay 
+        contentBlocks={contentBlocks} 
+        isLoading={false}
+        state={"completed"}
+        chatId={functionCalls[0].id || ""}
+        playgroundPage={undefined}
+      />
       <div className="mb-3 space-y-2">
         {functionCalls.map((fc, index) => {
           const functionCallId = `${messageIndex || "streaming"}-${index}`;
@@ -1671,6 +1695,8 @@ function ChatPage() {
             fc.type && fc.type !== fc.name
               ? `${fc.name} (${fc.type})`
               : fc.name;
+          
+          
 
           return (
             <div
@@ -1882,6 +1908,7 @@ function ChatPage() {
           );
         })}
       </div>
+      </>
     );
   };
 
