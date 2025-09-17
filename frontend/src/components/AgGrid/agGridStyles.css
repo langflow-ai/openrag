@@ -1,0 +1,21 @@
+body {
+  --ag-text-color: hsl(var(--muted-foreground));
+  --ag-background-color: hsl(var(--background));
+  --ag-header-background-color: hsl(var(--background));
+  --ag-header-text-color: hsl(var(--muted-foreground));
+  --ag-header-column-resize-handle-color: hsl(var(--border));
+  --ag-header-row-border: hsl(var(--border));
+  --ag-header-font-weight: var(--font-medium);
+  --ag-row-border: undefined;
+  --ag-row-hover-color: hsl(var(--muted));
+  --ag-wrapper-border: none;
+  --ag-font-family: var(--font-sans);
+
+  .ag-header {
+    border-bottom: 1px solid hsl(var(--border));
+    margin-bottom: 0.5rem;
+  }
+  .ag-row {
+    cursor: pointer;
+  }
+}
