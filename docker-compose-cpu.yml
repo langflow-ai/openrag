@@ -11,6 +11,7 @@ services:
     environment:
       # Caminho do .env no host, montado dentro do container via bind-mount
       APP_ENV_FILE: /project/.env
+      APP_ENV_FILE_EXAMPLE: /project/.env.example
       # precisa bater com "name:" acima
       COMPOSE_PROJECT_NAME: mystack
       PORT: "8080"

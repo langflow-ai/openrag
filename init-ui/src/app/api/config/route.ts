@@ -5,10 +5,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 const ENV_PATH = process.env.APP_ENV_FILE || "/app/.env";
+const ENV_PATH_EXAMPLE =
+  process.env.APP_ENV_FILE_EXAMPLE || "/app/.env.example";
 
 const schema = z.object({
   OPENSEARCH_PASSWORD: z.string().min(1, "Obrigatório"),
-  LANGFLOW_SECRET_KEY: z.string().min(1, "Obrigatório"),
+  LANGFLOW_SECRET_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().min(1, "Obrigatório"),
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
@@ -27,7 +29,7 @@ function setKV(text: string, key: string, value: string) {
   const line = `${key}=${value}`;
   return re.test(text)
     ? text.replace(re, line)
-    : text.replace(/\s*$/, "") + `\n${line}\n`;
+    : `${text.replace(/\s*$/, "")}\n${line}\n`;
 }
 
 export async function POST(req: Request) {
@@ -37,7 +39,9 @@ export async function POST(req: Request) {
   let envText = "";
   try {
     envText = await fs.readFile(ENV_PATH, "utf8");
-  } catch {}
+  } catch {
+    envText = await fs.readFile(ENV_PATH_EXAMPLE, "utf8");
+  }
 
   // grava campos relevantes
   for (const [k, v] of Object.entries(data)) {
