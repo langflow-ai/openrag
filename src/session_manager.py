@@ -191,7 +191,7 @@ class SessionManager:
 
     def get_user_opensearch_client(self, user_id: str, jwt_token: str):
         """Get or create OpenSearch client for user with their JWT"""
-        from config.settings import is_no_auth_mode, clients
+        from config.settings import is_no_auth_mode
 
         logger.debug(
             "get_user_opensearch_client",
@@ -200,13 +200,8 @@ class SessionManager:
             no_auth_mode=is_no_auth_mode(),
         )
 
-        # In no-auth mode, use admin client directly (no JWT tokens)
-        if is_no_auth_mode():
-            logger.debug("Using admin OpenSearch client in no-auth mode")
-            return clients.opensearch
-
-        # In auth mode, create anonymous JWT for OpenSearch DLS if needed
-        if jwt_token is None and user_id in (None, AnonymousUser().user_id):
+        # In no-auth mode, create anonymous JWT for OpenSearch DLS
+        if jwt_token is None and (is_no_auth_mode() or user_id in (None, AnonymousUser().user_id)):
             if not hasattr(self, "_anonymous_jwt"):
                 # Create anonymous JWT token for OpenSearch OIDC
                 logger.debug("Creating anonymous JWT")
@@ -219,6 +214,8 @@ class SessionManager:
 
         # Check if we have a cached client for this user
         if user_id not in self.user_opensearch_clients:
+            from config.settings import clients
+
             self.user_opensearch_clients[user_id] = (
                 clients.create_user_opensearch_client(jwt_token)
             )
