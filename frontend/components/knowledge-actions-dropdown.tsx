@@ -1,12 +1,12 @@
 "use client";
 
-import { EllipsisVertical } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { EllipsisVertical } from "lucide-react";
 import { Button } from "./ui/button";
 
 export function KnowledgeActionsDropdown() {
@@ -18,7 +18,9 @@ export function KnowledgeActionsDropdown() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="right" sideOffset={-10}>
-        <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
+        <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">
+          Delete
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
