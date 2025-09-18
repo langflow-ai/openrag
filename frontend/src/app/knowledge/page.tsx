@@ -38,15 +38,21 @@ import { toast } from "sonner";
 function getSourceIcon(connectorType?: string) {
   switch (connectorType) {
     case "google_drive":
-      return <SiGoogledrive className="h-4 w-4 text-foreground" />;
+      return (
+        <SiGoogledrive className="h-4 w-4 text-foreground flex-shrink-0" />
+      );
     case "onedrive":
-      return <TbBrandOnedrive className="h-4 w-4 text-foreground" />;
+      return (
+        <TbBrandOnedrive className="h-4 w-4 text-foreground flex-shrink-0" />
+      );
     case "sharepoint":
-      return <Building2 className="h-4 w-4 text-foreground" />;
+      return <Building2 className="h-4 w-4 text-foreground flex-shrink-0" />;
     case "s3":
-      return <Cloud className="h-4 w-4 text-foreground" />;
+      return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
     default:
-      return <HardDrive className="h-4 w-4 text-muted-foreground" />;
+      return (
+        <HardDrive className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+      );
   }
 }
 
@@ -96,70 +102,51 @@ function SearchPage() {
       headerName: "Source",
       checkboxSelection: true,
       headerCheckboxSelection: true,
-      flex: 3,
-      minWidth: 200,
+      initialFlex: 2,
+      minWidth: 220,
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
         return (
-          <div className="flex items-center gap-2 ml-2 w-full">
-            <div
-              className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
-              onClick={e => {
-                e.preventDefault();
-                e.stopPropagation();
-                router.push(
-                  `/knowledge/chunks?filename=${encodeURIComponent(
-                    data?.filename ?? ""
-                  )}`
-                );
-              }}
-            >
-              {getSourceIcon(data?.connector_type)}
-              <span className="font-medium text-foreground truncate">
-                {value}
-              </span>
-            </div>
+          <div
+            className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
+            onClick={() => {
+              router.push(
+                `/knowledge/chunks?filename=${encodeURIComponent(
+                  data?.filename ?? ""
+                )}`
+              );
+            }}
+          >
+            {getSourceIcon(data?.connector_type)}
+            <span className="font-medium text-foreground truncate">
+              {value}
+            </span>
           </div>
         );
-      },
-      cellStyle: {
-        display: "flex",
-        alignItems: "center",
       },
     },
     {
       field: "size",
       headerName: "Size",
-      flex: 2,
-      minWidth: 80,
-      valueFormatter: params =>
+      valueFormatter: (params) =>
         params.value ? `${Math.round(params.value / 1024)} KB` : "-",
     },
     {
       field: "mimetype",
       headerName: "Type",
-      flex: 2,
-      minWidth: 80,
     },
     {
       field: "owner",
       headerName: "Owner",
-      flex: 2,
-      minWidth: 120,
-      valueFormatter: params =>
+      valueFormatter: (params) =>
         params.data?.owner_name || params.data?.owner_email || "—",
     },
-
     {
       field: "chunkCount",
       headerName: "Chunks",
-      flex: 2,
-      minWidth: 70,
     },
     {
       field: "avgScore",
       headerName: "Avg score",
-      flex: 2,
-      minWidth: 90,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
           <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
@@ -185,17 +172,15 @@ function SearchPage() {
       maxWidth: 60,
       resizable: false,
       sortable: false,
-      flex: 0,
+      initialFlex: 0,
     },
   ]);
 
   const defaultColDef: ColDef<File> = {
-    cellStyle: () => ({
-      display: "flex",
-      alignItems: "center",
-    }),
     resizable: false,
     suppressMovable: true,
+    initialFlex: 1,
+    minWidth: 100,
   };
 
   const onSelectionChanged = useCallback(() => {
@@ -210,7 +195,7 @@ function SearchPage() {
 
     try {
       // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map(row =>
+      const deletePromises = selectedRows.map((row) =>
         deleteDocumentMutation.mutateAsync({ filename: row.filename })
       );
 
@@ -267,7 +252,7 @@ function SearchPage() {
               type="text"
               defaultValue={parsedFilterData?.query}
               value={queryInputText}
-              onChange={e => setQueryInputText(e.target.value)}
+              onChange={(e) => setQueryInputText(e.target.value)}
               placeholder="Search your documents..."
               className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring"
             />
@@ -312,7 +297,7 @@ function SearchPage() {
           rowSelection="multiple"
           rowMultiSelectWithClick={false}
           suppressRowClickSelection={true}
-          getRowId={params => params.data.filename}
+          getRowId={(params) => params.data.filename}
           onSelectionChanged={onSelectionChanged}
           suppressHorizontalScroll={false}
           noRowsOverlayComponent={() => (
@@ -341,7 +326,7 @@ function SearchPage() {
         }? This will remove all chunks and data associated with these documents. This action cannot be undone.
 
 Documents to be deleted:
-${selectedRows.map(row => `• ${row.filename}`).join("\n")}`}
+${selectedRows.map((row) => `• ${row.filename}`).join("\n")}`}
         confirmText="Delete All"
         onConfirm={handleBulkDelete}
         isLoading={deleteDocumentMutation.isPending}
