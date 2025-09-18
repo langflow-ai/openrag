@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { type File, useGetSearchQuery } from "../api/queries/useGetSearchQuery";
-import { ColDef, RowClickedEvent } from "ag-grid-community";
+import { ColDef } from "ag-grid-community";
 import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
@@ -99,10 +99,18 @@ function SearchPage() {
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
         return (
           <div className="flex items-center gap-2 ml-2">
-            {getSourceIcon(data?.connector_type)}
-            <span className="font-medium text-foreground truncate">
-              {value}
-            </span>
+            <div
+              className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
+              onClick={e => {
+                e.stopPropagation();
+                setSelectedFile(data?.filename ?? "");
+              }}
+            >
+              {getSourceIcon(data?.connector_type)}
+              <span className="font-medium text-foreground truncate">
+                {value}
+              </span>
+            </div>
           </div>
         );
       },
@@ -331,15 +339,10 @@ function SearchPage() {
             ref={gridRef}
             rowData={fileResults}
             rowSelection="multiple"
-            suppressRowClickSelection={true}
+            rowMultiSelectWithClick={true}
+            suppressRowClickSelection={false}
             getRowId={params => params.data.filename}
             onSelectionChanged={onSelectionChanged}
-            onRowClicked={(params: RowClickedEvent<File>) => {
-              // Only navigate to chunks if no rows are selected and not clicking on checkbox
-              if (selectedRows.length === 0) {
-                setSelectedFile(params.data?.filename ?? "");
-              }
-            }}
             noRowsOverlayComponent={() => (
               <div className="text-center">
                 <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
