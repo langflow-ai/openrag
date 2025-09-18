@@ -3,7 +3,6 @@
 import {
   Building2,
   Cloud,
-  FileText,
   HardDrive,
   Loader2,
   Search,
@@ -17,6 +16,7 @@ import {
   useState,
   useRef,
 } from "react";
+import { useRouter } from "next/navigation";
 import { SiGoogledrive } from "react-icons/si";
 import { TbBrandOnedrive } from "react-icons/tb";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
@@ -51,11 +51,11 @@ function getSourceIcon(connectorType?: string) {
 }
 
 function SearchPage() {
+  const router = useRouter();
   const { isMenuOpen } = useTask();
   const { parsedFilterData, isPanelOpen } = useKnowledgeFilter();
   const [query, setQuery] = useState("");
   const [queryInputText, setQueryInputText] = useState("");
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
@@ -104,8 +104,13 @@ function SearchPage() {
             <div
               className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
               onClick={e => {
+                e.preventDefault();
                 e.stopPropagation();
-                setSelectedFile(data?.filename ?? "");
+                router.push(
+                  `/knowledge/chunks?filename=${encodeURIComponent(
+                    data?.filename ?? ""
+                  )}`
+                );
               }}
             >
               {getSourceIcon(data?.connector_type)}
@@ -147,13 +152,13 @@ function SearchPage() {
     {
       field: "chunkCount",
       headerName: "Chunks",
-      flex: 1,
+      flex: 2,
       minWidth: 70,
     },
     {
       field: "avgScore",
       headerName: "Avg score",
-      flex: 1,
+      flex: 2,
       minWidth: 90,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
@@ -297,78 +302,31 @@ function SearchPage() {
             </Button>
           </form>
         </div>
-        {selectedFile ? (
-          // Show chunks for selected file
-          <>
-            <div className="flex items-center gap-2 mb-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedFile(null)}
-              >
-                ← Back to files
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Chunks from {selectedFile}
-              </span>
+        <AgGridReact
+          className="w-full overflow-auto"
+          columnDefs={columnDefs}
+          defaultColDef={defaultColDef}
+          loading={isFetching}
+          ref={gridRef}
+          rowData={fileResults}
+          rowSelection="multiple"
+          rowMultiSelectWithClick={false}
+          suppressRowClickSelection={true}
+          getRowId={params => params.data.filename}
+          onSelectionChanged={onSelectionChanged}
+          suppressHorizontalScroll={false}
+          noRowsOverlayComponent={() => (
+            <div className="text-center">
+              <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+              <p className="text-lg text-muted-foreground">
+                No documents found
+              </p>
+              <p className="text-sm text-muted-foreground/70 mt-2">
+                Try adjusting your search terms
+              </p>
             </div>
-            {fileResults
-              .filter(file => file.filename === selectedFile)
-              .flatMap(file => file.chunks)
-              .map((chunk, index) => (
-                <div
-                  key={chunk.filename + index}
-                  className="bg-muted/20 rounded-lg p-4 border border-border/50"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-blue-400" />
-                      <span className="font-medium truncate">
-                        {chunk.filename}
-                      </span>
-                    </div>
-                    <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-                      {chunk.score.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="text-sm text-muted-foreground mb-2">
-                    {chunk.mimetype} • Page {chunk.page}
-                  </div>
-                  <p className="text-sm text-foreground/90 leading-relaxed">
-                    {chunk.text}
-                  </p>
-                </div>
-              ))}
-          </>
-        ) : (
-          // <div className="w-full overflow-auto" style={{ maxWidth: "100%" }}>
-          <AgGridReact
-            // className="w-full overflow-auto"
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            loading={isFetching}
-            ref={gridRef}
-            rowData={fileResults}
-            rowSelection="multiple"
-            rowMultiSelectWithClick={true}
-            suppressRowClickSelection={false}
-            getRowId={params => params.data.filename}
-            onSelectionChanged={onSelectionChanged}
-            suppressHorizontalScroll={false}
-            noRowsOverlayComponent={() => (
-              <div className="text-center">
-                <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                <p className="text-lg text-muted-foreground">
-                  No documents found
-                </p>
-                <p className="text-sm text-muted-foreground/70 mt-2">
-                  Try adjusting your search terms
-                </p>
-              </div>
-            )}
-          />
-          // </div>
-        )}
+          )}
+        />
       </div>
 
       {/* Bulk Delete Confirmation Dialog */}
