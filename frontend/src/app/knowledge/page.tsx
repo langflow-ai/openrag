@@ -96,9 +96,11 @@ function SearchPage() {
       headerName: "Source",
       checkboxSelection: true,
       headerCheckboxSelection: true,
+      flex: 3,
+      minWidth: 200,
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
         return (
-          <div className="flex items-center gap-2 ml-2">
+          <div className="flex items-center gap-2 ml-2 w-full">
             <div
               className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
               onClick={e => {
@@ -122,30 +124,37 @@ function SearchPage() {
     {
       field: "size",
       headerName: "Size",
+      flex: 2,
+      minWidth: 80,
       valueFormatter: params =>
         params.value ? `${Math.round(params.value / 1024)} KB` : "-",
     },
     {
       field: "mimetype",
       headerName: "Type",
+      flex: 2,
+      minWidth: 80,
     },
     {
       field: "owner",
       headerName: "Owner",
+      flex: 2,
+      minWidth: 120,
       valueFormatter: params =>
-        params.value ||
-        params.data?.owner_name ||
-        params.data?.owner_email ||
-        "—",
+        params.data?.owner_name || params.data?.owner_email || "—",
     },
 
     {
       field: "chunkCount",
       headerName: "Chunks",
+      flex: 1,
+      minWidth: 70,
     },
     {
       field: "avgScore",
       headerName: "Avg score",
+      flex: 1,
+      minWidth: 90,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
           <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
@@ -166,11 +175,12 @@ function SearchPage() {
       },
       colId: "actions",
       filter: false,
-      maxWidth: 60,
+      width: 60,
       minWidth: 60,
+      maxWidth: 60,
       resizable: false,
       sortable: false,
-      initialFlex: 0,
+      flex: 0,
     },
   ]);
 
@@ -179,8 +189,6 @@ function SearchPage() {
       display: "flex",
       alignItems: "center",
     }),
-    initialFlex: 1,
-    minWidth: 100,
     resizable: false,
     suppressMovable: true,
   };
@@ -269,14 +277,15 @@ function SearchPage() {
                 <Search className="h-4 w-4" />
               )}
             </Button>
-            <Button
+            {/* //TODO: Implement sync button */}
+            {/* <Button
               type="button"
               variant="outline"
               className="rounded-lg flex-shrink-0"
               onClick={() => alert("Not implemented")}
             >
               Sync
-            </Button>
+            </Button> */}
             <Button
               type="button"
               variant="destructive"
@@ -332,7 +341,9 @@ function SearchPage() {
               ))}
           </>
         ) : (
+          // <div className="w-full overflow-auto" style={{ maxWidth: "100%" }}>
           <AgGridReact
+            // className="w-full overflow-auto"
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             loading={isFetching}
@@ -343,6 +354,7 @@ function SearchPage() {
             suppressRowClickSelection={false}
             getRowId={params => params.data.filename}
             onSelectionChanged={onSelectionChanged}
+            suppressHorizontalScroll={false}
             noRowsOverlayComponent={() => (
               <div className="text-center">
                 <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
@@ -355,6 +367,7 @@ function SearchPage() {
               </div>
             )}
           />
+          // </div>
         )}
       </div>
 
