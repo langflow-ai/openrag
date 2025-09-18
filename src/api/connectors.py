@@ -31,7 +31,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
             max_files=max_files,
         )
         user = request.state.user
-        jwt_token = request.state.jwt_token
+        jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
 
         # Get all active connections for this connector type and user
         connections = await connector_service.connection_manager.list_connections(
