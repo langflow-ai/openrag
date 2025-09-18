@@ -57,6 +57,7 @@ from config.settings import (
     is_no_auth_mode,
 )
 from services.auth_service import AuthService
+from services.langflow_mcp_service import LangflowMCPService
 from services.chat_service import ChatService
 
 # Services
@@ -437,7 +438,11 @@ async def initialize_services():
     )
 
     # Initialize auth service
-    auth_service = AuthService(session_manager, connector_service)
+    auth_service = AuthService(
+        session_manager,
+        connector_service,
+        langflow_mcp_service=LangflowMCPService(),
+    )
 
     # Load persisted connector connections at startup so webhooks and syncs
     # can resolve existing subscriptions immediately after server boot
