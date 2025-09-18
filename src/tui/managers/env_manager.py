@@ -79,6 +79,15 @@ class EnvManager:
         """Generate a secure secret key for Langflow."""
         return secrets.token_urlsafe(32)
 
+    def _quote_env_value(self, value: str) -> str:
+        """Single quote all environment variable values for consistency."""
+        if not value:
+            return "''"
+
+        # Escape any existing single quotes by replacing ' with '\''
+        escaped_value = value.replace("'", "'\\''")
+        return f"'{escaped_value}'"
+
     def load_existing_env(self) -> bool:
         """Load existing .env file if it exists."""
         if not self.env_file.exists():
@@ -237,36 +246,36 @@ class EnvManager:
 
                 # Core settings
                 f.write("# Core settings\n")
-                f.write(f"LANGFLOW_SECRET_KEY={self.config.langflow_secret_key}\n")
-                f.write(f"LANGFLOW_SUPERUSER={self.config.langflow_superuser}\n")
+                f.write(f"LANGFLOW_SECRET_KEY={self._quote_env_value(self.config.langflow_secret_key)}\n")
+                f.write(f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser)}\n")
                 f.write(
-                    f"LANGFLOW_SUPERUSER_PASSWORD={self.config.langflow_superuser_password}\n"
+                    f"LANGFLOW_SUPERUSER_PASSWORD={self._quote_env_value(self.config.langflow_superuser_password)}\n"
                 )
-                f.write(f"LANGFLOW_CHAT_FLOW_ID={self.config.langflow_chat_flow_id}\n")
+                f.write(f"LANGFLOW_CHAT_FLOW_ID={self._quote_env_value(self.config.langflow_chat_flow_id)}\n")
                 f.write(
-                    f"LANGFLOW_INGEST_FLOW_ID={self.config.langflow_ingest_flow_id}\n"
+                    f"LANGFLOW_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_ingest_flow_id)}\n"
                 )
-                f.write(f"NUDGES_FLOW_ID={self.config.nudges_flow_id}\n")
-                f.write(f"OPENSEARCH_PASSWORD={self.config.opensearch_password}\n")
-                f.write(f"OPENAI_API_KEY={self.config.openai_api_key}\n")
+                f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
+                f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
+                f.write(f"OPENAI_API_KEY={self._quote_env_value(self.config.openai_api_key)}\n")
                 f.write(
-                    f"OPENRAG_DOCUMENTS_PATHS={self.config.openrag_documents_paths}\n"
+                    f"OPENRAG_DOCUMENTS_PATHS={self._quote_env_value(self.config.openrag_documents_paths)}\n"
                 )
                 f.write("\n")
 
                 # Ingestion settings
                 f.write("# Ingestion settings\n")
-                f.write(f"DISABLE_INGEST_WITH_LANGFLOW={self.config.disable_ingest_with_langflow}\n")
+                f.write(f"DISABLE_INGEST_WITH_LANGFLOW={self._quote_env_value(self.config.disable_ingest_with_langflow)}\n")
                 f.write("\n")
 
                 # Langflow auth settings
                 f.write("# Langflow auth settings\n")
-                f.write(f"LANGFLOW_AUTO_LOGIN={self.config.langflow_auto_login}\n")
+                f.write(f"LANGFLOW_AUTO_LOGIN={self._quote_env_value(self.config.langflow_auto_login)}\n")
                 f.write(
-                    f"LANGFLOW_NEW_USER_IS_ACTIVE={self.config.langflow_new_user_is_active}\n"
+                    f"LANGFLOW_NEW_USER_IS_ACTIVE={self._quote_env_value(self.config.langflow_new_user_is_active)}\n"
                 )
                 f.write(
-                    f"LANGFLOW_ENABLE_SUPERUSER_CLI={self.config.langflow_enable_superuser_cli}\n"
+                    f"LANGFLOW_ENABLE_SUPERUSER_CLI={self._quote_env_value(self.config.langflow_enable_superuser_cli)}\n"
                 )
                 f.write("\n")
 
@@ -277,10 +286,10 @@ class EnvManager:
                 ):
                     f.write("# Google OAuth settings\n")
                     f.write(
-                        f"GOOGLE_OAUTH_CLIENT_ID={self.config.google_oauth_client_id}\n"
+                        f"GOOGLE_OAUTH_CLIENT_ID={self._quote_env_value(self.config.google_oauth_client_id)}\n"
                     )
                     f.write(
-                        f"GOOGLE_OAUTH_CLIENT_SECRET={self.config.google_oauth_client_secret}\n"
+                        f"GOOGLE_OAUTH_CLIENT_SECRET={self._quote_env_value(self.config.google_oauth_client_secret)}\n"
                     )
                     f.write("\n")
 
@@ -290,10 +299,10 @@ class EnvManager:
                 ):
                     f.write("# Microsoft Graph OAuth settings\n")
                     f.write(
-                        f"MICROSOFT_GRAPH_OAUTH_CLIENT_ID={self.config.microsoft_graph_oauth_client_id}\n"
+                        f"MICROSOFT_GRAPH_OAUTH_CLIENT_ID={self._quote_env_value(self.config.microsoft_graph_oauth_client_id)}\n"
                     )
                     f.write(
-                        f"MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET={self.config.microsoft_graph_oauth_client_secret}\n"
+                        f"MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET={self._quote_env_value(self.config.microsoft_graph_oauth_client_secret)}\n"
                     )
                     f.write("\n")
 
@@ -311,7 +320,7 @@ class EnvManager:
                         if not optional_written:
                             f.write("# Optional settings\n")
                             optional_written = True
-                        f.write(f"{var_name}={var_value}\n")
+                        f.write(f"{var_name}={self._quote_env_value(var_value)}\n")
 
                 if optional_written:
                     f.write("\n")
