@@ -37,6 +37,9 @@ openrag = "tui.main:run_tui"
 [tool.uv]
 package = true
 
+[tool.setuptools.package-data]
+"*" = ["docker-compose*.yml"]
+
 [tool.uv.sources]
 torch = [
   { index = "pytorch-cu128", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
