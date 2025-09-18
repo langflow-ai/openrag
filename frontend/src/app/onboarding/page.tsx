@@ -28,6 +28,8 @@ function OnboardingPage() {
   const { isAuthenticated } = useAuth();
 
   const [modelProvider, setModelProvider] = useState<string>("openai");
+
+  const [sampleDataset, setSampleDataset] = useState<boolean>(false);
   // Fetch settings using React Query
   const { data: settingsDb = {} } = useGetSettingsQuery({
     enabled: isAuthenticated,
@@ -64,7 +66,7 @@ function OnboardingPage() {
         backgroundPosition: "center",
       }}
     >
-      <div className="flex flex-col items-center gap-5 min-h-[480px] w-full">
+      <div className="flex flex-col items-center gap-5 min-h-[550px] w-full">
         <div className="flex flex-col items-center justify-center gap-4">
           <h1 className="text-2xl font-medium font-chivo">
             Configure your models
@@ -94,15 +96,24 @@ function OnboardingPage() {
                 <OpenAIOnboarding
                   settings={settings}
                   setSettings={setSettings}
+                  sampleDataset={sampleDataset}
+                  setSampleDataset={setSampleDataset}
                 />
               </TabsContent>
               <TabsContent value="watsonx">
-                <IBMOnboarding settings={settings} setSettings={setSettings} />
+                <IBMOnboarding
+                  settings={settings}
+                  setSettings={setSettings}
+                  sampleDataset={sampleDataset}
+                  setSampleDataset={setSampleDataset}
+                />
               </TabsContent>
               <TabsContent value="ollama">
                 <OllamaOnboarding
                   settings={settings}
                   setSettings={setSettings}
+                  sampleDataset={sampleDataset}
+                  setSampleDataset={setSampleDataset}
                 />
               </TabsContent>
             </CardContent>

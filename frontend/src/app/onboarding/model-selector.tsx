@@ -35,6 +35,7 @@ export function ModelSelector({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
+        {/** biome-ignore lint/a11y/useSemanticElements: has to be a Button */}
         <Button
           variant="outline"
           role="combobox"
