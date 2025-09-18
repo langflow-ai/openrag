@@ -10,10 +10,11 @@ from typing import List, Optional
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Button, Label, Log
+from textual.widgets import Header, Footer, Static, Button, Log
 from rich.text import Text
 
 from ..managers.container_manager import ContainerManager
+from ..utils.clipboard import copy_text_to_clipboard
 
 
 class DiagnosticsScreen(Screen):
@@ -117,67 +118,13 @@ class DiagnosticsScreen(Screen):
             content = "\n".join(str(line) for line in log.lines)
             status = self.query_one("#copy-status", Static)
 
-            # Try to use pyperclip if available
-            try:
-                import pyperclip
-
-                pyperclip.copy(content)
-                self.notify("Copied to clipboard", severity="information")
-                status.update("✓ Content copied to clipboard")
-                self._hide_status_after_delay(status)
-                return
-            except ImportError:
-                pass
-
-            # Fallback to platform-specific clipboard commands
-            import subprocess
-            import platform
-
-            system = platform.system()
-            if system == "Darwin":  # macOS
-                process = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE, text=True)
-                process.communicate(input=content)
-                self.notify("Copied to clipboard", severity="information")
-                status.update("✓ Content copied to clipboard")
-            elif system == "Windows":
-                process = subprocess.Popen(["clip"], stdin=subprocess.PIPE, text=True)
-                process.communicate(input=content)
-                self.notify("Copied to clipboard", severity="information")
-                status.update("✓ Content copied to clipboard")
-            elif system == "Linux":
-                # Try xclip first, then xsel
-                try:
-                    process = subprocess.Popen(
-                        ["xclip", "-selection", "clipboard"],
-                        stdin=subprocess.PIPE,
-                        text=True,
-                    )
-                    process.communicate(input=content)
-                    self.notify("Copied to clipboard", severity="information")
-                    status.update("✓ Content copied to clipboard")
-                except FileNotFoundError:
-                    try:
-                        process = subprocess.Popen(
-                            ["xsel", "--clipboard", "--input"],
-                            stdin=subprocess.PIPE,
-                            text=True,
-                        )
-                        process.communicate(input=content)
-                        self.notify("Copied to clipboard", severity="information")
-                        status.update("✓ Content copied to clipboard")
-                    except FileNotFoundError:
-                        self.notify(
-                            "Clipboard utilities not found. Install xclip or xsel.",
-                            severity="error",
-                        )
-                        status.update(
-                            "❌ Clipboard utilities not found. Install xclip or xsel."
-                        )
+            success, message = copy_text_to_clipboard(content)
+            if success:
+                self.notify(message, severity="information")
+                status.update(f"✓ {message}")
             else:
-                self.notify(
-                    "Clipboard not supported on this platform", severity="error"
-                )
-                status.update("❌ Clipboard not supported on this platform")
+                self.notify(message, severity="error")
+                status.update(f"❌ {message}")
 
             self._hide_status_after_delay(status)
         except Exception as e:
