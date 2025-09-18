@@ -10,10 +10,31 @@ from rich.text import Text
 
 from ..managers.container_manager import ContainerManager
 from ..managers.docling_manager import DoclingManager
+from ..utils.clipboard import copy_text_to_clipboard
 
 
 class LogsScreen(Screen):
     """Logs viewing and monitoring screen."""
+
+    CSS = """
+    #main-container {
+        height: 1fr;
+    }
+
+    #logs-content {
+        height: 1fr;
+        padding: 1 1 0 1;
+    }
+
+    #logs-area {
+        height: 1fr;
+        min-height: 30;
+    }
+
+    #logs-button-row {
+        padding: 1 0 0 0;
+    }
+    """
 
     BINDINGS = [
         ("escape", "back", "Back"),
@@ -27,6 +48,7 @@ class LogsScreen(Screen):
         ("k", "scroll_up", "Scroll Up"),
         ("ctrl+u", "scroll_page_up", "Page Up"),
         ("ctrl+f", "scroll_page_down", "Page Down"),
+        ("ctrl+c", "copy_logs", "Copy Logs"),
     ]
 
     def __init__(self, initial_service: str = "openrag-backend"):
@@ -51,17 +73,17 @@ class LogsScreen(Screen):
         self.following = False
         self.follow_task = None
         self.auto_scroll = True
+        self._status_task = None
 
     def compose(self) -> ComposeResult:
         """Create the logs screen layout."""
-        yield Container(
-            Vertical(
-                Static(f"Service Logs: {self.current_service}", id="logs-title"),
-                self._create_logs_area(),
-                id="logs-content",
-            ),
-            id="main-container",
-        )
+        with Container(id="main-container"):
+            with Vertical(id="logs-content"):
+                yield Static(f"Service Logs: {self.current_service}", id="logs-title")
+                yield self._create_logs_area()
+                with Horizontal(id="logs-button-row"):
+                    yield Button("Copy to Clipboard", variant="default", id="copy-btn")
+                    yield Static("", id="copy-status", classes="copy-indicator")
         yield Footer()
 
     def _create_logs_area(self) -> TextArea:
@@ -108,6 +130,9 @@ class LogsScreen(Screen):
     def on_unmount(self) -> None:
         """Clean up when unmounting."""
         self._stop_following()
+        if self._status_task:
+            self._status_task.cancel()
+            self._status_task = None
 
     async def _load_logs(self, lines: int = 200) -> None:
         """Load recent logs for the current service."""
@@ -235,6 +260,10 @@ class LogsScreen(Screen):
         """Clear the logs area."""
         self.logs_area.text = ""
 
+    def action_copy_logs(self) -> None:
+        """Copy log content to the clipboard."""
+        self._copy_logs_to_clipboard()
+
     def action_toggle_auto_scroll(self) -> None:
         """Toggle auto scroll on/off."""
         self.auto_scroll = not self.auto_scroll
@@ -284,3 +313,44 @@ class LogsScreen(Screen):
         """Go back to previous screen."""
         self._stop_following()
         self.app.pop_screen()
+
+    def _copy_logs_to_clipboard(self) -> None:
+        """Copy the current log buffer to the clipboard."""
+        if not self.logs_area:
+            return
+
+        content = self.logs_area.text or ""
+        status_widget = self.query_one("#copy-status", Static)
+
+        if not content.strip():
+            message = "No logs to copy"
+            self.notify(message, severity="warning")
+            status_widget.update(Text("⚠ No logs to copy", style="bold yellow"))
+            self._schedule_status_clear(status_widget)
+            return
+
+        success, message = copy_text_to_clipboard(content)
+        self.notify(message, severity="information" if success else "error")
+        prefix = "✓" if success else "❌"
+        style = "bold green" if success else "bold red"
+        status_widget.update(Text(f"{prefix} {message}", style=style))
+        self._schedule_status_clear(status_widget)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        if event.button.id == "copy-btn":
+            self._copy_logs_to_clipboard()
+
+    def _schedule_status_clear(self, widget: Static, delay: float = 3.0) -> None:
+        """Clear the status message after a short delay."""
+        if self._status_task:
+            self._status_task.cancel()
+
+        async def _clear() -> None:
+            try:
+                await asyncio.sleep(delay)
+                widget.update("")
+            except asyncio.CancelledError:
+                pass
+
+        self._status_task = asyncio.create_task(_clear())
