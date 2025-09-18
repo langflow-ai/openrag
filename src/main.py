@@ -30,6 +30,7 @@ from api import (
     auth,
     chat,
     connectors,
+    documents,
     flows,
     knowledge_filter,
     langflow_files,
@@ -876,6 +877,18 @@ async def create_app():
                 session_manager=services["session_manager"],
             ),
             methods=["POST", "GET"],
+        ),
+        # Document endpoints
+        Route(
+            "/documents/delete-by-filename",
+            require_auth(services["session_manager"])(
+                partial(
+                    documents.delete_documents_by_filename,
+                    document_service=services["document_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
         ),
         # OIDC endpoints
         Route(
