@@ -2,7 +2,9 @@
 
 import { Loader2, PlugZap, RefreshCw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Badge } from "@/components/ui/badge";
@@ -17,11 +19,17 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useTask } from "@/contexts/task-context";
-import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
+import { useDebounce } from "@/lib/debounce";
 
 interface GoogleDriveFile {
   id: string;
@@ -55,11 +63,11 @@ interface Connector {
 }
 
 interface SyncResult {
-	processed?: number;
-	added?: number;
-	errors?: number;
-	skipped?: number;
-	total?: number;
+  processed?: number;
+  added?: number;
+  errors?: number;
+  skipped?: number;
+  total?: number;
 }
 
 interface Connection {
@@ -84,30 +92,13 @@ function KnowledgeSourcesPage() {
   const [maxFiles, setMaxFiles] = useState<number>(10);
   const [syncAllFiles, setSyncAllFiles] = useState<boolean>(false);
 
-  // Settings state
-  // Note: backend internal Langflow URL is not needed on the frontend
-  const [chatFlowId, setChatFlowId] = useState<string>(
-    "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
-  );
-  const [ingestFlowId, setIngestFlowId] = useState<string>(
-    "5488df7c-b93f-4f87-a446-b67028bc0813",
-  );
-  const [langflowEditUrl, setLangflowEditUrl] = useState<string>("");
-  const [langflowIngestEditUrl, setLangflowIngestEditUrl] = useState<string>("");
-  const [publicLangflowUrl, setPublicLangflowUrl] = useState<string>("");
-
-  // Agent Behavior state
-  const [selectedModel, setSelectedModel] = useState<string>("gpt-4");
+  // Only keep systemPrompt state since it needs manual save button
   const [systemPrompt, setSystemPrompt] = useState<string>("");
 
-  // Knowledge Ingest state
-  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState<string>("text-embedding-ada-002");
-  const [chunkSize, setChunkSize] = useState<number>(1000);
-  const [chunkOverlap, setChunkOverlap] = useState<number>(200);
-
-  // Debounce refs for chunk settings
-  const chunkSizeTimeoutRef = useRef<NodeJS.Timeout>();
-  const chunkOverlapTimeoutRef = useRef<NodeJS.Timeout>();
+  // Fetch settings using React Query
+  const { data: settings = {} } = useGetSettingsQuery({
+    enabled: isAuthenticated,
+  });
 
   // Mutations
   const updateFlowSettingMutation = useUpdateFlowSettingMutation({
@@ -119,52 +110,23 @@ function KnowledgeSourcesPage() {
     },
   });
 
+  // Debounced update function
+  const debouncedUpdate = useDebounce(
+    (variables: Parameters<typeof updateFlowSettingMutation.mutate>[0]) => {
+      updateFlowSettingMutation.mutate(variables);
+    },
+    500,
+  );
 
-  // Fetch settings from backend
-  const fetchSettings = useCallback(async () => {
-    try {
-      const response = await fetch("/api/settings");
-      if (response.ok) {
-        const settings = await response.json();
-        if (settings.flow_id) {
-          setChatFlowId(settings.flow_id);
-        }
-        if (settings.ingest_flow_id) {
-          setIngestFlowId(settings.ingest_flow_id);
-        }
-        if (settings.langflow_edit_url) {
-          setLangflowEditUrl(settings.langflow_edit_url);
-        }
-        if (settings.langflow_ingest_edit_url) {
-          setLangflowIngestEditUrl(settings.langflow_ingest_edit_url);
-        }
-        if (settings.langflow_public_url) {
-          setPublicLangflowUrl(settings.langflow_public_url);
-        }
-        if (settings.agent?.llm_model) {
-          setSelectedModel(settings.agent.llm_model);
-        }
-        if (settings.agent?.system_prompt) {
-          setSystemPrompt(settings.agent.system_prompt);
-        }
-        if (settings.ingest?.embedding_model) {
-          setSelectedEmbeddingModel(settings.ingest.embedding_model);
-        }
-        if (settings.ingest?.chunk_size) {
-          setChunkSize(settings.ingest.chunk_size);
-        }
-        if (settings.ingest?.chunk_overlap !== undefined) {
-          setChunkOverlap(settings.ingest.chunk_overlap);
-        }
-      }
-    } catch (error) {
-      console.error("Failed to fetch settings:", error);
+  // Sync system prompt state with settings data
+  useEffect(() => {
+    if (settings.agent?.system_prompt) {
+      setSystemPrompt(settings.agent.system_prompt);
     }
-  }, []);
+  }, [settings.agent?.system_prompt]);
 
   // Update model selection immediately
   const handleModelChange = (newModel: string) => {
-    setSelectedModel(newModel);
     updateFlowSettingMutation.mutate({ llm_model: newModel });
   };
 
@@ -175,44 +137,23 @@ function KnowledgeSourcesPage() {
 
   // Update embedding model selection immediately
   const handleEmbeddingModelChange = (newModel: string) => {
-    setSelectedEmbeddingModel(newModel);
     updateFlowSettingMutation.mutate({ embedding_model: newModel });
   };
 
   // Update chunk size setting with debounce
   const handleChunkSizeChange = (value: string) => {
     const numValue = Math.max(0, parseInt(value) || 0);
-    setChunkSize(numValue);
-
-    // Clear existing timeout
-    if (chunkSizeTimeoutRef.current) {
-      clearTimeout(chunkSizeTimeoutRef.current);
-    }
-
-    // Set new timeout for API call
-    chunkSizeTimeoutRef.current = setTimeout(() => {
-      updateFlowSettingMutation.mutate({ chunk_size: numValue });
-    }, 500);
+    debouncedUpdate({ chunk_size: numValue });
   };
 
   // Update chunk overlap setting with debounce
   const handleChunkOverlapChange = (value: string) => {
     const numValue = Math.max(0, parseInt(value) || 0);
-    setChunkOverlap(numValue);
-
-    // Clear existing timeout
-    if (chunkOverlapTimeoutRef.current) {
-      clearTimeout(chunkOverlapTimeoutRef.current);
-    }
-
-    // Set new timeout for API call
-    chunkOverlapTimeoutRef.current = setTimeout(() => {
-      updateFlowSettingMutation.mutate({ chunk_overlap: numValue });
-    }, 500);
+    debouncedUpdate({ chunk_overlap: numValue });
   };
 
   // Helper function to get connector icon
-  const getConnectorIcon = (iconName: string) => {
+  const getConnectorIcon = useCallback((iconName: string) => {
     const iconMap: { [key: string]: React.ReactElement } = {
       "google-drive": (
         <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
@@ -237,7 +178,7 @@ function KnowledgeSourcesPage() {
         </div>
       )
     );
-  };
+  }, []);
 
   // Connector functions
   const checkConnectorStatuses = useCallback(async () => {
@@ -293,7 +234,7 @@ function KnowledgeSourcesPage() {
     } catch (error) {
       console.error("Failed to check connector statuses:", error);
     }
-  }, []);
+  }, [getConnectorIcon]);
 
   const handleConnect = async (connector: Connector) => {
     setIsConnecting(connector.id);
@@ -434,13 +375,6 @@ function KnowledgeSourcesPage() {
     }
   };
 
-  // Fetch settings on mount when authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchSettings();
-    }
-  }, [isAuthenticated, fetchSettings]);
-
   // Check connector status on mount and when returning from OAuth
   useEffect(() => {
     if (isAuthenticated) {
@@ -483,36 +417,31 @@ function KnowledgeSourcesPage() {
     }
   }, [tasks, prevTasks]);
 
-  // Cleanup timeouts on unmount
-  useEffect(() => {
-    return () => {
-      if (chunkSizeTimeoutRef.current) {
-        clearTimeout(chunkSizeTimeoutRef.current);
-      }
-      if (chunkOverlapTimeoutRef.current) {
-        clearTimeout(chunkOverlapTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleEditInLangflow = (flowType: "chat" | "ingest", closeDialog: () => void) => {
+  const handleEditInLangflow = (
+    flowType: "chat" | "ingest",
+    closeDialog: () => void,
+  ) => {
     // Select the appropriate flow ID and edit URL based on flow type
-    const targetFlowId = flowType === "ingest" ? ingestFlowId : chatFlowId;
-    const editUrl = flowType === "ingest" ? langflowIngestEditUrl : langflowEditUrl;
-    
+    const targetFlowId =
+      flowType === "ingest" ? settings.ingest_flow_id : settings.flow_id;
+    const editUrl =
+      flowType === "ingest"
+        ? settings.langflow_ingest_edit_url
+        : settings.langflow_edit_url;
+
     const derivedFromWindow =
       typeof window !== "undefined"
         ? `${window.location.protocol}//${window.location.hostname}:7860`
         : "";
     const base = (
-      publicLangflowUrl ||
+      settings.langflow_public_url ||
       derivedFromWindow ||
       "http://localhost:7860"
     ).replace(/\/$/, "");
     const computed = targetFlowId ? `${base}/flow/${targetFlowId}` : base;
-    
+
     const url = editUrl || computed;
-    
+
     window.open(url, "_blank");
     closeDialog(); // Close immediately after opening Langflow
   };
@@ -575,7 +504,9 @@ function KnowledgeSourcesPage() {
                       height="22"
                       viewBox="0 0 24 22"
                       className="h-4 w-4 mr-2"
+                      aria-label="Langflow icon"
                     >
+                      <title>Langflow icon</title>
                       <path
                         fill="currentColor"
                         d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"
@@ -595,7 +526,9 @@ function KnowledgeSourcesPage() {
                 title="Edit Agent flow in Langflow"
                 description="You're entering Langflow. You can edit the Agent flow and other underlying flows. Manual changes to components, wiring, or I/O can break this experience."
                 confirmText="Proceed"
-                onConfirm={(closeDialog) => handleEditInLangflow("chat", closeDialog)}
+                onConfirm={(closeDialog) =>
+                  handleEditInLangflow("chat", closeDialog)
+                }
               />
             </div>
           </div>
@@ -606,7 +539,10 @@ function KnowledgeSourcesPage() {
               <Label htmlFor="model-select" className="text-base font-medium">
                 Model
               </Label>
-              <Select value={selectedModel} onValueChange={handleModelChange}>
+              <Select
+                value={settings.agent?.llm_model || "gpt-4"}
+                onValueChange={handleModelChange}
+              >
                 <SelectTrigger id="model-select">
                   <SelectValue placeholder="Select a model" />
                 </SelectTrigger>
@@ -615,7 +551,9 @@ function KnowledgeSourcesPage() {
                   <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
                   <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
                   <SelectItem value="claude-3-opus">Claude 3 Opus</SelectItem>
-                  <SelectItem value="claude-3-sonnet">Claude 3 Sonnet</SelectItem>
+                  <SelectItem value="claude-3-sonnet">
+                    Claude 3 Sonnet
+                  </SelectItem>
                   <SelectItem value="claude-3-haiku">Claude 3 Haiku</SelectItem>
                 </SelectContent>
               </Select>
@@ -682,7 +620,9 @@ function KnowledgeSourcesPage() {
                       height="22"
                       viewBox="0 0 24 22"
                       className="h-4 w-4 mr-2"
+                      aria-label="Langflow icon"
                     >
+                      <title>Langflow icon</title>
                       <path
                         fill="currentColor"
                         d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"
@@ -702,7 +642,9 @@ function KnowledgeSourcesPage() {
                 title="Edit Ingest flow in Langflow"
                 description="You're entering Langflow. You can edit the Ingest flow and other underlying flows. Manual changes to components, wiring, or I/O can break this experience."
                 confirmText="Proceed"
-                onConfirm={(closeDialog) => handleEditInLangflow("ingest", closeDialog)}
+                onConfirm={(closeDialog) =>
+                  handleEditInLangflow("ingest", closeDialog)
+                }
               />
             </div>
           </div>
@@ -710,19 +652,37 @@ function KnowledgeSourcesPage() {
         <CardContent>
           <div className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="embedding-model-select" className="text-base font-medium">
+              <Label
+                htmlFor="embedding-model-select"
+                className="text-base font-medium"
+              >
                 Embedding Model
               </Label>
-              <Select value={selectedEmbeddingModel} onValueChange={handleEmbeddingModelChange}>
+              <Select
+                value={
+                  settings.ingest?.embedding_model || "text-embedding-ada-002"
+                }
+                onValueChange={handleEmbeddingModelChange}
+              >
                 <SelectTrigger id="embedding-model-select">
                   <SelectValue placeholder="Select an embedding model" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="text-embedding-ada-002">text-embedding-ada-002</SelectItem>
-                  <SelectItem value="text-embedding-3-small">text-embedding-3-small</SelectItem>
-                  <SelectItem value="text-embedding-3-large">text-embedding-3-large</SelectItem>
-                  <SelectItem value="all-MiniLM-L6-v2">all-MiniLM-L6-v2</SelectItem>
-                  <SelectItem value="all-mpnet-base-v2">all-mpnet-base-v2</SelectItem>
+                  <SelectItem value="text-embedding-ada-002">
+                    text-embedding-ada-002
+                  </SelectItem>
+                  <SelectItem value="text-embedding-3-small">
+                    text-embedding-3-small
+                  </SelectItem>
+                  <SelectItem value="text-embedding-3-large">
+                    text-embedding-3-large
+                  </SelectItem>
+                  <SelectItem value="all-MiniLM-L6-v2">
+                    all-MiniLM-L6-v2
+                  </SelectItem>
+                  <SelectItem value="all-mpnet-base-v2">
+                    all-mpnet-base-v2
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -736,17 +696,22 @@ function KnowledgeSourcesPage() {
                     id="chunk-size"
                     type="number"
                     min="1"
-                    value={chunkSize}
+                    defaultValue={settings.ingest?.chunk_size || 1000}
                     onChange={(e) => handleChunkSizeChange(e.target.value)}
                     className="w-full pr-20"
                   />
                   <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
-                    <span className="text-sm text-muted-foreground">characters</span>
+                    <span className="text-sm text-muted-foreground">
+                      characters
+                    </span>
                   </div>
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="chunk-overlap" className="text-base font-medium">
+                <Label
+                  htmlFor="chunk-overlap"
+                  className="text-base font-medium"
+                >
                   Chunk Overlap
                 </Label>
                 <div className="relative">
@@ -754,12 +719,14 @@ function KnowledgeSourcesPage() {
                     id="chunk-overlap"
                     type="number"
                     min="0"
-                    value={chunkOverlap}
+                    defaultValue={settings.ingest?.chunk_overlap || 200}
                     onChange={(e) => handleChunkOverlapChange(e.target.value)}
                     className="w-full pr-20"
                   />
                   <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
-                    <span className="text-sm text-muted-foreground">characters</span>
+                    <span className="text-sm text-muted-foreground">
+                      characters
+                    </span>
                   </div>
                 </div>
               </div>

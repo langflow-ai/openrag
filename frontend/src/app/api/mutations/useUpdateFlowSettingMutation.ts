@@ -1,12 +1,13 @@
 import {
+  type UseMutationOptions,
   useMutation,
   useQueryClient,
-  UseMutationOptions,
 } from "@tanstack/react-query";
 
 interface UpdateFlowSettingVariables {
   llm_model?: string;
   system_prompt?: string;
+  embedding_model?: string;
   ocr?: boolean;
   picture_descriptions?: boolean;
   chunk_size?: number;
@@ -19,7 +20,11 @@ interface UpdateFlowSettingResponse {
 
 export const useUpdateFlowSettingMutation = (
   options?: Omit<
-    UseMutationOptions<UpdateFlowSettingResponse, Error, UpdateFlowSettingVariables>,
+    UseMutationOptions<
+      UpdateFlowSettingResponse,
+      Error,
+      UpdateFlowSettingVariables
+    >,
     "mutationFn"
   >,
 ) => {
@@ -46,7 +51,7 @@ export const useUpdateFlowSettingMutation = (
 
   return useMutation({
     mutationFn: updateFlowSetting,
-    onSuccess: () => {
+    onSettled: () => {
       // Invalidate settings query to refetch updated data
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
