@@ -145,11 +145,7 @@ class MonitorScreen(Screen):
         # Set up auto-refresh every 5 seconds
         self.refresh_timer = self.set_interval(5.0, self._auto_refresh)
 
-        # Focus the services table
-        try:
-            self.services_table.focus()
-        except Exception:
-            pass
+        self._focus_services_table()
 
     def on_unmount(self) -> None:
         """Clean up when unmounting."""
@@ -224,6 +220,9 @@ class MonitorScreen(Screen):
                 docling_pid,
                 "Start/Stop/Logs"
             )
+            # Restore docling selection when it was the last active table
+            if self._last_selected_table == "docling":
+                self._focus_docling_table(focus=False, set_last=False)
         # Populate images table (unique images as reported by runtime)
         if self.images_table:
             for image in sorted(images):
@@ -509,16 +508,52 @@ class MonitorScreen(Screen):
         self.run_worker(self._refresh_services())
 
     def action_cursor_down(self) -> None:
-        """Move cursor down in services table."""
+        """Move selection down, handling both tables."""
+        active_table = self._get_active_table_name()
+
         try:
-            self.services_table.action_cursor_down()
+            if active_table == "docling":
+                return  # Nothing to move within docling table
+
+            if not self.services_table:
+                return
+
+            row_count = self._table_row_count(self.services_table)
+            current = self._get_cursor_row(self.services_table)
+            if current is None:
+                current = 0
+
+            if current < row_count - 1:
+                self.services_table.action_cursor_down()
+                self._last_selected_table = "services"
+            elif self._table_row_count(self.docling_table):
+                self._focus_docling_table()
         except Exception:
             pass
 
     def action_cursor_up(self) -> None:
-        """Move cursor up in services table."""
+        """Move selection up, handling both tables."""
+        active_table = self._get_active_table_name()
+
         try:
-            self.services_table.action_cursor_up()
+            if active_table == "docling":
+                self._focus_services_table(row="last")
+                return
+
+            if not self.services_table:
+                return
+
+            current = self._get_cursor_row(self.services_table)
+            if current is None:
+                current = 0
+
+            if current > 0:
+                self.services_table.action_cursor_up()
+            else:
+                # Already at the top; nothing else to do
+                self._set_cursor_row(self.services_table, 0)
+
+            self._last_selected_table = "services"
         except Exception:
             pass
 
@@ -664,59 +699,37 @@ class MonitorScreen(Screen):
             self.notify(f"Error opening logs: {e}", severity="error")
 
     def _get_selected_service(self) -> str | None:
-        """Get the currently selected service from either table."""
+        """Resolve the currently selected service based on active table."""
         try:
-            # Check both tables regardless of last_selected_table to handle cursor navigation
-            services_table = self.query_one("#services-table", DataTable)
-            services_cursor = services_table.cursor_row
+            active_table = self._get_active_table_name()
 
-            docling_cursor = None
-            if self.docling_table:
-                docling_cursor = self.docling_table.cursor_row
-
-            # If we have a last selected table preference, use it if that table has a valid selection
-            if self._last_selected_table == "docling" and self.docling_table:
-                if docling_cursor is not None and docling_cursor >= 0:
-                    row_data = self.docling_table.get_row_at(docling_cursor)
-                    if row_data:
-                        return "docling-serve"
-
-            elif self._last_selected_table == "services":
-                if services_cursor is not None and services_cursor >= 0:
-                    row_data = services_table.get_row_at(services_cursor)
-                    if row_data:
-                        service_name = str(row_data[0])
-                        service_mapping = {
-                            "openrag-backend": "openrag-backend",
-                            "openrag-frontend": "openrag-frontend",
-                            "opensearch": "opensearch",
-                            "langflow": "langflow",
-                            "dashboards": "dashboards",
-                        }
-                        selected_service = service_mapping.get(service_name, service_name)
-                        return selected_service
-
-            # Fallback: check both tables if no last_selected_table or it doesn't have a selection
-            if self.docling_table and docling_cursor is not None and docling_cursor >= 0:
-                row_data = self.docling_table.get_row_at(docling_cursor)
-                if row_data:
+            if active_table == "docling" and self.docling_table:
+                cursor = self._get_cursor_row(self.docling_table)
+                if cursor is not None and cursor >= 0:
                     return "docling-serve"
 
-            if services_cursor is not None and services_cursor >= 0:
-                row_data = services_table.get_row_at(services_cursor)
-                if row_data:
-                    service_name = str(row_data[0])
-                    service_mapping = {
-                        "openrag-backend": "openrag-backend",
-                        "openrag-frontend": "openrag-frontend",
-                        "opensearch": "opensearch",
-                        "langflow": "langflow",
-                        "dashboards": "dashboards",
-                    }
-                    selected_service = service_mapping.get(service_name, service_name)
-                    return selected_service
+            services_table = self.query_one("#services-table", DataTable)
+            row_count = self._table_row_count(services_table)
+            if row_count == 0:
+                return None
 
-            return None
+            cursor = self._get_cursor_row(services_table)
+            if cursor is None or cursor < 0 or cursor >= row_count:
+                cursor = 0
+
+            row_data = services_table.get_row_at(cursor)
+            if not row_data:
+                return None
+
+            service_name = str(row_data[0])
+            service_mapping = {
+                "openrag-backend": "openrag-backend",
+                "openrag-frontend": "openrag-frontend",
+                "opensearch": "opensearch",
+                "langflow": "langflow",
+                "dashboards": "dashboards",
+            }
+            return service_mapping.get(service_name, service_name)
         except Exception as e:
             self.notify(f"Error getting selected service: {e}", severity="error")
             return None
@@ -728,15 +741,118 @@ class MonitorScreen(Screen):
         try:
             # Track which table was selected
             if selected_table.id == "services-table":
-                self._last_selected_table = "services"
-                # Clear docling table selection
-                if self.docling_table:
-                    self.docling_table.cursor_row = -1
+                self._focus_services_table(row="current")
             elif selected_table.id == "docling-table":
-                self._last_selected_table = "docling"
-                # Clear services table selection
-                services_table = self.query_one("#services-table", DataTable)
-                services_table.cursor_row = -1
+                self._focus_docling_table()
         except Exception:
             # Ignore errors during table manipulation
+            pass
+
+    def _get_active_table_name(self) -> str:
+        """Determine which table is currently active."""
+        if self.docling_table and self.docling_table.has_focus:
+            return "docling"
+        if self.services_table and self.services_table.has_focus:
+            return "services"
+        return self._last_selected_table or "services"
+
+    def _table_row_count(self, table: DataTable | None) -> int:
+        """Safely compute the number of rows in a DataTable."""
+        if not table:
+            return 0
+
+        count_attr = getattr(table, "row_count", None)
+        if callable(count_attr):
+            try:
+                return int(count_attr())
+            except Exception:
+                pass
+
+        if isinstance(count_attr, int):
+            return count_attr
+
+        try:
+            rows = getattr(table, "rows", None)
+            if rows is not None:
+                return len(rows)
+        except Exception:
+            pass
+
+        return 0
+
+    def _get_cursor_row(self, table: DataTable | None) -> int | None:
+        """Return the current cursor row for the given table."""
+        if not table:
+            return None
+
+        coord = getattr(table, "cursor_coordinate", None)
+        if coord is None:
+            return None
+
+        row = getattr(coord, "row", None)
+        if row is not None:
+            return row
+
+        if isinstance(coord, tuple) and coord:
+            return coord[0]
+
+        return None
+
+    def _set_cursor_row(self, table: DataTable | None, row: int) -> None:
+        """Set the cursor row for the given table, if possible."""
+        if not table:
+            return
+
+        try:
+            table.cursor_coordinate = (row, 0)
+        except Exception:
+            move_cursor = getattr(table, "move_cursor", None)
+            if callable(move_cursor):
+                try:
+                    move_cursor(row, 0, expand=False)
+                except Exception:
+                    pass
+
+    def _focus_services_table(self, row: str | None = None, set_last: bool = True) -> None:
+        """Focus the services table and update selection."""
+        if not self.services_table:
+            return
+
+        try:
+            self.services_table.focus()
+            row_count = self._table_row_count(self.services_table)
+
+            if row_count:
+                if row == "last":
+                    self._set_cursor_row(self.services_table, row_count - 1)
+                elif row == "current":
+                    # Keep existing cursor position if valid
+                    cursor = self._get_cursor_row(self.services_table)
+                    if cursor is None or cursor < 0 or cursor >= row_count:
+                        self._set_cursor_row(self.services_table, 0)
+                else:
+                    cursor = self._get_cursor_row(self.services_table)
+                    if cursor is None or cursor < 0:
+                        self._set_cursor_row(self.services_table, 0)
+
+            if set_last:
+                self._last_selected_table = "services"
+        except Exception:
+            pass
+
+    def _focus_docling_table(self, focus: bool = True, set_last: bool = True) -> None:
+        """Focus the docling table and select its row."""
+        if not self.docling_table:
+            return
+
+        try:
+            if focus:
+                self.docling_table.focus()
+
+            if self._table_row_count(self.docling_table):
+                self._set_cursor_row(self.docling_table, 0)
+
+            if set_last:
+                self._last_selected_table = "docling"
+        except Exception:
             pass
