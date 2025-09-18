@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Chivo } from "next/font/google";
+import { Chivo, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider";
-import { AuthProvider } from "@/contexts/auth-context";
-import { TaskProvider } from "@/contexts/task-context";
-import { KnowledgeFilterProvider } from "@/contexts/knowledge-filter-context";
-import { ChatProvider } from "@/contexts/chat-context";
 import { LayoutWrapper } from "@/components/layout-wrapper";
+import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/contexts/auth-context";
+import { ChatProvider } from "@/contexts/chat-context";
+import { KnowledgeFilterProvider } from "@/contexts/knowledge-filter-context";
+import { TaskProvider } from "@/contexts/task-context";
 import Providers from "./providers";
 
 const inter = Inter({
@@ -46,15 +47,17 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <Providers>
-            <AuthProvider>
-              <TaskProvider>
-                <KnowledgeFilterProvider>
-                  <ChatProvider>
-                    <LayoutWrapper>{children}</LayoutWrapper>
-                  </ChatProvider>
-                </KnowledgeFilterProvider>
-              </TaskProvider>
-            </AuthProvider>
+            <TooltipProvider>
+              <AuthProvider>
+                <TaskProvider>
+                  <KnowledgeFilterProvider>
+                    <ChatProvider>
+                      <LayoutWrapper>{children}</LayoutWrapper>
+                    </ChatProvider>
+                  </KnowledgeFilterProvider>
+                </TaskProvider>
+              </AuthProvider>
+            </TooltipProvider>
           </Providers>
         </ThemeProvider>
         <Toaster />

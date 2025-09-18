@@ -184,8 +184,9 @@ const config = {
         ".primary-input": {
           display: "block",
           width: "100%",
+          height: "40px",
           borderRadius: "0.375rem",
-          border: "1px solid hsl(var(--border))",
+          border: "1px solid hsl(var(--input))",
           backgroundColor: "hsl(var(--background))",
           paddingLeft: "0.75rem",
           paddingRight: "0.75rem",
