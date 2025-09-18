@@ -23,6 +23,7 @@ interface Settings {
   langflow_public_url?: string;
   agent?: AgentSettings;
   ingest?: IngestSettings;
+  edited?: boolean;
 }
 
 export const useGetSettingsQuery = (
