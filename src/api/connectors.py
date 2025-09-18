@@ -13,8 +13,8 @@ async def list_connectors(request: Request, connector_service, session_manager):
         )
         return JSONResponse({"connectors": connector_types})
     except Exception as e:
-        logger.error("Error listing connectors", error=str(e))
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.info("Error listing connectors", error=str(e))
+        return JSONResponse({"connectors": []})
 
 
 async def connector_sync(request: Request, connector_service, session_manager):
@@ -31,7 +31,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
             max_files=max_files,
         )
         user = request.state.user
-        jwt_token = request.state.jwt_token
+        jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
 
         # Get all active connections for this connector type and user
         connections = await connector_service.connection_manager.list_connections(
@@ -373,3 +373,5 @@ async def connector_token(request: Request, connector_service, session_manager):
     except Exception as e:
         logger.error("Error getting connector token", error=str(e))
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
