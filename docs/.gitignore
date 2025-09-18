@@ -18,3 +18,8 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Override parent .gitignore to allow package management files
+!package.json
+!package-lock.json
+!yarn.lock
