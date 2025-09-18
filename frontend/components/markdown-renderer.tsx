@@ -62,7 +62,7 @@ export const MarkdownRenderer = ({ chatMessage }: MarkdownRendererProps) => {
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeMathjax, rehypeRaw]}
-        linkTarget="_blank"
+        urlTransform={(url) => url}
         components={{
           p({ node, ...props }) {
             return <p className="w-fit max-w-full">{props.children}</p>;
@@ -79,7 +79,7 @@ export const MarkdownRenderer = ({ chatMessage }: MarkdownRendererProps) => {
           h3({ node, ...props }) {
             return <h3 className="mb-2 mt-4">{props.children}</h3>;
           },
-          hr({ node, ...props }) {
+          hr() {
             return <hr className="w-full mt-4 mb-8" />;
           },
           ul({ node, ...props }) {
@@ -97,8 +97,12 @@ export const MarkdownRenderer = ({ chatMessage }: MarkdownRendererProps) => {
               </div>
             );
           },
+          a({ node, ...props }) {
+            return <a {...props} target="_blank" rel="noopener noreferrer">{props.children}</a>;
+          },
 
-          code: ({ node, className, inline, children, ...props }) => {
+          code(props) {
+            const { children, className, ...rest } = props;
             let content = children as string;
             if (
               Array.isArray(children) &&
@@ -120,14 +124,15 @@ export const MarkdownRenderer = ({ chatMessage }: MarkdownRendererProps) => {
               }
 
               const match = /language-(\w+)/.exec(className || "");
+              const isInline = !className?.startsWith("language-");
 
-              return !inline ? (
+              return !isInline ? (
                 <CodeComponent
                   language={(match && match[1]) || ""}
                   code={String(content).replace(/\n$/, "")}
                 />
               ) : (
-                <code className={className} {...props}>
+                <code className={className} {...rest}>
                   {content}
                 </code>
               );
