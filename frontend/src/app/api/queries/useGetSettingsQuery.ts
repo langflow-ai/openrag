@@ -9,21 +9,33 @@ export interface AgentSettings {
   system_prompt?: string;
 }
 
-export interface IngestSettings {
+export interface KnowledgeSettings {
   embedding_model?: string;
   chunk_size?: number;
   chunk_overlap?: number;
+  ocr?: boolean;
+  picture_descriptions?: boolean;
 }
 
 export interface Settings {
+  langflow_url?: string;
   flow_id?: string;
   ingest_flow_id?: string;
+  langflow_public_url?: string;
+  edited?: boolean;
+  provider?: {
+    model_provider?: string;
+  };
+  knowledge?: KnowledgeSettings;
+  agent?: AgentSettings;
   langflow_edit_url?: string;
   langflow_ingest_edit_url?: string;
-  langflow_public_url?: string;
-  agent?: AgentSettings;
-  ingest?: IngestSettings;
-  edited?: boolean;
+  ingestion_defaults?: {
+    chunkSize?: number;
+    chunkOverlap?: number;
+    separator?: string;
+    embeddingModel?: string;
+  };
 }
 
 export const useGetSettingsQuery = (

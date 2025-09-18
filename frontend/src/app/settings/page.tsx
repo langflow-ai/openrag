@@ -131,16 +131,16 @@ function KnowledgeSourcesPage() {
 
   // Sync chunk size and overlap state with settings data
   useEffect(() => {
-    if (settings.ingest?.chunk_size) {
-      setChunkSize(settings.ingest.chunk_size);
+    if (settings.knowledge?.chunk_size) {
+      setChunkSize(settings.knowledge.chunk_size);
     }
-  }, [settings.ingest?.chunk_size]);
+  }, [settings.knowledge?.chunk_size]);
 
   useEffect(() => {
-    if (settings.ingest?.chunk_overlap) {
-      setChunkOverlap(settings.ingest.chunk_overlap);
+    if (settings.knowledge?.chunk_overlap) {
+      setChunkOverlap(settings.knowledge.chunk_overlap);
     }
-  }, [settings.ingest?.chunk_overlap]);
+  }, [settings.knowledge?.chunk_overlap]);
 
   // Update model selection immediately
   const handleModelChange = (newModel: string) => {
@@ -685,7 +685,7 @@ function KnowledgeSourcesPage() {
               </Label>
               <Select
                 value={
-                  settings.ingest?.embedding_model || "text-embedding-ada-002"
+                  settings.knowledge?.embedding_model || "text-embedding-ada-002"
                 }
                 onValueChange={handleEmbeddingModelChange}
               >
