@@ -52,14 +52,14 @@ function OnboardingPage() {
   const handleComplete = () => {
     updateFlowSettingMutation.mutate({
       llm_model: settings.agent?.llm_model,
-      embedding_model: settings.ingest?.embedding_model,
+      embedding_model: settings.knowledge?.embedding_model,
       system_prompt: settings.agent?.system_prompt,
     });
   };
 
   return (
     <div
-      className="min-h-dvh relative flex gap-5 flex-col items-center justify-center bg-background p-4"
+      className="min-h-dvh w-full flex gap-5 flex-col items-center justify-center bg-background p-4"
       style={{
         backgroundImage: "url('/images/background.png')",
         backgroundSize: "cover",
