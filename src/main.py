@@ -33,6 +33,7 @@ from api import (
     flows,
     knowledge_filter,
     langflow_files,
+    models,
     nudges,
     oidc,
     router,
@@ -66,6 +67,7 @@ from services.knowledge_filter_service import KnowledgeFilterService
 # Configuration and setup
 # Services
 from services.langflow_file_service import LangflowFileService
+from services.models_service import ModelsService
 from services.monitor_service import MonitorService
 from services.search_service import SearchService
 from services.task_service import TaskService
@@ -409,6 +411,7 @@ async def initialize_services():
     chat_service = ChatService()
     flows_service = FlowsService()
     knowledge_filter_service = KnowledgeFilterService(session_manager)
+    models_service = ModelsService()
     monitor_service = MonitorService(session_manager)
 
     # Set process pool for document service
@@ -470,6 +473,7 @@ async def initialize_services():
         "auth_service": auth_service,
         "connector_service": connector_service,
         "knowledge_filter_service": knowledge_filter_service,
+        "models_service": models_service,
         "monitor_service": monitor_service,
         "session_manager": session_manager,
     }
@@ -908,6 +912,40 @@ async def create_app():
                 )
             ),
             methods=["POST"],
+        ),
+        # Models endpoints
+        Route(
+            "/models/openai",
+            require_auth(services["session_manager"])(
+                partial(
+                    models.get_openai_models,
+                    models_service=services["models_service"],
+                    session_manager=services["session_manager"]
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/models/ollama",
+            require_auth(services["session_manager"])(
+                partial(
+                    models.get_ollama_models,
+                    models_service=services["models_service"],
+                    session_manager=services["session_manager"]
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/models/ibm",
+            require_auth(services["session_manager"])(
+                partial(
+                    models.get_ibm_models,
+                    models_service=services["models_service"],
+                    session_manager=services["session_manager"]
+                )
+            ),
+            methods=["GET", "POST"],
         ),
         # Onboarding endpoint
         Route(

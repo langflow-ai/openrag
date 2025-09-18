@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LabelInput } from "@/components/label-input";
 import OpenAILogo from "@/components/logo/openai-logo";
 import type { Settings } from "../api/queries/useGetSettingsQuery";
+import { useGetOpenAIModelsQuery } from "../api/queries/useGetModelsQuery";
 import { AdvancedOnboarding } from "./advanced";
 
 export function OpenAIOnboarding({
@@ -19,10 +20,30 @@ export function OpenAIOnboarding({
   const [embeddingModel, setEmbeddingModel] = useState(
     "text-embedding-3-small",
   );
-  const languageModels = [{ value: "gpt-4o-mini", label: "gpt-4o-mini" }];
-  const embeddingModels = [
-    { value: "text-embedding-3-small", label: "text-embedding-3-small" },
+
+  // Fetch models from API
+  const { data: modelsData } = useGetOpenAIModelsQuery();
+
+  // Use fetched models or fallback to defaults
+  const languageModels = modelsData?.language_models || [{ value: "gpt-4o-mini", label: "gpt-4o-mini", default: true }];
+  const embeddingModels = modelsData?.embedding_models || [
+    { value: "text-embedding-3-small", label: "text-embedding-3-small", default: true },
   ];
+
+  // Update default selections when models are loaded
+  useEffect(() => {
+    if (modelsData) {
+      const defaultLangModel = modelsData.language_models.find(m => m.default);
+      const defaultEmbedModel = modelsData.embedding_models.find(m => m.default);
+
+      if (defaultLangModel && languageModel === "gpt-4o-mini") {
+        setLanguageModel(defaultLangModel.value);
+      }
+      if (defaultEmbedModel && embeddingModel === "text-embedding-3-small") {
+        setEmbeddingModel(defaultEmbedModel.value);
+      }
+    }
+  }, [modelsData, languageModel, embeddingModel]);
   const handleLanguageModelChange = (model: string) => {
     setLanguageModel(model);
   };
