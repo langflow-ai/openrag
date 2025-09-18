@@ -1,6 +1,5 @@
 "use client";
 
-import { EllipsisVertical } from "lucide-react";
 import { useState } from "react";
 import {
   DropdownMenu,
@@ -8,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { EllipsisVertical } from "lucide-react";
 import { Button } from "./ui/button";
 import { DeleteConfirmationDialog } from "./confirmation-dialog";
 import { useDeleteDocument } from "@/app/api/mutations/useDeleteDocument";

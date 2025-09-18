@@ -4,6 +4,10 @@ import sys
 from pathlib import Path
 from textual.app import App, ComposeResult
 from utils.logging_config import get_logger
+try:
+    from importlib.resources import files
+except ImportError:
+    from importlib_resources import files
 
 logger = get_logger(__name__)
 
@@ -301,10 +305,42 @@ class OpenRAGTUI(App):
         return True, "Runtime requirements satisfied"
 
 
+def copy_sample_documents():
+    """Copy sample documents from package to current directory if they don't exist."""
+    documents_dir = Path("documents")
+
+    # Check if documents directory already exists and has files
+    if documents_dir.exists() and any(documents_dir.glob("*.pdf")):
+        return  # Documents already exist, don't overwrite
+
+    try:
+        # Get sample documents from package assets
+        assets_files = files("tui._assets.documents")
+
+        # Create documents directory if it doesn't exist
+        documents_dir.mkdir(exist_ok=True)
+
+        # Copy each sample document
+        for resource in assets_files.iterdir():
+            if resource.is_file() and resource.name.endswith('.pdf'):
+                dest_path = documents_dir / resource.name
+                if not dest_path.exists():
+                    content = resource.read_bytes()
+                    dest_path.write_bytes(content)
+                    logger.info(f"Copied sample document: {resource.name}")
+
+    except Exception as e:
+        logger.debug(f"Could not copy sample documents: {e}")
+        # This is not a critical error - the app can work without sample documents
+
+
 def run_tui():
     """Run the OpenRAG TUI application."""
     app = None
     try:
+        # Copy sample documents on first run
+        copy_sample_documents()
+
         app = OpenRAGTUI()
         app.run()
     except KeyboardInterrupt:

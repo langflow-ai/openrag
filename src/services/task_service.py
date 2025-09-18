@@ -85,6 +85,8 @@ class TaskService:
 
     async def create_custom_task(self, user_id: str, items: list, processor) -> str:
         """Create a new task with custom processor for any type of items"""
+        # Store anonymous tasks under a stable key so they can be retrieved later
+        store_user_id = user_id or AnonymousUser().user_id
         task_id = str(uuid.uuid4())
         upload_task = UploadTask(
             task_id=task_id,
@@ -95,12 +97,14 @@ class TaskService:
         # Attach the custom processor to the task
         upload_task.processor = processor
 
-        if user_id not in self.task_store:
-            self.task_store[user_id] = {}
-        self.task_store[user_id][task_id] = upload_task
+        if store_user_id not in self.task_store:
+            self.task_store[store_user_id] = {}
+        self.task_store[store_user_id][task_id] = upload_task
 
         # Start background processing
-        background_task = asyncio.create_task(self.background_custom_processor(user_id, task_id, items))
+        background_task = asyncio.create_task(
+            self.background_custom_processor(store_user_id, task_id, items)
+        )
         self.background_tasks.add(background_task)
         background_task.add_done_callback(self.background_tasks.discard)
 
