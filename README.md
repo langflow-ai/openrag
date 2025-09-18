@@ -62,8 +62,7 @@ LANGFLOW_CHAT_FLOW_ID=your_chat_flow_id
 LANGFLOW_INGEST_FLOW_ID=your_ingest_flow_id
 NUDGES_FLOW_ID=your_nudges_flow_id
 ```
-ee extended configuration, including ingestion and optional variables: [docs/configuration.md](docs/
-configuration.md)
+See extended configuration, including ingestion and optional variables: [docs/configuration.md](docs/configuration.md)
 ### 3. Start OpenRAG
 
 ```bash

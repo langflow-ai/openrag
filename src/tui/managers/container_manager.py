@@ -9,6 +9,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, AsyncIterator
 from utils.logging_config import get_logger
+try:
+    from importlib.resources import files
+except ImportError:
+    from importlib_resources import files
 
 logger = get_logger(__name__)
 
@@ -51,8 +55,8 @@ class ContainerManager:
     def __init__(self, compose_file: Optional[Path] = None):
         self.platform_detector = PlatformDetector()
         self.runtime_info = self.platform_detector.detect_runtime()
-        self.compose_file = compose_file or Path("docker-compose.yml")
-        self.cpu_compose_file = Path("docker-compose-cpu.yml")
+        self.compose_file = compose_file or self._find_compose_file("docker-compose.yml")
+        self.cpu_compose_file = self._find_compose_file("docker-compose-cpu.yml")
         self.services_cache: Dict[str, ServiceInfo] = {}
         self.last_status_update = 0
         # Auto-select CPU compose if no GPU available
@@ -79,6 +83,42 @@ class ContainerManager:
             "osdash": "dashboards",
             "langflow": "langflow",
         }
+
+    def _find_compose_file(self, filename: str) -> Path:
+        """Find compose file in current directory or package resources."""
+        # First check current working directory
+        cwd_path = Path(filename)
+        self._compose_search_log = f"Searching for {filename}:\n"
+        self._compose_search_log += f"  1. Current directory: {cwd_path.absolute()}"
+
+        if cwd_path.exists():
+            self._compose_search_log += " ✓ FOUND"
+            return cwd_path
+        else:
+            self._compose_search_log += " ✗ NOT FOUND"
+
+        # Then check package resources
+        self._compose_search_log += f"\n  2. Package resources: "
+        try:
+            pkg_files = files("tui._assets")
+            self._compose_search_log += f"{pkg_files}"
+            compose_resource = pkg_files / filename
+
+            if compose_resource.is_file():
+                self._compose_search_log += f" ✓ FOUND, copying to current directory"
+                # Copy to cwd for compose command to work
+                content = compose_resource.read_text()
+                cwd_path.write_text(content)
+                return cwd_path
+            else:
+                self._compose_search_log += f" ✗ NOT FOUND"
+        except Exception as e:
+            self._compose_search_log += f" ✗ SKIPPED ({e})"
+            # Don't log this as an error since it's expected when running from source
+
+        # Fall back to original path (will fail later if not found)
+        self._compose_search_log += f"\n  3. Falling back to: {cwd_path.absolute()}"
+        return Path(filename)
 
     def is_available(self) -> bool:
         """Check if container runtime is available."""
@@ -467,6 +507,20 @@ class ContainerManager:
         """Start all services and yield progress updates."""
         if not self.is_available():
             yield False, "No container runtime available"
+            return
+
+        # Diagnostic info about compose files
+        compose_file = self.cpu_compose_file if (cpu_mode if cpu_mode is not None else self.use_cpu_compose) else self.compose_file
+
+        # Show the search process for debugging
+        if hasattr(self, '_compose_search_log'):
+            for line in self._compose_search_log.split('\n'):
+                if line.strip():
+                    yield False, line
+
+        yield False, f"Final compose file: {compose_file.absolute()}"
+        if not compose_file.exists():
+            yield False, f"ERROR: Compose file not found at {compose_file.absolute()}"
             return
 
         yield False, "Starting OpenRAG services..."
