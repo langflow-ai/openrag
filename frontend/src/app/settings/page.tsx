@@ -2,7 +2,7 @@
 
 import { Loader2, PlugZap, RefreshCw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +100,15 @@ function KnowledgeSourcesPage() {
   const [selectedModel, setSelectedModel] = useState<string>("gpt-4");
   const [systemPrompt, setSystemPrompt] = useState<string>("");
 
+  // Knowledge Ingest state
+  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState<string>("text-embedding-ada-002");
+  const [chunkSize, setChunkSize] = useState<number>(1000);
+  const [chunkOverlap, setChunkOverlap] = useState<number>(200);
+
+  // Debounce refs for chunk settings
+  const chunkSizeTimeoutRef = useRef<NodeJS.Timeout>();
+  const chunkOverlapTimeoutRef = useRef<NodeJS.Timeout>();
+
   // Mutations
   const updateFlowSettingMutation = useUpdateFlowSettingMutation({
     onSuccess: () => {
@@ -138,6 +147,15 @@ function KnowledgeSourcesPage() {
         if (settings.agent?.system_prompt) {
           setSystemPrompt(settings.agent.system_prompt);
         }
+        if (settings.ingest?.embedding_model) {
+          setSelectedEmbeddingModel(settings.ingest.embedding_model);
+        }
+        if (settings.ingest?.chunk_size) {
+          setChunkSize(settings.ingest.chunk_size);
+        }
+        if (settings.ingest?.chunk_overlap !== undefined) {
+          setChunkOverlap(settings.ingest.chunk_overlap);
+        }
       }
     } catch (error) {
       console.error("Failed to fetch settings:", error);
@@ -153,6 +171,44 @@ function KnowledgeSourcesPage() {
   // Update system prompt with save button
   const handleSystemPromptSave = () => {
     updateFlowSettingMutation.mutate({ system_prompt: systemPrompt });
+  };
+
+  // Update embedding model selection immediately
+  const handleEmbeddingModelChange = (newModel: string) => {
+    setSelectedEmbeddingModel(newModel);
+    updateFlowSettingMutation.mutate({ embedding_model: newModel });
+  };
+
+  // Update chunk size setting with debounce
+  const handleChunkSizeChange = (value: string) => {
+    const numValue = Math.max(0, parseInt(value) || 0);
+    setChunkSize(numValue);
+
+    // Clear existing timeout
+    if (chunkSizeTimeoutRef.current) {
+      clearTimeout(chunkSizeTimeoutRef.current);
+    }
+
+    // Set new timeout for API call
+    chunkSizeTimeoutRef.current = setTimeout(() => {
+      updateFlowSettingMutation.mutate({ chunk_size: numValue });
+    }, 500);
+  };
+
+  // Update chunk overlap setting with debounce
+  const handleChunkOverlapChange = (value: string) => {
+    const numValue = Math.max(0, parseInt(value) || 0);
+    setChunkOverlap(numValue);
+
+    // Clear existing timeout
+    if (chunkOverlapTimeoutRef.current) {
+      clearTimeout(chunkOverlapTimeoutRef.current);
+    }
+
+    // Set new timeout for API call
+    chunkOverlapTimeoutRef.current = setTimeout(() => {
+      updateFlowSettingMutation.mutate({ chunk_overlap: numValue });
+    }, 500);
   };
 
   // Helper function to get connector icon
@@ -427,6 +483,18 @@ function KnowledgeSourcesPage() {
     }
   }, [tasks, prevTasks]);
 
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (chunkSizeTimeoutRef.current) {
+        clearTimeout(chunkSizeTimeoutRef.current);
+      }
+      if (chunkOverlapTimeoutRef.current) {
+        clearTimeout(chunkOverlapTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleEditInLangflow = (flowType: "chat" | "ingest", closeDialog: () => void) => {
     // Select the appropriate flow ID and edit URL based on flow type
     const targetFlowId = flowType === "ingest" ? ingestFlowId : chatFlowId;
@@ -479,110 +547,14 @@ function KnowledgeSourcesPage() {
 
   return (
     <div className="space-y-8">
-      {/* Knowledge Ingest Section */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg">Knowledge Ingest</CardTitle>
-              <CardDescription>
-                Quick ingest options. Edit in Langflow for full control.
-              </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <ConfirmationDialog
-                trigger={<Button variant="secondary">Restore flow</Button>}
-                title="Restore default Ingest flow"
-                description="This restores defaults and discards all custom settings and overrides. This can't be undone."
-                confirmText="Restore"
-                variant="destructive"
-                onConfirm={handleRestoreIngestFlow}
-              />
-              <ConfirmationDialog
-                trigger={
-                  <Button>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="22"
-                      viewBox="0 0 24 22"
-                      className="h-4 w-4 mr-2"
-                    >
-                      <path
-                        fill="currentColor"
-                        d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"
-                      ></path>
-                      <path
-                        fill="currentColor"
-                        d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"
-                      ></path>
-                      <path
-                        fill="currentColor"
-                        d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"
-                      ></path>
-                    </svg>
-                    Edit in Langflow
-                  </Button>
-                }
-                title="Edit Ingest flow in Langflow"
-                description="You're entering Langflow. You can edit the Ingest flow and other underlying flows. Manual changes to components, wiring, or I/O can break this experience."
-                confirmText="Proceed"
-                onConfirm={(closeDialog) => handleEditInLangflow("ingest", closeDialog)}
-              />
-            </div>
-          </div>
-        </CardHeader>
-        {/* Hidden for now */}
-        {/* <CardContent>
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="ocrEnabled" className="text-base font-medium">
-                  OCR
-                </Label>
-                <div className="text-sm text-muted-foreground">
-                  Extracts text from images/PDFs. Ingest is slower when enabled.
-                </div>
-              </div>
-              <Switch
-                id="ocrEnabled"
-                checked={ocrEnabled}
-                onCheckedChange={(checked) => setOcrEnabled(checked)}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label
-                  htmlFor="pictureDescriptions"
-                  className="text-base font-medium"
-                >
-                  Picture descriptions
-                </Label>
-                <div className="text-sm text-muted-foreground">
-                  Adds captions for images. Ingest is more expensive when
-                  enabled.
-                </div>
-              </div>
-              <Switch
-                id="pictureDescriptions"
-                checked={pictureDescriptionsEnabled}
-                onCheckedChange={(checked) =>
-                  setPictureDescriptionsEnabled(checked)
-                }
-              />
-            </div>
-          </div>
-        </CardContent> */}
-      </Card>
-
       {/* Agent Behavior Section */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-lg">Agent behavior</CardTitle>
+              <CardTitle className="text-lg">Agent</CardTitle>
               <CardDescription>
-                Adjust your retrieval agent flow
+                Quick Agent settings. Edit in Langflow for full control.
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -596,7 +568,7 @@ function KnowledgeSourcesPage() {
               />
               <ConfirmationDialog
                 trigger={
-                  <Button>
+                  <Button variant="secondary">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="24"
@@ -660,9 +632,6 @@ function KnowledgeSourcesPage() {
                 rows={6}
                 className="resize-none"
               />
-              <div className="text-sm text-muted-foreground">
-                This prompt will be used to guide the agent&apos;s behavior and responses.
-              </div>
             </div>
             <div className="flex justify-end pt-2">
               <Button
@@ -681,6 +650,154 @@ function KnowledgeSourcesPage() {
                 )}
               </Button>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Knowledge Ingest Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">Knowledge</CardTitle>
+              <CardDescription>
+                Quick ingest options. Edit in Langflow for full control.
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <ConfirmationDialog
+                trigger={<Button variant="secondary">Restore flow</Button>}
+                title="Restore default Ingest flow"
+                description="This restores defaults and discards all custom settings and overrides. This can't be undone."
+                confirmText="Restore"
+                variant="destructive"
+                onConfirm={handleRestoreIngestFlow}
+              />
+              <ConfirmationDialog
+                trigger={
+                  <Button variant="secondary">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="22"
+                      viewBox="0 0 24 22"
+                      className="h-4 w-4 mr-2"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"
+                      ></path>
+                      <path
+                        fill="currentColor"
+                        d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"
+                      ></path>
+                      <path
+                        fill="currentColor"
+                        d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"
+                      ></path>
+                    </svg>
+                    Edit in Langflow
+                  </Button>
+                }
+                title="Edit Ingest flow in Langflow"
+                description="You're entering Langflow. You can edit the Ingest flow and other underlying flows. Manual changes to components, wiring, or I/O can break this experience."
+                confirmText="Proceed"
+                onConfirm={(closeDialog) => handleEditInLangflow("ingest", closeDialog)}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="embedding-model-select" className="text-base font-medium">
+                Embedding Model
+              </Label>
+              <Select value={selectedEmbeddingModel} onValueChange={handleEmbeddingModelChange}>
+                <SelectTrigger id="embedding-model-select">
+                  <SelectValue placeholder="Select an embedding model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text-embedding-ada-002">text-embedding-ada-002</SelectItem>
+                  <SelectItem value="text-embedding-3-small">text-embedding-3-small</SelectItem>
+                  <SelectItem value="text-embedding-3-large">text-embedding-3-large</SelectItem>
+                  <SelectItem value="all-MiniLM-L6-v2">all-MiniLM-L6-v2</SelectItem>
+                  <SelectItem value="all-mpnet-base-v2">all-mpnet-base-v2</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="chunk-size" className="text-base font-medium">
+                  Chunk Size
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="chunk-size"
+                    type="number"
+                    min="1"
+                    value={chunkSize}
+                    onChange={(e) => handleChunkSizeChange(e.target.value)}
+                    className="w-full pr-20"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
+                    <span className="text-sm text-muted-foreground">characters</span>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="chunk-overlap" className="text-base font-medium">
+                  Chunk Overlap
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="chunk-overlap"
+                    type="number"
+                    min="0"
+                    value={chunkOverlap}
+                    onChange={(e) => handleChunkOverlapChange(e.target.value)}
+                    className="w-full pr-20"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
+                    <span className="text-sm text-muted-foreground">characters</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="ocrEnabled" className="text-base font-medium">
+                  OCR
+                </Label>
+                <div className="text-sm text-muted-foreground">
+                  Extracts text from images/PDFs. Ingest is slower when enabled.
+                </div>
+              </div>
+              <Switch
+                id="ocrEnabled"
+                checked={ocrEnabled}
+                onCheckedChange={handleOcrChange}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label
+                  htmlFor="pictureDescriptions"
+                  className="text-base font-medium"
+                >
+                  Picture descriptions
+                </Label>
+                <div className="text-sm text-muted-foreground">
+                  Adds captions for images. Ingest is more expensive when
+                  enabled.
+                </div>
+              </div>
+              <Switch
+                id="pictureDescriptions"
+                checked={pictureDescriptionsEnabled}
+                onCheckedChange={handlePictureDescriptionsChange}
+              />
+            </div> */}
           </div>
         </CardContent>
       </Card>
