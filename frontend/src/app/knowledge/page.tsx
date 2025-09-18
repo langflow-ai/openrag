@@ -8,7 +8,6 @@ import {
   Loader2,
   Search,
   Trash2,
-  X,
 } from "lucide-react";
 import { AgGridReact, CustomCellRendererProps } from "ag-grid-react";
 import {
@@ -217,13 +216,6 @@ function SearchPage() {
     }
   };
 
-  const clearSelection = useCallback(() => {
-    setSelectedRows([]);
-    if (gridRef.current) {
-      gridRef.current.api.deselectAll();
-    }
-  }, []);
-
   return (
     <div
       className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
@@ -245,32 +237,6 @@ function SearchPage() {
           <KnowledgeDropdown variant="button" />
         </div>
 
-        {/* Bulk Actions Bar */}
-        {selectedRows.length > 0 && (
-          <div className="flex items-center justify-between bg-muted/20 rounded-lg border border-border/50 px-4 py-3 mb-6">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium">
-                {selectedRows.length} document
-                {selectedRows.length > 1 ? "s" : ""} selected
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowBulkDeleteDialog(true)}
-                className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Selected
-              </Button>
-              <Button variant="ghost" size="sm" onClick={clearSelection}>
-                <X className="h-4 w-4 mr-2" />
-                Clear Selection
-              </Button>
-            </div>
-          </div>
-        )}
         {/* Search Input Area */}
         <div className="flex-shrink-0 mb-6 lg:max-w-[75%] xl:max-w-[50%]">
           <form onSubmit={handleSearch} className="flex gap-3">
@@ -282,18 +248,35 @@ function SearchPage() {
               value={queryInputText}
               onChange={e => setQueryInputText(e.target.value)}
               placeholder="Search your documents..."
-              className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 h-12 focus-visible:ring-1 focus-visible:ring-ring"
+              className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring"
             />
             <Button
               type="submit"
               variant="outline"
-              className="rounded-lg h-12 w-12 p-0 flex-shrink-0"
+              className="rounded-lg p-0 flex-shrink-0"
             >
               {isFetching ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Search className="h-4 w-4" />
               )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-lg flex-shrink-0"
+              onClick={() => alert("Not implemented")}
+            >
+              Sync
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-lg flex-shrink-0"
+              onClick={() => setShowBulkDeleteDialog(true)}
+              disabled={selectedRows.length === 0}
+            >
+              <Trash2 className="h-4 w-4" /> Delete
             </Button>
           </form>
         </div>
