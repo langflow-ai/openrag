@@ -9,6 +9,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, AsyncIterator
 from utils.logging_config import get_logger
+try:
+    from importlib.resources import files
+except ImportError:
+    from importlib_resources import files
 
 logger = get_logger(__name__)
 
@@ -51,8 +55,8 @@ class ContainerManager:
     def __init__(self, compose_file: Optional[Path] = None):
         self.platform_detector = PlatformDetector()
         self.runtime_info = self.platform_detector.detect_runtime()
-        self.compose_file = compose_file or Path("docker-compose.yml")
-        self.cpu_compose_file = Path("docker-compose-cpu.yml")
+        self.compose_file = compose_file or self._find_compose_file("docker-compose.yml")
+        self.cpu_compose_file = self._find_compose_file("docker-compose-cpu.yml")
         self.services_cache: Dict[str, ServiceInfo] = {}
         self.last_status_update = 0
         # Auto-select CPU compose if no GPU available
@@ -79,6 +83,27 @@ class ContainerManager:
             "osdash": "dashboards",
             "langflow": "langflow",
         }
+
+    def _find_compose_file(self, filename: str) -> Path:
+        """Find compose file in current directory or package resources."""
+        # First check current working directory
+        cwd_path = Path(filename)
+        if cwd_path.exists():
+            return cwd_path
+
+        # Then check package resources
+        try:
+            pkg_files = files("openrag")
+            if (pkg_files / filename).is_file():
+                # Copy to cwd for compose command to work
+                content = (pkg_files / filename).read_text()
+                cwd_path.write_text(content)
+                return cwd_path
+        except Exception:
+            pass
+
+        # Fall back to original path (will fail later if not found)
+        return Path(filename)
 
     def is_available(self) -> bool:
         """Check if container runtime is available."""
