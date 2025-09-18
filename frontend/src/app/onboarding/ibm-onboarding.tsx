@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LabelInput } from "@/components/label-input";
 import IBMLogo from "@/components/logo/ibm-logo";
 import type { Settings } from "../api/queries/useGetSettingsQuery";
+import { useGetIBMModelsQuery } from "../api/queries/useGetModelsQuery";
 import { AdvancedOnboarding } from "./advanced";
 
 export function IBMOnboarding({
@@ -15,21 +16,44 @@ export function IBMOnboarding({
   sampleDataset: boolean;
   setSampleDataset: (dataset: boolean) => void;
 }) {
-  const languageModels = [
-    { value: "gpt-oss", label: "gpt-oss" },
-    { value: "llama3.1", label: "llama3.1" },
-    { value: "llama3.2", label: "llama3.2" },
-    { value: "llama3.3", label: "llama3.3" },
-    { value: "llama3.4", label: "llama3.4" },
-    { value: "llama3.5", label: "llama3.5" },
-  ];
-  const embeddingModels = [
-    { value: "text-embedding-3-small", label: "text-embedding-3-small" },
-  ];
-  const [languageModel, setLanguageModel] = useState("gpt-oss");
-  const [embeddingModel, setEmbeddingModel] = useState(
-    "text-embedding-3-small",
+  const [endpoint, setEndpoint] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [languageModel, setLanguageModel] = useState("meta-llama/llama-3-1-70b-instruct");
+  const [embeddingModel, setEmbeddingModel] = useState("ibm/slate-125m-english-rtrvr");
+
+  // Fetch models from API when all credentials are provided
+  const { data: modelsData } = useGetIBMModelsQuery(
+    (apiKey && endpoint && projectId) ? { api_key: apiKey, endpoint, project_id: projectId } : undefined,
+    { enabled: !!(apiKey && endpoint && projectId) }
   );
+
+  // Use fetched models or fallback to defaults
+  const languageModels = modelsData?.language_models || [
+    { value: "meta-llama/llama-3-1-70b-instruct", label: "Llama 3.1 70B Instruct", default: true },
+    { value: "meta-llama/llama-3-1-8b-instruct", label: "Llama 3.1 8B Instruct" },
+    { value: "ibm/granite-13b-chat-v2", label: "Granite 13B Chat v2" },
+    { value: "ibm/granite-13b-instruct-v2", label: "Granite 13B Instruct v2" },
+  ];
+  const embeddingModels = modelsData?.embedding_models || [
+    { value: "ibm/slate-125m-english-rtrvr", label: "Slate 125M English Retriever", default: true },
+    { value: "sentence-transformers/all-minilm-l12-v2", label: "All-MiniLM L12 v2" },
+  ];
+
+  // Update default selections when models are loaded
+  useEffect(() => {
+    if (modelsData) {
+      const defaultLangModel = modelsData.language_models.find(m => m.default);
+      const defaultEmbedModel = modelsData.embedding_models.find(m => m.default);
+
+      if (defaultLangModel) {
+        setLanguageModel(defaultLangModel.value);
+      }
+      if (defaultEmbedModel) {
+        setEmbeddingModel(defaultEmbedModel.value);
+      }
+    }
+  }, [modelsData]);
   const handleLanguageModelChange = (model: string) => {
     setLanguageModel(model);
   };
@@ -48,21 +72,27 @@ export function IBMOnboarding({
         helperText="The API endpoint for your watsonx.ai account."
         id="api-endpoint"
         required
-        placeholder="https://..."
+        placeholder="https://us-south.ml.cloud.ibm.com"
+        value={endpoint}
+        onChange={(e) => setEndpoint(e.target.value)}
       />
       <LabelInput
         label="IBM API key"
         helperText="The API key for your watsonx.ai account."
         id="api-key"
         required
-        placeholder="sk-..."
+        placeholder="your-api-key"
+        value={apiKey}
+        onChange={(e) => setApiKey(e.target.value)}
       />
       <LabelInput
         label="IBM Project ID"
         helperText="The project ID for your watsonx.ai account."
         id="project-id"
         required
-        placeholder="..."
+        placeholder="your-project-id"
+        value={projectId}
+        onChange={(e) => setProjectId(e.target.value)}
       />
       <AdvancedOnboarding
         icon={<IBMLogo className="w-4 h-4" />}
