@@ -388,3 +388,5 @@ async def connector_token(request: Request, connector_service, session_manager):
     except Exception as e:
         logger.error("Error getting connector token", error=str(e))
         return JSONResponse({"error": str(e)}, status_code=500)
+
+

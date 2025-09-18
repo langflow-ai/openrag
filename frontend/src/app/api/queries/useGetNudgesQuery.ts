@@ -14,7 +14,7 @@ const DEFAULT_NUDGES = [
 
 export const useGetNudgesQuery = (
   chatId?: string | null,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">
 ) => {
   const queryClient = useQueryClient();
 
@@ -26,7 +26,12 @@ export const useGetNudgesQuery = (
     try {
       const response = await fetch(`/api/nudges${chatId ? `/${chatId}` : ""}`);
       const data = await response.json();
-      return data.response.split("\n").filter(Boolean) || DEFAULT_NUDGES;
+
+      if (data.response && typeof data.response === "string") {
+        return data.response.split("\n").filter(Boolean);
+      }
+
+      return DEFAULT_NUDGES;
     } catch (error) {
       console.error("Error getting nudges", error);
       return DEFAULT_NUDGES;
@@ -39,7 +44,7 @@ export const useGetNudgesQuery = (
       queryFn: getNudges,
       ...options,
     },
-    queryClient,
+    queryClient
   );
 
   return { ...queryResult, cancel };
