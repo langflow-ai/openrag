@@ -11,11 +11,30 @@ body {
   --ag-wrapper-border: none;
   --ag-font-family: var(--font-sans);
 
+  /* Checkbox styling */
+  --ag-checkbox-background-color: hsl(var(--background));
+  --ag-checkbox-border-color: hsl(var(--border));
+  --ag-checkbox-checked-color: hsl(var(--primary));
+  --ag-checkbox-unchecked-color: transparent;
+
   .ag-header {
     border-bottom: 1px solid hsl(var(--border));
     margin-bottom: 0.5rem;
   }
-  .ag-row {
-    cursor: pointer;
+
+  /* Make sure checkboxes are visible */
+  .ag-selection-checkbox,
+  .ag-header-select-all {
+    opacity: 1 !important;
+  }
+
+  .ag-checkbox-input-wrapper {
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--background));
+  }
+
+  .ag-checkbox-input-wrapper.ag-checked {
+    background-color: hsl(var(--primary));
+    border-color: hsl(var(--primary));
   }
 }
