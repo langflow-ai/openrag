@@ -1,20 +1,25 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import { toast } from "sonner";
 import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
 import {
   type Settings,
   useGetSettingsQuery,
 } from "@/app/api/queries/useGetSettingsQuery";
-import { LabelInput } from "@/components/label-input";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
 import OpenAILogo from "@/components/logo/openai-logo";
 import { ProtectedRoute } from "@/components/protected-route";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/auth-context";
-import { AdvancedOnboarding } from "./advanced";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
 import { OpenAIOnboarding } from "./openai-onboarding";
@@ -36,9 +41,19 @@ function OnboardingPage() {
       console.log("Setting updated successfully");
     },
     onError: (error) => {
-      console.error("Failed to update setting:", error.message);
+      toast.error("Failed to update settings", {
+        description: error.message,
+      });
     },
   });
+
+  const handleComplete = () => {
+    updateFlowSettingMutation.mutate({
+      llm_model: settings.agent?.llm_model,
+      embedding_model: settings.ingest?.embedding_model,
+      system_prompt: settings.agent?.system_prompt,
+    });
+  };
 
   return (
     <div
@@ -92,6 +107,11 @@ function OnboardingPage() {
               </TabsContent>
             </CardContent>
           </Tabs>
+          <CardFooter className="flex justify-end">
+            <Button size="sm" onClick={handleComplete}>
+              Complete
+            </Button>
+          </CardFooter>
         </Card>
       </div>
     </div>
