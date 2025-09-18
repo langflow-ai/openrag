@@ -31,6 +31,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTask } from "@/contexts/task-context";
 import { useDebounce } from "@/lib/debounce";
 
+const MAX_SYSTEM_PROMPT_CHARS = 2000;
+
 interface GoogleDriveFile {
   id: string;
   name: string;
@@ -94,6 +96,8 @@ function KnowledgeSourcesPage() {
 
   // Only keep systemPrompt state since it needs manual save button
   const [systemPrompt, setSystemPrompt] = useState<string>("");
+  const [chunkSize, setChunkSize] = useState<number>(1024);
+  const [chunkOverlap, setChunkOverlap] = useState<number>(50);
 
   // Fetch settings using React Query
   const { data: settings = {} } = useGetSettingsQuery({
@@ -125,6 +129,19 @@ function KnowledgeSourcesPage() {
     }
   }, [settings.agent?.system_prompt]);
 
+  // Sync chunk size and overlap state with settings data
+  useEffect(() => {
+    if (settings.ingest?.chunk_size) {
+      setChunkSize(settings.ingest.chunk_size);
+    }
+  }, [settings.ingest?.chunk_size]);
+
+  useEffect(() => {
+    if (settings.ingest?.chunk_overlap) {
+      setChunkOverlap(settings.ingest.chunk_overlap);
+    }
+  }, [settings.ingest?.chunk_overlap]);
+
   // Update model selection immediately
   const handleModelChange = (newModel: string) => {
     updateFlowSettingMutation.mutate({ llm_model: newModel });
@@ -143,12 +160,14 @@ function KnowledgeSourcesPage() {
   // Update chunk size setting with debounce
   const handleChunkSizeChange = (value: string) => {
     const numValue = Math.max(0, parseInt(value) || 0);
+    setChunkSize(numValue);
     debouncedUpdate({ chunk_size: numValue });
   };
 
   // Update chunk overlap setting with debounce
   const handleChunkOverlapChange = (value: string) => {
     const numValue = Math.max(0, parseInt(value) || 0);
+    setChunkOverlap(numValue);
     debouncedUpdate({ chunk_overlap: numValue });
   };
 
@@ -568,18 +587,18 @@ function KnowledgeSourcesPage() {
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 rows={6}
-                className={`resize-none ${systemPrompt.length > 2000 ? 'border-red-500 focus:border-red-500' : ''}`}
+                className={`resize-none ${systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS ? 'border-red-500 focus:border-red-500' : ''}`}
               />
               <div className="flex justify-start">
-                <span className={`text-xs ${systemPrompt.length > 2000 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                  {systemPrompt.length}/2000 characters
+                <span className={`text-xs ${systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS ? 'text-red-500' : 'text-muted-foreground'}`}>
+                  {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
                 </span>
               </div>
             </div>
             <div className="flex justify-end pt-2">
               <Button
                 onClick={handleSystemPromptSave}
-                disabled={updateFlowSettingMutation.isPending || systemPrompt.length > 2000}
+                disabled={updateFlowSettingMutation.isPending || systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS}
                 className="min-w-[120px]"
                 size="sm"
                 variant="outline"
@@ -702,7 +721,7 @@ function KnowledgeSourcesPage() {
                     id="chunk-size"
                     type="number"
                     min="1"
-                    defaultValue={settings.ingest?.chunk_size || 1000}
+                    value={chunkSize}
                     onChange={(e) => handleChunkSizeChange(e.target.value)}
                     className="w-full pr-20"
                   />
@@ -725,7 +744,7 @@ function KnowledgeSourcesPage() {
                     id="chunk-overlap"
                     type="number"
                     min="0"
-                    defaultValue={settings.ingest?.chunk_overlap || 200}
+                    value={chunkOverlap}
                     onChange={(e) => handleChunkOverlapChange(e.target.value)}
                     className="w-full pr-20"
                   />
