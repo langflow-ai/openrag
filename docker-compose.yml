@@ -91,7 +91,7 @@ services:
   langflow:
     volumes:
       - ./flows:/app/flows:Z
-    image: phact/langflow:${LANGFLOW_VERSION:-responses}
+    image: phact/openrag-langflow:${LANGFLOW_VERSION:-latest}
     container_name: langflow
     ports:
       - "7860:7860"
