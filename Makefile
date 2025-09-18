@@ -75,6 +75,14 @@ infra:
 	@echo "   OpenSearch: http://localhost:9200"
 	@echo "   Dashboards: http://localhost:5601"
 
+infra-cpu:
+	@echo "🔧 Starting infrastructure services only..."
+	docker-compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow
+	@echo "✅ Infrastructure services started!"
+	@echo "   Langflow: http://localhost:7860"
+	@echo "   OpenSearch: http://localhost:9200"
+	@echo "   Dashboards: http://localhost:5601"
+
 # Container management
 stop:
 	@echo "🛑 Stopping all containers..."

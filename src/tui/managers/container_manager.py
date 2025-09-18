@@ -9,6 +9,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, AsyncIterator
 from utils.logging_config import get_logger
+try:
+    from importlib.resources import files
+except ImportError:
+    from importlib_resources import files
 
 logger = get_logger(__name__)
 
@@ -51,8 +55,8 @@ class ContainerManager:
     def __init__(self, compose_file: Optional[Path] = None):
         self.platform_detector = PlatformDetector()
         self.runtime_info = self.platform_detector.detect_runtime()
-        self.compose_file = compose_file or Path("docker-compose.yml")
-        self.cpu_compose_file = Path("docker-compose-cpu.yml")
+        self.compose_file = compose_file or self._find_compose_file("docker-compose.yml")
+        self.cpu_compose_file = self._find_compose_file("docker-compose-cpu.yml")
         self.services_cache: Dict[str, ServiceInfo] = {}
         self.last_status_update = 0
         # Auto-select CPU compose if no GPU available
@@ -79,6 +83,42 @@ class ContainerManager:
             "osdash": "dashboards",
             "langflow": "langflow",
         }
+
+    def _find_compose_file(self, filename: str) -> Path:
+        """Find compose file in current directory or package resources."""
+        # First check current working directory
+        cwd_path = Path(filename)
+        self._compose_search_log = f"Searching for {filename}:\n"
+        self._compose_search_log += f"  1. Current directory: {cwd_path.absolute()}"
+
+        if cwd_path.exists():
+            self._compose_search_log += " ✓ FOUND"
+            return cwd_path
+        else:
+            self._compose_search_log += " ✗ NOT FOUND"
+
+        # Then check package resources
+        self._compose_search_log += f"\n  2. Package resources: "
+        try:
+            pkg_files = files("tui._assets")
+            self._compose_search_log += f"{pkg_files}"
+            compose_resource = pkg_files / filename
+
+            if compose_resource.is_file():
+                self._compose_search_log += f" ✓ FOUND, copying to current directory"
+                # Copy to cwd for compose command to work
+                content = compose_resource.read_text()
+                cwd_path.write_text(content)
+                return cwd_path
+            else:
+                self._compose_search_log += f" ✗ NOT FOUND"
+        except Exception as e:
+            self._compose_search_log += f" ✗ SKIPPED ({e})"
+            # Don't log this as an error since it's expected when running from source
+
+        # Fall back to original path (will fail later if not found)
+        self._compose_search_log += f"\n  3. Falling back to: {cwd_path.absolute()}"
+        return Path(filename)
 
     def is_available(self) -> bool:
         """Check if container runtime is available."""
@@ -144,20 +184,74 @@ class ContainerManager:
             )
 
             # Simple approach: read line by line and yield each one
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    break
+            if process.stdout:
+                while True:
+                    line = await process.stdout.readline()
+                    if not line:
+                        break
 
-                line_text = line.decode().rstrip()
-                if line_text:
-                    yield line_text
+                    line_text = line.decode(errors="ignore").rstrip()
+                    if line_text:
+                        yield line_text
 
             # Wait for process to complete
             await process.wait()
 
         except Exception as e:
             yield f"Command execution failed: {e}"
+
+    async def _stream_compose_command(
+        self,
+        args: List[str],
+        success_flag: Dict[str, bool],
+        cpu_mode: Optional[bool] = None,
+    ) -> AsyncIterator[str]:
+        """Run compose command with live output and record success/failure."""
+        if not self.is_available():
+            success_flag["value"] = False
+            yield "No container runtime available"
+            return
+
+        if cpu_mode is None:
+            cpu_mode = self.use_cpu_compose
+        compose_file = self.cpu_compose_file if cpu_mode else self.compose_file
+        cmd = self.runtime_info.compose_command + ["-f", str(compose_file)] + args
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=Path.cwd(),
+            )
+        except Exception as e:
+            success_flag["value"] = False
+            yield f"Command execution failed: {e}"
+            return
+
+        success_flag["value"] = True
+
+        if process.stdout:
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+
+                line_text = line.decode(errors="ignore")
+                # Compose often uses carriage returns for progress bars; normalise them
+                for chunk in line_text.replace("\r", "\n").split("\n"):
+                    chunk = chunk.strip()
+                    if not chunk:
+                        continue
+                    yield chunk
+                    lowered = chunk.lower()
+                    if "error" in lowered or "failed" in lowered:
+                        success_flag["value"] = False
+
+        returncode = await process.wait()
+        if returncode != 0:
+            success_flag["value"] = False
+            yield f"Command exited with status {returncode}"
 
     async def _run_runtime_command(self, args: List[str]) -> tuple[bool, str, str]:
         """Run a runtime command (docker/podman) and return (success, stdout, stderr)."""
@@ -408,19 +502,56 @@ class ContainerManager:
         return results
 
     async def start_services(
-        self, cpu_mode: bool = False
+        self, cpu_mode: Optional[bool] = None
     ) -> AsyncIterator[tuple[bool, str]]:
         """Start all services and yield progress updates."""
+        if not self.is_available():
+            yield False, "No container runtime available"
+            return
+
+        # Diagnostic info about compose files
+        compose_file = self.cpu_compose_file if (cpu_mode if cpu_mode is not None else self.use_cpu_compose) else self.compose_file
+
+        # Show the search process for debugging
+        if hasattr(self, '_compose_search_log'):
+            for line in self._compose_search_log.split('\n'):
+                if line.strip():
+                    yield False, line
+
+        yield False, f"Final compose file: {compose_file.absolute()}"
+        if not compose_file.exists():
+            yield False, f"ERROR: Compose file not found at {compose_file.absolute()}"
+            return
+
         yield False, "Starting OpenRAG services..."
 
-        success, stdout, stderr = await self._run_compose_command(
-            ["up", "-d"], cpu_mode
-        )
+        missing_images: List[str] = []
+        try:
+            images_info = await self.get_project_images_info()
+            missing_images = [image for image, digest in images_info if digest == "-"]
+        except Exception:
+            missing_images = []
 
-        if success:
+        if missing_images:
+            images_list = ", ".join(missing_images)
+            yield False, f"Pulling container images ({images_list})..."
+            pull_success = {"value": True}
+            async for line in self._stream_compose_command(
+                ["pull"], pull_success, cpu_mode
+            ):
+                yield False, line
+            if not pull_success["value"]:
+                yield False, "Some images failed to pull; attempting to start services anyway..."
+
+        yield False, "Creating and starting containers..."
+        up_success = {"value": True}
+        async for line in self._stream_compose_command(["up", "-d"], up_success, cpu_mode):
+            yield False, line
+
+        if up_success["value"]:
             yield True, "Services started successfully"
         else:
-            yield False, f"Failed to start services: {stderr}"
+            yield False, "Failed to start services. See output above for details."
 
     async def stop_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Stop all services and yield progress updates."""
