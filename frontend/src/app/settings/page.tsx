@@ -5,7 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useGetOpenAIModelsQuery, useGetOllamaModelsQuery, useGetIBMModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
+import { ModelSelectItems } from "./helpers/model-select-item";
+import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +25,6 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -104,6 +106,37 @@ function KnowledgeSourcesPage() {
     enabled: isAuthenticated,
   });
 
+  // Get the current provider from settings
+  const currentProvider = (settings.provider?.model_provider || 'openai') as ModelProvider;
+
+  // Fetch available models based on provider
+  const { data: openaiModelsData } = useGetOpenAIModelsQuery({
+    enabled: isAuthenticated && currentProvider === 'openai',
+  });
+
+  const { data: ollamaModelsData } = useGetOllamaModelsQuery(
+    undefined, // No params for now, could be extended later
+    {
+      enabled: isAuthenticated && currentProvider === 'ollama',
+    }
+  );
+
+  const { data: ibmModelsData } = useGetIBMModelsQuery(
+    undefined, // No params for now, could be extended later
+    {
+      enabled: isAuthenticated && currentProvider === 'ibm',
+    }
+  );
+
+  // Select the appropriate models data based on provider
+  const modelsData = currentProvider === 'openai'
+    ? openaiModelsData
+    : currentProvider === 'ollama'
+    ? ollamaModelsData
+    : currentProvider === 'ibm'
+    ? ibmModelsData
+    : openaiModelsData; // fallback to openai
+
   // Mutations
   const updateFlowSettingMutation = useUpdateFlowSettingMutation({
     onSuccess: () => {
@@ -170,6 +203,7 @@ function KnowledgeSourcesPage() {
     setChunkOverlap(numValue);
     debouncedUpdate({ chunk_overlap: numValue });
   };
+
 
   // Helper function to get connector icon
   const getConnectorIcon = useCallback((iconName: string) => {
@@ -559,21 +593,18 @@ function KnowledgeSourcesPage() {
                 Language Model
               </Label>
               <Select
-                value={settings.agent?.llm_model || "gpt-4"}
+                value={settings.agent?.llm_model || modelsData?.language_models?.find(m => m.default)?.value || "gpt-4"}
                 onValueChange={handleModelChange}
               >
                 <SelectTrigger id="model-select">
                   <SelectValue placeholder="Select a model" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="gpt-4">GPT-4</SelectItem>
-                  <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
-                  <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
-                  <SelectItem value="claude-3-opus">Claude 3 Opus</SelectItem>
-                  <SelectItem value="claude-3-sonnet">
-                    Claude 3 Sonnet
-                  </SelectItem>
-                  <SelectItem value="claude-3-haiku">Claude 3 Haiku</SelectItem>
+                  <ModelSelectItems
+                    models={modelsData?.language_models}
+                    fallbackModels={getFallbackModels(currentProvider).language}
+                    provider={currentProvider}
+                  />
                 </SelectContent>
               </Select>
             </div>
@@ -685,7 +716,7 @@ function KnowledgeSourcesPage() {
               </Label>
               <Select
                 value={
-                  settings.knowledge?.embedding_model || "text-embedding-ada-002"
+                  settings.knowledge?.embedding_model || modelsData?.embedding_models?.find(m => m.default)?.value || "text-embedding-ada-002"
                 }
                 onValueChange={handleEmbeddingModelChange}
               >
@@ -693,21 +724,11 @@ function KnowledgeSourcesPage() {
                   <SelectValue placeholder="Select an embedding model" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="text-embedding-ada-002">
-                    text-embedding-ada-002
-                  </SelectItem>
-                  <SelectItem value="text-embedding-3-small">
-                    text-embedding-3-small
-                  </SelectItem>
-                  <SelectItem value="text-embedding-3-large">
-                    text-embedding-3-large
-                  </SelectItem>
-                  <SelectItem value="all-MiniLM-L6-v2">
-                    all-MiniLM-L6-v2
-                  </SelectItem>
-                  <SelectItem value="all-mpnet-base-v2">
-                    all-mpnet-base-v2
-                  </SelectItem>
+                  <ModelSelectItems
+                    models={modelsData?.embedding_models}
+                    fallbackModels={getFallbackModels(currentProvider).embedding}
+                    provider={currentProvider}
+                  />
                 </SelectContent>
               </Select>
             </div>
