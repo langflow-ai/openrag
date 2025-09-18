@@ -488,7 +488,7 @@ function KnowledgeSourcesPage() {
             </div>
             <div className="flex gap-2">
               <ConfirmationDialog
-                trigger={<Button variant="secondary">Restore flow</Button>}
+                trigger={<Button variant="outline">Restore flow</Button>}
                 title="Restore default Agent flow"
                 description="This restores defaults and discards all custom settings and overrides. This can't be undone."
                 confirmText="Restore"
@@ -497,7 +497,7 @@ function KnowledgeSourcesPage() {
               />
               <ConfirmationDialog
                 trigger={
-                  <Button variant="secondary">
+                  <Button>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="24"
@@ -537,7 +537,7 @@ function KnowledgeSourcesPage() {
           <div className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="model-select" className="text-base font-medium">
-                Model
+                Language Model
               </Label>
               <Select
                 value={settings.agent?.llm_model || "gpt-4"}
@@ -560,23 +560,29 @@ function KnowledgeSourcesPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="system-prompt" className="text-base font-medium">
-                System Prompt
+                Agent Instructions
               </Label>
               <Textarea
                 id="system-prompt"
-                placeholder="Enter your system prompt here..."
+                placeholder="Enter your agent instructions here..."
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 rows={6}
-                className="resize-none"
+                className={`resize-none ${systemPrompt.length > 2000 ? 'border-red-500 focus:border-red-500' : ''}`}
               />
+              <div className="flex justify-start">
+                <span className={`text-xs ${systemPrompt.length > 2000 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                  {systemPrompt.length}/2000 characters
+                </span>
+              </div>
             </div>
             <div className="flex justify-end pt-2">
               <Button
                 onClick={handleSystemPromptSave}
-                disabled={updateFlowSettingMutation.isPending}
+                disabled={updateFlowSettingMutation.isPending || systemPrompt.length > 2000}
                 className="min-w-[120px]"
                 size="sm"
+                variant="outline"
               >
                 {updateFlowSettingMutation.isPending ? (
                   <>
@@ -584,7 +590,7 @@ function KnowledgeSourcesPage() {
                     Saving...
                   </>
                 ) : (
-                  "Save Prompt"
+                  "Save Agent Instructions"
                 )}
               </Button>
             </div>
@@ -604,7 +610,7 @@ function KnowledgeSourcesPage() {
             </div>
             <div className="flex gap-2">
               <ConfirmationDialog
-                trigger={<Button variant="secondary">Restore flow</Button>}
+                trigger={<Button variant="outline">Restore flow</Button>}
                 title="Restore default Ingest flow"
                 description="This restores defaults and discards all custom settings and overrides. This can't be undone."
                 confirmText="Restore"
@@ -613,7 +619,7 @@ function KnowledgeSourcesPage() {
               />
               <ConfirmationDialog
                 trigger={
-                  <Button variant="secondary">
+                  <Button>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="24"
