@@ -15,6 +15,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { EndpointType } from "@/contexts/chat-context";
 import { useLoadingStore } from "@/stores/loadingStore";
+import { KnowledgeFilterList } from "./knowledge-filter-list";
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 
 interface RawConversation {
   response_id: string;
@@ -73,6 +75,8 @@ export function Navigation() {
   const [loadingNewConversation, setLoadingNewConversation] = useState(false);
   const [previousConversationCount, setPreviousConversationCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { selectedFilter, setSelectedFilter } = useKnowledgeFilter();
 
   const handleNewConversation = () => {
     setLoadingNewConversation(true);
@@ -194,6 +198,7 @@ export function Navigation() {
   ];
 
   const isOnChatPage = pathname === "/" || pathname === "/chat";
+  const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
   const createDefaultPlaceholder = useCallback(() => {
     return {
@@ -343,6 +348,13 @@ export function Navigation() {
           ))}
         </div>
       </div>
+
+      {isOnKnowledgePage && (
+        <KnowledgeFilterList
+          selectedFilter={selectedFilter}
+          onFilterSelect={setSelectedFilter}
+        />
+      )}
 
       {/* Chat Page Specific Sections */}
       {isOnChatPage && (
