@@ -44,6 +44,19 @@ export const KnowledgeActionsDropdown = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="right" sideOffset={-10}>
+          {/* //TODO: Implement rename and sync */}
+          {/* <DropdownMenuItem
+            className="text-primary focus:text-primary"
+            onClick={() => alert("Not implemented")}
+          >
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-primary focus:text-primary"
+            onClick={() => alert("Not implemented")}
+          >
+            Sync
+          </DropdownMenuItem> */}
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={() => setShowDeleteDialog(true)}
