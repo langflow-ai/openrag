@@ -4,18 +4,18 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-interface AgentSettings {
+export interface AgentSettings {
   llm_model?: string;
   system_prompt?: string;
 }
 
-interface IngestSettings {
+export interface IngestSettings {
   embedding_model?: string;
   chunk_size?: number;
   chunk_overlap?: number;
 }
 
-interface Settings {
+export interface Settings {
   flow_id?: string;
   ingest_flow_id?: string;
   langflow_edit_url?: string;
