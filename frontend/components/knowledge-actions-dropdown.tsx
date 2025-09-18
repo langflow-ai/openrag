@@ -12,7 +12,7 @@ import { Button } from "./ui/button";
 export function KnowledgeActionsDropdown() {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="hover:bg-transparent">
           <EllipsisVertical className="h-4 w-4" />
         </Button>
