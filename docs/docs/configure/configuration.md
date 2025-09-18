@@ -1,3 +1,8 @@
+---
+title: Configuration
+slug: /configure/configuration
+---
+
 # Configuration
 
 OpenRAG uses environment variables for configuration. Copy `.env.example` to `.env` and populate with your values:
