@@ -17,8 +17,11 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useTask } from "@/contexts/task-context";
+import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
 
 interface GoogleDriveFile {
   id: string;
@@ -93,6 +96,20 @@ function KnowledgeSourcesPage() {
   const [langflowIngestEditUrl, setLangflowIngestEditUrl] = useState<string>("");
   const [publicLangflowUrl, setPublicLangflowUrl] = useState<string>("");
 
+  // Agent Behavior state
+  const [selectedModel, setSelectedModel] = useState<string>("gpt-4");
+  const [systemPrompt, setSystemPrompt] = useState<string>("");
+
+  // Mutations
+  const updateFlowSettingMutation = useUpdateFlowSettingMutation({
+    onSuccess: () => {
+      console.log("Setting updated successfully");
+    },
+    onError: (error) => {
+      console.error("Failed to update setting:", error.message);
+    },
+  });
+
 
   // Fetch settings from backend
   const fetchSettings = useCallback(async () => {
@@ -115,11 +132,28 @@ function KnowledgeSourcesPage() {
         if (settings.langflow_public_url) {
           setPublicLangflowUrl(settings.langflow_public_url);
         }
+        if (settings.agent?.llm_model) {
+          setSelectedModel(settings.agent.llm_model);
+        }
+        if (settings.agent?.system_prompt) {
+          setSystemPrompt(settings.agent.system_prompt);
+        }
       }
     } catch (error) {
       console.error("Failed to fetch settings:", error);
     }
   }, []);
+
+  // Update model selection immediately
+  const handleModelChange = (newModel: string) => {
+    setSelectedModel(newModel);
+    updateFlowSettingMutation.mutate({ llm_model: newModel });
+  };
+
+  // Update system prompt with save button
+  const handleSystemPromptSave = () => {
+    updateFlowSettingMutation.mutate({ system_prompt: systemPrompt });
+  };
 
   // Helper function to get connector icon
   const getConnectorIcon = (iconName: string) => {
@@ -594,6 +628,61 @@ function KnowledgeSourcesPage() {
             </div>
           </div>
         </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="model-select" className="text-base font-medium">
+                Model
+              </Label>
+              <Select value={selectedModel} onValueChange={handleModelChange}>
+                <SelectTrigger id="model-select">
+                  <SelectValue placeholder="Select a model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gpt-4">GPT-4</SelectItem>
+                  <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
+                  <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
+                  <SelectItem value="claude-3-opus">Claude 3 Opus</SelectItem>
+                  <SelectItem value="claude-3-sonnet">Claude 3 Sonnet</SelectItem>
+                  <SelectItem value="claude-3-haiku">Claude 3 Haiku</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="system-prompt" className="text-base font-medium">
+                System Prompt
+              </Label>
+              <Textarea
+                id="system-prompt"
+                placeholder="Enter your system prompt here..."
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                rows={6}
+                className="resize-none"
+              />
+              <div className="text-sm text-muted-foreground">
+                This prompt will be used to guide the agent&apos;s behavior and responses.
+              </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button
+                onClick={handleSystemPromptSave}
+                disabled={updateFlowSettingMutation.isPending}
+                className="min-w-[120px]"
+                size="sm"
+              >
+                {updateFlowSettingMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Prompt"
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
       </Card>
 
       {/* Connectors Section */}
