@@ -9,13 +9,21 @@ import { ModelSelector } from "./model-selector";
 export function OllamaOnboarding({
   settings,
   setSettings,
+  sampleDataset,
+  setSampleDataset,
 }: {
   settings: Settings;
   setSettings: (settings: Settings) => void;
+  sampleDataset: boolean;
+  setSampleDataset: (dataset: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
-  const frameworks = [
+  const [languageModel, setLanguageModel] = useState("gpt-oss");
+  const [embeddingModel, setEmbeddingModel] = useState(
+    "text-embedding-3-small",
+  );
+  const languageModels = [
     { value: "gpt-oss", label: "gpt-oss", default: true },
     { value: "llama3.1", label: "llama3.1" },
     { value: "llama3.2", label: "llama3.2" },
@@ -23,6 +31,13 @@ export function OllamaOnboarding({
     { value: "llama3.4", label: "llama3.4" },
     { value: "llama3.5", label: "llama3.5" },
   ];
+  const embeddingModels = [
+    { value: "text-embedding-3-small", label: "text-embedding-3-small" },
+  ];
+
+  const handleSampleDatasetChange = (dataset: boolean) => {
+    setSampleDataset(dataset);
+  };
   return (
     <>
       <LabelInput
@@ -32,22 +47,37 @@ export function OllamaOnboarding({
         required
         placeholder="http://..."
       />
-
       <LabelWrapper
-        label="Embedding Model"
+        label="Embedding model"
         helperText="The embedding model for your Ollama server."
         id="embedding-model"
         required={true}
       >
         <ModelSelector
-          options={frameworks}
+          options={embeddingModels}
           icon={<OllamaLogo className="w-4 h-4" />}
-          value={value}
-          onValueChange={setValue}
+          value={embeddingModel}
+          onValueChange={setEmbeddingModel}
+        />
+      </LabelWrapper>
+      <LabelWrapper
+        label="Language model"
+        helperText="The embedding model for your Ollama server."
+        id="embedding-model"
+        required={true}
+      >
+        <ModelSelector
+          options={languageModels}
+          icon={<OllamaLogo className="w-4 h-4" />}
+          value={languageModel}
+          onValueChange={setLanguageModel}
         />
       </LabelWrapper>
 
-      <AdvancedOnboarding modelProvider="ollama" />
+      <AdvancedOnboarding
+        sampleDataset={sampleDataset}
+        setSampleDataset={handleSampleDatasetChange}
+      />
     </>
   );
 }
