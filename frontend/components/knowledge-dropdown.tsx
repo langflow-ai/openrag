@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -294,6 +295,11 @@ export function KnowledgeDropdown({
         window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
       } else {
         console.error("Folder upload failed:", result.error);
+        if (response.status === 400) {
+          toast.error("Upload failed", {
+            description: result.error || "Bad request",
+          });
+        }
       }
     } catch (error) {
       console.error("Folder upload error:", error);
@@ -333,6 +339,11 @@ export function KnowledgeDropdown({
         window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
       } else {
         console.error("S3 upload failed:", result.error);
+        if (response.status === 400) {
+          toast.error("Upload failed", {
+            description: result.error || "Bad request",
+          });
+        }
       }
     } catch (error) {
       console.error("S3 upload error:", error);
