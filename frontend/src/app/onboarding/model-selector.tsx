@@ -39,10 +39,10 @@ export function ModelSelector({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full gap-2 justify-between"
+          className="w-full gap-2 justify-between font-normal text-sm"
         >
           {value ? (
-            <div className="flex items-center gap-2 font-normal text-sm">
+            <div className="flex items-center gap-2">
               <div className="w-4 h-4">{icon}</div>
               {options.find((framework) => framework.value === value)?.label}
               {options.find((framework) => framework.value === value)
