@@ -233,7 +233,7 @@ async def update_settings(request, session_manager):
         )
 
 
-async def onboarding(request, session_manager):
+async def onboarding(request, flows_service):
     """Handle onboarding configuration setup"""
     try:
         # Get current configuration
@@ -323,6 +323,23 @@ async def onboarding(request, session_manager):
         if config_manager.save_config_file(current_config):
             updated_fields = [k for k in body.keys() if k != "sample_data"]  # Exclude sample_data from log
             logger.info("Onboarding configuration updated successfully", updated_fields=updated_fields)
+            
+            # If model_provider was updated, assign the new provider to flows
+            if "model_provider" in body:
+                provider = body["model_provider"].strip().lower()
+                try:
+                    flow_result = await flows_service.assign_model_provider(provider)
+                    
+                    if flow_result.get("success"):
+                        logger.info(f"Successfully assigned {provider} to flows", flow_result=flow_result)
+                    else:
+                        logger.warning(f"Failed to assign {provider} to flows", flow_result=flow_result)
+                        # Continue even if flow assignment fails - configuration was still saved
+                        
+                except Exception as e:
+                    logger.error(f"Error assigning model provider to flows", provider=provider, error=str(e))
+                    # Continue even if flow assignment fails - configuration was still saved
+            
             return JSONResponse({
                 "message": "Onboarding configuration updated successfully",
                 "edited": True  # Confirm that config is now marked as edited

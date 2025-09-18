@@ -399,6 +399,21 @@ class AppClients:
         )
 
 
+# Component template paths
+WATSONX_LLM_COMPONENT_PATH = os.getenv("WATSONX_LLM_COMPONENT_PATH", "flows/components/watsonx_llm.json")
+WATSONX_EMBEDDING_COMPONENT_PATH = os.getenv("WATSONX_EMBEDDING_COMPONENT_PATH", "flows/components/watsonx_embedding.json")
+OLLAMA_LLM_COMPONENT_PATH = os.getenv("OLLAMA_LLM_COMPONENT_PATH", "flows/components/ollama_llm.json")
+OLLAMA_EMBEDDING_COMPONENT_PATH = os.getenv("OLLAMA_EMBEDDING_COMPONENT_PATH", "flows/components/ollama_embedding.json")
+
+# Component IDs in flows
+NUDGES_EMBEDDING_COMPONENT_ID = os.getenv("NUDGES_EMBEDDING_COMPONENT_ID", "EmbeddingModel-eZ6bT")
+NUDGES_LLM_COMPONENT_ID = os.getenv("NUDGES_LLM_COMPONENT_ID", "LanguageModelComponent-0YME7")
+
+AGENT_EMBEDDING_COMPONENT_ID = os.getenv("AGENT_EMBEDDING_COMPONENT_ID", "EmbeddingModel-eZ6bT") 
+AGENT_LLM_COMPONENT_ID = os.getenv("AGENT_LLM_COMPONENT_ID", "LanguageModelComponent-0YME7")
+
+INGESTION_EMBEDDING_COMPONENT_ID = os.getenv("INGESTION_EMBEDDING_COMPONENT_ID", "OpenAIEmbeddings-joRJ6")
+
 # Global clients instance
 clients = AppClients()
 
