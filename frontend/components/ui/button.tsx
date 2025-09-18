@@ -8,13 +8,20 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary-hover",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        outline: "border border-input hover:bg-input hover:text-accent-foreground",
-        primary: "border bg-background text-secondary-foreground hover:bg-muted hover:shadow-sm",
-        warning: "bg-warning-foreground text-warning-text hover:bg-warning-foreground/90 hover:shadow-sm",
-        secondary: "border border-muted bg-muted text-secondary-foreground hover:bg-secondary-foreground/5",
-        ghost: "text-foreground hover:bg-accent hover:text-accent-foreground disabled:!bg-transparent",
-        ghostActive: "bg-muted text-foreground hover:bg-secondary-hover hover:text-accent-foreground",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline:
+          "border border-input hover:bg-muted hover:text-accent-foreground",
+        primary:
+          "border bg-background text-secondary-foreground hover:bg-muted hover:shadow-sm",
+        warning:
+          "bg-warning-foreground text-warning-text hover:bg-warning-foreground/90 hover:shadow-sm",
+        secondary:
+          "border border-muted bg-muted text-secondary-foreground hover:bg-secondary-foreground/5",
+        ghost:
+          "text-foreground hover:bg-accent hover:text-accent-foreground disabled:!bg-transparent",
+        ghostActive:
+          "bg-muted text-foreground hover:bg-secondary-hover hover:text-accent-foreground",
         link: "underline-offset-4 hover:underline text-primary",
       },
       size: {
@@ -38,7 +45,9 @@ const buttonVariants = cva(
 function toTitleCase(text: string) {
   return text
     ?.split(" ")
-    ?.map((word) => word?.charAt(0)?.toUpperCase() + word?.slice(1)?.toLowerCase())
+    ?.map(
+      (word) => word?.charAt(0)?.toUpperCase() + word?.slice(1)?.toLowerCase(),
+    )
     ?.join(" ");
 }
 
@@ -51,7 +60,20 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, loading, disabled, asChild = false, children, ignoreTitleCase = false, ...props }, ref) => {
+  (
+    {
+      className,
+      variant,
+      size,
+      loading,
+      disabled,
+      asChild = false,
+      children,
+      ignoreTitleCase = false,
+      ...props
+    },
+    ref,
+  ) => {
     const Comp = asChild ? Slot : "button";
     let newChildren = children;
     if (typeof children === "string") {
@@ -79,7 +101,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         )}
       </Comp>
     );
-  }
+  },
 );
 
 Button.displayName = "Button";
