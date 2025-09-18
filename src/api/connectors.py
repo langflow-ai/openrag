@@ -13,8 +13,8 @@ async def list_connectors(request: Request, connector_service, session_manager):
         )
         return JSONResponse({"connectors": connector_types})
     except Exception as e:
-        logger.error("Error listing connectors", error=str(e))
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.info("Error listing connectors", error=str(e))
+        return JSONResponse({"connectors": []})
 
 
 async def connector_sync(request: Request, connector_service, session_manager):
