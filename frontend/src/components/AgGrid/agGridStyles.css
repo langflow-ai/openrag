@@ -21,9 +21,6 @@ body {
     border-bottom: 1px solid hsl(var(--border));
     margin-bottom: 0.5rem;
   }
-  .ag-row {
-    cursor: pointer;
-  }
 
   /* Make sure checkboxes are visible */
   .ag-selection-checkbox,
