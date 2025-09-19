@@ -33,7 +33,7 @@ import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdow
 import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { toast } from "sonner";
-import { StatusBadge } from "@/components/ui/status-badge";
+// import { StatusBadge } from "@/components/ui/status-badge";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -156,15 +156,16 @@ function SearchPage() {
         );
       },
     },
-    {
-      field: "status",
-      headerName: "Status",
-      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
-        // Default to 'active' status if no status is provided
-        const status = data?.status || "processing";
-        return <StatusBadge status={status} />;
-      },
-    },
+    // LOOK HERE LUCAS!!!!
+    // {
+    //   field: "status",
+    //   headerName: "Status",
+    //   cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+    //     // Default to 'active' status if no status is provided
+    //     const status = data?.status || "processing";
+    //     return <StatusBadge status={status} />;
+    //   },
+    // },
     {
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
         return <KnowledgeActionsDropdown filename={data?.filename || ""} />;
