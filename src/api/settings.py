@@ -38,8 +38,7 @@ async def get_settings(request, session_manager):
                 "embedding_model": knowledge_config.embedding_model,
                 "chunk_size": knowledge_config.chunk_size,
                 "chunk_overlap": knowledge_config.chunk_overlap,
-                "ocr": knowledge_config.ocr,
-                "picture_descriptions": knowledge_config.picture_descriptions,
+                "doclingPresets": knowledge_config.doclingPresets,
             },
             "agent": {
                 "llm_model": agent_config.llm_model,
@@ -149,7 +148,7 @@ async def update_settings(request, session_manager):
         
         # Validate allowed fields
         allowed_fields = {
-            "llm_model", "system_prompt", "ocr", "picture_descriptions", 
+            "llm_model", "system_prompt", "doclingPresets",
             "chunk_size", "chunk_overlap"
         }
         
@@ -174,22 +173,14 @@ async def update_settings(request, session_manager):
             config_updated = True
         
         # Update knowledge settings
-        if "ocr" in body:
-            if not isinstance(body["ocr"], bool):
+        if "doclingPresets" in body:
+            valid_presets = ["standard", "ocr", "picture_description", "VLM"]
+            if body["doclingPresets"] not in valid_presets:
                 return JSONResponse(
-                    {"error": "ocr must be a boolean value"}, 
+                    {"error": f"doclingPresets must be one of: {', '.join(valid_presets)}"},
                     status_code=400
                 )
-            current_config.knowledge.ocr = body["ocr"]
-            config_updated = True
-            
-        if "picture_descriptions" in body:
-            if not isinstance(body["picture_descriptions"], bool):
-                return JSONResponse(
-                    {"error": "picture_descriptions must be a boolean value"}, 
-                    status_code=400
-                )
-            current_config.knowledge.picture_descriptions = body["picture_descriptions"]
+            current_config.knowledge.doclingPresets = body["doclingPresets"]
             config_updated = True
             
         if "chunk_size" in body:

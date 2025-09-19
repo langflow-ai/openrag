@@ -20,10 +20,8 @@ knowledge:
   chunk_size: 1000
   # Overlap between chunks
   chunk_overlap: 200
-  # Enable OCR for image processing
-  ocr: true
-  # Enable picture descriptions using vision models
-  picture_descriptions: false
+  # Docling preset setting
+  doclingPresets: standard
 
 # AI agent configuration
 agent:

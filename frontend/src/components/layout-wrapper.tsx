@@ -104,7 +104,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         <Navigation />
       </div>
       <main
-        className={`md:pl-72 transition-all duration-300 ${
+        className={`md:pl-72 transition-all duration-300 overflow-y-auto h-[calc(100vh-53px)] ${
           isMenuOpen && isPanelOpen
             ? "md:pr-[728px]"
             : // Both open: 384px (menu) + 320px (KF panel) + 24px (original padding)
