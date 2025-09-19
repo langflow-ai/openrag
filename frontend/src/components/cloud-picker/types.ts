@@ -23,6 +23,8 @@ export interface UnifiedCloudPickerProps {
   // OneDrive/SharePoint specific props
   clientId?: string;
   baseUrl?: string;
+  // Ingest settings
+  onSettingsChange?: (settings: IngestSettings) => void;
 }
 
 export interface GoogleAPI {
@@ -93,4 +95,12 @@ export interface GooglePickerBuilder {
 
 export interface GooglePicker {
   setVisible: (visible: boolean) => void;
+}
+
+export interface IngestSettings {
+  chunkSize: number;
+  chunkOverlap: number;
+  ocr: boolean;
+  pictureDescriptions: boolean;
+  embeddingModel: string;
 }
