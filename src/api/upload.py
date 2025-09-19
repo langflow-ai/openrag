@@ -11,7 +11,7 @@ async def upload(request: Request, document_service, session_manager):
         form = await request.form()
         upload_file = form["file"]
         user = request.state.user
-        jwt_token = request.state.jwt_token
+        jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
 
         from config.settings import is_no_auth_mode
 
@@ -60,7 +60,7 @@ async def upload_path(request: Request, task_service, session_manager):
         return JSONResponse({"error": "No files found in directory"}, status_code=400)
 
     user = request.state.user
-    jwt_token = request.state.jwt_token
+    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
 
     from config.settings import is_no_auth_mode
 
@@ -100,8 +100,7 @@ async def upload_context(
     previous_response_id = form.get("previous_response_id")
     endpoint = form.get("endpoint", "langflow")
 
-    # Get JWT token from auth middleware
-    jwt_token = request.state.jwt_token
+    jwt_token = session_manager.get_effective_jwt_token(user_id, request.state.jwt_token)
 
     # Get user info from request state (set by auth middleware)
     user = request.state.user
@@ -169,7 +168,7 @@ async def upload_bucket(request: Request, task_service, session_manager):
         return JSONResponse({"error": "No files found in bucket"}, status_code=400)
 
     user = request.state.user
-    jwt_token = request.state.jwt_token
+    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
 
     from models.processors import S3FileProcessor
     from config.settings import is_no_auth_mode

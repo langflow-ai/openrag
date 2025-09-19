@@ -435,3 +435,4 @@ class DocumentService:
 
             if upload_task.processed_files >= upload_task.total_files:
                 upload_task.status = TaskStatus.COMPLETED
+

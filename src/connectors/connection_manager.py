@@ -321,7 +321,7 @@ class ConnectionManager:
 
         return None
 
-    def get_available_connector_types(self) -> Dict[str, Dict[str, str]]:
+    def get_available_connector_types(self) -> Dict[str, Dict[str, Any]]:
         """Get available connector types with their metadata"""
         return {
             "google_drive": {

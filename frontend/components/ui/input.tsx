@@ -23,8 +23,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <label
         className={cn(
-          "relative block h-fit w-full text-xs",
-          icon ? className : "",
+          "relative block h-fit w-full text-sm",
+          icon ? className : ""
         )}
       >
         {icon && (
@@ -39,7 +39,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className={cn(
             "primary-input !placeholder-transparent",
             icon && "pl-9",
-            icon ? inputClassName : className,
+            icon ? inputClassName : className
           )}
           ref={ref}
           {...props}
@@ -56,7 +56,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         </span>
       </label>
     );
-  },
+  }
 );
 
 Input.displayName = "Input";
