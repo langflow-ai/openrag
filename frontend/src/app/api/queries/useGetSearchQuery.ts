@@ -128,7 +128,7 @@ export const useGetSearchQuery = (
         }
       >();
 
-      data.results.forEach((chunk: ChunkResult) => {
+      (data.results || []).forEach((chunk: ChunkResult) => {
         const existing = fileMap.get(chunk.filename);
         if (existing) {
           existing.chunks.push(chunk);
