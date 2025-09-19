@@ -1,93 +1,106 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from 'react'
-import { X, Edit3, Save, Settings, RefreshCw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { MultiSelect } from '@/components/ui/multi-select'
-import { Slider } from '@/components/ui/slider'
-import { useKnowledgeFilter } from '@/contexts/knowledge-filter-context'
-
+import { useState, useEffect } from "react";
+import { X, Edit3, Save, Settings, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { MultiSelect } from "@/components/ui/multi-select";
+import { Slider } from "@/components/ui/slider";
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
 
 interface FacetBucket {
-  key: string
-  count: number
+  key: string;
+  count: number;
 }
 
 interface AvailableFacets {
-  data_sources: FacetBucket[]
-  document_types: FacetBucket[]
-  owners: FacetBucket[]
-  connector_types: FacetBucket[]
+  data_sources: FacetBucket[];
+  document_types: FacetBucket[];
+  owners: FacetBucket[];
+  connector_types: FacetBucket[];
 }
 
 export function KnowledgeFilterPanel() {
-  const { selectedFilter, parsedFilterData, setSelectedFilter, isPanelOpen, closePanelOnly } = useKnowledgeFilter()
-  
+  const {
+    selectedFilter,
+    parsedFilterData,
+    setSelectedFilter,
+    isPanelOpen,
+    closePanelOnly,
+  } = useKnowledgeFilter();
+  const deleteFilterMutation = useDeleteFilter();
+
   // Edit mode states
-  const [isEditingMeta, setIsEditingMeta] = useState(false)
-  const [editingName, setEditingName] = useState('')
-  const [editingDescription, setEditingDescription] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
+  const [isEditingMeta, setIsEditingMeta] = useState(false);
+  const [editingName, setEditingName] = useState("");
+  const [editingDescription, setEditingDescription] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // Filter configuration states (mirror search page exactly)
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState("");
   const [selectedFilters, setSelectedFilters] = useState({
     data_sources: ["*"] as string[], // Default to wildcard
     document_types: ["*"] as string[], // Default to wildcard
     owners: ["*"] as string[], // Default to wildcard
-    connector_types: ["*"] as string[] // Default to wildcard
-  })
-  const [resultLimit, setResultLimit] = useState(10)
-  const [scoreThreshold, setScoreThreshold] = useState(0)
-  
+    connector_types: ["*"] as string[], // Default to wildcard
+  });
+  const [resultLimit, setResultLimit] = useState(10);
+  const [scoreThreshold, setScoreThreshold] = useState(0);
+
   // Available facets (loaded from API)
   const [availableFacets, setAvailableFacets] = useState<AvailableFacets>({
     data_sources: [],
     document_types: [],
     owners: [],
-    connector_types: []
-  })
+    connector_types: [],
+  });
 
   // Load current filter data into controls
   useEffect(() => {
     if (selectedFilter && parsedFilterData) {
-      setQuery(parsedFilterData.query || '')
-      
+      setQuery(parsedFilterData.query || "");
+
       // Set the actual filter selections from the saved knowledge filter
-      const filters = parsedFilterData.filters
-      
+      const filters = parsedFilterData.filters;
+
       // Use the exact selections from the saved filter
       // Empty arrays mean "none selected" not "all selected"
       const processedFilters = {
         data_sources: filters.data_sources,
         document_types: filters.document_types,
         owners: filters.owners,
-        connector_types: filters.connector_types || ["*"]
-      }
-      
-      console.log("[DEBUG] Loading filter selections:", processedFilters)
-      
-      setSelectedFilters(processedFilters)
-      setResultLimit(parsedFilterData.limit || 10)
-      setScoreThreshold(parsedFilterData.scoreThreshold || 0)
-      setEditingName(selectedFilter.name)
-      setEditingDescription(selectedFilter.description || '')
+        connector_types: filters.connector_types || ["*"],
+      };
+
+      console.log("[DEBUG] Loading filter selections:", processedFilters);
+
+      setSelectedFilters(processedFilters);
+      setResultLimit(parsedFilterData.limit || 10);
+      setScoreThreshold(parsedFilterData.scoreThreshold || 0);
+      setEditingName(selectedFilter.name);
+      setEditingDescription(selectedFilter.description || "");
     }
-  }, [selectedFilter, parsedFilterData])
+  }, [selectedFilter, parsedFilterData]);
 
   // Load available facets from API
   useEffect(() => {
     if (isPanelOpen) {
-      loadAvailableFacets()
+      loadAvailableFacets();
     }
-  }, [isPanelOpen])
+  }, [isPanelOpen]);
 
   const loadAvailableFacets = async () => {
-    console.log("[DEBUG] Loading available facets...")
+    console.log("[DEBUG] Loading available facets...");
     try {
       // Do a search to get facets (similar to search page)
       const response = await fetch("/api/search", {
@@ -95,39 +108,36 @@ export function KnowledgeFilterPanel() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           query: "*", // Use wildcard like search page to get all documents/facets
           limit: 1,
-          scoreThreshold: 0
+          scoreThreshold: 0,
           // Omit filters entirely to get all available facets
         }),
-      })
+      });
 
-      const result = await response.json()
-      console.log("[DEBUG] Search API response:", result)
-      
+      const result = await response.json();
+      console.log("[DEBUG] Search API response:", result);
+
       if (response.ok && result.aggregations) {
         const facets = {
           data_sources: result.aggregations.data_sources?.buckets || [],
           document_types: result.aggregations.document_types?.buckets || [],
           owners: result.aggregations.owners?.buckets || [],
-          connector_types: result.aggregations.connector_types?.buckets || []
-        }
-        console.log("[DEBUG] Setting facets:", facets)
-        setAvailableFacets(facets)
+          connector_types: result.aggregations.connector_types?.buckets || [],
+        };
+        console.log("[DEBUG] Setting facets:", facets);
+        setAvailableFacets(facets);
       } else {
-        console.log("[DEBUG] No aggregations in response or response not ok")
+        console.log("[DEBUG] No aggregations in response or response not ok");
       }
     } catch (error) {
-      console.error("Failed to load available facets:", error)
+      console.error("Failed to load available facets:", error);
     }
-  }
+  };
 
   // Don't render if panel is closed or no filter selected
-  if (!isPanelOpen || !selectedFilter || !parsedFilterData) return null
-
-
-
+  if (!isPanelOpen || !selectedFilter || !parsedFilterData) return null;
 
   const selectAllFilters = () => {
     // Use wildcards instead of listing all specific items
@@ -135,116 +145,135 @@ export function KnowledgeFilterPanel() {
       data_sources: ["*"],
       document_types: ["*"],
       owners: ["*"],
-      connector_types: ["*"]
-    })
-  }
+      connector_types: ["*"],
+    });
+  };
 
   const clearAllFilters = () => {
     setSelectedFilters({
       data_sources: [],
       document_types: [],
       owners: [],
-      connector_types: []
-    })
-  }
+      connector_types: [],
+    });
+  };
 
   const handleEditMeta = () => {
-    setIsEditingMeta(true)
-  }
+    setIsEditingMeta(true);
+  };
 
   const handleCancelEdit = () => {
-    setIsEditingMeta(false)
-    setEditingName(selectedFilter.name)
-    setEditingDescription(selectedFilter.description || '')
-  }
+    setIsEditingMeta(false);
+    setEditingName(selectedFilter.name);
+    setEditingDescription(selectedFilter.description || "");
+  };
 
   const handleSaveMeta = async () => {
-    if (!editingName.trim()) return
+    if (!editingName.trim()) return;
 
-    setIsSaving(true)
+    setIsSaving(true);
     try {
-      const response = await fetch(`/api/knowledge-filter/${selectedFilter.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: editingName.trim(),
-          description: editingDescription.trim(),
-        }),
-      })
+      const response = await fetch(
+        `/api/knowledge-filter/${selectedFilter.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: editingName.trim(),
+            description: editingDescription.trim(),
+          }),
+        }
+      );
 
-      const result = await response.json()
+      const result = await response.json();
       if (response.ok && result.success) {
         const updatedFilter = {
           ...selectedFilter,
           name: editingName.trim(),
           description: editingDescription.trim(),
           updated_at: new Date().toISOString(),
-        }
-        setSelectedFilter(updatedFilter)
-        setIsEditingMeta(false)
+        };
+        setSelectedFilter(updatedFilter);
+        setIsEditingMeta(false);
       }
     } catch (error) {
-      console.error('Error updating filter:', error)
+      console.error("Error updating filter:", error);
     } finally {
-      setIsSaving(false)
+      setIsSaving(false);
     }
-  }
+  };
 
   const handleSaveConfiguration = async () => {
     const filterData = {
       query,
       filters: selectedFilters,
       limit: resultLimit,
-      scoreThreshold
-    }
+      scoreThreshold,
+    };
 
-    setIsSaving(true)
+    setIsSaving(true);
     try {
-      const response = await fetch(`/api/knowledge-filter/${selectedFilter.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          queryData: JSON.stringify(filterData)
-        }),
-      })
+      const response = await fetch(
+        `/api/knowledge-filter/${selectedFilter.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            queryData: JSON.stringify(filterData),
+          }),
+        }
+      );
 
-      const result = await response.json()
+      const result = await response.json();
       if (response.ok && result.success) {
         // Update the filter in context
         const updatedFilter = {
           ...selectedFilter,
           query_data: JSON.stringify(filterData),
           updated_at: new Date().toISOString(),
-        }
-        setSelectedFilter(updatedFilter)
+        };
+        setSelectedFilter(updatedFilter);
       }
     } catch (error) {
-      console.error('Error updating filter configuration:', error)
+      console.error("Error updating filter configuration:", error);
     } finally {
-      setIsSaving(false)
+      setIsSaving(false);
     }
-  }
+  };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
-  const handleFilterChange = (facetType: keyof typeof selectedFilters, newValues: string[]) => {
-    setSelectedFilters(prev => ({
+  const handleFilterChange = (
+    facetType: keyof typeof selectedFilters,
+    newValues: string[]
+  ) => {
+    setSelectedFilters((prev) => ({
       ...prev,
-      [facetType]: newValues
-    }))
-  }
+      [facetType]: newValues,
+    }));
+  };
+
+  const handleDeleteFilter = async () => {
+    const result = await deleteFilterMutation.mutateAsync({
+      id: selectedFilter.id,
+    });
+    if (result.success) {
+      setSelectedFilter(null);
+      closePanelOnly();
+    }
+  };
 
   return (
     <div className="fixed right-0 top-14 bottom-0 w-80 bg-background border-l border-border/40 z-40 overflow-y-auto">
@@ -301,7 +330,7 @@ export function KnowledgeFilterPanel() {
                     className="flex-1"
                   >
                     <Save className="h-3 w-3 mr-1" />
-                    {isSaving ? 'Saving...' : 'Save'}
+                    {isSaving ? "Saving..." : "Save"}
                   </Button>
                   <Button
                     onClick={handleCancelEdit}
@@ -317,7 +346,9 @@ export function KnowledgeFilterPanel() {
               <div className="space-y-3">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h3 className="font-semibold text-lg">{selectedFilter.name}</h3>
+                    <h3 className="font-semibold text-lg">
+                      {selectedFilter.name}
+                    </h3>
                     {selectedFilter.description && (
                       <p className="text-sm text-muted-foreground mt-1">
                         {selectedFilter.description}
@@ -336,7 +367,10 @@ export function KnowledgeFilterPanel() {
                 <div className="text-xs text-muted-foreground">
                   Created {formatDate(selectedFilter.created_at)}
                   {selectedFilter.updated_at !== selectedFilter.created_at && (
-                    <span> • Updated {formatDate(selectedFilter.updated_at)}</span>
+                    <span>
+                      {" "}
+                      • Updated {formatDate(selectedFilter.updated_at)}
+                    </span>
                   )}
                 </div>
               </div>
@@ -345,7 +379,9 @@ export function KnowledgeFilterPanel() {
 
           {/* Search Query */}
           <div className="space-y-2">
-            <Label htmlFor="search-query" className="text-sm font-medium">Search Query</Label>
+            <Label htmlFor="search-query" className="text-sm font-medium">
+              Search Query
+            </Label>
             <Input
               id="search-query"
               type="text"
@@ -361,13 +397,15 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-2">
               <Label className="text-sm font-medium">Data Sources</Label>
               <MultiSelect
-                options={(availableFacets.data_sources || []).map(bucket => ({
+                options={(availableFacets.data_sources || []).map((bucket) => ({
                   value: bucket.key,
                   label: bucket.key,
-                  count: bucket.count
+                  count: bucket.count,
                 }))}
                 value={selectedFilters.data_sources}
-                onValueChange={(values) => handleFilterChange('data_sources', values)}
+                onValueChange={(values) =>
+                  handleFilterChange("data_sources", values)
+                }
                 placeholder="Select data sources..."
                 allOptionLabel="All Data Sources"
               />
@@ -376,13 +414,17 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-2">
               <Label className="text-sm font-medium">Document Types</Label>
               <MultiSelect
-                options={(availableFacets.document_types || []).map(bucket => ({
-                  value: bucket.key,
-                  label: bucket.key,
-                  count: bucket.count
-                }))}
+                options={(availableFacets.document_types || []).map(
+                  (bucket) => ({
+                    value: bucket.key,
+                    label: bucket.key,
+                    count: bucket.count,
+                  })
+                )}
                 value={selectedFilters.document_types}
-                onValueChange={(values) => handleFilterChange('document_types', values)}
+                onValueChange={(values) =>
+                  handleFilterChange("document_types", values)
+                }
                 placeholder="Select document types..."
                 allOptionLabel="All Document Types"
               />
@@ -391,13 +433,13 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-2">
               <Label className="text-sm font-medium">Owners</Label>
               <MultiSelect
-                options={(availableFacets.owners || []).map(bucket => ({
+                options={(availableFacets.owners || []).map((bucket) => ({
                   value: bucket.key,
                   label: bucket.key,
-                  count: bucket.count
+                  count: bucket.count,
                 }))}
                 value={selectedFilters.owners}
-                onValueChange={(values) => handleFilterChange('owners', values)}
+                onValueChange={(values) => handleFilterChange("owners", values)}
                 placeholder="Select owners..."
                 allOptionLabel="All Owners"
               />
@@ -406,13 +448,17 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-2">
               <Label className="text-sm font-medium">Sources</Label>
               <MultiSelect
-                options={(availableFacets.connector_types || []).map(bucket => ({
-                  value: bucket.key,
-                  label: bucket.key,
-                  count: bucket.count
-                }))}
+                options={(availableFacets.connector_types || []).map(
+                  (bucket) => ({
+                    value: bucket.key,
+                    label: bucket.key,
+                    count: bucket.count,
+                  })
+                )}
                 value={selectedFilters.connector_types}
-                onValueChange={(values) => handleFilterChange('connector_types', values)}
+                onValueChange={(values) =>
+                  handleFilterChange("connector_types", values)
+                }
                 placeholder="Select sources..."
                 allOptionLabel="All Sources"
               />
@@ -420,18 +466,18 @@ export function KnowledgeFilterPanel() {
 
             {/* All/None buttons */}
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={selectAllFilters} 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={selectAllFilters}
                 className="h-auto px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 border-border/50"
               >
                 All
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={clearAllFilters} 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAllFilters}
                 className="h-auto px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 border-border/50"
               >
                 None
@@ -449,11 +495,14 @@ export function KnowledgeFilterPanel() {
                     max="1000"
                     value={resultLimit}
                     onChange={(e) => {
-                      const newLimit = Math.max(1, Math.min(1000, parseInt(e.target.value) || 1))
-                      setResultLimit(newLimit)
+                      const newLimit = Math.max(
+                        1,
+                        Math.min(1000, parseInt(e.target.value) || 1)
+                      );
+                      setResultLimit(newLimit);
                     }}
                     className="h-6 text-xs text-right px-2 bg-muted/30 !border-0 rounded ml-auto focus:ring-0 focus:outline-none"
-                    style={{ width: '70px' }}
+                    style={{ width: "70px" }}
                   />
                 </div>
                 <Slider
@@ -476,9 +525,11 @@ export function KnowledgeFilterPanel() {
                     max="5"
                     step="0.1"
                     value={scoreThreshold}
-                    onChange={(e) => setScoreThreshold(parseFloat(e.target.value) || 0)}
+                    onChange={(e) =>
+                      setScoreThreshold(parseFloat(e.target.value) || 0)
+                    }
                     className="h-6 text-xs text-right px-2 bg-muted/30 !border-0 rounded ml-auto focus:ring-0 focus:outline-none"
-                    style={{ width: '70px' }}
+                    style={{ width: "70px" }}
                   />
                 </div>
                 <Slider
@@ -493,7 +544,7 @@ export function KnowledgeFilterPanel() {
             </div>
 
             {/* Save Configuration Button */}
-            <div className="pt-4 border-t border-border/50">
+            <div className="flex flex-col gap-3 pt-4 border-t border-border/50">
               <Button
                 onClick={handleSaveConfiguration}
                 disabled={isSaving}
@@ -512,10 +563,17 @@ export function KnowledgeFilterPanel() {
                   </>
                 )}
               </Button>
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={handleDeleteFilter}
+              >
+                Delete Filter
+              </Button>
             </div>
           </div>
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

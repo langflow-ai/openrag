@@ -1,7 +1,7 @@
 import {
-  type UseQueryOptions,
   useQuery,
   useQueryClient,
+  type UseQueryOptions,
 } from "@tanstack/react-query";
 
 export interface KnowledgeFilter {
@@ -14,50 +14,34 @@ export interface KnowledgeFilter {
   updated_at: string;
 }
 
-export interface FiltersSearchResponse {
-  success: boolean;
-  filters: KnowledgeFilter[];
-  error?: string;
-}
-
 export const useGetFiltersSearchQuery = (
   search: string,
   limit = 20,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">
+  options?: Omit<UseQueryOptions<KnowledgeFilter[]>, "queryKey" | "queryFn">
 ) => {
   const queryClient = useQueryClient();
 
   async function getFilters(): Promise<KnowledgeFilter[]> {
-    try {
-      const response = await fetch("/api/knowledge-filter/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query: search, limit }),
-      });
+    const response = await fetch("/api/knowledge-filter/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: search, limit }),
+    });
 
-      const result: FiltersSearchResponse = await response.json();
-      if (response.ok && result.success) {
-        return result.filters || [];
-      }
-      console.error("Failed to load knowledge filters:", result.error);
-      return [];
-    } catch (error) {
-      console.error("Error loading knowledge filters:", error);
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      // ensure we always return a KnowledgeFilter[] to satisfy the return type
       return [];
     }
+    return (json.filters || []) as KnowledgeFilter[];
   }
 
-  const queryResult = useQuery(
+  return useQuery<KnowledgeFilter[]>(
     {
       queryKey: ["knowledge-filters", search, limit],
-      placeholderData: (prev) => prev,
       queryFn: getFilters,
       ...options,
     },
-    queryClient,
+    queryClient
   );
-
-  return queryResult;
 };

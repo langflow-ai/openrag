@@ -1,31 +1,22 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  ChevronDown,
-  Filter,
-  Search,
-  X,
-  Loader2,
-  Plus,
-  Save,
-} from "lucide-react";
+import { Filter, X, Loader2, Plus, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   useGetFiltersSearchQuery,
   type KnowledgeFilter,
 } from "@/src/app/api/queries/useGetFiltersSearchQuery";
+import { useCreateFilter } from "@/src/app/api/mutations/useCreateFilter";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -56,43 +47,22 @@ export function KnowledgeFilterList({
   const [createDescription, setCreateDescription] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const {
-    data,
-    isFetching: loading,
-    refetch,
-  } = useGetFiltersSearchQuery(searchQuery, 20, { enabled: true });
-  const filters: KnowledgeFilter[] = (data ?? []) as KnowledgeFilter[];
+  const { data, isFetching: loading } = useGetFiltersSearchQuery(
+    searchQuery,
+    20
+  );
 
-  const deleteFilter = async (filterId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const filters = data || [];
 
-    try {
-      const response = await fetch(`/api/knowledge-filter/${filterId}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        // If this was the selected filter, clear selection
-        if (selectedFilter?.id === filterId) {
-          onFilterSelect(null);
-        }
-        // Refresh list
-        refetch();
-      } else {
-        console.error("Failed to delete knowledge filter");
-      }
-    } catch (error) {
-      console.error("Error deleting knowledge filter:", error);
-    }
-  };
+  const createFilterMutation = useCreateFilter();
 
   const handleFilterSelect = (filter: KnowledgeFilter) => {
     onFilterSelect(filter);
   };
 
-  const handleClearFilter = () => {
-    onFilterSelect(null);
-  };
+  // const handleClearFilter = () => {
+  //   onFilterSelect(null);
+  // };
 
   const handleCreateNew = () => {
     setShowCreateModal(true);
@@ -115,43 +85,19 @@ export function KnowledgeFilterList({
         scoreThreshold: 0,
       };
 
-      const response = await fetch("/api/knowledge-filter", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: createName.trim(),
-          description: createDescription.trim(),
-          queryData: JSON.stringify(defaultFilterData),
-        }),
+      const result = await createFilterMutation.mutateAsync({
+        name: createName.trim(),
+        description: createDescription.trim(),
+        queryData: JSON.stringify(defaultFilterData),
       });
 
-      const result = await response.json();
-      if (response.ok && result.success) {
-        // Create the new filter object
-        const newFilter: KnowledgeFilter = {
-          id: result.filter.id,
-          name: createName.trim(),
-          description: createDescription.trim(),
-          query_data: JSON.stringify(defaultFilterData),
-          owner: result.filter.owner,
-          created_at: result.filter.created_at,
-          updated_at: result.filter.updated_at,
-        };
+      // Select the new filter from API response
+      onFilterSelect(result.filter);
 
-        // Select the new filter
-        onFilterSelect(newFilter);
-
-        // Close modal and reset form
-        setShowCreateModal(false);
-        setCreateName("");
-        setCreateDescription("");
-        // Refresh list to include newly created filter
-        refetch();
-      } else {
-        console.error("Failed to create knowledge filter:", result.error);
-      }
+      // Close modal and reset form
+      setShowCreateModal(false);
+      setCreateName("");
+      setCreateDescription("");
     } catch (error) {
       console.error("Error creating knowledge filter:", error);
     } finally {
@@ -169,25 +115,6 @@ export function KnowledgeFilterList({
     return JSON.parse(queryData) as ParsedQueryData;
   };
 
-  const getFilterSummary = (filter: KnowledgeFilter): string => {
-    try {
-      const parsed = JSON.parse(filter.query_data) as ParsedQueryData;
-      const parts = [];
-
-      if (parsed.query) parts.push(`"${parsed.query}"`);
-      if (parsed.filters.data_sources.length > 0)
-        parts.push(`${parsed.filters.data_sources.length} sources`);
-      if (parsed.filters.document_types.length > 0)
-        parts.push(`${parsed.filters.document_types.length} types`);
-      if (parsed.filters.owners.length > 0)
-        parts.push(`${parsed.filters.owners.length} owners`);
-
-      return parts.join(" • ") || "No filters";
-    } catch {
-      return "Invalid filter";
-    }
-  };
-
   return (
     <>
       <div className="flex flex-col items-center gap-1 px-3">
@@ -199,6 +126,7 @@ export function KnowledgeFilterList({
             variant="ghost"
             size="sm"
             onClick={handleCreateNew}
+            title="Create New Filter"
             className="h-8 px-3"
           >
             <Plus className="h-3 w-3" />
@@ -255,14 +183,6 @@ export function KnowledgeFilterList({
                   </span>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => deleteFilter(filter.id, e)}
-                className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0 bg-transparent hover:bg-gray-700 hover:text-white transition-all duration-200 border border-transparent hover:border-gray-600"
-              >
-                <X className="h-3 w-3 text-gray-400 hover:text-white" />
-              </Button>
             </div>
           ))
         )}
@@ -277,61 +197,59 @@ export function KnowledgeFilterList({
               knowledge base.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex flex-col gap-2 space-y-2">
-              <div>
-                <Label htmlFor="filter-name" className="font-medium">
-                  Name<span className="text-red-400">*</span>
-                </Label>
-                <Input
-                  id="filter-name"
-                  type="text"
-                  placeholder="Enter filter name"
-                  value={createName}
-                  onChange={(e) => setCreateName(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label htmlFor="filter-description" className="font-medium">
-                  Description (optional)
-                </Label>
-                <Textarea
-                  id="filter-description"
-                  placeholder="Brief description of this filter"
-                  value={createDescription}
-                  onChange={(e) => setCreateDescription(e.target.value)}
-                  className="mt-1"
-                  rows={3}
-                />
-              </div>
+          <div className="flex flex-col gap-2 space-y-2">
+            <div>
+              <Label htmlFor="filter-name" className="font-medium mb-2 gap-1">
+                Name<span className="text-red-400">*</span>
+              </Label>
+              <Input
+                id="filter-name"
+                type="text"
+                placeholder="Enter filter name"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                className="mt-1"
+              />
             </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={handleCancelCreate}
-                disabled={creating}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateFilter}
-                disabled={!createName.trim() || creating}
-                className="flex items-center gap-2"
-              >
-                {creating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    Create Filter
-                  </>
-                )}
-              </Button>
+            <div>
+              <Label htmlFor="filter-description" className="font-medium mb-2">
+                Description (optional)
+              </Label>
+              <Textarea
+                id="filter-description"
+                placeholder="Brief description of this filter"
+                value={createDescription}
+                onChange={(e) => setCreateDescription(e.target.value)}
+                className="mt-1"
+                rows={3}
+              />
             </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCancelCreate}
+              disabled={creating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateFilter}
+              disabled={!createName.trim() || creating}
+              className="flex items-center gap-2"
+            >
+              {creating ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Create Filter
+                </>
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

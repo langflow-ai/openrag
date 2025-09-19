@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Navigation } from "@/components/navigation"
 import { UserNav } from "@/components/user-nav"
 import { TaskNotificationMenu } from "@/components/task-notification-menu"
-import { KnowledgeFilterDropdown } from "@/components/knowledge-filter-dropdown"
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel"
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
@@ -18,7 +17,7 @@ import { Loader2 } from "lucide-react"
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { tasks, isMenuOpen, toggleMenu } = useTask()
-  const { selectedFilter, setSelectedFilter, isPanelOpen } = useKnowledgeFilter()
+  const { isPanelOpen } = useKnowledgeFilter()
   const { isLoading } = useAuth()
   
   // List of paths that should not show navigation
@@ -68,12 +67,6 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         </div>
         <div className="header-end-division">
           <div className="header-end-display">
-            {/* Knowledge Filter Dropdown */}
-            <KnowledgeFilterDropdown 
-              selectedFilter={selectedFilter}
-              onFilterSelect={setSelectedFilter}
-            />
-            
             {/* GitHub Star Button */}
             {/* <GitHubStarButton repo="phact/openrag" /> */}
 
