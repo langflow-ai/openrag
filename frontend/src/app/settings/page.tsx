@@ -22,6 +22,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -100,6 +101,7 @@ function KnowledgeSourcesPage() {
   const [systemPrompt, setSystemPrompt] = useState<string>("");
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
+  const [processingMode, setProcessingMode] = useState<string>("standard");
 
   // Fetch settings using React Query
   const { data: settings = {} } = useGetSettingsQuery({
@@ -175,6 +177,13 @@ function KnowledgeSourcesPage() {
     }
   }, [settings.knowledge?.chunk_overlap]);
 
+  // Sync processing mode with settings data
+  useEffect(() => {
+    if (settings.knowledge?.doclingPresets) {
+      setProcessingMode(settings.knowledge.doclingPresets);
+    }
+  }, [settings.knowledge?.doclingPresets]);
+
   // Update model selection immediately
   const handleModelChange = (newModel: string) => {
     updateFlowSettingMutation.mutate({ llm_model: newModel });
@@ -202,6 +211,12 @@ function KnowledgeSourcesPage() {
     const numValue = Math.max(0, parseInt(value) || 0);
     setChunkOverlap(numValue);
     debouncedUpdate({ chunk_overlap: numValue });
+  };
+
+  // Update processing mode
+  const handleProcessingModeChange = (mode: string) => {
+    setProcessingMode(mode);
+    debouncedUpdate({ doclingPresets: mode });
   };
 
 
@@ -777,40 +792,59 @@ function KnowledgeSourcesPage() {
                 </div>
               </div>
             </div>
-            {/* <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="ocrEnabled" className="text-base font-medium">
-                  OCR
-                </Label>
-                <div className="text-sm text-muted-foreground">
-                  Extracts text from images/PDFs. Ingest is slower when enabled.
+            <div className="space-y-3">
+              <Label className="text-base font-medium">Ingest Presets</Label>
+              <RadioGroup
+                value={processingMode}
+                onValueChange={handleProcessingModeChange}
+                className="space-y-3"
+              >
+                <div className="flex items-center space-x-3">
+                  <RadioGroupItem value="standard" id="standard" />
+                  <div className="flex-1">
+                    <Label htmlFor="standard" className="text-base font-medium cursor-pointer">
+                      Standard
+                    </Label>
+                    <div className="text-sm text-muted-foreground">
+                      Fast ingest for text-based documents without images
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <Switch
-                id="ocrEnabled"
-                checked={ocrEnabled}
-                onCheckedChange={handleOcrChange}
-              />
+                <div className="flex items-center space-x-3">
+                  <RadioGroupItem value="ocr" id="ocr" />
+                  <div className="flex-1">
+                    <Label htmlFor="ocr" className="text-base font-medium cursor-pointer">
+                      Extract text from images
+                    </Label>
+                    <div className="text-sm text-muted-foreground">
+                      Uses OCR to extract text from images/PDFs. Ingest is slower when enabled
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <RadioGroupItem value="picture_description" id="picture_description" />
+                  <div className="flex-1">
+                    <Label htmlFor="picture_description" className="text-base font-medium cursor-pointer">
+                      Generate Description
+                    </Label>
+                    <div className="text-sm text-muted-foreground">
+                      Text extraction plust AI generated image descriptions
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <RadioGroupItem value="VLM" id="VLM" />
+                  <div className="flex-1">
+                    <Label htmlFor="VLM" className="text-base font-medium cursor-pointer">
+                      AI Vision
+                    </Label>
+                    <div className="text-sm text-muted-foreground">
+                      Advanced processing with vision language models. Highest quality but most expensive
+                    </div>
+                  </div>
+                </div>
+              </RadioGroup>
             </div>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label
-                  htmlFor="pictureDescriptions"
-                  className="text-base font-medium"
-                >
-                  Picture descriptions
-                </Label>
-                <div className="text-sm text-muted-foreground">
-                  Adds captions for images. Ingest is more expensive when
-                  enabled.
-                </div>
-              </div>
-              <Switch
-                id="pictureDescriptions"
-                checked={pictureDescriptionsEnabled}
-                onCheckedChange={handlePictureDescriptionsChange}
-              />
-            </div> */}
           </div>
         </CardContent>
       </Card>

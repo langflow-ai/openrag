@@ -13,8 +13,7 @@ export interface KnowledgeSettings {
   embedding_model?: string;
   chunk_size?: number;
   chunk_overlap?: number;
-  ocr?: boolean;
-  picture_descriptions?: boolean;
+  doclingPresets?: string;
 }
 
 export interface Settings {
