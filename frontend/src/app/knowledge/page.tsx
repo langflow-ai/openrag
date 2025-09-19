@@ -3,10 +3,12 @@
 import {
   Building2,
   Cloud,
+  Filter,
   HardDrive,
   Loader2,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import { AgGridReact, CustomCellRendererProps } from "ag-grid-react";
 import {
@@ -22,7 +24,6 @@ import { TbBrandOnedrive } from "react-icons/tb";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { type File, useGetSearchQuery } from "../api/queries/useGetSearchQuery";
@@ -59,7 +60,8 @@ function getSourceIcon(connectorType?: string) {
 function SearchPage() {
   const router = useRouter();
   const { isMenuOpen } = useTask();
-  const { parsedFilterData, isPanelOpen } = useKnowledgeFilter();
+  const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
+    useKnowledgeFilter();
   const [query, setQuery] = useState("");
   const [queryInputText, setQueryInputText] = useState("");
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
@@ -244,18 +246,31 @@ function SearchPage() {
         </div>
 
         {/* Search Input Area */}
-        <div className="flex-shrink-0 mb-6 lg:max-w-[75%] xl:max-w-[50%]">
+        <div className="flex-shrink-0 mb-6 xl:max-w-[75%]">
           <form onSubmit={handleSearch} className="flex gap-3">
-            <Input
-              name="search-query"
-              id="search-query"
-              type="text"
-              defaultValue={parsedFilterData?.query}
-              value={queryInputText}
-              onChange={(e) => setQueryInputText(e.target.value)}
-              placeholder="Search your documents..."
-              className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring"
-            />
+            <div className="primary-input !flex items-center flex-nowrap gap-2 focus-within:border-foreground transition-colors !py-0">
+              {selectedFilter?.name && (
+                <div className="flex items-center gap-2 bg-accent text-accent-foreground px-1 py-0.5 rounded max-w-[300px]">
+                  <Filter className="h-3 w-3 flex-shrink-0 ml-1" />
+                  <span className="truncate">{selectedFilter?.name}</span>
+                  <X
+                    aria-label="Remove filter"
+                    className="h-4 w-4 flex-shrink-0 cursor-pointer"
+                    onClick={() => setSelectedFilter(null)}
+                  />
+                </div>
+              )}
+              <input
+                className="bg-transparent w-full h-full focus:outline-none focus-visible:outline-none placeholder:font-mono"
+                name="search-query"
+                id="search-query"
+                type="text"
+                placeholder="Search your documents..."
+                onChange={(e) => setQueryInputText(e.target.value)}
+                value={queryInputText}
+                defaultValue={parsedFilterData?.query}
+              />
+            </div>
             <Button
               type="submit"
               variant="outline"
@@ -298,8 +313,8 @@ function SearchPage() {
           rowMultiSelectWithClick={false}
           suppressRowClickSelection={true}
           getRowId={(params) => params.data.filename}
+          domLayout="autoHeight"
           onSelectionChanged={onSelectionChanged}
-          suppressHorizontalScroll={false}
           noRowsOverlayComponent={() => (
             <div className="text-center">
               <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
