@@ -131,8 +131,17 @@ class OneDriveConnector(BaseConnector):
             content_resp = await client.get(
                 f"{self.base_url}/me/drive/items/{file_id}/content", headers=headers
             )
-            content_resp.raise_for_status()
             content = content_resp.content
+
+            # Handle the possibility of this being a redirect
+            if content_resp.status_code in (301, 302, 303, 307, 308):
+                redirect_url = content_resp.headers.get("Location")
+                if redirect_url:
+                    content_resp = await client.get(redirect_url)
+                    content_resp.raise_for_status()
+                    content = content_resp.content
+            else:
+                content_resp.raise_for_status()
 
             perm_resp = await client.get(
                 f"{self.base_url}/me/drive/items/{file_id}/permissions", headers=headers
