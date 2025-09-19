@@ -220,6 +220,9 @@ class TaskService:
             return None
 
         file_statuses = {}
+        running_files_count = 0
+        pending_files_count = 0
+
         for file_path, file_task in upload_task.file_tasks.items():
             file_statuses[file_path] = {
                 "status": file_task.status.value,
@@ -231,6 +234,12 @@ class TaskService:
                 "duration_seconds": file_task.duration_seconds,
             }
 
+            # Count running and pending files
+            if file_task.status.value == "running":
+                running_files_count += 1
+            elif file_task.status.value == "pending":
+                pending_files_count += 1
+
         return {
             "task_id": upload_task.task_id,
             "status": upload_task.status.value,
@@ -238,6 +247,8 @@ class TaskService:
             "processed_files": upload_task.processed_files,
             "successful_files": upload_task.successful_files,
             "failed_files": upload_task.failed_files,
+            "running_files": running_files_count,
+            "pending_files": pending_files_count,
             "created_at": upload_task.created_at,
             "updated_at": upload_task.updated_at,
             "duration_seconds": upload_task.duration_seconds,
@@ -259,6 +270,16 @@ class TaskService:
             for task_id, upload_task in self.task_store[store_user_id].items():
                 if task_id in tasks_by_id:
                     continue
+
+                # Calculate running and pending counts
+                running_files_count = 0
+                pending_files_count = 0
+                for file_task in upload_task.file_tasks.values():
+                    if file_task.status.value == "running":
+                        running_files_count += 1
+                    elif file_task.status.value == "pending":
+                        pending_files_count += 1
+
                 tasks_by_id[task_id] = {
                     "task_id": upload_task.task_id,
                     "status": upload_task.status.value,
@@ -266,6 +287,8 @@ class TaskService:
                     "processed_files": upload_task.processed_files,
                     "successful_files": upload_task.successful_files,
                     "failed_files": upload_task.failed_files,
+                    "running_files": running_files_count,
+                    "pending_files": pending_files_count,
                     "created_at": upload_task.created_at,
                     "updated_at": upload_task.updated_at,
                     "duration_seconds": upload_task.duration_seconds,
