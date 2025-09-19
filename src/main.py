@@ -30,6 +30,7 @@ from api import (
     auth,
     chat,
     connectors,
+    documents,
     flows,
     knowledge_filter,
     langflow_files,
@@ -58,6 +59,7 @@ from config.settings import (
     is_no_auth_mode,
 )
 from services.auth_service import AuthService
+from services.langflow_mcp_service import LangflowMCPService
 from services.chat_service import ChatService
 
 # Services
@@ -440,7 +442,11 @@ async def initialize_services():
     )
 
     # Initialize auth service
-    auth_service = AuthService(session_manager, connector_service)
+    auth_service = AuthService(
+        session_manager,
+        connector_service,
+        langflow_mcp_service=LangflowMCPService(),
+    )
 
     # Load persisted connector connections at startup so webhooks and syncs
     # can resolve existing subscriptions immediately after server boot
@@ -875,6 +881,18 @@ async def create_app():
                 session_manager=services["session_manager"],
             ),
             methods=["POST", "GET"],
+        ),
+        # Document endpoints
+        Route(
+            "/documents/delete-by-filename",
+            require_auth(services["session_manager"])(
+                partial(
+                    documents.delete_documents_by_filename,
+                    document_service=services["document_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
         ),
         # OIDC endpoints
         Route(
