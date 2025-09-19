@@ -298,7 +298,7 @@ export function TaskNotificationMenu() {
                           <div className="text-xs text-muted-foreground mt-1">
                             {formatTaskProgress(task)?.detailed.successful} success, {' '}
                             {formatTaskProgress(task)?.detailed.failed} failed
-                            {formatTaskProgress(task)?.detailed.running > 0 && (
+                            {(formatTaskProgress(task)?.detailed.running || 0) > 0 && (
                               <span>, {formatTaskProgress(task)?.detailed.running} running</span>
                             )}
                           </div>
