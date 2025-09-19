@@ -149,6 +149,7 @@ function SearchPage() {
     {
       field: "avgScore",
       headerName: "Avg score",
+      initialFlex: 0.5,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
           <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
@@ -169,9 +170,8 @@ function SearchPage() {
       },
       colId: "actions",
       filter: false,
-      width: 60,
-      minWidth: 60,
-      maxWidth: 60,
+      minWidth: 0,
+      width: 40,
       resizable: false,
       sortable: false,
       initialFlex: 0,
