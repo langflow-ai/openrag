@@ -7,6 +7,8 @@ openrag_user_role:
   cluster_permissions:
     - "indices:data/write/bulk"
     - "indices:data/write/index"
+    - "indices:data/read/scroll"
+    - "indices:data/read/scroll/clear"
     - "cluster:admin/opensearch/notifications/configs/create"
     - "cluster:admin/opensearch/notifications/configs/list"
     - "cluster:admin/opensearch/notifications/configs/get"
