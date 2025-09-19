@@ -1,10 +1,10 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   Cloud,
   FolderOpen,
+  Loader2,
   PlugZap,
   Plus,
   Upload,
@@ -45,6 +45,7 @@ export function KnowledgeDropdown({
   const [folderLoading, setFolderLoading] = useState(false);
   const [s3Loading, setS3Loading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
+  const [isNavigatingToCloud, setIsNavigatingToCloud] = useState(false);
   const [cloudConnectors, setCloudConnectors] = useState<{
     [key: string]: {
       name: string;
@@ -55,12 +56,6 @@ export function KnowledgeDropdown({
   }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const queryClient = useQueryClient();
-
-  const refetchSearch = () => {
-    queryClient.invalidateQueries({ queryKey: ["search"] });
-  };
 
   // Check AWS availability and cloud connectors on mount
   useEffect(() => {
@@ -108,7 +103,7 @@ export function KnowledgeDropdown({
                   const connections = statusData.connections || [];
                   const activeConnection = connections.find(
                     (conn: { is_active: boolean; connection_id: string }) =>
-                      conn.is_active,
+                      conn.is_active
                   );
                   const isConnected = activeConnection !== undefined;
 
@@ -118,7 +113,7 @@ export function KnowledgeDropdown({
                     // Check token availability
                     try {
                       const tokenRes = await fetch(
-                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
+                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`
                       );
                       if (tokenRes.ok) {
                         const tokenData = await tokenRes.json();
@@ -179,7 +174,7 @@ export function KnowledgeDropdown({
       window.dispatchEvent(
         new CustomEvent("fileUploadStart", {
           detail: { filename: files[0].name },
-        }),
+        })
       );
 
       try {
@@ -191,21 +186,38 @@ export function KnowledgeDropdown({
           method: "POST",
           body: formData,
         });
+
         const uploadIngestJson = await uploadIngestRes.json();
+
         if (!uploadIngestRes.ok) {
           throw new Error(
-            uploadIngestJson?.error || "Upload and ingest failed",
+            uploadIngestJson?.error || "Upload and ingest failed"
           );
         }
 
-        // Extract results from the unified response
-        const fileId = uploadIngestJson?.upload?.id;
-        const filePath = uploadIngestJson?.upload?.path;
+        // Extract results from the response - handle both unified and simple formats
+        const fileId = uploadIngestJson?.upload?.id || uploadIngestJson?.id;
+        const filePath =
+          uploadIngestJson?.upload?.path ||
+          uploadIngestJson?.path ||
+          "uploaded";
         const runJson = uploadIngestJson?.ingestion;
         const deleteResult = uploadIngestJson?.deletion;
 
-        if (!fileId || !filePath) {
-          throw new Error("Upload successful but no file id/path returned");
+        if (!fileId) {
+          throw new Error("Upload successful but no file id returned");
+        }
+
+        // Check if ingestion actually succeeded
+        if (
+          runJson &&
+          runJson.status !== "COMPLETED" &&
+          runJson.status !== "SUCCESS"
+        ) {
+          const errorMsg = runJson.error || "Ingestion pipeline failed";
+          throw new Error(
+            `Ingestion failed: ${errorMsg}. Try setting DISABLE_INGEST_WITH_LANGFLOW=true if you're experiencing Langflow component issues.`
+          );
         }
 
         // Log deletion status if provided
@@ -213,12 +225,12 @@ export function KnowledgeDropdown({
           if (deleteResult.status === "deleted") {
             console.log(
               "File successfully cleaned up from Langflow:",
-              deleteResult.file_id,
+              deleteResult.file_id
             );
           } else if (deleteResult.status === "delete_failed") {
             console.warn(
               "Failed to cleanup file from Langflow:",
-              deleteResult.error,
+              deleteResult.error
             );
           }
         }
@@ -236,8 +248,9 @@ export function KnowledgeDropdown({
                 unified: true,
               },
             },
-          }),
+          })
         );
+
         // Trigger search refresh after successful ingestion
         window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
       } catch (error) {
@@ -247,12 +260,12 @@ export function KnowledgeDropdown({
               filename: files[0].name,
               error: error instanceof Error ? error.message : "Upload failed",
             },
-          }),
+          })
         );
       } finally {
         window.dispatchEvent(new CustomEvent("fileUploadComplete"));
         setFileUploading(false);
-        refetchSearch();
+        // Don't call refetchSearch() here - the knowledgeUpdated event will handle it
       }
     }
 
@@ -289,9 +302,15 @@ export function KnowledgeDropdown({
         addTask(taskId);
         setFolderPath("");
         // Trigger search refresh after successful folder processing starts
+        console.log(
+          "Folder upload successful, dispatching knowledgeUpdated event"
+        );
         window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
       } else if (response.ok) {
         setFolderPath("");
+        console.log(
+          "Folder upload successful (direct), dispatching knowledgeUpdated event"
+        );
         window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
       } else {
         console.error("Folder upload failed:", result.error);
@@ -305,7 +324,7 @@ export function KnowledgeDropdown({
       console.error("Folder upload error:", error);
     } finally {
       setFolderLoading(false);
-      refetchSearch();
+      // Don't call refetchSearch() here - the knowledgeUpdated event will handle it
     }
   };
 
@@ -336,6 +355,7 @@ export function KnowledgeDropdown({
         addTask(taskId);
         setBucketUrl("s3://");
         // Trigger search refresh after successful S3 processing starts
+        console.log("S3 upload successful, dispatching knowledgeUpdated event");
         window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
       } else {
         console.error("S3 upload failed:", result.error);
@@ -349,7 +369,7 @@ export function KnowledgeDropdown({
       console.error("S3 upload error:", error);
     } finally {
       setS3Loading(false);
-      refetchSearch();
+      // Don't call refetchSearch() here - the knowledgeUpdated event will handle it
     }
   };
 
@@ -358,10 +378,17 @@ export function KnowledgeDropdown({
     .map(([type, info]) => ({
       label: info.name,
       icon: PlugZap,
-      onClick: () => {
+      onClick: async () => {
         setIsOpen(false);
         if (info.connected && info.hasToken) {
-          router.push(`/upload/${type}`);
+          setIsNavigatingToCloud(true);
+          try {
+            router.push(`/upload/${type}`);
+            // Keep loading state for a short time to show feedback
+            setTimeout(() => setIsNavigatingToCloud(false), 1000);
+          } catch {
+            setIsNavigatingToCloud(false);
+          }
         } else {
           router.push("/settings");
         }
@@ -403,14 +430,16 @@ export function KnowledgeDropdown({
     ...cloudConnectorItems,
   ];
 
+  // Comprehensive loading state
+  const isLoading =
+    fileUploading || folderLoading || s3Loading || isNavigatingToCloud;
+
   return (
     <>
       <div ref={dropdownRef} className="relative">
         <button
-          onClick={() =>
-            !(fileUploading || folderLoading || s3Loading) && setIsOpen(!isOpen)
-          }
-          disabled={fileUploading || folderLoading || s3Loading}
+          onClick={() => !isLoading && setIsOpen(!isOpen)}
+          disabled={isLoading}
           className={cn(
             variant === "button"
               ? "rounded-lg h-12 px-4 flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -419,44 +448,68 @@ export function KnowledgeDropdown({
               ? "bg-accent text-accent-foreground shadow-sm"
               : variant === "navigation"
               ? "text-foreground hover:text-accent-foreground"
-              : "",
+              : ""
           )}
         >
           {variant === "button" ? (
             <>
-              <Plus className="h-4 w-4" />
-              <span>Add Knowledge</span>
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 transition-transform",
-                  isOpen && "rotate-180",
-                )}
-              />
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              <span>
+                {isLoading
+                  ? fileUploading
+                    ? "Uploading..."
+                    : folderLoading
+                    ? "Processing Folder..."
+                    : s3Loading
+                    ? "Processing S3..."
+                    : isNavigatingToCloud
+                    ? "Loading..."
+                    : "Processing..."
+                  : "Add Knowledge"}
+              </span>
+              {!isLoading && (
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 transition-transform",
+                    isOpen && "rotate-180"
+                  )}
+                />
+              )}
             </>
           ) : (
             <>
               <div className="flex items-center flex-1">
-                <Upload
-                  className={cn(
-                    "h-4 w-4 mr-3 shrink-0",
-                    active
-                      ? "text-accent-foreground"
-                      : "text-muted-foreground group-hover:text-foreground",
-                  )}
-                />
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 mr-3 shrink-0 animate-spin" />
+                ) : (
+                  <Upload
+                    className={cn(
+                      "h-4 w-4 mr-3 shrink-0",
+                      active
+                        ? "text-accent-foreground"
+                        : "text-muted-foreground group-hover:text-foreground"
+                    )}
+                  />
+                )}
                 Knowledge
               </div>
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 transition-transform",
-                  isOpen && "rotate-180",
-                )}
-              />
+              {!isLoading && (
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 transition-transform",
+                    isOpen && "rotate-180"
+                  )}
+                />
+              )}
             </>
           )}
         </button>
 
-        {isOpen && (
+        {isOpen && !isLoading && (
           <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-md z-50">
             <div className="py-1">
               {menuItems.map((item, index) => (
@@ -469,7 +522,7 @@ export function KnowledgeDropdown({
                     "w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground",
                     "disabled" in item &&
                       item.disabled &&
-                      "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-current",
+                      "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-current"
                   )}
                 >
                   {item.label}
@@ -508,7 +561,7 @@ export function KnowledgeDropdown({
                 type="text"
                 placeholder="/path/to/documents"
                 value={folderPath}
-                onChange={(e) => setFolderPath(e.target.value)}
+                onChange={e => setFolderPath(e.target.value)}
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -550,7 +603,7 @@ export function KnowledgeDropdown({
                 type="text"
                 placeholder="s3://bucket/path"
                 value={bucketUrl}
-                onChange={(e) => setBucketUrl(e.target.value)}
+                onChange={e => setBucketUrl(e.target.value)}
               />
             </div>
             <div className="flex justify-end gap-2">

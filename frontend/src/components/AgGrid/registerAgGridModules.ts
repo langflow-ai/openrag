@@ -11,6 +11,7 @@ import {
     DateFilterModule,
     EventApiModule,
     GridStateModule,
+    RowSelectionModule,
   } from 'ag-grid-community';
   
   // Importing necessary modules from ag-grid-community
@@ -27,6 +28,7 @@ import {
     DateFilterModule,
     EventApiModule,
     GridStateModule,
+    RowSelectionModule,
     // The ValidationModule adds helpful console warnings/errors that can help identify bad configuration during development.
     ...(process.env.NODE_ENV !== 'production' ? [ValidationModule] : []),
   ]);
