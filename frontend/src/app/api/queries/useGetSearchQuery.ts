@@ -42,6 +42,7 @@ export interface File {
   owner_email: string;
   size: number;
   connector_type: string;
+  status?: "processing" | "active" | "unavailable" | "hidden" | "sync";
   chunks: ChunkResult[];
 }
 

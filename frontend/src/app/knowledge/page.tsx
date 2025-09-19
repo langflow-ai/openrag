@@ -33,6 +33,7 @@ import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdow
 import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { toast } from "sonner";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -127,7 +128,7 @@ function SearchPage() {
     {
       field: "size",
       headerName: "Size",
-      valueFormatter: (params) =>
+      valueFormatter: params =>
         params.value ? `${Math.round(params.value / 1024)} KB` : "-",
     },
     {
@@ -137,7 +138,7 @@ function SearchPage() {
     {
       field: "owner",
       headerName: "Owner",
-      valueFormatter: (params) =>
+      valueFormatter: params =>
         params.data?.owner_name || params.data?.owner_email || "—",
     },
     {
@@ -153,6 +154,15 @@ function SearchPage() {
             {value.toFixed(2)}
           </span>
         );
+      },
+    },
+    {
+      field: "status",
+      headerName: "Status",
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+        // Default to 'active' status if no status is provided
+        const status = data?.status || "processing";
+        return <StatusBadge status={status} />;
       },
     },
     {
@@ -195,7 +205,7 @@ function SearchPage() {
 
     try {
       // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map((row) =>
+      const deletePromises = selectedRows.map(row =>
         deleteDocumentMutation.mutateAsync({ filename: row.filename })
       );
 
@@ -252,7 +262,7 @@ function SearchPage() {
               type="text"
               defaultValue={parsedFilterData?.query}
               value={queryInputText}
-              onChange={(e) => setQueryInputText(e.target.value)}
+              onChange={e => setQueryInputText(e.target.value)}
               placeholder="Search your documents..."
               className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring"
             />
@@ -297,7 +307,7 @@ function SearchPage() {
           rowSelection="multiple"
           rowMultiSelectWithClick={false}
           suppressRowClickSelection={true}
-          getRowId={(params) => params.data.filename}
+          getRowId={params => params.data.filename}
           onSelectionChanged={onSelectionChanged}
           suppressHorizontalScroll={false}
           noRowsOverlayComponent={() => (
@@ -326,7 +336,7 @@ function SearchPage() {
         }? This will remove all chunks and data associated with these documents. This action cannot be undone.
 
 Documents to be deleted:
-${selectedRows.map((row) => `• ${row.filename}`).join("\n")}`}
+${selectedRows.map(row => `• ${row.filename}`).join("\n")}`}
         confirmText="Delete All"
         onConfirm={handleBulkDelete}
         isLoading={deleteDocumentMutation.isPending}
