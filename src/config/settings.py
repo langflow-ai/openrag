@@ -4,12 +4,12 @@ import time
 import httpx
 import requests
 from agentd.patch import patch_openai_with_mcp
-from docling.document_converter import DocumentConverter
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
+from utils.document_processing import create_document_converter
 from utils.logging_config import get_logger
 
 load_dotenv()
@@ -45,6 +45,7 @@ LANGFLOW_KEY = os.getenv("LANGFLOW_KEY")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "your-secret-key-change-in-production")
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 
 # Ingestion configuration
 DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in ("true", "1", "yes")
@@ -287,7 +288,7 @@ class AppClients:
         self.patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
 
         # Initialize document converter
-        self.converter = DocumentConverter()
+        self.converter = create_document_converter(ocr_engine=DOCLING_OCR_ENGINE)
 
         # Initialize Langflow HTTP client
         self.langflow_http_client = httpx.AsyncClient(

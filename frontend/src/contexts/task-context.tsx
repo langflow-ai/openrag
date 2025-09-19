@@ -25,6 +25,8 @@ export interface Task {
   processed_files?: number;
   successful_files?: number;
   failed_files?: number;
+  running_files?: number;
+  pending_files?: number;
   created_at: string;
   updated_at: string;
   duration_seconds?: number;
