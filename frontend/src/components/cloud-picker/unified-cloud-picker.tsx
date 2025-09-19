@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UnifiedCloudPickerProps, CloudFile } from "./types";
+import {
+  UnifiedCloudPickerProps,
+  CloudFile,
+  IngestSettings as IngestSettingsType,
+} from "./types";
 import { PickerHeader } from "./picker-header";
 import { FileList } from "./file-list";
 import { IngestSettings } from "./ingest-settings";
@@ -16,12 +20,28 @@ export const UnifiedCloudPicker = ({
   onPickerStateChange,
   clientId,
   baseUrl,
+  onSettingsChange,
 }: UnifiedCloudPickerProps) => {
   const [isPickerLoaded, setIsPickerLoaded] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isIngestSettingsOpen, setIsIngestSettingsOpen] = useState(false);
   const [isLoadingBaseUrl, setIsLoadingBaseUrl] = useState(false);
   const [autoBaseUrl, setAutoBaseUrl] = useState<string | undefined>(undefined);
+
+  // Settings state with defaults
+  const [ingestSettings, setIngestSettings] = useState<IngestSettingsType>({
+    chunkSize: 1000,
+    chunkOverlap: 200,
+    ocr: false,
+    pictureDescriptions: false,
+    embeddingModel: "text-embedding-3-small",
+  });
+
+  // Handle settings changes and notify parent
+  const handleSettingsChange = (newSettings: IngestSettingsType) => {
+    setIngestSettings(newSettings);
+    onSettingsChange?.(newSettings);
+  };
 
   const effectiveBaseUrl = baseUrl || autoBaseUrl;
 
@@ -167,6 +187,8 @@ export const UnifiedCloudPicker = ({
       <IngestSettings
         isOpen={isIngestSettingsOpen}
         onOpenChange={setIsIngestSettingsOpen}
+        settings={ingestSettings}
+        onSettingsChange={handleSettingsChange}
       />
     </div>
   );

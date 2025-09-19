@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, AlertCircle } from "lucide-react";
 import { UnifiedCloudPicker, CloudFile } from "@/components/cloud-picker";
+import type { IngestSettings } from "@/components/cloud-picker/types";
 import { useTask } from "@/contexts/task-context";
 import { Toast } from "@/components/ui/toast";
 
@@ -38,6 +39,13 @@ export default function UploadProviderPage() {
     null
   );
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [ingestSettings, setIngestSettings] = useState<IngestSettings>({
+    chunkSize: 1000,
+    chunkOverlap: 200,
+    ocr: false,
+    pictureDescriptions: false,
+    embeddingModel: "text-embedding-3-small",
+  });
 
   useEffect(() => {
     const fetchConnectorInfo = async () => {
@@ -167,9 +175,11 @@ export default function UploadProviderPage() {
         connection_id: string;
         max_files?: number;
         selected_files?: string[];
+        settings?: IngestSettings;
       } = {
         connection_id: connector.connectionId,
         selected_files: selectedFiles.map(file => file.id),
+        settings: ingestSettings,
       };
 
       const response = await fetch(`/api/connectors/${connector.type}/sync`, {
@@ -337,6 +347,7 @@ export default function UploadProviderPage() {
           isAuthenticated={true}
           accessToken={accessToken || undefined}
           clientId={connector.clientId}
+          onSettingsChange={setIngestSettings}
         />
       </div>
 
