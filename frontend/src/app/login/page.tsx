@@ -14,8 +14,8 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const { data: settings } = useGetSettingsQuery({
-    enabled: isAuthenticated,
+  const { data: settings, isLoading: isSettingsLoading } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
   });
 
   const redirect =
@@ -25,12 +25,19 @@ function LoginPageContent() {
 
   // Redirect if already authenticated or in no-auth mode
   useEffect(() => {
-    if (!isLoading && (isAuthenticated || isNoAuthMode)) {
+    if (!isLoading && !isSettingsLoading && (isAuthenticated || isNoAuthMode)) {
       router.push(redirect);
     }
-  }, [isLoading, isAuthenticated, isNoAuthMode, router, redirect]);
+  }, [
+    isLoading,
+    isSettingsLoading,
+    isAuthenticated,
+    isNoAuthMode,
+    router,
+    redirect,
+  ]);
 
-  if (isLoading) {
+  if (isLoading || isSettingsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
