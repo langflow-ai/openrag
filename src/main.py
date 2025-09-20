@@ -392,7 +392,8 @@ async def startup_tasks(services):
     """Startup tasks"""
     logger.info("Starting startup tasks")
     await init_index()
-    await ingest_default_documents_when_ready(services)
+    # Sample data ingestion is now handled by the onboarding endpoint when sample_data=True
+    logger.info("Sample data ingestion moved to onboarding endpoint")
 
 
 async def initialize_services():

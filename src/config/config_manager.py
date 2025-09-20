@@ -25,8 +25,7 @@ class KnowledgeConfig:
     embedding_model: str = "text-embedding-3-small"
     chunk_size: int = 1000
     chunk_overlap: int = 200
-    ocr: bool = True
-    picture_descriptions: bool = False
+    doclingPresets: str = "standard"
 
 
 @dataclass

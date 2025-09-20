@@ -198,8 +198,6 @@ async def update_settings(request, session_manager):
         allowed_fields = {
             "llm_model",
             "system_prompt",
-            "ocr",
-            "picture_descriptions",
             "chunk_size",
             "chunk_overlap",
             "doclingPresets",
@@ -239,23 +237,6 @@ async def update_settings(request, session_manager):
                     status_code=400,
                 )
             current_config.knowledge.doclingPresets = body["doclingPresets"]
-            config_updated = True
-
-        if "ocr" in body:
-            if not isinstance(body["ocr"], bool):
-                return JSONResponse(
-                    {"error": "ocr must be a boolean value"}, status_code=400
-                )
-            current_config.knowledge.ocr = body["ocr"]
-            config_updated = True
-
-        if "picture_descriptions" in body:
-            if not isinstance(body["picture_descriptions"], bool):
-                return JSONResponse(
-                    {"error": "picture_descriptions must be a boolean value"},
-                    status_code=400,
-                )
-            current_config.knowledge.picture_descriptions = body["picture_descriptions"]
             config_updated = True
 
         if "chunk_size" in body:
@@ -402,13 +383,14 @@ async def onboarding(request, flows_service):
             current_config.provider.project_id = body["project_id"].strip()
             config_updated = True
 
-        # Handle sample_data (unused for now but validate)
+        # Handle sample_data
+        should_ingest_sample_data = False
         if "sample_data" in body:
             if not isinstance(body["sample_data"], bool):
                 return JSONResponse(
                     {"error": "sample_data must be a boolean value"}, status_code=400
                 )
-            # Note: sample_data is accepted but not used as requested
+            should_ingest_sample_data = body["sample_data"]
 
         if not config_updated:
             return JSONResponse(
@@ -445,16 +427,44 @@ async def onboarding(request, flows_service):
 
                 except Exception as e:
                     logger.error(
-                        f"Error assigning model provider to flows",
+                        "Error assigning model provider to flows",
                         provider=provider,
                         error=str(e),
                     )
                     # Continue even if flow assignment fails - configuration was still saved
 
+            # Handle sample data ingestion if requested
+            if should_ingest_sample_data:
+                try:
+                    # Import the function here to avoid circular imports
+                    from main import ingest_default_documents_when_ready
+
+                    # Get services from the current app state
+                    # We need to access the app instance to get services
+                    app = request.scope.get("app")
+                    if app and hasattr(app.state, "services"):
+                        services = app.state.services
+                        logger.info(
+                            "Starting sample data ingestion as requested in onboarding"
+                        )
+                        await ingest_default_documents_when_ready(services)
+                        logger.info("Sample data ingestion completed successfully")
+                    else:
+                        logger.error(
+                            "Could not access services for sample data ingestion"
+                        )
+
+                except Exception as e:
+                    logger.error(
+                        "Failed to complete sample data ingestion", error=str(e)
+                    )
+                    # Don't fail the entire onboarding process if sample data fails
+
             return JSONResponse(
                 {
                     "message": "Onboarding configuration updated successfully",
                     "edited": True,  # Confirm that config is now marked as edited
+                    "sample_data_ingested": should_ingest_sample_data,
                 }
             )
         else:
