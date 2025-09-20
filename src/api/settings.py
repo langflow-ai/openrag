@@ -60,8 +60,8 @@ async def get_settings(request, session_manager):
                                 .get("template", {})
                             )
 
-                            # Split Text component (SplitText-QIKhg)
-                            if node.get("id") == "SplitText-QIKhg":
+                            # Split Text component (SplitText-PC36h)
+                            if node.get("id") == "SplitText-PC36h":
                                 if node_template.get("chunk_size", {}).get(
                                     "value"
                                 ):

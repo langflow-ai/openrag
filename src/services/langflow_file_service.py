@@ -207,22 +207,22 @@ class LangflowFileService:
         if settings:
             logger.debug("[LF] Applying ingestion settings", extra={"settings": settings})
 
-            # Split Text component tweaks (SplitText-QIKhg)
+            # Split Text component tweaks (SplitText-PC36h)
             if (
                 settings.get("chunkSize")
                 or settings.get("chunkOverlap")
                 or settings.get("separator")
             ):
-                if "SplitText-QIKhg" not in final_tweaks:
-                    final_tweaks["SplitText-QIKhg"] = {}
+                if "SplitText-PC36h" not in final_tweaks:
+                    final_tweaks["SplitText-PC36h"] = {}
                 if settings.get("chunkSize"):
-                    final_tweaks["SplitText-QIKhg"]["chunk_size"] = settings["chunkSize"]
+                    final_tweaks["SplitText-PC36h"]["chunk_size"] = settings["chunkSize"]
                 if settings.get("chunkOverlap"):
-                    final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings[
+                    final_tweaks["SplitText-PC36h"]["chunk_overlap"] = settings[
                         "chunkOverlap"
                     ]
                 if settings.get("separator"):
-                    final_tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
+                    final_tweaks["SplitText-PC36h"]["separator"] = settings["separator"]
 
             # OpenAI Embeddings component tweaks (OpenAIEmbeddings-joRJ6)
             if settings.get("embeddingModel"):
