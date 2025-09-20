@@ -1,3 +1,5 @@
+import json
+import platform
 from starlette.responses import JSONResponse
 from utils.logging_config import get_logger
 from config.settings import (
@@ -12,6 +14,60 @@ from config.settings import (
 
 logger = get_logger(__name__)
 
+# Docling preset configurations
+def get_docling_preset_configs():
+    """Get docling preset configurations with platform-specific settings"""
+    is_macos = platform.system() == "Darwin"
+
+    return {
+        "standard": {
+            "do_ocr": False
+        },
+        "ocr": {
+            "do_ocr": True,
+            "ocr_engine": "ocrmac" if is_macos else "easyocr"
+        },
+        "picture_description": {
+            "do_ocr": True,
+            "ocr_engine": "ocrmac" if is_macos else "easyocr",
+            "do_picture_classification": True,
+            "do_picture_description": True,
+            "picture_description_local": {
+                "repo_id": "HuggingFaceTB/SmolVLM-256M-Instruct",
+                "prompt": "Describe this image in a few sentences."
+            }
+        },
+        "VLM": {
+            "pipeline": "vlm",
+            "vlm_pipeline_model_local": {
+                "repo_id": "ds4sd/SmolDocling-256M-preview-mlx-bf16" if is_macos else "ds4sd/SmolDocling-256M-preview",
+                "response_format": "doctags",
+                "inference_framework": "mlx"
+            }
+        }
+    }
+
+
+def get_docling_tweaks(docling_preset: str = None) -> dict:
+    """Get Langflow tweaks for docling component based on preset"""
+    if not docling_preset:
+        # Get current preset from config
+        openrag_config = get_openrag_config()
+        docling_preset = openrag_config.knowledge.doclingPresets
+
+    preset_configs = get_docling_preset_configs()
+
+    if docling_preset not in preset_configs:
+        docling_preset = "standard"  # fallback
+
+    preset_config = preset_configs[docling_preset]
+    docling_serve_opts = json.dumps(preset_config)
+
+    return {
+        "DoclingRemote-ayRdw": {
+            "docling_serve_opts": docling_serve_opts
+        }
+    }
 
 
 async def get_settings(request, session_manager):
@@ -174,7 +230,8 @@ async def update_settings(request, session_manager):
         
         # Update knowledge settings
         if "doclingPresets" in body:
-            valid_presets = ["standard", "ocr", "picture_description", "VLM"]
+            preset_configs = get_docling_preset_configs()
+            valid_presets = list(preset_configs.keys())
             if body["doclingPresets"] not in valid_presets:
                 return JSONResponse(
                     {"error": f"doclingPresets must be one of: {', '.join(valid_presets)}"},
