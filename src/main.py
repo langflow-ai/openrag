@@ -315,7 +315,7 @@ async def _ingest_default_documents_langflow(services, file_paths):
 
             # Prepare tweaks for default documents with anonymous user metadata
             default_tweaks = {
-                "OpenSearchHybrid-Ve6bS": {
+                "OpenSearchVectorStoreComponent-YnJox": {
                     "docs_metadata": [
                         {"key": "owner", "value": None},
                         {"key": "owner_name", "value": anonymous_user.name},
