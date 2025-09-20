@@ -14,7 +14,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
   const { data: settings = {}, isLoading: isSettingsLoading } =
     useGetSettingsQuery({
-      enabled: isAuthenticated,
+      enabled: isAuthenticated || isNoAuthMode,
     });
   const router = useRouter();
   const pathname = usePathname();
@@ -31,12 +31,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   );
 
   useEffect(() => {
-    // In no-auth mode, allow access without authentication
-    if (isNoAuthMode) {
-      return;
-    }
-
-    if (!isLoading && !isAuthenticated) {
+    if (!isLoading && !isSettingsLoading && !isAuthenticated && !isNoAuthMode) {
       // Redirect to login with current path as redirect parameter
       const redirectUrl = `/login?redirect=${encodeURIComponent(pathname)}`;
       router.push(redirectUrl);
@@ -48,6 +43,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     }
   }, [
     isLoading,
+    isSettingsLoading,
     isAuthenticated,
     isNoAuthMode,
     router,
@@ -57,7 +53,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   ]);
 
   // Show loading state while checking authentication
-  if (isLoading) {
+  if (isLoading || isSettingsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-4">

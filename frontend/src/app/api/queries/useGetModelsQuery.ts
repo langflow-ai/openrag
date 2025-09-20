@@ -15,23 +15,33 @@ export interface ModelsResponse {
   embedding_models: ModelOption[];
 }
 
+export interface OpenAIModelsParams {
+  apiKey?: string;
+}
+
 export interface OllamaModelsParams {
   endpoint?: string;
 }
 
 export interface IBMModelsParams {
-  api_key?: string;
   endpoint?: string;
-  project_id?: string;
+  apiKey?: string;
+  projectId?: string;
 }
 
 export const useGetOpenAIModelsQuery = (
+  params?: OpenAIModelsParams,
   options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
 
   async function getOpenAIModels(): Promise<ModelsResponse> {
-    const response = await fetch("/api/models/openai");
+    const url = new URL("/api/models/openai", window.location.origin);
+    if (params?.apiKey) {
+      url.searchParams.set("api_key", params.apiKey);
+    }
+
+    const response = await fetch(url.toString());
     if (response.ok) {
       return await response.json();
     } else {
@@ -41,9 +51,12 @@ export const useGetOpenAIModelsQuery = (
 
   const queryResult = useQuery(
     {
-      queryKey: ["models", "openai"],
+      queryKey: ["models", "openai", params],
       queryFn: getOpenAIModels,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      retry: 2,
+      enabled: !!params?.apiKey, // Only run if API key is provided
+      staleTime: 0, // Always fetch fresh data
+      gcTime: 0, // Don't cache results
       ...options,
     },
     queryClient,
@@ -76,8 +89,10 @@ export const useGetOllamaModelsQuery = (
     {
       queryKey: ["models", "ollama", params],
       queryFn: getOllamaModels,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      retry: 2,
       enabled: !!params?.endpoint, // Only run if endpoint is provided
+      staleTime: 0, // Always fetch fresh data
+      gcTime: 0, // Don't cache results
       ...options,
     },
     queryClient,
@@ -93,35 +108,22 @@ export const useGetIBMModelsQuery = (
   const queryClient = useQueryClient();
 
   async function getIBMModels(): Promise<ModelsResponse> {
-    const url = "/api/models/ibm";
+    const url = new URL("/api/models/ibm", window.location.origin);
+    if (params?.endpoint) {
+      url.searchParams.set("endpoint", params.endpoint);
+    }
+    if (params?.apiKey) {
+      url.searchParams.set("api_key", params.apiKey);
+    }
+    if (params?.projectId) {
+      url.searchParams.set("project_id", params.projectId);
+    }
 
-    // If we have credentials, use POST to send them securely
-    if (params?.api_key || params?.endpoint || params?.project_id) {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          api_key: params.api_key,
-          endpoint: params.endpoint,
-          project_id: params.project_id,
-        }),
-      });
-
-      if (response.ok) {
-        return await response.json();
-      } else {
-        throw new Error("Failed to fetch IBM models");
-      }
+    const response = await fetch(url.toString());
+    if (response.ok) {
+      return await response.json();
     } else {
-      // Use GET for default models
-      const response = await fetch(url);
-      if (response.ok) {
-        return await response.json();
-      } else {
-        throw new Error("Failed to fetch IBM models");
-      }
+      throw new Error("Failed to fetch IBM models");
     }
   }
 
@@ -129,8 +131,10 @@ export const useGetIBMModelsQuery = (
     {
       queryKey: ["models", "ibm", params],
       queryFn: getIBMModels,
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      enabled: !!(params?.api_key && params?.endpoint && params?.project_id), // Only run if all credentials are provided
+      retry: 2,
+      enabled: !!params?.endpoint && !!params?.apiKey && !!params?.projectId, // Only run if all required params are provided
+      staleTime: 0, // Always fetch fresh data
+      gcTime: 0, // Don't cache results
       ...options,
     },
     queryClient,
