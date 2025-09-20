@@ -2012,7 +2012,7 @@
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
   "endpoint_name": null,
-  "id": "99ab0acb-8371-43f3-9087-c8c3da5a845d",
+  "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
   "last_tested_version": "1.6.0",
   "name": "OpenSearch Ingestion Flow",
