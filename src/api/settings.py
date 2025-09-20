@@ -433,6 +433,31 @@ async def onboarding(request, flows_service):
                     )
                     # Continue even if flow assignment fails - configuration was still saved
 
+            # Set Langflow global variables based on provider
+            if "model_provider" in body:
+                provider = body["model_provider"].strip().lower()
+
+                try:
+                    # Set API key for IBM/Watson providers
+                    if (provider == "watsonx" or provider == "ibm") and "api_key" in body:
+                        api_key = body["api_key"]
+                        await clients._create_langflow_global_variable("WATSONX_API_KEY", api_key)
+                        logger.info("Set WATSONX_API_KEY global variable in Langflow")
+
+                    # Set base URL for Ollama provider
+                    if provider == "ollama" and "endpoint" in body:
+                        endpoint = body["endpoint"]
+                        await clients._create_langflow_global_variable("OLLAMA_BASE_URL", endpoint)
+                        logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
+
+                except Exception as e:
+                    logger.error(
+                        "Failed to set Langflow global variables",
+                        provider=provider,
+                        error=str(e),
+                    )
+                    # Continue even if setting global variables fails
+
             # Handle sample data ingestion if requested
             if should_ingest_sample_data:
                 try:
