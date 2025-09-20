@@ -32,8 +32,13 @@ export function AdvancedOnboarding({
   setSampleDataset: (dataset: boolean) => void;
 }) {
   const hasEmbeddingModels =
-    embeddingModels && embeddingModel && setEmbeddingModel;
-  const hasLanguageModels = languageModels && languageModel && setLanguageModel;
+    embeddingModels !== undefined &&
+    embeddingModel !== undefined &&
+    setEmbeddingModel !== undefined;
+  const hasLanguageModels =
+    languageModels !== undefined &&
+    languageModel !== undefined &&
+    setLanguageModel !== undefined;
   return (
     <Accordion type="single" collapsible>
       <AccordionItem value="item-1">

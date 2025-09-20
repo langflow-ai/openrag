@@ -1,5 +1,5 @@
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -32,6 +32,11 @@ export function ModelSelector({
   onValueChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (value && !options.find((option) => option.value === value)) {
+      onValueChange("");
+    }
+  }, [options, value, onValueChange]);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -39,6 +44,7 @@ export function ModelSelector({
         <Button
           variant="outline"
           role="combobox"
+          disabled={options.length === 0}
           aria-expanded={open}
           className="w-full gap-2 justify-between font-normal text-sm"
         >
@@ -53,6 +59,8 @@ export function ModelSelector({
                 </span>
               )}
             </div>
+          ) : options.length === 0 ? (
+            "No models available"
           ) : (
             "Select model..."
           )}

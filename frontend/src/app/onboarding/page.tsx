@@ -1,12 +1,11 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
 import {
-  type Settings,
-  useGetSettingsQuery,
-} from "@/app/api/queries/useGetSettingsQuery";
+  useOnboardingMutation,
+  type OnboardingVariables,
+} from "@/app/api/mutations/useOnboardingMutation";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
 import OpenAILogo from "@/components/logo/openai-logo";
@@ -19,43 +18,101 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/contexts/auth-context";
-import { IBMOnboarding } from "./ibm-onboarding";
-import { OllamaOnboarding } from "./ollama-onboarding";
-import { OpenAIOnboarding } from "./openai-onboarding";
+import { IBMOnboarding } from "./components/ibm-onboarding";
+import { OllamaOnboarding } from "./components/ollama-onboarding";
+import { OpenAIOnboarding } from "./components/openai-onboarding";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useGetSettingsQuery } from "../api/queries/useGetSettingsQuery";
+import { useRouter } from "next/navigation";
 
 function OnboardingPage() {
-  const { isAuthenticated } = useAuth();
+  const { data: settingsDb, isLoading: isSettingsLoading } =
+    useGetSettingsQuery();
+
+  const redirect = "/";
+
+  const router = useRouter();
+
+  // Redirect if already authenticated or in no-auth mode
+  useEffect(() => {
+    if (!isSettingsLoading && settingsDb && settingsDb.edited) {
+      router.push(redirect);
+    }
+  }, [isSettingsLoading, redirect]);
 
   const [modelProvider, setModelProvider] = useState<string>("openai");
 
-  const [sampleDataset, setSampleDataset] = useState<boolean>(false);
-  // Fetch settings using React Query
-  const { data: settingsDb = {} } = useGetSettingsQuery({
-    enabled: isAuthenticated,
+  const [sampleDataset, setSampleDataset] = useState<boolean>(true);
+
+  const handleSetModelProvider = (provider: string) => {
+    setModelProvider(provider);
+    setSettings({
+      model_provider: provider,
+      embedding_model: "",
+      llm_model: "",
+    });
+  };
+
+  const [settings, setSettings] = useState<OnboardingVariables>({
+    model_provider: modelProvider,
+    embedding_model: "",
+    llm_model: "",
   });
 
-  const [settings, setSettings] = useState<Settings>(settingsDb);
-
   // Mutations
-  const updateFlowSettingMutation = useUpdateFlowSettingMutation({
-    onSuccess: () => {
-      console.log("Setting updated successfully");
+  const onboardingMutation = useOnboardingMutation({
+    onSuccess: (data) => {
+      toast.success("Onboarding completed successfully!");
+      console.log("Onboarding completed successfully", data);
     },
     onError: (error) => {
-      toast.error("Failed to update settings", {
+      toast.error("Failed to complete onboarding", {
         description: error.message,
       });
     },
   });
 
   const handleComplete = () => {
-    updateFlowSettingMutation.mutate({
-      llm_model: settings.agent?.llm_model,
-      embedding_model: settings.knowledge?.embedding_model,
-      system_prompt: settings.agent?.system_prompt,
-    });
+    if (
+      !settings.model_provider ||
+      !settings.llm_model ||
+      !settings.embedding_model
+    ) {
+      toast.error("Please complete all required fields");
+      return;
+    }
+
+    // Prepare onboarding data
+    const onboardingData: OnboardingVariables = {
+      model_provider: settings.model_provider,
+      llm_model: settings.llm_model,
+      embedding_model: settings.embedding_model,
+      sample_data: sampleDataset,
+    };
+
+    // Add API key if available
+    if (settings.api_key) {
+      onboardingData.api_key = settings.api_key;
+    }
+
+    // Add endpoint if available
+    if (settings.endpoint) {
+      onboardingData.endpoint = settings.endpoint;
+    }
+
+    // Add project_id if available
+    if (settings.project_id) {
+      onboardingData.project_id = settings.project_id;
+    }
+
+    onboardingMutation.mutate(onboardingData);
   };
+
+  const isComplete = !!settings.llm_model && !!settings.embedding_model;
 
   return (
     <div
@@ -74,7 +131,10 @@ function OnboardingPage() {
           <p className="text-sm text-muted-foreground">[description of task]</p>
         </div>
         <Card className="w-full max-w-[580px]">
-          <Tabs defaultValue={modelProvider} onValueChange={setModelProvider}>
+          <Tabs
+            defaultValue={modelProvider}
+            onValueChange={handleSetModelProvider}
+          >
             <CardHeader>
               <TabsList>
                 <TabsTrigger value="openai">
@@ -94,7 +154,6 @@ function OnboardingPage() {
             <CardContent>
               <TabsContent value="openai">
                 <OpenAIOnboarding
-                  settings={settings}
                   setSettings={setSettings}
                   sampleDataset={sampleDataset}
                   setSampleDataset={setSampleDataset}
@@ -102,7 +161,6 @@ function OnboardingPage() {
               </TabsContent>
               <TabsContent value="watsonx">
                 <IBMOnboarding
-                  settings={settings}
                   setSettings={setSettings}
                   sampleDataset={sampleDataset}
                   setSampleDataset={setSampleDataset}
@@ -110,7 +168,6 @@ function OnboardingPage() {
               </TabsContent>
               <TabsContent value="ollama">
                 <OllamaOnboarding
-                  settings={settings}
                   setSettings={setSettings}
                   sampleDataset={sampleDataset}
                   setSampleDataset={setSampleDataset}
@@ -119,9 +176,21 @@ function OnboardingPage() {
             </CardContent>
           </Tabs>
           <CardFooter className="flex justify-end">
-            <Button size="sm" onClick={handleComplete}>
-              Complete
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  onClick={handleComplete}
+                  disabled={!isComplete}
+                  loading={onboardingMutation.isPending}
+                >
+                  Complete
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {!isComplete ? "Please fill in all required fields" : ""}
+              </TooltipContent>
+            </Tooltip>
           </CardFooter>
         </Card>
       </div>

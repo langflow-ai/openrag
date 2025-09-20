@@ -15,15 +15,16 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context";
+import Logo from "@/components/logo/logo";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { tasks, isMenuOpen, toggleMenu } = useTask();
   const { selectedFilter, setSelectedFilter, isPanelOpen } =
     useKnowledgeFilter();
-  const { isLoading, isAuthenticated } = useAuth();
+  const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
   const { isLoading: isSettingsLoading, data: settings } = useGetSettingsQuery({
-    enabled: isAuthenticated,
+    enabled: isAuthenticated || isNoAuthMode,
   });
 
   // List of paths that should not show navigation
@@ -62,7 +63,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         <div className="header-start-display px-4">
           {/* Logo/Title */}
           <div className="flex items-center gap-2">
-            <Image src="/logo.svg" alt="OpenRAG Logo" width={24} height={22} />
+            <Logo className="fill-primary" width={24} height={22} />
             <span className="text-lg font-semibold">OpenRAG</span>
           </div>
         </div>
