@@ -7,7 +7,17 @@ logger = get_logger(__name__)
 async def get_openai_models(request, models_service, session_manager):
     """Get available OpenAI models"""
     try:
-        models = await models_service.get_openai_models()
+        # Get API key from query parameters
+        query_params = dict(request.query_params)
+        api_key = query_params.get("api_key")
+
+        if not api_key:
+            return JSONResponse(
+                {"error": "OpenAI API key is required as query parameter"},
+                status_code=400
+            )
+
+        models = await models_service.get_openai_models(api_key=api_key)
         return JSONResponse(models)
     except Exception as e:
         logger.error(f"Failed to get OpenAI models: {str(e)}")
@@ -37,21 +47,15 @@ async def get_ollama_models(request, models_service, session_manager):
 async def get_ibm_models(request, models_service, session_manager):
     """Get available IBM Watson models"""
     try:
-        # Get credentials from query parameters or request body if provided
-        if request.method == "POST":
-            body = await request.json()
-            api_key = body.get("api_key")
-            endpoint = body.get("endpoint")
-            project_id = body.get("project_id")
-        else:
-            query_params = dict(request.query_params)
-            api_key = query_params.get("api_key")
-            endpoint = query_params.get("endpoint")
-            project_id = query_params.get("project_id")
+        # Get parameters from query parameters if provided
+        query_params = dict(request.query_params)
+        endpoint = query_params.get("endpoint")
+        api_key = query_params.get("api_key")
+        project_id = query_params.get("project_id")
 
         models = await models_service.get_ibm_models(
-            api_key=api_key,
             endpoint=endpoint,
+            api_key=api_key,
             project_id=project_id
         )
         return JSONResponse(models)
