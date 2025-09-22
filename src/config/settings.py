@@ -528,6 +528,9 @@ OLLAMA_EMBEDDING_COMPONENT_ID = os.getenv(
 )
 OLLAMA_LLM_COMPONENT_ID = os.getenv("OLLAMA_LLM_COMPONENT_ID", "OllamaModel-eCsJx")
 
+# Docling component ID for ingest flow
+DOCLING_COMPONENT_ID = os.getenv("DOCLING_COMPONENT_ID", "DoclingRemote-78KoX")
+
 # Global clients instance
 clients = AppClients()
 
