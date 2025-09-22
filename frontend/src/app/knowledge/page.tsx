@@ -5,19 +5,12 @@ import {
   Cloud,
   Filter,
   HardDrive,
-  Loader2,
   Search,
   Trash2,
   X,
 } from "lucide-react";
 import { AgGridReact, CustomCellRendererProps } from "ag-grid-react";
-import {
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useState,
-  useRef,
-} from "react";
+import { useCallback, useEffect, useState, useRef, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { SiGoogledrive } from "react-icons/si";
 import { TbBrandOnedrive } from "react-icons/tb";
@@ -62,8 +55,6 @@ function SearchPage() {
   const { isMenuOpen } = useTask();
   const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
     useKnowledgeFilter();
-  const [query, setQuery] = useState("");
-  const [queryInputText, setQueryInputText] = useState("");
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
@@ -73,26 +64,11 @@ function SearchPage() {
     data = [],
     isFetching,
     refetch: refetchSearch,
-  } = useGetSearchQuery(query, parsedFilterData);
+  } = useGetSearchQuery(parsedFilterData?.query || "", parsedFilterData);
 
-  // Update query when global filter changes
-  useEffect(() => {
-    if (parsedFilterData?.query) {
-      setQueryInputText(parsedFilterData.query);
-    }
-  }, [parsedFilterData]);
-
-  const handleSearch = useCallback(
-    (e?: FormEvent<HTMLFormElement>) => {
-      if (e) e.preventDefault();
-      if (query.trim() === queryInputText.trim()) {
-        refetchSearch();
-        return;
-      }
-      setQuery(queryInputText);
-    },
-    [queryInputText, refetchSearch, query]
-  );
+  const handleTableSearch = (e: ChangeEvent<HTMLInputElement>) => {
+    gridRef.current?.api.setGridOption("quickFilterText", e.target.value);
+  };
 
   const fileResults = data as File[];
 
@@ -224,6 +200,10 @@ function SearchPage() {
     }
   };
 
+  useEffect(() => {
+    refetchSearch();
+  }, [selectedFilter, refetchSearch]);
+
   return (
     <div
       className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
@@ -247,8 +227,8 @@ function SearchPage() {
 
         {/* Search Input Area */}
         <div className="flex-shrink-0 mb-6 xl:max-w-[75%]">
-          <form onSubmit={handleSearch} className="flex gap-3">
-            <div className="primary-input !flex items-center flex-nowrap gap-2 focus-within:border-foreground transition-colors !py-0">
+          <form className="flex gap-3">
+            <div className="primary-input min-h-10 !flex items-center flex-nowrap gap-2 focus-within:border-foreground transition-colors !py-0">
               {selectedFilter?.name && (
                 <div className="flex items-center gap-2 bg-accent text-accent-foreground px-1 py-0.5 rounded max-w-[300px]">
                   <Filter className="h-3 w-3 flex-shrink-0 ml-1" />
@@ -266,12 +246,10 @@ function SearchPage() {
                 id="search-query"
                 type="text"
                 placeholder="Search your documents..."
-                onChange={(e) => setQueryInputText(e.target.value)}
-                value={queryInputText}
-                defaultValue={parsedFilterData?.query}
+                onChange={handleTableSearch}
               />
             </div>
-            <Button
+            {/* <Button
               type="submit"
               variant="outline"
               className="rounded-lg p-0 flex-shrink-0"
@@ -281,7 +259,7 @@ function SearchPage() {
               ) : (
                 <Search className="h-4 w-4" />
               )}
-            </Button>
+            </Button> */}
             {/* //TODO: Implement sync button */}
             {/* <Button
               type="button"
@@ -291,15 +269,16 @@ function SearchPage() {
             >
               Sync
             </Button> */}
-            <Button
-              type="button"
-              variant="destructive"
-              className="rounded-lg flex-shrink-0"
-              onClick={() => setShowBulkDeleteDialog(true)}
-              disabled={selectedRows.length === 0}
-            >
-              <Trash2 className="h-4 w-4" /> Delete
-            </Button>
+            {selectedRows.length > 0 && (
+              <Button
+                type="button"
+                variant="destructive"
+                className="rounded-lg flex-shrink-0"
+                onClick={() => setShowBulkDeleteDialog(true)}
+              >
+                <Trash2 className="h-4 w-4" /> Delete
+              </Button>
+            )}
           </form>
         </div>
         <AgGridReact
