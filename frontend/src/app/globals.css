@@ -34,6 +34,7 @@
 
     --accent-emerald-foreground: 161.4 93.5% 30.4%;
     --accent-pink-foreground: 333.3 71.4% 50.6%;
+    --accent-amber-foreground: 26 90.5% 37.1%;
 
     /* Status Colors */
     --status-red: #ef4444;
@@ -90,6 +91,7 @@
 
     --accent-emerald-foreground: 158.1 64.4% 51.6%;
     --accent-pink-foreground: 328.6 85.5% 70.2%;
+    --accent-amber-foreground: 45.9 96.7% 64.5%;
 
     /* Dark mode data type colors */
     --datatype-blue: 211.7 96.4% 78.4%;

@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { LabelInput } from "@/components/label-input";
 import OpenAILogo from "@/components/logo/openai-logo";
+import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { useGetOpenAIModelsQuery } from "../../api/queries/useGetModelsQuery";
 import { useModelSelection } from "../hooks/useModelSelection";
 import { useUpdateSettings } from "../hooks/useUpdateSettings";
-import { useDebouncedValue } from "@/lib/debounce";
 import { AdvancedOnboarding } from "./advanced";
 
 export function OpenAIOnboarding({
@@ -64,17 +64,21 @@ export function OpenAIOnboarding({
           onChange={(e) => setApiKey(e.target.value)}
         />
         {isLoadingModels && (
-          <p className="text-sm text-muted-foreground">Validating API key...</p>
+          <p className="text-mmd text-muted-foreground">
+            Validating API key...
+          </p>
         )}
         {modelsError && (
-          <p className="text-sm text-red-500">
-            Invalid API key or configuration
+          <p className="text-mmd text-accent-amber-foreground">
+            Invalid API key
           </p>
         )}
         {modelsData &&
           (modelsData.language_models?.length > 0 ||
             modelsData.embedding_models?.length > 0) && (
-            <p className="text-sm text-green-600">Configuration is valid</p>
+            <p className="text-mmd text-accent-emerald-foreground">
+              API Key is valid
+            </p>
           )}
       </div>
       <AdvancedOnboarding
