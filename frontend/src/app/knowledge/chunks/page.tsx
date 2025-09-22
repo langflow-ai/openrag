@@ -74,7 +74,6 @@ function ChunksPageContent() {
     (file: File) => file.filename === filename
   );
 
-  console.log({ fileData });
   // Extract chunks for the specific file
   useEffect(() => {
     if (!filename || !(data as File[]).length) {
@@ -102,8 +101,6 @@ function ChunksPageContent() {
       </div>
     );
   }
-
-  console.log({ data });
 
   return (
     <div
