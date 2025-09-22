@@ -2,18 +2,13 @@
 
 import {
   ArrowLeft,
-  Building2,
-  Cloud,
+  Copy,
   File as FileIcon,
-  FileText,
-  HardDrive,
   Loader2,
   Search,
 } from "lucide-react";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { SiGoogledrive } from "react-icons/si";
-import { TbBrandOnedrive } from "react-icons/tb";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
@@ -27,22 +22,6 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 
-// Function to get the appropriate icon for a connector type
-function getSourceIcon(connectorType?: string) {
-  switch (connectorType) {
-    case "google_drive":
-      return <SiGoogledrive className="h-4 w-4 text-foreground" />;
-    case "onedrive":
-      return <TbBrandOnedrive className="h-4 w-4 text-foreground" />;
-    case "sharepoint":
-      return <Building2 className="h-4 w-4 text-foreground" />;
-    case "s3":
-      return <Cloud className="h-4 w-4 text-foreground" />;
-    default:
-      return <HardDrive className="h-4 w-4 text-muted-foreground" />;
-  }
-}
-
 function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -51,11 +30,31 @@ function ChunksPageContent() {
 
   const filename = searchParams.get("filename");
   const [chunks, setChunks] = useState<ChunkResult[]>([]);
+  const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
+    ChunkResult[]
+  >([]);
 
   const [selectAll, setSelectAll] = useState(false);
   const [queryInputText, setQueryInputText] = useState(
     parsedFilterData?.query ?? ""
   );
+
+  useEffect(() => {
+    if (queryInputText === "") {
+      setChunksFilteredByQuery(chunks);
+    } else {
+      setChunksFilteredByQuery((prevChunks) =>
+        prevChunks.filter((chunk) =>
+          chunk.text.toLowerCase().includes(queryInputText.toLowerCase())
+        )
+      );
+    }
+  }, [queryInputText, chunks]);
+
+  const handleCopy = useCallback((text: string) => {
+    console.log("copying text to clipboard:", text);
+    navigator.clipboard.writeText(text);
+  }, []);
 
   // Use the same search query as the knowledge page, but we'll filter for the specific file
   const { data = [], isFetching } = useGetSearchQuery("*", parsedFilterData);
@@ -118,7 +117,7 @@ function ChunksPageContent() {
               </h1>
             </Button>
           </div>
-          <div className="flex items-center gap-3 pl-6 mt-2">
+          <div className="flex items-center gap-3 pl-4 mt-2">
             <div className="flex items-center gap-2">
               <Checkbox
                 id="selectAllChunks"
@@ -148,13 +147,6 @@ function ChunksPageContent() {
               </Button>
             </div>
           </div>
-          {/* <div className="text-sm text-muted-foreground">
-            {!isFetching && chunks.length > 0 && (
-              <span>
-                {chunks.length} chunk{chunks.length !== 1 ? "s" : ""} found
-              </span>
-            )}
-          </div> */}
         </div>
 
         {/* Content Area - matches knowledge page structure */}
@@ -180,35 +172,48 @@ function ChunksPageContent() {
             </div>
           ) : (
             <div className="space-y-4 pb-6">
-              {chunks.map((chunk, index) => (
+              {chunksFilteredByQuery.map((chunk, index) => (
                 <div
                   key={chunk.filename + index}
-                  className="bg-muted/20 rounded-lg p-4 border border-border/50"
+                  className="bg-muted rounded-lg p-4 border border-border/50"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-blue-400" />
-                      <span className="font-medium truncate">
-                        {chunk.filename}
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <Checkbox />
+                      </div>
+                      <span className="text-sm text-bold">
+                        Chunk {chunk.page}
                       </span>
-                      {chunk.connector_type && (
-                        <div className="ml-2">
-                          {getSourceIcon(chunk.connector_type)}
-                        </div>
-                      )}
+                      <span className="bg-background p-1 rounded text-xs text-muted-foreground/70">
+                        {chunk.text.length} chars
+                      </span>
+                      <div className="py-1">
+                        <Button
+                          className="p-1"
+                          onClick={() => handleCopy(chunk.text)}
+                          variant="ghost"
+                          size="xs"
+                        >
+                          <Copy className="text-muted-foreground" />
+                        </Button>
+                      </div>
                     </div>
-                    <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-                      {chunk.score.toFixed(2)}
-                    </span>
+
+                    {/* TODO: Update to use active toggle */}
+                    {/* <span className="px-2 py-1 text-green-500">
+                      <Switch
+                        className="ml-2 bg-green-500"
+                        checked={true}
+                      />
+                      Active
+                    </span> */}
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
-                    <span>{chunk.mimetype}</span>
-                    <span>Page {chunk.page}</span>
-                    {chunk.owner_name && <span>Owner: {chunk.owner_name}</span>}
+                  <div>
+                    <blockquote className="text-sm text-muted-foreground leading-relaxed">
+                      {chunk.text}
+                    </blockquote>
                   </div>
-                  <p className="text-sm text-foreground/90 leading-relaxed">
-                    {chunk.text}
-                  </p>
                 </div>
               ))}
             </div>
