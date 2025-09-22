@@ -124,10 +124,8 @@ class ModelsService:
 
                 for model in models:
                     model_name = model.get(JSON_NAME_KEY, "")
-                    # Remove tag if present (e.g., "llama3:latest" -> "llama3")
-                    clean_model_name = model_name.split(":")[0] if model_name else ""
 
-                    if not clean_model_name:
+                    if not model_name:
                         continue
 
                     logger.debug(f"Checking model: {model_name}")
@@ -152,7 +150,7 @@ class ModelsService:
 
                         # Check if it's an embedding model
                         is_embedding = any(
-                            embed_model in clean_model_name.lower()
+                            embed_model in model_name.lower()
                             for embed_model in self.OLLAMA_EMBEDDING_MODELS
                         )
 
@@ -160,8 +158,8 @@ class ModelsService:
                             # Embedding models only need completion capability
                             embedding_models.append(
                                 {
-                                    "value": clean_model_name,
-                                    "label": clean_model_name,
+                                    "value": model_name,
+                                    "label": model_name,
                                     "default": False,
                                 }
                             )
@@ -169,9 +167,9 @@ class ModelsService:
                             # Language models need both completion and tool calling
                             language_models.append(
                                 {
-                                    "value": clean_model_name,
-                                    "label": clean_model_name,
-                                    "default": "llama3" in clean_model_name.lower(),
+                                    "value": model_name,
+                                    "label": model_name,
+                                    "default": "llama3" in model_name.lower(),
                                 }
                             )
                     except Exception as e:
