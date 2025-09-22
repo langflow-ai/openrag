@@ -1,5 +1,6 @@
 from starlette.responses import JSONResponse
 from utils.logging_config import get_logger
+from config.settings import get_openrag_config
 
 logger = get_logger(__name__)
 
@@ -11,9 +12,18 @@ async def get_openai_models(request, models_service, session_manager):
         query_params = dict(request.query_params)
         api_key = query_params.get("api_key")
 
+        # If no API key provided, try to get it from stored configuration
+        if not api_key:
+            try:
+                config = get_openrag_config()
+                api_key = config.provider.api_key
+                logger.info(f"Retrieved API key from config: {'yes' if api_key else 'no'}")
+            except Exception as e:
+                logger.error(f"Failed to get config: {e}")
+
         if not api_key:
             return JSONResponse(
-                {"error": "OpenAI API key is required as query parameter"},
+                {"error": "OpenAI API key is required either as query parameter or in configuration"},
                 status_code=400
             )
 
