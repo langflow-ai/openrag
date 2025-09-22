@@ -91,7 +91,9 @@ class LangflowFileService:
         # Pass JWT token via tweaks using the x-langflow-global-var- pattern
         if jwt_token:
             # Using the global variable pattern that Langflow expects for OpenSearch components
-            tweaks["OpenSearchVectorStoreComponent-YnJox"] = {"jwt_token": jwt_token}
+            tweaks["OpenSearchVectorStoreComponent-YnJox"] = {
+                "jwt_token": {"value": jwt_token, "load_from_db": False},
+            }
             logger.debug("[LF] Added JWT token to tweaks for OpenSearch components")
         else:
             logger.warning("[LF] No JWT token provided")
