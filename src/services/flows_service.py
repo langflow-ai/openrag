@@ -3,8 +3,13 @@ from config.settings import (
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
+    OLLAMA_LLM_TEXT_COMPONENT_ID,
+    OLLAMA_LLM_TEXT_COMPONENT_PATH,
     OPENAI_EMBEDDING_COMPONENT_ID,
     OPENAI_LLM_COMPONENT_ID,
+    OPENAI_LLM_TEXT_COMPONENT_ID,
+    WATSONX_LLM_TEXT_COMPONENT_ID,
+    WATSONX_LLM_TEXT_COMPONENT_PATH,
     clients,
     WATSONX_LLM_COMPONENT_PATH,
     WATSONX_EMBEDDING_COMPONENT_PATH,
@@ -146,7 +151,7 @@ class FlowsService:
 
         try:
             # Load component templates based on provider
-            llm_template, embedding_template = self._load_component_templates(provider)
+            llm_template, embedding_template, llm_text_template = self._load_component_templates(provider)
 
             logger.info(f"Assigning {provider} components")
 
@@ -158,6 +163,7 @@ class FlowsService:
                     "flow_id": NUDGES_FLOW_ID,
                     "embedding_id": OPENAI_EMBEDDING_COMPONENT_ID,
                     "llm_id": OPENAI_LLM_COMPONENT_ID,
+                    "llm_text_id": OPENAI_LLM_TEXT_COMPONENT_ID,
                 },
                 {
                     "name": "retrieval",
@@ -165,6 +171,7 @@ class FlowsService:
                     "flow_id": LANGFLOW_CHAT_FLOW_ID,
                     "embedding_id": OPENAI_EMBEDDING_COMPONENT_ID,
                     "llm_id": OPENAI_LLM_COMPONENT_ID,
+                    "llm_text_id": None,
                 },
                 {
                     "name": "ingest",
@@ -172,6 +179,7 @@ class FlowsService:
                     "flow_id": LANGFLOW_INGEST_FLOW_ID,
                     "embedding_id": OPENAI_EMBEDDING_COMPONENT_ID,
                     "llm_id": None,  # Ingestion flow might not have LLM
+                    "llm_text_id": None,  # Ingestion flow might not have LLM Text
                 },
             ]
 
@@ -181,7 +189,7 @@ class FlowsService:
             for config in flow_configs:
                 try:
                     result = await self._update_flow_components(
-                        config, llm_template, embedding_template
+                        config, llm_template, embedding_template, llm_text_template
                     )
                     results.append(result)
                     logger.info(f"Successfully updated {config['name']} flow")
@@ -215,9 +223,11 @@ class FlowsService:
         if provider == "watsonx":
             llm_path = WATSONX_LLM_COMPONENT_PATH
             embedding_path = WATSONX_EMBEDDING_COMPONENT_PATH
+            llm_text_path = WATSONX_LLM_TEXT_COMPONENT_PATH
         elif provider == "ollama":
             llm_path = OLLAMA_LLM_COMPONENT_PATH
             embedding_path = OLLAMA_EMBEDDING_COMPONENT_PATH
+            llm_text_path = OLLAMA_LLM_TEXT_COMPONENT_PATH
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -246,21 +256,31 @@ class FlowsService:
         with open(embedding_full_path, "r") as f:
             embedding_template = json.load(f)
 
-        logger.info(f"Loaded component templates for {provider}")
-        return llm_template, embedding_template
+        # Load LLM Text template
+        llm_text_full_path = os.path.join(project_root, llm_text_path)
+        if not os.path.exists(llm_text_full_path):
+            raise FileNotFoundError(
+                f"LLM Text component template not found at: {llm_text_full_path}"
+            )
 
-    async def _update_flow_components(self, config, llm_template, embedding_template):
+        with open(llm_text_full_path, "r") as f:
+            llm_text_template = json.load(f)
+
+        logger.info(f"Loaded component templates for {provider}")
+        return llm_template, embedding_template, llm_text_template
+
+    async def _update_flow_components(self, config, llm_template, embedding_template, llm_text_template):
         """Update components in a specific flow"""
         flow_name = config["name"]
         flow_file = config["file"]
         flow_id = config["flow_id"]
         old_embedding_id = config["embedding_id"]
         old_llm_id = config["llm_id"]
-
+        old_llm_text_id = config["llm_text_id"]
         # Extract IDs from templates
         new_llm_id = llm_template["data"]["id"]
         new_embedding_id = embedding_template["data"]["id"]
-
+        new_llm_text_id = llm_text_template["data"]["id"]
         # Get the project root directory
         current_file_dir = os.path.dirname(os.path.abspath(__file__))
         src_dir = os.path.dirname(current_file_dir)
@@ -308,6 +328,21 @@ class FlowsService:
                 self._replace_node_in_flow(flow_data, old_llm_id, new_llm_node)
                 components_updated.append(f"llm: {old_llm_id} -> {new_llm_id}")
 
+        # Replace LLM component (if exists in this flow)
+        if old_llm_text_id:
+            llm_text_node = self._find_node_by_id(flow_data, old_llm_text_id)
+            if llm_text_node:
+                # Preserve position
+                original_position = llm_text_node.get("position", {})
+
+                # Replace with new template
+                new_llm_text_node = llm_text_template.copy()
+                new_llm_text_node["position"] = original_position
+
+                # Replace in flow
+                self._replace_node_in_flow(flow_data, old_llm_text_id, new_llm_text_node)
+                components_updated.append(f"llm: {old_llm_text_id} -> {new_llm_text_id}")
+
         # Update all edge references using regex replacement
         flow_json_str = json.dumps(flow_data)
 
@@ -326,6 +361,11 @@ class FlowsService:
             flow_json_str = re.sub(
                 re.escape(old_llm_id), new_llm_id, flow_json_str
             )
+            if old_llm_text_id:
+                flow_json_str = re.sub(
+                    re.escape(old_llm_text_id), new_llm_text_id, flow_json_str
+                )
+
             flow_json_str = re.sub(
                 re.escape(old_llm_id.split("-")[0]),
                 new_llm_id.split("-")[0],
@@ -415,7 +455,7 @@ class FlowsService:
             ]
 
             # Determine target component IDs based on provider
-            target_embedding_id, target_llm_id = self._get_provider_component_ids(
+            target_embedding_id, target_llm_id, target_llm_text_id = self._get_provider_component_ids(
                 provider
             )
 
@@ -429,6 +469,7 @@ class FlowsService:
                         provider,
                         target_embedding_id,
                         target_llm_id,
+                        target_llm_text_id,
                         embedding_model,
                         llm_model,
                         endpoint,
@@ -471,12 +512,12 @@ class FlowsService:
     def _get_provider_component_ids(self, provider: str):
         """Get the component IDs for a specific provider"""
         if provider == "watsonx":
-            return WATSONX_EMBEDDING_COMPONENT_ID, WATSONX_LLM_COMPONENT_ID
+            return WATSONX_EMBEDDING_COMPONENT_ID, WATSONX_LLM_COMPONENT_ID, WATSONX_LLM_TEXT_COMPONENT_ID
         elif provider == "ollama":
-            return OLLAMA_EMBEDDING_COMPONENT_ID, OLLAMA_LLM_COMPONENT_ID
+            return OLLAMA_EMBEDDING_COMPONENT_ID, OLLAMA_LLM_COMPONENT_ID, OLLAMA_LLM_TEXT_COMPONENT_ID
         elif provider == "openai":
             # OpenAI components are the default ones
-            return OPENAI_EMBEDDING_COMPONENT_ID, OPENAI_LLM_COMPONENT_ID
+            return OPENAI_EMBEDDING_COMPONENT_ID, OPENAI_LLM_COMPONENT_ID, OPENAI_LLM_TEXT_COMPONENT_ID
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -486,6 +527,7 @@ class FlowsService:
         provider: str,
         target_embedding_id: str,
         target_llm_id: str,
+        target_llm_text_id: str,
         embedding_model: str,
         llm_model: str,
         endpoint: str = None,
@@ -512,7 +554,7 @@ class FlowsService:
         embedding_node = self._find_node_by_id(flow_data, target_embedding_id)
         if embedding_node:
             if self._update_component_fields(
-                embedding_node, provider, "embedding", embedding_model, endpoint
+                embedding_node, provider, embedding_model, endpoint
             ):
                 updates_made.append(f"embedding model: {embedding_model}")
 
@@ -521,7 +563,15 @@ class FlowsService:
             llm_node = self._find_node_by_id(flow_data, target_llm_id)
             if llm_node:
                 if self._update_component_fields(
-                    llm_node, provider, "llm", llm_model, endpoint
+                    llm_node, provider, llm_model, endpoint
+                ):
+                    updates_made.append(f"llm model: {llm_model}")
+
+        if target_llm_text_id:
+            llm_text_node = self._find_node_by_id(flow_data, target_llm_text_id)
+            if llm_text_node:
+                if self._update_component_fields(
+                    llm_text_node, provider, llm_model, endpoint
                 ):
                     updates_made.append(f"llm model: {llm_model}")
 
@@ -569,7 +619,11 @@ class FlowsService:
         updated = False
 
         # Update model_name field (common to all providers)
-        if "model_name" in template:
+        if provider == "openai" and "model" in template:
+            template["model"]["value"] = model_value
+            template["model"]["options"] = [model_value]
+            updated = True
+        elif "model_name" in template:
             template["model_name"]["value"] = model_value
             template["model_name"]["options"] = [model_value]
             updated = True
