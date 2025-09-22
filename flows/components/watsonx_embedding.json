@@ -76,7 +76,7 @@
           "dynamic": false,
           "info": "The API Key to use for the model.",
           "input_types": [],
-          "load_from_db": false,
+          "load_from_db": true,
           "name": "api_key",
           "password": true,
           "placeholder": "",
@@ -84,7 +84,7 @@
           "show": true,
           "title_case": false,
           "type": "str",
-          "value": ""
+          "value": "WATSONX_API_KEY"
         },
         "code": {
           "advanced": true,
@@ -150,7 +150,7 @@
           "info": "The project ID or deployment space ID that is associated with the foundation model.",
           "list": false,
           "list_add_label": "Add More",
-          "load_from_db": false,
+          "load_from_db": true,
           "name": "project_id",
           "placeholder": "",
           "required": true,
@@ -159,7 +159,7 @@
           "tool_mode": false,
           "trace_as_metadata": true,
           "type": "str",
-          "value": ""
+          "value": "WATSONX_PROJECT_ID"
         },
         "truncate_input_tokens": {
           "_input_type": "IntInput",
