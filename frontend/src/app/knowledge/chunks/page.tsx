@@ -7,7 +7,7 @@ import {
   Loader2,
   Search,
 } from "lucide-react";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,12 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 
+const getFileTypeLabel = (mimetype: string) => {
+  if (mimetype === "application/pdf") return "PDF";
+  if (mimetype === "text/plain") return "Text";
+  if (mimetype === "application/msword") return "Word Document";
+};
+
 function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -33,11 +39,20 @@ function ChunksPageContent() {
   const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
     ChunkResult[]
   >([]);
+  const averageChunkLength = useMemo(
+    () =>
+      chunks.reduce((acc, chunk) => acc + chunk.text.length, 0) /
+        chunks.length || 0,
+    [chunks]
+  );
 
   const [selectAll, setSelectAll] = useState(false);
   const [queryInputText, setQueryInputText] = useState(
     parsedFilterData?.query ?? ""
   );
+
+  // Use the same search query as the knowledge page, but we'll filter for the specific file
+  const { data = [], isFetching } = useGetSearchQuery("*", parsedFilterData);
 
   useEffect(() => {
     if (queryInputText === "") {
@@ -52,13 +67,14 @@ function ChunksPageContent() {
   }, [queryInputText, chunks]);
 
   const handleCopy = useCallback((text: string) => {
-    console.log("copying text to clipboard:", text);
     navigator.clipboard.writeText(text);
   }, []);
 
-  // Use the same search query as the knowledge page, but we'll filter for the specific file
-  const { data = [], isFetching } = useGetSearchQuery("*", parsedFilterData);
-  console.log({ data });
+  const fileData = (data as File[]).find(
+    (file: File) => file.filename === filename
+  );
+
+  console.log({ fileData });
   // Extract chunks for the specific file
   useEffect(() => {
     if (!filename || !(data as File[]).length) {
@@ -66,11 +82,8 @@ function ChunksPageContent() {
       return;
     }
 
-    const fileData = (data as File[]).find(
-      (file: File) => file.filename === filename
-    );
     setChunks(fileData?.chunks || []);
-  }, [data, filename]);
+  }, [data, filename, fileData?.chunks]);
 
   const handleBack = useCallback(() => {
     router.back();
@@ -90,9 +103,11 @@ function ChunksPageContent() {
     );
   }
 
+  console.log({ data });
+
   return (
     <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
+      className={`fixed inset-0 md:left-72 top-[53px] flex flex-row transition-all duration-300 ${
         isMenuOpen && isPanelOpen
           ? "md:right-[704px]"
           : // Both open: 384px (menu) + 320px (KF panel)
@@ -210,7 +225,7 @@ function ChunksPageContent() {
                     </span> */}
                   </div>
                   <div>
-                    <blockquote className="text-sm text-muted-foreground leading-relaxed">
+                    <blockquote className="text-sm text-muted-foreground leading-relaxed border-l-2 border-color-input ml-1.5 pl-4">
                       {chunk.text}
                     </blockquote>
                   </div>
@@ -218,6 +233,81 @@ function ChunksPageContent() {
               ))}
             </div>
           )}
+        </div>
+      </div>
+      {/* Right panel - Summary (TODO), Technical details,  */}
+      <div className="w-[320px] py-20 px-2">
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold mt-3 mb-4">Technical details</h2>
+          <dl>
+            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <dt className="text-sm/6 text-muted-foreground">Total chunks</dt>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                {chunks.length}
+              </dd>
+            </div>
+            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <dt className="text-sm/6 text-muted-foreground">Avg length</dt>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                {averageChunkLength.toFixed(0)} chars
+              </dd>
+            </div>
+            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <dt className="text-sm/6 text-muted-foreground">Process time</dt>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                {/* {averageChunkLength.toFixed(0)} chars */}
+              </dd>
+            </div>
+            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <dt className="text-sm/6 text-muted-foreground">Model</dt>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                {/* {averageChunkLength.toFixed(0)} chars */}
+              </dd>
+            </div>
+          </dl>
+        </div>
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold mt-2 mb-3">Original document</h2>
+          <dl>
+            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <dt className="text-sm/6 text-muted-foreground">Name</dt>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                {fileData?.filename}
+              </dd>
+            </div>
+            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <dt className="text-sm/6 text-muted-foreground">Type</dt>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                {fileData ? getFileTypeLabel(fileData.mimetype) : "Unknown"}
+              </dd>
+            </div>
+            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <dt className="text-sm/6 text-muted-foreground">Size</dt>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                {fileData?.size
+                  ? `${Math.round(fileData.size / 1024)} KB`
+                  : "Unknown"}
+              </dd>
+            </div>
+            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <dt className="text-sm/6 text-muted-foreground">Uploaded</dt>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                {fileData?.uploaded || "Unknown"}
+              </dd>
+            </div>
+            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <dt className="text-sm/6 text-muted-foreground">Source</dt>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                {/* {fileData?.uploaded || "Unknown"} */}
+              </dd>
+            </div>
+            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <dt className="text-sm/6 text-muted-foreground">Updated</dt>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                N/A
+              </dd>
+            </div>
+          </dl>
         </div>
       </div>
     </div>
