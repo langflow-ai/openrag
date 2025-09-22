@@ -25,6 +25,8 @@ export interface Task {
   processed_files?: number;
   successful_files?: number;
   failed_files?: number;
+  running_files?: number;
+  pending_files?: number;
   created_at: string;
   updated_at: string;
   duration_seconds?: number;
@@ -57,7 +59,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
   const refetchSearch = () => {
-    queryClient.invalidateQueries({ queryKey: ["search"] });
+    queryClient.invalidateQueries({
+      queryKey: ["search"],
+      exact: false,
+    });
   };
 
   const fetchTasks = useCallback(async () => {
@@ -71,12 +76,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         const newTasks = data.tasks || [];
 
         // Update tasks and check for status changes in the same state update
-        setTasks((prevTasks) => {
+        setTasks(prevTasks => {
           // Check for newly completed tasks to show toasts
           if (prevTasks.length > 0) {
             newTasks.forEach((newTask: Task) => {
               const oldTask = prevTasks.find(
-                (t) => t.task_id === newTask.task_id,
+                t => t.task_id === newTask.task_id
               );
               if (
                 oldTask &&
@@ -92,6 +97,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   },
                 });
                 refetchSearch();
+                // Dispatch knowledge updated event for all knowledge-related pages
+                console.log(
+                  "Task completed successfully, dispatching knowledgeUpdated event"
+                );
+                window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
               } else if (
                 oldTask &&
                 oldTask.status !== "failed" &&
@@ -130,21 +140,19 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           const data = await response.json();
           const newTasks = data.tasks || [];
           const foundTask = newTasks.find(
-            (task: Task) => task.task_id === taskId,
+            (task: Task) => task.task_id === taskId
           );
 
           if (foundTask) {
             // Task found! Update the tasks state
-            setTasks((prevTasks) => {
+            setTasks(prevTasks => {
               // Check if task is already in the list
-              const exists = prevTasks.some((t) => t.task_id === taskId);
+              const exists = prevTasks.some(t => t.task_id === taskId);
               if (!exists) {
                 return [...prevTasks, foundTask];
               }
               // Update existing task
-              return prevTasks.map((t) =>
-                t.task_id === taskId ? foundTask : t,
-              );
+              return prevTasks.map(t => (t.task_id === taskId ? foundTask : t));
             });
             return; // Stop polling, we found it
           }
@@ -169,7 +177,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   }, [fetchTasks]);
 
   const removeTask = useCallback((taskId: string) => {
-    setTasks((prev) => prev.filter((task) => task.task_id !== taskId));
+    setTasks(prev => prev.filter(task => task.task_id !== taskId));
   }, []);
 
   const cancelTask = useCallback(
@@ -196,11 +204,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [fetchTasks],
+    [fetchTasks]
   );
 
   const toggleMenu = useCallback(() => {
-    setIsMenuOpen((prev) => !prev);
+    setIsMenuOpen(prev => !prev);
   }, []);
 
   // Periodic polling for task updates

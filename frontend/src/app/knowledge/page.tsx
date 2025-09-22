@@ -3,10 +3,10 @@
 import {
   Building2,
   Cloud,
-  FileText,
   HardDrive,
   Loader2,
   Search,
+  Trash2,
 } from "lucide-react";
 import { AgGridReact, CustomCellRendererProps } from "ag-grid-react";
 import {
@@ -16,6 +16,7 @@ import {
   useState,
   useRef,
 } from "react";
+import { useRouter } from "next/navigation";
 import { SiGoogledrive } from "react-icons/si";
 import { TbBrandOnedrive } from "react-icons/tb";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
@@ -25,33 +26,46 @@ import { Input } from "@/components/ui/input";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { type File, useGetSearchQuery } from "../api/queries/useGetSearchQuery";
-import { ColDef, RowClickedEvent } from "ag-grid-community";
+import { ColDef } from "ag-grid-community";
 import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
+import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
+import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import { toast } from "sonner";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
   switch (connectorType) {
     case "google_drive":
-      return <SiGoogledrive className="h-4 w-4 text-foreground" />;
+      return (
+        <SiGoogledrive className="h-4 w-4 text-foreground flex-shrink-0" />
+      );
     case "onedrive":
-      return <TbBrandOnedrive className="h-4 w-4 text-foreground" />;
+      return (
+        <TbBrandOnedrive className="h-4 w-4 text-foreground flex-shrink-0" />
+      );
     case "sharepoint":
-      return <Building2 className="h-4 w-4 text-foreground" />;
+      return <Building2 className="h-4 w-4 text-foreground flex-shrink-0" />;
     case "s3":
-      return <Cloud className="h-4 w-4 text-foreground" />;
+      return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
     default:
-      return <HardDrive className="h-4 w-4 text-muted-foreground" />;
+      return (
+        <HardDrive className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+      );
   }
 }
 
 function SearchPage() {
+  const router = useRouter();
   const { isMenuOpen } = useTask();
   const { parsedFilterData, isPanelOpen } = useKnowledgeFilter();
   const [query, setQuery] = useState("");
   const [queryInputText, setQueryInputText] = useState("");
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [selectedRows, setSelectedRows] = useState<File[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+
+  const deleteDocumentMutation = useDeleteDocument();
 
   const {
     data = [],
@@ -86,9 +100,22 @@ function SearchPage() {
     {
       field: "filename",
       headerName: "Source",
+      checkboxSelection: true,
+      headerCheckboxSelection: true,
+      initialFlex: 2,
+      minWidth: 220,
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
         return (
-          <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
+            onClick={() => {
+              router.push(
+                `/knowledge/chunks?filename=${encodeURIComponent(
+                  data?.filename ?? ""
+                )}`
+              );
+            }}
+          >
             {getSourceIcon(data?.connector_type)}
             <span className="font-medium text-foreground truncate">
               {value}
@@ -111,12 +138,8 @@ function SearchPage() {
       field: "owner",
       headerName: "Owner",
       valueFormatter: (params) =>
-        params.value ||
-        params.data?.owner_name ||
-        params.data?.owner_email ||
-        "—",
+        params.data?.owner_name || params.data?.owner_email || "—",
     },
-
     {
       field: "chunkCount",
       headerName: "Chunks",
@@ -133,19 +156,20 @@ function SearchPage() {
       },
     },
     {
-      cellRenderer: () => {
-        return <KnowledgeActionsDropdown />;
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+        return <KnowledgeActionsDropdown filename={data?.filename || ""} />;
       },
       cellStyle: {
-        alignItems: 'center',
-        display: 'flex',
-        justifyContent: 'center',
+        alignItems: "center",
+        display: "flex",
+        justifyContent: "center",
         padding: 0,
       },
-      colId: 'actions',
+      colId: "actions",
       filter: false,
-      maxWidth: 60,
+      width: 60,
       minWidth: 60,
+      maxWidth: 60,
       resizable: false,
       sortable: false,
       initialFlex: 0,
@@ -153,14 +177,49 @@ function SearchPage() {
   ]);
 
   const defaultColDef: ColDef<File> = {
-    cellStyle: () => ({
-      display: "flex",
-      alignItems: "center",
-    }),
-    initialFlex: 1,
-    minWidth: 100,
     resizable: false,
     suppressMovable: true,
+    initialFlex: 1,
+    minWidth: 100,
+  };
+
+  const onSelectionChanged = useCallback(() => {
+    if (gridRef.current) {
+      const selectedNodes = gridRef.current.api.getSelectedRows();
+      setSelectedRows(selectedNodes);
+    }
+  }, []);
+
+  const handleBulkDelete = async () => {
+    if (selectedRows.length === 0) return;
+
+    try {
+      // Delete each file individually since the API expects one filename at a time
+      const deletePromises = selectedRows.map((row) =>
+        deleteDocumentMutation.mutateAsync({ filename: row.filename })
+      );
+
+      await Promise.all(deletePromises);
+
+      toast.success(
+        `Successfully deleted ${selectedRows.length} document${
+          selectedRows.length > 1 ? "s" : ""
+        }`
+      );
+      setSelectedRows([]);
+      setShowBulkDeleteDialog(false);
+
+      // Clear selection in the grid
+      if (gridRef.current) {
+        gridRef.current.api.deselectAll();
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete some documents"
+      );
+    }
   };
 
   return (
@@ -183,6 +242,7 @@ function SearchPage() {
           <h2 className="text-lg font-semibold">Project Knowledge</h2>
           <KnowledgeDropdown variant="button" />
         </div>
+
         {/* Search Input Area */}
         <div className="flex-shrink-0 mb-6 lg:max-w-[75%] xl:max-w-[50%]">
           <form onSubmit={handleSearch} className="flex gap-3">
@@ -194,12 +254,12 @@ function SearchPage() {
               value={queryInputText}
               onChange={(e) => setQueryInputText(e.target.value)}
               placeholder="Search your documents..."
-              className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 h-12 focus-visible:ring-1 focus-visible:ring-ring"
+              className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring"
             />
             <Button
               type="submit"
               variant="outline"
-              className="rounded-lg h-12 w-12 p-0 flex-shrink-0"
+              className="rounded-lg p-0 flex-shrink-0"
             >
               {isFetching ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -207,75 +267,70 @@ function SearchPage() {
                 <Search className="h-4 w-4" />
               )}
             </Button>
+            {/* //TODO: Implement sync button */}
+            {/* <Button
+              type="button"
+              variant="outline"
+              className="rounded-lg flex-shrink-0"
+              onClick={() => alert("Not implemented")}
+            >
+              Sync
+            </Button> */}
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-lg flex-shrink-0"
+              onClick={() => setShowBulkDeleteDialog(true)}
+              disabled={selectedRows.length === 0}
+            >
+              <Trash2 className="h-4 w-4" /> Delete
+            </Button>
           </form>
         </div>
-        {selectedFile ? (
-          // Show chunks for selected file
-          <>
-            <div className="flex items-center gap-2 mb-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedFile(null)}
-              >
-                ← Back to files
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Chunks from {selectedFile}
-              </span>
+        <AgGridReact
+          className="w-full overflow-auto"
+          columnDefs={columnDefs}
+          defaultColDef={defaultColDef}
+          loading={isFetching}
+          ref={gridRef}
+          rowData={fileResults}
+          rowSelection="multiple"
+          rowMultiSelectWithClick={false}
+          suppressRowClickSelection={true}
+          getRowId={(params) => params.data.filename}
+          onSelectionChanged={onSelectionChanged}
+          suppressHorizontalScroll={false}
+          noRowsOverlayComponent={() => (
+            <div className="text-center">
+              <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+              <p className="text-lg text-muted-foreground">
+                No documents found
+              </p>
+              <p className="text-sm text-muted-foreground/70 mt-2">
+                Try adjusting your search terms
+              </p>
             </div>
-            {fileResults
-              .filter((file) => file.filename === selectedFile)
-              .flatMap((file) => file.chunks)
-              .map((chunk, index) => (
-                <div
-                  key={chunk.filename + index}
-                  className="bg-muted/20 rounded-lg p-4 border border-border/50"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-blue-400" />
-                      <span className="font-medium truncate">
-                        {chunk.filename}
-                      </span>
-                    </div>
-                    <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-                      {chunk.score.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="text-sm text-muted-foreground mb-2">
-                    {chunk.mimetype} • Page {chunk.page}
-                  </div>
-                  <p className="text-sm text-foreground/90 leading-relaxed">
-                    {chunk.text}
-                  </p>
-                </div>
-              ))}
-          </>
-        ) : (
-          <AgGridReact
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            loading={isFetching}
-            ref={gridRef}
-            rowData={fileResults}
-            onRowClicked={(params: RowClickedEvent<File>) => {
-              setSelectedFile(params.data?.filename ?? "");
-            }}
-            noRowsOverlayComponent={() => (
-              <div className="text-center">
-                <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                <p className="text-lg text-muted-foreground">
-                  No documents found
-                </p>
-                <p className="text-sm text-muted-foreground/70 mt-2">
-                  Try adjusting your search terms
-                </p>
-              </div>
-            )}
-          />
-        )}
+          )}
+        />
       </div>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={showBulkDeleteDialog}
+        onOpenChange={setShowBulkDeleteDialog}
+        title="Delete Documents"
+        description={`Are you sure you want to delete ${
+          selectedRows.length
+        } document${
+          selectedRows.length > 1 ? "s" : ""
+        }? This will remove all chunks and data associated with these documents. This action cannot be undone.
+
+Documents to be deleted:
+${selectedRows.map((row) => `• ${row.filename}`).join("\n")}`}
+        confirmText="Delete All"
+        onConfirm={handleBulkDelete}
+        isLoading={deleteDocumentMutation.isPending}
+      />
     </div>
   );
 }

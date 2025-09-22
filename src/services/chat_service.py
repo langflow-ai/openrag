@@ -1,19 +1,11 @@
-from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL
-from agent import (
-    async_chat,
-    async_langflow,
-    async_chat_stream,
-)
-from auth_context import set_auth_context
 import json
-
+from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID
+from agent import async_chat, async_langflow, async_chat_stream
+from auth_context import set_auth_context
+from api.settings import get_docling_tweaks
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-from agent import async_chat, async_chat_stream, async_langflow
-from auth_context import set_auth_context
-from config.settings import LANGFLOW_CHAT_FLOW_ID, LANGFLOW_URL, clients
 
 
 class ChatService:
@@ -135,6 +127,9 @@ class ChatService:
                 "Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY."
             )
 
+        # Get docling tweaks based on current configuration
+        docling_tweaks = get_docling_tweaks()
+
         if stream:
             from agent import async_langflow_chat_stream
 
@@ -145,6 +140,7 @@ class ChatService:
                 user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
+                tweaks=docling_tweaks,
             )
         else:
             from agent import async_langflow_chat
@@ -156,6 +152,7 @@ class ChatService:
                 user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
+                tweaks=docling_tweaks,
             )
             response_data = {"response": response_text}
             if response_id:
@@ -205,12 +202,16 @@ class ChatService:
 
         from agent import async_langflow_chat
 
+        # Get docling tweaks (might not be used by nudges flow, but keeping consistent)
+        docling_tweaks = get_docling_tweaks()
+
         response_text, response_id = await async_langflow_chat(
             langflow_client,
             NUDGES_FLOW_ID,
             prompt,
             user_id,
             extra_headers=extra_headers,
+            tweaks=docling_tweaks,
             store_conversation=False,
         )
         response_data = {"response": response_text}
@@ -241,12 +242,16 @@ class ChatService:
                 raise ValueError(
                     "Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY."
                 )
+            # Get docling tweaks based on current configuration
+            docling_tweaks = get_docling_tweaks()
+
             response_text, response_id = await async_langflow(
                 langflow_client=langflow_client,
                 flow_id=LANGFLOW_CHAT_FLOW_ID,
                 prompt=document_prompt,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
+                tweaks=docling_tweaks,
             )
         else:  # chat
             # Set auth context for chat tools and provide user_id
