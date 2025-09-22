@@ -292,12 +292,21 @@ class AuthService:
                 token_data["access_token"]
             )
 
-            # Best-effort: update Langflow MCP servers to include user's JWT header
+            # Best-effort: update Langflow MCP servers to include user's JWT and owner headers
             try:
                 if self.langflow_mcp_service and isinstance(jwt_token, str) and jwt_token.strip():
+                    global_vars = {"JWT": jwt_token}
+                    if user_info:
+                        if user_info.get("id"):
+                            global_vars["OWNER"] = user_info.get("id")
+                        if user_info.get("name"):
+                            global_vars["OWNER_NAME"] = user_info.get("name")
+                        if user_info.get("email"):
+                            global_vars["OWNER_EMAIL"] = user_info.get("email")
+
                     # Run in background to avoid delaying login flow
                     task = asyncio.create_task(
-                        self.langflow_mcp_service.update_mcp_servers_with_jwt(jwt_token)
+                        self.langflow_mcp_service.update_mcp_servers_with_global_vars(global_vars)
                     )
                     # Keep reference until done to avoid premature GC
                     self._background_tasks.add(task)
