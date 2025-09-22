@@ -2,11 +2,11 @@ import { useState } from "react";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
 import OllamaLogo from "@/components/logo/ollama-logo";
+import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { useGetOllamaModelsQuery } from "../../api/queries/useGetModelsQuery";
 import { useModelSelection } from "../hooks/useModelSelection";
 import { useUpdateSettings } from "../hooks/useUpdateSettings";
-import { useDebouncedValue } from "@/lib/debounce";
 import { AdvancedOnboarding } from "./advanced";
 import { ModelSelector } from "./model-selector";
 
@@ -70,62 +70,66 @@ export function OllamaOnboarding({
 
   return (
     <>
-      <div className="space-y-1">
-        <LabelInput
-          label="Ollama Endpoint"
-          helperText="The endpoint for your Ollama server."
-          id="api-endpoint"
-          required
-          placeholder="http://localhost:11434"
-          value={endpoint}
-          onChange={(e) => setEndpoint(e.target.value)}
-        />
-        {isConnecting && (
-          <p className="text-sm text-muted-foreground">
-            Connecting to Ollama server...
-          </p>
-        )}
-        {hasConnectionError && (
-          <p className="text-sm text-red-500">
-            Cannot connect to Ollama server. Please check the endpoint.
-          </p>
-        )}
-        {hasNoModels && (
-          <p className="text-sm text-yellow-600">
-            No models found. Please install some models on your Ollama server.
-          </p>
-        )}
-        {isValidConnection && (
-          <p className="text-sm text-green-600">Connected successfully</p>
-        )}
+      <div className="space-y-4">
+        <div className="space-y-1">
+          <LabelInput
+            label="Ollama Endpoint"
+            helperText="The endpoint for your Ollama server."
+            id="api-endpoint"
+            required
+            placeholder="http://localhost:11434"
+            value={endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+          />
+          {isConnecting && (
+            <p className="text-mmd text-muted-foreground">
+              Connecting to Ollama server...
+            </p>
+          )}
+          {hasConnectionError && (
+            <p className="text-mmd text-accent-amber-foreground">
+              Can’t reach Ollama at {debouncedEndpoint}. Update the endpoint or
+              start the server.
+            </p>
+          )}
+          {hasNoModels && (
+            <p className="text-mmd text-accent-amber-foreground">
+              No models found. Please install some models on your Ollama server.
+            </p>
+          )}
+          {isValidConnection && (
+            <p className="text-mmd text-accent-emerald-foreground">
+              Connected successfully
+            </p>
+          )}
+        </div>
+        <LabelWrapper
+          label="Embedding model"
+          helperText="The embedding model for your Ollama server."
+          id="embedding-model"
+          required={true}
+        >
+          <ModelSelector
+            options={embeddingModels}
+            icon={<OllamaLogo className="w-4 h-4" />}
+            value={embeddingModel}
+            onValueChange={setEmbeddingModel}
+          />
+        </LabelWrapper>
+        <LabelWrapper
+          label="Language model"
+          helperText="The embedding model for your Ollama server."
+          id="embedding-model"
+          required={true}
+        >
+          <ModelSelector
+            options={languageModels}
+            icon={<OllamaLogo className="w-4 h-4" />}
+            value={languageModel}
+            onValueChange={setLanguageModel}
+          />
+        </LabelWrapper>
       </div>
-      <LabelWrapper
-        label="Embedding model"
-        helperText="The embedding model for your Ollama server."
-        id="embedding-model"
-        required={true}
-      >
-        <ModelSelector
-          options={embeddingModels}
-          icon={<OllamaLogo className="w-4 h-4" />}
-          value={embeddingModel}
-          onValueChange={setEmbeddingModel}
-        />
-      </LabelWrapper>
-      <LabelWrapper
-        label="Language model"
-        helperText="The embedding model for your Ollama server."
-        id="embedding-model"
-        required={true}
-      >
-        <ModelSelector
-          options={languageModels}
-          icon={<OllamaLogo className="w-4 h-4" />}
-          value={languageModel}
-          onValueChange={setLanguageModel}
-        />
-      </LabelWrapper>
-
       <AdvancedOnboarding
         sampleDataset={sampleDataset}
         setSampleDataset={handleSampleDatasetChange}

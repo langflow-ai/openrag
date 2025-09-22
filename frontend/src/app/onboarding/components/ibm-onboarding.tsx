@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { LabelInput } from "@/components/label-input";
 import IBMLogo from "@/components/logo/ibm-logo";
+import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { useGetIBMModelsQuery } from "../../api/queries/useGetModelsQuery";
 import { useModelSelection } from "../hooks/useModelSelection";
 import { useUpdateSettings } from "../hooks/useUpdateSettings";
-import { useDebouncedValue } from "@/lib/debounce";
 import { AdvancedOnboarding } from "./advanced";
 
 export function IBMOnboarding({
@@ -96,19 +96,21 @@ export function IBMOnboarding({
           onChange={(e) => setProjectId(e.target.value)}
         />
         {isLoadingModels && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-mmd text-muted-foreground">
             Validating configuration...
           </p>
         )}
         {modelsError && (
-          <p className="text-sm text-red-500">
+          <p className="text-mmd text-accent-amber-foreground">
             Invalid configuration or connection failed
           </p>
         )}
         {modelsData &&
           (modelsData.language_models?.length > 0 ||
             modelsData.embedding_models?.length > 0) && (
-            <p className="text-sm text-green-600">Configuration is valid</p>
+            <p className="text-mmd text-accent-emerald-foreground">
+              Configuration is valid
+            </p>
           )}
       </div>
       <AdvancedOnboarding
