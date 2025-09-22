@@ -34,6 +34,7 @@ from api import (
     flows,
     knowledge_filter,
     langflow_files,
+    models,
     nudges,
     oidc,
     router,
@@ -68,6 +69,7 @@ from services.knowledge_filter_service import KnowledgeFilterService
 # Configuration and setup
 # Services
 from services.langflow_file_service import LangflowFileService
+from services.models_service import ModelsService
 from services.monitor_service import MonitorService
 from services.search_service import SearchService
 from services.task_service import TaskService
@@ -390,7 +392,8 @@ async def startup_tasks(services):
     """Startup tasks"""
     logger.info("Starting startup tasks")
     await init_index()
-    await ingest_default_documents_when_ready(services)
+    # Sample data ingestion is now handled by the onboarding endpoint when sample_data=True
+    logger.info("Sample data ingestion moved to onboarding endpoint")
 
 
 async def initialize_services():
@@ -411,6 +414,7 @@ async def initialize_services():
     chat_service = ChatService()
     flows_service = FlowsService()
     knowledge_filter_service = KnowledgeFilterService(session_manager)
+    models_service = ModelsService()
     monitor_service = MonitorService(session_manager)
 
     # Set process pool for document service
@@ -476,6 +480,7 @@ async def initialize_services():
         "auth_service": auth_service,
         "connector_service": connector_service,
         "knowledge_filter_service": knowledge_filter_service,
+        "models_service": models_service,
         "monitor_service": monitor_service,
         "session_manager": session_manager,
     }
@@ -908,7 +913,7 @@ async def create_app():
             ),
             methods=["POST"],
         ),
-        # Settings endpoint
+        # Settings endpoints
         Route(
             "/settings",
             require_auth(services["session_manager"])(
@@ -917,6 +922,60 @@ async def create_app():
                 )
             ),
             methods=["GET"],
+        ),
+        Route(
+            "/settings",
+            require_auth(services["session_manager"])(
+                partial(
+                    settings.update_settings, session_manager=services["session_manager"]
+                )
+            ),
+            methods=["POST"],
+        ),
+        # Models endpoints
+        Route(
+            "/models/openai",
+            require_auth(services["session_manager"])(
+                partial(
+                    models.get_openai_models,
+                    models_service=services["models_service"],
+                    session_manager=services["session_manager"]
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/models/ollama",
+            require_auth(services["session_manager"])(
+                partial(
+                    models.get_ollama_models,
+                    models_service=services["models_service"],
+                    session_manager=services["session_manager"]
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/models/ibm",
+            require_auth(services["session_manager"])(
+                partial(
+                    models.get_ibm_models,
+                    models_service=services["models_service"],
+                    session_manager=services["session_manager"]
+                )
+            ),
+            methods=["GET", "POST"],
+        ),
+        # Onboarding endpoint
+        Route(
+            "/onboarding",
+            require_auth(services["session_manager"])(
+                partial(
+                    settings.onboarding, 
+                    flows_service=services["flows_service"]
+                )
+            ),
+            methods=["POST"],
         ),
         Route(
             "/nudges",
