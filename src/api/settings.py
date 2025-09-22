@@ -14,19 +14,15 @@ from config.settings import (
 
 logger = get_logger(__name__)
 
+
 # Docling preset configurations
 def get_docling_preset_configs():
     """Get docling preset configurations with platform-specific settings"""
     is_macos = platform.system() == "Darwin"
 
     return {
-        "standard": {
-            "do_ocr": False
-        },
-        "ocr": {
-            "do_ocr": True,
-            "ocr_engine": "ocrmac" if is_macos else "easyocr"
-        },
+        "standard": {"do_ocr": False},
+        "ocr": {"do_ocr": True, "ocr_engine": "ocrmac" if is_macos else "easyocr"},
         "picture_description": {
             "do_ocr": True,
             "ocr_engine": "ocrmac" if is_macos else "easyocr",
@@ -34,17 +30,19 @@ def get_docling_preset_configs():
             "do_picture_description": True,
             "picture_description_local": {
                 "repo_id": "HuggingFaceTB/SmolVLM-256M-Instruct",
-                "prompt": "Describe this image in a few sentences."
-            }
+                "prompt": "Describe this image in a few sentences.",
+            },
         },
         "VLM": {
             "pipeline": "vlm",
             "vlm_pipeline_model_local": {
-                "repo_id": "ds4sd/SmolDocling-256M-preview-mlx-bf16" if is_macos else "ds4sd/SmolDocling-256M-preview",
+                "repo_id": "ds4sd/SmolDocling-256M-preview-mlx-bf16"
+                if is_macos
+                else "ds4sd/SmolDocling-256M-preview",
                 "response_format": "doctags",
-                "inference_framework": "mlx"
-            }
-        }
+                "inference_framework": "mlx",
+            },
+        },
     }
 
 
@@ -63,11 +61,8 @@ def get_docling_tweaks(docling_preset: str = None) -> dict:
     preset_config = preset_configs[docling_preset]
     docling_serve_opts = json.dumps(preset_config)
 
-    return {
-        "DoclingRemote-ayRdw": {
-            "docling_serve_opts": docling_serve_opts
-        }
-    }
+    return {"DoclingRemote-ayRdw": {"docling_serve_opts": docling_serve_opts}}
+
 
 async def get_settings(request, session_manager):
     """Get application settings"""
@@ -439,16 +434,45 @@ async def onboarding(request, flows_service):
 
                 try:
                     # Set API key for IBM/Watson providers
-                    if (provider == "watsonx" or provider == "ibm") and "api_key" in body:
+                    if (provider == "watsonx") and "api_key" in body:
                         api_key = body["api_key"]
-                        await clients._create_langflow_global_variable("WATSONX_API_KEY", api_key)
+                        await clients._create_langflow_global_variable(
+                            "WATSONX_API_KEY", api_key, modify=True
+                        )
                         logger.info("Set WATSONX_API_KEY global variable in Langflow")
+
+                    # Set project ID for IBM/Watson providers
+                    if (provider == "watsonx") and "project_id" in body:
+                        project_id = body["project_id"]
+                        await clients._create_langflow_global_variable(
+                            "WATSONX_PROJECT_ID", project_id, modify=True
+                        )
+                        logger.info(
+                            "Set WATSONX_PROJECT_ID global variable in Langflow"
+                        )
+
+                    # Set API key for OpenAI provider
+                    if provider == "openai" and "api_key" in body:
+                        api_key = body["api_key"]
+                        await clients._create_langflow_global_variable(
+                            "OPENAI_API_KEY", api_key, modify=True
+                        )
+                        logger.info("Set OPENAI_API_KEY global variable in Langflow")
 
                     # Set base URL for Ollama provider
                     if provider == "ollama" and "endpoint" in body:
                         endpoint = body["endpoint"]
-                        await clients._create_langflow_global_variable("OLLAMA_BASE_URL", endpoint)
+                        await clients._create_langflow_global_variable(
+                            "OLLAMA_BASE_URL", endpoint, modify=True
+                        )
                         logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
+
+                    await flows_service.change_langflow_model_value(
+                        provider,
+                        body["embedding_model"],
+                        body["llm_model"],
+                        body["endpoint"],
+                    )
 
                 except Exception as e:
                     logger.error(
