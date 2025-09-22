@@ -55,7 +55,7 @@ export function IBMOnboarding({
 
   // Update settings when values change
   useUpdateSettings(
-    "ibm",
+    "watsonx",
     {
       endpoint,
       apiKey,
