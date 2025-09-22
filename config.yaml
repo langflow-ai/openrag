@@ -1,0 +1,13 @@
+agent:
+  llm_model: gpt-4o-mini
+  system_prompt: You are a helpful AI assistant with access to a knowledge base. Answer
+    questions based on the provided context.
+edited: true
+knowledge:
+  chunk_overlap: 200
+  chunk_size: 1000
+  doclingPresets: standard
+  embedding_model: text-embedding-3-small
+provider:
+  api_key: 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
+  model_provider: openai
