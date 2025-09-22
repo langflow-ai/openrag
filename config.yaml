@@ -1,13 +1,31 @@
-agent:
-  llm_model: gpt-4o-mini
-  system_prompt: You are a helpful AI assistant with access to a knowledge base. Answer
-    questions based on the provided context.
-edited: true
-knowledge:
-  chunk_overlap: 200
-  chunk_size: 1000
-  doclingPresets: standard
-  embedding_model: text-embedding-3-small
+# OpenRAG Configuration File
+# This file allows you to configure OpenRAG settings.
+# Environment variables will override these settings unless edited is true.
+
+# Track if this config has been manually edited (prevents env var overrides)
+edited: false
+
+# Model provider configuration
 provider:
-  api_key: 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
-  model_provider: openai
+  # Supported providers: "openai", "anthropic", "azure", etc.
+  model_provider: "openai"
+  # API key for the model provider (can also be set via OPENAI_API_KEY env var)
+  api_key: ""
+
+# Knowledge base and document processing configuration
+knowledge:
+  # Embedding model for vector search
+  embedding_model: "text-embedding-3-small"
+  # Text chunk size for document processing
+  chunk_size: 1000
+  # Overlap between chunks
+  chunk_overlap: 200
+  # Docling preset setting
+  doclingPresets: standard
+
+# AI agent configuration
+agent:
+  # Language model for the chat agent
+  llm_model: "gpt-4o-mini"
+  # System prompt for the agent
+  system_prompt: "You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context."
