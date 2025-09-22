@@ -62,7 +62,7 @@ LANGFLOW_CHAT_FLOW_ID=your_chat_flow_id
 LANGFLOW_INGEST_FLOW_ID=your_ingest_flow_id
 NUDGES_FLOW_ID=your_nudges_flow_id
 ```
-See extended configuration, including ingestion and optional variables: [docs/configuration.md](docs/configuration.md)
+See extended configuration, including ingestion and optional variables: [docs/configure/configuration.md](docs/docs/configure/configuration.md)
 ### 3. Start OpenRAG
 
 ```bash
@@ -98,7 +98,7 @@ uv run openrag
 
 ### TUI Features
 
-See the full TUI guide for features, navigation, and benefits: [docs/tui.md](docs/tui.md)
+See the full TUI guide for features, navigation, and benefits: [docs/get-started/tui.mdx](docs/docs/get-started/tui.mdx)
 
 
 
@@ -121,7 +121,7 @@ For environments without GPU support:
 docker compose -f docker-compose-cpu.yml up -d
 ```
 
-More deployment commands and tips: [docs/docker.md](docs/docker.md)
+More deployment commands and tips: [docs/get-started/docker.mdx](docs/docs/get-started/docker.mdx)
 
 ## 🔧 Troubleshooting
 
@@ -138,7 +138,7 @@ podman machine start
 
 ### Common Issues
 
-See common issues and fixes: [docs/troubleshooting.md](docs/troubleshooting.md)
+See common issues and fixes: [docs/reference/troubleshooting.mdx](docs/docs/reference/troubleshooting.mdx)
 
 
 
