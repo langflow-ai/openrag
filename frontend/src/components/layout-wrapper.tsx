@@ -100,9 +100,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         isMenuOpen && isPanelOpen ? 'md:pr-[728px]' : // Both open: 384px (menu) + 320px (KF panel) + 24px (original padding)
         isMenuOpen ? 'md:pr-96' : // Only menu open: 384px
         isPanelOpen ? 'md:pr-80' : // Only KF panel open: 320px  
-        'md:pr-6' // Neither open: 24px
+        'md:pr-0'
       }`}>
-        <div className="container py-6 lg:py-8">
+        <div className="container py-6 lg:py-8 px-3 lg:px-6">
           {children}
         </div>
       </main>
