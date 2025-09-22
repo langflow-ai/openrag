@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Edit3, Save, Settings, RefreshCw } from "lucide-react";
+import { X, Edit3, Save, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -17,6 +16,8 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Slider } from "@/components/ui/slider";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
+import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
+import { useGetSearchAggregations } from "@/src/app/api/queries/useGetSearchAggregations";
 
 interface FacetBucket {
   key: string;
@@ -39,6 +40,7 @@ export function KnowledgeFilterPanel() {
     closePanelOnly,
   } = useKnowledgeFilter();
   const deleteFilterMutation = useDeleteFilter();
+  const updateFilterMutation = useUpdateFilter();
 
   // Edit mode states
   const [isEditingMeta, setIsEditingMeta] = useState(false);
@@ -92,49 +94,24 @@ export function KnowledgeFilterPanel() {
     }
   }, [selectedFilter, parsedFilterData]);
 
-  // Load available facets from API
+  // Load available facets using search aggregations hook
+  const { data: aggregations } = useGetSearchAggregations("*", 1, 0, {
+    enabled: isPanelOpen,
+    placeholderData: prev => prev,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+  });
+
   useEffect(() => {
-    if (isPanelOpen) {
-      loadAvailableFacets();
-    }
-  }, [isPanelOpen]);
-
-  const loadAvailableFacets = async () => {
-    console.log("[DEBUG] Loading available facets...");
-    try {
-      // Do a search to get facets (similar to search page)
-      const response = await fetch("/api/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query: "*", // Use wildcard like search page to get all documents/facets
-          limit: 1,
-          scoreThreshold: 0,
-          // Omit filters entirely to get all available facets
-        }),
-      });
-
-      const result = await response.json();
-      console.log("[DEBUG] Search API response:", result);
-
-      if (response.ok && result.aggregations) {
-        const facets = {
-          data_sources: result.aggregations.data_sources?.buckets || [],
-          document_types: result.aggregations.document_types?.buckets || [],
-          owners: result.aggregations.owners?.buckets || [],
-          connector_types: result.aggregations.connector_types?.buckets || [],
-        };
-        console.log("[DEBUG] Setting facets:", facets);
-        setAvailableFacets(facets);
-      } else {
-        console.log("[DEBUG] No aggregations in response or response not ok");
-      }
-    } catch (error) {
-      console.error("Failed to load available facets:", error);
-    }
-  };
+    if (!aggregations) return;
+    const facets = {
+      data_sources: aggregations.data_sources?.buckets || [],
+      document_types: aggregations.document_types?.buckets || [],
+      owners: aggregations.owners?.buckets || [],
+      connector_types: aggregations.connector_types?.buckets || [],
+    };
+    setAvailableFacets(facets);
+  }, [aggregations]);
 
   // Don't render if panel is closed or no filter selected
   if (!isPanelOpen || !selectedFilter || !parsedFilterData) return null;
@@ -173,29 +150,14 @@ export function KnowledgeFilterPanel() {
 
     setIsSaving(true);
     try {
-      const response = await fetch(
-        `/api/knowledge-filter/${selectedFilter.id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: editingName.trim(),
-            description: editingDescription.trim(),
-          }),
-        }
-      );
+      const result = await updateFilterMutation.mutateAsync({
+        id: selectedFilter.id,
+        name: editingName.trim(),
+        description: editingDescription.trim(),
+      });
 
-      const result = await response.json();
-      if (response.ok && result.success) {
-        const updatedFilter = {
-          ...selectedFilter,
-          name: editingName.trim(),
-          description: editingDescription.trim(),
-          updated_at: new Date().toISOString(),
-        };
-        setSelectedFilter(updatedFilter);
+      if (result.success && result.filter) {
+        setSelectedFilter(result.filter);
         setIsEditingMeta(false);
       }
     } catch (error) {
@@ -215,28 +177,13 @@ export function KnowledgeFilterPanel() {
 
     setIsSaving(true);
     try {
-      const response = await fetch(
-        `/api/knowledge-filter/${selectedFilter.id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            queryData: JSON.stringify(filterData),
-          }),
-        }
-      );
+      const result = await updateFilterMutation.mutateAsync({
+        id: selectedFilter.id,
+        queryData: JSON.stringify(filterData),
+      });
 
-      const result = await response.json();
-      if (response.ok && result.success) {
-        // Update the filter in context
-        const updatedFilter = {
-          ...selectedFilter,
-          query_data: JSON.stringify(filterData),
-          updated_at: new Date().toISOString(),
-        };
-        setSelectedFilter(updatedFilter);
+      if (result.success && result.filter) {
+        setSelectedFilter(result.filter);
       }
     } catch (error) {
       console.error("Error updating filter configuration:", error);

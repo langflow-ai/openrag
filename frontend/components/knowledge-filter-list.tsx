@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Filter, X, Loader2, Plus, Save } from "lucide-react";
+import { Filter, Loader2, Plus, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   useGetFiltersSearchQuery,
@@ -41,7 +41,7 @@ export function KnowledgeFilterList({
   selectedFilter,
   onFilterSelect,
 }: KnowledgeFilterListProps) {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createDescription, setCreateDescription] = useState("");
@@ -59,10 +59,6 @@ export function KnowledgeFilterList({
   const handleFilterSelect = (filter: KnowledgeFilter) => {
     onFilterSelect(filter);
   };
-
-  // const handleClearFilter = () => {
-  //   onFilterSelect(null);
-  // };
 
   const handleCreateNew = () => {
     setShowCreateModal(true);
@@ -176,8 +172,10 @@ export function KnowledgeFilterList({
                   </div>
                   <span className="text-xs bg-muted text-muted-foreground px-1 py-0.5 rounded-sm">
                     {(() => {
-                      const count = parseQueryData(filter.query_data).filters
-                        .data_sources.length;
+                      const dataSources =
+                        parseQueryData(filter.query_data).filters.data_sources;
+                      if (dataSources[0] === "*") return "All sources";
+                      const count = dataSources.length;
                       return `${count} ${count === 1 ? "source" : "sources"}`;
                     })()}
                   </span>
