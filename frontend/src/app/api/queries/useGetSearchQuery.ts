@@ -48,15 +48,22 @@ export interface File {
 export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">
 ) => {
   const queryClient = useQueryClient();
+
+  // Normalize the query to match what will actually be searched
+  const effectiveQuery = query || queryData?.query || "*";
 
   async function getFiles(): Promise<File[]> {
     try {
       const searchPayload: SearchPayload = {
-        query: query || queryData?.query || "*",
-        limit: queryData?.limit || (query.trim() === "" ? 10000 : 10), // Maximum allowed limit for wildcard searches
+        query: effectiveQuery,
+        limit:
+          queryData?.limit ||
+          (effectiveQuery.trim() === "*" || effectiveQuery.trim() === ""
+            ? 10000
+            : 10), // Maximum allowed limit for wildcard searches
         scoreThreshold: queryData?.scoreThreshold || 0,
       };
       if (queryData?.filters) {
@@ -121,7 +128,7 @@ export const useGetSearchQuery = (
         }
       >();
 
-      data.results.forEach((chunk: ChunkResult) => {
+      (data.results || []).forEach((chunk: ChunkResult) => {
         const existing = fileMap.get(chunk.filename);
         if (existing) {
           existing.chunks.push(chunk);
@@ -142,7 +149,7 @@ export const useGetSearchQuery = (
         }
       });
 
-      const files: File[] = Array.from(fileMap.values()).map((file) => ({
+      const files: File[] = Array.from(fileMap.values()).map(file => ({
         filename: file.filename,
         mimetype: file.mimetype,
         chunkCount: file.chunks.length,
@@ -165,12 +172,12 @@ export const useGetSearchQuery = (
 
   const queryResult = useQuery(
     {
-      queryKey: ["search", query],
-      placeholderData: (prev) => prev,
+      queryKey: ["search", effectiveQuery],
+      placeholderData: prev => prev,
       queryFn: getFiles,
       ...options,
     },
-    queryClient,
+    queryClient
   );
 
   return queryResult;
