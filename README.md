@@ -4,11 +4,11 @@
 
 </div>
 <div align="center">
-  <a href="#quick-start" style="color: #0366d6;">🚀 Quick Start</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#tui-interface" style="color: #0366d6;">💻 TUI Interface</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#docker-deployment" style="color: #0366d6;">🐳 Docker Deployment</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#development" style="color: #0366d6;">⚙️ Development</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#troubleshooting" style="color: #0366d6;">🔧 Troubleshooting</a>
+  <a href="#-quick-start" style="color: #0366d6;">🚀 Quick Start</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#-tui-interface" style="color: #0366d6;">💻 TUI Interface</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#-docker-deployment" style="color: #0366d6;">🐳 Docker Deployment</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#-development" style="color: #0366d6;">⚙️ Development</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#-troubleshooting" style="color: #0366d6;">🔧 Troubleshooting</a>
 </div>
 
 
