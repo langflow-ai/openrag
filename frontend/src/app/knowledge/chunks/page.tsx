@@ -292,14 +292,12 @@ function ChunksPageContent() {
             <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Uploaded</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                {fileData?.uploaded || "Unknown"}
+                N/A
               </dd>
             </div>
             <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Source</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                {/* {fileData?.uploaded || "Unknown"} */}
-              </dd>
+              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0"></dd>
             </div>
             <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Updated</dt>
