@@ -1,0 +1,159 @@
+---
+title: Install OpenRAG
+slug: /install
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+OpenRAG can be installed in multiple ways:
+
+* [**Docker**](#install-and-run-docker): Deploy the full OpenRAG stack with Docker Compose, including all services and dependencies.
+
+* [**TUI**](tui.mdx): Use the Terminal User Interface to install, run, and configure your OpenRAG deployment without running Docker commands.
+
+## Docker {#install-and-run-docker}
+
+The OpenRAG Docker compose file starts five containers:
+
+| Container Name | Default Address | Purpose |
+|---|---|---|
+| OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
+| OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
+| Langflow | http://localhost:7860 | AI workflow engine and flow management. |
+| OpenSearch | http://localhost:9200 | Vector database for document storage. |
+| OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
+
+There are two different Docker Compose files.
+They deploy the same applications and containers, but to different environments.
+
+- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing.
+
+- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
+
+Before installing OpenRAG with Docker, ensure you have:
+
+- [Docker](https://docs.docker.com/get-docker/) installed
+- [Docker Compose](https://docs.docker.com/compose/install/) installed
+- For GPU support: (TBD)
+
+1. Clone the OpenRAG repository.
+   ```bash
+   git clone https://github.com/langflow-ai/openrag.git
+   cd openrag
+   ```
+
+2. Create a `.env` file in the repository root.
+    ```
+    touch .env
+    ```
+
+3. Set environment variables. The Docker Compose files are populated with values from your `.env`, so the following values are **required** to be set:
+
+   ```bash
+   OPENSEARCH_PASSWORD=your_secure_password
+   OPENAI_API_KEY=your_openai_api_key
+   
+   LANGFLOW_SUPERUSER=admin
+   LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
+   LANGFLOW_SECRET_KEY=your_secret_key
+   ```
+   For more information on configuring OpenRAG with environment variables, see [Environment variables](configure/environment-variables).
+   For additional configuration values, including `config.yaml`, see [Configuration](/configure/configuration).
+
+4. Deploy OpenRAG with Docker Compose based on your deployment type.
+
+   For GPU-enabled systems, run the following command:
+   ```bash
+   docker compose up -d
+   ```
+
+   For CPU-only systems, run the following command:
+   ```bash
+   docker compose -f docker-compose-cpu.yml up -d
+   ```
+
+5. Verify installation by confirming all services are running.
+
+   ```bash
+   docker compose ps
+   ```
+
+   You can now access the application at:
+
+   - **Frontend**: http://localhost:3000
+   - **Backend API**: http://localhost:8000
+   - **Langflow**: http://localhost:7860
+
+Continue with the [Quickstart](/quickstart).
+
+## Python wheel {#install-and-run-the-openrag-oss-python-wheel}
+
+### Prerequisites
+
+1. Make sure you have the required dependencies and infrastructure:
+
+    - [Python](https://www.python.org/downloads/release/python-3100/)
+       - macOS and Linux: Version 3.10 to 3.13
+       - Windows: Version 3.10 to 3.12
+    - [uv](https://docs.astral.sh/uv/getting-started/installation/)
+    - Sufficient infrastructure:
+       - Minimum: Dual-core CPU and 2 GB RAM
+       - Recommended: Multi-core CPU and at least 4 GB RAM
+
+2. Create a virtual environment with [uv](https://docs.astral.sh/uv/pip/environments).
+
+    <details>
+    <summary>Need help with virtual environments?</summary>
+
+    Virtual environments ensure OpenRAG is installed in an isolated, fresh environment.
+    To create a new virtual environment, do the following.
+
+        <Tabs>
+        <TabItem value="linux-macos" label="Linux or macOS" default>
+
+        1. Navigate to where you want your virtual environment to be created, and then create it with `uv`:
+
+            ```shell
+            uv venv VENV_NAME
+            ```
+
+            Replace `VENV_NAME` with a name for your virtual environment.
+
+        2. Start the virtual environment:
+
+            ```shell
+            source VENV_NAME/bin/activate
+            ```
+
+            Your shell's prompt changes to display that you're currently working in a virtual environment:
+
+            ```text
+            (VENV_NAME) ➜  openrag git:(main) ✗
+            ```
+
+        3. To deactivate the virtual environment and return to your regular shell, type `deactivate`.
+
+            When activated, the virtual environment temporarily modifies your `PATH` variable to prioritize packages installed within the virtual environment.
+            To avoid conflicts with other projects, it's a good idea to deactivate your virtual environment when you're done working in it.
+
+            To delete the virtual environment, type `rm -rf VENV_NAME`.
+            This completely removes the virtual environment directory and its contents.
+
+        </TabItem>
+        </Tabs>
+    </details>
+
+3. Install the wheel from PyPI.
+   
+   ```bash
+   uv pip install openrag-*.whl
+   ```
+
+4. Verify installation:
+   
+   ```bash
+   openrag --version
+   ```
+   
+   This should display the installed version of OpenRAG.
