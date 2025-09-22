@@ -7,7 +7,7 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
     <textarea
       data-slot="textarea"
       className={cn(
-        "primary-input placeholder:font-mono placeholder:text-placeholder-foreground",
+        "primary-input placeholder:font-mono placeholder:text-placeholder-foreground min-h-fit",
         className
       )}
       {...props}

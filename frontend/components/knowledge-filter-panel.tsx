@@ -3,12 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, Edit3, Save, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -97,7 +92,7 @@ export function KnowledgeFilterPanel() {
   // Load available facets using search aggregations hook
   const { data: aggregations } = useGetSearchAggregations("*", 1, 0, {
     enabled: isPanelOpen,
-    placeholderData: prev => prev,
+    placeholderData: (prev) => prev,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
   });
@@ -330,7 +325,7 @@ export function KnowledgeFilterPanel() {
               placeholder="e.g., 'financial reports from Q4'"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="bg-background/50 border-border/50"
+              rows={3}
             />
           </div>
 
@@ -430,7 +425,9 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-4 pt-4 border-t border-border/50">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium text-nowrap">Response limit</Label>
+                  <Label className="text-sm font-medium text-nowrap">
+                    Response limit
+                  </Label>
                   <Input
                     type="number"
                     min="1"
@@ -460,7 +457,9 @@ export function KnowledgeFilterPanel() {
               {/* Score Threshold Control - exactly like search page */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium text-nowrap">Score threshold</Label>
+                  <Label className="text-sm font-medium text-nowrap">
+                    Score threshold
+                  </Label>
                   <Input
                     type="number"
                     min="0"
