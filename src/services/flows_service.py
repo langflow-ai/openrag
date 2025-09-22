@@ -313,10 +313,10 @@ class FlowsService:
 
         # Replace embedding ID references
         flow_json_str = re.sub(
-            r"\b" + re.escape(old_embedding_id) + r"\b", new_embedding_id, flow_json_str
+            re.escape(old_embedding_id), new_embedding_id, flow_json_str
         )
         flow_json_str = re.sub(
-            r"\b" + re.escape(old_embedding_id.split("-")[0]) + r"\b",
+            re.escape(old_embedding_id.split("-")[0]),
             new_embedding_id.split("-")[0],
             flow_json_str,
         )
@@ -324,10 +324,10 @@ class FlowsService:
         # Replace LLM ID references (if applicable)
         if old_llm_id:
             flow_json_str = re.sub(
-                r"\b" + re.escape(old_llm_id) + r"\b", new_llm_id, flow_json_str
+                re.escape(old_llm_id), new_llm_id, flow_json_str
             )
             flow_json_str = re.sub(
-                r"\b" + re.escape(old_llm_id.split("-")[0]) + r"\b",
+                re.escape(old_llm_id.split("-")[0]),
                 new_llm_id.split("-")[0],
                 flow_json_str,
             )
@@ -492,21 +492,19 @@ class FlowsService:
     ):
         """Update provider components and their dropdown values in a flow"""
         flow_name = config["name"]
-        flow_file = config["file"]
         flow_id = config["flow_id"]
 
-        # Get the project root directory
-        current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        src_dir = os.path.dirname(current_file_dir)
-        project_root = os.path.dirname(src_dir)
-        flow_path = os.path.join(project_root, flow_file)
-
-        if not os.path.exists(flow_path):
-            raise FileNotFoundError(f"Flow file not found at: {flow_path}")
-
-        # Load flow JSON
-        with open(flow_path, "r") as f:
-            flow_data = json.load(f)
+        # Get flow data from Langflow API instead of file
+        response = await clients.langflow_request(
+            "GET", f"/api/v1/flows/{flow_id}"
+        )
+        
+        if response.status_code != 200:
+            raise Exception(
+                f"Failed to get flow from Langflow: HTTP {response.status_code} - {response.text}"
+            )
+        
+        flow_data = response.json()
 
         updates_made = []
 
