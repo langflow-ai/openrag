@@ -112,9 +112,12 @@ function KnowledgeSourcesPage() {
   const currentProvider = (settings.provider?.model_provider || 'openai') as ModelProvider;
 
   // Fetch available models based on provider
-  const { data: openaiModelsData } = useGetOpenAIModelsQuery({
-    enabled: isAuthenticated && currentProvider === 'openai',
-  });
+  const { data: openaiModelsData } = useGetOpenAIModelsQuery(
+    undefined, // Let backend use stored API key from configuration
+    {
+      enabled: isAuthenticated && currentProvider === 'openai',
+    }
+  );
 
   const { data: ollamaModelsData } = useGetOllamaModelsQuery(
     undefined, // No params for now, could be extended later

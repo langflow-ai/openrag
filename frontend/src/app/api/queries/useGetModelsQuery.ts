@@ -54,7 +54,7 @@ export const useGetOpenAIModelsQuery = (
       queryKey: ["models", "openai", params],
       queryFn: getOpenAIModels,
       retry: 2,
-      enabled: !!params?.apiKey, // Only run if API key is provided
+      enabled: options?.enabled !== false, // Allow enabling/disabling from options
       staleTime: 0, // Always fetch fresh data
       gcTime: 0, // Don't cache results
       ...options,
