@@ -117,7 +117,7 @@ export function KnowledgeFilterList({
 
   return (
     <>
-      <div className="flex flex-col items-center gap-1 px-3">
+      <div className="flex flex-col items-center gap-1 px-3 !mb-12 mt-0 h-full overflow-y-auto">
         <div className="flex items-center w-full justify-between pl-3">
           <div className="text-sm font-medium text-muted-foreground">
             Knowledge Filters

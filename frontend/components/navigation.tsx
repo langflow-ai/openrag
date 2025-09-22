@@ -315,7 +315,7 @@ export function Navigation() {
   ]);
 
   return (
-    <div className="space-y-4 py-4 flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-background">
       <div className="px-3 py-2 flex-shrink-0">
         <div className="space-y-1">
           {routes.map((route) => (
