@@ -281,7 +281,6 @@ export function KnowledgeFilterPanel() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Settings className="h-5 w-5" />
               Knowledge Filter
             </CardTitle>
             <Button
@@ -293,9 +292,6 @@ export function KnowledgeFilterPanel() {
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <CardDescription>
-            Configure your knowledge filter settings
-          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-6">
@@ -344,7 +340,7 @@ export function KnowledgeFilterPanel() {
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="flex items-start justify-between">
+                <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <h3 className="font-semibold text-lg">
                       {selectedFilter.name}
@@ -382,9 +378,8 @@ export function KnowledgeFilterPanel() {
             <Label htmlFor="search-query" className="text-sm font-medium">
               Search Query
             </Label>
-            <Input
+            <Textarea
               id="search-query"
-              type="text"
               placeholder="e.g., 'financial reports from Q4'"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -488,7 +483,7 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-4 pt-4 border-t border-border/50">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Limit</Label>
+                  <Label className="text-sm font-medium text-nowrap">Response limit</Label>
                   <Input
                     type="number"
                     min="1"
@@ -518,7 +513,7 @@ export function KnowledgeFilterPanel() {
               {/* Score Threshold Control - exactly like search page */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Score Threshold</Label>
+                  <Label className="text-sm font-medium text-nowrap">Score threshold</Label>
                   <Input
                     type="number"
                     min="0"
