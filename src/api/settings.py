@@ -47,22 +47,7 @@ def get_docling_preset_configs():
     }
 
 
-def get_docling_tweaks(docling_preset: str = None) -> dict:
-    """Get Langflow tweaks for docling component based on preset"""
-    if not docling_preset:
-        # Get current preset from config
-        openrag_config = get_openrag_config()
-        docling_preset = openrag_config.knowledge.doclingPresets
 
-    preset_configs = get_docling_preset_configs()
-
-    if docling_preset not in preset_configs:
-        docling_preset = "standard"  # fallback
-
-    preset_config = preset_configs[docling_preset]
-    docling_serve_opts = json.dumps(preset_config)
-
-    return {"DoclingRemote-ayRdw": {"docling_serve_opts": docling_serve_opts}}
 
 
 async def get_settings(request, session_manager):
@@ -626,3 +611,4 @@ async def update_docling_preset(request, session_manager):
             {"error": f"Failed to update docling preset: {str(e)}"},
             status_code=500
         )
+
