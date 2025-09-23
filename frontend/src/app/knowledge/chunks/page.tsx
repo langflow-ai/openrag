@@ -62,8 +62,8 @@ function ChunksPageContent() {
     if (queryInputText === "") {
       setChunksFilteredByQuery(chunks);
     } else {
-      setChunksFilteredByQuery((prevChunks) =>
-        prevChunks.filter((chunk) =>
+      setChunksFilteredByQuery(
+        chunks.filter((chunk) =>
           chunk.text.toLowerCase().includes(queryInputText.toLowerCase())
         )
       );
