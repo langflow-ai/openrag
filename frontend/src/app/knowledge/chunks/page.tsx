@@ -39,6 +39,9 @@ function ChunksPageContent() {
   const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
     ChunkResult[]
   >([]);
+  const [selectedChunks, setSelectedChunks] = useState<Set<number>>(new Set());
+
+  // Calculate average chunk length
   const averageChunkLength = useMemo(
     () =>
       chunks.reduce((acc, chunk) => acc + chunk.text.length, 0) /
@@ -84,9 +87,33 @@ function ChunksPageContent() {
     setChunks(fileData?.chunks || []);
   }, [data, filename, fileData?.chunks]);
 
+  // Set selected state for all checkboxes when selectAll changes
+  useEffect(() => {
+    if (selectAll) {
+      setSelectedChunks(new Set(chunks.map((_, index) => index)));
+    } else {
+      setSelectedChunks(new Set());
+    }
+  }, [selectAll, setSelectedChunks, chunks]);
+
   const handleBack = useCallback(() => {
-    router.back();
+    router.push("/knowledge");
   }, [router]);
+
+  const handleChunkCardCheckboxChange = useCallback(
+    (index: number) => {
+      setSelectedChunks((prevSelected) => {
+        const newSelected = new Set(prevSelected);
+        if (newSelected.has(index)) {
+          newSelected.delete(index);
+        } else {
+          newSelected.add(index);
+        }
+        return newSelected;
+      });
+    },
+    [setSelectedChunks]
+  );
 
   if (!filename) {
     return (
@@ -134,11 +161,13 @@ function ChunksPageContent() {
               <Checkbox
                 id="selectAllChunks"
                 checked={selectAll}
-                onCheckedChange={(checked) => setSelectAll(checked === true)}
+                onCheckedChange={(handleSelectAll) =>
+                  setSelectAll(!!handleSelectAll)
+                }
               />
               <Label
                 htmlFor="selectAllChunks"
-                className="font-medium text-muted-foreground whitespace-nowrap"
+                className="font-medium text-muted-foreground whitespace-nowrap cursor-pointer"
               >
                 Select all
               </Label>
@@ -192,7 +221,10 @@ function ChunksPageContent() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
                       <div>
-                        <Checkbox />
+                        <Checkbox
+                          checked={selectedChunks.has(index)}
+                          onClick={() => handleChunkCardCheckboxChange(index)}
+                        />
                       </div>
                       <span className="text-sm text-bold">
                         Chunk {chunk.page}
@@ -221,11 +253,9 @@ function ChunksPageContent() {
                       Active
                     </span> */}
                   </div>
-                  <div>
-                    <blockquote className="text-sm text-muted-foreground leading-relaxed border-l-2 border-color-input ml-1.5 pl-4">
-                      {chunk.text}
-                    </blockquote>
-                  </div>
+                  <blockquote className="text-sm text-muted-foreground leading-relaxed border-l-2 border-input ml-1.5 pl-4">
+                    {chunk.text}
+                  </blockquote>
                 </div>
               ))}
             </div>
@@ -249,18 +279,17 @@ function ChunksPageContent() {
                 {averageChunkLength.toFixed(0)} chars
               </dd>
             </div>
-            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+            {/* TODO: Uncomment after data is available */}
+            {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Process time</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                {/* {averageChunkLength.toFixed(0)} chars */}
               </dd>
             </div>
             <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Model</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                {/* {averageChunkLength.toFixed(0)} chars */}
               </dd>
-            </div>
+            </div> */}
           </dl>
         </div>
         <div className="mb-8">
@@ -292,10 +321,11 @@ function ChunksPageContent() {
                 N/A
               </dd>
             </div>
-            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+            {/* TODO: Uncomment after data is available */}
+            {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Source</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0"></dd>
-            </div>
+            </div> */}
             <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Updated</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
