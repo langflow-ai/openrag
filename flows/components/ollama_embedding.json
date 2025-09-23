@@ -2,7 +2,9 @@
   "data": {
     "id": "OllamaEmbeddings-4ah5Q",
     "node": {
-      "base_classes": ["Embeddings"],
+      "base_classes": [
+        "Embeddings"
+      ],
       "beta": false,
       "conditional_paths": [],
       "custom_fields": {},
@@ -10,10 +12,13 @@
       "display_name": "Ollama Embeddings",
       "documentation": "https://python.langchain.com/docs/integrations/text_embedding/ollama",
       "edited": false,
-      "field_order": ["model_name", "base_url"],
+      "field_order": [
+        "model_name",
+        "base_url"
+      ],
       "frozen": false,
       "icon": "Ollama",
-      "last_updated": "2025-09-17T20:01:59.954Z",
+      "last_updated": "2025-09-22T20:18:27.128Z",
       "legacy": false,
       "metadata": {
         "code_hash": "0db0f99e91e9",
@@ -29,12 +34,17 @@
             },
             {
               "name": "langflow",
-              "version": "1.5.0.post2"
+              "version": null
             }
           ],
           "total_dependencies": 3
         },
-        "keywords": ["model", "llm", "language model", "large language model"],
+        "keywords": [
+          "model",
+          "llm",
+          "language model",
+          "large language model"
+        ],
         "module": "langflow.components.ollama.ollama_embeddings.OllamaEmbeddingsComponent"
       },
       "minimized": false,
@@ -51,7 +61,9 @@
           "required_inputs": null,
           "selected": "Embeddings",
           "tool_mode": true,
-          "types": ["Embeddings"],
+          "types": [
+            "Embeddings"
+          ],
           "value": "__UNDEFINED__"
         }
       ],
@@ -64,7 +76,9 @@
           "display_name": "Ollama Base URL",
           "dynamic": false,
           "info": "",
-          "input_types": ["Message"],
+          "input_types": [
+            "Message"
+          ],
           "list": false,
           "list_add_label": "Add More",
           "load_from_db": true,
@@ -106,7 +120,9 @@
           "dynamic": false,
           "info": "",
           "name": "model_name",
-          "options": [],
+          "options": [
+            "all-minilm:latest"
+          ],
           "options_metadata": [],
           "placeholder": "",
           "real_time_refresh": true,
@@ -118,7 +134,7 @@
           "tool_mode": false,
           "trace_as_metadata": true,
           "type": "str",
-          "value": ""
+          "value": "all-minilm:latest"
         }
       },
       "tool_mode": false
@@ -133,8 +149,8 @@
     "width": 320
   },
   "position": {
-    "x": 964,
-    "y": 248
+    "x": 282.29416840859585,
+    "y": 279.4218065717267
   },
   "selected": false,
   "type": "genericNode"
