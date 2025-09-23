@@ -26,6 +26,7 @@ const getFileTypeLabel = (mimetype: string) => {
   if (mimetype === "application/pdf") return "PDF";
   if (mimetype === "text/plain") return "Text";
   if (mimetype === "application/msword") return "Word Document";
+  return "Unknown";
 };
 
 function ChunksPageContent() {
