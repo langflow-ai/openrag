@@ -1,0 +1,59 @@
+---
+title: Quickstart
+slug: /quickstart
+---
+
+import Icon from "@site/src/components/icon/icon";
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+Get started with OpenRAG by loading your knowledge, swapping out your language model, and then chatting with the OpenRAG API.
+
+## Prerequisites
+
+- [Install and start OpenRAG](/install)
+
+## Find your way around 
+
+1. In OpenRAG, click <Icon name="MessageSquare" aria-hidden="true"/> **Chat**.
+2. Ask `What documents are available to you?`
+   The agent responds with a message summarizing the documents that OpenRAG loads by default, which are PDFs about evaluating data quality when using LLMs in health care.
+3. To confirm the agent is correct, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
+   The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database. Click on a document to display the chunks derived from splitting the default documents into the vector database.
+
+## Add your own knowledge
+
+1. To add documents to your knowledge base, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**.
+   * Select **Add File** to add a single file from your local machine (mapped with the Docker volume mount).
+   * Select **Process Folder** to process an entire folder of documents from your local machine (mapped with the Docker volume mount).
+2. Return to the Chat window and ask a question about your loaded data.
+   For example, with a manual about a PC tablet loaded, ask `How do I connect this device to WiFI?`
+   The agent responds with a message indicating it now has your knowledge as context for answering questions.
+3. Click the <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** that is printed in the Playground.
+These events log the agent's request to the tool and the tool's response, so you have direct visibility into your agent's functionality.
+If you aren't getting the results you need, you can further tune the knowledge ingestion and agent behavior in the next section.
+
+## Swap out the language model to modify agent behavior
+
+To modify the knowledge ingestion or Agent behavior, click <Icon name="Settings" aria-hidden="true"/> **Settings**.
+
+In this example, you'll try a different LLM to demonstrate how the Agent's response changes.
+
+1. To edit the Agent's behavior, click **Edit in Langflow**.
+2. OpenRAG warns you that you're entering Langflow. Click **Proceed**.
+3. The OpenRAG Open Search Agent flow appears. 
+
+![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
+
+4. In the **Language Model** component, under **Model Provider**, select **Anthropic**.
+   :::note
+   This guide uses an Anthropic model for demonstration purposes. If you want to use a different provider, change the **Model Provider** and **Model Name** fields, and then provide credentials for your selected provider.
+   :::
+5. Save your flow with <kbd>Command+S</kbd>.
+6. In OpenRAG, start a new conversation by clicking the <Icon name="Plus" aria-hidden="true"/> in the **Conversations** tab.
+7. Ask the same question as before to demonstrate how a different language model changes the results.
+
+Many components can be tools for agents, including [Model Context Protocol (MCP) servers](/mcp-server). The agent decides which tools to call based on the context of a given query.
+
+## Integrate OpenRAG into your application
+
