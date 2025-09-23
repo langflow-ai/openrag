@@ -8,7 +8,7 @@ import TabItem from '@theme/TabItem';
 
 OpenRAG can be installed in multiple ways:
 
-* [**Python wheel**](#install-python-wheel): Install the OpenRAG Python wheel and use the [OpenRAG Terminal User Interface (TUI)](/tui) to install, run, and configure your OpenRAG deployment without running Docker commands.
+* [**Python wheel**](#install-python-wheel): Install the OpenRAG Python wheel and use the [OpenRAG Terminal User Interface (TUI)](/get-started/tui) to install, run, and configure your OpenRAG deployment without running Docker commands.
 
 * [**Docker Compose**](#install-and-run-docker): Clone the OpenRAG repository and deploy OpenRAG with Docker Compose, including all services and dependencies.
 
@@ -96,9 +96,9 @@ You will be presented with your provider's OAuth sign-in screen, and be redirect
 
 Two additional variables are available for Advanced Setup:
 
-The LANGFLOW_PUBLIC_URL controls where the Langflow web interface can be accessed. This is where users interact with their flows in a browser.
+The `LANGFLOW_PUBLIC_URL` controls where the Langflow web interface can be accessed. This is where users interact with their flows in a browser.
 
-The WEBHOOK_BASE_URL controls where the endpoint for `/connectors/CONNECTOR_TYPE/webhook` will be available.
+The `WEBHOOK_BASE_URL` controls where the endpoint for `/connectors/CONNECTOR_TYPE/webhook` will be available.
 This connection enables real-time document synchronization with external services.
 For example, for Google Drive file synchronization the webhook URL is `/connectors/google_drive/webhook`.
 
@@ -134,7 +134,7 @@ To install OpenRAG with Docker Compose:
    LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
    LANGFLOW_SECRET_KEY=your_secret_key
    ```
-   For more information on configuring OpenRAG with environment variables, see [Environment variables](configure/environment-variables).
+   For more information on configuring OpenRAG with environment variables, see [Environment variables](/configure/configuration).
    For additional configuration values, including `config.yaml`, see [Configuration](/configure/configuration).
 
 4. Deploy OpenRAG with Docker Compose based on your deployment type.
@@ -170,4 +170,4 @@ To install OpenRAG with Docker Compose:
    - **Backend API**: http://localhost:8000
    - **Langflow**: http://localhost:7860
 
-Continue with the [Quickstart](/quickstart).
+Continue with the Quickstart.
