@@ -106,6 +106,7 @@ async def async_response_stream(
     model: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    tweaks: dict = None,
     log_prefix: str = "response",
 ):
     logger.info("User prompt received", prompt=prompt)
@@ -120,6 +121,8 @@ async def async_response_stream(
         }
         if previous_response_id is not None:
             request_params["previous_response_id"] = previous_response_id
+        if tweaks:
+            request_params["tweaks"] = tweaks
 
         if "x-api-key" not in client.default_headers:
             if hasattr(client, "api_key") and extra_headers is not None:
@@ -196,6 +199,7 @@ async def async_response(
     model: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    tweaks: dict = None,
     log_prefix: str = "response",
 ):
     try:
@@ -210,6 +214,8 @@ async def async_response(
         }
         if previous_response_id is not None:
             request_params["previous_response_id"] = previous_response_id
+        if tweaks:
+            request_params["tweaks"] = tweaks
         if extra_headers:
             request_params["extra_headers"] = extra_headers
 
@@ -243,6 +249,7 @@ async def async_stream(
     model: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    tweaks: dict = None,
     log_prefix: str = "response",
 ):
     async for chunk in async_response_stream(
@@ -251,6 +258,7 @@ async def async_stream(
         model,
         extra_headers=extra_headers,
         previous_response_id=previous_response_id,
+        tweaks=tweaks,
         log_prefix=log_prefix,
     ):
         yield chunk
@@ -263,6 +271,7 @@ async def async_langflow(
     prompt: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    tweaks: dict = None,
 ):
     response_text, response_id, response_obj = await async_response(
         langflow_client,
@@ -270,6 +279,7 @@ async def async_langflow(
         flow_id,
         extra_headers=extra_headers,
         previous_response_id=previous_response_id,
+        tweaks=tweaks,
         log_prefix="langflow",
     )
     return response_text, response_id
@@ -282,6 +292,7 @@ async def async_langflow_stream(
     prompt: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    tweaks: dict = None,
 ):
     logger.debug("Starting langflow stream", prompt=prompt)
     try:
@@ -291,6 +302,7 @@ async def async_langflow_stream(
             flow_id,
             extra_headers=extra_headers,
             previous_response_id=previous_response_id,
+            tweaks=tweaks,
             log_prefix="langflow",
         ):
             logger.debug(
@@ -451,6 +463,7 @@ async def async_langflow_chat(
     user_id: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    tweaks: dict = None,
     store_conversation: bool = True,
 ):
     logger.debug(
@@ -484,6 +497,7 @@ async def async_langflow_chat(
         flow_id,
         extra_headers=extra_headers,
         previous_response_id=previous_response_id,
+        tweaks=tweaks,
         log_prefix="langflow",
     )
     logger.debug(
@@ -562,6 +576,7 @@ async def async_langflow_chat_stream(
     user_id: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    tweaks: dict = None,
 ):
     logger.debug(
         "async_langflow_chat_stream called",
@@ -588,6 +603,7 @@ async def async_langflow_chat_stream(
         flow_id,
         extra_headers=extra_headers,
         previous_response_id=previous_response_id,
+        tweaks=tweaks,
         log_prefix="langflow",
     ):
         # Extract text content to build full response for history

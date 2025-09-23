@@ -17,6 +17,9 @@ load_dotenv("../")
 
 logger = get_logger(__name__)
 
+# Import configuration manager
+from .config_manager import config_manager
+
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
 OPENSEARCH_PORT = int(os.getenv("OPENSEARCH_PORT", "9200"))
@@ -48,7 +51,9 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 
 # Ingestion configuration
-DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in ("true", "1", "yes")
+DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
+    "DISABLE_INGEST_WITH_LANGFLOW", "false"
+).lower() in ("true", "1", "yes")
 
 
 def is_no_auth_mode():
@@ -115,7 +120,7 @@ INDEX_BODY = {
 LANGFLOW_BASE_URL = f"{LANGFLOW_URL}/api/v1"
 
 
-async def generate_langflow_api_key():
+async def generate_langflow_api_key(modify: bool = False):
     """Generate Langflow API key using superuser credentials at startup"""
     global LANGFLOW_KEY
 
@@ -337,7 +342,9 @@ class AppClients:
             method=method, url=url, headers=headers, **kwargs
         )
 
-    async def _create_langflow_global_variable(self, name: str, value: str):
+    async def _create_langflow_global_variable(
+        self, name: str, value: str, modify: bool = False
+    ):
         """Create a global variable in Langflow via API"""
         api_key = await generate_langflow_api_key()
         if not api_key:
@@ -365,9 +372,17 @@ class AppClients:
                         variable_name=name,
                     )
                 elif response.status_code == 400 and "already exists" in response.text:
-                    logger.info(
-                        "Langflow global variable already exists", variable_name=name
-                    )
+                    if modify:
+                        logger.info(
+                            "Langflow global variable already exists, attempting to update",
+                            variable_name=name,
+                        )
+                        await self._update_langflow_global_variable(name, value)
+                    else:
+                        logger.info(
+                            "Langflow global variable already exists",
+                            variable_name=name,
+                        )
                 else:
                     logger.warning(
                         "Failed to create Langflow global variable",
@@ -377,6 +392,86 @@ class AppClients:
         except Exception as e:
             logger.error(
                 "Exception creating Langflow global variable",
+                variable_name=name,
+                error=str(e),
+            )
+
+    async def _update_langflow_global_variable(self, name: str, value: str):
+        """Update an existing global variable in Langflow via API"""
+        api_key = await generate_langflow_api_key()
+        if not api_key:
+            logger.warning(
+                "Cannot update Langflow global variable: No API key", variable_name=name
+            )
+            return
+
+        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # First, get all variables to find the one with the matching name
+                get_response = await client.get(
+                    f"{LANGFLOW_URL}/api/v1/variables/", headers=headers
+                )
+
+                if get_response.status_code != 200:
+                    logger.error(
+                        "Failed to retrieve variables for update",
+                        variable_name=name,
+                        status_code=get_response.status_code,
+                    )
+                    return
+
+                variables = get_response.json()
+                target_variable = None
+
+                # Find the variable with matching name
+                for variable in variables:
+                    if variable.get("name") == name:
+                        target_variable = variable
+                        break
+
+                if not target_variable:
+                    logger.error("Variable not found for update", variable_name=name)
+                    return
+
+                variable_id = target_variable.get("id")
+                if not variable_id:
+                    logger.error("Variable ID not found for update", variable_name=name)
+                    return
+
+                # Update the variable using PATCH
+                update_payload = {
+                    "id": variable_id,
+                    "name": name,
+                    "value": value,
+                    "default_fields": target_variable.get("default_fields", []),
+                }
+
+                patch_response = await client.patch(
+                    f"{LANGFLOW_URL}/api/v1/variables/{variable_id}",
+                    headers=headers,
+                    json=update_payload,
+                )
+
+                if patch_response.status_code == 200:
+                    logger.info(
+                        "Successfully updated Langflow global variable",
+                        variable_name=name,
+                        variable_id=variable_id,
+                    )
+                else:
+                    logger.warning(
+                        "Failed to update Langflow global variable",
+                        variable_name=name,
+                        variable_id=variable_id,
+                        status_code=patch_response.status_code,
+                        response_text=patch_response.text,
+                    )
+
+        except Exception as e:
+            logger.error(
+                "Exception updating Langflow global variable",
                 variable_name=name,
                 error=str(e),
             )
@@ -397,5 +492,79 @@ class AppClients:
         )
 
 
+# Component template paths
+WATSONX_LLM_COMPONENT_PATH = os.getenv(
+    "WATSONX_LLM_COMPONENT_PATH", "flows/components/watsonx_llm.json"
+)
+WATSONX_LLM_TEXT_COMPONENT_PATH = os.getenv(
+    "WATSONX_LLM_TEXT_COMPONENT_PATH", "flows/components/watsonx_llm_text.json"
+)
+WATSONX_EMBEDDING_COMPONENT_PATH = os.getenv(
+    "WATSONX_EMBEDDING_COMPONENT_PATH", "flows/components/watsonx_embedding.json"
+)
+OLLAMA_LLM_COMPONENT_PATH = os.getenv(
+    "OLLAMA_LLM_COMPONENT_PATH", "flows/components/ollama_llm.json"
+)
+OLLAMA_LLM_TEXT_COMPONENT_PATH = os.getenv(
+    "OLLAMA_LLM_TEXT_COMPONENT_PATH", "flows/components/ollama_llm_text.json"
+)
+OLLAMA_EMBEDDING_COMPONENT_PATH = os.getenv(
+    "OLLAMA_EMBEDDING_COMPONENT_PATH", "flows/components/ollama_embedding.json"
+)
+
+# Component IDs in flows
+
+OPENAI_EMBEDDING_COMPONENT_ID = os.getenv(
+    "OPENAI_EMBEDDING_COMPONENT_ID", "EmbeddingModel-eZ6bT"
+)
+OPENAI_LLM_COMPONENT_ID = os.getenv(
+    "OPENAI_LLM_COMPONENT_ID", "LanguageModelComponent-0YME7"
+)
+OPENAI_LLM_TEXT_COMPONENT_ID = os.getenv(
+    "OPENAI_LLM_TEXT_COMPONENT_ID", "LanguageModelComponent-NSTA6"
+)
+
+# Provider-specific component IDs
+WATSONX_EMBEDDING_COMPONENT_ID = os.getenv(
+    "WATSONX_EMBEDDING_COMPONENT_ID", "WatsonxEmbeddingsComponent-pJfXI"
+)
+WATSONX_LLM_COMPONENT_ID = os.getenv(
+    "WATSONX_LLM_COMPONENT_ID", "IBMwatsonxModel-jA4Nw"
+)
+WATSONX_LLM_TEXT_COMPONENT_ID = os.getenv(
+    "WATSONX_LLM_TEXT_COMPONENT_ID", "IBMwatsonxModel-18kmA"
+)
+
+
+OLLAMA_EMBEDDING_COMPONENT_ID = os.getenv(
+    "OLLAMA_EMBEDDING_COMPONENT_ID", "OllamaEmbeddings-4ah5Q"
+)
+OLLAMA_LLM_COMPONENT_ID = os.getenv("OLLAMA_LLM_COMPONENT_ID", "OllamaModel-eCsJx")
+OLLAMA_LLM_TEXT_COMPONENT_ID = os.getenv(
+    "OLLAMA_LLM_TEXT_COMPONENT_ID", "OllamaModel-XDGqZ"
+)
+
 # Global clients instance
 clients = AppClients()
+
+
+# Configuration access
+def get_openrag_config():
+    """Get current OpenRAG configuration."""
+    return config_manager.get_config()
+
+
+# Expose configuration settings for backward compatibility and easy access
+def get_provider_config():
+    """Get provider configuration."""
+    return get_openrag_config().provider
+
+
+def get_knowledge_config():
+    """Get knowledge configuration."""
+    return get_openrag_config().knowledge
+
+
+def get_agent_config():
+    """Get agent configuration."""
+    return get_openrag_config().agent
