@@ -50,12 +50,12 @@ const sidebars = {
     },
     {
       type: "category",
-      label: "Reference",
+      label: "Support",
       items: [
         {
           type: "doc",
-          id: "reference/troubleshooting",
-          label: "Troubleshooting"
+          id: "support/troubleshoot",
+          label: "Troubleshoot"
         },
       ],
     },
