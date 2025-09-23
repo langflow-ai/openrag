@@ -1,3 +1,8 @@
+---
+title: Configuration
+slug: /configure/configuration
+---
+
 # Configuration
 
 OpenRAG supports multiple configuration methods with the following priority:
