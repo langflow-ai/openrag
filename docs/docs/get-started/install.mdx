@@ -14,24 +14,95 @@ OpenRAG can be installed in multiple ways:
 
 ## Prerequisites 
 
-- [Python](https://www.python.org/downloads/release/python-3100/)
-    - macOS and Linux: Version 3.10 to 3.13
+- [Python Version 3.10 to 3.13](https://www.python.org/downloads/release/python-3100/)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - [Docker](https://docs.docker.com/get-docker/) or [Podman](https://podman.io/docs/installation) installed
 - [Docker Compose](https://docs.docker.com/compose/install/) installed. If using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
 - For GPU support: (TBD)
 
+## Python wheel {#install-python-wheel}
+
+The Python wheel is currently available internally, but will be available on PyPI at launch.
+The wheel installs the OpenRAG wheel, which includes the TUI for installing, running, and managing OpenRAG.
+For more information on virtual environments, see [uv](https://docs.astral.sh/uv/pip/environments).
+
+1. Create a new project with a virtual environment using [uv](https://docs.astral.sh/uv/pip/environments).
+
+   ```bash
+   uv init YOUR_PROJECT_NAME
+   cd YOUR_PROJECT_NAME
+   ```
+2. Add the OpenRAG wheel to your project and install it in the virtual environment.
+   Replace `PATH/TO/` and `VERSION` with your OpenRAG wheel location and version.
+   ```bash
+   uv add PATH/TO/openrag-VERSION-py3-none-any.whl
+   ```
+3. Ensure all dependencies are installed and updated in your virtual environment.
+   ```bash
+   uv sync
+   ```
+
+4. Start the OpenRAG TUI.
+   ```bash
+   uv run openrag
+   ```
+
+    The OpenRAG TUI opens.
+
+5. To install OpenRAG with Basic Setup, click **Basic Setup** or press <kbd>1</kbd>. Basic Setup does not set up OAuth connections for ingestion from Google Drive, OneDrive, or AWS. For OAuth setup, see [Advanced Setup](#advanced-setup).
+   The TUI prompts you for the required startup values.
+   Click **Generate Passwords** to autocomplete fields that contain **Auto-generated Secure Password**, or bring your own passwords.
+    <details closed>
+    <summary>Where do I find the required startup values?</summary>
+    
+    | Variable | Where to Find | Description |
+    |----------|---------------|-------------|
+    | `OPENSEARCH_PASSWORD` | Auto-generated secure password | The password for OpenSearch database access. Must be at least 8 characters and must contain at least one uppercase letter, one lowercase letter, one digit, and one special character. |
+    | `OPENAI_API_KEY` | [OpenAI Platform](https://platform.openai.com/api-keys) | API key from your OpenAI account. |
+    | `LANGFLOW_SUPERUSER` | User generated | Username for Langflow admin access. For more, see [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-superuser). |
+    | `LANGFLOW_SUPERUSER_PASSWORD` | Auto-generated secure password | Password for Langflow admin access. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-superuser). |
+    | `LANGFLOW_SECRET_KEY` | Auto-generated secure key | Secret key for Langflow security. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key). |
+    | `LANGFLOW_AUTO_LOGIN` | Auto-generated or manual | Auto-login configuration. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login). |
+    | `LANGFLOW_NEW_USER_IS_ACTIVE` | Langflow | New user activation setting. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-new-user-is-active). |
+    | `LANGFLOW_ENABLE_SUPERUSER_CLI` | Langflow server | Superuser CLI access setting. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-enable-superuser-cli). |
+    | `DOCUMENTS_PATH` | Set your local path | Path to your document storage directory. |
+    
+    </details>
+   
+   To complete credentials, click **Save Configuration**.
+
+6. To start OpenRAG with your credentials, click **Start Container Services**.
+   Startup pulls container images and starts them, so it can take some time.
+   The operation has completed when the **Close** button is available and the terminal displays:
+   ```bash
+   Services started successfully
+   Command completed successfully
+   ```
+
+7. To open the OpenRAG application, click **Open App** or press <kbd>6</kbd>.
+8. Continue with the Quickstart.
+
+### Advanced Setup {#advanced-setup}
+
+**Advanced Setup** includes the required values from **Basic Setup**, with additional settings for OAuth credentials.
+If the OpenRAG TUI detects OAuth credentials, it enforces the Advanced Setup path.
+1. Add your client and secret values for Google, Azure, or AWS OAuth.
+These values can be found in your OAuth provider.
+2. The OpenRAG TUI presents redirect URIs for your OAuth app.
+These are the URLs your OAuth provider will redirect back to after user sign-in.
+Register these redirect values with your OAuth provider as they are presented in the TUI.
+3. To open the OpenRAG application, click **Open App** or press <kbd>6</kbd>.
+You will be presented with your provider's OAuth sign-in screen, and be redirected to the redirect URI after sign-in.
+
+Two additional variables are available for Advanced Setup:
+
+The LANGFLOW_PUBLIC_URL controls where the Langflow web interface can be accessed. This is where users interact with their flows in a browser.
+
+The WEBHOOK_BASE_URL controls where the endpoint for `/connectors/CONNECTOR_TYPE/webhook` will be available.
+This connection enables real-time document synchronization with external services.
+For example, for Google Drive file synchronization the webhook URL is `/connectors/google_drive/webhook`.
+
 ## Docker {#install-and-run-docker}
-
-The OpenRAG Docker Compose file starts five containers:
-
-| Container Name | Default Address | Purpose |
-|---|---|---|
-| OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
-| OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
-| Langflow | http://localhost:7860 | AI workflow engine and flow management. |
-| OpenSearch | http://localhost:9200 | Vector database for document storage. |
-| OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
 
 There are two different Docker Compose files.
 They deploy the same applications and containers, but to different environments.
@@ -78,6 +149,15 @@ To install OpenRAG with Docker Compose:
    docker compose -f docker-compose-cpu.yml up -d
    ```
 
+   The OpenRAG Docker Compose file starts five containers:
+   | Container Name | Default Address | Purpose |
+   |---|---|---|
+   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
+   | OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
+   | Langflow | http://localhost:7860 | AI workflow engine and flow management. |
+   | OpenSearch | http://localhost:9200 | Vector database for document storage. |
+   | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
+
 5. Verify installation by confirming all services are running.
 
    ```bash
@@ -91,68 +171,3 @@ To install OpenRAG with Docker Compose:
    - **Langflow**: http://localhost:7860
 
 Continue with the [Quickstart](/quickstart).
-
-## Python wheel {#install-python-wheel}
-
-The Python wheel is currently available internally, but will be available on PyPI at launch.
-The wheel installs the OpenRAG wheel, which includes the TUI for installing, running, and managing OpenRAG.
-For more information on virtual environments, see [uv](https://docs.astral.sh/uv/pip/environments).
-
-1. Create a new project with a virtual environment using [uv](https://docs.astral.sh/uv/pip/environments).
-
-   ```bash
-   uv init YOUR_PROJECT_NAME
-   cd YOUR_PROJECT_NAME
-   ```
-2. Add the OpenRAG wheel to your project and install it in the virtual environment.
-   Replace `PATH/TO/` and `VERSION` with your OpenRAG wheel location and version.
-   ```bash
-   uv add PATH/TO/openrag-VERSION-py3-none-any.whl
-   ```
-3. Ensure all dependencies are installed and updated in your virtual environment.
-   ```bash
-   uv sync
-   ```
-
-4. Start the OpenRAG TUI.
-   ```bash
-   uv run openrag
-   ```
-
-    The OpenRAG TUI opens.
-
-5. To install OpenRAG with Basic Setup, click **Basic Setup** or press <kbd>1</kbd>. Basic Setup does not support OAuth connections for ingestion from Google Drive, OneDrive, or AWS.
-   The TUI prompts you for the required startup values.
-   Click **Generate Passwords** to autocomplete fields that contain **Auto-generated Secure Password**, or bring your own passwords.
-    <details open>
-    <summary>Where do I find the required startup values?</summary>
-    
-    | Variable | Where to Find | Description |
-    |----------|---------------|-------------|
-    | `OPENSEARCH_PASSWORD` | Auto-generated secure password | The password for OpenSearch database access. Must be at least 8 characters and must contain at least one uppercase letter, one lowercase letter, one digit, and one special character. |
-    | `OPENAI_API_KEY` | [OpenAI Platform](https://platform.openai.com/api-keys) | API key from your OpenAI account. |
-    | `LANGFLOW_SUPERUSER` | User generated | Username for Langflow admin access. For more, see [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-superuser). |
-    | `LANGFLOW_SUPERUSER_PASSWORD` | Auto-generated secure password | Password for Langflow admin access. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-superuser). |
-    | `LANGFLOW_SECRET_KEY` | Auto-generated secure key | Secret key for Langflow security. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key). |
-    | `LANGFLOW_AUTO_LOGIN` | Auto-generated or manual | Auto-login configuration. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login). |
-    | `LANGFLOW_NEW_USER_IS_ACTIVE` | Langflow | New user activation setting. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-new-user-is-active). |
-    | `LANGFLOW_ENABLE_SUPERUSER_CLI` | Langflow server | Superuser CLI access setting. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-enable-superuser-cli). |
-    | `DOCUMENTS_PATH` | Set your local path | Path to your document storage directory. |
-    
-    </details>
-   
-   To complete credentials, click **Save Configuration**.
-
-6. To start OpenRAG with your credentials, click **Start Container Services**.
-   Startup pulls container images and starts them, so it can take some time.
-   The operation has completed when the **Close** button is available and the terminal displays:
-   ```bash
-   Services started successfully
-   Command completed successfully
-   ```
-
-7. To open the OpenRAG application, click **Open App** or press <kbd>6</kbd>.
-
-### Advanced Setup
-
-
