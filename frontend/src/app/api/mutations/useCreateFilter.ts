@@ -44,7 +44,7 @@ export const useCreateFilter = () => {
   return useMutation({
     mutationFn: createFilter,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["knowledge-filters"], exact: false });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-filters"]});
     },
   });
 };

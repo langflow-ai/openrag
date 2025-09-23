@@ -3,14 +3,13 @@
 import {
   Building2,
   Cloud,
-  Filter,
   HardDrive,
   Search,
   Trash2,
   X,
 } from "lucide-react";
 import { AgGridReact, CustomCellRendererProps } from "ag-grid-react";
-import { useCallback, useEffect, useState, useRef, ChangeEvent } from "react";
+import { useCallback, useState, useRef, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { SiGoogledrive } from "react-icons/si";
 import { TbBrandOnedrive } from "react-icons/tb";
@@ -60,11 +59,10 @@ function SearchPage() {
 
   const deleteDocumentMutation = useDeleteDocument();
 
-  const {
-    data = [],
-    isFetching,
-    refetch: refetchSearch,
-  } = useGetSearchQuery(parsedFilterData?.query || "", parsedFilterData);
+  const { data = [], isFetching } = useGetSearchQuery(
+    parsedFilterData?.query || "*",
+    parsedFilterData
+  );
 
   const handleTableSearch = (e: ChangeEvent<HTMLInputElement>) => {
     gridRef.current?.api.setGridOption("quickFilterText", e.target.value);
@@ -200,10 +198,6 @@ function SearchPage() {
     }
   };
 
-  useEffect(() => {
-    refetchSearch();
-  }, [selectedFilter, refetchSearch]);
-
   return (
     <div
       className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
@@ -230,8 +224,7 @@ function SearchPage() {
           <form className="flex gap-3">
             <div className="primary-input min-h-10 !flex items-center flex-nowrap gap-2 focus-within:border-foreground transition-colors !py-0">
               {selectedFilter?.name && (
-                <div className="flex items-center gap-2 bg-accent text-accent-foreground px-1 py-0.5 rounded max-w-[300px]">
-                  <Filter className="h-3 w-3 flex-shrink-0 ml-1" />
+                <div className="flex items-center gap-1 bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded max-w-[300px]">
                   <span className="truncate">{selectedFilter?.name}</span>
                   <X
                     aria-label="Remove filter"

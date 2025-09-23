@@ -46,7 +46,7 @@ export const useUpdateFilter = () => {
     mutationFn: updateFilter,
     onSuccess: () => {
       // Refresh any knowledge filter lists/searches
-      queryClient.invalidateQueries({ queryKey: ["knowledge-filters"], exact: false });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-filters"] });
     },
   });
 };

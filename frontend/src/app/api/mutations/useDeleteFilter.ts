@@ -33,7 +33,7 @@ export const useDeleteFilter = () => {
     mutationFn: deleteFilter,
     onSuccess: () => {
       // Invalidate filters queries so UI refreshes automatically
-      queryClient.invalidateQueries({ queryKey: ["knowledge-filters"], exact: false });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-filters"] });
     },
   });
 };
