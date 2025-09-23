@@ -5,7 +5,8 @@ export type Status =
   | "active"
   | "unavailable"
   | "hidden"
-  | "sync";
+  | "sync"
+  | "failed";
 
 interface StatusBadgeProps {
   status: Status;
@@ -23,6 +24,10 @@ const statusConfig = {
   },
   unavailable: {
     label: "Unavailable",
+    className: "text-red-600 dark:text-red-400 ",
+  },
+  failed: {
+    label: "Failed",
     className: "text-red-600 dark:text-red-400 ",
   },
   hidden: {
