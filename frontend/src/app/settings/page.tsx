@@ -152,6 +152,7 @@ function KnowledgeSourcesPage() {
     },
   });
 
+
   // Debounced update function
   const debouncedUpdate = useDebounce(
     (variables: Parameters<typeof updateFlowSettingMutation.mutate>[0]) => {
@@ -219,6 +220,7 @@ function KnowledgeSourcesPage() {
   // Update processing mode
   const handleProcessingModeChange = (mode: string) => {
     setProcessingMode(mode);
+    // Update the configuration setting (backend will also update the flow automatically)
     debouncedUpdate({ doclingPresets: mode });
   };
 

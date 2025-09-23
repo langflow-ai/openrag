@@ -7,6 +7,7 @@ from config.settings import (
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
+    DOCLING_COMPONENT_ID,
     clients,
     get_openrag_config,
     config_manager,
@@ -46,22 +47,7 @@ def get_docling_preset_configs():
     }
 
 
-def get_docling_tweaks(docling_preset: str = None) -> dict:
-    """Get Langflow tweaks for docling component based on preset"""
-    if not docling_preset:
-        # Get current preset from config
-        openrag_config = get_openrag_config()
-        docling_preset = openrag_config.knowledge.doclingPresets
 
-    preset_configs = get_docling_preset_configs()
-
-    if docling_preset not in preset_configs:
-        docling_preset = "standard"  # fallback
-
-    preset_config = preset_configs[docling_preset]
-    docling_serve_opts = json.dumps(preset_config)
-
-    return {"DoclingRemote-ayRdw": {"docling_serve_opts": docling_serve_opts}}
 
 
 async def get_settings(request, session_manager):
@@ -233,6 +219,15 @@ async def update_settings(request, session_manager):
                 )
             current_config.knowledge.doclingPresets = body["doclingPresets"]
             config_updated = True
+
+            # Also update the flow with the new docling preset
+            try:
+                await _update_flow_docling_preset(body["doclingPresets"], preset_configs[body["doclingPresets"]])
+                logger.info(f"Successfully updated docling preset in flow to '{body['doclingPresets']}'")
+            except Exception as e:
+                logger.error(f"Failed to update docling preset in flow: {str(e)}")
+                # Don't fail the entire settings update if flow update fails
+                # The config will still be saved
 
         if "chunk_size" in body:
             if not isinstance(body["chunk_size"], int) or body["chunk_size"] <= 0:
@@ -527,3 +522,93 @@ async def onboarding(request, flows_service):
             {"error": f"Failed to update onboarding settings: {str(e)}"},
             status_code=500,
         )
+
+
+async def _update_flow_docling_preset(preset: str, preset_config: dict):
+    """Helper function to update docling preset in the ingest flow"""
+    if not LANGFLOW_INGEST_FLOW_ID:
+        raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+
+    # Get the current flow data from Langflow
+    response = await clients.langflow_request(
+        "GET", f"/api/v1/flows/{LANGFLOW_INGEST_FLOW_ID}"
+    )
+
+    if response.status_code != 200:
+        raise Exception(f"Failed to get ingest flow: HTTP {response.status_code} - {response.text}")
+
+    flow_data = response.json()
+
+    # Find the target node in the flow using environment variable
+    nodes = flow_data.get("data", {}).get("nodes", [])
+    target_node = None
+    target_node_index = None
+
+    for i, node in enumerate(nodes):
+        if node.get("id") == DOCLING_COMPONENT_ID:
+            target_node = node
+            target_node_index = i
+            break
+
+    if target_node is None:
+        raise Exception(f"Docling component '{DOCLING_COMPONENT_ID}' not found in ingest flow")
+
+    # Update the docling_serve_opts value directly in the existing node
+    if (target_node.get("data", {}).get("node", {}).get("template", {}).get("docling_serve_opts")):
+        flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"]["docling_serve_opts"]["value"] = preset_config
+    else:
+        raise Exception(f"docling_serve_opts field not found in node '{DOCLING_COMPONENT_ID}'")
+
+    # Update the flow via PATCH request
+    patch_response = await clients.langflow_request(
+        "PATCH", f"/api/v1/flows/{LANGFLOW_INGEST_FLOW_ID}", json=flow_data
+    )
+
+    if patch_response.status_code != 200:
+        raise Exception(f"Failed to update ingest flow: HTTP {patch_response.status_code} - {patch_response.text}")
+
+
+async def update_docling_preset(request, session_manager):
+    """Update docling preset in the ingest flow"""
+    try:
+        # Parse request body
+        body = await request.json()
+
+        # Validate preset parameter
+        if "preset" not in body:
+            return JSONResponse(
+                {"error": "preset parameter is required"},
+                status_code=400
+            )
+
+        preset = body["preset"]
+        preset_configs = get_docling_preset_configs()
+
+        if preset not in preset_configs:
+            valid_presets = list(preset_configs.keys())
+            return JSONResponse(
+                {"error": f"Invalid preset '{preset}'. Valid presets: {', '.join(valid_presets)}"},
+                status_code=400
+            )
+
+        # Get the preset configuration
+        preset_config = preset_configs[preset]
+
+        # Use the helper function to update the flow
+        await _update_flow_docling_preset(preset, preset_config)
+
+        logger.info(f"Successfully updated docling preset to '{preset}' in ingest flow")
+
+        return JSONResponse({
+            "message": f"Successfully updated docling preset to '{preset}'",
+            "preset": preset,
+            "preset_config": preset_config
+        })
+
+    except Exception as e:
+        logger.error("Failed to update docling preset", error=str(e))
+        return JSONResponse(
+            {"error": f"Failed to update docling preset: {str(e)}"},
+            status_code=500
+        )
+
