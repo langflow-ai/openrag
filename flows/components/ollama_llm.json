@@ -2,7 +2,10 @@
   "data": {
     "id": "OllamaModel-eCsJx",
     "node": {
-      "base_classes": ["LanguageModel", "Message"],
+      "base_classes": [
+        "LanguageModel",
+        "Message"
+      ],
       "beta": false,
       "conditional_paths": [],
       "custom_fields": {},
@@ -40,7 +43,7 @@
       ],
       "frozen": false,
       "icon": "Ollama",
-      "last_updated": "2025-09-17T20:01:59.191Z",
+      "last_updated": "2025-09-22T20:14:45.057Z",
       "legacy": false,
       "metadata": {
         "code_hash": "af399d429d23",
@@ -56,12 +59,17 @@
             },
             {
               "name": "langflow",
-              "version": "1.5.0.post2"
+              "version": null
             }
           ],
           "total_dependencies": 3
         },
-        "keywords": ["model", "llm", "language model", "large language model"],
+        "keywords": [
+          "model",
+          "llm",
+          "language model",
+          "large language model"
+        ],
         "module": "langflow.components.ollama.ollama.ChatOllamaComponent"
       },
       "minimized": false,
@@ -77,7 +85,9 @@
           "options": null,
           "required_inputs": null,
           "tool_mode": true,
-          "types": ["Message"],
+          "types": [
+            "Message"
+          ],
           "value": "__UNDEFINED__"
         },
         {
@@ -91,7 +101,9 @@
           "required_inputs": null,
           "selected": "LanguageModel",
           "tool_mode": true,
-          "types": ["LanguageModel"],
+          "types": [
+            "LanguageModel"
+          ],
           "value": "__UNDEFINED__"
         }
       ],
@@ -104,7 +116,9 @@
           "display_name": "Base URL",
           "dynamic": false,
           "info": "Endpoint of the Ollama API.",
-          "input_types": ["Message"],
+          "input_types": [
+            "Message"
+          ],
           "list": false,
           "list_add_label": "Add More",
           "load_from_db": true,
@@ -144,7 +158,9 @@
           "display_name": "Format",
           "dynamic": false,
           "info": "Specify the format of the output (e.g., json).",
-          "input_types": ["Message"],
+          "input_types": [
+            "Message"
+          ],
           "list": false,
           "list_add_label": "Add More",
           "load_from_db": false,
@@ -165,7 +181,9 @@
           "display_name": "Input",
           "dynamic": false,
           "info": "",
-          "input_types": ["Message"],
+          "input_types": [
+            "Message"
+          ],
           "list": false,
           "list_add_label": "Add More",
           "load_from_db": false,
@@ -207,7 +225,11 @@
           "dynamic": false,
           "info": "Enable/disable Mirostat sampling for controlling perplexity.",
           "name": "mirostat",
-          "options": ["Disabled", "Mirostat", "Mirostat 2.0"],
+          "options": [
+            "Disabled",
+            "Mirostat",
+            "Mirostat 2.0"
+          ],
           "options_metadata": [],
           "placeholder": "",
           "real_time_refresh": true,
@@ -265,7 +287,9 @@
           "dynamic": false,
           "info": "Refer to https://ollama.com/library for more models.",
           "name": "model_name",
-          "options": [],
+          "options": [
+            "qwen3:4b"
+          ],
           "options_metadata": [],
           "placeholder": "",
           "real_time_refresh": true,
@@ -277,7 +301,7 @@
           "tool_mode": false,
           "trace_as_metadata": true,
           "type": "str",
-          "value": ""
+          "value": "qwen3:4b"
         },
         "num_ctx": {
           "_input_type": "IntInput",
@@ -375,7 +399,9 @@
           "display_name": "Stop Tokens",
           "dynamic": false,
           "info": "Comma-separated list of tokens to signal the model to stop generating text.",
-          "input_types": ["Message"],
+          "input_types": [
+            "Message"
+          ],
           "list": false,
           "list_add_label": "Add More",
           "load_from_db": false,
@@ -414,7 +440,9 @@
           "display_name": "System",
           "dynamic": false,
           "info": "System to use for generating text.",
-          "input_types": ["Message"],
+          "input_types": [
+            "Message"
+          ],
           "list": false,
           "list_add_label": "Add More",
           "load_from_db": false,
@@ -436,7 +464,9 @@
           "display_name": "System Message",
           "dynamic": false,
           "info": "System message to pass to the model.",
-          "input_types": ["Message"],
+          "input_types": [
+            "Message"
+          ],
           "list": false,
           "list_add_label": "Add More",
           "load_from_db": false,
@@ -458,7 +488,9 @@
           "display_name": "Tags",
           "dynamic": false,
           "info": "Comma-separated list of tags to add to the run trace.",
-          "input_types": ["Message"],
+          "input_types": [
+            "Message"
+          ],
           "list": false,
           "list_add_label": "Add More",
           "load_from_db": false,
@@ -507,7 +539,9 @@
           "display_name": "Template",
           "dynamic": false,
           "info": "Template to use for generating text.",
-          "input_types": ["Message"],
+          "input_types": [
+            "Message"
+          ],
           "list": false,
           "list_add_label": "Add More",
           "load_from_db": false,
@@ -638,14 +672,15 @@
     "showNode": true,
     "type": "OllamaModel"
   },
+  "dragging": false,
   "id": "OllamaModel-eCsJx",
   "measured": {
     "height": 494,
     "width": 320
   },
   "position": {
-    "x": 554,
-    "y": 225
+    "x": 248.08287272472313,
+    "y": 216.98088326271431
   },
   "selected": false,
   "type": "genericNode"
