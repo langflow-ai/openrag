@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Filter, Loader2, Plus, Save } from "lucide-react";
+import { Filter, Loader2, Plus, Save, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   useGetFiltersSearchQuery,
@@ -123,7 +123,7 @@ export function KnowledgeFilterList({
             size="sm"
             onClick={handleCreateNew}
             title="Create New Filter"
-            className="h-8 px-3"
+            className="h-8 px-3 text-muted-foreground"
           >
             <Plus className="h-3 w-3" />
           </Button>
@@ -152,7 +152,9 @@ export function KnowledgeFilterList({
             >
               <div className="flex flex-col gap-1 flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <Filter className="h-4 w-4" />
+                  <div className="flex items-center justify-center bg-blue-500/20 w-5 h-5 rounded">
+                    <Filter className="h-3 w-3 text-blue-400" />
+                  </div>
                   <div className="text-sm font-medium truncate group-hover:text-accent-foreground">
                     {filter.name}
                   </div>
@@ -172,8 +174,8 @@ export function KnowledgeFilterList({
                   </div>
                   <span className="text-xs bg-muted text-muted-foreground px-1 py-0.5 rounded-sm">
                     {(() => {
-                      const dataSources =
-                        parseQueryData(filter.query_data).filters.data_sources;
+                      const dataSources = parseQueryData(filter.query_data)
+                        .filters.data_sources;
                       if (dataSources[0] === "*") return "All sources";
                       const count = dataSources.length;
                       return `${count} ${count === 1 ? "source" : "sources"}`;
@@ -181,6 +183,19 @@ export function KnowledgeFilterList({
                   </span>
                 </div>
               </div>
+              {selectedFilter?.id === filter.id && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="px-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFilterSelect(null);
+                  }}
+                >
+                  <X className="h-4 w-4 flex-shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground" />
+                </Button>
+              )}
             </div>
           ))
         )}
@@ -189,7 +204,7 @@ export function KnowledgeFilterList({
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Knowledge Filter</DialogTitle>
+            <DialogTitle>Create a new knowledge filter</DialogTitle>
             <DialogDescription>
               Save a reusable filter to quickly scope searches across your
               knowledge base.

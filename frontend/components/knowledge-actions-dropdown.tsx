@@ -12,6 +12,7 @@ import { Button } from "./ui/button";
 import { DeleteConfirmationDialog } from "./confirmation-dialog";
 import { useDeleteDocument } from "@/app/api/mutations/useDeleteDocument";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 interface KnowledgeActionsDropdownProps {
   filename: string;
@@ -22,6 +23,7 @@ export const KnowledgeActionsDropdown = ({
 }: KnowledgeActionsDropdownProps) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const deleteDocumentMutation = useDeleteDocument();
+  const router = useRouter();
 
   const handleDelete = async () => {
     try {
@@ -43,7 +45,17 @@ export const KnowledgeActionsDropdown = ({
             <EllipsisVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" sideOffset={-10}>
+        <DropdownMenuContent side="right" align="start" sideOffset={-10}>
+          <DropdownMenuItem
+            className="text-primary focus:text-primary"
+            onClick={() => {
+              router.push(
+                `/knowledge/chunks?filename=${encodeURIComponent(filename)}`
+              );
+            }}
+          >
+            View chunks
+          </DropdownMenuItem>
           {/* //TODO: Implement rename and sync */}
           {/* <DropdownMenuItem
             className="text-primary focus:text-primary"
