@@ -27,10 +27,14 @@
     --accent-foreground: 0 0% 0%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 6% 90%;
+    --border: 240 4.8% 95.9%;
     --input: 240 6% 90%;
     --ring: 0 0% 0%;
     --placeholder-foreground: 240 5% 65%;
+
+    --accent-emerald-foreground: 161.4 93.5% 30.4%;
+    --accent-pink-foreground: 333.3 71.4% 50.6%;
+    --accent-amber-foreground: 26 90.5% 37.1%;
 
     /* Status Colors */
     --status-red: #ef4444;
@@ -80,10 +84,14 @@
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 5% 26%;
+    --border: 240 3.7% 15.9%;
     --input: 240 5% 34%;
     --ring: 0 0% 100%;
     --placeholder-foreground: 240 4% 46%;
+
+    --accent-emerald-foreground: 158.1 64.4% 51.6%;
+    --accent-pink-foreground: 328.6 85.5% 70.2%;
+    --accent-amber-foreground: 45.9 96.7% 64.5%;
 
     /* Dark mode data type colors */
     --datatype-blue: 211.7 96.4% 78.4%;
@@ -154,7 +162,7 @@
   }
 
   .side-bar-arrangement {
-    @apply flex h-full w-[14.5rem] flex-col overflow-hidden border-r scrollbar-hide;
+    @apply flex h-full w-[18rem] flex-col overflow-hidden border-r scrollbar-hide;
   }
 
   .side-bar-search-div-placement {
