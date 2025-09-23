@@ -227,7 +227,7 @@ function ChunksPageContent() {
                           onClick={() => handleChunkCardCheckboxChange(index)}
                         />
                       </div>
-                      <span className="text-sm text-bold">
+                      <span className="text-sm font-bold">
                         Chunk {chunk.page}
                       </span>
                       <span className="bg-background p-1 rounded text-xs text-muted-foreground/70">
