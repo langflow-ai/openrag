@@ -9,6 +9,17 @@ export interface InputProps
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, inputClassName, icon, type, placeholder, ...props }, ref) => {
+    const [hasValue, setHasValue] = React.useState(
+      Boolean(props.value || props.defaultValue),
+    );
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setHasValue(e.target.value.length > 0);
+      if (props.onChange) {
+        props.onChange(e);
+      }
+    };
+
     return (
       <label
         className={cn(
@@ -32,12 +43,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           )}
           ref={ref}
           {...props}
+          onChange={handleChange}
         />
         <span
           className={cn(
             "pointer-events-none absolute top-1/2 -translate-y-1/2 pl-px text-placeholder-foreground font-mono",
             icon ? "left-9" : "left-3",
-            props.value && "hidden"
+            hasValue && "hidden",
           )}
         >
           {placeholder}
