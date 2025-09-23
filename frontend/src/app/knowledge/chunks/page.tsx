@@ -86,7 +86,7 @@ function ChunksPageContent() {
     }
 
     setChunks(fileData?.chunks || []);
-  }, [data, filename, fileData?.chunks]);
+  }, [data, filename]);
 
   // Set selected state for all checkboxes when selectAll changes
   useEffect(() => {
