@@ -8,13 +8,22 @@ import TabItem from '@theme/TabItem';
 
 OpenRAG can be installed in multiple ways:
 
-* [**Docker**](#install-and-run-docker): Deploy the full OpenRAG stack with Docker Compose, including all services and dependencies.
+* [**Python wheel**](#install-python-wheel): Install the OpenRAG Python wheel and use the [OpenRAG Terminal User Interface (TUI)](/tui) to install, run, and configure your OpenRAG deployment without running Docker commands.
 
-* [**TUI**](tui.mdx): Use the Terminal User Interface to install, run, and configure your OpenRAG deployment without running Docker commands.
+* [**Docker Compose**](#install-and-run-docker): Clone the OpenRAG repository and deploy OpenRAG with Docker Compose, including all services and dependencies.
+
+## Prerequisites 
+
+- [Python](https://www.python.org/downloads/release/python-3100/)
+    - macOS and Linux: Version 3.10 to 3.13
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- [Docker](https://docs.docker.com/get-docker/) or [Podman](https://podman.io/docs/installation) installed
+- [Docker Compose](https://docs.docker.com/compose/install/) installed. If using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
+- For GPU support: (TBD)
 
 ## Docker {#install-and-run-docker}
 
-The OpenRAG Docker compose file starts five containers:
+The OpenRAG Docker Compose file starts five containers:
 
 | Container Name | Default Address | Purpose |
 |---|---|---|
@@ -31,11 +40,7 @@ They deploy the same applications and containers, but to different environments.
 
 - [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
 
-Before installing OpenRAG with Docker, ensure you have:
-
-- [Docker](https://docs.docker.com/get-docker/) installed
-- [Docker Compose](https://docs.docker.com/compose/install/) installed
-- For GPU support: (TBD)
+To install OpenRAG with Docker Compose:
 
 1. Clone the OpenRAG repository.
    ```bash
@@ -87,73 +92,67 @@ Before installing OpenRAG with Docker, ensure you have:
 
 Continue with the [Quickstart](/quickstart).
 
-## Python wheel {#install-and-run-the-openrag-oss-python-wheel}
+## Python wheel {#install-python-wheel}
 
-### Prerequisites
+The Python wheel is currently available internally, but will be available on PyPI at launch.
+The wheel installs the OpenRAG wheel, which includes the TUI for installing, running, and managing OpenRAG.
+For more information on virtual environments, see [uv](https://docs.astral.sh/uv/pip/environments).
 
-1. Make sure you have the required dependencies and infrastructure:
+1. Create a new project with a virtual environment using [uv](https://docs.astral.sh/uv/pip/environments).
 
-    - [Python](https://www.python.org/downloads/release/python-3100/)
-       - macOS and Linux: Version 3.10 to 3.13
-       - Windows: Version 3.10 to 3.12
-    - [uv](https://docs.astral.sh/uv/getting-started/installation/)
-    - Sufficient infrastructure:
-       - Minimum: Dual-core CPU and 2 GB RAM
-       - Recommended: Multi-core CPU and at least 4 GB RAM
+   ```bash
+   uv init YOUR_PROJECT_NAME
+   cd YOUR_PROJECT_NAME
+   ```
+2. Add the OpenRAG wheel to your project and install it in the virtual environment.
+   Replace `PATH/TO/` and `VERSION` with your OpenRAG wheel location and version.
+   ```bash
+   uv add PATH/TO/openrag-VERSION-py3-none-any.whl
+   ```
+3. Ensure all dependencies are installed and updated in your virtual environment.
+   ```bash
+   uv sync
+   ```
 
-2. Create a virtual environment with [uv](https://docs.astral.sh/uv/pip/environments).
+4. Start the OpenRAG TUI.
+   ```bash
+   uv run openrag
+   ```
 
-    <details>
-    <summary>Need help with virtual environments?</summary>
+    The OpenRAG TUI opens.
 
-    Virtual environments ensure OpenRAG is installed in an isolated, fresh environment.
-    To create a new virtual environment, do the following.
-
-        <Tabs>
-        <TabItem value="linux-macos" label="Linux or macOS" default>
-
-        1. Navigate to where you want your virtual environment to be created, and then create it with `uv`:
-
-            ```shell
-            uv venv VENV_NAME
-            ```
-
-            Replace `VENV_NAME` with a name for your virtual environment.
-
-        2. Start the virtual environment:
-
-            ```shell
-            source VENV_NAME/bin/activate
-            ```
-
-            Your shell's prompt changes to display that you're currently working in a virtual environment:
-
-            ```text
-            (VENV_NAME) ➜  openrag git:(main) ✗
-            ```
-
-        3. To deactivate the virtual environment and return to your regular shell, type `deactivate`.
-
-            When activated, the virtual environment temporarily modifies your `PATH` variable to prioritize packages installed within the virtual environment.
-            To avoid conflicts with other projects, it's a good idea to deactivate your virtual environment when you're done working in it.
-
-            To delete the virtual environment, type `rm -rf VENV_NAME`.
-            This completely removes the virtual environment directory and its contents.
-
-        </TabItem>
-        </Tabs>
+5. To install OpenRAG with Basic Setup, click **Basic Setup** or press <kbd>1</kbd>. Basic Setup does not support OAuth connections for ingestion from Google Drive, OneDrive, or AWS.
+   The TUI prompts you for the required startup values.
+   Click **Generate Passwords** to autocomplete fields that contain **Auto-generated Secure Password**, or bring your own passwords.
+    <details open>
+    <summary>Where do I find the required startup values?</summary>
+    
+    | Variable | Where to Find | Description |
+    |----------|---------------|-------------|
+    | `OPENSEARCH_PASSWORD` | Auto-generated secure password | The password for OpenSearch database access. Must be at least 8 characters and must contain at least one uppercase letter, one lowercase letter, one digit, and one special character. |
+    | `OPENAI_API_KEY` | [OpenAI Platform](https://platform.openai.com/api-keys) | API key from your OpenAI account. |
+    | `LANGFLOW_SUPERUSER` | User generated | Username for Langflow admin access. For more, see [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-superuser). |
+    | `LANGFLOW_SUPERUSER_PASSWORD` | Auto-generated secure password | Password for Langflow admin access. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-superuser). |
+    | `LANGFLOW_SECRET_KEY` | Auto-generated secure key | Secret key for Langflow security. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key). |
+    | `LANGFLOW_AUTO_LOGIN` | Auto-generated or manual | Auto-login configuration. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login). |
+    | `LANGFLOW_NEW_USER_IS_ACTIVE` | Langflow | New user activation setting. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-new-user-is-active). |
+    | `LANGFLOW_ENABLE_SUPERUSER_CLI` | Langflow server | Superuser CLI access setting. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-enable-superuser-cli). |
+    | `DOCUMENTS_PATH` | Set your local path | Path to your document storage directory. |
+    
     </details>
-
-3. Install the wheel from PyPI.
    
+   To complete credentials, click **Save Configuration**.
+
+6. To start OpenRAG with your credentials, click **Start Container Services**.
+   Startup pulls container images and starts them, so it can take some time.
+   The operation has completed when the **Close** button is available and the terminal displays:
    ```bash
-   uv pip install openrag-*.whl
+   Services started successfully
+   Command completed successfully
    ```
 
-4. Verify installation:
-   
-   ```bash
-   openrag --version
-   ```
-   
-   This should display the installed version of OpenRAG.
+7. To open the OpenRAG application, click **Open App** or press <kbd>6</kbd>.
+
+### Advanced Setup
+
+
