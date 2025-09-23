@@ -224,7 +224,7 @@ function ChunksPageContent() {
                       <div>
                         <Checkbox
                           checked={selectedChunks.has(index)}
-                          onClick={() => handleChunkCardCheckboxChange(index)}
+                          onCheckedChange={(checked) => handleChunkCardCheckboxChange(checked, index)}
                         />
                       </div>
                       <span className="text-sm font-bold">
