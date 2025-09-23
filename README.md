@@ -138,7 +138,7 @@ podman machine start
 
 ### Common Issues
 
-See common issues and fixes: [docs/reference/troubleshooting.mdx](docs/docs/reference/troubleshooting.mdx)
+See common issues and fixes: [docs/support/troubleshoot.mdx](docs/docs/reference/troubleshoot.mdx)
 
 
 
