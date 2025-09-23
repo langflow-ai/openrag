@@ -50,35 +50,61 @@ async function proxyRequest(
 
   try {
     let body: string | ArrayBuffer | undefined = undefined;
-    
+    let willSendBody = false;
+
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       const contentType = request.headers.get('content-type') || '';
-      
+      const contentLength = request.headers.get('content-length');
+
       // For file uploads (multipart/form-data), preserve binary data
       if (contentType.includes('multipart/form-data')) {
-        body = await request.arrayBuffer();
+        const buf = await request.arrayBuffer();
+        if (buf && buf.byteLength > 0) {
+          body = buf;
+          willSendBody = true;
+        }
       } else {
         // For JSON and other text-based content, use text
-        body = await request.text();
+        const text = await request.text();
+        if (text && text.length > 0) {
+          body = text;
+          willSendBody = true;
+        }
+      }
+
+      // Guard against incorrect non-zero content-length when there is no body
+      if (!willSendBody && contentLength) {
+        // We'll drop content-length/header below
       }
     }
 
     const headers = new Headers();
-    
+
     // Copy relevant headers from the original request
     for (const [key, value] of request.headers.entries()) {
-      if (!key.toLowerCase().startsWith('host') && 
-          !key.toLowerCase().startsWith('x-forwarded') &&
-          !key.toLowerCase().startsWith('x-real-ip')) {
-        headers.set(key, value);
+      const lower = key.toLowerCase();
+      if (
+        lower.startsWith('host') ||
+        lower.startsWith('x-forwarded') ||
+        lower.startsWith('x-real-ip') ||
+        lower === 'content-length' ||
+        (!willSendBody && lower === 'content-type')
+      ) {
+        continue;
       }
+      headers.set(key, value);
     }
 
-    const response = await fetch(backendUrl, {
+    const init: RequestInit = {
       method: request.method,
       headers,
-      body,
-    });
+    };
+    if (willSendBody) {
+      // Convert ArrayBuffer to Uint8Array to satisfy BodyInit in all environments
+      const bodyInit: BodyInit = typeof body === 'string' ? body : new Uint8Array(body as ArrayBuffer);
+      init.body = bodyInit;
+    }
+    const response = await fetch(backendUrl, init);
 
     const responseBody = await response.text();
     const responseHeaders = new Headers();

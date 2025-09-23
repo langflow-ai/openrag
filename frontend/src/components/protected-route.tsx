@@ -1,36 +1,59 @@
-"use client"
+"use client";
 
-import { useEffect } from "react"
-import { useRouter, usePathname } from "next/navigation"
-import { useAuth } from "@/contexts/auth-context"
-import { Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useAuth } from "@/contexts/auth-context";
 
 interface ProtectedRouteProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isLoading, isAuthenticated, isNoAuthMode } = useAuth()
-  const router = useRouter()
-  const pathname = usePathname()
-  
-  console.log("ProtectedRoute - isLoading:", isLoading, "isAuthenticated:", isAuthenticated, "isNoAuthMode:", isNoAuthMode, "pathname:", pathname)
+  const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
+  const { data: settings = {}, isLoading: isSettingsLoading } =
+    useGetSettingsQuery({
+      enabled: isAuthenticated || isNoAuthMode,
+    });
+  const router = useRouter();
+  const pathname = usePathname();
+
+  console.log(
+    "ProtectedRoute - isLoading:",
+    isLoading,
+    "isAuthenticated:",
+    isAuthenticated,
+    "isNoAuthMode:",
+    isNoAuthMode,
+    "pathname:",
+    pathname,
+  );
 
   useEffect(() => {
-    // In no-auth mode, allow access without authentication
-    if (isNoAuthMode) {
-      return
-    }
-    
-    if (!isLoading && !isAuthenticated) {
+    if (!isLoading && !isSettingsLoading && !isAuthenticated && !isNoAuthMode) {
       // Redirect to login with current path as redirect parameter
-      const redirectUrl = `/login?redirect=${encodeURIComponent(pathname)}`
-      router.push(redirectUrl)
+      const redirectUrl = `/login?redirect=${encodeURIComponent(pathname)}`;
+      router.push(redirectUrl);
+      return;
     }
-  }, [isLoading, isAuthenticated, isNoAuthMode, router, pathname])
+
+    if (!isLoading && !isSettingsLoading && !settings.edited) {
+      router.push("/onboarding");
+    }
+  }, [
+    isLoading,
+    isSettingsLoading,
+    isAuthenticated,
+    isNoAuthMode,
+    router,
+    pathname,
+    isSettingsLoading,
+    settings.edited,
+  ]);
 
   // Show loading state while checking authentication
-  if (isLoading) {
+  if (isLoading || isSettingsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-4">
@@ -38,19 +61,19 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
           <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
-    )
+    );
   }
 
   // In no-auth mode, always render content
   if (isNoAuthMode) {
-    return <>{children}</>
+    return <>{children}</>;
   }
 
   // Don't render anything if not authenticated (will redirect)
   if (!isAuthenticated) {
-    return null
+    return null;
   }
 
   // Render protected content
-  return <>{children}</>
-} 
+  return <>{children}</>;
+}
