@@ -17,10 +17,9 @@ import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
-
-// import { StatusBadge } from "@/components/ui/status-badge";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -46,7 +45,7 @@ function getSourceIcon(connectorType?: string) {
 
 function SearchPage() {
   const router = useRouter();
-  const { isMenuOpen } = useTask();
+  const { isMenuOpen, files: taskFiles } = useTask();
   const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
     useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
@@ -63,7 +62,31 @@ function SearchPage() {
     gridRef.current?.api.setGridOption("quickFilterText", e.target.value);
   };
 
-  const fileResults = data as File[];
+  // Convert TaskFiles to File format and merge with backend results
+  const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
+    return {
+      filename: taskFile.filename,
+      mimetype: taskFile.mimetype,
+      source_url: taskFile.source_url,
+      size: taskFile.size,
+      connector_type: taskFile.connector_type,
+      status: taskFile.status,
+    };
+  });
+
+  const backendFiles = data as File[];
+
+  const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
+    return (
+      taskFile.status !== "active" &&
+      !backendFiles.some(
+        (backendFile) => backendFile.filename === taskFile.filename,
+      )
+    );
+  });
+
+  // Combine task files first, then backend files
+  const fileResults = [...backendFiles, ...filteredTaskFiles];
 
   const gridRef = useRef<AgGridReact>(null);
 
@@ -77,8 +100,9 @@ function SearchPage() {
       minWidth: 220,
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
         return (
-          <div
-            className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
+          <button
+            type="button"
+            className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors text-left w-full"
             onClick={() => {
               router.push(
                 `/knowledge/chunks?filename=${encodeURIComponent(
@@ -91,7 +115,7 @@ function SearchPage() {
             <span className="font-medium text-foreground truncate">
               {value}
             </span>
-          </div>
+          </button>
         );
       },
     },
@@ -114,6 +138,7 @@ function SearchPage() {
     {
       field: "chunkCount",
       headerName: "Chunks",
+      valueFormatter: (params) => params.data?.chunkCount?.toString() || "-",
     },
     {
       field: "avgScore",
@@ -122,21 +147,20 @@ function SearchPage() {
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
           <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-            {value.toFixed(2)}
+            {value?.toFixed(2) ?? "-"}
           </span>
         );
       },
     },
-    // LOOK HERE LUCAS!!!!
-    // {
-    //   field: "status",
-    //   headerName: "Status",
-    //   cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
-    //     // Default to 'active' status if no status is provided
-    //     const status = data?.status || "processing";
-    //     return <StatusBadge status={status} />;
-    //   },
-    // },
+    {
+      field: "status",
+      headerName: "Status",
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+        // Default to 'active' status if no status is provided
+        const status = data?.status || "active";
+        return <StatusBadge status={status} />;
+      },
+    },
     {
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
         return <KnowledgeActionsDropdown filename={data?.filename || ""} />;
