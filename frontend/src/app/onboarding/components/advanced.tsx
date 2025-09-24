@@ -47,8 +47,7 @@ export function AdvancedOnboarding({
           {hasEmbeddingModels && (
             <LabelWrapper
               label="Embedding model"
-              description="It’s recommended that you use XYZ, ABC, or DEF models for best performance."
-              helperText="The embedding model for your Ollama server."
+              helperText="Model used for knowledge ingest and retrieval"
               id="embedding-model"
               required={true}
             >
@@ -63,8 +62,7 @@ export function AdvancedOnboarding({
           {hasLanguageModels && (
             <LabelWrapper
               label="Language model"
-              description="It’s recommended that you use XYZ, ABC, or DEF models for best performance."
-              helperText="The embedding model for your Ollama server."
+              helperText="Model used for chat"
               id="embedding-model"
               required={true}
             >
@@ -79,7 +77,7 @@ export function AdvancedOnboarding({
           {(hasLanguageModels || hasEmbeddingModels) && <Separator />}
           <LabelWrapper
             label="Sample dataset"
-            description="Ingest two small PDFs"
+            description="Load 2 sample PDFs to chat with data immediately."
             id="sample-dataset"
             flex
           >
