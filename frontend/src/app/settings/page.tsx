@@ -38,6 +38,11 @@ import { useDebounce } from "@/lib/debounce";
 import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
 import { ModelSelectItems } from "./helpers/model-select-item";
 import { LabelWrapper } from "@/components/label-wrapper";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@radix-ui/react-tooltip";
 
 const MAX_SYSTEM_PROMPT_CHARS = 2000;
 
@@ -799,7 +804,7 @@ function KnowledgeSourcesPage() {
           <div className="space-y-6">
             <div className="space-y-2">
               <LabelWrapper
-                helperText=""
+                helperText="Model used for chat"
                 id="model-select"
                 label="Language model"
                 required
@@ -958,7 +963,7 @@ function KnowledgeSourcesPage() {
           <div className="space-y-6">
             <div className="space-y-2">
               <LabelWrapper
-                helperText="Some helping text"
+                helperText="Model used for knowledge ingest and retrieval"
                 id="embedding-model-select"
                 label="Embedding model"
               >
@@ -973,9 +978,16 @@ function KnowledgeSourcesPage() {
                   }
                   onValueChange={handleEmbeddingModelChange}
                 >
+                  {/* <Tooltip>
+                    <TooltipTrigger> */}
                   <SelectTrigger id="embedding-model-select">
                     <SelectValue placeholder="Select an embedding model" />
                   </SelectTrigger>
+                  {/* <TooltipContent>
+                        Locked to keep embeddings consistent
+                      </TooltipContent>
+                    </TooltipTrigger>
+                  </Tooltip> */}
                   <SelectContent>
                     <ModelSelectItems
                       models={modelsData?.embedding_models}
@@ -1097,8 +1109,8 @@ function KnowledgeSourcesPage() {
                       VLM
                     </Label>
                     <div className="text-sm text-muted-foreground">
-                      Extracts text with layout-aware parsing of tables and
-                      sections using a vision-language model.
+                      Extracts text from layout-aware parsing of text, tables,
+                      and sections.
                     </div>
                   </div>
                 </div>
