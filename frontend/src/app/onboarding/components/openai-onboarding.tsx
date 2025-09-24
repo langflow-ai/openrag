@@ -58,6 +58,7 @@ export function OpenAIOnboarding({
           label="OpenAI API key"
           helperText="The API key for your OpenAI account."
           id="api-key"
+          type="password"
           required
           placeholder="sk-..."
           value={apiKey}

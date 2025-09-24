@@ -1,3 +1,4 @@
+import { Eye, EyeOff } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +13,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const [hasValue, setHasValue] = React.useState(
       Boolean(props.value || props.defaultValue),
     );
+    const [showPassword, setShowPassword] = React.useState(false);
+
+    const handleTogglePassword = () => {
+      setShowPassword(!showPassword);
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       setHasValue(e.target.value.length > 0);
@@ -23,8 +29,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <label
         className={cn(
-          "relative block h-fit w-full text-sm",
-          icon ? className : ""
+          "relative block h-fit w-full text-sm group",
+          icon ? className : "",
         )}
       >
         {icon && (
@@ -34,17 +40,30 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         )}
         <input
           autoComplete="off"
-          type={type}
+          type={type === "password" && showPassword ? "text" : type}
           placeholder={placeholder}
           className={cn(
             "primary-input !placeholder-transparent",
             icon && "pl-9",
-            icon ? inputClassName : className
+            icon ? inputClassName : className,
           )}
           ref={ref}
           {...props}
           onChange={handleChange}
         />
+        {type === "password" && (
+          <button
+            type="button"
+            className="absolute top-1/2 opacity-0 group-hover:opacity-100 hover:text-primary transition-all right-3 transform -translate-y-1/2 text-sm text-muted-foreground"
+            onClick={handleTogglePassword}
+          >
+            {showPassword ? (
+              <Eye className="w-4" />
+            ) : (
+              <EyeOff className="w-4" />
+            )}
+          </button>
+        )}
         <span
           className={cn(
             "pointer-events-none absolute top-1/2 -translate-y-1/2 pl-px text-placeholder-foreground font-mono",
@@ -56,7 +75,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         </span>
       </label>
     );
-  }
+  },
 );
 
 Input.displayName = "Input";

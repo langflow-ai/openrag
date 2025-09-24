@@ -81,6 +81,7 @@ export function IBMOnboarding({
           label="IBM API key"
           helperText="The API key for your watsonx.ai account."
           id="api-key"
+          type="password"
           required
           placeholder="your-api-key"
           value={apiKey}
