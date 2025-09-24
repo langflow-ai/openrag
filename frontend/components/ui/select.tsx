@@ -34,9 +34,9 @@ const SelectTrigger = React.forwardRef<
       {children}
       <SelectPrimitive.Icon asChild>
         {props.disabled ? (
-          <LockIcon className="text-base h-4 w-4 opacity-50" size={20} />
+          <LockIcon className="text-base h-5 w-5 opacity-50" />
         ) : (
-          <ChevronsUpDown className="text-base h-4 w-4" size={20} />
+          <ChevronsUpDown className="text-base h-5 w-5" />
         )}
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
