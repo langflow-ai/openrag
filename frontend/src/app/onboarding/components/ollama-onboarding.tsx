@@ -19,7 +19,7 @@ export function OllamaOnboarding({
   sampleDataset: boolean;
   setSampleDataset: (dataset: boolean) => void;
 }) {
-  const [endpoint, setEndpoint] = useState("");
+  const [endpoint, setEndpoint] = useState("http://localhost:11434");
   const debouncedEndpoint = useDebouncedValue(endpoint, 500);
 
   // Fetch models from API when endpoint is provided (debounced)
