@@ -6,7 +6,9 @@ import { Suspense, useEffect } from "react";
 import GoogleLogo from "@/components/logo/google-logo";
 import Logo from "@/components/logo/logo";
 import { Button } from "@/components/ui/button";
+import { DotPattern } from "@/components/ui/dot-pattern";
 import { useAuth } from "@/contexts/auth-context";
+import { cn } from "@/lib/utils";
 import { useGetSettingsQuery } from "../api/queries/useGetSettingsQuery";
 
 function LoginPageContent() {
@@ -53,15 +55,19 @@ function LoginPageContent() {
   }
 
   return (
-    <div
-      className="min-h-dvh relative flex gap-4 flex-col items-center justify-center bg-background p-4"
-      style={{
-        backgroundImage: "url('/images/background.png')",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-      }}
-    >
-      <div className="flex flex-col items-center justify-center gap-4">
+    <div className="min-h-dvh relative flex gap-4 flex-col items-center justify-center bg-background p-4">
+      <DotPattern
+        width={24}
+        height={24}
+        cx={1}
+        cy={1}
+        cr={1}
+        className={cn(
+          "[mask-image:linear-gradient(to_bottom,white,transparent,transparent)]",
+          "text-input/70",
+        )}
+      />
+      <div className="flex flex-col items-center justify-center gap-4 z-10">
         <Logo className="fill-primary" width={32} height={28} />
         <h1 className="text-2xl font-medium font-chivo">Welcome to OpenRAG</h1>
         <p className="text-sm text-muted-foreground">
@@ -72,7 +78,7 @@ function LoginPageContent() {
           Continue with Google
         </Button>
       </div>
-      <div className="flex items-center justify-center gap-2 absolute bottom-6 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center gap-2 absolute bottom-6 text-xs text-muted-foreground z-10">
         <p className="text-accent-emerald-foreground">Systems Operational</p>•
         <p>Privacy Policy</p>
       </div>
