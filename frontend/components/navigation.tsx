@@ -1,24 +1,27 @@
 "use client";
 
-import { useChat } from "@/contexts/chat-context";
-import { cn } from "@/lib/utils";
 import {
   FileText,
   Library,
   MessageSquare,
   Plus,
   Settings2,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-
-import { EndpointType } from "@/contexts/chat-context";
-import { useLoadingStore } from "@/stores/loadingStore";
-import { KnowledgeFilterList } from "./knowledge-filter-list";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useDeleteSessionMutation } from "@/app/api/queries/useDeleteSessionMutation";
+import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { cn } from "@/lib/utils";
+import { useLoadingStore } from "@/stores/loadingStore";
+import { DeleteSessionModal } from "./delete-session-modal";
+import { KnowledgeFilterList } from "./knowledge-filter-list";
 
-interface RawConversation {
+// Re-export the types for backward compatibility
+export interface RawConversation {
   response_id: string;
   title: string;
   endpoint: string;
@@ -35,7 +38,7 @@ interface RawConversation {
   [key: string]: unknown;
 }
 
-interface ChatConversation {
+export interface ChatConversation {
   response_id: string;
   title: string;
   endpoint: EndpointType;
@@ -52,11 +55,20 @@ interface ChatConversation {
   [key: string]: unknown;
 }
 
-export function Navigation() {
+interface NavigationProps {
+  conversations?: ChatConversation[];
+  isConversationsLoading?: boolean;
+  onNewConversation?: () => void;
+}
+
+export function Navigation({
+  conversations = [],
+  isConversationsLoading = false,
+  onNewConversation,
+}: NavigationProps = {}) {
   const pathname = usePathname();
   const {
     endpoint,
-    refreshTrigger,
     loadConversation,
     currentConversationId,
     setCurrentConversationId,
@@ -70,18 +82,64 @@ export function Navigation() {
 
   const { loading } = useLoadingStore();
 
-  const [conversations, setConversations] = useState<ChatConversation[]>([]);
-  const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingNewConversation, setLoadingNewConversation] = useState(false);
   const [previousConversationCount, setPreviousConversationCount] = useState(0);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [conversationToDelete, setConversationToDelete] =
+    useState<ChatConversation | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { selectedFilter, setSelectedFilter } = useKnowledgeFilter();
 
+  // Delete session mutation
+  const deleteSessionMutation = useDeleteSessionMutation({
+    onSuccess: () => {
+      toast.success("Conversation deleted successfully");
+
+      // If we deleted the current conversation, select another one
+      if (
+        conversationToDelete &&
+        currentConversationId === conversationToDelete.response_id
+      ) {
+        // Filter out the deleted conversation and find the next one
+        const remainingConversations = conversations.filter(
+          (conv) => conv.response_id !== conversationToDelete.response_id,
+        );
+
+        if (remainingConversations.length > 0) {
+          // Load the first available conversation (most recent)
+          loadConversation(remainingConversations[0]);
+        } else {
+          // No conversations left, start a new one
+          setCurrentConversationId(null);
+          if (onNewConversation) {
+            onNewConversation();
+          } else {
+            refreshConversations();
+            startNewConversation();
+          }
+        }
+      }
+
+      setDeleteModalOpen(false);
+      setConversationToDelete(null);
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete conversation: ${error.message}`);
+    },
+  });
+
   const handleNewConversation = () => {
     setLoadingNewConversation(true);
-    refreshConversations();
-    startNewConversation();
+
+    // Use the prop callback if provided, otherwise use the context method
+    if (onNewConversation) {
+      onNewConversation();
+    } else {
+      refreshConversations();
+      startNewConversation();
+    }
+
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("newConversation"));
     }
@@ -98,7 +156,7 @@ export function Navigation() {
     window.dispatchEvent(
       new CustomEvent("fileUploadStart", {
         detail: { filename: file.name },
-      })
+      }),
     );
 
     try {
@@ -122,7 +180,7 @@ export function Navigation() {
               filename: file.name,
               error: "Failed to process document",
             },
-          })
+          }),
         );
 
         // Trigger loading end event
@@ -142,7 +200,7 @@ export function Navigation() {
       window.dispatchEvent(
         new CustomEvent("fileUploaded", {
           detail: { file, result },
-        })
+        }),
       );
 
       // Trigger loading end event
@@ -156,7 +214,7 @@ export function Navigation() {
       window.dispatchEvent(
         new CustomEvent("fileUploadError", {
           detail: { filename: file.name, error: "Failed to process document" },
-        })
+        }),
       );
     }
   };
@@ -173,6 +231,25 @@ export function Navigation() {
     // Reset the input so the same file can be selected again
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDeleteConversation = (
+    conversation: ChatConversation,
+    event: React.MouseEvent,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setConversationToDelete(conversation);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDeleteConversation = () => {
+    if (conversationToDelete) {
+      deleteSessionMutation.mutate({
+        sessionId: conversationToDelete.response_id,
+        endpoint: endpoint,
+      });
     }
   };
 
@@ -199,91 +276,6 @@ export function Navigation() {
 
   const isOnChatPage = pathname === "/" || pathname === "/chat";
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
-
-  const createDefaultPlaceholder = useCallback(() => {
-    return {
-      response_id: "new-conversation-" + Date.now(),
-      title: "New conversation",
-      endpoint: endpoint,
-      messages: [
-        {
-          role: "assistant",
-          content: "How can I assist?",
-          timestamp: new Date().toISOString(),
-        },
-      ],
-      created_at: new Date().toISOString(),
-      last_activity: new Date().toISOString(),
-      total_messages: 1,
-    } as ChatConversation;
-  }, [endpoint]);
-
-  const fetchConversations = useCallback(async () => {
-    setLoadingConversations(true);
-    try {
-      // Fetch from the selected endpoint only
-      const apiEndpoint =
-        endpoint === "chat" ? "/api/chat/history" : "/api/langflow/history";
-
-      const response = await fetch(apiEndpoint);
-      if (response.ok) {
-        const history = await response.json();
-        const rawConversations = history.conversations || [];
-
-        // Cast conversations to proper type and ensure endpoint is correct
-        const conversations: ChatConversation[] = rawConversations.map(
-          (conv: RawConversation) => ({
-            ...conv,
-            endpoint: conv.endpoint as EndpointType,
-          })
-        );
-
-        // Sort conversations by last activity (most recent first)
-        conversations.sort((a: ChatConversation, b: ChatConversation) => {
-          const aTime = new Date(
-            a.last_activity || a.created_at || 0
-          ).getTime();
-          const bTime = new Date(
-            b.last_activity || b.created_at || 0
-          ).getTime();
-          return bTime - aTime;
-        });
-
-        setConversations(conversations);
-
-        // If no conversations exist and no placeholder is shown, create a default placeholder
-        if (conversations.length === 0 && !placeholderConversation) {
-          setPlaceholderConversation(createDefaultPlaceholder());
-        }
-      } else {
-        setConversations([]);
-
-        // Also create placeholder when request fails and no conversations exist
-        if (!placeholderConversation) {
-          setPlaceholderConversation(createDefaultPlaceholder());
-        }
-      }
-
-      // Conversation documents are now managed in chat context
-    } catch (error) {
-      console.error(`Failed to fetch ${endpoint} conversations:`, error);
-      setConversations([]);
-    } finally {
-      setLoadingConversations(false);
-    }
-  }, [
-    endpoint,
-    placeholderConversation,
-    setPlaceholderConversation,
-    createDefaultPlaceholder,
-  ]);
-
-  // Fetch chat conversations when on chat page, endpoint changes, or refresh is triggered
-  useEffect(() => {
-    if (isOnChatPage) {
-      fetchConversations();
-    }
-  }, [isOnChatPage, endpoint, refreshTrigger, fetchConversations]);
 
   // Clear placeholder when conversation count increases (new conversation was created)
   useEffect(() => {
@@ -326,7 +318,7 @@ export function Navigation() {
                   "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-lg transition-all",
                   route.active
                     ? "bg-accent text-accent-foreground shadow-sm"
-                    : "text-foreground hover:text-accent-foreground"
+                    : "text-foreground hover:text-accent-foreground",
                 )}
               >
                 <div className="flex items-center flex-1">
@@ -335,7 +327,7 @@ export function Navigation() {
                       "h-4 w-4 mr-3 shrink-0",
                       route.active
                         ? "text-accent-foreground"
-                        : "text-muted-foreground group-hover:text-foreground"
+                        : "text-muted-foreground group-hover:text-foreground",
                     )}
                   />
                   {route.label}
@@ -366,6 +358,7 @@ export function Navigation() {
                 Conversations
               </h3>
               <button
+                type="button"
                 className="p-1 hover:bg-accent rounded"
                 onClick={handleNewConversation}
                 title="Start new conversation"
@@ -379,7 +372,7 @@ export function Navigation() {
           <div className="px-3 flex-1 min-h-0 flex flex-col">
             {/* Conversations List - grows naturally, doesn't fill all space */}
             <div className="flex-shrink-0 overflow-y-auto scrollbar-hide space-y-1 max-h-full">
-              {loadingNewConversation ? (
+              {loadingNewConversation || isConversationsLoading ? (
                 <div className="text-sm text-muted-foreground p-2">
                   Loading...
                 </div>
@@ -387,8 +380,9 @@ export function Navigation() {
                 <>
                   {/* Show placeholder conversation if it exists */}
                   {placeholderConversation && (
-                    <div
-                      className="p-2 rounded-lg bg-accent/50 border border-dashed border-accent cursor-pointer group"
+                    <button
+                      type="button"
+                      className="w-full p-2 rounded-lg bg-accent/50 border border-dashed border-accent cursor-pointer group text-left"
                       onClick={() => {
                         // Don't load placeholder as a real conversation, just focus the input
                         if (typeof window !== "undefined") {
@@ -402,7 +396,7 @@ export function Navigation() {
                       <div className="text-xs text-muted-foreground">
                         Start typing to begin...
                       </div>
-                    </div>
+                    </button>
                   )}
 
                   {/* Show regular conversations */}
@@ -412,9 +406,10 @@ export function Navigation() {
                     </div>
                   ) : (
                     conversations.map((conversation) => (
-                      <div
+                      <button
                         key={conversation.response_id}
-                        className={`p-2 rounded-lg group ${
+                        type="button"
+                        className={`w-full p-2 rounded-lg group relative text-left ${
                           loading
                             ? "opacity-50 cursor-not-allowed"
                             : "hover:bg-accent cursor-pointer"
@@ -428,21 +423,39 @@ export function Navigation() {
                           loadConversation(conversation);
                           refreshConversations();
                         }}
+                        disabled={loading}
                       >
-                        <div className="text-sm font-medium text-foreground mb-1 truncate">
-                          {conversation.title}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {conversation.total_messages} messages
-                        </div>
-                        {conversation.last_activity && (
-                          <div className="text-xs text-muted-foreground">
-                            {new Date(
-                              conversation.last_activity
-                            ).toLocaleDateString()}
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-foreground mb-1 truncate">
+                              {conversation.title}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {conversation.total_messages} messages
+                            </div>
+                            {conversation.last_activity && (
+                              <div className="text-xs text-muted-foreground">
+                                {new Date(
+                                  conversation.last_activity,
+                                ).toLocaleDateString()}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                          <button
+                            type="button"
+                            onClick={(e) =>
+                              handleDeleteConversation(conversation, e)
+                            }
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive ml-2 flex-shrink-0"
+                            title="Delete conversation"
+                            disabled={
+                              loading || deleteSessionMutation.isPending
+                            }
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </button>
                     ))
                   )}
                 </>
@@ -456,6 +469,7 @@ export function Navigation() {
                   Conversation knowledge
                 </h3>
                 <button
+                  type="button"
                   onClick={handleFilePickerClick}
                   className="p-1 hover:bg-accent rounded"
                   disabled={loading}
@@ -476,9 +490,9 @@ export function Navigation() {
                     No documents yet
                   </div>
                 ) : (
-                  conversationDocs.map((doc, index) => (
+                  conversationDocs.map((doc) => (
                     <div
-                      key={index}
+                      key={`${doc.filename}-${doc.uploadTime.getTime()}`}
                       className="p-2 rounded-lg hover:bg-accent cursor-pointer group flex items-center"
                     >
                       <FileText className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
@@ -495,6 +509,18 @@ export function Navigation() {
           </div>
         </div>
       )}
+
+      {/* Delete Session Modal */}
+      <DeleteSessionModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setConversationToDelete(null);
+        }}
+        onConfirm={confirmDeleteConversation}
+        sessionTitle={conversationToDelete?.title || ""}
+        isDeleting={deleteSessionMutation.isPending}
+      />
     </div>
   );
 }
