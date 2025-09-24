@@ -739,8 +739,9 @@ function KnowledgeSourcesPage() {
                   settings.knowledge?.embedding_model || modelsData?.embedding_models?.find(m => m.default)?.value || "text-embedding-ada-002"
                 }
                 onValueChange={handleEmbeddingModelChange}
+                disabled={true}
               >
-                <SelectTrigger id="embedding-model-select">
+                <SelectTrigger id="embedding-model-select" disabled={true}>
                   <SelectValue placeholder="Select an embedding model" />
                 </SelectTrigger>
                 <SelectContent>

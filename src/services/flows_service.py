@@ -400,6 +400,128 @@ class FlowsService:
                 return node
         return None
 
+    def _find_node_in_flow(self, flow_data, node_id=None, display_name=None):
+        """
+        Helper function to find a node in flow data by ID or display name.
+        Returns tuple of (node, node_index) or (None, None) if not found.
+        """
+        nodes = flow_data.get("data", {}).get("nodes", [])
+
+        for i, node in enumerate(nodes):
+            node_data = node.get("data", {})
+            node_template = node_data.get("node", {})
+
+            # Check by ID if provided
+            if node_id and node_data.get("id") == node_id:
+                return node, i
+
+            # Check by display_name if provided
+            if display_name and node_template.get("display_name") == display_name:
+                return node, i
+
+        return None, None
+
+    async def _update_flow_field(self, flow_id: str, field_name: str, field_value: str, node_display_name: str = None, node_id: str = None):
+        """
+        Generic helper function to update any field in any Langflow component.
+
+        Args:
+            flow_id: The ID of the flow to update
+            field_name: The name of the field to update (e.g., 'model_name', 'system_message', 'docling_serve_opts')
+            field_value: The new value to set
+            node_display_name: The display name to search for (optional)
+            node_id: The node ID to search for (optional, used as fallback or primary)
+        """
+        if not flow_id:
+            raise ValueError("flow_id is required")
+
+        # Get the current flow data from Langflow
+        response = await clients.langflow_request(
+            "GET", f"/api/v1/flows/{flow_id}"
+        )
+
+        if response.status_code != 200:
+            raise Exception(f"Failed to get flow: HTTP {response.status_code} - {response.text}")
+
+        flow_data = response.json()
+
+        # Find the target component by display name first, then by ID as fallback
+        target_node, target_node_index = None, None
+        if node_display_name:
+            target_node, target_node_index = self._find_node_in_flow(flow_data, display_name=node_display_name)
+
+        if target_node is None and node_id:
+            target_node, target_node_index = self._find_node_in_flow(flow_data, node_id=node_id)
+
+        if target_node is None:
+            identifier = node_display_name or node_id
+            raise Exception(f"Component '{identifier}' not found in flow {flow_id}")
+
+        # Update the field value directly in the existing node
+        template = target_node.get("data", {}).get("node", {}).get("template", {})
+        if template.get(field_name):
+            flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["value"] = field_value
+        else:
+            identifier = node_display_name or node_id
+            raise Exception(f"{field_name} field not found in {identifier} component")
+
+        # Update the flow via PATCH request
+        patch_response = await clients.langflow_request(
+            "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
+        )
+
+        if patch_response.status_code != 200:
+            raise Exception(f"Failed to update flow: HTTP {patch_response.status_code} - {patch_response.text}")
+
+    async def update_chat_flow_model(self, model_name: str):
+        """Helper function to update the model in the chat flow"""
+        if not LANGFLOW_CHAT_FLOW_ID:
+            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
+        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "model_name", model_name,
+                                node_display_name="Language Model",
+                                node_id="LanguageModelComponent-0YME7")
+
+    async def update_chat_flow_system_prompt(self, system_prompt: str):
+        """Helper function to update the system prompt in the chat flow"""
+        if not LANGFLOW_CHAT_FLOW_ID:
+            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
+        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "system_message", system_prompt,
+                                node_display_name="Language Model",
+                                node_id="LanguageModelComponent-0YME7")
+
+    async def update_flow_docling_preset(self, preset: str, preset_config: dict):
+        """Helper function to update docling preset in the ingest flow"""
+        if not LANGFLOW_INGEST_FLOW_ID:
+            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+
+        from config.settings import DOCLING_COMPONENT_ID
+        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "docling_serve_opts", preset_config,
+                                node_id=DOCLING_COMPONENT_ID)
+
+    async def update_ingest_flow_chunk_size(self, chunk_size: int):
+        """Helper function to update chunk size in the ingest flow"""
+        if not LANGFLOW_INGEST_FLOW_ID:
+            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "chunk_size", chunk_size,
+                                node_display_name="Split Text",
+                                node_id="SplitText-3ZI5B")
+
+    async def update_ingest_flow_chunk_overlap(self, chunk_overlap: int):
+        """Helper function to update chunk overlap in the ingest flow"""
+        if not LANGFLOW_INGEST_FLOW_ID:
+            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "chunk_overlap", chunk_overlap,
+                                node_display_name="Split Text",
+                                node_id="SplitText-3ZI5B")
+
+    async def update_ingest_flow_embedding_model(self, embedding_model: str):
+        """Helper function to update embedding model in the ingest flow"""
+        if not LANGFLOW_INGEST_FLOW_ID:
+            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "model", embedding_model,
+                                node_display_name="Embedding Model",
+                                node_id="EmbeddingModel-eZ6bT")
+
     def _replace_node_in_flow(self, flow_data, old_id, new_node):
         """Replace a node in the flow data"""
         nodes = flow_data.get("data", {}).get("nodes", [])
