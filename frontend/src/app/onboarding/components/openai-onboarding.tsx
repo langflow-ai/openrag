@@ -49,6 +49,15 @@ export function OpenAIOnboarding({
     setSampleDataset(dataset);
   };
 
+  const handleGetFromEnvChange = (fromEnv: boolean) => {
+    setGetFromEnv(fromEnv);
+    if (fromEnv) {
+      setApiKey("");
+    }
+    setLanguageModel("");
+    setEmbeddingModel("");
+  };
+
   // Update settings when values change
   useUpdateSettings(
     "openai",
@@ -67,7 +76,10 @@ export function OpenAIOnboarding({
           id="get-api-key"
           flex
         >
-          <Switch checked={getFromEnv} onCheckedChange={setGetFromEnv} />
+          <Switch
+            checked={getFromEnv}
+            onCheckedChange={handleGetFromEnvChange}
+          />
         </LabelWrapper>
         {!getFromEnv && (
           <div className="space-y-1">
