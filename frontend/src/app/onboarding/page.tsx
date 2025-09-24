@@ -134,9 +134,8 @@ function OnboardingPage() {
       <div className="flex flex-col items-center gap-5 min-h-[550px] w-full z-10">
         <div className="flex flex-col items-center justify-center gap-4">
           <h1 className="text-2xl font-medium font-chivo">
-            Configure your models
+            Connect a model provider
           </h1>
-          <p className="text-sm text-muted-foreground">[description of task]</p>
         </div>
         <Card className="w-full max-w-[580px]">
           <Tabs
