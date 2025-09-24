@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  EllipsisVertical,
   FileText,
   Library,
   MessageSquare,
+  MoreHorizontal,
   Plus,
   Settings2,
   Trash2,
@@ -13,6 +15,12 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useDeleteSessionMutation } from "@/app/api/queries/useDeleteSessionMutation";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { cn } from "@/lib/utils";
@@ -236,12 +244,28 @@ export function Navigation({
 
   const handleDeleteConversation = (
     conversation: ChatConversation,
-    event: React.MouseEvent,
+    event?: React.MouseEvent,
   ) => {
-    event.preventDefault();
-    event.stopPropagation();
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     setConversationToDelete(conversation);
     setDeleteModalOpen(true);
+  };
+
+  const handleContextMenuAction = (
+    action: string,
+    conversation: ChatConversation,
+  ) => {
+    switch (action) {
+      case "delete":
+        handleDeleteConversation(conversation);
+        break;
+      // Add more actions here in the future (rename, duplicate, etc.)
+      default:
+        break;
+    }
   };
 
   const confirmDeleteConversation = () => {
@@ -409,7 +433,7 @@ export function Navigation({
                       <button
                         key={conversation.response_id}
                         type="button"
-                        className={`w-full p-3 rounded-lg group relative text-left ${
+                        className={`w-full px-3 pr-2 h-11 rounded-lg group relative text-left ${
                           loading
                             ? "opacity-50 cursor-not-allowed"
                             : "hover:bg-accent cursor-pointer"
@@ -425,25 +449,49 @@ export function Navigation({
                         }}
                         disabled={loading}
                       >
-                        <div className="flex items-start justify-between">
+                        <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium text-foreground truncate">
                               {conversation.title}
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={(e) =>
-                              handleDeleteConversation(conversation, e)
-                            }
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive ml-2 flex-shrink-0"
-                            title="Delete conversation"
-                            disabled={
-                              loading || deleteSessionMutation.isPending
-                            }
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0"
+                                title="More options"
+                                disabled={
+                                  loading || deleteSessionMutation.isPending
+                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                }}
+                              >
+                                <EllipsisVertical className="h-4 w-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              side="bottom"
+                              align="end"
+                              className="w-48"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleContextMenuAction(
+                                    "delete",
+                                    conversation,
+                                  );
+                                }}
+                                className="cursor-pointer text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete conversation
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </button>
                     ))
