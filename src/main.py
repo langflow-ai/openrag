@@ -971,11 +971,22 @@ async def create_app():
             "/onboarding",
             require_auth(services["session_manager"])(
                 partial(
-                    settings.onboarding, 
+                    settings.onboarding,
                     flows_service=services["flows_service"]
                 )
             ),
             methods=["POST"],
+        ),
+        # Docling preset update endpoint
+        Route(
+            "/settings/docling-preset",
+            require_auth(services["session_manager"])(
+                partial(
+                    settings.update_docling_preset,
+                    session_manager=services["session_manager"]
+                )
+            ),
+            methods=["PATCH"],
         ),
         Route(
             "/nudges",
