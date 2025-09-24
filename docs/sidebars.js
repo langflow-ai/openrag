@@ -27,6 +27,12 @@ const sidebars = {
         },
         {
           type: "doc",
+          id: "get-started/quickstart",
+          label: "Quickstart"
+        },
+
+        {
+          type: "doc",
           id: "get-started/docker",
           label: "Docker Deployment"
         },
