@@ -186,18 +186,22 @@ function OnboardingPage() {
           <CardFooter className="flex justify-end">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  onClick={handleComplete}
-                  disabled={!isComplete}
-                  loading={onboardingMutation.isPending}
-                >
-                  Complete
-                </Button>
+                <div>
+                  <Button
+                    size="sm"
+                    onClick={handleComplete}
+                    disabled={!isComplete}
+                    loading={onboardingMutation.isPending}
+                  >
+                    Complete
+                  </Button>
+                </div>
               </TooltipTrigger>
-              <TooltipContent>
-                {!isComplete ? "Please fill in all required fields" : ""}
-              </TooltipContent>
+              {!isComplete && (
+                <TooltipContent>
+                  Please fill in all required fields
+                </TooltipContent>
+              )}
             </Tooltip>
           </CardFooter>
         </Card>

@@ -104,7 +104,7 @@ export function IBMOnboarding({
       <div className="space-y-4">
         <LabelWrapper
           label="watsonx.ai API Endpoint"
-          helperText="The API endpoint for your watsonx.ai account."
+          helperText="Base URL of the API"
           id="api-endpoint"
           required
         >
@@ -143,16 +143,9 @@ export function IBMOnboarding({
         )}
         {modelsError && (
           <p className="text-mmd text-accent-amber-foreground">
-            Invalid configuration or connection failed
+            Connection failed. Check your configuration.
           </p>
         )}
-        {modelsData &&
-          (modelsData.language_models?.length > 0 ||
-            modelsData.embedding_models?.length > 0) && (
-            <p className="text-mmd text-accent-emerald-foreground">
-              Configuration is valid
-            </p>
-          )}
       </div>
       <AdvancedOnboarding
         icon={<IBMLogo className="w-4 h-4" />}

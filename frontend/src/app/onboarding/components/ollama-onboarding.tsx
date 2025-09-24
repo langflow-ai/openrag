@@ -73,8 +73,8 @@ export function OllamaOnboarding({
       <div className="space-y-4">
         <div className="space-y-1">
           <LabelInput
-            label="Ollama Endpoint"
-            helperText="The endpoint for your Ollama server."
+            label="Ollama Base URL"
+            helperText="Base URL of your Ollama server"
             id="api-endpoint"
             required
             placeholder="http://localhost:11434"
@@ -88,43 +88,41 @@ export function OllamaOnboarding({
           )}
           {hasConnectionError && (
             <p className="text-mmd text-accent-amber-foreground">
-              Can’t reach Ollama at {debouncedEndpoint}. Update the endpoint or
+              Can’t reach Ollama at {debouncedEndpoint}. Update the base URL or
               start the server.
             </p>
           )}
           {hasNoModels && (
             <p className="text-mmd text-accent-amber-foreground">
-              No models found. Please install some models on your Ollama server.
-            </p>
-          )}
-          {isValidConnection && (
-            <p className="text-mmd text-accent-emerald-foreground">
-              Connected successfully
+              No models found. Install embedding and agent models on your Ollama
+              server.
             </p>
           )}
         </div>
         <LabelWrapper
           label="Embedding model"
-          helperText="The embedding model for your Ollama server."
+          helperText="Model used for knowledge ingest and retrieval"
           id="embedding-model"
           required={true}
         >
           <ModelSelector
             options={embeddingModels}
             icon={<OllamaLogo className="w-4 h-4" />}
+            noOptionsPlaceholder="No embedding models detected. Install an embedding model to continue."
             value={embeddingModel}
             onValueChange={setEmbeddingModel}
           />
         </LabelWrapper>
         <LabelWrapper
           label="Language model"
-          helperText="The embedding model for your Ollama server."
+          helperText="Model used for chat"
           id="embedding-model"
           required={true}
         >
           <ModelSelector
             options={languageModels}
             icon={<OllamaLogo className="w-4 h-4" />}
+            noOptionsPlaceholder="No language models detected. Install a language model to continue."
             value={languageModel}
             onValueChange={setLanguageModel}
           />

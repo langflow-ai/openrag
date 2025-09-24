@@ -71,16 +71,9 @@ export function OpenAIOnboarding({
         )}
         {modelsError && (
           <p className="text-mmd text-accent-amber-foreground">
-            Invalid API key
+            Invalid OpenAI API key. Verify or replace the key.
           </p>
         )}
-        {modelsData &&
-          (modelsData.language_models?.length > 0 ||
-            modelsData.embedding_models?.length > 0) && (
-            <p className="text-mmd text-accent-emerald-foreground">
-              API Key is valid
-            </p>
-          )}
       </div>
       <AdvancedOnboarding
         icon={<OpenAILogo className="w-4 h-4" />}
