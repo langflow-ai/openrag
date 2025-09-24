@@ -735,7 +735,7 @@ function KnowledgeSourcesPage() {
               <ConfirmationDialog
                 trigger={
                   <Button ignoreTitleCase={true} variant="outline">
-                    Restore Flow
+                    Restore flow
                   </Button>
                 }
                 title="Restore default Retrieval flow"
@@ -798,7 +798,7 @@ function KnowledgeSourcesPage() {
           <div className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="model-select" className="text-base font-medium">
-                Language Model
+                Language model
               </Label>
               <Select
                 value={
@@ -885,7 +885,11 @@ function KnowledgeSourcesPage() {
             </div>
             <div className="flex gap-2">
               <ConfirmationDialog
-                trigger={<Button variant="outline">Restore flow</Button>}
+                trigger={
+                  <Button ignoreTitleCase={true} variant="outline">
+                    Restore flow
+                  </Button>
+                }
                 title="Restore default Ingest flow"
                 description="This restores defaults and discards all custom settings and overrides. This can't be undone."
                 confirmText="Restore"
@@ -949,9 +953,11 @@ function KnowledgeSourcesPage() {
                 htmlFor="embedding-model-select"
                 className="text-base font-medium"
               >
-                Embedding Model
+                Embedding model
               </Label>
               <Select
+                // Disabled until API supports multiple embedding models
+                disabled={true}
                 value={
                   settings.knowledge?.embedding_model ||
                   modelsData?.embedding_models?.find((m) => m.default)?.value ||
@@ -976,7 +982,7 @@ function KnowledgeSourcesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="chunk-size" className="text-base font-medium">
-                  Chunk Size
+                  Chunk size
                 </Label>
                 <div className="relative">
                   <Input
@@ -999,7 +1005,7 @@ function KnowledgeSourcesPage() {
                   htmlFor="chunk-overlap"
                   className="text-base font-medium"
                 >
-                  Chunk Overlap
+                  Chunk overlap
                 </Label>
                 <div className="relative">
                   <Input
@@ -1019,7 +1025,7 @@ function KnowledgeSourcesPage() {
               </div>
             </div>
             <div className="space-y-3">
-              <Label className="text-base font-medium">Ingest Presets</Label>
+              <Label className="text-base font-medium">Ingestion presets</Label>
               <RadioGroup
                 value={processingMode}
                 onValueChange={handleProcessingModeChange}
@@ -1032,10 +1038,11 @@ function KnowledgeSourcesPage() {
                       htmlFor="standard"
                       className="text-base font-medium cursor-pointer"
                     >
-                      Standard
+                      No OCR
                     </Label>
                     <div className="text-sm text-muted-foreground">
-                      Fast ingest for text-based documents without images
+                      Fast ingest for documents with selectable text. Images are
+                      ignored.
                     </div>
                   </div>
                 </div>
@@ -1046,11 +1053,10 @@ function KnowledgeSourcesPage() {
                       htmlFor="ocr"
                       className="text-base font-medium cursor-pointer"
                     >
-                      Extract text from images
+                      OCR
                     </Label>
                     <div className="text-sm text-muted-foreground">
-                      Uses OCR to extract text from images/PDFs. Ingest is
-                      slower when enabled
+                      Extracts text from images and scanned pages.
                     </div>
                   </div>
                 </div>
@@ -1064,10 +1070,11 @@ function KnowledgeSourcesPage() {
                       htmlFor="picture_description"
                       className="text-base font-medium cursor-pointer"
                     >
-                      Generate Description
+                      OCR + Captions
                     </Label>
                     <div className="text-sm text-muted-foreground">
-                      Text extraction plust AI generated image descriptions
+                      Extracts text from images and scanned pages. Generates
+                      short image captions.
                     </div>
                   </div>
                 </div>
@@ -1078,11 +1085,11 @@ function KnowledgeSourcesPage() {
                       htmlFor="VLM"
                       className="text-base font-medium cursor-pointer"
                     >
-                      AI Vision
+                      VLM
                     </Label>
                     <div className="text-sm text-muted-foreground">
-                      Advanced processing with vision language models. Highest
-                      quality but most expensive
+                      Extracts text with layout-aware parsing of tables and
+                      sections using a vision-language model.
                     </div>
                   </div>
                 </div>
