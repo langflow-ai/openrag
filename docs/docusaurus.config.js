@@ -71,7 +71,6 @@ const config = {
         logo: {
           alt: 'OpenRAG Logo',
           src: 'img/logo.svg',
-          href: '/',
         },
         items: [
           {
@@ -89,7 +88,7 @@ const config = {
             items: [
               {
                 label: 'Getting Started',
-                to: '/',
+                to: 'get-started/docker',
               },
             ],
           },
