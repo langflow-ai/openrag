@@ -37,6 +37,7 @@ import { useTask } from "@/contexts/task-context";
 import { useDebounce } from "@/lib/debounce";
 import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
 import { ModelSelectItems } from "./helpers/model-select-item";
+import { LabelWrapper } from "@/components/label-wrapper";
 
 const MAX_SYSTEM_PROMPT_CHARS = 2000;
 
@@ -797,29 +798,35 @@ function KnowledgeSourcesPage() {
         <CardContent>
           <div className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="model-select" className="text-base font-medium">
-                Language model
-                <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={
-                  settings.agent?.llm_model ||
-                  modelsData?.language_models?.find((m) => m.default)?.value ||
-                  "gpt-4"
-                }
-                onValueChange={handleModelChange}
+              <LabelWrapper
+                helperText=""
+                id="model-select"
+                label="Language model"
+                required
               >
-                <SelectTrigger id="model-select">
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  <ModelSelectItems
-                    models={modelsData?.language_models}
-                    fallbackModels={getFallbackModels(currentProvider).language}
-                    provider={currentProvider}
-                  />
-                </SelectContent>
-              </Select>
+                <Select
+                  value={
+                    settings.agent?.llm_model ||
+                    modelsData?.language_models?.find((m) => m.default)
+                      ?.value ||
+                    "gpt-4"
+                  }
+                  onValueChange={handleModelChange}
+                >
+                  <SelectTrigger id="model-select">
+                    <SelectValue placeholder="Select a model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <ModelSelectItems
+                      models={modelsData?.language_models}
+                      fallbackModels={
+                        getFallbackModels(currentProvider).language
+                      }
+                      provider={currentProvider}
+                    />
+                  </SelectContent>
+                </Select>
+              </LabelWrapper>
             </div>
             <div className="space-y-2">
               <Label htmlFor="system-prompt" className="text-base font-medium">
@@ -950,35 +957,36 @@ function KnowledgeSourcesPage() {
         <CardContent>
           <div className="space-y-6">
             <div className="space-y-2">
-              <Label
-                htmlFor="embedding-model-select"
-                className="text-base font-medium"
+              <LabelWrapper
+                helperText="Some helping text"
+                id="embedding-model-select"
+                label="Embedding model"
               >
-                Embedding model
-              </Label>
-              <Select
-                // Disabled until API supports multiple embedding models
-                disabled={true}
-                value={
-                  settings.knowledge?.embedding_model ||
-                  modelsData?.embedding_models?.find((m) => m.default)?.value ||
-                  "text-embedding-ada-002"
-                }
-                onValueChange={handleEmbeddingModelChange}
-              >
-                <SelectTrigger id="embedding-model-select">
-                  <SelectValue placeholder="Select an embedding model" />
-                </SelectTrigger>
-                <SelectContent>
-                  <ModelSelectItems
-                    models={modelsData?.embedding_models}
-                    fallbackModels={
-                      getFallbackModels(currentProvider).embedding
-                    }
-                    provider={currentProvider}
-                  />
-                </SelectContent>
-              </Select>
+                <Select
+                  // Disabled until API supports multiple embedding models
+                  disabled={true}
+                  value={
+                    settings.knowledge?.embedding_model ||
+                    modelsData?.embedding_models?.find((m) => m.default)
+                      ?.value ||
+                    "text-embedding-ada-002"
+                  }
+                  onValueChange={handleEmbeddingModelChange}
+                >
+                  <SelectTrigger id="embedding-model-select">
+                    <SelectValue placeholder="Select an embedding model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <ModelSelectItems
+                      models={modelsData?.embedding_models}
+                      fallbackModels={
+                        getFallbackModels(currentProvider).embedding
+                      }
+                      provider={currentProvider}
+                    />
+                  </SelectContent>
+                </Select>
+              </LabelWrapper>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
