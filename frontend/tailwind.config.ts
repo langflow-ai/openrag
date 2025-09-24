@@ -4,6 +4,7 @@ import tailwindcssTypography from "@tailwindcss/typography";
 import { fontFamily } from "tailwindcss/defaultTheme";
 import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
+import tailwindcssLineClamp from "@tailwindcss/line-clamp";
 
 const config = {
   darkMode: ["class"],
@@ -175,6 +176,7 @@ const config = {
   },
   plugins: [
     tailwindcssAnimate,
+    tailwindcssLineClamp,
     tailwindcssForms({
       strategy: "class",
     }),

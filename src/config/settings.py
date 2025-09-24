@@ -496,11 +496,17 @@ class AppClients:
 WATSONX_LLM_COMPONENT_PATH = os.getenv(
     "WATSONX_LLM_COMPONENT_PATH", "flows/components/watsonx_llm.json"
 )
+WATSONX_LLM_TEXT_COMPONENT_PATH = os.getenv(
+    "WATSONX_LLM_TEXT_COMPONENT_PATH", "flows/components/watsonx_llm_text.json"
+)
 WATSONX_EMBEDDING_COMPONENT_PATH = os.getenv(
     "WATSONX_EMBEDDING_COMPONENT_PATH", "flows/components/watsonx_embedding.json"
 )
 OLLAMA_LLM_COMPONENT_PATH = os.getenv(
     "OLLAMA_LLM_COMPONENT_PATH", "flows/components/ollama_llm.json"
+)
+OLLAMA_LLM_TEXT_COMPONENT_PATH = os.getenv(
+    "OLLAMA_LLM_TEXT_COMPONENT_PATH", "flows/components/ollama_llm_text.json"
 )
 OLLAMA_EMBEDDING_COMPONENT_PATH = os.getenv(
     "OLLAMA_EMBEDDING_COMPONENT_PATH", "flows/components/ollama_embedding.json"
@@ -514,6 +520,9 @@ OPENAI_EMBEDDING_COMPONENT_ID = os.getenv(
 OPENAI_LLM_COMPONENT_ID = os.getenv(
     "OPENAI_LLM_COMPONENT_ID", "LanguageModelComponent-0YME7"
 )
+OPENAI_LLM_TEXT_COMPONENT_ID = os.getenv(
+    "OPENAI_LLM_TEXT_COMPONENT_ID", "LanguageModelComponent-NSTA6"
+)
 
 # Provider-specific component IDs
 WATSONX_EMBEDDING_COMPONENT_ID = os.getenv(
@@ -522,11 +531,21 @@ WATSONX_EMBEDDING_COMPONENT_ID = os.getenv(
 WATSONX_LLM_COMPONENT_ID = os.getenv(
     "WATSONX_LLM_COMPONENT_ID", "IBMwatsonxModel-jA4Nw"
 )
+WATSONX_LLM_TEXT_COMPONENT_ID = os.getenv(
+    "WATSONX_LLM_TEXT_COMPONENT_ID", "IBMwatsonxModel-18kmA"
+)
+
 
 OLLAMA_EMBEDDING_COMPONENT_ID = os.getenv(
     "OLLAMA_EMBEDDING_COMPONENT_ID", "OllamaEmbeddings-4ah5Q"
 )
 OLLAMA_LLM_COMPONENT_ID = os.getenv("OLLAMA_LLM_COMPONENT_ID", "OllamaModel-eCsJx")
+OLLAMA_LLM_TEXT_COMPONENT_ID = os.getenv(
+    "OLLAMA_LLM_TEXT_COMPONENT_ID", "OllamaModel-XDGqZ"
+)
+
+# Docling component ID for ingest flow
+DOCLING_COMPONENT_ID = os.getenv("DOCLING_COMPONENT_ID", "DoclingRemote-78KoX")
 
 # Global clients instance
 clients = AppClients()

@@ -2,7 +2,9 @@
   "data": {
     "id": "WatsonxEmbeddingsComponent-pJfXI",
     "node": {
-      "base_classes": ["Embeddings"],
+      "base_classes": [
+        "Embeddings"
+      ],
       "beta": false,
       "conditional_paths": [],
       "custom_fields": {},
@@ -20,6 +22,7 @@
       ],
       "frozen": false,
       "icon": "WatsonxAI",
+      "last_updated": "2025-09-22T20:11:38.181Z",
       "legacy": false,
       "metadata": {
         "code_hash": "b6c6d50cc7ed",
@@ -43,7 +46,7 @@
             },
             {
               "name": "langflow",
-              "version": "1.5.0.post2"
+              "version": null
             }
           ],
           "total_dependencies": 5
@@ -60,9 +63,13 @@
           "group_outputs": false,
           "method": "build_embeddings",
           "name": "embeddings",
+          "options": null,
+          "required_inputs": null,
           "selected": "Embeddings",
           "tool_mode": true,
-          "types": ["Embeddings"],
+          "types": [
+            "Embeddings"
+          ],
           "value": "__UNDEFINED__"
         }
       ],
@@ -131,7 +138,16 @@
           "dynamic": true,
           "info": "",
           "name": "model_name",
-          "options": [],
+          "options": [
+            "ibm/granite-embedding-107m-multilingual",
+            "ibm/granite-embedding-278m-multilingual",
+            "ibm/slate-125m-english-rtrvr",
+            "ibm/slate-125m-english-rtrvr-v2",
+            "ibm/slate-30m-english-rtrvr",
+            "ibm/slate-30m-english-rtrvr-v2",
+            "intfloat/multilingual-e5-large",
+            "sentence-transformers/all-minilm-l6-v2"
+          ],
           "options_metadata": [],
           "placeholder": "",
           "required": true,
@@ -140,7 +156,8 @@
           "toggle": false,
           "tool_mode": false,
           "trace_as_metadata": true,
-          "type": "str"
+          "type": "str",
+          "value": "ibm/granite-embedding-107m-multilingual"
         },
         "project_id": {
           "_input_type": "StrInput",
@@ -205,7 +222,8 @@
           "toggle": false,
           "tool_mode": false,
           "trace_as_metadata": true,
-          "type": "str"
+          "type": "str",
+          "value": "https://us-south.ml.cloud.ibm.com"
         }
       },
       "tool_mode": false
@@ -213,14 +231,15 @@
     "showNode": true,
     "type": "WatsonxEmbeddingsComponent"
   },
+  "dragging": false,
   "id": "WatsonxEmbeddingsComponent-pJfXI",
   "measured": {
     "height": 467,
     "width": 320
   },
   "position": {
-    "x": 999.129592360849,
-    "y": 753.2332292351236
+    "x": 364.4406919374723,
+    "y": 282.29319267029086
   },
   "selected": false,
   "type": "genericNode"

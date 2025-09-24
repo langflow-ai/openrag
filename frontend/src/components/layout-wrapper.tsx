@@ -1,10 +1,8 @@
 "use client";
 
 import { Bell, Loader2 } from "lucide-react";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import { KnowledgeFilterDropdown } from "@/components/knowledge-filter-dropdown";
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import { Navigation } from "@/components/navigation";
 import { TaskNotificationMenu } from "@/components/task-notification-menu";
@@ -20,8 +18,7 @@ import Logo from "@/components/logo/logo";
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { tasks, isMenuOpen, toggleMenu } = useTask();
-  const { selectedFilter, setSelectedFilter, isPanelOpen } =
-    useKnowledgeFilter();
+  const { isPanelOpen } = useKnowledgeFilter();
   const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
   const { isLoading: isSettingsLoading, data: settings } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
@@ -36,7 +33,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     (task) =>
       task.status === "pending" ||
       task.status === "running" ||
-      task.status === "processing",
+      task.status === "processing"
   );
 
   // Show loading state when backend isn't ready
@@ -70,10 +67,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         <div className="header-end-division">
           <div className="header-end-display">
             {/* Knowledge Filter Dropdown */}
-            <KnowledgeFilterDropdown
+            {/* <KnowledgeFilterDropdown
               selectedFilter={selectedFilter}
               onFilterSelect={setSelectedFilter}
-            />
+            /> */}
 
             {/* GitHub Star Button */}
             {/* <GitHubStarButton repo="phact/openrag" /> */}
@@ -115,10 +112,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             isPanelOpen
             ? "md:pr-80"
             : // Only KF panel open: 320px
-              "md:pr-6" // Neither open: 24px
+              "md:pr-0" // Neither open: 24px
         }`}
       >
-        <div className="container py-6 lg:py-8">{children}</div>
+        <div className="container py-6 lg:py-8 px-4 lg:px-6">{children}</div>
       </main>
       <TaskNotificationMenu />
       <KnowledgeFilterPanel />

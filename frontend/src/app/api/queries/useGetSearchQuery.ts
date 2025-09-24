@@ -34,21 +34,28 @@ export interface ChunkResult {
 export interface File {
   filename: string;
   mimetype: string;
-  chunkCount: number;
-  avgScore: number;
+  chunkCount?: number;
+  avgScore?: number;
   source_url: string;
-  owner: string;
-  owner_name: string;
-  owner_email: string;
+  owner?: string;
+  owner_name?: string;
+  owner_email?: string;
   size: number;
   connector_type: string;
-  chunks: ChunkResult[];
+  status?:
+    | "processing"
+    | "active"
+    | "unavailable"
+    | "failed"
+    | "hidden"
+    | "sync";
+  chunks?: ChunkResult[];
 }
 
 export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">
+  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
 
@@ -149,7 +156,7 @@ export const useGetSearchQuery = (
         }
       });
 
-      const files: File[] = Array.from(fileMap.values()).map(file => ({
+      const files: File[] = Array.from(fileMap.values()).map((file) => ({
         filename: file.filename,
         mimetype: file.mimetype,
         chunkCount: file.chunks.length,
@@ -173,11 +180,11 @@ export const useGetSearchQuery = (
   const queryResult = useQuery(
     {
       queryKey: ["search", effectiveQuery],
-      placeholderData: prev => prev,
+      placeholderData: (prev) => prev,
       queryFn: getFiles,
       ...options,
     },
-    queryClient
+    queryClient,
   );
 
   return queryResult;
