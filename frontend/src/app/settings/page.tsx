@@ -799,6 +799,7 @@ function KnowledgeSourcesPage() {
             <div className="space-y-2">
               <Label htmlFor="model-select" className="text-base font-medium">
                 Language model
+                <span className="text-red-500">*</span>
               </Label>
               <Select
                 value={
