@@ -14,7 +14,8 @@ const buttonVariants = cva(
           "border border-input hover:bg-muted hover:text-accent-foreground disabled:bg-muted disabled:!border-none",
         primary:
           "border bg-background text-secondary-foreground hover:bg-muted hover:shadow-sm",
-        warning: "bg-warning text-secondary hover:bg-warning/90",
+        warning:
+          "bg-warning-foreground text-warning-text hover:bg-warning-foreground/90 hover:shadow-sm",
         secondary:
           "border border-muted bg-muted text-secondary-foreground hover:bg-secondary-foreground/5",
         ghost:
@@ -38,14 +39,14 @@ const buttonVariants = cva(
       variant: "default",
       size: "default",
     },
-  }
+  },
 );
 
 function toTitleCase(text: string) {
   return text
     ?.split(" ")
     ?.map(
-      (word) => word?.charAt(0)?.toUpperCase() + word?.slice(1)?.toLowerCase()
+      (word) => word?.charAt(0)?.toUpperCase() + word?.slice(1)?.toLowerCase(),
     )
     ?.join(" ");
 }
@@ -71,7 +72,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       ignoreTitleCase = false,
       ...props
     },
-    ref
+    ref,
   ) => {
     const Comp = asChild ? Slot : "button";
     let newChildren = children;
@@ -100,7 +101,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         )}
       </Comp>
     );
-  }
+  },
 );
 
 Button.displayName = "Button";
