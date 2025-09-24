@@ -409,7 +409,7 @@ export function Navigation({
                       <button
                         key={conversation.response_id}
                         type="button"
-                        className={`w-full p-2 rounded-lg group relative text-left ${
+                        className={`w-full p-3 rounded-lg group relative text-left ${
                           loading
                             ? "opacity-50 cursor-not-allowed"
                             : "hover:bg-accent cursor-pointer"
@@ -427,19 +427,9 @@ export function Navigation({
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-foreground mb-1 truncate">
+                            <div className="text-sm font-medium text-foreground truncate">
                               {conversation.title}
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {conversation.total_messages} messages
-                            </div>
-                            {conversation.last_activity && (
-                              <div className="text-xs text-muted-foreground">
-                                {new Date(
-                                  conversation.last_activity,
-                                ).toLocaleDateString()}
-                              </div>
-                            )}
                           </div>
                           <button
                             type="button"
