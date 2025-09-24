@@ -88,7 +88,7 @@ const config = {
             items: [
               {
                 label: 'Getting Started',
-                to: 'get-started/docker',
+                to: '/',
               },
             ],
           },
