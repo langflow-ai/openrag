@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { LabelInput } from "@/components/label-input";
+import { LabelWrapper } from "@/components/label-wrapper";
 import OpenAILogo from "@/components/logo/openai-logo";
+import { Switch } from "@/components/ui/switch";
 import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { useGetOpenAIModelsQuery } from "../../api/queries/useGetModelsQuery";
@@ -18,6 +20,7 @@ export function OpenAIOnboarding({
   setSampleDataset: (dataset: boolean) => void;
 }) {
   const [apiKey, setApiKey] = useState("");
+  const [getFromEnv, setGetFromEnv] = useState(true);
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
 
   // Fetch models from API when API key is provided
@@ -26,7 +29,12 @@ export function OpenAIOnboarding({
     isLoading: isLoadingModels,
     error: modelsError,
   } = useGetOpenAIModelsQuery(
-    debouncedApiKey ? { apiKey: debouncedApiKey } : undefined,
+    getFromEnv
+      ? { apiKey: "" }
+      : debouncedApiKey
+      ? { apiKey: debouncedApiKey }
+      : undefined,
+    { enabled: debouncedApiKey !== "" || getFromEnv },
   );
   // Use custom hook for model selection logic
   const {
@@ -53,26 +61,37 @@ export function OpenAIOnboarding({
   );
   return (
     <>
-      <div className="space-y-1">
-        <LabelInput
-          label="OpenAI API key"
-          helperText="The API key for your OpenAI account."
-          id="api-key"
-          type="password"
-          required
-          placeholder="sk-..."
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-        />
-        {isLoadingModels && (
-          <p className="text-mmd text-muted-foreground">
-            Validating API key...
-          </p>
-        )}
-        {modelsError && (
-          <p className="text-mmd text-accent-amber-foreground">
-            Invalid OpenAI API key. Verify or replace the key.
-          </p>
+      <div className="space-y-5">
+        <LabelWrapper
+          label="Get API key from environment variable"
+          id="get-api-key"
+          flex
+        >
+          <Switch checked={getFromEnv} onCheckedChange={setGetFromEnv} />
+        </LabelWrapper>
+        {!getFromEnv && (
+          <div className="space-y-1">
+            <LabelInput
+              label="OpenAI API key"
+              helperText="The API key for your OpenAI account."
+              id="api-key"
+              type="password"
+              required
+              placeholder="sk-..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            {isLoadingModels && (
+              <p className="text-mmd text-muted-foreground">
+                Validating API key...
+              </p>
+            )}
+            {modelsError && (
+              <p className="text-mmd text-accent-amber-foreground">
+                Invalid OpenAI API key. Verify or replace the key.
+              </p>
+            )}
+          </div>
         )}
       </div>
       <AdvancedOnboarding
