@@ -738,8 +738,8 @@ function KnowledgeSourcesPage() {
                     Restore Flow
                   </Button>
                 }
-                title="Restore default Agent flow"
-                description="This restores defaults and discards all custom settings and overrides. This can't be undone."
+                title="Restore default Retrieval flow"
+                description="This restores defaults and discards all custom settings and overrides. This can’t be undone."
                 confirmText="Restore"
                 variant="destructive"
                 onConfirm={handleRestoreRetrievalFlow}
@@ -772,8 +772,18 @@ function KnowledgeSourcesPage() {
                     Edit in Langflow
                   </Button>
                 }
-                title="Edit Agent flow in Langflow"
-                description="You're entering Langflow. You can edit the Agent flow and other underlying flows. Manual changes to components, wiring, or I/O can break this experience.\nYou can restore this flow from Settings."
+                title="Edit Retrieval flow in Langflow"
+                description={
+                  <>
+                    <p className="mb-2">
+                      You're entering Langflow. You can edit the{" "}
+                      <b>Retrieval flow</b> and other underlying flows. Manual
+                      changes to components, wiring, or I/O can break this
+                      experience.
+                    </p>
+                    <p>You can restore this flow from Settings.</p>
+                  </>
+                }
                 confirmText="Proceed"
                 confirmIcon={<ArrowUpRight />}
                 onConfirm={(closeDialog) =>
@@ -911,9 +921,17 @@ function KnowledgeSourcesPage() {
                   </Button>
                 }
                 title="Edit Ingest flow in Langflow"
-                description={`
-                  You're entering Langflow. You can edit the Ingest flow and other underlying flows. Manual changes to components, wiring, or I/O can break this experience. 
-                  You can restore this flow from Settings.`}
+                description={
+                  <>
+                    <p className="mb-2">
+                      You're entering Langflow. You can edit the{" "}
+                      <b>Ingest flow</b> and other underlying flows. Manual
+                      changes to components, wiring, or I/O can break this
+                      experience.
+                    </p>
+                    <p>You can restore this flow from Settings.</p>
+                  </>
+                }
                 confirmText="Proceed"
                 confirmIcon={<ArrowUpRight />}
                 variant="warning"
