@@ -1,6 +1,6 @@
-"use client";
+"use client"
 
-import { ReactNode, useState } from "react";
+import { ReactNode, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -9,19 +9,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 
 interface ConfirmationDialogProps {
-  trigger: ReactNode;
-  title: string;
-  description: string;
-  confirmText?: string;
-  cancelText?: string;
-  onConfirm: (closeDialog: () => void) => void;
-  onCancel?: () => void;
-  variant?: "default" | "destructive" | "warning";
-  confirmIcon?: ReactNode | null;
+  trigger: ReactNode
+  title: string
+  description: string
+  confirmText?: string
+  cancelText?: string
+  onConfirm: (closeDialog: () => void) => void
+  onCancel?: () => void
+  variant?: "default" | "destructive"
 }
 
 export function ConfirmationDialog({
@@ -32,24 +31,25 @@ export function ConfirmationDialog({
   cancelText = "Cancel",
   onConfirm,
   onCancel,
-  variant = "default",
-  confirmIcon = null,
+  variant = "default"
 }: ConfirmationDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
 
   const handleConfirm = () => {
-    const closeDialog = () => setOpen(false);
-    onConfirm(closeDialog);
-  };
+    const closeDialog = () => setOpen(false)
+    onConfirm(closeDialog)
+  }
 
   const handleCancel = () => {
-    onCancel?.();
-    setOpen(false);
-  };
+    onCancel?.()
+    setOpen(false)
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogTrigger asChild>
+        {trigger}
+      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="mb-4">{title}</DialogTitle>
@@ -58,15 +58,20 @@ export function ConfirmationDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="ghost" onClick={handleCancel} size="sm">
+          <Button
+            variant="outline"
+            onClick={handleCancel}
+          >
             {cancelText}
           </Button>
-          <Button variant={variant} onClick={handleConfirm} size="sm">
+          <Button
+            variant={variant}
+            onClick={handleConfirm}
+          >
             {confirmText}
-            {confirmIcon}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
+  )
 }
