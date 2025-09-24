@@ -182,6 +182,7 @@ async def update_settings(request, session_manager):
             "chunk_size",
             "chunk_overlap",
             "doclingPresets",
+            "embedding_model",
         }
 
         # Check for invalid fields
@@ -202,11 +203,53 @@ async def update_settings(request, session_manager):
             current_config.agent.llm_model = body["llm_model"]
             config_updated = True
 
+            # Also update the chat flow with the new model
+            try:
+                flows_service = _get_flows_service()
+                await flows_service.update_chat_flow_model(body["llm_model"])
+                logger.info(f"Successfully updated chat flow model to '{body['llm_model']}'")
+            except Exception as e:
+                logger.error(f"Failed to update chat flow model: {str(e)}")
+                # Don't fail the entire settings update if flow update fails
+                # The config will still be saved
+
         if "system_prompt" in body:
             current_config.agent.system_prompt = body["system_prompt"]
             config_updated = True
 
+            # Also update the chat flow with the new system prompt
+            try:
+                flows_service = _get_flows_service()
+                await flows_service.update_chat_flow_system_prompt(body["system_prompt"])
+                logger.info(f"Successfully updated chat flow system prompt")
+            except Exception as e:
+                logger.error(f"Failed to update chat flow system prompt: {str(e)}")
+                # Don't fail the entire settings update if flow update fails
+                # The config will still be saved
+
         # Update knowledge settings
+        if "embedding_model" in body:
+            if (
+                not isinstance(body["embedding_model"], str)
+                or not body["embedding_model"].strip()
+            ):
+                return JSONResponse(
+                    {"error": "embedding_model must be a non-empty string"},
+                    status_code=400,
+                )
+            current_config.knowledge.embedding_model = body["embedding_model"].strip()
+            config_updated = True
+
+            # Also update the ingest flow with the new embedding model
+            try:
+                flows_service = _get_flows_service()
+                await flows_service.update_ingest_flow_embedding_model(body["embedding_model"].strip())
+                logger.info(f"Successfully updated ingest flow embedding model to '{body['embedding_model'].strip()}'")
+            except Exception as e:
+                logger.error(f"Failed to update ingest flow embedding model: {str(e)}")
+                # Don't fail the entire settings update if flow update fails
+                # The config will still be saved
+
         if "doclingPresets" in body:
             preset_configs = get_docling_preset_configs()
             valid_presets = list(preset_configs.keys())
@@ -222,7 +265,8 @@ async def update_settings(request, session_manager):
 
             # Also update the flow with the new docling preset
             try:
-                await _update_flow_docling_preset(body["doclingPresets"], preset_configs[body["doclingPresets"]])
+                flows_service = _get_flows_service()
+                await flows_service.update_flow_docling_preset(body["doclingPresets"], preset_configs[body["doclingPresets"]])
                 logger.info(f"Successfully updated docling preset in flow to '{body['doclingPresets']}'")
             except Exception as e:
                 logger.error(f"Failed to update docling preset in flow: {str(e)}")
@@ -237,6 +281,16 @@ async def update_settings(request, session_manager):
             current_config.knowledge.chunk_size = body["chunk_size"]
             config_updated = True
 
+            # Also update the ingest flow with the new chunk size
+            try:
+                flows_service = _get_flows_service()
+                await flows_service.update_ingest_flow_chunk_size(body["chunk_size"])
+                logger.info(f"Successfully updated ingest flow chunk size to {body['chunk_size']}")
+            except Exception as e:
+                logger.error(f"Failed to update ingest flow chunk size: {str(e)}")
+                # Don't fail the entire settings update if flow update fails
+                # The config will still be saved
+
         if "chunk_overlap" in body:
             if not isinstance(body["chunk_overlap"], int) or body["chunk_overlap"] < 0:
                 return JSONResponse(
@@ -245,6 +299,16 @@ async def update_settings(request, session_manager):
                 )
             current_config.knowledge.chunk_overlap = body["chunk_overlap"]
             config_updated = True
+
+            # Also update the ingest flow with the new chunk overlap
+            try:
+                flows_service = _get_flows_service()
+                await flows_service.update_ingest_flow_chunk_overlap(body["chunk_overlap"])
+                logger.info(f"Successfully updated ingest flow chunk overlap to {body['chunk_overlap']}")
+            except Exception as e:
+                logger.error(f"Failed to update ingest flow chunk overlap: {str(e)}")
+                # Don't fail the entire settings update if flow update fails
+                # The config will still be saved
 
         if not config_updated:
             return JSONResponse(
@@ -524,48 +588,12 @@ async def onboarding(request, flows_service):
         )
 
 
-async def _update_flow_docling_preset(preset: str, preset_config: dict):
-    """Helper function to update docling preset in the ingest flow"""
-    if not LANGFLOW_INGEST_FLOW_ID:
-        raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
 
-    # Get the current flow data from Langflow
-    response = await clients.langflow_request(
-        "GET", f"/api/v1/flows/{LANGFLOW_INGEST_FLOW_ID}"
-    )
 
-    if response.status_code != 200:
-        raise Exception(f"Failed to get ingest flow: HTTP {response.status_code} - {response.text}")
-
-    flow_data = response.json()
-
-    # Find the target node in the flow using environment variable
-    nodes = flow_data.get("data", {}).get("nodes", [])
-    target_node = None
-    target_node_index = None
-
-    for i, node in enumerate(nodes):
-        if node.get("id") == DOCLING_COMPONENT_ID:
-            target_node = node
-            target_node_index = i
-            break
-
-    if target_node is None:
-        raise Exception(f"Docling component '{DOCLING_COMPONENT_ID}' not found in ingest flow")
-
-    # Update the docling_serve_opts value directly in the existing node
-    if (target_node.get("data", {}).get("node", {}).get("template", {}).get("docling_serve_opts")):
-        flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"]["docling_serve_opts"]["value"] = preset_config
-    else:
-        raise Exception(f"docling_serve_opts field not found in node '{DOCLING_COMPONENT_ID}'")
-
-    # Update the flow via PATCH request
-    patch_response = await clients.langflow_request(
-        "PATCH", f"/api/v1/flows/{LANGFLOW_INGEST_FLOW_ID}", json=flow_data
-    )
-
-    if patch_response.status_code != 200:
-        raise Exception(f"Failed to update ingest flow: HTTP {patch_response.status_code} - {patch_response.text}")
+def _get_flows_service():
+    """Helper function to get flows service instance"""
+    from services.flows_service import FlowsService
+    return FlowsService()
 
 
 async def update_docling_preset(request, session_manager):
@@ -595,7 +623,8 @@ async def update_docling_preset(request, session_manager):
         preset_config = preset_configs[preset]
 
         # Use the helper function to update the flow
-        await _update_flow_docling_preset(preset, preset_config)
+        flows_service = _get_flows_service()
+        await flows_service.update_flow_docling_preset(preset, preset_config)
 
         logger.info(f"Successfully updated docling preset to '{preset}' in ingest flow")
 
