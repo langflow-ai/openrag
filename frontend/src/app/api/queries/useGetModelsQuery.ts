@@ -34,6 +34,7 @@ export const useGetOpenAIModelsQuery = (
   options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
+  console.log("params", params);
 
   async function getOpenAIModels(): Promise<ModelsResponse> {
     const url = new URL("/api/models/openai", window.location.origin);
@@ -54,7 +55,7 @@ export const useGetOpenAIModelsQuery = (
       queryKey: ["models", "openai", params],
       queryFn: getOpenAIModels,
       retry: 2,
-      enabled: options?.enabled !== false, // Allow enabling/disabling from options
+      enabled: !!params?.apiKey,
       staleTime: 0, // Always fetch fresh data
       gcTime: 0, // Don't cache results
       ...options,
