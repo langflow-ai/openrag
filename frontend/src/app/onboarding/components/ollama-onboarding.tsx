@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
 import OllamaLogo from "@/components/logo/ollama-logo";
@@ -20,6 +20,7 @@ export function OllamaOnboarding({
   setSampleDataset: (dataset: boolean) => void;
 }) {
   const [endpoint, setEndpoint] = useState("http://localhost:11434");
+  const [showConnecting, setShowConnecting] = useState(false);
   const debouncedEndpoint = useDebouncedValue(endpoint, 500);
 
   // Fetch models from API when endpoint is provided (debounced)
@@ -41,6 +42,25 @@ export function OllamaOnboarding({
     embeddingModels,
   } = useModelSelection(modelsData);
 
+  // Handle delayed display of connecting state
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    if (debouncedEndpoint && isLoadingModels) {
+      timeoutId = setTimeout(() => {
+        setShowConnecting(true);
+      }, 500);
+    } else {
+      setShowConnecting(false);
+    }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [debouncedEndpoint, isLoadingModels]);
+
   const handleSampleDatasetChange = (dataset: boolean) => {
     setSampleDataset(dataset);
   };
@@ -57,16 +77,11 @@ export function OllamaOnboarding({
   );
 
   // Check validation state based on models query
-  const isConnecting = debouncedEndpoint && isLoadingModels;
   const hasConnectionError = debouncedEndpoint && modelsError;
   const hasNoModels =
     modelsData &&
     !modelsData.language_models?.length &&
     !modelsData.embedding_models?.length;
-  const isValidConnection =
-    modelsData &&
-    (modelsData.language_models?.length > 0 ||
-      modelsData.embedding_models?.length > 0);
 
   return (
     <>
@@ -81,7 +96,7 @@ export function OllamaOnboarding({
             value={endpoint}
             onChange={(e) => setEndpoint(e.target.value)}
           />
-          {isConnecting && (
+          {showConnecting && (
             <p className="text-mmd text-muted-foreground">
               Connecting to Ollama server...
             </p>
