@@ -764,8 +764,9 @@ function KnowledgeSourcesPage() {
                   "text-embedding-ada-002"
                 }
                 onValueChange={handleEmbeddingModelChange}
+                disabled={true}
               >
-                <SelectTrigger id="embedding-model-select">
+                <SelectTrigger id="embedding-model-select" disabled={true}>
                   <SelectValue placeholder="Select an embedding model" />
                 </SelectTrigger>
                 <SelectContent>
