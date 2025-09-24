@@ -47,7 +47,6 @@ export function AdvancedOnboarding({
           {hasEmbeddingModels && (
             <LabelWrapper
               label="Embedding model"
-              description="It’s recommended that you use XYZ, ABC, or DEF models for best performance."
               helperText="Model used for knowledge ingest and retrieval"
               id="embedding-model"
               required={true}
@@ -63,7 +62,6 @@ export function AdvancedOnboarding({
           {hasLanguageModels && (
             <LabelWrapper
               label="Language model"
-              description="It’s recommended that you use XYZ, ABC, or DEF models for best performance."
               helperText="Model used for chat"
               id="embedding-model"
               required={true}
