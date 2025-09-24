@@ -45,6 +45,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className={cn(
             "primary-input !placeholder-transparent",
             icon && "pl-9",
+            type === "password" && "!pr-8",
             icon ? inputClassName : className,
           )}
           ref={ref}
