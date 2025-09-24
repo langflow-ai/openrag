@@ -47,7 +47,7 @@ For more information on virtual environments, see [uv](https://docs.astral.sh/uv
    uv run openrag
    ```
 
-    The OpenRAG TUI opens.
+   The OpenRAG TUI opens.
 
 5. To install OpenRAG with Basic Setup, click **Basic Setup** or press <kbd>1</kbd>. Basic Setup does not set up OAuth connections for ingestion from Google Drive, OneDrive, or AWS. For OAuth setup, see [Advanced Setup](#advanced-setup).
    The TUI prompts you for the required startup values.
@@ -119,10 +119,16 @@ To install OpenRAG with Docker Compose:
    cd openrag
    ```
 
-2. Create a `.env` file in the repository root.
-    ```
-    touch .env
-    ```
+2. Copy the example `.env` file that is included in the repository root.
+  The example file includes all environment variables with comments to guide you in finding and setting their values.
+   ```bash
+   cp .env.example .env
+   ```
+
+   Alternatively, create a new `.env` file in the repository root.
+   ```
+   touch .env
+   ```
 
 3. Set environment variables. The Docker Compose files are populated with values from your `.env`, so the following values are **required** to be set:
 
