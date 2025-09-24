@@ -34,7 +34,6 @@ export const useGetOpenAIModelsQuery = (
   options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
-  console.log("params", params);
 
   async function getOpenAIModels(): Promise<ModelsResponse> {
     const url = new URL("/api/models/openai", window.location.origin);
