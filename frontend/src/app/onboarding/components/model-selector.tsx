@@ -21,6 +21,9 @@ export function ModelSelector({
   value,
   onValueChange,
   icon,
+  placeholder = "Select model...",
+  searchPlaceholder = "Search model...",
+  noOptionsPlaceholder = "No models available",
 }: {
   options: {
     value: string;
@@ -29,6 +32,9 @@ export function ModelSelector({
   }[];
   value: string;
   icon?: React.ReactNode;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  noOptionsPlaceholder?: string;
   onValueChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -50,7 +56,7 @@ export function ModelSelector({
         >
           {value ? (
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4">{icon}</div>
+              {icon && <div className="w-4 h-4">{icon}</div>}
               {options.find((framework) => framework.value === value)?.label}
               {options.find((framework) => framework.value === value)
                 ?.default && (
@@ -60,18 +66,18 @@ export function ModelSelector({
               )}
             </div>
           ) : options.length === 0 ? (
-            "No models available"
+            noOptionsPlaceholder
           ) : (
-            "Select model..."
+            placeholder
           )}
           <ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[400px] p-0">
         <Command>
-          <CommandInput placeholder="Search model..." />
+          <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
-            <CommandEmpty>No model found.</CommandEmpty>
+            <CommandEmpty>{noOptionsPlaceholder}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => (
                 <CommandItem

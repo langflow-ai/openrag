@@ -2,27 +2,47 @@
 
 import { Bell, Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useGetConversationsQuery } from "@/app/api/queries/useGetConversationsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
+import Logo from "@/components/logo/logo";
 import { Navigation } from "@/components/navigation";
 import { TaskNotificationMenu } from "@/components/task-notification-menu";
 import { Button } from "@/components/ui/button";
 import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/contexts/auth-context";
+import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context";
-import Logo from "@/components/logo/logo";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { tasks, isMenuOpen, toggleMenu } = useTask();
   const { isPanelOpen } = useKnowledgeFilter();
   const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
+  const {
+    endpoint,
+    refreshTrigger,
+    refreshConversations,
+    startNewConversation,
+  } = useChat();
   const { isLoading: isSettingsLoading, data: settings } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
+
+  // Only fetch conversations on chat page
+  const isOnChatPage = pathname === "/" || pathname === "/chat";
+  const { data: conversations = [], isLoading: isConversationsLoading } =
+    useGetConversationsQuery(endpoint, refreshTrigger, {
+      enabled: isOnChatPage && (isAuthenticated || isNoAuthMode),
+    });
+
+  const handleNewConversation = () => {
+    refreshConversations();
+    startNewConversation();
+  };
 
   // List of paths that should not show navigation
   const authPaths = ["/login", "/auth/callback", "/onboarding"];
@@ -33,7 +53,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     (task) =>
       task.status === "pending" ||
       task.status === "running" ||
-      task.status === "processing"
+      task.status === "processing",
   );
 
   // Show loading state when backend isn't ready
@@ -99,7 +119,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <div className="side-bar-arrangement bg-background fixed left-0 top-[53px] bottom-0 md:flex hidden">
-        <Navigation />
+        <Navigation
+          conversations={conversations}
+          isConversationsLoading={isConversationsLoading}
+          onNewConversation={handleNewConversation}
+        />
       </div>
       <main
         className={`md:pl-72 transition-all duration-300 overflow-y-auto h-[calc(100vh-53px)] ${

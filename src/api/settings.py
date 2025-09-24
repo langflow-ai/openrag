@@ -47,9 +47,6 @@ def get_docling_preset_configs():
     }
 
 
-
-
-
 async def get_settings(request, session_manager):
     """Get application settings"""
     try:
@@ -207,7 +204,9 @@ async def update_settings(request, session_manager):
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_chat_flow_model(body["llm_model"])
-                logger.info(f"Successfully updated chat flow model to '{body['llm_model']}'")
+                logger.info(
+                    f"Successfully updated chat flow model to '{body['llm_model']}'"
+                )
             except Exception as e:
                 logger.error(f"Failed to update chat flow model: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
@@ -220,7 +219,9 @@ async def update_settings(request, session_manager):
             # Also update the chat flow with the new system prompt
             try:
                 flows_service = _get_flows_service()
-                await flows_service.update_chat_flow_system_prompt(body["system_prompt"])
+                await flows_service.update_chat_flow_system_prompt(
+                    body["system_prompt"]
+                )
                 logger.info(f"Successfully updated chat flow system prompt")
             except Exception as e:
                 logger.error(f"Failed to update chat flow system prompt: {str(e)}")
@@ -243,8 +244,12 @@ async def update_settings(request, session_manager):
             # Also update the ingest flow with the new embedding model
             try:
                 flows_service = _get_flows_service()
-                await flows_service.update_ingest_flow_embedding_model(body["embedding_model"].strip())
-                logger.info(f"Successfully updated ingest flow embedding model to '{body['embedding_model'].strip()}'")
+                await flows_service.update_ingest_flow_embedding_model(
+                    body["embedding_model"].strip()
+                )
+                logger.info(
+                    f"Successfully updated ingest flow embedding model to '{body['embedding_model'].strip()}'"
+                )
             except Exception as e:
                 logger.error(f"Failed to update ingest flow embedding model: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
@@ -266,8 +271,12 @@ async def update_settings(request, session_manager):
             # Also update the flow with the new docling preset
             try:
                 flows_service = _get_flows_service()
-                await flows_service.update_flow_docling_preset(body["doclingPresets"], preset_configs[body["doclingPresets"]])
-                logger.info(f"Successfully updated docling preset in flow to '{body['doclingPresets']}'")
+                await flows_service.update_flow_docling_preset(
+                    body["doclingPresets"], preset_configs[body["doclingPresets"]]
+                )
+                logger.info(
+                    f"Successfully updated docling preset in flow to '{body['doclingPresets']}'"
+                )
             except Exception as e:
                 logger.error(f"Failed to update docling preset in flow: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
@@ -285,7 +294,9 @@ async def update_settings(request, session_manager):
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_ingest_flow_chunk_size(body["chunk_size"])
-                logger.info(f"Successfully updated ingest flow chunk size to {body['chunk_size']}")
+                logger.info(
+                    f"Successfully updated ingest flow chunk size to {body['chunk_size']}"
+                )
             except Exception as e:
                 logger.error(f"Failed to update ingest flow chunk size: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
@@ -303,8 +314,12 @@ async def update_settings(request, session_manager):
             # Also update the ingest flow with the new chunk overlap
             try:
                 flows_service = _get_flows_service()
-                await flows_service.update_ingest_flow_chunk_overlap(body["chunk_overlap"])
-                logger.info(f"Successfully updated ingest flow chunk overlap to {body['chunk_overlap']}")
+                await flows_service.update_ingest_flow_chunk_overlap(
+                    body["chunk_overlap"]
+                )
+                logger.info(
+                    f"Successfully updated ingest flow chunk overlap to {body['chunk_overlap']}"
+                )
             except Exception as e:
                 logger.error(f"Failed to update ingest flow chunk overlap: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
@@ -588,11 +603,10 @@ async def onboarding(request, flows_service):
         )
 
 
-
-
 def _get_flows_service():
     """Helper function to get flows service instance"""
     from services.flows_service import FlowsService
+
     return FlowsService()
 
 
@@ -605,8 +619,7 @@ async def update_docling_preset(request, session_manager):
         # Validate preset parameter
         if "preset" not in body:
             return JSONResponse(
-                {"error": "preset parameter is required"},
-                status_code=400
+                {"error": "preset parameter is required"}, status_code=400
             )
 
         preset = body["preset"]
@@ -615,8 +628,10 @@ async def update_docling_preset(request, session_manager):
         if preset not in preset_configs:
             valid_presets = list(preset_configs.keys())
             return JSONResponse(
-                {"error": f"Invalid preset '{preset}'. Valid presets: {', '.join(valid_presets)}"},
-                status_code=400
+                {
+                    "error": f"Invalid preset '{preset}'. Valid presets: {', '.join(valid_presets)}"
+                },
+                status_code=400,
             )
 
         # Get the preset configuration
@@ -628,16 +643,16 @@ async def update_docling_preset(request, session_manager):
 
         logger.info(f"Successfully updated docling preset to '{preset}' in ingest flow")
 
-        return JSONResponse({
-            "message": f"Successfully updated docling preset to '{preset}'",
-            "preset": preset,
-            "preset_config": preset_config
-        })
+        return JSONResponse(
+            {
+                "message": f"Successfully updated docling preset to '{preset}'",
+                "preset": preset,
+                "preset_config": preset_config,
+            }
+        )
 
     except Exception as e:
         logger.error("Failed to update docling preset", error=str(e))
         return JSONResponse(
-            {"error": f"Failed to update docling preset: {str(e)}"},
-            status_code=500
+            {"error": f"Failed to update docling preset: {str(e)}"}, status_code=500
         )
-
