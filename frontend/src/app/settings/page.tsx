@@ -94,7 +94,6 @@ interface Connection {
 
 function KnowledgeSourcesPage() {
   const { isAuthenticated, isNoAuthMode } = useAuth();
-  console.log({ isAuthenticated, isNoAuthMode });
   const { addTask, tasks } = useTask();
   const searchParams = useSearchParams();
 
