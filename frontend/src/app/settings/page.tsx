@@ -980,7 +980,7 @@ function KnowledgeSourcesPage() {
                 >
                   {/* <Tooltip>
                     <TooltipTrigger> */}
-                  <SelectTrigger id="embedding-model-select">
+                  <SelectTrigger disabled id="embedding-model-select">
                     <SelectValue placeholder="Select an embedding model" />
                   </SelectTrigger>
                   {/* <TooltipContent>
