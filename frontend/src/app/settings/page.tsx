@@ -4,11 +4,13 @@ import { Loader2, PlugZap, RefreshCw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
+import {
+  useGetIBMModelsQuery,
+  useGetOllamaModelsQuery,
+  useGetOpenAIModelsQuery,
+} from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import { useGetOpenAIModelsQuery, useGetOllamaModelsQuery, useGetIBMModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
-import { ModelSelectItems } from "./helpers/model-select-item";
-import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useTask } from "@/contexts/task-context";
 import { useDebounce } from "@/lib/debounce";
+import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
+import { ModelSelectItems } from "./helpers/model-select-item";
 
 const MAX_SYSTEM_PROMPT_CHARS = 2000;
 
@@ -105,42 +109,46 @@ function KnowledgeSourcesPage() {
 
   // Fetch settings using React Query
   const { data: settings = {} } = useGetSettingsQuery({
-    enabled: isAuthenticated,
+    enabled: isAuthenticated || isNoAuthMode,
   });
 
   // Get the current provider from settings
-  const currentProvider = (settings.provider?.model_provider || 'openai') as ModelProvider;
+  const currentProvider = (settings.provider?.model_provider ||
+    "openai") as ModelProvider;
 
   // Fetch available models based on provider
   const { data: openaiModelsData } = useGetOpenAIModelsQuery(
     undefined, // Let backend use stored API key from configuration
     {
-      enabled: isAuthenticated && currentProvider === 'openai',
-    }
+      enabled:
+        (isAuthenticated || isNoAuthMode) && currentProvider === "openai",
+    },
   );
 
   const { data: ollamaModelsData } = useGetOllamaModelsQuery(
     undefined, // No params for now, could be extended later
     {
-      enabled: isAuthenticated && currentProvider === 'ollama',
-    }
+      enabled:
+        (isAuthenticated || isNoAuthMode) && currentProvider === "ollama",
+    },
   );
 
   const { data: ibmModelsData } = useGetIBMModelsQuery(
     undefined, // No params for now, could be extended later
     {
-      enabled: isAuthenticated && currentProvider === 'ibm',
-    }
+      enabled: (isAuthenticated || isNoAuthMode) && currentProvider === "ibm",
+    },
   );
 
   // Select the appropriate models data based on provider
-  const modelsData = currentProvider === 'openai'
-    ? openaiModelsData
-    : currentProvider === 'ollama'
-    ? ollamaModelsData
-    : currentProvider === 'ibm'
-    ? ibmModelsData
-    : openaiModelsData; // fallback to openai
+  const modelsData =
+    currentProvider === "openai"
+      ? openaiModelsData
+      : currentProvider === "ollama"
+      ? ollamaModelsData
+      : currentProvider === "ibm"
+      ? ibmModelsData
+      : openaiModelsData; // fallback to openai
 
   // Mutations
   const updateFlowSettingMutation = useUpdateFlowSettingMutation({
@@ -219,9 +227,9 @@ function KnowledgeSourcesPage() {
   // Update processing mode
   const handleProcessingModeChange = (mode: string) => {
     setProcessingMode(mode);
+    // Update the configuration setting (backend will also update the flow automatically)
     debouncedUpdate({ doclingPresets: mode });
   };
-
 
   // Helper function to get connector icon
   const getConnectorIcon = useCallback((iconName: string) => {
@@ -611,7 +619,11 @@ function KnowledgeSourcesPage() {
                 Language Model
               </Label>
               <Select
-                value={settings.agent?.llm_model || modelsData?.language_models?.find(m => m.default)?.value || "gpt-4"}
+                value={
+                  settings.agent?.llm_model ||
+                  modelsData?.language_models?.find((m) => m.default)?.value ||
+                  "gpt-4"
+                }
                 onValueChange={handleModelChange}
               >
                 <SelectTrigger id="model-select">
@@ -636,10 +648,20 @@ function KnowledgeSourcesPage() {
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 rows={6}
-                className={`resize-none ${systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS ? 'border-red-500 focus:border-red-500' : ''}`}
+                className={`resize-none ${
+                  systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
+                    ? "border-red-500 focus:border-red-500"
+                    : ""
+                }`}
               />
               <div className="flex justify-start">
-                <span className={`text-xs ${systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS ? 'text-red-500' : 'text-muted-foreground'}`}>
+                <span
+                  className={`text-xs ${
+                    systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
+                      ? "text-red-500"
+                      : "text-muted-foreground"
+                  }`}
+                >
                   {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
                 </span>
               </div>
@@ -647,7 +669,10 @@ function KnowledgeSourcesPage() {
             <div className="flex justify-end pt-2">
               <Button
                 onClick={handleSystemPromptSave}
-                disabled={updateFlowSettingMutation.isPending || systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS}
+                disabled={
+                  updateFlowSettingMutation.isPending ||
+                  systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
+                }
                 className="min-w-[120px]"
                 size="sm"
                 variant="outline"
@@ -734,7 +759,9 @@ function KnowledgeSourcesPage() {
               </Label>
               <Select
                 value={
-                  settings.knowledge?.embedding_model || modelsData?.embedding_models?.find(m => m.default)?.value || "text-embedding-ada-002"
+                  settings.knowledge?.embedding_model ||
+                  modelsData?.embedding_models?.find((m) => m.default)?.value ||
+                  "text-embedding-ada-002"
                 }
                 onValueChange={handleEmbeddingModelChange}
               >
@@ -744,7 +771,9 @@ function KnowledgeSourcesPage() {
                 <SelectContent>
                   <ModelSelectItems
                     models={modelsData?.embedding_models}
-                    fallbackModels={getFallbackModels(currentProvider).embedding}
+                    fallbackModels={
+                      getFallbackModels(currentProvider).embedding
+                    }
                     provider={currentProvider}
                   />
                 </SelectContent>
@@ -805,7 +834,10 @@ function KnowledgeSourcesPage() {
                 <div className="flex items-center space-x-3">
                   <RadioGroupItem value="standard" id="standard" />
                   <div className="flex-1">
-                    <Label htmlFor="standard" className="text-base font-medium cursor-pointer">
+                    <Label
+                      htmlFor="standard"
+                      className="text-base font-medium cursor-pointer"
+                    >
                       Standard
                     </Label>
                     <div className="text-sm text-muted-foreground">
@@ -816,18 +848,28 @@ function KnowledgeSourcesPage() {
                 <div className="flex items-center space-x-3">
                   <RadioGroupItem value="ocr" id="ocr" />
                   <div className="flex-1">
-                    <Label htmlFor="ocr" className="text-base font-medium cursor-pointer">
+                    <Label
+                      htmlFor="ocr"
+                      className="text-base font-medium cursor-pointer"
+                    >
                       Extract text from images
                     </Label>
                     <div className="text-sm text-muted-foreground">
-                      Uses OCR to extract text from images/PDFs. Ingest is slower when enabled
+                      Uses OCR to extract text from images/PDFs. Ingest is
+                      slower when enabled
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="picture_description" id="picture_description" />
+                  <RadioGroupItem
+                    value="picture_description"
+                    id="picture_description"
+                  />
                   <div className="flex-1">
-                    <Label htmlFor="picture_description" className="text-base font-medium cursor-pointer">
+                    <Label
+                      htmlFor="picture_description"
+                      className="text-base font-medium cursor-pointer"
+                    >
                       Generate Description
                     </Label>
                     <div className="text-sm text-muted-foreground">
@@ -838,11 +880,15 @@ function KnowledgeSourcesPage() {
                 <div className="flex items-center space-x-3">
                   <RadioGroupItem value="VLM" id="VLM" />
                   <div className="flex-1">
-                    <Label htmlFor="VLM" className="text-base font-medium cursor-pointer">
+                    <Label
+                      htmlFor="VLM"
+                      className="text-base font-medium cursor-pointer"
+                    >
                       AI Vision
                     </Label>
                     <div className="text-sm text-muted-foreground">
-                      Advanced processing with vision language models. Highest quality but most expensive
+                      Advanced processing with vision language models. Highest
+                      quality but most expensive
                     </div>
                   </div>
                 </div>
