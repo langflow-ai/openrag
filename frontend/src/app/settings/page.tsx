@@ -35,10 +35,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useTask } from "@/contexts/task-context";
 import { useDebounce } from "@/lib/debounce";
+import { DEFAULT_AGENT_SETTINGS, DEFAULT_KNOWLEDGE_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
 import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
 import { ModelSelectItems } from "./helpers/model-select-item";
 
-const MAX_SYSTEM_PROMPT_CHARS = 2000;
+const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
 interface GoogleDriveFile {
   id: string;
@@ -529,8 +530,17 @@ function KnowledgeSourcesPage() {
     fetch(`/api/reset-flow/retrieval`, {
       method: "POST",
     })
-      .then((response) => response.json())
+      .then((response) => {
+        if (response.ok) {
+          return response.json();
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      })
       .then(() => {
+        // Only reset form values if the API call was successful
+        setSystemPrompt(DEFAULT_AGENT_SETTINGS.system_prompt);
+        // Trigger model update to default model
+        handleModelChange(DEFAULT_AGENT_SETTINGS.llm_model);
         closeDialog(); // Close after successful completion
       })
       .catch((error) => {
@@ -543,8 +553,17 @@ function KnowledgeSourcesPage() {
     fetch(`/api/reset-flow/ingest`, {
       method: "POST",
     })
-      .then((response) => response.json())
+      .then((response) => {
+        if (response.ok) {
+          return response.json();
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      })
       .then(() => {
+        // Only reset form values if the API call was successful
+        setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);
+        setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);
+        setProcessingMode(DEFAULT_KNOWLEDGE_SETTINGS.processing_mode);
         closeDialog(); // Close after successful completion
       })
       .catch((error) => {
@@ -764,8 +783,9 @@ function KnowledgeSourcesPage() {
                   "text-embedding-ada-002"
                 }
                 onValueChange={handleEmbeddingModelChange}
+                disabled={true}
               >
-                <SelectTrigger id="embedding-model-select">
+                <SelectTrigger id="embedding-model-select" disabled={true}>
                   <SelectValue placeholder="Select an embedding model" />
                 </SelectTrigger>
                 <SelectContent>
