@@ -71,6 +71,7 @@ const config = {
         logo: {
           alt: 'OpenRAG Logo',
           src: 'img/logo.svg',
+          href: '/',
         },
         items: [
           {
