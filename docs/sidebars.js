@@ -22,7 +22,7 @@ const sidebars = {
       items: [
         {
           type: "doc",
-          id: "get-started/intro",
+          id: "get-started/what-is-openrag",
           label: "Introduction"
         },
         {
