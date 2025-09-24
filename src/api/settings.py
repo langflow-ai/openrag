@@ -47,9 +47,6 @@ def get_docling_preset_configs():
     }
 
 
-
-
-
 async def get_settings(request, session_manager):
     """Get application settings"""
     try:
@@ -222,8 +219,12 @@ async def update_settings(request, session_manager):
 
             # Also update the flow with the new docling preset
             try:
-                await _update_flow_docling_preset(body["doclingPresets"], preset_configs[body["doclingPresets"]])
-                logger.info(f"Successfully updated docling preset in flow to '{body['doclingPresets']}'")
+                await _update_flow_docling_preset(
+                    body["doclingPresets"], preset_configs[body["doclingPresets"]]
+                )
+                logger.info(
+                    f"Successfully updated docling preset in flow to '{body['doclingPresets']}'"
+                )
             except Exception as e:
                 logger.error(f"Failed to update docling preset in flow: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
@@ -535,7 +536,9 @@ async def _update_flow_docling_preset(preset: str, preset_config: dict):
     )
 
     if response.status_code != 200:
-        raise Exception(f"Failed to get ingest flow: HTTP {response.status_code} - {response.text}")
+        raise Exception(
+            f"Failed to get ingest flow: HTTP {response.status_code} - {response.text}"
+        )
 
     flow_data = response.json()
 
@@ -551,13 +554,24 @@ async def _update_flow_docling_preset(preset: str, preset_config: dict):
             break
 
     if target_node is None:
-        raise Exception(f"Docling component '{DOCLING_COMPONENT_ID}' not found in ingest flow")
+        raise Exception(
+            f"Docling component '{DOCLING_COMPONENT_ID}' not found in ingest flow"
+        )
 
     # Update the docling_serve_opts value directly in the existing node
-    if (target_node.get("data", {}).get("node", {}).get("template", {}).get("docling_serve_opts")):
-        flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"]["docling_serve_opts"]["value"] = preset_config
+    if (
+        target_node.get("data", {})
+        .get("node", {})
+        .get("template", {})
+        .get("docling_serve_opts")
+    ):
+        flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][
+            "docling_serve_opts"
+        ]["value"] = preset_config
     else:
-        raise Exception(f"docling_serve_opts field not found in node '{DOCLING_COMPONENT_ID}'")
+        raise Exception(
+            f"docling_serve_opts field not found in node '{DOCLING_COMPONENT_ID}'"
+        )
 
     # Update the flow via PATCH request
     patch_response = await clients.langflow_request(
@@ -565,7 +579,9 @@ async def _update_flow_docling_preset(preset: str, preset_config: dict):
     )
 
     if patch_response.status_code != 200:
-        raise Exception(f"Failed to update ingest flow: HTTP {patch_response.status_code} - {patch_response.text}")
+        raise Exception(
+            f"Failed to update ingest flow: HTTP {patch_response.status_code} - {patch_response.text}"
+        )
 
 
 async def update_docling_preset(request, session_manager):
@@ -577,8 +593,7 @@ async def update_docling_preset(request, session_manager):
         # Validate preset parameter
         if "preset" not in body:
             return JSONResponse(
-                {"error": "preset parameter is required"},
-                status_code=400
+                {"error": "preset parameter is required"}, status_code=400
             )
 
         preset = body["preset"]
@@ -587,8 +602,10 @@ async def update_docling_preset(request, session_manager):
         if preset not in preset_configs:
             valid_presets = list(preset_configs.keys())
             return JSONResponse(
-                {"error": f"Invalid preset '{preset}'. Valid presets: {', '.join(valid_presets)}"},
-                status_code=400
+                {
+                    "error": f"Invalid preset '{preset}'. Valid presets: {', '.join(valid_presets)}"
+                },
+                status_code=400,
             )
 
         # Get the preset configuration
@@ -599,16 +616,16 @@ async def update_docling_preset(request, session_manager):
 
         logger.info(f"Successfully updated docling preset to '{preset}' in ingest flow")
 
-        return JSONResponse({
-            "message": f"Successfully updated docling preset to '{preset}'",
-            "preset": preset,
-            "preset_config": preset_config
-        })
+        return JSONResponse(
+            {
+                "message": f"Successfully updated docling preset to '{preset}'",
+                "preset": preset,
+                "preset_config": preset_config,
+            }
+        )
 
     except Exception as e:
         logger.error("Failed to update docling preset", error=str(e))
         return JSONResponse(
-            {"error": f"Failed to update docling preset: {str(e)}"},
-            status_code=500
+            {"error": f"Failed to update docling preset: {str(e)}"}, status_code=500
         )
-
