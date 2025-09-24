@@ -71,7 +71,7 @@ const config = {
         logo: {
           alt: 'OpenRAG Logo',
           src: 'img/logo.svg',
-          href: 'what-is-openrag',
+          href: '/',
         },
         items: [
           {
@@ -89,7 +89,7 @@ const config = {
             items: [
               {
                 label: 'Getting Started',
-                to: 'what-is-openrag',
+                to: '/',
               },
             ],
           },
