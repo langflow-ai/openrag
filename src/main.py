@@ -786,6 +786,18 @@ async def create_app():
             ),
             methods=["GET"],
         ),
+        # Session deletion endpoint
+        Route(
+            "/sessions/{session_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    chat.delete_session_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
+        ),
         # Authentication endpoints
         Route(
             "/auth/init",
