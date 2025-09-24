@@ -35,34 +35,6 @@
         "className": "",
         "data": {
           "sourceHandle": {
-            "dataType": "OpenAIEmbeddings",
-            "id": "OpenAIEmbeddings-mP45L",
-            "name": "embeddings",
-            "output_types": [
-              "Embeddings"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "embedding",
-            "id": "OpenSearchHybrid-XtKoA",
-            "inputTypes": [
-              "Embeddings"
-            ],
-            "type": "other"
-          }
-        },
-        "id": "reactflow__edge-OpenAIEmbeddings-mP45L{œdataTypeœ:œOpenAIEmbeddingsœ,œidœ:œOpenAIEmbeddings-mP45Lœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}-OpenSearchHybrid-XtKoA{œfieldNameœ:œembeddingœ,œidœ:œOpenSearchHybrid-XtKoAœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}",
-        "selected": false,
-        "source": "OpenAIEmbeddings-mP45L",
-        "sourceHandle": "{œdataTypeœ:œOpenAIEmbeddingsœ,œidœ:œOpenAIEmbeddings-mP45Lœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}",
-        "target": "OpenSearchHybrid-XtKoA",
-        "targetHandle": "{œfieldNameœ:œembeddingœ,œidœ:œOpenSearchHybrid-XtKoAœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
             "dataType": "DoclingRemote",
             "id": "DoclingRemote-78KoX",
             "name": "dataframe",
@@ -116,6 +88,34 @@
         "sourceHandle": "{œdataTypeœ:œExportDoclingDocumentœ,œidœ:œExportDoclingDocument-xFoCIœ,œnameœ:œdataœ,œoutput_typesœ:[œDataœ]}",
         "target": "SplitText-3ZI5B",
         "targetHandle": "{œfieldNameœ:œdata_inputsœ,œidœ:œSplitText-3ZI5Bœ,œinputTypesœ:[œDataœ,œDataFrameœ,œMessageœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "EmbeddingModel",
+            "id": "EmbeddingModel-cxG9r",
+            "name": "embeddings",
+            "output_types": [
+              "Embeddings"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "embedding",
+            "id": "OpenSearchHybrid-XtKoA",
+            "inputTypes": [
+              "Embeddings"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__EmbeddingModel-cxG9r{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-cxG9rœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}-OpenSearchHybrid-XtKoA{œfieldNameœ:œembeddingœ,œidœ:œOpenSearchHybrid-XtKoAœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "EmbeddingModel-cxG9r",
+        "sourceHandle": "{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-cxG9rœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}",
+        "target": "OpenSearchHybrid-XtKoA",
+        "targetHandle": "{œfieldNameœ:œembeddingœ,œidœ:œOpenSearchHybrid-XtKoAœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
@@ -360,585 +360,6 @@
         "selected": false,
         "type": "genericNode",
         "width": 320
-      },
-      {
-        "data": {
-          "id": "OpenAIEmbeddings-mP45L",
-          "node": {
-            "base_classes": [
-              "Embeddings"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Generate embeddings using OpenAI models.",
-            "display_name": "OpenAI Embeddings",
-            "documentation": "",
-            "edited": false,
-            "field_order": [
-              "default_headers",
-              "default_query",
-              "chunk_size",
-              "client",
-              "deployment",
-              "embedding_ctx_length",
-              "max_retries",
-              "model",
-              "model_kwargs",
-              "openai_api_key",
-              "openai_api_base",
-              "openai_api_type",
-              "openai_api_version",
-              "openai_organization",
-              "openai_proxy",
-              "request_timeout",
-              "show_progress_bar",
-              "skip_empty",
-              "tiktoken_model_name",
-              "tiktoken_enable",
-              "dimensions"
-            ],
-            "frozen": false,
-            "icon": "OpenAI",
-            "legacy": false,
-            "metadata": {
-              "code_hash": "8a658ed6d4c9",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "langchain_openai",
-                    "version": "0.3.23"
-                  },
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ],
-                "total_dependencies": 2
-              },
-              "module": "custom_components.openai_embeddings"
-            },
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Embedding Model",
-                "group_outputs": false,
-                "method": "build_embeddings",
-                "name": "embeddings",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Embeddings",
-                "tool_mode": true,
-                "types": [
-                  "Embeddings"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_type": "Component",
-              "chunk_size": {
-                "_input_type": "IntInput",
-                "advanced": true,
-                "display_name": "Chunk Size",
-                "dynamic": false,
-                "info": "",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "chunk_size",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "int",
-                "value": 1000
-              },
-              "client": {
-                "_input_type": "MessageTextInput",
-                "advanced": true,
-                "display_name": "Client",
-                "dynamic": false,
-                "info": "",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "client",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": ""
-              },
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "from langchain_openai import OpenAIEmbeddings\n\nfrom lfx.base.embeddings.model import LCEmbeddingsModel\nfrom lfx.base.models.openai_constants import OPENAI_EMBEDDING_MODEL_NAMES\nfrom lfx.field_typing import Embeddings\nfrom lfx.io import BoolInput, DictInput, DropdownInput, FloatInput, IntInput, MessageTextInput, SecretStrInput\n\n\nclass OpenAIEmbeddingsComponent(LCEmbeddingsModel):\n    display_name = \"OpenAI Embeddings\"\n    description = \"Generate embeddings using OpenAI models.\"\n    icon = \"OpenAI\"\n    name = \"OpenAIEmbeddings\"\n\n    inputs = [\n        DictInput(\n            name=\"default_headers\",\n            display_name=\"Default Headers\",\n            advanced=True,\n            info=\"Default headers to use for the API request.\",\n        ),\n        DictInput(\n            name=\"default_query\",\n            display_name=\"Default Query\",\n            advanced=True,\n            info=\"Default query parameters to use for the API request.\",\n        ),\n        IntInput(name=\"chunk_size\", display_name=\"Chunk Size\", advanced=True, value=1000),\n        MessageTextInput(name=\"client\", display_name=\"Client\", advanced=True),\n        MessageTextInput(name=\"deployment\", display_name=\"Deployment\", advanced=True),\n        IntInput(name=\"embedding_ctx_length\", display_name=\"Embedding Context Length\", advanced=True, value=1536),\n        IntInput(name=\"max_retries\", display_name=\"Max Retries\", value=3, advanced=True),\n        DropdownInput(\n            name=\"model\",\n            display_name=\"Model\",\n            advanced=False,\n            options=OPENAI_EMBEDDING_MODEL_NAMES,\n            value=\"text-embedding-3-small\",\n        ),\n        DictInput(name=\"model_kwargs\", display_name=\"Model Kwargs\", advanced=True),\n        SecretStrInput(name=\"openai_api_key\", display_name=\"OpenAI API Key\", value=\"OPENAI_API_KEY\", required=True),\n        MessageTextInput(name=\"openai_api_base\", display_name=\"OpenAI API Base\", advanced=True),\n        MessageTextInput(name=\"openai_api_type\", display_name=\"OpenAI API Type\", advanced=True),\n        MessageTextInput(name=\"openai_api_version\", display_name=\"OpenAI API Version\", advanced=True),\n        MessageTextInput(\n            name=\"openai_organization\",\n            display_name=\"OpenAI Organization\",\n            advanced=True,\n        ),\n        MessageTextInput(name=\"openai_proxy\", display_name=\"OpenAI Proxy\", advanced=True),\n        FloatInput(name=\"request_timeout\", display_name=\"Request Timeout\", advanced=True),\n        BoolInput(name=\"show_progress_bar\", display_name=\"Show Progress Bar\", advanced=True),\n        BoolInput(name=\"skip_empty\", display_name=\"Skip Empty\", advanced=True),\n        MessageTextInput(\n            name=\"tiktoken_model_name\",\n            display_name=\"TikToken Model Name\",\n            advanced=True,\n        ),\n        BoolInput(\n            name=\"tiktoken_enable\",\n            display_name=\"TikToken Enable\",\n            advanced=True,\n            value=True,\n            info=\"If False, you must have transformers installed.\",\n        ),\n        IntInput(\n            name=\"dimensions\",\n            display_name=\"Dimensions\",\n            info=\"The number of dimensions the resulting output embeddings should have. \"\n            \"Only supported by certain models.\",\n            advanced=True,\n        ),\n    ]\n\n    def build_embeddings(self) -> Embeddings:\n        return OpenAIEmbeddings(\n            client=self.client or None,\n            model=self.model,\n            dimensions=self.dimensions or None,\n            deployment=self.deployment or None,\n            api_version=self.openai_api_version or None,\n            base_url=self.openai_api_base or None,\n            openai_api_type=self.openai_api_type or None,\n            openai_proxy=self.openai_proxy or None,\n            embedding_ctx_length=self.embedding_ctx_length,\n            api_key=self.openai_api_key or None,\n            organization=self.openai_organization or None,\n            allowed_special=\"all\",\n            disallowed_special=\"all\",\n            chunk_size=self.chunk_size,\n            max_retries=self.max_retries,\n            timeout=self.request_timeout or None,\n            tiktoken_enabled=self.tiktoken_enable,\n            tiktoken_model_name=self.tiktoken_model_name or None,\n            show_progress_bar=self.show_progress_bar,\n            model_kwargs=self.model_kwargs,\n            skip_empty=self.skip_empty,\n            default_headers=self.default_headers or None,\n            default_query=self.default_query or None,\n        )\n"
-              },
-              "default_headers": {
-                "_input_type": "DictInput",
-                "advanced": true,
-                "display_name": "Default Headers",
-                "dynamic": false,
-                "info": "Default headers to use for the API request.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "default_headers",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "type": "dict",
-                "value": {}
-              },
-              "default_query": {
-                "_input_type": "DictInput",
-                "advanced": true,
-                "display_name": "Default Query",
-                "dynamic": false,
-                "info": "Default query parameters to use for the API request.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "default_query",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "type": "dict",
-                "value": {}
-              },
-              "deployment": {
-                "_input_type": "MessageTextInput",
-                "advanced": true,
-                "display_name": "Deployment",
-                "dynamic": false,
-                "info": "",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "deployment",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": ""
-              },
-              "dimensions": {
-                "_input_type": "IntInput",
-                "advanced": true,
-                "display_name": "Dimensions",
-                "dynamic": false,
-                "info": "The number of dimensions the resulting output embeddings should have. Only supported by certain models.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "dimensions",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "int",
-                "value": ""
-              },
-              "embedding_ctx_length": {
-                "_input_type": "IntInput",
-                "advanced": true,
-                "display_name": "Embedding Context Length",
-                "dynamic": false,
-                "info": "",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "embedding_ctx_length",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "int",
-                "value": 1536
-              },
-              "max_retries": {
-                "_input_type": "IntInput",
-                "advanced": true,
-                "display_name": "Max Retries",
-                "dynamic": false,
-                "info": "",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "max_retries",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "int",
-                "value": 3
-              },
-              "model": {
-                "_input_type": "DropdownInput",
-                "advanced": false,
-                "combobox": false,
-                "dialog_inputs": {},
-                "display_name": "Model",
-                "dynamic": false,
-                "info": "",
-                "name": "model",
-                "options": [
-                  "text-embedding-3-small",
-                  "text-embedding-3-large",
-                  "text-embedding-ada-002"
-                ],
-                "options_metadata": [],
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "toggle": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": "text-embedding-3-small"
-              },
-              "model_kwargs": {
-                "_input_type": "DictInput",
-                "advanced": true,
-                "display_name": "Model Kwargs",
-                "dynamic": false,
-                "info": "",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "model_kwargs",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "type": "dict",
-                "value": {}
-              },
-              "openai_api_base": {
-                "_input_type": "MessageTextInput",
-                "advanced": true,
-                "display_name": "OpenAI API Base",
-                "dynamic": false,
-                "info": "",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "openai_api_base",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": ""
-              },
-              "openai_api_key": {
-                "_input_type": "SecretStrInput",
-                "advanced": false,
-                "display_name": "OpenAI API Key",
-                "dynamic": false,
-                "info": "",
-                "input_types": [],
-                "load_from_db": false,
-                "name": "openai_api_key",
-                "password": true,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "str",
-                "value": ""
-              },
-              "openai_api_type": {
-                "_input_type": "MessageTextInput",
-                "advanced": true,
-                "display_name": "OpenAI API Type",
-                "dynamic": false,
-                "info": "",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "openai_api_type",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": ""
-              },
-              "openai_api_version": {
-                "_input_type": "MessageTextInput",
-                "advanced": true,
-                "display_name": "OpenAI API Version",
-                "dynamic": false,
-                "info": "",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "openai_api_version",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": ""
-              },
-              "openai_organization": {
-                "_input_type": "MessageTextInput",
-                "advanced": true,
-                "display_name": "OpenAI Organization",
-                "dynamic": false,
-                "info": "",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "openai_organization",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": ""
-              },
-              "openai_proxy": {
-                "_input_type": "MessageTextInput",
-                "advanced": true,
-                "display_name": "OpenAI Proxy",
-                "dynamic": false,
-                "info": "",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "openai_proxy",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": ""
-              },
-              "request_timeout": {
-                "_input_type": "FloatInput",
-                "advanced": true,
-                "display_name": "Request Timeout",
-                "dynamic": false,
-                "info": "",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "request_timeout",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "float",
-                "value": ""
-              },
-              "show_progress_bar": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Show Progress Bar",
-                "dynamic": false,
-                "info": "",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "show_progress_bar",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": false
-              },
-              "skip_empty": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Skip Empty",
-                "dynamic": false,
-                "info": "",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "skip_empty",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": false
-              },
-              "tiktoken_enable": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "TikToken Enable",
-                "dynamic": false,
-                "info": "If False, you must have transformers installed.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "tiktoken_enable",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": true
-              },
-              "tiktoken_model_name": {
-                "_input_type": "MessageTextInput",
-                "advanced": true,
-                "display_name": "TikToken Model Name",
-                "dynamic": false,
-                "info": "",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "tiktoken_model_name",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": ""
-              }
-            },
-            "tool_mode": false
-          },
-          "selected_output": "embeddings",
-          "type": "OpenAIEmbeddings"
-        },
-        "dragging": false,
-        "height": 320,
-        "id": "OpenAIEmbeddings-mP45L",
-        "measured": {
-          "height": 320,
-          "width": 320
-        },
-        "position": {
-          "x": 1704.8491676318172,
-          "y": 1879.144249471858
-        },
-        "positionAbsolute": {
-          "x": 1690.9220896443658,
-          "y": 1866.483269483266
-        },
-        "selected": false,
-        "type": "genericNode",
-        "width": 320
-      },
-      {
-        "data": {
-          "id": "note-59mzY",
-          "node": {
-            "description": "### 💡 Add your OpenAI API key here 👇",
-            "display_name": "",
-            "documentation": "",
-            "template": {
-              "backgroundColor": "transparent"
-            }
-          },
-          "type": "note"
-        },
-        "dragging": false,
-        "height": 324,
-        "id": "note-59mzY",
-        "measured": {
-          "height": 324,
-          "width": 324
-        },
-        "position": {
-          "x": 1692.2322233423606,
-          "y": 1821.9077961087607
-        },
-        "positionAbsolute": {
-          "x": 1692.2322233423606,
-          "y": 1821.9077961087607
-        },
-        "selected": false,
-        "type": "noteNode",
-        "width": 324
       },
       {
         "data": {
@@ -1327,7 +748,7 @@
                 "dynamic": false,
                 "info": "Paste a valid JWT (sent as a header).",
                 "input_types": [],
-                "load_from_db": false,
+                "load_from_db": true,
                 "name": "jwt_token",
                 "password": true,
                 "placeholder": "",
@@ -1562,7 +983,7 @@
         "dragging": false,
         "id": "OpenSearchHybrid-XtKoA",
         "measured": {
-          "height": 765,
+          "height": 760,
           "width": 320
         },
         "position": {
@@ -1574,6 +995,8 @@
       },
       {
         "data": {
+          "description": "Uses Docling to process input documents connecting to your instance of Docling Serve.",
+          "display_name": "Docling Serve",
           "id": "DoclingRemote-78KoX",
           "node": {
             "base_classes": [
@@ -1603,9 +1026,8 @@
             "frozen": false,
             "icon": "Docling",
             "legacy": false,
-            "lf_version": "1.6.0",
             "metadata": {
-              "code_hash": "930312ffe40c",
+              "code_hash": "880538860431",
               "dependencies": {
                 "dependencies": [
                   {
@@ -1621,13 +1043,13 @@
                     "version": "2.10.6"
                   },
                   {
-                    "name": "lfx",
+                    "name": "langflow",
                     "version": null
                   }
                 ],
                 "total_dependencies": 4
               },
-              "module": "lfx.components.docling.docling_remote.DoclingRemoteComponent"
+              "module": "custom_components.docling_serve"
             },
             "minimized": false,
             "output_types": [],
@@ -1639,6 +1061,8 @@
                 "group_outputs": false,
                 "method": "load_files",
                 "name": "dataframe",
+                "options": null,
+                "required_inputs": null,
                 "selected": "DataFrame",
                 "tool_mode": true,
                 "types": [
@@ -1704,7 +1128,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "import base64\nimport time\nfrom concurrent.futures import Future, ThreadPoolExecutor\nfrom pathlib import Path\nfrom typing import Any\n\nimport httpx\nfrom docling_core.types.doc import DoclingDocument\nfrom pydantic import ValidationError\n\nfrom lfx.base.data import BaseFileComponent\nfrom lfx.inputs import IntInput, NestedDictInput, StrInput\nfrom lfx.inputs.inputs import FloatInput\nfrom lfx.schema import Data\n\n\nclass DoclingRemoteComponent(BaseFileComponent):\n    display_name = \"Docling Serve\"\n    description = \"Uses Docling to process input documents connecting to your instance of Docling Serve.\"\n    documentation = \"https://docling-project.github.io/docling/\"\n    trace_type = \"tool\"\n    icon = \"Docling\"\n    name = \"DoclingRemote\"\n\n    MAX_500_RETRIES = 5\n\n    # https://docling-project.github.io/docling/usage/supported_formats/\n    VALID_EXTENSIONS = [\n        \"adoc\",\n        \"asciidoc\",\n        \"asc\",\n        \"bmp\",\n        \"csv\",\n        \"dotx\",\n        \"dotm\",\n        \"docm\",\n        \"docx\",\n        \"htm\",\n        \"html\",\n        \"jpeg\",\n        \"json\",\n        \"md\",\n        \"pdf\",\n        \"png\",\n        \"potx\",\n        \"ppsx\",\n        \"pptm\",\n        \"potm\",\n        \"ppsm\",\n        \"pptx\",\n        \"tiff\",\n        \"txt\",\n        \"xls\",\n        \"xlsx\",\n        \"xhtml\",\n        \"xml\",\n        \"webp\",\n    ]\n\n    inputs = [\n        *BaseFileComponent.get_base_inputs(),\n        StrInput(\n            name=\"api_url\",\n            display_name=\"Server address\",\n            info=\"URL of the Docling Serve instance.\",\n            required=True,\n        ),\n        IntInput(\n            name=\"max_concurrency\",\n            display_name=\"Concurrency\",\n            info=\"Maximum number of concurrent requests for the server.\",\n            advanced=True,\n            value=2,\n        ),\n        FloatInput(\n            name=\"max_poll_timeout\",\n            display_name=\"Maximum poll time\",\n            info=\"Maximum waiting time for the document conversion to complete.\",\n            advanced=True,\n            value=3600,\n        ),\n        NestedDictInput(\n            name=\"api_headers\",\n            display_name=\"HTTP headers\",\n            advanced=True,\n            required=False,\n            info=(\"Optional dictionary of additional headers required for connecting to Docling Serve.\"),\n        ),\n        NestedDictInput(\n            name=\"docling_serve_opts\",\n            display_name=\"Docling options\",\n            advanced=True,\n            required=False,\n            info=(\n                \"Optional dictionary of additional options. \"\n                \"See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information.\"\n            ),\n        ),\n    ]\n\n    outputs = [\n        *BaseFileComponent.get_base_outputs(),\n    ]\n\n    def process_files(self, file_list: list[BaseFileComponent.BaseFile]) -> list[BaseFileComponent.BaseFile]:\n        base_url = f\"{self.api_url}/v1\"\n\n        def _convert_document(client: httpx.Client, file_path: Path, options: dict[str, Any]) -> Data | None:\n            encoded_doc = base64.b64encode(file_path.read_bytes()).decode()\n            payload = {\n                \"options\": options,\n                \"sources\": [{\"kind\": \"file\", \"base64_string\": encoded_doc, \"filename\": file_path.name}],\n            }\n\n            response = client.post(f\"{base_url}/convert/source/async\", json=payload)\n            response.raise_for_status()\n            task = response.json()\n\n            http_failures = 0\n            retry_status_start = 500\n            retry_status_end = 600\n            start_wait_time = time.monotonic()\n            while task[\"task_status\"] not in (\"success\", \"failure\"):\n                # Check if processing exceeds the maximum poll timeout\n                processing_time = time.monotonic() - start_wait_time\n                if processing_time >= self.max_poll_timeout:\n                    msg = (\n                        f\"Processing time {processing_time=} exceeds the maximum poll timeout {self.max_poll_timeout=}.\"\n                        \"Please increase the max_poll_timeout parameter or review why the processing \"\n                        \"takes long on the server.\"\n                    )\n                    self.log(msg)\n                    raise RuntimeError(msg)\n\n                # Call for a new status update\n                time.sleep(2)\n                response = client.get(f\"{base_url}/status/poll/{task['task_id']}\")\n\n                # Check if the status call gets into 5xx errors and retry\n                if retry_status_start <= response.status_code < retry_status_end:\n                    http_failures += 1\n                    if http_failures > self.MAX_500_RETRIES:\n                        self.log(f\"The status requests got a http response {response.status_code} too many times.\")\n                        return None\n                    continue\n\n                # Update task status\n                task = response.json()\n\n            result_resp = client.get(f\"{base_url}/result/{task['task_id']}\")\n            result_resp.raise_for_status()\n            result = result_resp.json()\n\n            if \"json_content\" not in result[\"document\"] or result[\"document\"][\"json_content\"] is None:\n                self.log(\"No JSON DoclingDocument found in the result.\")\n                return None\n\n            try:\n                doc = DoclingDocument.model_validate(result[\"document\"][\"json_content\"])\n                return Data(data={\"doc\": doc, \"file_path\": str(file_path)})\n            except ValidationError as e:\n                self.log(f\"Error validating the document. {e}\")\n                return None\n\n        docling_options = {\n            \"to_formats\": [\"json\"],\n            \"image_export_mode\": \"placeholder\",\n            **(self.docling_serve_opts or {}),\n        }\n\n        processed_data: list[Data | None] = []\n        with (\n            httpx.Client(headers=self.api_headers) as client,\n            ThreadPoolExecutor(max_workers=self.max_concurrency) as executor,\n        ):\n            futures: list[tuple[int, Future]] = []\n            for i, file in enumerate(file_list):\n                if file.path is None:\n                    processed_data.append(None)\n                    continue\n\n                futures.append((i, executor.submit(_convert_document, client, file.path, docling_options)))\n\n            for _index, future in futures:\n                try:\n                    result_data = future.result()\n                    processed_data.append(result_data)\n                except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:\n                    self.log(f\"Docling remote processing failed: {exc}\")\n                    raise\n\n        return self.rollup_data(file_list, processed_data)\n"
+                "value": "import base64\nimport time\nfrom concurrent.futures import Future, ThreadPoolExecutor\nfrom pathlib import Path\nfrom typing import Any\n\nimport httpx\nfrom docling_core.types.doc import DoclingDocument\nfrom pydantic import ValidationError\n\nfrom langflow.base.data import BaseFileComponent\nfrom langflow.inputs import IntInput, NestedDictInput, StrInput\nfrom langflow.inputs.inputs import FloatInput\nfrom langflow.schema import Data\n\n\nclass DoclingRemoteComponent(BaseFileComponent):\n    display_name = \"Docling Serve\"\n    description = \"Uses Docling to process input documents connecting to your instance of Docling Serve.\"\n    documentation = \"https://docling-project.github.io/docling/\"\n    trace_type = \"tool\"\n    icon = \"Docling\"\n    name = \"DoclingRemote\"\n\n    MAX_500_RETRIES = 5\n\n    # https://docling-project.github.io/docling/usage/supported_formats/\n    VALID_EXTENSIONS = [\n        \"adoc\",\n        \"asciidoc\",\n        \"asc\",\n        \"bmp\",\n        \"csv\",\n        \"dotx\",\n        \"dotm\",\n        \"docm\",\n        \"docx\",\n        \"htm\",\n        \"html\",\n        \"jpeg\",\n        \"json\",\n        \"md\",\n        \"pdf\",\n        \"png\",\n        \"potx\",\n        \"ppsx\",\n        \"pptm\",\n        \"potm\",\n        \"ppsm\",\n        \"pptx\",\n        \"tiff\",\n        \"txt\",\n        \"xls\",\n        \"xlsx\",\n        \"xhtml\",\n        \"xml\",\n        \"webp\",\n    ]\n\n    inputs = [\n        *BaseFileComponent._base_inputs,\n        StrInput(\n            name=\"api_url\",\n            display_name=\"Server address\",\n            info=\"URL of the Docling Serve instance.\",\n            required=True,\n        ),\n        IntInput(\n            name=\"max_concurrency\",\n            display_name=\"Concurrency\",\n            info=\"Maximum number of concurrent requests for the server.\",\n            advanced=True,\n            value=2,\n        ),\n        FloatInput(\n            name=\"max_poll_timeout\",\n            display_name=\"Maximum poll time\",\n            info=\"Maximum waiting time for the document conversion to complete.\",\n            advanced=True,\n            value=3600,\n        ),\n        NestedDictInput(\n            name=\"api_headers\",\n            display_name=\"HTTP headers\",\n            advanced=True,\n            required=False,\n            info=(\"Optional dictionary of additional headers required for connecting to Docling Serve.\"),\n        ),\n        NestedDictInput(\n            name=\"docling_serve_opts\",\n            display_name=\"Docling options\",\n            advanced=True,\n            required=False,\n            info=(\n                \"Optional dictionary of additional options. \"\n                \"See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information.\"\n            ),\n        ),\n    ]\n\n    outputs = [\n        *BaseFileComponent._base_outputs,\n    ]\n\n    def process_files(self, file_list: list[BaseFileComponent.BaseFile]) -> list[BaseFileComponent.BaseFile]:\n        base_url = f\"{self.api_url}/v1alpha\"\n\n        def _convert_document(client: httpx.Client, file_path: Path, options: dict[str, Any]) -> Data | None:\n            encoded_doc = base64.b64encode(file_path.read_bytes()).decode()\n            payload = {\n                \"options\": options,\n                \"file_sources\": [{\"base64_string\": encoded_doc, \"filename\": file_path.name}],\n            }\n\n            response = client.post(f\"{base_url}/convert/source/async\", json=payload)\n            response.raise_for_status()\n            task = response.json()\n\n            http_failures = 0\n            retry_status_start = 500\n            retry_status_end = 600\n            start_wait_time = time.monotonic()\n            while task[\"task_status\"] not in (\"success\", \"failure\"):\n                # Check if processing exceeds the maximum poll timeout\n                processing_time = time.monotonic() - start_wait_time\n                if processing_time >= self.max_poll_timeout:\n                    msg = (\n                        f\"Processing time {processing_time=} exceeds the maximum poll timeout {self.max_poll_timeout=}.\"\n                        \"Please increase the max_poll_timeout parameter or review why the processing \"\n                        \"takes long on the server.\"\n                    )\n                    self.log(msg)\n                    raise RuntimeError(msg)\n\n                # Call for a new status update\n                time.sleep(2)\n                response = client.get(f\"{base_url}/status/poll/{task['task_id']}\")\n\n                # Check if the status call gets into 5xx errors and retry\n                if retry_status_start <= response.status_code < retry_status_end:\n                    http_failures += 1\n                    if http_failures > self.MAX_500_RETRIES:\n                        self.log(f\"The status requests got a http response {response.status_code} too many times.\")\n                        return None\n                    continue\n\n                # Update task status\n                task = response.json()\n\n            result_resp = client.get(f\"{base_url}/result/{task['task_id']}\")\n            result_resp.raise_for_status()\n            result = result_resp.json()\n\n            if \"json_content\" not in result[\"document\"] or result[\"document\"][\"json_content\"] is None:\n                self.log(\"No JSON DoclingDocument found in the result.\")\n                return None\n\n            try:\n                doc = DoclingDocument.model_validate(result[\"document\"][\"json_content\"])\n                return Data(data={\"doc\": doc, \"file_path\": str(file_path)})\n            except ValidationError as e:\n                self.log(f\"Error validating the document. {e}\")\n                return None\n\n        docling_options = {\n            \"to_formats\": [\"json\"],\n            \"image_export_mode\": \"placeholder\",\n            \"return_as_file\": False,\n            **(self.docling_serve_opts or {}),\n        }\n\n        processed_data: list[Data | None] = []\n        with (\n            httpx.Client(headers=self.api_headers) as client,\n            ThreadPoolExecutor(max_workers=self.max_concurrency) as executor,\n        ):\n            futures: list[tuple[int, Future]] = []\n            for i, file in enumerate(file_list):\n                if file.path is None:\n                    processed_data.append(None)\n                    continue\n\n                futures.append((i, executor.submit(_convert_document, client, file.path, docling_options)))\n\n            for _index, future in futures:\n                try:\n                    result_data = future.result()\n                    processed_data.append(result_data)\n                except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:\n                    self.log(f\"Docling remote processing failed: {exc}\")\n                    raise\n\n        return self.rollup_data(file_list, processed_data)\n"
               },
               "delete_server_file_after_processing": {
                 "_input_type": "BoolInput",
@@ -1732,6 +1156,7 @@
                 "info": "Optional dictionary of additional options. See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information.",
                 "list": false,
                 "list_add_label": "Add More",
+                "load_from_db": false,
                 "name": "docling_serve_opts",
                 "placeholder": "",
                 "required": false,
@@ -1939,18 +1364,20 @@
         "dragging": false,
         "id": "DoclingRemote-78KoX",
         "measured": {
-          "height": 475,
+          "height": 472,
           "width": 320
         },
         "position": {
           "x": 974.2998232996713,
           "y": 1337.9345348080217
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
         "data": {
+          "description": "Export DoclingDocument to markdown, html or other formats.",
+          "display_name": "Export DoclingDocument",
           "id": "ExportDoclingDocument-xFoCI",
           "node": {
             "base_classes": [
@@ -1975,9 +1402,8 @@
             "frozen": false,
             "icon": "Docling",
             "legacy": false,
-            "lf_version": "1.6.0",
             "metadata": {
-              "code_hash": "4de16ddd37ac",
+              "code_hash": "451c9673bd4c",
               "dependencies": {
                 "dependencies": [
                   {
@@ -1985,13 +1411,13 @@
                     "version": "2.45.0"
                   },
                   {
-                    "name": "lfx",
+                    "name": "langflow",
                     "version": null
                   }
                 ],
                 "total_dependencies": 2
               },
-              "module": "lfx.components.docling.export_docling_document.ExportDoclingDocumentComponent"
+              "module": "custom_components.export_doclingdocument"
             },
             "minimized": false,
             "output_types": [],
@@ -2003,6 +1429,8 @@
                 "group_outputs": false,
                 "method": "export_document",
                 "name": "data",
+                "options": null,
+                "required_inputs": null,
                 "selected": "Data",
                 "tool_mode": true,
                 "types": [
@@ -2017,6 +1445,9 @@
                 "group_outputs": false,
                 "method": "as_dataframe",
                 "name": "dataframe",
+                "options": null,
+                "required_inputs": null,
+                "selected": "DataFrame",
                 "tool_mode": true,
                 "types": [
                   "DataFrame"
@@ -2043,7 +1474,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from typing import Any\n\nfrom docling_core.types.doc import ImageRefMode\n\nfrom lfx.base.data.docling_utils import extract_docling_documents\nfrom lfx.custom import Component\nfrom lfx.io import DropdownInput, HandleInput, MessageTextInput, Output, StrInput\nfrom lfx.schema import Data, DataFrame\n\n\nclass ExportDoclingDocumentComponent(Component):\n    display_name: str = \"Export DoclingDocument\"\n    description: str = \"Export DoclingDocument to markdown, html or other formats.\"\n    documentation = \"https://docling-project.github.io/docling/\"\n    icon = \"Docling\"\n    name = \"ExportDoclingDocument\"\n\n    inputs = [\n        HandleInput(\n            name=\"data_inputs\",\n            display_name=\"Data or DataFrame\",\n            info=\"The data with documents to export.\",\n            input_types=[\"Data\", \"DataFrame\"],\n            required=True,\n        ),\n        DropdownInput(\n            name=\"export_format\",\n            display_name=\"Export format\",\n            options=[\"Markdown\", \"HTML\", \"Plaintext\", \"DocTags\"],\n            info=\"Select the export format to convert the input.\",\n            value=\"Markdown\",\n            real_time_refresh=True,\n        ),\n        DropdownInput(\n            name=\"image_mode\",\n            display_name=\"Image export mode\",\n            options=[\"placeholder\", \"embedded\"],\n            info=(\n                \"Specify how images are exported in the output. Placeholder will replace the images with a string, \"\n                \"whereas Embedded will include them as base64 encoded images.\"\n            ),\n            value=\"placeholder\",\n        ),\n        StrInput(\n            name=\"md_image_placeholder\",\n            display_name=\"Image placeholder\",\n            info=\"Specify the image placeholder for markdown exports.\",\n            value=\"<!-- image -->\",\n            advanced=True,\n        ),\n        StrInput(\n            name=\"md_page_break_placeholder\",\n            display_name=\"Page break placeholder\",\n            info=\"Add this placeholder betweek pages in the markdown output.\",\n            value=\"\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"doc_key\",\n            display_name=\"Doc Key\",\n            info=\"The key to use for the DoclingDocument column.\",\n            value=\"doc\",\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Exported data\", name=\"data\", method=\"export_document\"),\n        Output(display_name=\"DataFrame\", name=\"dataframe\", method=\"as_dataframe\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"export_format\" and field_value == \"Markdown\":\n            build_config[\"md_image_placeholder\"][\"show\"] = True\n            build_config[\"md_page_break_placeholder\"][\"show\"] = True\n            build_config[\"image_mode\"][\"show\"] = True\n        elif field_name == \"export_format\" and field_value == \"HTML\":\n            build_config[\"md_image_placeholder\"][\"show\"] = False\n            build_config[\"md_page_break_placeholder\"][\"show\"] = False\n            build_config[\"image_mode\"][\"show\"] = True\n        elif field_name == \"export_format\" and field_value in {\"Plaintext\", \"DocTags\"}:\n            build_config[\"md_image_placeholder\"][\"show\"] = False\n            build_config[\"md_page_break_placeholder\"][\"show\"] = False\n            build_config[\"image_mode\"][\"show\"] = False\n\n        return build_config\n\n    def export_document(self) -> list[Data]:\n        documents = extract_docling_documents(self.data_inputs, self.doc_key)\n\n        results: list[Data] = []\n        try:\n            image_mode = ImageRefMode(self.image_mode)\n            for doc in documents:\n                content = \"\"\n                if self.export_format == \"Markdown\":\n                    content = doc.export_to_markdown(\n                        image_mode=image_mode,\n                        image_placeholder=self.md_image_placeholder,\n                        page_break_placeholder=self.md_page_break_placeholder,\n                    )\n                elif self.export_format == \"HTML\":\n                    content = doc.export_to_html(image_mode=image_mode)\n                elif self.export_format == \"Plaintext\":\n                    content = doc.export_to_text()\n                elif self.export_format == \"DocTags\":\n                    content = doc.export_to_doctags()\n\n                results.append(Data(text=content))\n        except Exception as e:\n            msg = f\"Error splitting text: {e}\"\n            raise TypeError(msg) from e\n\n        return results\n\n    def as_dataframe(self) -> DataFrame:\n        return DataFrame(self.export_document())\n"
+                "value": "from typing import Any\n\nfrom docling_core.types.doc import ImageRefMode\n\nfrom langflow.base.data.docling_utils import extract_docling_documents\nfrom langflow.custom import Component\nfrom langflow.io import DropdownInput, HandleInput, MessageTextInput, Output, StrInput\nfrom langflow.schema import Data, DataFrame\n\n\nclass ExportDoclingDocumentComponent(Component):\n    display_name: str = \"Export DoclingDocument\"\n    description: str = \"Export DoclingDocument to markdown, html or other formats.\"\n    documentation = \"https://docling-project.github.io/docling/\"\n    icon = \"Docling\"\n    name = \"ExportDoclingDocument\"\n\n    inputs = [\n        HandleInput(\n            name=\"data_inputs\",\n            display_name=\"Data or DataFrame\",\n            info=\"The data with documents to export.\",\n            input_types=[\"Data\", \"DataFrame\"],\n            required=True,\n        ),\n        DropdownInput(\n            name=\"export_format\",\n            display_name=\"Export format\",\n            options=[\"Markdown\", \"HTML\", \"Plaintext\", \"DocTags\"],\n            info=\"Select the export format to convert the input.\",\n            value=\"Markdown\",\n            real_time_refresh=True,\n        ),\n        DropdownInput(\n            name=\"image_mode\",\n            display_name=\"Image export mode\",\n            options=[\"placeholder\", \"embedded\"],\n            info=(\n                \"Specify how images are exported in the output. Placeholder will replace the images with a string, \"\n                \"whereas Embedded will include them as base64 encoded images.\"\n            ),\n            value=\"placeholder\",\n        ),\n        StrInput(\n            name=\"md_image_placeholder\",\n            display_name=\"Image placeholder\",\n            info=\"Specify the image placeholder for markdown exports.\",\n            value=\"<!-- image -->\",\n            advanced=True,\n        ),\n        StrInput(\n            name=\"md_page_break_placeholder\",\n            display_name=\"Page break placeholder\",\n            info=\"Add this placeholder betweek pages in the markdown output.\",\n            value=\"\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"doc_key\",\n            display_name=\"Doc Key\",\n            info=\"The key to use for the DoclingDocument column.\",\n            value=\"doc\",\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Exported data\", name=\"data\", method=\"export_document\"),\n        Output(display_name=\"DataFrame\", name=\"dataframe\", method=\"as_dataframe\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"export_format\" and field_value == \"Markdown\":\n            build_config[\"md_image_placeholder\"][\"show\"] = True\n            build_config[\"md_page_break_placeholder\"][\"show\"] = True\n            build_config[\"image_mode\"][\"show\"] = True\n        elif field_name == \"export_format\" and field_value == \"HTML\":\n            build_config[\"md_image_placeholder\"][\"show\"] = False\n            build_config[\"md_page_break_placeholder\"][\"show\"] = False\n            build_config[\"image_mode\"][\"show\"] = True\n        elif field_name == \"export_format\" and field_value in {\"Plaintext\", \"DocTags\"}:\n            build_config[\"md_image_placeholder\"][\"show\"] = False\n            build_config[\"md_page_break_placeholder\"][\"show\"] = False\n            build_config[\"image_mode\"][\"show\"] = False\n\n        return build_config\n\n    def export_document(self) -> list[Data]:\n        documents = extract_docling_documents(self.data_inputs, self.doc_key)\n\n        results: list[Data] = []\n        try:\n            image_mode = ImageRefMode(self.image_mode)\n            for doc in documents:\n                content = \"\"\n                if self.export_format == \"Markdown\":\n                    content = doc.export_to_markdown(\n                        image_mode=image_mode,\n                        image_placeholder=self.md_image_placeholder,\n                        page_break_placeholder=self.md_page_break_placeholder,\n                    )\n                elif self.export_format == \"HTML\":\n                    content = doc.export_to_html(image_mode=image_mode)\n                elif self.export_format == \"Plaintext\":\n                    content = doc.export_to_text()\n                elif self.export_format == \"DocTags\":\n                    content = doc.export_to_doctags()\n\n                results.append(Data(text=content))\n        except Exception as e:\n            msg = f\"Error splitting text: {e}\"\n            raise TypeError(msg) from e\n\n        return results\n\n    def as_dataframe(self) -> DataFrame:\n        return DataFrame(self.export_document())\n"
               },
               "data_inputs": {
                 "_input_type": "HandleInput",
@@ -2188,7 +1619,7 @@
         "dragging": false,
         "id": "ExportDoclingDocument-xFoCI",
         "measured": {
-          "height": 347,
+          "height": 344,
           "width": 320
         },
         "position": {
@@ -2197,19 +1628,328 @@
         },
         "selected": false,
         "type": "genericNode"
+      },
+      {
+        "data": {
+          "id": "EmbeddingModel-cxG9r",
+          "node": {
+            "base_classes": [
+              "Embeddings"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Generate embeddings using a specified provider.",
+            "display_name": "Embedding Model",
+            "documentation": "https://docs.langflow.org/components-embedding-models",
+            "edited": false,
+            "field_order": [
+              "provider",
+              "model",
+              "api_key",
+              "api_base",
+              "dimensions",
+              "chunk_size",
+              "request_timeout",
+              "max_retries",
+              "show_progress_bar",
+              "model_kwargs"
+            ],
+            "frozen": false,
+            "icon": "binary",
+            "last_updated": "2025-09-24T16:02:07.998Z",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "93faf11517da",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "langchain_openai",
+                    "version": "0.3.23"
+                  },
+                  {
+                    "name": "langflow",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 2
+              },
+              "module": "langflow.components.models.embedding_model.EmbeddingModelComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Embedding Model",
+                "group_outputs": false,
+                "method": "build_embeddings",
+                "name": "embeddings",
+                "options": null,
+                "required_inputs": null,
+                "selected": "Embeddings",
+                "tool_mode": true,
+                "types": [
+                  "Embeddings"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "api_base": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "display_name": "API Base URL",
+                "dynamic": false,
+                "info": "Base URL for the API. Leave empty for default.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "api_base",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "api_key": {
+                "_input_type": "SecretStrInput",
+                "advanced": false,
+                "display_name": "OpenAI API Key",
+                "dynamic": false,
+                "info": "Model Provider API key",
+                "input_types": [],
+                "load_from_db": true,
+                "name": "api_key",
+                "password": true,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "str",
+                "value": ""
+              },
+              "chunk_size": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "display_name": "Chunk Size",
+                "dynamic": false,
+                "info": "",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "chunk_size",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "int",
+                "value": 1000
+              },
+              "code": {
+                "advanced": true,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "from typing import Any\n\nfrom langchain_openai import OpenAIEmbeddings\n\nfrom langflow.base.embeddings.model import LCEmbeddingsModel\nfrom langflow.base.models.openai_constants import OPENAI_EMBEDDING_MODEL_NAMES\nfrom langflow.field_typing import Embeddings\nfrom langflow.io import (\n    BoolInput,\n    DictInput,\n    DropdownInput,\n    FloatInput,\n    IntInput,\n    MessageTextInput,\n    SecretStrInput,\n)\nfrom langflow.schema.dotdict import dotdict\n\n\nclass EmbeddingModelComponent(LCEmbeddingsModel):\n    display_name = \"Embedding Model\"\n    description = \"Generate embeddings using a specified provider.\"\n    documentation: str = \"https://docs.langflow.org/components-embedding-models\"\n    icon = \"binary\"\n    name = \"EmbeddingModel\"\n    category = \"models\"\n\n    inputs = [\n        DropdownInput(\n            name=\"provider\",\n            display_name=\"Model Provider\",\n            options=[\"OpenAI\"],\n            value=\"OpenAI\",\n            info=\"Select the embedding model provider\",\n            real_time_refresh=True,\n            options_metadata=[{\"icon\": \"OpenAI\"}],\n        ),\n        DropdownInput(\n            name=\"model\",\n            display_name=\"Model Name\",\n            options=OPENAI_EMBEDDING_MODEL_NAMES,\n            value=OPENAI_EMBEDDING_MODEL_NAMES[0],\n            info=\"Select the embedding model to use\",\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"OpenAI API Key\",\n            info=\"Model Provider API key\",\n            required=True,\n            show=True,\n            real_time_refresh=True,\n        ),\n        MessageTextInput(\n            name=\"api_base\",\n            display_name=\"API Base URL\",\n            info=\"Base URL for the API. Leave empty for default.\",\n            advanced=True,\n        ),\n        IntInput(\n            name=\"dimensions\",\n            display_name=\"Dimensions\",\n            info=\"The number of dimensions the resulting output embeddings should have. \"\n            \"Only supported by certain models.\",\n            advanced=True,\n        ),\n        IntInput(name=\"chunk_size\", display_name=\"Chunk Size\", advanced=True, value=1000),\n        FloatInput(name=\"request_timeout\", display_name=\"Request Timeout\", advanced=True),\n        IntInput(name=\"max_retries\", display_name=\"Max Retries\", advanced=True, value=3),\n        BoolInput(name=\"show_progress_bar\", display_name=\"Show Progress Bar\", advanced=True),\n        DictInput(\n            name=\"model_kwargs\",\n            display_name=\"Model Kwargs\",\n            advanced=True,\n            info=\"Additional keyword arguments to pass to the model.\",\n        ),\n    ]\n\n    def build_embeddings(self) -> Embeddings:\n        provider = self.provider\n        model = self.model\n        api_key = self.api_key\n        api_base = self.api_base\n        dimensions = self.dimensions\n        chunk_size = self.chunk_size\n        request_timeout = self.request_timeout\n        max_retries = self.max_retries\n        show_progress_bar = self.show_progress_bar\n        model_kwargs = self.model_kwargs or {}\n\n        if provider == \"OpenAI\":\n            if not api_key:\n                msg = \"OpenAI API key is required when using OpenAI provider\"\n                raise ValueError(msg)\n            return OpenAIEmbeddings(\n                model=model,\n                dimensions=dimensions or None,\n                base_url=api_base or None,\n                api_key=api_key,\n                chunk_size=chunk_size,\n                max_retries=max_retries,\n                timeout=request_timeout or None,\n                show_progress_bar=show_progress_bar,\n                model_kwargs=model_kwargs,\n            )\n        msg = f\"Unknown provider: {provider}\"\n        raise ValueError(msg)\n\n    def update_build_config(self, build_config: dotdict, field_value: Any, field_name: str | None = None) -> dotdict:\n        if field_name == \"provider\" and field_value == \"OpenAI\":\n            build_config[\"model\"][\"options\"] = OPENAI_EMBEDDING_MODEL_NAMES\n            build_config[\"model\"][\"value\"] = OPENAI_EMBEDDING_MODEL_NAMES[0]\n            build_config[\"api_key\"][\"display_name\"] = \"OpenAI API Key\"\n            build_config[\"api_base\"][\"display_name\"] = \"OpenAI API Base URL\"\n        return build_config\n"
+              },
+              "dimensions": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "display_name": "Dimensions",
+                "dynamic": false,
+                "info": "The number of dimensions the resulting output embeddings should have. Only supported by certain models.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "dimensions",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "int",
+                "value": ""
+              },
+              "max_retries": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "display_name": "Max Retries",
+                "dynamic": false,
+                "info": "",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "max_retries",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "int",
+                "value": 3
+              },
+              "model": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Model Name",
+                "dynamic": false,
+                "info": "Select the embedding model to use",
+                "name": "model",
+                "options": [
+                  "text-embedding-3-small",
+                  "text-embedding-3-large",
+                  "text-embedding-ada-002"
+                ],
+                "options_metadata": [],
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "text-embedding-3-small"
+              },
+              "model_kwargs": {
+                "_input_type": "DictInput",
+                "advanced": true,
+                "display_name": "Model Kwargs",
+                "dynamic": false,
+                "info": "Additional keyword arguments to pass to the model.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "model_kwargs",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "type": "dict",
+                "value": {}
+              },
+              "provider": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Model Provider",
+                "dynamic": false,
+                "info": "Select the embedding model provider",
+                "name": "provider",
+                "options": [
+                  "OpenAI"
+                ],
+                "options_metadata": [
+                  {
+                    "icon": "OpenAI"
+                  }
+                ],
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "OpenAI"
+              },
+              "request_timeout": {
+                "_input_type": "FloatInput",
+                "advanced": true,
+                "display_name": "Request Timeout",
+                "dynamic": false,
+                "info": "",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "request_timeout",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "float",
+                "value": ""
+              },
+              "show_progress_bar": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Show Progress Bar",
+                "dynamic": false,
+                "info": "",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "show_progress_bar",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "bool",
+                "value": false
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "EmbeddingModel"
+        },
+        "dragging": false,
+        "id": "EmbeddingModel-cxG9r",
+        "measured": {
+          "height": 366,
+          "width": 320
+        },
+        "position": {
+          "x": 1743.8608432729177,
+          "y": 1808.780792406514
+        },
+        "selected": false,
+        "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -708.9707113557265,
-      "y": -965.7967428241175,
-      "zoom": 0.7967811989815704
+      "x": -767.6929603556041,
+      "y": -1196.6455082358875,
+      "zoom": 0.9277466102702023
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
   "endpoint_name": null,
   "id": "1402618b-e6d1-4ff2-9a11-d6ce71186915",
   "is_component": false,
-  "last_tested_version": "1.6.0",
+  "last_tested_version": "1.5.0.post2",
   "name": "OpenSearch Ingestion Flow Docling Serve",
   "tags": [
     "openai",
