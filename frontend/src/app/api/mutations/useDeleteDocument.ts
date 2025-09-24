@@ -14,7 +14,7 @@ interface DeleteDocumentResponse {
 }
 
 const deleteDocument = async (
-  data: DeleteDocumentRequest
+  data: DeleteDocumentRequest,
 ): Promise<DeleteDocumentResponse> => {
   const response = await fetch("/api/documents/delete-by-filename", {
     method: "POST",
@@ -37,9 +37,11 @@ export const useDeleteDocument = () => {
 
   return useMutation({
     mutationFn: deleteDocument,
-    onSuccess: () => {
+    onSettled: () => {
       // Invalidate and refetch search queries to update the UI
-      queryClient.invalidateQueries({ queryKey: ["search"] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["search"] });
+      }, 1000);
     },
   });
 };
