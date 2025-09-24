@@ -478,16 +478,14 @@ class FlowsService:
         if not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
         await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "model_name", model_name,
-                                node_display_name="Language Model",
-                                node_id="LanguageModelComponent-0YME7")
+                                node_display_name="Language Model")
 
     async def update_chat_flow_system_prompt(self, system_prompt: str):
         """Helper function to update the system prompt in the chat flow"""
         if not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
-        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "system_message", system_prompt,
-                                node_display_name="Language Model",
-                                node_id="LanguageModelComponent-0YME7")
+        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "system_prompt", system_prompt,
+                                node_display_name="Agent")
 
     async def update_flow_docling_preset(self, preset: str, preset_config: dict):
         """Helper function to update docling preset in the ingest flow"""
@@ -503,24 +501,21 @@ class FlowsService:
         if not LANGFLOW_INGEST_FLOW_ID:
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
         await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "chunk_size", chunk_size,
-                                node_display_name="Split Text",
-                                node_id="SplitText-3ZI5B")
+                                node_display_name="Split Text")
 
     async def update_ingest_flow_chunk_overlap(self, chunk_overlap: int):
         """Helper function to update chunk overlap in the ingest flow"""
         if not LANGFLOW_INGEST_FLOW_ID:
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
         await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "chunk_overlap", chunk_overlap,
-                                node_display_name="Split Text",
-                                node_id="SplitText-3ZI5B")
+                                node_display_name="Split Text")
 
     async def update_ingest_flow_embedding_model(self, embedding_model: str):
         """Helper function to update embedding model in the ingest flow"""
         if not LANGFLOW_INGEST_FLOW_ID:
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
         await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "model", embedding_model,
-                                node_display_name="Embedding Model",
-                                node_id="EmbeddingModel-eZ6bT")
+                                node_display_name="Embedding Model")
 
     def _replace_node_in_flow(self, flow_data, old_id, new_node):
         """Replace a node in the flow data"""
