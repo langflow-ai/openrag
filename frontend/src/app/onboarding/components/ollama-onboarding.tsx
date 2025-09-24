@@ -123,7 +123,11 @@ export function OllamaOnboarding({
           <ModelSelector
             options={embeddingModels}
             icon={<OllamaLogo className="w-4 h-4" />}
-            noOptionsPlaceholder="No embedding models detected. Install an embedding model to continue."
+            noOptionsPlaceholder={
+              isLoadingModels
+                ? "Loading models..."
+                : "No embedding models detected. Install an embedding model to continue."
+            }
             value={embeddingModel}
             onValueChange={setEmbeddingModel}
           />
@@ -137,7 +141,11 @@ export function OllamaOnboarding({
           <ModelSelector
             options={languageModels}
             icon={<OllamaLogo className="w-4 h-4" />}
-            noOptionsPlaceholder="No language models detected. Install a language model to continue."
+            noOptionsPlaceholder={
+              isLoadingModels
+                ? "Loading models..."
+                : "No language models detected. Install a language model to continue."
+            }
             value={languageModel}
             onValueChange={setLanguageModel}
           />
