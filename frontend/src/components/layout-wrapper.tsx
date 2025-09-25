@@ -2,7 +2,7 @@
 
 import { Bell, Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useGetConversationsQuery } from "@/app/api/queries/useGetConversationsQuery";
+import { useGetConversationsQuery, type ChatConversation } from "@/app/api/queries/useGetConversationsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import Logo from "@/components/logo/logo";
@@ -37,7 +37,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { data: conversations = [], isLoading: isConversationsLoading } =
     useGetConversationsQuery(endpoint, refreshTrigger, {
       enabled: isOnChatPage && (isAuthenticated || isNoAuthMode),
-    });
+    }) as { data: ChatConversation[]; isLoading: boolean };
 
   const handleNewConversation = () => {
     refreshConversations();

@@ -2,6 +2,12 @@ name: Build Multi-Architecture Docker Images
 
 on:
   workflow_dispatch:
+    inputs:
+      update_latest:
+        description: 'Update latest tags (production release)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build:
@@ -123,30 +129,41 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.version }}
 
+          # Create versioned tags
           docker buildx imagetools create -t phact/openrag-backend:$VERSION \
-            phact/openrag-backend:$VERSION-amd64 \
-            phact/openrag-backend:$VERSION-arm64
-          docker buildx imagetools create -t phact/openrag-backend:latest \
             phact/openrag-backend:$VERSION-amd64 \
             phact/openrag-backend:$VERSION-arm64
 
           docker buildx imagetools create -t phact/openrag-frontend:$VERSION \
             phact/openrag-frontend:$VERSION-amd64 \
             phact/openrag-frontend:$VERSION-arm64
-          docker buildx imagetools create -t phact/openrag-frontend:latest \
-            phact/openrag-frontend:$VERSION-amd64 \
-            phact/openrag-frontend:$VERSION-arm64
 
           docker buildx imagetools create -t phact/openrag-langflow:$VERSION \
-            phact/openrag-langflow:$VERSION-amd64 \
-            phact/openrag-langflow:$VERSION-arm64
-          docker buildx imagetools create -t phact/openrag-langflow:latest \
             phact/openrag-langflow:$VERSION-amd64 \
             phact/openrag-langflow:$VERSION-arm64
 
           docker buildx imagetools create -t phact/openrag-opensearch:$VERSION \
             phact/openrag-opensearch:$VERSION-amd64 \
             phact/openrag-opensearch:$VERSION-arm64
-          docker buildx imagetools create -t phact/openrag-opensearch:latest \
-            phact/openrag-opensearch:$VERSION-amd64 \
-            phact/openrag-opensearch:$VERSION-arm64
+
+          # Only update latest tags if version is numeric AND checkbox is checked
+          if [[ "$VERSION" =~ ^[0-9.-]+$ ]] && [[ "${{ github.event.inputs.update_latest }}" == "true" ]]; then
+            echo "Updating latest tags for production release: $VERSION"
+            docker buildx imagetools create -t phact/openrag-backend:latest \
+              phact/openrag-backend:$VERSION-amd64 \
+              phact/openrag-backend:$VERSION-arm64
+
+            docker buildx imagetools create -t phact/openrag-frontend:latest \
+              phact/openrag-frontend:$VERSION-amd64 \
+              phact/openrag-frontend:$VERSION-arm64
+
+            docker buildx imagetools create -t phact/openrag-langflow:latest \
+              phact/openrag-langflow:$VERSION-amd64 \
+              phact/openrag-langflow:$VERSION-arm64
+
+            docker buildx imagetools create -t phact/openrag-opensearch:latest \
+              phact/openrag-opensearch:$VERSION-amd64 \
+              phact/openrag-opensearch:$VERSION-arm64
+          else
+            echo "Skipping latest tags - version: $VERSION, update_latest: ${{ github.event.inputs.update_latest }}"
+          fi
