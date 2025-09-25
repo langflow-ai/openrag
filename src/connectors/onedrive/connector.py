@@ -23,6 +23,8 @@ class OneDriveConnector(BaseConnector):
     CONNECTOR_ICON = "onedrive"
 
     def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+
         logger.debug(f"OneDrive connector __init__ called with config type: {type(config)}")
         logger.debug(f"OneDrive connector __init__ config value: {config}")
 
@@ -41,7 +43,7 @@ class OneDriveConnector(BaseConnector):
         # Initialize with defaults that allow the connector to be listed
         self.client_id = None
         self.client_secret = None
-        self.redirect_uri = config.get("redirect_uri", "http://localhost")  # must match your app registration
+        self.redirect_uri = config.get("redirect_uri", "http://localhost")
 
         # Try to get credentials, but don't fail if they're missing
         try:
@@ -100,7 +102,7 @@ class OneDriveConnector(BaseConnector):
         return f"https://graph.microsoft.com/{self._graph_api_version}"
 
     def emit(self, doc: ConnectorDocument) -> None:
-        """Emit a ConnectorDocument instance (integrate with your pipeline here)."""
+        """Emit a ConnectorDocument instance."""
         logger.debug(f"Emitting OneDrive document: {doc.id} ({doc.filename})")
 
     async def authenticate(self) -> bool:
@@ -238,7 +240,12 @@ class OneDriveConnector(BaseConnector):
         expiry = datetime.utcnow() + timedelta(days=3)
         return expiry.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
-    async def list_files(self, page_token: Optional[str] = None, max_files: Optional[int] = None) -> Dict[str, Any]:
+    async def list_files(
+        self,
+        page_token: Optional[str] = None,
+        max_files: Optional[int] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """List files from OneDrive using Microsoft Graph."""
         try:
             if not await self.authenticate():
@@ -250,7 +257,7 @@ class OneDriveConnector(BaseConnector):
             base_url = f"{self._graph_base_url}/me/drive/root/children"
 
             params = dict(self._default_params)
-            params["$top"] = max_files_value
+            params["$top"] = str(max_files_value)
 
             if page_token:
                 params["$skiptoken"] = page_token

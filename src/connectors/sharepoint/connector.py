@@ -22,11 +22,10 @@ class SharePointConnector(BaseConnector):
     CONNECTOR_NAME = "SharePoint"
     CONNECTOR_DESCRIPTION = "Connect to SharePoint to sync documents and files"
     CONNECTOR_ICON = "sharepoint"
-    
-    def __init__(self, config: Dict[str, Any]):
-        super().__init__(config)  # Fix: Call parent init first
         
     def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+
         logger.debug(f"SharePoint connector __init__ called with config type: {type(config)}")
         logger.debug(f"SharePoint connector __init__ config value: {config}")
         
@@ -110,7 +109,6 @@ class SharePointConnector(BaseConnector):
     def emit(self, doc: ConnectorDocument) -> None:
         """
         Emit a ConnectorDocument instance.
-        Override this method to integrate with your ingestion pipeline.
         """
         logger.debug(f"Emitting SharePoint document: {doc.id} ({doc.filename})")
     
@@ -283,7 +281,12 @@ class SharePointConnector(BaseConnector):
         
         return None
     
-    async def list_files(self, page_token: Optional[str] = None, max_files: Optional[int] = None) -> Dict[str, Any]:
+    async def list_files(
+        self,
+        page_token: Optional[str] = None,
+        max_files: Optional[int] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """List all files using Microsoft Graph API - BaseConnector interface"""
         try:
             # Ensure authentication
@@ -301,7 +304,7 @@ class SharePointConnector(BaseConnector):
                 base_url = f"{self._graph_base_url}/me/drive/root/children"
             
             params = dict(self._default_params)
-            params["$top"] = max_files_value
+            params["$top"] = str(max_files_value)
             
             if page_token:
                 params["$skiptoken"] = page_token
