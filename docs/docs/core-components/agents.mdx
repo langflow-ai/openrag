@@ -3,6 +3,11 @@ title: Agents powered by Langflow
 slug: /agents
 ---
 
+import Icon from "@site/src/components/icon/icon";
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import PartialModifyFlows from '@site/docs/_partial-modify-flows.mdx'; 
+
 OpenRAG leverages Langflow's Agent component to power the OpenRAG Open Search Agent flow.
 
 This flow intelligently chats with your knowledge by embedding your query, comparing it the vector database embeddings, and generating a response with the LLM.
@@ -25,7 +30,7 @@ In an agentic context, tools are functions that the agent can run to perform tas
 ## Use the OpenRAG Open Search Agent flow
 
 If you've chatted with your knowledge in OpenRAG, you've already experienced the OpenRAG Open Search Agent chat flow.
-To view the flow, click <Icon name="Settings" aria-hidden="true"/> **Settings**, and then click **Edit in Langflow**.
+To view the flow, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then click **Edit in Langflow**.
 This flow contains seven components:
 
 * The Agent component orchestrates the entire flow by deciding when to search the knowledge base, how to formulate search queries, and how to combine retrieved information with the user's question to generate a comprehensive response.
@@ -38,9 +43,7 @@ The Agent behaves according to the prompt in the **Agent Instructions** field.
 This filter is the Knowledge filter, and filters which knowledge sources to search through.
 * The Agent component's Output port is connected to the Chat Output component, which returns the final response to the user or application.
 
-All flows included with OpenRAG are designed to be modular, performant, and provider-agnostic.
-To modify a flow, click <Icon name="Settings" aria-hidden="true"/> **Settings**, and click **Edit in Langflow**.
-Flows are edited in the same way as in the [Langflow visual editor](https://docs.langflow.org/concepts-overview).
+<PartialModifyFlows />
 
 For an example of changing out the agent's LLM in OpenRAG, see the [Quickstart](/quickstart#change-components).
 
