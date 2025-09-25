@@ -19,6 +19,7 @@ from config.settings import (
     WATSONX_LLM_COMPONENT_ID,
     OLLAMA_EMBEDDING_COMPONENT_ID,
     OLLAMA_LLM_COMPONENT_ID,
+    get_openrag_config,
 )
 import json
 import os
@@ -152,6 +153,34 @@ class FlowsService:
                     flow_id=flow_id,
                     flow_file=os.path.basename(flow_path),
                 )
+
+                # Now update the flow with current configuration settings
+                try:
+                    config = get_openrag_config()
+
+                    # Check if configuration has been edited (onboarding completed)
+                    if config.edited:
+                        logger.info(f"Updating {flow_type} flow with current configuration settings")
+
+                        # Update the flow with the current embedding and LLM models
+                        update_result = await self.change_langflow_model_value(
+                            provider=config.provider.model_provider.lower(),
+                            embedding_model=config.knowledge.embedding_model,
+                            llm_model=config.agent.llm_model,
+                            endpoint=getattr(config.provider, 'endpoint', None)
+                        )
+
+                        if update_result.get("success"):
+                            logger.info(f"Successfully updated {flow_type} flow with current configuration")
+                        else:
+                            logger.warning(f"Failed to update {flow_type} flow with current configuration: {update_result.get('error', 'Unknown error')}")
+                    else:
+                        logger.info(f"Configuration not yet edited (onboarding not completed), skipping model updates for {flow_type} flow")
+
+                except Exception as e:
+                    logger.error(f"Error updating {flow_type} flow with current configuration", error=str(e))
+                    # Don't fail the entire reset operation if configuration update fails
+
                 return {
                     "success": True,
                     "message": f"Successfully reset {flow_type} flow",
