@@ -59,7 +59,7 @@ const sidebars = {
         {
           type: "doc",
           id: "core-components/knowledge",
-          label: "Knowledge stored with OpenSearch"
+          label: "OpenSearch Knowledge"
         }
       ],
     },
