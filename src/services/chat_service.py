@@ -2,7 +2,6 @@ import json
 from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID
 from agent import async_chat, async_langflow, async_chat_stream
 from auth_context import set_auth_context
-from api.settings import get_docling_tweaks
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -127,8 +126,6 @@ class ChatService:
                 "Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY."
             )
 
-        # Get docling tweaks based on current configuration
-        docling_tweaks = get_docling_tweaks()
 
         if stream:
             from agent import async_langflow_chat_stream
@@ -140,7 +137,6 @@ class ChatService:
                 user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
-                tweaks=docling_tweaks,
             )
         else:
             from agent import async_langflow_chat
@@ -152,7 +148,6 @@ class ChatService:
                 user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
-                tweaks=docling_tweaks,
             )
             response_data = {"response": response_text}
             if response_id:
@@ -202,8 +197,6 @@ class ChatService:
 
         from agent import async_langflow_chat
 
-        # Get docling tweaks (might not be used by nudges flow, but keeping consistent)
-        docling_tweaks = get_docling_tweaks()
 
         response_text, response_id = await async_langflow_chat(
             langflow_client,
@@ -211,7 +204,6 @@ class ChatService:
             prompt,
             user_id,
             extra_headers=extra_headers,
-            tweaks=docling_tweaks,
             store_conversation=False,
         )
         response_data = {"response": response_text}
@@ -242,8 +234,6 @@ class ChatService:
                 raise ValueError(
                     "Langflow client not initialized. Ensure LANGFLOW is reachable or set LANGFLOW_KEY."
                 )
-            # Get docling tweaks based on current configuration
-            docling_tweaks = get_docling_tweaks()
 
             response_text, response_id = await async_langflow(
                 langflow_client=langflow_client,
@@ -251,7 +241,6 @@ class ChatService:
                 prompt=document_prompt,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
-                tweaks=docling_tweaks,
             )
         else:  # chat
             # Set auth context for chat tools and provide user_id
@@ -494,4 +483,56 @@ class ChatService:
             "conversations": all_conversations,
             "total_conversations": len(all_conversations),
         }
+
+    async def delete_session(self, user_id: str, session_id: str):
+        """Delete a session from both local storage and Langflow"""
+        try:
+            # Delete from local conversation storage
+            from agent import delete_user_conversation
+            local_deleted = delete_user_conversation(user_id, session_id)
+
+            # Delete from Langflow using the monitor API
+            langflow_deleted = await self._delete_langflow_session(session_id)
+
+            success = local_deleted or langflow_deleted
+            error_msg = None
+
+            if not success:
+                error_msg = "Session not found in local storage or Langflow"
+
+            return {
+                "success": success,
+                "local_deleted": local_deleted,
+                "langflow_deleted": langflow_deleted,
+                "error": error_msg
+            }
+
+        except Exception as e:
+            logger.error(f"Error deleting session {session_id} for user {user_id}: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def _delete_langflow_session(self, session_id: str):
+        """Delete a session from Langflow using the monitor API"""
+        try:
+            response = await clients.langflow_request(
+                "DELETE",
+                f"/api/v1/monitor/messages/session/{session_id}"
+            )
+
+            if response.status_code == 200 or response.status_code == 204:
+                logger.info(f"Successfully deleted session {session_id} from Langflow")
+                return True
+            else:
+                logger.warning(
+                    f"Failed to delete session {session_id} from Langflow: "
+                    f"{response.status_code} - {response.text}"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"Error deleting session {session_id} from Langflow: {e}")
+            return False
 

@@ -22,8 +22,18 @@ const sidebars = {
       items: [
         {
           type: "doc",
-          id: "get-started/intro",
-          label: "Introduction"
+          id: "get-started/what-is-openrag",
+          label: "About OpenRAG"
+        },
+        {
+          type: "doc",
+          id: "get-started/install",
+          label: "Installation"
+        },
+        {
+          type: "doc",
+          id: "get-started/quickstart",
+          label: "Quickstart"
         },
         {
           type: "doc",

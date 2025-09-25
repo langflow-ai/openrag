@@ -392,8 +392,6 @@ async def startup_tasks(services):
     """Startup tasks"""
     logger.info("Starting startup tasks")
     await init_index()
-    # Sample data ingestion is now handled by the onboarding endpoint when sample_data=True
-    logger.info("Sample data ingestion moved to onboarding endpoint")
 
 
 async def initialize_services():
@@ -786,6 +784,18 @@ async def create_app():
             ),
             methods=["GET"],
         ),
+        # Session deletion endpoint
+        Route(
+            "/sessions/{session_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    chat.delete_session_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
+        ),
         # Authentication endpoints
         Route(
             "/auth/init",
@@ -927,7 +937,8 @@ async def create_app():
             "/settings",
             require_auth(services["session_manager"])(
                 partial(
-                    settings.update_settings, session_manager=services["session_manager"]
+                    settings.update_settings,
+                    session_manager=services["session_manager"],
                 )
             ),
             methods=["POST"],
@@ -939,7 +950,7 @@ async def create_app():
                 partial(
                     models.get_openai_models,
                     models_service=services["models_service"],
-                    session_manager=services["session_manager"]
+                    session_manager=services["session_manager"],
                 )
             ),
             methods=["GET"],
@@ -950,7 +961,7 @@ async def create_app():
                 partial(
                     models.get_ollama_models,
                     models_service=services["models_service"],
-                    session_manager=services["session_manager"]
+                    session_manager=services["session_manager"],
                 )
             ),
             methods=["GET"],
@@ -961,7 +972,7 @@ async def create_app():
                 partial(
                     models.get_ibm_models,
                     models_service=services["models_service"],
-                    session_manager=services["session_manager"]
+                    session_manager=services["session_manager"],
                 )
             ),
             methods=["GET", "POST"],
@@ -970,12 +981,20 @@ async def create_app():
         Route(
             "/onboarding",
             require_auth(services["session_manager"])(
-                partial(
-                    settings.onboarding, 
-                    flows_service=services["flows_service"]
-                )
+                partial(settings.onboarding, flows_service=services["flows_service"])
             ),
             methods=["POST"],
+        ),
+        # Docling preset update endpoint
+        Route(
+            "/settings/docling-preset",
+            require_auth(services["session_manager"])(
+                partial(
+                    settings.update_docling_preset,
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["PATCH"],
         ),
         Route(
             "/nudges",
