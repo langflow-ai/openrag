@@ -11,23 +11,14 @@ import PartialModifyFlows from '@site/docs/_partial-modify-flows.mdx';
 OpenRAG uses [OpenSearch](https://docs.opensearch.org/latest/) for its vector-backed knowledge store.
 OpenSearch provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
 
-## OpenRAG default configuration
-
-OpenRAG creates a specialized OpenSearch index called `documents` with the values defined at `src/config/settings.py`.
-- **Vector Dimensions**: 1536-dimensional embeddings using OpenAI's `text-embedding-3-small` model.
-- **KNN Vector Type**: Uses `knn_vector` field type with `disk_ann` method and `jvector` engine.
-- **Distance Metric**: L2 (Euclidean) distance for vector similarity.
-- **Performance Optimization**: Configured with `ef_construction: 100` and `m: 16` parameters.
-
-OpenRAG supports hybrid search, which combines semantic and keyword search.
-
 ## Explore knowledge
 
-To explore your current knowledge, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
 The Knowledge page lists the documents OpenRAG has ingested into the OpenSearch vector database's `documents` index.
 
+To explore your current knowledge, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
 Click on a document to display the chunks derived from splitting the default documents into the vector database.
-Documents are processed with the **Knowledge Ingest** flow, so to split your documents differently, edit the **Knowledge Ingest** flow.
+
+Documents are processed with the default **Knowledge Ingest** flow, so if you want to split your documents differently, edit the **Knowledge Ingest** flow.
 
 <PartialModifyFlows />
 
@@ -35,12 +26,19 @@ Documents are processed with the **Knowledge Ingest** flow, so to split your doc
 
 OpenRAG supports knowledge ingestion through direct file uploads and OAuth connectors.
 
-### Upload files
+### Direct file ingestion
 
-- Files uploaded directly through the web interface
-- Processed immediately using the standard pipeline
+The **Knowledge Ingest** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
 
-### Upload files through OAuth connectors
+The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#advanced-setup) or in the `.env` used by Docker Compose. Add multiple paths in a comma-separated list with no spaces. For example, `./documents,/Users/username/Documents`.
+
+To load and process a single file from the mapped location, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then click **Add File**.
+The file is loaded into your OpenSearch database, and appears in the Knowledge page.
+
+To load and process a directory from the mapped location, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then click **Process Folder**. 
+The files are loaded into your OpenSearch database, and appear in the Knowledge page.
+
+### Ingest files through OAuth connectors
 
 OpenRAG supports the following enterprise-grade OAuth connectors for seamless document synchronization.
 
@@ -94,6 +92,19 @@ The ingestion process may take some time, depending on the size of your document
 ## Knowledge Filter System
 
 OpenRAG includes a knowledge filter system for organizing and managing document collections:
+
+
+
+
+## OpenRAG default configuration
+
+OpenRAG creates a specialized OpenSearch index called `documents` with the values defined at `src/config/settings.py`.
+- **Vector Dimensions**: 1536-dimensional embeddings using OpenAI's `text-embedding-3-small` model.
+- **KNN Vector Type**: Uses `knn_vector` field type with `disk_ann` method and `jvector` engine.
+- **Distance Metric**: L2 (Euclidean) distance for vector similarity.
+- **Performance Optimization**: Configured with `ef_construction: 100` and `m: 16` parameters.
+
+OpenRAG supports hybrid search, which combines semantic and keyword search.
 
 
 
