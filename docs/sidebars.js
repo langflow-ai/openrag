@@ -54,7 +54,7 @@ const sidebars = {
         {
           type: "doc",
           id: "core-components/agents",
-          label: "Langflow Agent"
+          label: "Langflow Agents"
         },
       ],
     },
