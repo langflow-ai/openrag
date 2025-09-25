@@ -84,16 +84,14 @@ class LangflowFileService:
         if not tweaks:
             tweaks = {}
 
-        # Pass files via tweaks to File component (File-5NMSr from the flow)
+        # Pass files via tweaks to File component (File-PSU37 from the flow)
         if file_paths:
-            tweaks["File-5NMSr"] = {"path": file_paths}
+            tweaks["File-PSU37"] = {"path": file_paths}
 
         # Pass JWT token via tweaks using the x-langflow-global-var- pattern
         if jwt_token:
             # Using the global variable pattern that Langflow expects for OpenSearch components
-            tweaks["OpenSearchVectorStoreComponent-YnJox"] = {
-                "jwt_token": {"value": jwt_token, "load_from_db": False},
-            }
+            tweaks["OpenSearchHybrid-Ve6bS"] = {"jwt_token": jwt_token}
             logger.debug("[LF] Added JWT token to tweaks for OpenSearch components")
         else:
             logger.warning("[LF] No JWT token provided")
@@ -111,16 +109,14 @@ class LangflowFileService:
 
         if metadata_tweaks:
             # Initialize the OpenSearch component tweaks if not already present
-            if "OpenSearchVectorStoreComponent-YnJox" not in tweaks:
-                tweaks["OpenSearchVectorStoreComponent-YnJox"] = {}
-            tweaks["OpenSearchVectorStoreComponent-YnJox"]["docs_metadata"] = (
-                metadata_tweaks
-            )
+            if "OpenSearchHybrid-Ve6bS" not in tweaks:
+                tweaks["OpenSearchHybrid-Ve6bS"] = {}
+            tweaks["OpenSearchHybrid-Ve6bS"]["docs_metadata"] = metadata_tweaks
             logger.debug(
                 "[LF] Added metadata to tweaks", metadata_count=len(metadata_tweaks)
             )
-        if tweaks:
-            payload["tweaks"] = tweaks
+        # if tweaks:
+        #     payload["tweaks"] = tweaks
         if session_id:
             payload["session_id"] = session_id
 
@@ -136,7 +132,16 @@ class LangflowFileService:
         # Avoid logging full payload to prevent leaking sensitive data (e.g., JWT)
 
         resp = await clients.langflow_request(
-            "POST", f"/api/v1/run/{self.flow_id_ingest}", json=payload
+            "POST",
+            f"/api/v1/run/{self.flow_id_ingest}",
+            json=payload,
+            headers={
+                "X-Langflow-Global-Var-JWT": jwt_token,
+                "X-Langflow-Global-Var-Owner": owner,
+                "X-Langflow-Global-Var-Owner-Name": owner_name,
+                "X-Langflow-Global-Var-Owner-Email": owner_email,
+                "X-Langflow-Global-Var-Connector-Type": connector_type,
+            },
         )
         logger.debug(
             "[LF] Run response", status_code=resp.status_code, reason=resp.reason_phrase
@@ -215,24 +220,24 @@ class LangflowFileService:
                 "[LF] Applying ingestion settings", extra={"settings": settings}
             )
 
-            # Split Text component tweaks (SplitText-PC36h)
+            # Split Text component tweaks (SplitText-QIKhg)
             if (
                 settings.get("chunkSize")
                 or settings.get("chunkOverlap")
                 or settings.get("separator")
             ):
-                if "SplitText-PC36h" not in final_tweaks:
-                    final_tweaks["SplitText-PC36h"] = {}
+                if "SplitText-QIKhg" not in final_tweaks:
+                    final_tweaks["SplitText-QIKhg"] = {}
                 if settings.get("chunkSize"):
-                    final_tweaks["SplitText-PC36h"]["chunk_size"] = settings[
+                    final_tweaks["SplitText-QIKhg"]["chunk_size"] = settings[
                         "chunkSize"
                     ]
                 if settings.get("chunkOverlap"):
-                    final_tweaks["SplitText-PC36h"]["chunk_overlap"] = settings[
+                    final_tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings[
                         "chunkOverlap"
                     ]
                 if settings.get("separator"):
-                    final_tweaks["SplitText-PC36h"]["separator"] = settings["separator"]
+                    final_tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
 
             # OpenAI Embeddings component tweaks (OpenAIEmbeddings-joRJ6)
             if settings.get("embeddingModel"):
