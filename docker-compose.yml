@@ -91,7 +91,10 @@ services:
   langflow:
     volumes:
       - ./flows:/app/flows:z
-    image: phact/openrag-langflow:${LANGFLOW_VERSION:-latest}
+    # image: phact/openrag-langflow:${LANGFLOW_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.langflow
     container_name: langflow
     ports:
       - "7860:7860"

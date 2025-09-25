@@ -130,18 +130,19 @@ class LangflowFileService:
         )
 
         # Avoid logging full payload to prevent leaking sensitive data (e.g., JWT)
-
+        headers={
+                "X-Langflow-Global-Var-JWT": str(jwt_token),
+                "X-Langflow-Global-Var-Owner": str(owner),
+                "X-Langflow-Global-Var-Owner-Name": str(owner_name),
+                "X-Langflow-Global-Var-Owner-Email": str(owner_email),
+                "X-Langflow-Global-Var-Connector-Type": str(connector_type),
+            }
+        logger.info(f"[LF] Headers {headers}")
         resp = await clients.langflow_request(
             "POST",
             f"/api/v1/run/{self.flow_id_ingest}",
             json=payload,
-            headers={
-                "X-Langflow-Global-Var-JWT": jwt_token,
-                "X-Langflow-Global-Var-Owner": owner,
-                "X-Langflow-Global-Var-Owner-Name": owner_name,
-                "X-Langflow-Global-Var-Owner-Email": owner_email,
-                "X-Langflow-Global-Var-Connector-Type": connector_type,
-            },
+            headers=headers,
         )
         logger.debug(
             "[LF] Run response", status_code=resp.status_code, reason=resp.reason_phrase
