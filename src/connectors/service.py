@@ -69,8 +69,10 @@ class ConnectorService:
 
                 logger.debug("Processing connector document", document_id=document.id)
 
-                # Process using the existing pipeline but with connector document metadata
-                result = await doc_service.process_file_common(
+                # Process using consolidated processing pipeline
+                from models.processors import TaskProcessor
+                processor = TaskProcessor(document_service=doc_service)
+                result = await processor.process_document_standard(
                     file_path=tmp_file.name,
                     file_hash=document.id,  # Use connector document ID as hash
                     owner_user_id=owner_user_id,
