@@ -484,3 +484,55 @@ class ChatService:
             "total_conversations": len(all_conversations),
         }
 
+    async def delete_session(self, user_id: str, session_id: str):
+        """Delete a session from both local storage and Langflow"""
+        try:
+            # Delete from local conversation storage
+            from agent import delete_user_conversation
+            local_deleted = delete_user_conversation(user_id, session_id)
+
+            # Delete from Langflow using the monitor API
+            langflow_deleted = await self._delete_langflow_session(session_id)
+
+            success = local_deleted or langflow_deleted
+            error_msg = None
+
+            if not success:
+                error_msg = "Session not found in local storage or Langflow"
+
+            return {
+                "success": success,
+                "local_deleted": local_deleted,
+                "langflow_deleted": langflow_deleted,
+                "error": error_msg
+            }
+
+        except Exception as e:
+            logger.error(f"Error deleting session {session_id} for user {user_id}: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def _delete_langflow_session(self, session_id: str):
+        """Delete a session from Langflow using the monitor API"""
+        try:
+            response = await clients.langflow_request(
+                "DELETE",
+                f"/api/v1/monitor/messages/session/{session_id}"
+            )
+
+            if response.status_code == 200 or response.status_code == 204:
+                logger.info(f"Successfully deleted session {session_id} from Langflow")
+                return True
+            else:
+                logger.warning(
+                    f"Failed to delete session {session_id} from Langflow: "
+                    f"{response.status_code} - {response.text}"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"Error deleting session {session_id} from Langflow: {e}")
+            return False
+
