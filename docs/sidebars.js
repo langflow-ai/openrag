@@ -49,6 +49,17 @@ const sidebars = {
     },
     {
       type: "category",
+      label: "Core components",
+      items: [
+        {
+          type: "doc",
+          id: "core-components/agents",
+          label: "Langflow Agents"
+        },
+      ],
+    },
+    {
+      type: "category",
       label: "Configuration",
       items: [
         {
