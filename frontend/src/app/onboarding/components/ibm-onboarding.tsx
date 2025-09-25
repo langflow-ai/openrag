@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { LabelInput } from "@/components/label-input";
+import { LabelWrapper } from "@/components/label-wrapper";
 import IBMLogo from "@/components/logo/ibm-logo";
 import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
@@ -7,6 +8,7 @@ import { useGetIBMModelsQuery } from "../../api/queries/useGetModelsQuery";
 import { useModelSelection } from "../hooks/useModelSelection";
 import { useUpdateSettings } from "../hooks/useUpdateSettings";
 import { AdvancedOnboarding } from "./advanced";
+import { ModelSelector } from "./model-selector";
 
 export function IBMOnboarding({
   setSettings,
@@ -17,10 +19,42 @@ export function IBMOnboarding({
   sampleDataset: boolean;
   setSampleDataset: (dataset: boolean) => void;
 }) {
-  const [endpoint, setEndpoint] = useState("");
+  const [endpoint, setEndpoint] = useState("https://us-south.ml.cloud.ibm.com");
   const [apiKey, setApiKey] = useState("");
   const [projectId, setProjectId] = useState("");
 
+  const options = [
+    {
+      value: "https://us-south.ml.cloud.ibm.com",
+      label: "https://us-south.ml.cloud.ibm.com",
+      default: true,
+    },
+    {
+      value: "https://eu-de.ml.cloud.ibm.com",
+      label: "https://eu-de.ml.cloud.ibm.com",
+      default: false,
+    },
+    {
+      value: "https://eu-gb.ml.cloud.ibm.com",
+      label: "https://eu-gb.ml.cloud.ibm.com",
+      default: false,
+    },
+    {
+      value: "https://au-syd.ml.cloud.ibm.com",
+      label: "https://au-syd.ml.cloud.ibm.com",
+      default: false,
+    },
+    {
+      value: "https://jp-tok.ml.cloud.ibm.com",
+      label: "https://jp-tok.ml.cloud.ibm.com",
+      default: false,
+    },
+    {
+      value: "https://ca-tor.ml.cloud.ibm.com",
+      label: "https://ca-tor.ml.cloud.ibm.com",
+      default: false,
+    },
+  ];
   const debouncedEndpoint = useDebouncedValue(endpoint, 500);
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
   const debouncedProjectId = useDebouncedValue(projectId, 500);
@@ -68,19 +102,26 @@ export function IBMOnboarding({
   return (
     <>
       <div className="space-y-4">
-        <LabelInput
+        <LabelWrapper
           label="watsonx.ai API Endpoint"
-          helperText="The API endpoint for your watsonx.ai account."
+          helperText="Base URL of the API"
           id="api-endpoint"
           required
-          placeholder="https://us-south.ml.cloud.ibm.com"
-          value={endpoint}
-          onChange={(e) => setEndpoint(e.target.value)}
-        />
+        >
+          <ModelSelector
+            options={options}
+            value={endpoint}
+            onValueChange={setEndpoint}
+            searchPlaceholder="Search endpoint..."
+            noOptionsPlaceholder="No endpoints available"
+            placeholder="Select endpoint..."
+          />
+        </LabelWrapper>
         <LabelInput
           label="IBM API key"
           helperText="The API key for your watsonx.ai account."
           id="api-key"
+          type="password"
           required
           placeholder="your-api-key"
           value={apiKey}
@@ -102,16 +143,9 @@ export function IBMOnboarding({
         )}
         {modelsError && (
           <p className="text-mmd text-accent-amber-foreground">
-            Invalid configuration or connection failed
+            Connection failed. Check your configuration.
           </p>
         )}
-        {modelsData &&
-          (modelsData.language_models?.length > 0 ||
-            modelsData.embedding_models?.length > 0) && (
-            <p className="text-mmd text-accent-emerald-foreground">
-              Configuration is valid
-            </p>
-          )}
       </div>
       <AdvancedOnboarding
         icon={<IBMLogo className="w-4 h-4" />}
