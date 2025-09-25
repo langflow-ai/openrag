@@ -94,6 +94,7 @@ export function OpenAIOnboarding({
             <LabelInput
               label="OpenAI API key"
               helperText="The API key for your OpenAI account."
+              className={modelsError ? "!border-destructive" : ""}
               id="api-key"
               type="password"
               required
@@ -107,7 +108,7 @@ export function OpenAIOnboarding({
               </p>
             )}
             {modelsError && (
-              <p className="text-mmd text-accent-amber-foreground">
+              <p className="text-mmd text-destructive">
                 Invalid OpenAI API key. Verify or replace the key.
               </p>
             )}
