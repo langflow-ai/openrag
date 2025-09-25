@@ -1,3 +1,4 @@
+import asyncio
 from config.settings import (
     NUDGES_FLOW_ID,
     LANGFLOW_URL,
@@ -162,12 +163,30 @@ class FlowsService:
                     if config.edited:
                         logger.info(f"Updating {flow_type} flow with current configuration settings")
 
-                        # Update the flow with the current embedding and LLM models
+                        provider = config.provider.model_provider.lower()
+
+                        # Step 1: Assign model provider (replace components) if not OpenAI
+                        if provider != "openai":
+                            logger.info(f"Assigning {provider} components to {flow_type} flow")
+                            provider_result = await self.assign_model_provider(provider)
+
+                            if not provider_result.get("success"):
+                                logger.warning(f"Failed to assign {provider} components: {provider_result.get('error', 'Unknown error')}")
+                                # Continue anyway, maybe just value updates will work
+
+                        # Step 2: Update model values for the specific flow being reset
+                        single_flow_config = [{
+                            "name": flow_type,
+                            "flow_id": flow_id,
+                        }]
+
+                        logger.info(f"Updating {flow_type} flow model values")
                         update_result = await self.change_langflow_model_value(
-                            provider=config.provider.model_provider.lower(),
+                            provider=provider,
                             embedding_model=config.knowledge.embedding_model,
                             llm_model=config.agent.llm_model,
-                            endpoint=getattr(config.provider, 'endpoint', None)
+                            endpoint=config.provider.endpoint if config.provider.endpoint else None,
+                            flow_configs=single_flow_config
                         )
 
                         if update_result.get("success"):
@@ -593,16 +612,17 @@ class FlowsService:
         return False
 
     async def change_langflow_model_value(
-        self, provider: str, embedding_model: str, llm_model: str, endpoint: str = None
+        self, provider: str, embedding_model: str, llm_model: str, endpoint: str = None, flow_configs: list = None
     ):
         """
-        Change dropdown values for provider-specific components across all flows
+        Change dropdown values for provider-specific components across flows
 
         Args:
             provider: The provider ("watsonx", "ollama", "openai")
             embedding_model: The embedding model name to set
             llm_model: The LLM model name to set
             endpoint: The endpoint URL (required for watsonx/ibm provider)
+            flow_configs: Optional list of specific flow configs to update. If None, updates all flows.
 
         Returns:
             dict: Success/error response with details for each flow
@@ -618,21 +638,22 @@ class FlowsService:
                 f"Changing dropdown values for provider {provider}, embedding: {embedding_model}, llm: {llm_model}, endpoint: {endpoint}"
             )
 
-            # Define flow configurations with provider-specific component IDs (removed hardcoded file paths)
-            flow_configs = [
-                {
-                    "name": "nudges",
-                    "flow_id": NUDGES_FLOW_ID,
-                },
-                {
-                    "name": "retrieval",
-                    "flow_id": LANGFLOW_CHAT_FLOW_ID,
-                },
-                {
-                    "name": "ingest",
-                    "flow_id": LANGFLOW_INGEST_FLOW_ID,
-                },
-            ]
+            # Use provided flow_configs or default to all flows
+            if flow_configs is None:
+                flow_configs = [
+                    {
+                        "name": "nudges",
+                        "flow_id": NUDGES_FLOW_ID,
+                    },
+                    {
+                        "name": "retrieval",
+                        "flow_id": LANGFLOW_CHAT_FLOW_ID,
+                    },
+                    {
+                        "name": "ingest",
+                        "flow_id": LANGFLOW_INGEST_FLOW_ID,
+                    },
+                ]
 
             # Determine target component IDs based on provider
             target_embedding_id, target_llm_id, target_llm_text_id = self._get_provider_component_ids(
