@@ -126,11 +126,29 @@ class TaskService:
 
             async def process_with_semaphore(file_path: str):
                 async with semaphore:
-                    await self.document_service.process_single_file_task(upload_task, file_path)
+                    from models.processors import DocumentFileProcessor
+                    file_task = upload_task.file_tasks[file_path]
+
+                    # Create processor with user context (all None for background processing)
+                    processor = DocumentFileProcessor(
+                        document_service=self.document_service,
+                        owner_user_id=None,
+                        jwt_token=None,
+                        owner_name=None,
+                        owner_email=None,
+                    )
+
+                    # Process the file
+                    await processor.process_item(upload_task, file_path, file_task)
 
             tasks = [process_with_semaphore(file_path) for file_path in upload_task.file_tasks.keys()]
 
             await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Check if task is complete
+            if upload_task.processed_files >= upload_task.total_files:
+                upload_task.status = TaskStatus.COMPLETED
+                upload_task.updated_at = time.time()
 
         except Exception as e:
             logger.error("Background upload processor failed", task_id=task_id, error=str(e))
