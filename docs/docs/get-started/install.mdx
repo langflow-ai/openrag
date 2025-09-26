@@ -83,11 +83,12 @@ For more information on virtual environments, see [uv](https://docs.astral.sh/uv
    The application opens.
 8. Select your language model and embedding model provider, and complete the required fields.
    **Your provider can only be selected once, and you must use the same provider for your language model and embedding model.
-   To change your selection, you must restart OpenRAG.**
+   To change your provider selection, you must restart OpenRAG and delete the `config.yml` file.**
+   **Your language model can be changed, but your embeddings model cannot be changed.**
 
 <Tabs groupId="Embedding provider">
   <TabItem value="OpenAI" label="OpenAI" default>
-   9. You already entered a value for `OPENAI_API_KEY` in the TUI in Step 5, so enable **Get API key from environment variable**.
+   9. If you already entered a value for `OPENAI_API_KEY` in the TUI in Step 5, enable **Get API key from environment variable**.
    10. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
    11. To load 2 sample PDFs, enable **Sample dataset**.
    This is recommended, but not required.
