@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem';
 import PartialModifyFlows from '@site/docs/_partial-modify-flows.mdx'; 
 
 
-OpenRAG leverages Langflow's Agent component to power the OpenRAG Open Search Agent flow.
+OpenRAG leverages Langflow's Agent component to power the OpenRAG OpenSearch Agent flow.
 
 This flow intelligently chats with your knowledge by embedding your query, comparing it the vector database embeddings, and generating a response with the LLM.
 
@@ -28,9 +28,9 @@ In an agentic context, tools are functions that the agent can run to perform tas
 
 </details>
 
-## Use the OpenRAG Open Search Agent flow
+## Use the OpenRAG OpenSearch Agent flow
 
-If you've chatted with your knowledge in OpenRAG, you've already experienced the OpenRAG Open Search Agent chat flow.
+If you've chatted with your knowledge in OpenRAG, you've already experienced the OpenRAG OpenSearch Agent chat flow.
 To view the flow, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then click **Edit in Langflow**.
 This flow contains seven components:
 
@@ -39,7 +39,7 @@ The Agent behaves according to the prompt in the **Agent Instructions** field.
 * The Chat Input component is connected to the Agent component's Input port. This allows to flow to be triggered by an incoming prompt from a user or application.
 * The OpenSearch component is connected to the Agent component's Tools port. The agent may not use this database for every request; the agent only uses this connection if it decides the knowledge can help respond to the prompt.
 * The Language Model component is connected to the Agent component's Language Model port. The agent uses the connected LLM to reason through the request sent through Chat Input.
-* The Embedding Model component is connected to the Open Search component's Embedding port. This component converts text queries into vector representations that are compared with document embeddings stored in OpenSearch for semantic similarity matching. This gives your Agent's queries context.
+* The Embedding Model component is connected to the OpenSearch component's Embedding port. This component converts text queries into vector representations that are compared with document embeddings stored in OpenSearch for semantic similarity matching. This gives your Agent's queries context.
 * The Text Input component is populated with the global variable `OPENRAG-QUERY-FILTER`. 
 This filter is the Knowledge filter, and filters which knowledge sources to search through.
 * The Agent component's Output port is connected to the Chat Output component, which returns the final response to the user or application.
