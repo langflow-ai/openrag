@@ -1,0 +1,147 @@
+---
+title: OpenSearch Knowledge
+slug: /knowledge
+---
+
+import Icon from "@site/src/components/icon/icon";
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import PartialModifyFlows from '@site/docs/_partial-modify-flows.mdx';
+
+OpenRAG uses [OpenSearch](https://docs.opensearch.org/latest/) for its vector-backed knowledge store.
+OpenSearch provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
+
+## Explore knowledge
+
+The Knowledge page lists the documents OpenRAG has ingested into the OpenSearch vector database's `documents` index.
+
+To explore your current knowledge, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
+Click on a document to display the chunks derived from splitting the default documents into the vector database.
+
+Documents are processed with the default **Knowledge Ingest** flow, so if you want to split your documents differently, edit the **Knowledge Ingest** flow.
+
+<PartialModifyFlows />
+
+## Ingest knowledge
+
+OpenRAG supports knowledge ingestion through direct file uploads and OAuth connectors.
+
+### Direct file ingestion
+
+The **Knowledge Ingest** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
+
+The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#advanced-setup) or in the `.env` used by Docker Compose.
+
+To load and process a single file from the mapped location, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then click **Add File**.
+The file is loaded into your OpenSearch database, and appears in the Knowledge page.
+
+To load and process a directory from the mapped location, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then click **Process Folder**. 
+The files are loaded into your OpenSearch database, and appear in the Knowledge page.
+
+### Ingest files through OAuth connectors (#oauth-ingestion)
+
+OpenRAG supports the following enterprise-grade OAuth connectors for seamless document synchronization.
+
+- **Google Drive**
+- **OneDrive**
+- **AWS**
+
+OAuth integration allows individual users to connect their personal cloud storage accounts to OpenRAG. Each user must separately authorize OpenRAG to access their own cloud storage files. When a user connects a cloud service, they are redirected to authenticate with that service provider and grant OpenRAG permission to sync documents from their personal cloud storage.
+
+Before users can connect their cloud storage accounts, you must configure OAuth credentials in OpenRAG. This requires registering OpenRAG as an OAuth application with a cloud provider and obtaining client ID and secret keys for each service you want to support.
+
+To add an OAuth connector to OpenRAG, do the following.
+This example uses Google OAuth.
+If you wish to use another provider, add the secrets to another provider.
+
+<Tabs groupId="Installation type">
+  <TabItem value="TUI" label="TUI" default>
+   1. If OpenRAG is running, stop it with **Status** > **Stop Services**.
+   2. Click **Advanced Setup**.
+   3. Add the OAuth provider's client and secret key in the [Advanced Setup](/install#advanced-setup) menu.
+   4. Click **Save Configuration**.
+   The TUI generates a new `.env` file with your OAuth values.
+   5. Click **Start Container Services**.
+  </TabItem>
+  <TabItem value=".env" label=".env">
+   1. Stop the Docker deployment.
+   2. Add the OAuth provider's client and secret key in the `.env` file for Docker Compose.
+   ```bash    
+   GOOGLE_OAUTH_CLIENT_ID='YOUR_OAUTH_CLIENT_ID'
+   GOOGLE_OAUTH_CLIENT_SECRET='YOUR_OAUTH_CLIENT_SECRET'
+   ```
+   3. Save your `.env`. file.
+   4. Start the Docker deployment.
+  </TabItem>
+</Tabs>
+
+The OpenRAG frontend at `http://localhost:3000` now redirects to an OAuth callback login page for your OAuth provider.
+A successful authentication opens OpenRAG with the required scopes for your connected storage.
+
+To add knowledge from an OAuth-connected storage provider, do the following:
+
+1. Click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then select the storage provider, for example, **Google Drive**.
+The **Add Cloud Knowledge** page opens.
+2. To add files or folders from the connected storage, click <Icon name="Plus" aria-hidden="true"/> **Add Files**.
+Select the files or folders you want and click **Select**.
+You can select multiples.
+3. When your files are selected, click **Ingest Files**.
+The ingestion process may take some time, depending on the size of your documents.
+4. When ingestion is complete, your documents are available in the Knowledge screen.
+
+### Sync cloud connectors
+
+Your connected data sources are found in the <Icon name="Settings2" aria-hidden="true"/> **Settings** page.
+
+When you click **Sync Now** for a connected cloud service like Google Drive, OpenRAG scans your connected Google Drive account to find files that match your sync criteria. Sync criteria are controlled in **Sync Settings** on the same page. You can sync all files, or select a maximum number of files to sync.
+
+For each file found, OpenRAG downloads, converts, and embeds the processed content into OpenSearch.
+
+You can monitor the sync progress in the <Icon name="Bell" aria-hidden="true"/> **Tasks** sidebar.
+
+Once processing is complete, the synced documents become available in your knowledge base and can be searched through the chat interface or Knowledge page.
+
+## Create knowledge filters
+
+OpenRAG includes a knowledge filter system for organizing and managing document collections.
+Knowledge filters are saved search configurations that allow you to create custom views of your document collection. They store search queries, filter criteria, and display settings that can be reused across different parts of OpenRAG.
+
+Knowledge filters help agents work more efficiently with large document collections by focusing their context within relevant documents sets.
+
+To create a knowledge filter, do the following:
+
+1. Click <Icon name="Funnel" aria-hidden="true"/> **All Knowledge**, and then click <Icon name="Plus" aria-hidden="true"/> **Create New Filter**.
+    The **Create New Knowledge Filter** pane appears.
+2. Enter a **Name** and **Description**, and then click <Icon name="Save" aria-hidden="true"/> **Create Filter**.
+A new filter is created with default settings that match everything.
+3. To modify the default filter, click <Icon name="Funnel" aria-hidden="true"/> **All Knowledge**, and then click your new filter to edit it in the **Knowledge Filter** pane.
+
+   The following filter options are configurable.
+   
+   * **Search Query**: Enter text for semantic search, such as "financial reports from Q4".
+   * **Data Sources**: Select specific data sources or folders to include.
+   * **Document Types**: Filter by file type.
+   * **Owners**: Filter by who uploaded the documents.
+   * **Sources**: Filter by connector types, such as local upload or Google Drive.
+   * **Result Limit**: Set maximum number of results. The default is `10`.
+   * **Score Threshold**: Set minimum relevance score. The default score is `0`.
+
+4. When you're done editing the filter, click <Icon name="Save" aria-hidden="true"/> **Save Configuration**.
+
+5. To apply the filter to OpenRAG globally, click <Icon name="Funnel" aria-hidden="true"/> **All Knowledge**, and then select the filter to apply.
+
+    To apply the filter to a single chat session, in the <Icon name="MessageSquare" aria-hidden="true"/> **Chat** window, click **@**, and then select the filter to apply.
+
+## OpenRAG default configuration
+
+OpenRAG automatically detects and configures the correct vector dimensions for embedding models, ensuring optimal search performance and compatibility.
+
+The complete list of supported models is available at [/src/services/models_service.py](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py).
+
+You can use custom embedding models by specifying them in your configuration.
+
+If you use an unknown embedding model, OpenRAG will automatically fall back to `1536` dimensions and log a warning. The system will continue to work, but search quality may be affected if the actual model dimensions differ from `1536`.
+
+The default embedding dimension is `1536` and the default model is `text-embedding-3-small`.
+
+For models with known vector dimensions, see [/src/config/settings.py](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
