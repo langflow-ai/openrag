@@ -11,17 +11,21 @@ Get started with OpenRAG by loading your knowledge, swapping out your language m
 
 ## Prerequisites
 
-- Install and start OpenRAG
+- [Install and start OpenRAG](/install)
+- [Langflow API key](/)
 
 ## Find your way around 
 
 1. In OpenRAG, click <Icon name="MessageSquare" aria-hidden="true"/> **Chat**.
-   The chat is powered by the OpenRAG Open Search Agent.
+   The chat is powered by the OpenRAG OpenSearch Agent.
    For more information, see [Langflow Agents](/agents).
 2. Ask `What documents are available to you?`
    The agent responds with a message summarizing the documents that OpenRAG loads by default, which are PDFs about evaluating data quality when using LLMs in health care.
+   Knowledge is stored in OpenSearch.
+   For more information, see Knowledge.
 3. To confirm the agent is correct, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
-   The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database. Click on a document to display the chunks derived from splitting the default documents into the vector database.
+   The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database.
+   Click on a document to display the chunks derived from splitting the default documents into the vector database.
 
 ## Add your own knowledge
 
@@ -57,20 +61,12 @@ In this example, you'll try a different LLM to demonstrate how the Agent's respo
 
 ## Integrate OpenRAG into your application
 
-:::tip
-Ensure the `openrag-backend` container has port 8000 exposed in your `docker-compose.yml`:
+OpenRAG provides a
 
-```yaml
-openrag-backend:
-  ports:
-    - "8000:8000"
-```
-:::
-
-OpenRAG provides a REST API that you can call from Python, TypeScript, or any HTTP client to chat with your documents.
+To integrate OpenRAG into your application, use the Langflow API.
+You can call from Python, TypeScript, or any HTTP client to chat with your documents.
 
 These example requests are run assuming OpenRAG is in "no-auth" mode.
-For complete API documentation, including authentication, request and response parameters, and example requests, see the API documentation.
 
 ### Chat with your documents
 
