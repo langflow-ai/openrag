@@ -39,10 +39,10 @@ services:
       - "5601:5601"
 
   openrag-backend:
-    image: phact/openrag-backend:${OPENRAG_VERSION:-latest}
-    #build:
-    #context: .
-    #dockerfile: Dockerfile.backend
+    # image: phact/openrag-backend:${OPENRAG_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
     container_name: openrag-backend
     depends_on:
       - langflow
@@ -76,10 +76,11 @@ services:
     gpus: all
 
   openrag-frontend:
-    image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
-    #build:
-    #context: .
-    #dockerfile: Dockerfile.frontend
+    # image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      #dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
     depends_on:
       - openrag-backend
@@ -102,11 +103,11 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
       - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
-      - JWT="dummy"
-      - OWNER="dummy"
-      - OWNER_NAME="dummy"
-      - OWNER_EMAIL="dummy"
-      - CONNECTOR_TYPE="dummy"
+      - JWT=None  
+      - OWNER=None
+      - OWNER_NAME=None
+      - OWNER_EMAIL=None
+      - CONNECTOR_TYPE=system
       - OPENRAG-QUERY-FILTER="{}"
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE
