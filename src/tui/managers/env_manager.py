@@ -32,7 +32,7 @@ class EnvConfig:
     langflow_superuser: str = "admin"
     langflow_superuser_password: str = ""
     langflow_chat_flow_id: str = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
-    langflow_ingest_flow_id: str = "5488df7c-b93f-4f87-a446-b67028bc0813"
+    langflow_ingest_flow_id: str = "1402618b-e6d1-4ff2-9a11-d6ce71186915"
 
     # OAuth settings
     google_oauth_client_id: str = ""
