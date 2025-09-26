@@ -98,7 +98,7 @@ class LangflowFileService:
 
         # Pass metadata via tweaks to OpenSearch component
         metadata_tweaks = []
-        if owner:
+        if owner or owner is None:
             metadata_tweaks.append({"key": "owner", "value": owner})
         if owner_name:
             metadata_tweaks.append({"key": "owner_name", "value": owner_name})
