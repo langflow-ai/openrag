@@ -2,7 +2,7 @@ import { useState } from "react";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
 import OpenAILogo from "@/components/logo/openai-logo";
-import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { useGetOpenAIModelsQuery } from "../../api/queries/useGetModelsQuery";
@@ -72,11 +72,19 @@ export function OpenAIOnboarding({
     <>
       <div className="space-y-5">
         <LabelWrapper
-          label="Get API key from environment variable"
+          label="Use environment OpenAI API key"
           id="get-api-key"
+          helperText={
+            <>
+              Reuse the key from your environment config.
+              <br />
+              Uncheck to enter a different key.
+            </>
+          }
           flex
+          start
         >
-          <Switch
+          <Checkbox
             checked={getFromEnv}
             onCheckedChange={handleGetFromEnvChange}
           />
@@ -86,6 +94,7 @@ export function OpenAIOnboarding({
             <LabelInput
               label="OpenAI API key"
               helperText="The API key for your OpenAI account."
+              className={modelsError ? "!border-destructive" : ""}
               id="api-key"
               type="password"
               required
@@ -99,7 +108,7 @@ export function OpenAIOnboarding({
               </p>
             )}
             {modelsError && (
-              <p className="text-mmd text-accent-amber-foreground">
+              <p className="text-mmd text-destructive">
                 Invalid OpenAI API key. Verify or replace the key.
               </p>
             )}

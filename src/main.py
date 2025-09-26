@@ -2,6 +2,7 @@
 from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
 from services.flows_service import FlowsService
+from utils.embeddings import create_dynamic_index_body
 from utils.logging_config import configure_from_env, get_logger
 
 configure_from_env()
@@ -52,11 +53,11 @@ from auth_middleware import optional_auth, require_auth
 from config.settings import (
     DISABLE_INGEST_WITH_LANGFLOW,
     EMBED_MODEL,
-    INDEX_BODY,
     INDEX_NAME,
     SESSION_SECRET,
     clients,
     is_no_auth_mode,
+    get_openrag_config,
 )
 from services.auth_service import AuthService
 from services.langflow_mcp_service import LangflowMCPService
@@ -80,7 +81,6 @@ logger.info(
     cuda_available=torch.cuda.is_available(),
     cuda_version=torch.version.cuda,
 )
-
 
 async def wait_for_opensearch():
     """Wait for OpenSearch to be ready with retries"""
@@ -132,12 +132,19 @@ async def init_index():
     """Initialize OpenSearch index and security roles"""
     await wait_for_opensearch()
 
+    # Get the configured embedding model from user configuration
+    config = get_openrag_config()
+    embedding_model = config.knowledge.embedding_model
+
+    # Create dynamic index body based on the configured embedding model
+    dynamic_index_body = create_dynamic_index_body(embedding_model)
+
     # Create documents index
     if not await clients.opensearch.indices.exists(index=INDEX_NAME):
-        await clients.opensearch.indices.create(index=INDEX_NAME, body=INDEX_BODY)
-        logger.info("Created OpenSearch index", index_name=INDEX_NAME)
+        await clients.opensearch.indices.create(index=INDEX_NAME, body=dynamic_index_body)
+        logger.info("Created OpenSearch index", index_name=INDEX_NAME, embedding_model=embedding_model)
     else:
-        logger.info("Index already exists, skipping creation", index_name=INDEX_NAME)
+        logger.info("Index already exists, skipping creation", index_name=INDEX_NAME, embedding_model=embedding_model)
 
     # Create knowledge filters index
     knowledge_filter_index_name = "knowledge_filters"
@@ -395,7 +402,12 @@ async def _ingest_default_documents_openrag(services, file_paths):
 async def startup_tasks(services):
     """Startup tasks"""
     logger.info("Starting startup tasks")
-    await init_index()
+    # Only initialize basic OpenSearch connection, not the index
+    # Index will be created after onboarding when we know the embedding model
+    await wait_for_opensearch()
+
+    # Configure alerting security
+    await configure_alerting_security()
 
 
 async def initialize_services():
