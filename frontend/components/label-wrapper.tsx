@@ -10,18 +10,25 @@ export function LabelWrapper({
   id,
   required,
   flex,
+  start,
   children,
 }: {
   label: string;
   description?: string;
-  helperText?: string;
+  helperText?: string | React.ReactNode;
   id: string;
   required?: boolean;
   flex?: boolean;
+  start?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex w-full items-center justify-between">
+    <div
+      className={cn(
+        "flex w-full items-center",
+        start ? "justify-start flex-row-reverse gap-3" : "justify-between",
+      )}
+    >
       <div
         className={cn(
           "flex flex-1 flex-col items-start",
@@ -30,7 +37,7 @@ export function LabelWrapper({
       >
         <Label
           htmlFor={id}
-          className="!text-mmd font-medium flex items-center gap-1"
+          className="!text-mmd font-medium flex items-center gap-1.5"
         >
           {label}
           {required && <span className="text-red-500">*</span>}
@@ -39,7 +46,7 @@ export function LabelWrapper({
               <TooltipTrigger>
                 <Info className="w-3.5 h-3.5 text-muted-foreground" />
               </TooltipTrigger>
-              <TooltipContent>{helperText}</TooltipContent>
+              <TooltipContent side="right">{helperText}</TooltipContent>
             </Tooltip>
           )}
         </Label>
@@ -48,7 +55,7 @@ export function LabelWrapper({
           <p className="text-mmd text-muted-foreground">{description}</p>
         )}
       </div>
-      {flex && <div className="relative">{children}</div>}
+      {flex && <div className="relative items-center flex">{children}</div>}
     </div>
   );
 }
