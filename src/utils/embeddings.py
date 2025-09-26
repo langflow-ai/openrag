@@ -1,3 +1,4 @@
+from config.settings import OLLAMA_EMBEDDING_DIMENSIONS, OPENAI_EMBEDDING_DIMENSIONS, VECTOR_DIM, WATSONX_EMBEDDING_DIMENSIONS
 from utils.logging_config import get_logger
 
 
@@ -5,48 +6,19 @@ logger = get_logger(__name__)
 
 def get_embedding_dimensions(model_name: str) -> int:
     """Get the embedding dimensions for a given model name."""
-    # OpenAI models
-    openai_models = {
-        "text-embedding-3-small": 1536,
-        "text-embedding-3-large": 3072,
-        "text-embedding-ada-002": 1536,
-    }
-
-    # Ollama models (common embedding models)
-    ollama_models = {
-        "nomic-embed-text": 768,
-        "all-minilm": 384,
-        "mxbai-embed-large": 1024,
-    }
-
-    # Watson/IBM models
-    watsonx_models = {
-    # IBM Models
-    "ibm/granite-embedding-107m-multilingual": 384,  
-    "ibm/granite-embedding-278m-multilingual": 1024,
-    "ibm/slate-125m-english-rtrvr": 768,
-    "ibm/slate-125m-english-rtrvr-v2": 768,
-    "ibm/slate-30m-english-rtrvr": 384,
-    "ibm/slate-30m-english-rtrvr-v2": 384,
-    # Third Party Models
-    "intfloat/multilingual-e5-large": 1024,
-    "sentence-transformers/all-minilm-l6-v2": 384,
-}
 
     # Check all model dictionaries
-    all_models = {**openai_models, **ollama_models, **watsonx_models}
+    all_models = {**OPENAI_EMBEDDING_DIMENSIONS, **OLLAMA_EMBEDDING_DIMENSIONS, **WATSONX_EMBEDDING_DIMENSIONS}
 
     if model_name in all_models:
         dimensions = all_models[model_name]
         logger.info(f"Found dimensions for model '{model_name}': {dimensions}")
         return dimensions
 
-    # Default fallback
-    default_dimensions = 1536
     logger.warning(
-        f"Unknown embedding model '{model_name}', using default dimensions: {default_dimensions}"
+        f"Unknown embedding model '{model_name}', using default dimensions: {VECTOR_DIM}"
     )
-    return default_dimensions
+    return VECTOR_DIM
 
 
 def create_dynamic_index_body(embedding_model: str) -> dict:
