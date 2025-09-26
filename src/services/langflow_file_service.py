@@ -106,7 +106,7 @@ class LangflowFileService:
             metadata_tweaks.append({"key": "owner_email", "value": owner_email})
         if connector_type:
             metadata_tweaks.append({"key": "connector_type", "value": connector_type})
-
+        logger.info(f"[LF] Metadata tweaks {metadata_tweaks}")
         # if metadata_tweaks:
         #     # Initialize the OpenSearch component tweaks if not already present
         #     if "OpenSearchHybrid-Ve6bS" not in tweaks:
