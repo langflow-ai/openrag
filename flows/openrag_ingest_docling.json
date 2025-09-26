@@ -95,7 +95,7 @@
         "data": {
           "sourceHandle": {
             "dataType": "EmbeddingModel",
-            "id": "EmbeddingModel-cxG9r",
+            "id": "EmbeddingModel-eZ6bT",
             "name": "embeddings",
             "output_types": [
               "Embeddings"
@@ -110,10 +110,10 @@
             "type": "other"
           }
         },
-        "id": "xy-edge__EmbeddingModel-cxG9r{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-cxG9rœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}-OpenSearchHybrid-XtKoA{œfieldNameœ:œembeddingœ,œidœ:œOpenSearchHybrid-XtKoAœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}",
+        "id": "xy-edge__EmbeddingModel-eZ6bT{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-eZ6bTœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}-OpenSearchHybrid-XtKoA{œfieldNameœ:œembeddingœ,œidœ:œOpenSearchHybrid-XtKoAœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}",
         "selected": false,
-        "source": "EmbeddingModel-cxG9r",
-        "sourceHandle": "{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-cxG9rœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}",
+        "source": "EmbeddingModel-eZ6bT",
+        "sourceHandle": "{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-eZ6bTœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}",
         "target": "OpenSearchHybrid-XtKoA",
         "targetHandle": "{œfieldNameœ:œembeddingœ,œidœ:œOpenSearchHybrid-XtKoAœ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}"
       }
@@ -1631,7 +1631,7 @@
       },
       {
         "data": {
-          "id": "EmbeddingModel-cxG9r",
+          "id": "EmbeddingModel-eZ6bT",
           "node": {
             "base_classes": [
               "Embeddings"
@@ -1657,7 +1657,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-09-24T16:02:07.998Z",
+            "last_updated": "2025-09-22T15:54:52.885Z",
             "legacy": false,
             "metadata": {
               "code_hash": "93faf11517da",
@@ -1738,7 +1738,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "str",
-                "value": ""
+                "value": "OPENAI_API_KEY"
               },
               "chunk_size": {
                 "_input_type": "IntInput",
@@ -1926,16 +1926,16 @@
           "type": "EmbeddingModel"
         },
         "dragging": false,
-        "id": "EmbeddingModel-cxG9r",
+        "id": "EmbeddingModel-eZ6bT",
         "measured": {
-          "height": 366,
+          "height": 369,
           "width": 320
         },
         "position": {
-          "x": 1743.8608432729177,
-          "y": 1808.780792406514
+          "x": 1726.6943524438122,
+          "y": 1800.5330404375484
         },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       }
     ],
