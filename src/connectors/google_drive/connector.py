@@ -477,7 +477,7 @@ class GoogleDriveConnector(BaseConnector):
                 "next_page_token": None,  # no more pages
             }
         except Exception as e:
-            # Optionally log error with your base class logger
+            # Log the error
             try:
                 logger.error(f"GoogleDriveConnector.list_files failed: {e}")
             except Exception:
@@ -495,7 +495,6 @@ class GoogleDriveConnector(BaseConnector):
         try:
             blob = self._download_file_bytes(meta)
         except Exception as e:
-            # Use your base class logger if available
             try:
                 logger.error(f"Download failed for {file_id}: {e}")
             except Exception:
@@ -562,7 +561,6 @@ class GoogleDriveConnector(BaseConnector):
             if not self.cfg.changes_page_token:
                 self.cfg.changes_page_token = self.get_start_page_token()
         except Exception as e:
-            # Optional: use your base logger
             try:
                 logger.error(f"Failed to get start page token: {e}")
             except Exception:
@@ -593,7 +591,6 @@ class GoogleDriveConnector(BaseConnector):
             expiration = result.get("expiration")
 
             # Persist in-memory so cleanup can stop this channel later.
-            # If your project has a persistence layer, save these values there.
             self._active_channel = {
                 "channel_id": channel_id,
                 "resource_id": resource_id,
@@ -803,7 +800,7 @@ class GoogleDriveConnector(BaseConnector):
         """
         Perform a one-shot sync of the currently selected scope and emit documents.
 
-        Emits ConnectorDocument instances (adapt to your BaseConnector ingestion).
+        Emits ConnectorDocument instances
         """
         items = self._iter_selected_items()
         for meta in items:
