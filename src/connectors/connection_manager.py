@@ -294,32 +294,39 @@ class ConnectionManager:
 
     async def get_connector(self, connection_id: str) -> Optional[BaseConnector]:
         """Get an active connector instance"""
+        logger.debug(f"Getting connector for connection_id: {connection_id}")
+        
         # Return cached connector if available
         if connection_id in self.active_connectors:
             connector = self.active_connectors[connection_id]
             if connector.is_authenticated:
+                logger.debug(f"Returning cached authenticated connector for {connection_id}")
                 return connector
             else:
                 # Remove unauthenticated connector from cache
+                logger.debug(f"Removing unauthenticated connector from cache for {connection_id}")
                 del self.active_connectors[connection_id]
 
         # Try to create and authenticate connector
         connection_config = self.connections.get(connection_id)
         if not connection_config or not connection_config.is_active:
+            logger.debug(f"No active connection config found for {connection_id}")
             return None
 
+        logger.debug(f"Creating connector for {connection_config.connector_type}")
         connector = self._create_connector(connection_config)
-        if await connector.authenticate():
+        
+        logger.debug(f"Attempting authentication for {connection_id}")
+        auth_result = await connector.authenticate()
+        logger.debug(f"Authentication result for {connection_id}: {auth_result}")
+        
+        if auth_result:
             self.active_connectors[connection_id] = connector
-
-            # Setup webhook subscription if not already set up
-            await self._setup_webhook_if_needed(
-                connection_id, connection_config, connector
-            )
-
+            # ... rest of the method
             return connector
-
-        return None
+        else:
+            logger.warning(f"Authentication failed for {connection_id}")
+            return None
 
     def get_available_connector_types(self) -> Dict[str, Dict[str, Any]]:
         """Get available connector types with their metadata"""
@@ -363,20 +370,23 @@ class ConnectionManager:
 
     def _create_connector(self, config: ConnectionConfig) -> BaseConnector:
         """Factory method to create connector instances"""
-        if config.connector_type == "google_drive":
-            return GoogleDriveConnector(config.config)
-        elif config.connector_type == "sharepoint":
-            return SharePointConnector(config.config)
-        elif config.connector_type == "onedrive":
-            return OneDriveConnector(config.config)
-        elif config.connector_type == "box":
-            # Future: BoxConnector(config.config)
-            raise NotImplementedError("Box connector not implemented yet")
-        elif config.connector_type == "dropbox":
-            # Future: DropboxConnector(config.config)
-            raise NotImplementedError("Dropbox connector not implemented yet")
-        else:
-            raise ValueError(f"Unknown connector type: {config.connector_type}")
+        try:
+            if config.connector_type == "google_drive":
+                return GoogleDriveConnector(config.config)
+            elif config.connector_type == "sharepoint":
+                return SharePointConnector(config.config)
+            elif config.connector_type == "onedrive":
+                return OneDriveConnector(config.config)
+            elif config.connector_type == "box":
+                raise NotImplementedError("Box connector not implemented yet")
+            elif config.connector_type == "dropbox":
+                raise NotImplementedError("Dropbox connector not implemented yet")
+            else:
+                raise ValueError(f"Unknown connector type: {config.connector_type}")
+        except Exception as e:
+            logger.error(f"Failed to create {config.connector_type} connector: {e}")
+            # Re-raise the exception so caller can handle appropriately
+            raise
 
     async def update_last_sync(self, connection_id: str):
         """Update the last sync timestamp for a connection"""
