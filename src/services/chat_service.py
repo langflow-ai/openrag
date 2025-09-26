@@ -118,7 +118,7 @@ class ChatService:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
                 filter_expression
             )
-
+        logger.info(f"[LF] Extra headers {extra_headers}")
         # Ensure the Langflow client exists; try lazy init if needed
         langflow_client = await clients.ensure_langflow_client()
         if not langflow_client:

@@ -107,16 +107,17 @@ class LangflowFileService:
         if connector_type:
             metadata_tweaks.append({"key": "connector_type", "value": connector_type})
 
-        if metadata_tweaks:
-            # Initialize the OpenSearch component tweaks if not already present
-            if "OpenSearchHybrid-Ve6bS" not in tweaks:
-                tweaks["OpenSearchHybrid-Ve6bS"] = {}
-            tweaks["OpenSearchHybrid-Ve6bS"]["docs_metadata"] = metadata_tweaks
-            logger.debug(
-                "[LF] Added metadata to tweaks", metadata_count=len(metadata_tweaks)
-            )
-        # if tweaks:
-        #     payload["tweaks"] = tweaks
+        # if metadata_tweaks:
+        #     # Initialize the OpenSearch component tweaks if not already present
+        #     if "OpenSearchHybrid-Ve6bS" not in tweaks:
+        #         tweaks["OpenSearchHybrid-Ve6bS"] = {}
+        #     tweaks["OpenSearchHybrid-Ve6bS"]["docs_metadata"] = metadata_tweaks
+        #     logger.debug(
+        #         "[LF] Added metadata to tweaks", metadata_count=len(metadata_tweaks)
+        #     )
+        if tweaks:
+            payload["tweaks"] = tweaks
+            logger.debug(f"[LF] Tweaks {tweaks}")
         if session_id:
             payload["session_id"] = session_id
 
@@ -132,12 +133,13 @@ class LangflowFileService:
         # Avoid logging full payload to prevent leaking sensitive data (e.g., JWT)
         headers={
                 "X-Langflow-Global-Var-JWT": str(jwt_token),
-                "X-Langflow-Global-Var-Owner": str(owner),
-                "X-Langflow-Global-Var-Owner-Name": str(owner_name),
-                "X-Langflow-Global-Var-Owner-Email": str(owner_email),
-                "X-Langflow-Global-Var-Connector-Type": str(connector_type),
+                "X-Langflow-Global-Var-OWNER": str(owner),
+                "X-Langflow-Global-Var-OWNER_NAME": str(owner_name),
+                "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
+                "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
             }
         logger.info(f"[LF] Headers {headers}")
+        logger.info(f"[LF] Payload {payload}")
         resp = await clients.langflow_request(
             "POST",
             f"/api/v1/run/{self.flow_id_ingest}",
@@ -163,6 +165,7 @@ class LangflowFileService:
                 body=resp.text[:1000],
                 error=str(e),
             )
+
             raise
         return resp_json
 
@@ -174,6 +177,10 @@ class LangflowFileService:
         settings: Optional[Dict[str, Any]] = None,
         jwt_token: Optional[str] = None,
         delete_after_ingest: bool = True,
+        owner: Optional[str] = None,
+        owner_name: Optional[str] = None,
+        owner_email: Optional[str] = None,
+        connector_type: Optional[str] = None,   
     ) -> Dict[str, Any]:
         """
         Combined upload, ingest, and delete operation.
@@ -260,6 +267,10 @@ class LangflowFileService:
                 session_id=session_id,
                 tweaks=final_tweaks,
                 jwt_token=jwt_token,
+                owner=owner,
+                owner_name=owner_name,
+                owner_email=owner_email,
+                connector_type=connector_type,
             )
             logger.debug("[LF] Ingestion completed successfully")
         except Exception as e:
