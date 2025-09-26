@@ -134,15 +134,14 @@ A new filter is created with default settings that match everything.
 
 ## OpenRAG default configuration
 
-OpenRAG creates a specialized OpenSearch index called `documents` with the values defined at `src/config/settings.py`.
-* **Vector Dimensions**: 1536-dimensional embeddings using OpenAI's `text-embedding-3-small` model.
-* **KNN Vector Type**: Uses `knn_vector` field type with `disk_ann` method and `jvector` engine.
-* **Distance Metric**: L2 (Euclidean) distance for vector similarity.
-* **Performance Optimization**: Configured with `ef_construction: 100` and `m: 16` parameters.
+OpenRAG automatically detects and configures the correct vector dimensions for embedding models, ensuring optimal search performance and compatibility.
 
-OpenRAG supports hybrid search, which combines semantic and keyword search.
+The complete list of supported models is available at [/src/services/models_service.py](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py).
 
+You can use custom embedding models by specifying them in your configuration.
 
+If you use an unknown embedding model, OpenRAG will automatically fall back to `1536` dimensions and log a warning. The system will continue to work, but search quality may be affected if the actual model dimensions differ from `1536`.
 
+The default embedding dimension is `1536` and the default model is `text-embedding-3-small`.
 
-
+For models with known vector dimensions, see [/src/config/settings.py](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
