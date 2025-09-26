@@ -53,7 +53,7 @@ class FlowsService:
             str: The path to the flow file, or None if not found
         """
         if not flow_id:
-            return None
+            raise ValueError("flow_id is required")
 
         # Check cache first
         if flow_id in self._flow_file_cache:
