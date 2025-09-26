@@ -106,7 +106,10 @@ For more information on virtual environments, see [uv](https://docs.astral.sh/uv
   <TabItem value="Ollama" label="Ollama">
    9. Enter your Ollama server's base URL address.
    The default Ollama server address is `http://localhost:11434`.
+   Since OpenRAG is running in a container, you may need to change `localhost` to access services outside of the container. For example, change `http://localhost:11434` to `http://host.docker.internal:11434` to connect to Ollama.
+   OpenRAG automatically sends a test connection to your Ollama server to confirm connectivity.
    10. Select the **Embedding Model** and **Language Model** your Ollama server is running.
+   OpenRAG automatically lists the available models from your Ollama server.
    11. To load 2 sample PDFs, enable **Sample dataset**.
    This is recommended, but not required.
    12. Click **Complete**.
