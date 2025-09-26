@@ -16,6 +16,9 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context";
+import { DoclingHealthBanner } from "@/components/docling-health-banner";
+import { useDoclingHealthQuery } from "@/src/app/api/queries/useDoclingHealthQuery";
+import { LayoutProvider } from "@/contexts/layout-context";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -31,6 +34,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isLoading: isSettingsLoading, data: settings } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
+  const { data: health, isLoading: isHealthLoading, isError } = useDoclingHealthQuery();
 
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
@@ -56,6 +60,15 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       task.status === "processing",
   );
 
+  const isUnhealthy = health?.status === "unhealthy" || isError;
+  const isBannerVisible = !isHealthLoading && isUnhealthy;
+
+  // Dynamic height calculations based on banner visibility
+  const headerHeight = 53;
+  const bannerHeight = 52; // Approximate banner height
+  const totalTopOffset = isBannerVisible ? headerHeight + bannerHeight : headerHeight;
+  const mainContentHeight = `calc(100vh - ${totalTopOffset}px)`;
+
   // Show loading state when backend isn't ready
   if (isLoading || isSettingsLoading) {
     return (
@@ -76,6 +89,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
     <div className="h-full relative">
+      <DoclingHealthBanner className="w-full px-6 pt-2" />
       <header className="header-arrangement bg-background sticky top-0 z-50">
         <div className="header-start-display px-4">
           {/* Logo/Title */}
@@ -118,7 +132,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <div className="side-bar-arrangement bg-background fixed left-0 top-[53px] bottom-0 md:flex hidden">
+      <div
+        className="side-bar-arrangement bg-background fixed left-0 bottom-0 md:flex hidden"
+        style={{ top: `${totalTopOffset}px` }}
+      >
         <Navigation
           conversations={conversations}
           isConversationsLoading={isConversationsLoading}
@@ -126,7 +143,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         />
       </div>
       <main
-        className={`md:pl-72 transition-all duration-300 overflow-y-auto h-[calc(100vh-53px)] ${
+        className={`md:pl-72 transition-all duration-300 overflow-y-auto ${
           isMenuOpen && isPanelOpen
             ? "md:pr-[728px]"
             : // Both open: 384px (menu) + 320px (KF panel) + 24px (original padding)
@@ -138,8 +155,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             : // Only KF panel open: 320px
               "md:pr-0" // Neither open: 24px
         }`}
+        style={{ height: mainContentHeight }}
       >
-        <div className="container py-6 lg:py-8 px-4 lg:px-6">{children}</div>
+        <LayoutProvider headerHeight={headerHeight} totalTopOffset={totalTopOffset}>
+          <div className="container py-6 lg:py-8 px-4 lg:px-6">{children}</div>
+        </LayoutProvider>
       </main>
       <TaskNotificationMenu />
       <KnowledgeFilterPanel />

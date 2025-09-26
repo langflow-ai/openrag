@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useLayout } from "@/contexts/layout-context";
 import { useTask } from "@/contexts/task-context";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
@@ -140,6 +141,7 @@ function ChatPage() {
   const streamIdRef = useRef(0);
   const lastLoadedConversationRef = useRef<string | null>(null);
   const { addTask, isMenuOpen } = useTask();
+  const { totalTopOffset } = useLayout();
   const { selectedFilter, parsedFilterData, isPanelOpen, setSelectedFilter } =
     useKnowledgeFilter();
 
@@ -1891,7 +1893,7 @@ function ChatPage() {
 
   return (
     <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
+      className={`fixed inset-0 md:left-72 flex flex-col transition-all duration-300 ${
         isMenuOpen && isPanelOpen
           ? "md:right-[704px]" // Both open: 384px (menu) + 320px (KF panel)
           : isMenuOpen
@@ -1900,6 +1902,7 @@ function ChatPage() {
           ? "md:right-80" // Only KF panel open: 320px
           : "md:right-6" // Neither open: 24px
       }`}
+      style={{ top: `${totalTopOffset}px` }}
     >
       {/* Debug header - only show in debug mode */}
       {isDebugMode && (
