@@ -452,14 +452,22 @@ class FlowsService:
             flow_json_str = re.sub(
                 re.escape(old_llm_id), new_llm_id, flow_json_str
             )
-            if old_llm_text_id:
-                flow_json_str = re.sub(
-                    re.escape(old_llm_text_id), new_llm_text_id, flow_json_str
-                )
 
             flow_json_str = re.sub(
                 re.escape(old_llm_id.split("-")[0]),
                 new_llm_id.split("-")[0],
+                flow_json_str,
+            )
+        
+        # Replace text LLM ID references (if applicable)
+        if old_llm_text_id:
+            flow_json_str = re.sub(
+                re.escape(old_llm_text_id), new_llm_text_id, flow_json_str
+            )
+
+            flow_json_str = re.sub(
+                re.escape(old_llm_text_id.split("-")[0]),
+                new_llm_text_id.split("-")[0],
                 flow_json_str,
             )
 
