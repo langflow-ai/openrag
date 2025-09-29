@@ -79,8 +79,46 @@ For more information on virtual environments, see [uv](https://docs.astral.sh/uv
    Command completed successfully
    ```
 
-7. To open the OpenRAG application, click **Open App** or press <kbd>6</kbd>.
-8. Continue with the [Quickstart](/quickstart).
+7. To open the OpenRAG application, click **Open App**, press <kbd>6</kbd>, or navigate to `http://localhost:3000`.
+   The application opens.
+8. Select your language model and embedding model provider, and complete the required fields.
+   **Your provider can only be selected once, and you must use the same provider for your language model and embedding model.**
+   The language model can be changed, but the embeddings model cannot be changed.
+   To change your provider selection, you must restart OpenRAG and delete the `config.yml` file.
+
+<Tabs groupId="Embedding provider">
+   <TabItem value="OpenAI" label="OpenAI" default>
+      9. If you already entered a value for `OPENAI_API_KEY` in the TUI in Step 5, enable **Get API key from environment variable**.
+      10. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+      11. To load 2 sample PDFs, enable **Sample dataset**.
+      This is recommended, but not required.
+      12. Click **Complete**.
+   
+     </TabItem>
+     <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
+      9. Complete the fields for **watsonx.ai API Endpoint**, **IBM API key**, and **IBM Project ID**.
+      These values are found in your IBM watsonx deployment.
+      10. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+      11. To load 2 sample PDFs, enable **Sample dataset**.
+      This is recommended, but not required.
+      12. Click **Complete**.
+   
+     </TabItem>
+     <TabItem value="Ollama" label="Ollama">
+      9. Enter your Ollama server's base URL address.
+      The default Ollama server address is `http://localhost:11434`.
+      Since OpenRAG is running in a container, you may need to change `localhost` to access services outside of the container. For example, change `http://localhost:11434` to `http://host.docker.internal:11434` to connect to Ollama.
+      OpenRAG automatically sends a test connection to your Ollama server to confirm connectivity.
+      10. Select the **Embedding Model** and **Language Model** your Ollama server is running.
+      OpenRAG automatically lists the available models from your Ollama server.
+      11. To load 2 sample PDFs, enable **Sample dataset**.
+      This is recommended, but not required.
+      12. Click **Complete**.
+       
+     </TabItem>
+</Tabs>
+
+13. Continue with the [Quickstart](/quickstart).
 
 ### Advanced Setup {#advanced-setup}
 
