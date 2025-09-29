@@ -4,6 +4,7 @@ import tailwindcssTypography from "@tailwindcss/typography";
 import { fontFamily } from "tailwindcss/defaultTheme";
 import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
+import tailwindcssLineClamp from "@tailwindcss/line-clamp";
 
 const config = {
   darkMode: ["class"],
@@ -29,8 +30,12 @@ const config = {
       },
       keyframes: {
         overlayShow: {
-          from: { opacity: 0 },
-          to: { opacity: 1 },
+          from: {
+            opacity: 0,
+          },
+          to: {
+            opacity: 1,
+          },
         },
         contentShow: {
           from: {
@@ -45,14 +50,36 @@ const config = {
           },
         },
         wiggle: {
-          "0%, 100%": { transform: "scale(100%)" },
-          "50%": { transform: "scale(120%)" },
+          "0%, 100%": {
+            transform: "scale(100%)",
+          },
+          "50%": {
+            transform: "scale(120%)",
+          },
+        },
+        "accordion-down": {
+          from: {
+            height: "0",
+          },
+          to: {
+            height: "var(--radix-accordion-content-height)",
+          },
+        },
+        "accordion-up": {
+          from: {
+            height: "var(--radix-accordion-content-height)",
+          },
+          to: {
+            height: "0",
+          },
         },
       },
       animation: {
         overlayShow: "overlayShow 400ms cubic-bezier(0.16, 1, 0.3, 1)",
         contentShow: "contentShow 400ms cubic-bezier(0.16, 1, 0.3, 1)",
         wiggle: "wiggle 150ms ease-in-out 1",
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
       },
       colors: {
         border: "hsl(var(--border))",
@@ -81,6 +108,15 @@ const config = {
         accent: {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
+        },
+        "accent-emerald-foreground": {
+          DEFAULT: "hsl(var(--accent-emerald-foreground))",
+        },
+        "accent-pink-foreground": {
+          DEFAULT: "hsl(var(--accent-pink-foreground))",
+        },
+        "accent-amber-foreground": {
+          DEFAULT: "hsl(var(--accent-amber-foreground))",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",
@@ -140,6 +176,7 @@ const config = {
   },
   plugins: [
     tailwindcssAnimate,
+    tailwindcssLineClamp,
     tailwindcssForms({
       strategy: "class",
     }),
@@ -178,8 +215,9 @@ const config = {
         ".primary-input": {
           display: "block",
           width: "100%",
+          height: "40px",
           borderRadius: "0.375rem",
-          border: "1px solid hsl(var(--border))",
+          border: "1px solid hsl(var(--input))",
           backgroundColor: "hsl(var(--background))",
           paddingLeft: "0.75rem",
           paddingRight: "0.75rem",

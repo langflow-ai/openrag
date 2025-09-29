@@ -291,7 +291,7 @@ async def async_langflow_stream(
             flow_id,
             extra_headers=extra_headers,
             previous_response_id=previous_response_id,
-            log_prefix="langflow",
+                log_prefix="langflow",
         ):
             logger.debug(
                 "Yielding chunk from langflow stream",
@@ -636,6 +636,34 @@ async def async_langflow_chat_stream(
             logger.debug(
                 f"Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
             )
-            logger.debug(
-                f"Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
-            )
+
+
+def delete_user_conversation(user_id: str, response_id: str) -> bool:
+    """Delete a conversation for a user from both memory and persistent storage"""
+    deleted = False
+
+    try:
+        # Delete from in-memory storage
+        if user_id in active_conversations and response_id in active_conversations[user_id]:
+            del active_conversations[user_id][response_id]
+            logger.debug(f"Deleted conversation {response_id} from memory for user {user_id}")
+            deleted = True
+
+        # Delete from persistent storage
+        conversation_deleted = conversation_persistence.delete_conversation_thread(user_id, response_id)
+        if conversation_deleted:
+            logger.debug(f"Deleted conversation {response_id} from persistent storage for user {user_id}")
+            deleted = True
+
+        # Release session ownership
+        try:
+            from services.session_ownership_service import session_ownership_service
+            session_ownership_service.release_session(user_id, response_id)
+            logger.debug(f"Released session ownership for {response_id} for user {user_id}")
+        except Exception as e:
+            logger.warning(f"Failed to release session ownership: {e}")
+
+        return deleted
+    except Exception as e:
+        logger.error(f"Error deleting conversation {response_id} for user {user_id}: {e}")
+        return False
