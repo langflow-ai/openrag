@@ -549,6 +549,8 @@ class FlowsService:
         template = target_node.get("data", {}).get("node", {}).get("template", {})
         if template.get(field_name):
             flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["value"] = field_value
+            if "options" in flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name] and field_value not in flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["options"]:
+                flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["options"].append(field_value)
         else:
             identifier = node_display_name
             raise Exception(f"{field_name} field not found in {identifier} component")
