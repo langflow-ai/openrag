@@ -231,11 +231,8 @@ async def upload_and_ingest_user_file(
 
         except Exception:
             # Clean up temp file on error
-            try:
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
-            except Exception:
-                pass  # Ignore cleanup errors
+            from utils.file_utils import safe_unlink
+            safe_unlink(temp_path)
             raise
         
     except Exception as e:
