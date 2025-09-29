@@ -6,7 +6,6 @@ from config.settings import (
     OLLAMA_LLM_TEXT_COMPONENT_PATH,
     OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
     OPENAI_LLM_COMPONENT_DISPLAY_NAME,
-    OPENAI_LLM_TEXT_COMPONENT_DISPLAY_NAME,
     WATSONX_LLM_TEXT_COMPONENT_PATH,
     clients,
     WATSONX_LLM_COMPONENT_PATH,
@@ -250,7 +249,7 @@ class FlowsService:
                     "name": "nudges",
                     "flow_id": NUDGES_FLOW_ID,
                     "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
-                    "llm_text_name": OPENAI_LLM_TEXT_COMPONENT_DISPLAY_NAME,
+                    "llm_name": OPENAI_LLM_COMPONENT_DISPLAY_NAME,
                 },
                 {
                     "name": "retrieval",
