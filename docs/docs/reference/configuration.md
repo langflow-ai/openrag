@@ -1,18 +1,19 @@
 ---
 title: Environment variables and configuration values
-slug: /configure/configuration
+slug: /reference/configuration
 ---
 
-OpenRAG supports multiple configuration methods with the following priority:
+OpenRAG supports multiple configuration methods with the following priority, from highest to lowest:
 
-1. **Environment Variables** (highest priority)
-2. **Configuration File** (`config.yaml`)
-3. **Default Values** (fallback)
+1. [Environment variables](#environment-variables)
+2. [Configuration file (`config.yaml`)](#configuration-file)
+3. [Langflow runtime overrides](#langflow-runtime-overrides)
+4. [Default or fallback values](#default-values-and-fallbacks)
 
 ## Environment variables
 
-Environment variables will override configuration file settings.
-You can create a `.env` file in the project root to set these variables.
+Environment variables override configuration file settings.
+You can create a `.env` file in the project root to set these variables, or set them in the TUI, which will create a `.env` file for you.
 
 ## Required variables
 
@@ -90,7 +91,15 @@ These environment variables override settings in `config.yaml`:
 
 See `docker-compose-*.yml` files for runtime usage examples.
 
-## Configuration file
+## Langflow runtime overrides
+
+Langflow runtime overrides allow you to modify component settings at runtime without changing the base configuration.
+
+Runtime overrides are implemented through **tweaks** - parameter modifications that are passed to specific Langflow components during flow execution.
+
+For more information on tweaks, see [Input schema (tweaks)](https://docs.langflow.org/concepts-publish#input-schema).
+
+## Configuration file (`config.yaml) {#configuration-file}
 
 Create a `config.yaml` file in the project root to configure OpenRAG:
 
@@ -115,7 +124,7 @@ agent:
   system_prompt: "You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context."
 ```
 
-## Default Values and Fallbacks
+## Default values and fallbacks
 
 When no environment variables or configuration file values are provided, OpenRAG uses default values.
 These values can be found in the code base at the following locations.
