@@ -277,37 +277,35 @@ class ConnectorFileProcessor(TaskProcessor):
                 raise ValueError("user_id not provided to ConnectorFileProcessor")
 
             # Create temporary file from document content
+            from utils.file_utils import auto_cleanup_tempfile
+
             suffix = self.connector_service._get_file_extension(document.mimetype)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-                tmp_file.write(document.content)
-                tmp_file.flush()
+            with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
+                # Write content to temp file
+                with open(tmp_path, 'wb') as f:
+                    f.write(document.content)
 
-                try:
-                    # Compute hash
-                    file_hash = hash_id(tmp_file.name)
+                # Compute hash
+                file_hash = hash_id(tmp_path)
 
-                    # Use consolidated standard processing
-                    result = await self.process_document_standard(
-                        file_path=tmp_file.name,
-                        file_hash=file_hash,
-                        owner_user_id=self.user_id,
-                        original_filename=document.filename,
-                        jwt_token=self.jwt_token,
-                        owner_name=self.owner_name,
-                        owner_email=self.owner_email,
-                        file_size=len(document.content),
-                        connector_type=connection.connector_type,
-                    )
+                # Use consolidated standard processing
+                result = await self.process_document_standard(
+                    file_path=tmp_path,
+                    file_hash=file_hash,
+                    owner_user_id=self.user_id,
+                    original_filename=document.filename,
+                    jwt_token=self.jwt_token,
+                    owner_name=self.owner_name,
+                    owner_email=self.owner_email,
+                    file_size=len(document.content),
+                    connector_type=connection.connector_type,
+                )
 
-                    # Add connector-specific metadata
-                    result.update({
-                        "source_url": document.source_url,
-                        "document_id": document.id,
-                    })
-
-                finally:
-                    if os.path.exists(tmp_file.name):
-                        os.unlink(tmp_file.name)
+                # Add connector-specific metadata
+                result.update({
+                    "source_url": document.source_url,
+                    "document_id": document.id,
+                })
 
             file_task.status = TaskStatus.COMPLETED
             file_task.result = result
@@ -379,39 +377,37 @@ class LangflowConnectorFileProcessor(TaskProcessor):
                 raise ValueError("user_id not provided to LangflowConnectorFileProcessor")
 
             # Create temporary file and compute hash to check for duplicates
+            from utils.file_utils import auto_cleanup_tempfile
+
             suffix = self.langflow_connector_service._get_file_extension(document.mimetype)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-                tmp_file.write(document.content)
-                tmp_file.flush()
+            with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
+                # Write content to temp file
+                with open(tmp_path, 'wb') as f:
+                    f.write(document.content)
 
-                try:
-                    # Compute hash and check if already exists
-                    file_hash = hash_id(tmp_file.name)
+                # Compute hash and check if already exists
+                file_hash = hash_id(tmp_path)
 
-                    # Check if document already exists
-                    opensearch_client = self.langflow_connector_service.session_manager.get_user_opensearch_client(
-                        self.user_id, self.jwt_token
-                    )
-                    if await self.check_document_exists(file_hash, opensearch_client):
-                        file_task.status = TaskStatus.COMPLETED
-                        file_task.result = {"status": "unchanged", "id": file_hash}
-                        file_task.updated_at = time.time()
-                        upload_task.successful_files += 1
-                        return
+                # Check if document already exists
+                opensearch_client = self.langflow_connector_service.session_manager.get_user_opensearch_client(
+                    self.user_id, self.jwt_token
+                )
+                if await self.check_document_exists(file_hash, opensearch_client):
+                    file_task.status = TaskStatus.COMPLETED
+                    file_task.result = {"status": "unchanged", "id": file_hash}
+                    file_task.updated_at = time.time()
+                    upload_task.successful_files += 1
+                    return
 
-                    # Process using Langflow pipeline
-                    result = await self.langflow_connector_service.process_connector_document(
-                        document,
-                        self.user_id,
-                        connection.connector_type,
-                        jwt_token=self.jwt_token,
-                        owner_name=self.owner_name,
-                        owner_email=self.owner_email,
-                    )
-
-                finally:
-                    if os.path.exists(tmp_file.name):
-                        os.unlink(tmp_file.name)
+                # Process using Langflow pipeline
+                result = await self.langflow_connector_service.process_connector_document(
+                    document,
+                    self.user_id,
+                    connection.connector_type,
+                    jwt_token=self.jwt_token,
+                    owner_name=self.owner_name,
+                    owner_email=self.owner_email,
+                )
 
             file_task.status = TaskStatus.COMPLETED
             file_task.result = result
@@ -466,48 +462,48 @@ class S3FileProcessor(TaskProcessor):
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 
-        tmp = tempfile.NamedTemporaryFile(delete=False)
+        from utils.file_utils import auto_cleanup_tempfile
+        from utils.hash_utils import hash_id
+
         try:
-            # Download object to temporary file
-            self.s3_client.download_fileobj(self.bucket, item, tmp)
-            tmp.flush()
+            with auto_cleanup_tempfile() as tmp_path:
+                # Download object to temporary file
+                with open(tmp_path, 'wb') as tmp_file:
+                    self.s3_client.download_fileobj(self.bucket, item, tmp_file)
 
-            # Compute hash
-            from utils.hash_utils import hash_id
-            file_hash = hash_id(tmp.name)
+                # Compute hash
+                file_hash = hash_id(tmp_path)
 
-            # Get object size
-            try:
-                obj_info = self.s3_client.head_object(Bucket=self.bucket, Key=item)
-                file_size = obj_info.get("ContentLength", 0)
-            except Exception:
-                file_size = 0
+                # Get object size
+                try:
+                    obj_info = self.s3_client.head_object(Bucket=self.bucket, Key=item)
+                    file_size = obj_info.get("ContentLength", 0)
+                except Exception:
+                    file_size = 0
 
-            # Use consolidated standard processing
-            result = await self.process_document_standard(
-                file_path=tmp.name,
-                file_hash=file_hash,
-                owner_user_id=self.owner_user_id,
-                original_filename=item,  # Use S3 key as filename
-                jwt_token=self.jwt_token,
-                owner_name=self.owner_name,
-                owner_email=self.owner_email,
-                file_size=file_size,
-                connector_type="s3",
-            )
+                # Use consolidated standard processing
+                result = await self.process_document_standard(
+                    file_path=tmp_path,
+                    file_hash=file_hash,
+                    owner_user_id=self.owner_user_id,
+                    original_filename=item,  # Use S3 key as filename
+                    jwt_token=self.jwt_token,
+                    owner_name=self.owner_name,
+                    owner_email=self.owner_email,
+                    file_size=file_size,
+                    connector_type="s3",
+                )
 
-            result["path"] = f"s3://{self.bucket}/{item}"
-            file_task.status = TaskStatus.COMPLETED
-            file_task.result = result
-            upload_task.successful_files += 1
+                result["path"] = f"s3://{self.bucket}/{item}"
+                file_task.status = TaskStatus.COMPLETED
+                file_task.result = result
+                upload_task.successful_files += 1
 
         except Exception as e:
             file_task.status = TaskStatus.FAILED
             file_task.error = str(e)
             upload_task.failed_files += 1
         finally:
-            if os.path.exists(tmp.name):
-                os.unlink(tmp.name)
             file_task.updated_at = time.time()
 
 

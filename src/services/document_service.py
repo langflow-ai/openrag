@@ -123,19 +123,21 @@ class DocumentService:
     ):
         """Process an uploaded file from form data"""
         from utils.hash_utils import hash_id
+        from utils.file_utils import auto_cleanup_tempfile
         import os
-        tmp = tempfile.NamedTemporaryFile(delete=False)
-        file_size = 0
-        try:
-            while True:
-                chunk = await upload_file.read(1 << 20)
-                if not chunk:
-                    break
-                tmp.write(chunk)
-                file_size += len(chunk)
-            tmp.flush()
 
-            file_hash = hash_id(tmp.name)
+        with auto_cleanup_tempfile() as tmp_path:
+            # Stream upload file to temporary file
+            file_size = 0
+            with open(tmp_path, 'wb') as tmp_file:
+                while True:
+                    chunk = await upload_file.read(1 << 20)
+                    if not chunk:
+                        break
+                    tmp_file.write(chunk)
+                    file_size += len(chunk)
+
+            file_hash = hash_id(tmp_path)
             # Get user's OpenSearch client with JWT for OIDC auth
             opensearch_client = self.session_manager.get_user_opensearch_client(
                 owner_user_id, jwt_token
@@ -149,14 +151,13 @@ class DocumentService:
                 )
                 raise
             if exists:
-                os.unlink(tmp.name)  # Delete temp file since we don't need it
                 return {"status": "unchanged", "id": file_hash}
 
             # Use consolidated standard processing
             from models.processors import TaskProcessor
             processor = TaskProcessor(document_service=self)
             result = await processor.process_document_standard(
-                file_path=tmp.name,
+                file_path=tmp_path,
                 file_hash=file_hash,
                 owner_user_id=owner_user_id,
                 original_filename=upload_file.filename,
@@ -167,10 +168,6 @@ class DocumentService:
                 connector_type="local",
             )
             return result
-
-        finally:
-            tmp.close()
-            os.remove(tmp.name)
 
     async def process_upload_context(self, upload_file, filename: str = None):
         """Process uploaded file and return content for context"""
