@@ -2,6 +2,7 @@
 
 import {
   ArrowLeft,
+  Check,
   Copy,
   File as FileIcon,
   Loader2,
@@ -41,6 +42,9 @@ function ChunksPageContent() {
     ChunkResult[]
   >([]);
   const [selectedChunks, setSelectedChunks] = useState<Set<number>>(new Set());
+  const [activeCopiedChunkIndex, setActiveCopiedChunkIndex] = useState<
+    number | null
+  >(null);
 
   // Calculate average chunk length
   const averageChunkLength = useMemo(
@@ -70,8 +74,11 @@ function ChunksPageContent() {
     }
   }, [queryInputText, chunks]);
 
-  const handleCopy = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = useCallback((text: string, index: number) => {
+    // Trime whitespace and remove new lines/tabs for cleaner copy
+    navigator.clipboard.writeText(text.trim().replace(/[\n\r\t]/gm, ""));
+    setActiveCopiedChunkIndex(index);
+    setTimeout(() => setActiveCopiedChunkIndex(null), 30 * 1000); // 30 seconds
   }, []);
 
   const fileData = (data as File[]).find(
@@ -86,7 +93,7 @@ function ChunksPageContent() {
     }
 
     setChunks(fileData?.chunks || []);
-  }, [data, filename]);
+  }, [data, filename, setChunks, fileData]);
 
   // Set selected state for all checkboxes when selectAll changes
   useEffect(() => {
@@ -238,11 +245,15 @@ function ChunksPageContent() {
                       <div className="py-1">
                         <Button
                           className="p-1"
-                          onClick={() => handleCopy(chunk.text)}
+                          onClick={() => handleCopy(chunk.text, index)}
                           variant="ghost"
                           size="xs"
                         >
-                          <Copy className="text-muted-foreground" />
+                          {activeCopiedChunkIndex === index ? (
+                            <Check className="text-muted-foreground" />
+                          ) : (
+                            <Copy className="text-muted-foreground" />
+                          )}
                         </Button>
                       </div>
                     </div>
