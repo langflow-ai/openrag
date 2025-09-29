@@ -22,9 +22,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -39,11 +39,6 @@ import { DEFAULT_AGENT_SETTINGS, DEFAULT_KNOWLEDGE_SETTINGS, UI_CONSTANTS } from
 import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
 import { ModelSelectItems } from "./helpers/model-select-item";
 import { LabelWrapper } from "@/components/label-wrapper";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@radix-ui/react-tooltip";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
@@ -112,7 +107,9 @@ function KnowledgeSourcesPage() {
   const [systemPrompt, setSystemPrompt] = useState<string>("");
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
-  const [processingMode, setProcessingMode] = useState<string>("standard");
+  const [tableStructure, setTableStructure] = useState<boolean>(false);
+  const [ocr, setOcr] = useState<boolean>(false);
+  const [pictureDescriptions, setPictureDescriptions] = useState<boolean>(false);
 
   // Fetch settings using React Query
   const { data: settings = {} } = useGetSettingsQuery({
@@ -195,12 +192,24 @@ function KnowledgeSourcesPage() {
     }
   }, [settings.knowledge?.chunk_overlap]);
 
-  // Sync processing mode with settings data
+  // Sync docling settings with settings data
   useEffect(() => {
-    if (settings.knowledge?.doclingPresets) {
-      setProcessingMode(settings.knowledge.doclingPresets);
+    if (settings.knowledge?.table_structure !== undefined) {
+      setTableStructure(settings.knowledge.table_structure);
     }
-  }, [settings.knowledge?.doclingPresets]);
+  }, [settings.knowledge?.table_structure]);
+
+  useEffect(() => {
+    if (settings.knowledge?.ocr !== undefined) {
+      setOcr(settings.knowledge.ocr);
+    }
+  }, [settings.knowledge?.ocr]);
+
+  useEffect(() => {
+    if (settings.knowledge?.picture_descriptions !== undefined) {
+      setPictureDescriptions(settings.knowledge.picture_descriptions);
+    }
+  }, [settings.knowledge?.picture_descriptions]);
 
   // Update model selection immediately
   const handleModelChange = (newModel: string) => {
@@ -231,11 +240,20 @@ function KnowledgeSourcesPage() {
     debouncedUpdate({ chunk_overlap: numValue });
   };
 
-  // Update processing mode
-  const handleProcessingModeChange = (mode: string) => {
-    setProcessingMode(mode);
-    // Update the configuration setting (backend will also update the flow automatically)
-    debouncedUpdate({ doclingPresets: mode });
+  // Update docling settings
+  const handleTableStructureChange = (checked: boolean) => {
+    setTableStructure(checked);
+    updateFlowSettingMutation.mutate({ table_structure: checked });
+  };
+
+  const handleOcrChange = (checked: boolean) => {
+    setOcr(checked);
+    updateFlowSettingMutation.mutate({ ocr: checked });
+  };
+
+  const handlePictureDescriptionsChange = (checked: boolean) => {
+    setPictureDescriptions(checked);
+    updateFlowSettingMutation.mutate({ picture_descriptions: checked });
   };
 
   // Helper function to get connector icon
@@ -569,7 +587,9 @@ function KnowledgeSourcesPage() {
         // Only reset form values if the API call was successful
         setChunkSize(DEFAULT_KNOWLEDGE_SETTINGS.chunk_size);
         setChunkOverlap(DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap);
-        setProcessingMode(DEFAULT_KNOWLEDGE_SETTINGS.processing_mode);
+        setTableStructure(false);
+        setOcr(false);
+        setPictureDescriptions(false);
         closeDialog(); // Close after successful completion
       })
       .catch((error) => {
@@ -1064,75 +1084,60 @@ function KnowledgeSourcesPage() {
               </div>
             </div>
             <div className="space-y-3">
-              <Label className="text-base font-medium">Ingestion presets</Label>
-              <RadioGroup
-                value={processingMode}
-                onValueChange={handleProcessingModeChange}
-                className="space-y-3"
-              >
-                <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="standard" id="standard" />
-                  <div className="flex-1">
-                    <Label
-                      htmlFor="standard"
-                      className="text-base font-medium cursor-pointer"
-                    >
-                      No OCR
-                    </Label>
-                    <div className="text-sm text-muted-foreground">
-                      Fast ingest for documents with selectable text. Images are
-                      ignored.
-                    </div>
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <Label
+                    htmlFor="table-structure"
+                    className="text-base font-medium cursor-pointer pb-3"
+                  >
+                    Table Structure
+                  </Label>
+                  <div className="text-sm text-muted-foreground">
+                    Capture table structure during ingest.
                   </div>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="ocr" id="ocr" />
-                  <div className="flex-1">
-                    <Label
-                      htmlFor="ocr"
-                      className="text-base font-medium cursor-pointer"
-                    >
-                      OCR
-                    </Label>
-                    <div className="text-sm text-muted-foreground">
-                      Extracts text from images and scanned pages.
-                    </div>
+                <Switch
+                  id="table-structure"
+                  checked={tableStructure}
+                  onCheckedChange={handleTableStructureChange}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <Label
+                    htmlFor="ocr"
+                    className="text-base font-medium cursor-pointer pb-3"
+                  >
+                    OCR
+                  </Label>
+                  <div className="text-sm text-muted-foreground">
+                    Extracts text from images/PDFs. Ingest is slower when enabled.
                   </div>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <RadioGroupItem
-                    value="picture_description"
-                    id="picture_description"
-                  />
-                  <div className="flex-1">
-                    <Label
-                      htmlFor="picture_description"
-                      className="text-base font-medium cursor-pointer"
-                    >
-                      OCR + Captions
-                    </Label>
-                    <div className="text-sm text-muted-foreground">
-                      Extracts text from images and scanned pages. Generates
-                      short image captions.
-                    </div>
+                <Switch
+                  id="ocr"
+                  checked={ocr}
+                  onCheckedChange={handleOcrChange}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <Label
+                    htmlFor="picture-descriptions"
+                    className="text-base font-medium cursor-pointer pb-3"
+                  >
+                    Picture Descriptions
+                  </Label>
+                  <div className="text-sm text-muted-foreground">
+                    Adds captions for images. Ingest is slower when enabled.
                   </div>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="VLM" id="VLM" />
-                  <div className="flex-1">
-                    <Label
-                      htmlFor="VLM"
-                      className="text-base font-medium cursor-pointer"
-                    >
-                      VLM
-                    </Label>
-                    <div className="text-sm text-muted-foreground">
-                      Extracts text from layout-aware parsing of text, tables,
-                      and sections.
-                    </div>
-                  </div>
-                </div>
-              </RadioGroup>
+                <Switch
+                  id="picture-descriptions"
+                  checked={pictureDescriptions}
+                  onCheckedChange={handlePictureDescriptionsChange}
+                />
+              </div>
             </div>
           </div>
         </CardContent>
