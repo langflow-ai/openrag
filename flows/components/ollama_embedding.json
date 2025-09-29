@@ -1,171 +1,142 @@
 {
   "data": {
-    "edges": [],
-    "nodes": [
-      {
-        "data": {
-          "node": {
-            "template": {
-              "_type": "Component",
-              "base_url": {
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "load_from_db": false,
-                "list": false,
-                "list_add_label": "Add More",
-                "required": true,
-                "placeholder": "",
-                "show": true,
-                "name": "base_url",
-                "value": "http://host.docker.internal:11434",
-                "display_name": "Ollama Base URL",
-                "advanced": false,
-                "input_types": [
-                  "Message"
-                ],
-                "dynamic": false,
-                "info": "",
-                "title_case": false,
-                "type": "str",
-                "_input_type": "MessageTextInput"
-              },
-              "code": {
-                "type": "code",
-                "required": true,
-                "placeholder": "",
-                "list": false,
-                "show": true,
-                "multiline": true,
-                "value": "from typing import Any\nfrom urllib.parse import urljoin\n\nimport httpx\nfrom langchain_ollama import OllamaEmbeddings\n\nfrom lfx.base.models.model import LCModelComponent\nfrom lfx.base.models.ollama_constants import OLLAMA_EMBEDDING_MODELS, URL_LIST\nfrom lfx.field_typing import Embeddings\nfrom lfx.io import DropdownInput, MessageTextInput, Output\n\nHTTP_STATUS_OK = 200\n\n\nclass OllamaEmbeddingsComponent(LCModelComponent):\n    display_name: str = \"Ollama Embeddings\"\n    description: str = \"Generate embeddings using Ollama models.\"\n    documentation = \"https://python.langchain.com/docs/integrations/text_embedding/ollama\"\n    icon = \"Ollama\"\n    name = \"OllamaEmbeddings\"\n\n    inputs = [\n        DropdownInput(\n            name=\"model_name\",\n            display_name=\"Ollama Model\",\n            value=\"\",\n            options=[],\n            real_time_refresh=True,\n            refresh_button=True,\n            combobox=True,\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"base_url\",\n            display_name=\"Ollama Base URL\",\n            value=\"\",\n            required=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Embeddings\", name=\"embeddings\", method=\"build_embeddings\"),\n    ]\n\n    def build_embeddings(self) -> Embeddings:\n        try:\n            output = OllamaEmbeddings(model=self.model_name, base_url=self.base_url)\n        except Exception as e:\n            msg = (\n                \"Unable to connect to the Ollama API. \",\n                \"Please verify the base URL, ensure the relevant Ollama model is pulled, and try again.\",\n            )\n            raise ValueError(msg) from e\n        return output\n\n    async def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None):\n        if field_name in {\"base_url\", \"model_name\"} and not await self.is_valid_ollama_url(field_value):\n            # Check if any URL in the list is valid\n            valid_url = \"\"\n            for url in URL_LIST:\n                if await self.is_valid_ollama_url(url):\n                    valid_url = url\n                    break\n            build_config[\"base_url\"][\"value\"] = valid_url\n        if field_name in {\"model_name\", \"base_url\", \"tool_model_enabled\"}:\n            if await self.is_valid_ollama_url(self.base_url):\n                build_config[\"model_name\"][\"options\"] = await self.get_model(self.base_url)\n            elif await self.is_valid_ollama_url(build_config[\"base_url\"].get(\"value\", \"\")):\n                build_config[\"model_name\"][\"options\"] = await self.get_model(build_config[\"base_url\"].get(\"value\", \"\"))\n            else:\n                build_config[\"model_name\"][\"options\"] = []\n\n        return build_config\n\n    async def get_model(self, base_url_value: str) -> list[str]:\n        \"\"\"Get the model names from Ollama.\"\"\"\n        model_ids = []\n        try:\n            url = urljoin(base_url_value, \"/api/tags\")\n            async with httpx.AsyncClient() as client:\n                response = await client.get(url)\n                response.raise_for_status()\n                data = response.json()\n\n            model_ids = [model[\"name\"] for model in data.get(\"models\", [])]\n            # this to ensure that not embedding models are included.\n            # not even the base models since models can have 1b 2b etc\n            # handles cases when embeddings models have tags like :latest - etc.\n            model_ids = [\n                model\n                for model in model_ids\n                if any(model.startswith(f\"{embedding_model}\") for embedding_model in OLLAMA_EMBEDDING_MODELS)\n            ]\n\n        except (ImportError, ValueError, httpx.RequestError) as e:\n            msg = \"Could not get model names from Ollama.\"\n            raise ValueError(msg) from e\n\n        return model_ids\n\n    async def is_valid_ollama_url(self, url: str) -> bool:\n        try:\n            async with httpx.AsyncClient() as client:\n                return (await client.get(f\"{url}/api/tags\")).status_code == HTTP_STATUS_OK\n        except httpx.RequestError:\n            return False\n",
-                "fileTypes": [],
-                "file_path": "",
-                "password": false,
-                "name": "code",
-                "advanced": true,
-                "dynamic": true,
-                "info": "",
-                "load_from_db": false,
-                "title_case": false
-              },
-              "model_name": {
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "options": [
-                  "nomic-embed-text:latest",
-                  "all-minilm:latest"
-                ],
-                "options_metadata": [],
-                "combobox": true,
-                "dialog_inputs": {},
-                "toggle": false,
-                "required": true,
-                "placeholder": "",
-                "show": true,
-                "name": "model_name",
-                "value": "",
-                "display_name": "Ollama Model",
-                "advanced": false,
-                "dynamic": false,
-                "info": "",
-                "real_time_refresh": true,
-                "refresh_button": true,
-                "title_case": false,
-                "external_options": {},
-                "type": "str",
-                "_input_type": "DropdownInput"
-              }
-            },
-            "description": "Generate embeddings using Ollama models.",
-            "icon": "Ollama",
-            "base_classes": [
-              "Embeddings"
-            ],
-            "display_name": "Ollama Embeddings",
-            "documentation": "https://python.langchain.com/docs/integrations/text_embedding/ollama",
-            "minimized": false,
-            "custom_fields": {},
-            "output_types": [],
-            "pinned": false,
-            "conditional_paths": [],
-            "frozen": false,
-            "outputs": [
-              {
-                "types": [
-                  "Embeddings"
-                ],
-                "selected": "Embeddings",
-                "name": "embeddings",
-                "display_name": "Embeddings",
-                "method": "build_embeddings",
-                "value": "__UNDEFINED__",
-                "cache": true,
-                "required_inputs": null,
-                "allows_loop": false,
-                "group_outputs": false,
-                "options": null,
-                "tool_mode": true
-              }
-            ],
-            "field_order": [
-              "model_name",
-              "base_url"
-            ],
-            "beta": false,
-            "legacy": false,
-            "edited": false,
-            "metadata": {
-              "keywords": [
-                "model",
-                "llm",
-                "language model",
-                "large language model"
-              ],
-              "module": "lfx.components.ollama.ollama_embeddings.OllamaEmbeddingsComponent",
-              "code_hash": "c41821735548",
-              "dependencies": {
-                "total_dependencies": 3,
-                "dependencies": [
-                  {
-                    "name": "httpx",
-                    "version": "0.28.1"
-                  },
-                  {
-                    "name": "langchain_ollama",
-                    "version": "0.2.1"
-                  },
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ]
-              }
-            },
-            "tool_mode": false,
-            "last_updated": "2025-09-29T18:40:10.242Z",
-            "official": false
-          },
-          "showNode": true,
-          "type": "OllamaEmbeddings",
-          "id": "OllamaEmbeddings-vnNn8"
+    "node": {
+      "template": {
+        "_type": "Component",
+        "base_url": {
+          "tool_mode": false,
+          "trace_as_input": true,
+          "trace_as_metadata": true,
+          "load_from_db": true,
+          "list": false,
+          "list_add_label": "Add More",
+          "required": true,
+          "placeholder": "",
+          "show": true,
+          "name": "base_url",
+          "value": "OLLAMA_BASE_URL",
+          "display_name": "Ollama Base URL",
+          "advanced": false,
+          "input_types": ["Message"],
+          "dynamic": false,
+          "info": "",
+          "title_case": false,
+          "type": "str",
+          "_input_type": "MessageTextInput"
         },
-        "id": "OllamaEmbeddings-vnNn8",
-        "position": {
-          "x": 0,
-          "y": 0
+        "code": {
+          "type": "code",
+          "required": true,
+          "placeholder": "",
+          "list": false,
+          "show": true,
+          "multiline": true,
+          "value": "from typing import Any\nfrom urllib.parse import urljoin\n\nimport httpx\nfrom langchain_ollama import OllamaEmbeddings\n\nfrom lfx.base.models.model import LCModelComponent\nfrom lfx.base.models.ollama_constants import OLLAMA_EMBEDDING_MODELS, URL_LIST\nfrom lfx.field_typing import Embeddings\nfrom lfx.io import DropdownInput, MessageTextInput, Output\n\nHTTP_STATUS_OK = 200\n\n\nclass OllamaEmbeddingsComponent(LCModelComponent):\n    display_name: str = \"Ollama Embeddings\"\n    description: str = \"Generate embeddings using Ollama models.\"\n    documentation = \"https://python.langchain.com/docs/integrations/text_embedding/ollama\"\n    icon = \"Ollama\"\n    name = \"OllamaEmbeddings\"\n\n    inputs = [\n        DropdownInput(\n            name=\"model_name\",\n            display_name=\"Ollama Model\",\n            value=\"\",\n            options=[],\n            real_time_refresh=True,\n            refresh_button=True,\n            combobox=True,\n            required=True,\n        ),\n        MessageTextInput(\n            name=\"base_url\",\n            display_name=\"Ollama Base URL\",\n            value=\"\",\n            required=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Embeddings\", name=\"embeddings\", method=\"build_embeddings\"),\n    ]\n\n    def build_embeddings(self) -> Embeddings:\n        try:\n            output = OllamaEmbeddings(model=self.model_name, base_url=self.base_url)\n        except Exception as e:\n            msg = (\n                \"Unable to connect to the Ollama API. \",\n                \"Please verify the base URL, ensure the relevant Ollama model is pulled, and try again.\",\n            )\n            raise ValueError(msg) from e\n        return output\n\n    async def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None):\n        if field_name in {\"base_url\", \"model_name\"} and not await self.is_valid_ollama_url(field_value):\n            # Check if any URL in the list is valid\n            valid_url = \"\"\n            for url in URL_LIST:\n                if await self.is_valid_ollama_url(url):\n                    valid_url = url\n                    break\n            build_config[\"base_url\"][\"value\"] = valid_url\n        if field_name in {\"model_name\", \"base_url\", \"tool_model_enabled\"}:\n            if await self.is_valid_ollama_url(self.base_url):\n                build_config[\"model_name\"][\"options\"] = await self.get_model(self.base_url)\n            elif await self.is_valid_ollama_url(build_config[\"base_url\"].get(\"value\", \"\")):\n                build_config[\"model_name\"][\"options\"] = await self.get_model(build_config[\"base_url\"].get(\"value\", \"\"))\n            else:\n                build_config[\"model_name\"][\"options\"] = []\n\n        return build_config\n\n    async def get_model(self, base_url_value: str) -> list[str]:\n        \"\"\"Get the model names from Ollama.\"\"\"\n        model_ids = []\n        try:\n            url = urljoin(base_url_value, \"/api/tags\")\n            async with httpx.AsyncClient() as client:\n                response = await client.get(url)\n                response.raise_for_status()\n                data = response.json()\n\n            model_ids = [model[\"name\"] for model in data.get(\"models\", [])]\n            # this to ensure that not embedding models are included.\n            # not even the base models since models can have 1b 2b etc\n            # handles cases when embeddings models have tags like :latest - etc.\n            model_ids = [\n                model\n                for model in model_ids\n                if any(model.startswith(f\"{embedding_model}\") for embedding_model in OLLAMA_EMBEDDING_MODELS)\n            ]\n\n        except (ImportError, ValueError, httpx.RequestError) as e:\n            msg = \"Could not get model names from Ollama.\"\n            raise ValueError(msg) from e\n\n        return model_ids\n\n    async def is_valid_ollama_url(self, url: str) -> bool:\n        try:\n            async with httpx.AsyncClient() as client:\n                return (await client.get(f\"{url}/api/tags\")).status_code == HTTP_STATUS_OK\n        except httpx.RequestError:\n            return False\n",
+          "fileTypes": [],
+          "file_path": "",
+          "password": false,
+          "name": "code",
+          "advanced": true,
+          "dynamic": true,
+          "info": "",
+          "load_from_db": false,
+          "title_case": false
         },
-        "type": "genericNode"
-      }
-    ],
-    "viewport": {
-      "x": 1,
-      "y": 1,
-      "zoom": 1
-    }
+        "model_name": {
+          "tool_mode": false,
+          "trace_as_metadata": true,
+          "options": ["nomic-embed-text:latest", "all-minilm:latest"],
+          "options_metadata": [],
+          "combobox": true,
+          "dialog_inputs": {},
+          "toggle": false,
+          "required": true,
+          "placeholder": "",
+          "show": true,
+          "name": "model_name",
+          "value": "",
+          "display_name": "Ollama Model",
+          "advanced": false,
+          "dynamic": false,
+          "info": "",
+          "real_time_refresh": true,
+          "refresh_button": true,
+          "title_case": false,
+          "external_options": {},
+          "type": "str",
+          "_input_type": "DropdownInput"
+        }
+      },
+      "description": "Generate embeddings using Ollama models.",
+      "icon": "Ollama",
+      "base_classes": ["Embeddings"],
+      "display_name": "Ollama Embeddings",
+      "documentation": "https://python.langchain.com/docs/integrations/text_embedding/ollama",
+      "minimized": false,
+      "custom_fields": {},
+      "output_types": [],
+      "pinned": false,
+      "conditional_paths": [],
+      "frozen": false,
+      "outputs": [
+        {
+          "types": ["Embeddings"],
+          "selected": "Embeddings",
+          "name": "embeddings",
+          "display_name": "Embeddings",
+          "method": "build_embeddings",
+          "value": "__UNDEFINED__",
+          "cache": true,
+          "required_inputs": null,
+          "allows_loop": false,
+          "group_outputs": false,
+          "options": null,
+          "tool_mode": true
+        }
+      ],
+      "field_order": ["model_name", "base_url"],
+      "beta": false,
+      "legacy": false,
+      "edited": false,
+      "metadata": {
+        "keywords": [
+          "model",
+          "llm",
+          "language model",
+          "large language model"
+        ],
+        "module": "lfx.components.ollama.ollama_embeddings.OllamaEmbeddingsComponent",
+        "code_hash": "c41821735548",
+        "dependencies": {
+          "total_dependencies": 3,
+          "dependencies": [
+            {
+              "name": "httpx",
+              "version": "0.28.1"
+            },
+            {
+              "name": "langchain_ollama",
+              "version": "0.2.1"
+            },
+            {
+              "name": "lfx",
+              "version": null
+            }
+          ]
+        }
+      },
+      "tool_mode": false,
+      "last_updated": "2025-09-29T18:40:10.242Z",
+      "official": false
+    },
+    "showNode": true,
+    "type": "OllamaEmbeddings",
+    "id": "OllamaEmbeddings-vnNn8"
   },
-  "description": "Generate embeddings using Ollama models.",
-  "name": "Ollama Embeddings",
   "id": "OllamaEmbeddings-vnNn8",
-  "is_component": true,
-  "last_tested_version": "1.6.0"
+  "position": {
+    "x": 0,
+    "y": 0
+  },
+  "type": "genericNode"
 }

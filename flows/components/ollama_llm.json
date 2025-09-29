@@ -1,8 +1,4 @@
 {
-  "data": {
-    "edges": [],
-    "nodes": [
-      {
         "data": {
           "node": {
             "template": {
@@ -11,14 +7,14 @@
                 "tool_mode": false,
                 "trace_as_input": true,
                 "trace_as_metadata": true,
-                "load_from_db": false,
+                "load_from_db": true,
                 "list": false,
                 "list_add_label": "Add More",
                 "required": false,
                 "placeholder": "",
                 "show": true,
                 "name": "base_url",
-                "value": "",
+                "value": "OLLAMA_BASE_URL",
                 "display_name": "Base URL",
                 "advanced": false,
                 "input_types": [
@@ -605,95 +601,82 @@
                 "cache": true,
                 "required_inputs": null,
                 "allows_loop": false,
-                "group_outputs": false,
-                "options": null,
-                "tool_mode": true
-              }
-            ],
-            "field_order": [
-              "base_url",
-              "model_name",
-              "temperature",
-              "format",
-              "metadata",
-              "mirostat",
-              "mirostat_eta",
-              "mirostat_tau",
-              "num_ctx",
-              "num_gpu",
-              "num_thread",
-              "repeat_last_n",
-              "repeat_penalty",
-              "tfs_z",
-              "timeout",
-              "top_k",
-              "top_p",
-              "verbose",
-              "tags",
-              "stop_tokens",
-              "system",
-              "tool_model_enabled",
-              "template",
-              "input_value",
-              "system_message",
-              "stream"
-            ],
-            "beta": false,
-            "legacy": false,
-            "edited": false,
-            "metadata": {
-              "keywords": [
-                "model",
-                "llm",
-                "language model",
-                "large language model"
-              ],
-              "module": "lfx.components.ollama.ollama.ChatOllamaComponent",
-              "code_hash": "54de3b5da388",
-              "dependencies": {
-                "total_dependencies": 3,
-                "dependencies": [
-                  {
-                    "name": "httpx",
-                    "version": "0.28.1"
-                  },
-                  {
-                    "name": "langchain_ollama",
-                    "version": "0.2.1"
-                  },
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ]
-              }
+          "group_outputs": false,
+          "options": null,
+          "tool_mode": true
+        }
+      ],
+      "field_order": [
+        "base_url",
+        "model_name",
+        "temperature",
+        "format",
+        "metadata",
+        "mirostat",
+        "mirostat_eta",
+        "mirostat_tau",
+        "num_ctx",
+        "num_gpu",
+        "num_thread",
+        "repeat_last_n",
+        "repeat_penalty",
+        "tfs_z",
+        "timeout",
+        "top_k",
+        "top_p",
+        "verbose",
+        "tags",
+        "stop_tokens",
+        "system",
+        "tool_model_enabled",
+        "template",
+        "input_value",
+        "system_message",
+        "stream"
+      ],
+      "beta": false,
+      "legacy": false,
+      "edited": false,
+      "metadata": {
+        "keywords": [
+          "model",
+          "llm",
+          "language model",
+          "large language model"
+        ],
+        "module": "lfx.components.ollama.ollama.ChatOllamaComponent",
+        "code_hash": "54de3b5da388",
+        "dependencies": {
+          "total_dependencies": 3,
+          "dependencies": [
+            {
+              "name": "httpx",
+              "version": "0.28.1"
             },
-            "tool_mode": false,
-            "last_updated": "2025-09-29T18:39:30.798Z",
-            "official": false
-          },
-          "showNode": true,
-          "type": "OllamaModel",
-          "id": "OllamaModel-8Re0J",
-          "selected_output": "model_output"
-        },
-        "id": "OllamaModel-8Re0J",
-        "position": {
-          "x": 0,
-          "y": 0
-        },
-        "type": "genericNode"
-      }
-    ],
-    "viewport": {
-      "x": 1,
-      "y": 1,
-      "zoom": 1
-    }
+            {
+              "name": "langchain_ollama",
+              "version": "0.2.1"
+            },
+            {
+              "name": "lfx",
+              "version": null
+            }
+          ]
+        }
+      },
+      "tool_mode": false,
+      "last_updated": "2025-09-29T18:39:30.798Z",
+      "official": false
+    },
+    "showNode": true,
+    "type": "OllamaModel",
+    "id": "OllamaModel-8Re0J",
+    "selected_output": "model_output"
   },
-  "description": "Generate text using Ollama Local LLMs.",
-  "name": "Ollama",
   "id": "OllamaModel-8Re0J",
-  "is_component": true,
-  "last_tested_version": "1.6.0"
+  "position": {
+    "x": 0,
+    "y": 0
+  },
+  "type": "genericNode"
 }
