@@ -16,6 +16,8 @@ class ProviderConfig:
 
     model_provider: str = "openai"  # openai, anthropic, etc.
     api_key: str = ""
+    endpoint: str = ""  # For providers like Watson/IBM that need custom endpoints
+    project_id: str = ""  # For providers like Watson/IBM that need project IDs
 
 
 @dataclass
@@ -129,6 +131,10 @@ class ConfigManager:
             config_data["provider"]["model_provider"] = os.getenv("MODEL_PROVIDER")
         if os.getenv("PROVIDER_API_KEY"):
             config_data["provider"]["api_key"] = os.getenv("PROVIDER_API_KEY")
+        if os.getenv("PROVIDER_ENDPOINT"):
+            config_data["provider"]["endpoint"] = os.getenv("PROVIDER_ENDPOINT")
+        if os.getenv("PROVIDER_PROJECT_ID"):
+            config_data["provider"]["project_id"] = os.getenv("PROVIDER_PROJECT_ID")
         # Backward compatibility for OpenAI
         if os.getenv("OPENAI_API_KEY"):
             config_data["provider"]["api_key"] = os.getenv("OPENAI_API_KEY")
