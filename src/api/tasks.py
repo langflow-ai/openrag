@@ -26,7 +26,7 @@ async def cancel_task(request: Request, task_service, session_manager):
     task_id = request.path_params.get("task_id")
     user = request.state.user
 
-    success = task_service.cancel_task(user.user_id, task_id)
+    success = await task_service.cancel_task(user.user_id, task_id)
     if not success:
         return JSONResponse(
             {"error": "Task not found or cannot be cancelled"}, status_code=400

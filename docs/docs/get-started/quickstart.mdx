@@ -11,7 +11,41 @@ Get started with OpenRAG by loading your knowledge, swapping out your language m
 
 ## Prerequisites
 
-- Install and start OpenRAG
+- [Install and start OpenRAG](/install)
+- Create a [Langflow API key](https://docs.langflow.org/api-keys-and-authentication)
+    <details>
+        <summary>Create a Langflow API key</summary>
+    
+        A Langflow API key is a user-specific token you can use with Langflow.
+        It is **only** used for sending requests to the Langflow server.
+        It does **not** access to OpenRAG.
+    
+        To create a Langflow API key, do the following:
+    
+        1. In Langflow, click your user icon, and then select **Settings**.
+        2. Click **Langflow API Keys**, and then click <Icon name="Plus" aria-hidden="true"/> **Add New**.
+        3. Name your key, and then click **Create API Key**.
+        4. Copy the API key and store it securely.
+        5. To use your Langflow API key in a request, set a `LANGFLOW_API_KEY` environment variable in your terminal, and then include an `x-api-key` header or query parameter with your request.
+        For example:
+    
+            ```bash
+            # Set variable
+            export LANGFLOW_API_KEY="sk..."
+    
+            # Send request
+            curl --request POST \
+            --url "http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID" \
+            --header "Content-Type: application/json" \
+            --header "x-api-key: $LANGFLOW_API_KEY" \
+            --data '{
+              "output_type": "chat",
+              "input_type": "chat",
+              "input_value": "Hello"
+            }'
+            ```
+    
+    </details>
 
 ## Find your way around 
 
@@ -20,14 +54,18 @@ Get started with OpenRAG by loading your knowledge, swapping out your language m
    For more information, see [Langflow Agents](/agents).
 2. Ask `What documents are available to you?`
    The agent responds with a message summarizing the documents that OpenRAG loads by default, which are PDFs about evaluating data quality when using LLMs in health care.
+   Knowledge is stored in OpenSearch.
+   For more information, see [Knowledge](/knowledge).
 3. To confirm the agent is correct, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
-   The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database. Click on a document to display the chunks derived from splitting the default documents into the vector database.
+   The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database.
+   Click on a document to display the chunks derived from splitting the default documents into the vector database.
 
 ## Add your own knowledge
 
 1. To add documents to your knowledge base, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**.
    * Select **Add File** to add a single file from your local machine (mapped with the Docker volume mount).
    * Select **Process Folder** to process an entire folder of documents from your local machine (mapped with the Docker volume mount).
+   * Select your cloud storage provider to add knowledge from an OAuth-connected storage provider. For more information, see [OAuth ingestion](/knowledge#oauth-ingestion).
 2. Return to the Chat window and ask a question about your loaded data.
    For example, with a manual about a PC tablet loaded, ask `How do I connect this device to WiFI?`
    The agent responds with a message indicating it now has your knowledge as context for answering questions.
@@ -40,353 +78,289 @@ If you aren't getting the results you need, you can further tune the knowledge i
 To modify the knowledge ingestion or Agent behavior, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
 
 In this example, you'll try a different LLM to demonstrate how the Agent's response changes.
+You can only change the **Language model**, and not the **Model provider** that you started with in OpenRAG.
+If you're using Ollama, you can use any installed model.
 
 1. To edit the Agent's behavior, click **Edit in Langflow**.
+You can more quickly access the **Language Model** and **Agent Instructions** fields in this page, but for illustration purposes, navigate to the Langflow visual builder.
 2. OpenRAG warns you that you're entering Langflow. Click **Proceed**.
+
 3. The OpenRAG OpenSearch Agent flow appears. 
+   ![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
 
-![OpenRAG OpenSearch Agent Flow](/img/opensearch-agent-flow.png)
-
-4. In the **Language Model** component, under **Model Provider**, select **Anthropic**.
-   :::note
-   This guide uses an Anthropic model for demonstration purposes. If you want to use a different provider, change the **Model Provider** and **Model Name** fields, and then provide credentials for your selected provider.
-   :::
+4. In the **Language Model** component, under **Model**, select a different OpenAI model.
 5. Save your flow with <kbd>Command+S</kbd>.
 6. In OpenRAG, start a new conversation by clicking the <Icon name="Plus" aria-hidden="true"/> in the **Conversations** tab.
 7. Ask the same question as before to demonstrate how a different language model changes the results.
 
 ## Integrate OpenRAG into your application
 
-:::tip
-Ensure the `openrag-backend` container has port 8000 exposed in your `docker-compose.yml`:
+To integrate OpenRAG into your application, use the [Langflow API](https://docs.langflow.org/api-reference-api-examples).
+Make requests with Python, TypeScript, or any HTTP client to run one of OpenRAG's default flows and get a response, and then modify the flow further to improve results.
 
-```yaml
-openrag-backend:
-  ports:
-    - "8000:8000"
-```
-:::
+Langflow provides code snippets to help you get started with the Langflow API.
 
-OpenRAG provides a REST API that you can call from Python, TypeScript, or any HTTP client to chat with your documents.
+1. To navigate to the OpenRAG OpenSearch Agent flow, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then click **Edit in Langflow** in the OpenRAG OpenSearch Agent flow.
+2. Click **Share**, and then click **API access**.
 
-These example requests are run assuming OpenRAG is in "no-auth" mode.
-For complete API documentation, including authentication, request and response parameters, and example requests, see the API documentation.
+    The default code in the API access pane constructs a request with the Langflow server `url`, `headers`, and a `payload` of request data. The code snippets automatically include the `LANGFLOW_SERVER_ADDRESS` and `FLOW_ID` values for the flow. Replace these values if you're using the code for a different server or flow. The default Langflow server address is http://localhost:7860.
 
-### Chat with your documents
-
-Prompt OpenRAG at the `/chat` API endpoint.
-
-<Tabs>
-<TabItem value="python" label="Python">
-
-```python
-import requests
-
-url = "http://localhost:8000/chat"
-payload = {
-    "prompt": "What documents are available to you?",
-    "previous_response_id": None
-}
-
-response = requests.post(url, json=payload)
-print("OpenRAG Response:", response.json())
-```
-
-</TabItem>
-<TabItem value="typescript" label="TypeScript">
-
-```typescript
-import fetch from 'node-fetch';
-
-const response = await fetch("http://localhost:8000/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-        prompt: "What documents are available to you?",
-        previous_response_id: null
-    })
-});
-
-const data = await response.json();
-console.log("OpenRAG Response:", data);
-```
-
-</TabItem>
-<TabItem value="curl" label="curl">
-
-```bash
-curl -X POST "http://localhost:8000/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "What documents are available to you?",
-    "previous_response_id": null
-  }'
-```
-
-</TabItem>
-</Tabs>
-
-<details closed>
-<summary>Response</summary>
-
-```
-{
-  "response": "I have access to a wide range of documents depending on the context and the tools enabled in this environment. Specifically, I can search for and retrieve documents related to various topics such as technical papers, articles, manuals, guides, knowledge base entries, and other text-based resources. If you specify a particular subject or type of document you're interested in, I can try to locate relevant materials for you. Let me know what you need!",
-  "response_id": "resp_68d3fdbac93081958b8781b97919fe7007f98bd83932fa1a"
-}
-```
-
-</details>
-
-### Search your documents
-
-Search your document knowledge base at the `/search` endpoint.
-
-<Tabs>
-<TabItem value="python" label="Python">
-
-```python
-import requests
-
-url = "http://localhost:8000/search"
-payload = {"query": "healthcare data quality", "limit": 5}
-
-response = requests.post(url, json=payload)
-results = response.json()
-
-print("Search Results:")
-for result in results.get("results", []):
-    print(f"- {result.get('filename')}: {result.get('text', '')[:100]}...")
-```
-
-</TabItem>
-<TabItem value="typescript" label="TypeScript">
-
-```typescript
-const response = await fetch("http://localhost:8000/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-        query: "healthcare data quality",
-        limit: 5
-    })
-});
-
-const results = await response.json();
-console.log("Search Results:");
-results.results?.forEach((result, index) => {
-    const filename = result.filename || 'Unknown';
-    const text = result.text?.substring(0, 100) || '';
-    console.log(`${index + 1}. ${filename}: ${text}...`);
-});
-```
-
-</TabItem>
-<TabItem value="curl" label="curl">
-
-```bash
-curl -X POST "http://localhost:8000/search" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "healthcare data quality", "limit": 5}'
-```
-
-</TabItem>
-</Tabs>
-
-
-<details closed>
-<summary>Example response</summary>
-
-```
-Found 5 results
-1. 2506.08231v1.pdf: variables with high performance metrics. These variables might also require fewer replication analys...
-2. 2506.08231v1.pdf: on EHR data and may lack the clinical domain knowledge needed to perform well on the tasks where EHR...
-3. 2506.08231v1.pdf: Abstract Large language models (LLMs) are increasingly used to extract clinical data from electronic...
-4. 2506.08231v1.pdf: these multidimensional assessments, the framework not only quantifies accuracy, but can also be appl...
-5. 2506.08231v1.pdf: observed in only the model metrics, but not the abstractor metrics, it indicates that model errors m...
-```
-
-</details>
-
-### Use chat and search together 
-
-Create a complete chat application that combines an interactive terminal chat with session continuity and search functionality.
-
-<Tabs>
-<TabItem value="python" label="Python">
-
-```python
-import requests
-
-# Configuration
-OPENRAG_BASE_URL = "http://localhost:8000"
-CHAT_URL = f"{OPENRAG_BASE_URL}/chat"
-SEARCH_URL = f"{OPENRAG_BASE_URL}/search"
-DEFAULT_SEARCH_LIMIT = 5
-
-def chat_with_openrag(message, previous_response_id=None):
-    try:
-        response = requests.post(CHAT_URL, json={
-            "prompt": message, 
-            "previous_response_id": previous_response_id
-        })
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response"), data.get("response_id")
-    except Exception as e:
-        return f"Error: {str(e)}", None
-
-def search_documents(query, limit=DEFAULT_SEARCH_LIMIT):
-    try:
-        response = requests.post(SEARCH_URL, json={
-            "query": query,
-            "limit": limit
-        })
-        response.raise_for_status()
-        data = response.json()
-        return data.get("results", [])
-    except Exception as e:
-        return []
-
-# Interactive chat with session continuity and search
-previous_response_id = None
-while True:
-    question = input("Your question (or 'search <query>' to search): ").strip()
-    if question.lower() in ['quit', 'exit', 'q']:
-        break
-    if not question:
-        continue
+    <Tabs>
+    <TabItem value="python" label="Python">
     
-    if question.lower().startswith('search '):
-        query = question[7:].strip()
-        print("Searching documents...")
-        results = search_documents(query)
-        print(f"\nFound {len(results)} results:")
-        for i, result in enumerate(results, 1):
-            filename = result.get('filename', 'Unknown')
-            text = result.get('text', '')[:100]
-            print(f"{i}. {filename}: {text}...")
-        print()
-    else:
-        print("OpenRAG is thinking...")
-        result, response_id = chat_with_openrag(question, previous_response_id)
-        print(f"OpenRAG: {result}\n")
-        previous_response_id = response_id
-```
-
-</TabItem>
-<TabItem value="typescript" label="TypeScript">
-
-```ts
-import fetch from 'node-fetch';
-
-// Configuration
-const OPENRAG_BASE_URL = "http://localhost:8000";
-const CHAT_URL = `${OPENRAG_BASE_URL}/chat`;
-const SEARCH_URL = `${OPENRAG_BASE_URL}/search`;
-const DEFAULT_SEARCH_LIMIT = 5;
-
-async function chatWithOpenRAG(message: string, previousResponseId?: string | null) {
-    try {
-        const response = await fetch(CHAT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                prompt: message,
-                previous_response_id: previousResponseId
-            })
-        });
-        const data = await response.json();
-        return [data.response || "No response received", data.response_id || null];
-    } catch (error) {
-        return [`Error: ${error}`, null];
+    ```python
+    import requests
+    import os
+    import uuid
+    
+    api_key = 'LANGFLOW_API_KEY'
+    url = "http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID"  # The complete API endpoint URL for this flow
+    
+    # Request payload configuration
+    payload = {
+        "output_type": "chat",
+        "input_type": "chat",
+        "input_value": "hello world!"
     }
-}
+    payload["session_id"] = str(uuid.uuid4())
+    
+    headers = {"x-api-key": api_key}
+    
+    try:
+        # Send API request
+        response = requests.request("POST", url, json=payload, headers=headers)
+        response.raise_for_status()  # Raise exception for bad status codes
+    
+        # Print response
+        print(response.text)
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Error making API request: {e}")
+    except ValueError as e:
+        print(f"Error parsing response: {e}")
+    ```
+    
+    </TabItem>
+    <TabItem value="typescript" label="TypeScript">
+    
+    ```typescript
+    const crypto = require('crypto');
+    const apiKey = 'LANGFLOW_API_KEY';
+    const payload = {
+        "output_type": "chat",
+        "input_type": "chat",
+        "input_value": "hello world!"
+    };
+    payload.session_id = crypto.randomUUID();
+    
+    const options = {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            "x-api-key": apiKey
+        },
+        body: JSON.stringify(payload)
+    };
+    
+    fetch('http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID', options)
+        .then(response => response.json())
+        .then(response => console.warn(response))
+        .catch(err => console.error(err));
+    ```
+    
+    </TabItem>
+    <TabItem value="curl" label="curl">
+    
+    ```bash
+    curl --request POST \
+         --url 'http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID?stream=false' \
+         --header 'Content-Type: application/json' \
+         --header "x-api-key: LANGFLOW_API_KEY" \ 
+         --data '{
+    		           "output_type": "chat",
+    		           "input_type": "chat",
+    		           "input_value": "hello world!",
+    		         }'
+    ```
+    
+    </TabItem>
+    </Tabs>
 
-async function searchDocuments(query: string, limit: number = DEFAULT_SEARCH_LIMIT) {
-    try {
-        const response = await fetch(SEARCH_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query, limit })
-        });
-        const data = await response.json();
-        return data.results || [];
-    } catch (error) {
-        return [];
+3. Copy the snippet, paste it in a script file, and then run the script to send the request. If you are using the curl snippet, you can run the command directly in your terminal.
+
+If the request is successful, the response includes many details about the flow run, including the session ID, inputs, outputs, components, durations, and more.
+The following is an example of a response from running the **Simple Agent** template flow:
+
+<details>
+<summary>Result</summary>
+
+```json
+{
+  "session_id": "29deb764-af3f-4d7d-94a0-47491ed241d6",
+  "outputs": [
+    {
+      "inputs": {
+        "input_value": "hello world!"
+      },
+      "outputs": [
+        {
+          "results": {
+            "message": {
+              "text_key": "text",
+              "data": {
+                "timestamp": "2025-06-16 19:58:23 UTC",
+                "sender": "Machine",
+                "sender_name": "AI",
+                "session_id": "29deb764-af3f-4d7d-94a0-47491ed241d6",
+                "text": "Hello world! 🌍 How can I assist you today?",
+                "files": [],
+                "error": false,
+                "edit": false,
+                "properties": {
+                  "text_color": "",
+                  "background_color": "",
+                  "edited": false,
+                  "source": {
+                    "id": "Agent-ZOknz",
+                    "display_name": "Agent",
+                    "source": "gpt-4o-mini"
+                  },
+                  "icon": "bot",
+                  "allow_markdown": false,
+                  "positive_feedback": null,
+                  "state": "complete",
+                  "targets": []
+                },
+                "category": "message",
+                "content_blocks": [
+                  {
+                    "title": "Agent Steps",
+                    "contents": [
+                      {
+                        "type": "text",
+                        "duration": 2,
+                        "header": {
+                          "title": "Input",
+                          "icon": "MessageSquare"
+                        },
+                        "text": "**Input**: hello world!"
+                      },
+                      {
+                        "type": "text",
+                        "duration": 226,
+                        "header": {
+                          "title": "Output",
+                          "icon": "MessageSquare"
+                        },
+                        "text": "Hello world! 🌍 How can I assist you today?"
+                      }
+                    ],
+                    "allow_markdown": true,
+                    "media_url": null
+                  }
+                ],
+                "id": "f3d85d9a-261c-4325-b004-95a1bf5de7ca",
+                "flow_id": "29deb764-af3f-4d7d-94a0-47491ed241d6",
+                "duration": null
+              },
+              "default_value": "",
+              "text": "Hello world! 🌍 How can I assist you today?",
+              "sender": "Machine",
+              "sender_name": "AI",
+              "files": [],
+              "session_id": "29deb764-af3f-4d7d-94a0-47491ed241d6",
+              "timestamp": "2025-06-16T19:58:23+00:00",
+              "flow_id": "29deb764-af3f-4d7d-94a0-47491ed241d6",
+              "error": false,
+              "edit": false,
+              "properties": {
+                "text_color": "",
+                "background_color": "",
+                "edited": false,
+                "source": {
+                  "id": "Agent-ZOknz",
+                  "display_name": "Agent",
+                  "source": "gpt-4o-mini"
+                },
+                "icon": "bot",
+                "allow_markdown": false,
+                "positive_feedback": null,
+                "state": "complete",
+                "targets": []
+              },
+              "category": "message",
+              "content_blocks": [
+                {
+                  "title": "Agent Steps",
+                  "contents": [
+                    {
+                      "type": "text",
+                      "duration": 2,
+                      "header": {
+                        "title": "Input",
+                        "icon": "MessageSquare"
+                      },
+                      "text": "**Input**: hello world!"
+                    },
+                    {
+                      "type": "text",
+                      "duration": 226,
+                      "header": {
+                        "title": "Output",
+                        "icon": "MessageSquare"
+                      },
+                      "text": "Hello world! 🌍 How can I assist you today?"
+                    }
+                  ],
+                  "allow_markdown": true,
+                  "media_url": null
+                }
+              ],
+              "duration": null
+            }
+          },
+          "artifacts": {
+            "message": "Hello world! 🌍 How can I assist you today?",
+            "sender": "Machine",
+            "sender_name": "AI",
+            "files": [],
+            "type": "object"
+          },
+          "outputs": {
+            "message": {
+              "message": "Hello world! 🌍 How can I assist you today?",
+              "type": "text"
+            }
+          },
+          "logs": {
+            "message": []
+          },
+          "messages": [
+            {
+              "message": "Hello world! 🌍 How can I assist you today?",
+              "sender": "Machine",
+              "sender_name": "AI",
+              "session_id": "29deb764-af3f-4d7d-94a0-47491ed241d6",
+              "stream_url": null,
+              "component_id": "ChatOutput-aF5lw",
+              "files": [],
+              "type": "text"
+            }
+          ],
+          "timedelta": null,
+          "duration": null,
+          "component_display_name": "Chat Output",
+          "component_id": "ChatOutput-aF5lw",
+          "used_frozen_result": false
+        }
+      ]
     }
+  ]
 }
-
-// Interactive chat with session continuity and search
-let previousResponseId = null;
-const readline = require('readline');
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
-const askQuestion = () => {
-    rl.question("Your question (or 'search <query>' to search): ", async (question) => {
-        if (question.toLowerCase() === 'quit' || question.toLowerCase() === 'exit' || question.toLowerCase() === 'q') {
-            console.log("Goodbye!");
-            rl.close();
-            return;
-        }
-        if (!question.trim()) {
-            askQuestion();
-            return;
-        }
-        
-        if (question.toLowerCase().startsWith('search ')) {
-            const query = question.substring(7).trim();
-            console.log("Searching documents...");
-            const results = await searchDocuments(query);
-            console.log(`\nFound ${results.length} results:`);
-            results.forEach((result, i) => {
-                const filename = result.filename || 'Unknown';
-                const text = result.text?.substring(0, 100) || '';
-                console.log(`${i + 1}. ${filename}: ${text}...`);
-            });
-            console.log();
-        } else {
-            console.log("OpenRAG is thinking...");
-            const [result, responseId] = await chatWithOpenRAG(question, previousResponseId);
-            console.log(`\nOpenRAG: ${result}\n`);
-            previousResponseId = responseId;
-        }
-        askQuestion();
-    });
-};
-
-console.log("OpenRAG Chat Interface");
-console.log("Ask questions about your documents. Type 'quit' to exit.");
-console.log("Use 'search <query>' to search documents directly.\n");
-askQuestion();
 ```
-
-</TabItem>
-</Tabs>
-
-<details closed>
-<summary>Example response</summary>
-
-```
-Your question (or 'search <query>' to search): search healthcare
-Searching documents...
-
-Found 5 results:
-1. 2506.08231v1.pdf: variables with high performance metrics. These variables might also require fewer replication analys...
-2. 2506.08231v1.pdf: on EHR data and may lack the clinical domain knowledge needed to perform well on the tasks where EHR...
-3. 2506.08231v1.pdf: Abstract Large language models (LLMs) are increasingly used to extract clinical data from electronic...
-4. 2506.08231v1.pdf: Acknowledgements Darren Johnson for support in publication planning and management. The authors used...
-5. 2506.08231v1.pdf: Ensuring Reliability of Curated EHR-Derived Data: The Validation of Accuracy for LLM/ML-Extracted In...
-
-Your question (or 'search <query>' to search): what's the weather today?
-OpenRAG is thinking...
-OpenRAG: I don't have access to real-time weather data. Could you please provide me with your location? Then I can help you find the weather information.
-
-Your question (or 'search <query>' to search): newark nj
-OpenRAG is thinking...               
-```
-
 </details>
-## Next steps
 
-TBD
+To further explore the API, see:
+
+* The Langflow [Quickstart](https://docs.langflow.org/quickstart#extract-data-from-the-response) extends this example with extracting fields from the response.
+* [Get started with the Langflow API](https://docs.langflow.org/api-reference-api-examples)
