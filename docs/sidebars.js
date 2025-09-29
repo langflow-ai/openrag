@@ -65,19 +65,13 @@ const sidebars = {
     },
     {
       type: "category",
-      label: "Configuration",
+      label: "Reference",
       items: [
         {
           type: "doc",
-          id: "configure/configuration",
-          label: "Environment Variables"
+          id: "reference/configuration",
+          label: "Environment Variables and Configuration File"
         },
-      ],
-    },
-    {
-      type: "category",
-      label: "Reference",
-      items: [
         {
           type: "doc",
           id: "reference/troubleshooting",
