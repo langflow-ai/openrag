@@ -56,6 +56,11 @@ const sidebars = {
           id: "core-components/agents",
           label: "Langflow Agents"
         },
+        {
+          type: "doc",
+          id: "core-components/knowledge",
+          label: "OpenSearch Knowledge"
+        }
       ],
     },
     {
