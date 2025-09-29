@@ -245,15 +245,6 @@ class ConnectorFileProcessor(TaskProcessor):
         self.jwt_token = jwt_token
         self.owner_name = owner_name
         self.owner_email = owner_email
-        # Create lookup map for file info - handle both file objects and file IDs
-        self.file_info_map = {}
-        for f in files_to_process:
-            if isinstance(f, dict):
-                # Full file info objects
-                self.file_info_map[f["id"]] = f
-            else:
-                # Just file IDs - will need to fetch metadata during processing
-                self.file_info_map[f] = None
 
     async def process_item(
         self, upload_task: UploadTask, item: str, file_task: FileTask
@@ -352,15 +343,6 @@ class LangflowConnectorFileProcessor(TaskProcessor):
         self.jwt_token = jwt_token
         self.owner_name = owner_name
         self.owner_email = owner_email
-        # Create lookup map for file info - handle both file objects and file IDs
-        self.file_info_map = {}
-        for f in files_to_process:
-            if isinstance(f, dict):
-                # Full file info objects
-                self.file_info_map[f["id"]] = f
-            else:
-                # Just file IDs - will need to fetch metadata during processing
-                self.file_info_map[f] = None
 
     async def process_item(
         self, upload_task: UploadTask, item: str, file_task: FileTask
