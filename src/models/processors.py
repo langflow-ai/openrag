@@ -140,19 +140,25 @@ class TaskProcessor:
                 raise
         return {"status": "indexed", "id": file_hash}
 
-    @abstractmethod
     async def process_item(
         self, upload_task: UploadTask, item: Any, file_task: FileTask
     ) -> None:
         """
         Process a single item in the task.
 
+        This is a base implementation that should be overridden by subclasses.
+        When TaskProcessor is used directly (not via subclass), this method
+        is not called - only the utility methods like process_document_standard
+        are used.
+
         Args:
             upload_task: The overall upload task
             item: The item to process (could be file path, file info, etc.)
             file_task: The specific file task to update
         """
-        pass
+        raise NotImplementedError(
+            "process_item should be overridden by subclasses when used in task processing"
+        )
 
 
 class DocumentFileProcessor(TaskProcessor):
