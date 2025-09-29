@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from typing import Any
 from .tasks import UploadTask, FileTask
 from utils.logging_config import get_logger
@@ -6,8 +5,8 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-class TaskProcessor(ABC):
-    """Abstract base class for task processors"""
+class TaskProcessor:
+    """Base class for task processors with shared processing logic"""
 
     def __init__(self, document_service=None):
         self.document_service = document_service
