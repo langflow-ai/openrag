@@ -2,24 +2,73 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Filter, Loader2, Plus, Save, X } from "lucide-react";
+import {
+  Filter as FilterIcon,
+  Loader2,
+  Plus,
+  X,
+  Star,
+  Book,
+  FileText,
+  Folder,
+  Globe,
+  Calendar,
+  User,
+  Users,
+  Tag,
+  Briefcase,
+  Building2,
+  Cog,
+  Database,
+  Cpu,
+  Bot,
+  MessageSquare,
+  Search,
+  Shield,
+  Lock,
+  Key,
+  Link,
+  Mail,
+  Phone,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   useGetFiltersSearchQuery,
   type KnowledgeFilter,
 } from "@/src/app/api/queries/useGetFiltersSearchQuery";
-import { useCreateFilter } from "@/src/app/api/mutations/useCreateFilter";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { useKnowledgeFilter } from "@/src/contexts/knowledge-filter-context";
+import type { SVGProps } from "react";
+
+const ICON_MAP = {
+  Filter: FilterIcon,
+  Star,
+  Book,
+  FileText,
+  Folder,
+  Globe,
+  Calendar,
+  User,
+  Users,
+  Tag,
+  Briefcase,
+  Building2,
+  Cog,
+  Database,
+  Cpu,
+  Bot,
+  MessageSquare,
+  Search,
+  Shield,
+  Lock,
+  Key,
+  Link,
+  Mail,
+  Phone,
+} as const;
+
+function iconKeyToComponent(key: string): React.ComponentType<SVGProps<SVGSVGElement>> {
+  return (ICON_MAP as Record<string, React.ComponentType<SVGProps<SVGSVGElement>>>)[key] || FilterIcon;
+}
 
 interface ParsedQueryData {
   query: string;
@@ -30,6 +79,8 @@ interface ParsedQueryData {
   };
   limit: number;
   scoreThreshold: number;
+  color?: "zinc" | "pink" | "purple" | "indigo" | "emerald" | "amber" | "red";
+  icon?: string;
 }
 
 interface KnowledgeFilterListProps {
@@ -42,10 +93,7 @@ export function KnowledgeFilterList({
   onFilterSelect,
 }: KnowledgeFilterListProps) {
   const [searchQuery] = useState("");
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createName, setCreateName] = useState("");
-  const [createDescription, setCreateDescription] = useState("");
-  const [creating, setCreating] = useState(false);
+  const { startCreateMode } = useKnowledgeFilter();
 
   const { data, isFetching: loading } = useGetFiltersSearchQuery(
     searchQuery,
@@ -54,57 +102,12 @@ export function KnowledgeFilterList({
 
   const filters = data || [];
 
-  const createFilterMutation = useCreateFilter();
-
   const handleFilterSelect = (filter: KnowledgeFilter) => {
     onFilterSelect(filter);
   };
 
   const handleCreateNew = () => {
-    setShowCreateModal(true);
-  };
-
-  const handleCreateFilter = async () => {
-    if (!createName.trim()) return;
-
-    setCreating(true);
-    try {
-      // Create a basic filter with wildcards (match everything by default)
-      const defaultFilterData = {
-        query: "",
-        filters: {
-          data_sources: ["*"],
-          document_types: ["*"],
-          owners: ["*"],
-        },
-        limit: 10,
-        scoreThreshold: 0,
-      };
-
-      const result = await createFilterMutation.mutateAsync({
-        name: createName.trim(),
-        description: createDescription.trim(),
-        queryData: JSON.stringify(defaultFilterData),
-      });
-
-      // Select the new filter from API response
-      onFilterSelect(result.filter);
-
-      // Close modal and reset form
-      setShowCreateModal(false);
-      setCreateName("");
-      setCreateDescription("");
-    } catch (error) {
-      console.error("Error creating knowledge filter:", error);
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleCancelCreate = () => {
-    setShowCreateModal(false);
-    setCreateName("");
-    setCreateDescription("");
+    startCreateMode();
   };
 
   const parseQueryData = (queryData: string): ParsedQueryData => {
@@ -113,7 +116,7 @@ export function KnowledgeFilterList({
 
   return (
     <>
-      <div className="flex flex-col items-center gap-1 px-3 !mb-12 mt-0 h-full overflow-y-auto">
+      <div className="flex flex-col gap-1 px-3 !mb-12 mt-0 h-full overflow-y-auto">
         <div className="flex items-center w-full justify-between pl-3">
           <div className="text-sm font-medium text-muted-foreground">
             Knowledge Filters
@@ -136,7 +139,7 @@ export function KnowledgeFilterList({
             </span>
           </div>
         ) : filters.length === 0 ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">
+          <div className="py-2 px-4 text-sm text-muted-foreground">
             {searchQuery ? "No filters found" : "No saved filters"}
           </div>
         ) : (
@@ -152,9 +155,33 @@ export function KnowledgeFilterList({
             >
               <div className="flex flex-col gap-1 flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center justify-center bg-blue-500/20 w-5 h-5 rounded">
-                    <Filter className="h-3 w-3 text-blue-400" />
-                  </div>
+                  {(() => {
+                    const parsed = parseQueryData(filter.query_data);
+                    const color = (parsed.color || "zinc") as
+                      | "zinc"
+                      | "pink"
+                      | "purple"
+                      | "indigo"
+                      | "emerald"
+                      | "amber"
+                      | "red";
+                    const Icon = iconKeyToComponent(parsed.icon || "Filter");
+                    const colorMap = {
+                      zinc: "bg-zinc-500/20 text-zinc-500",
+                      pink: "bg-pink-500/20 text-pink-500",
+                      purple: "bg-purple-500/20 text-purple-500",
+                      indigo: "bg-indigo-500/20 text-indigo-500",
+                      emerald: "bg-emerald-500/20 text-emerald-500",
+                      amber: "bg-amber-500/20 text-amber-500",
+                      red: "bg-red-500/20 text-red-500",
+                    } as const;
+                    const colorClasses = colorMap[color];
+                    return (
+                      <div className={`flex items-center justify-center ${colorClasses} w-5 h-5 rounded`}>
+                        <Icon className="h-3 w-3" />
+                      </div>
+                    );
+                  })()}
                   <div className="text-sm font-medium truncate group-hover:text-accent-foreground">
                     {filter.name}
                   </div>
@@ -200,72 +227,7 @@ export function KnowledgeFilterList({
           ))
         )}
       </div>
-      {/* Create Filter Dialog */}
-      <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create a new knowledge filter</DialogTitle>
-            <DialogDescription>
-              Save a reusable filter to quickly scope searches across your
-              knowledge base.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2 space-y-2">
-            <div>
-              <Label htmlFor="filter-name" className="font-medium mb-2 gap-1">
-                Name<span className="text-red-400">*</span>
-              </Label>
-              <Input
-                id="filter-name"
-                type="text"
-                placeholder="Enter filter name"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="filter-description" className="font-medium mb-2">
-                Description (optional)
-              </Label>
-              <Textarea
-                id="filter-description"
-                placeholder="Brief description of this filter"
-                value={createDescription}
-                onChange={(e) => setCreateDescription(e.target.value)}
-                className="mt-1"
-                rows={3}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={handleCancelCreate}
-              disabled={creating}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateFilter}
-              disabled={!createName.trim() || creating}
-              className="flex items-center gap-2"
-            >
-              {creating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  Create Filter
-                </>
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Create flow moved to panel create mode */}
     </>
   );
 }
