@@ -21,7 +21,9 @@ knowledge:
   # Overlap between chunks
   chunk_overlap: 200
   # Docling preset setting
-  doclingPresets: standard
+  ocr: false
+  picture_descriptions: false
+  table_structure: false
 
 # AI agent configuration
 agent:
