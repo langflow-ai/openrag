@@ -74,6 +74,20 @@ class SessionOwnershipService:
         """Filter a list of sessions to only include those owned by the user"""
         user_sessions = self.get_user_sessions(user_id)
         return [session for session in session_ids if session in user_sessions]
+
+    def release_session(self, user_id: str, session_id: str) -> bool:
+        """Release a session from a user (delete ownership record)"""
+        if session_id in self.ownership_data:
+            # Verify the user owns this session before deleting
+            if self.ownership_data[session_id].get("user_id") == user_id:
+                del self.ownership_data[session_id]
+                self._save_ownership_data()
+                logger.debug(f"Released session {session_id} from user {user_id}")
+                return True
+            else:
+                logger.warning(f"User {user_id} tried to release session {session_id} they don't own")
+                return False
+        return False
     
     def get_ownership_stats(self) -> Dict[str, any]:
         """Get statistics about session ownership"""

@@ -1,0 +1,392 @@
+---
+title: Quickstart
+slug: /quickstart
+---
+
+import Icon from "@site/src/components/icon/icon";
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+Get started with OpenRAG by loading your knowledge, swapping out your language model, and then chatting with the OpenRAG API.
+
+## Prerequisites
+
+- Install and start OpenRAG
+
+## Find your way around 
+
+1. In OpenRAG, click <Icon name="MessageSquare" aria-hidden="true"/> **Chat**.
+   The chat is powered by the OpenRAG Open Search Agent.
+   For more information, see [Langflow Agents](/agents).
+2. Ask `What documents are available to you?`
+   The agent responds with a message summarizing the documents that OpenRAG loads by default, which are PDFs about evaluating data quality when using LLMs in health care.
+3. To confirm the agent is correct, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
+   The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database. Click on a document to display the chunks derived from splitting the default documents into the vector database.
+
+## Add your own knowledge
+
+1. To add documents to your knowledge base, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**.
+   * Select **Add File** to add a single file from your local machine (mapped with the Docker volume mount).
+   * Select **Process Folder** to process an entire folder of documents from your local machine (mapped with the Docker volume mount).
+2. Return to the Chat window and ask a question about your loaded data.
+   For example, with a manual about a PC tablet loaded, ask `How do I connect this device to WiFI?`
+   The agent responds with a message indicating it now has your knowledge as context for answering questions.
+3. Click the <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** that is printed in the Playground.
+These events log the agent's request to the tool and the tool's response, so you have direct visibility into your agent's functionality.
+If you aren't getting the results you need, you can further tune the knowledge ingestion and agent behavior in the next section.
+
+## Swap out the language model to modify agent behavior {#change-components}
+
+To modify the knowledge ingestion or Agent behavior, click <Icon name="Settings" aria-hidden="true"/> **Settings**.
+
+In this example, you'll try a different LLM to demonstrate how the Agent's response changes.
+
+1. To edit the Agent's behavior, click **Edit in Langflow**.
+2. OpenRAG warns you that you're entering Langflow. Click **Proceed**.
+3. The OpenRAG Open Search Agent flow appears. 
+
+![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
+
+4. In the **Language Model** component, under **Model Provider**, select **Anthropic**.
+   :::note
+   This guide uses an Anthropic model for demonstration purposes. If you want to use a different provider, change the **Model Provider** and **Model Name** fields, and then provide credentials for your selected provider.
+   :::
+5. Save your flow with <kbd>Command+S</kbd>.
+6. In OpenRAG, start a new conversation by clicking the <Icon name="Plus" aria-hidden="true"/> in the **Conversations** tab.
+7. Ask the same question as before to demonstrate how a different language model changes the results.
+
+## Integrate OpenRAG into your application
+
+:::tip
+Ensure the `openrag-backend` container has port 8000 exposed in your `docker-compose.yml`:
+
+```yaml
+openrag-backend:
+  ports:
+    - "8000:8000"
+```
+:::
+
+OpenRAG provides a REST API that you can call from Python, TypeScript, or any HTTP client to chat with your documents.
+
+These example requests are run assuming OpenRAG is in "no-auth" mode.
+For complete API documentation, including authentication, request and response parameters, and example requests, see the API documentation.
+
+### Chat with your documents
+
+Prompt OpenRAG at the `/chat` API endpoint.
+
+<Tabs>
+<TabItem value="python" label="Python">
+
+```python
+import requests
+
+url = "http://localhost:8000/chat"
+payload = {
+    "prompt": "What documents are available to you?",
+    "previous_response_id": None
+}
+
+response = requests.post(url, json=payload)
+print("OpenRAG Response:", response.json())
+```
+
+</TabItem>
+<TabItem value="typescript" label="TypeScript">
+
+```typescript
+import fetch from 'node-fetch';
+
+const response = await fetch("http://localhost:8000/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+        prompt: "What documents are available to you?",
+        previous_response_id: null
+    })
+});
+
+const data = await response.json();
+console.log("OpenRAG Response:", data);
+```
+
+</TabItem>
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST "http://localhost:8000/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "What documents are available to you?",
+    "previous_response_id": null
+  }'
+```
+
+</TabItem>
+</Tabs>
+
+<details closed>
+<summary>Response</summary>
+
+```
+{
+  "response": "I have access to a wide range of documents depending on the context and the tools enabled in this environment. Specifically, I can search for and retrieve documents related to various topics such as technical papers, articles, manuals, guides, knowledge base entries, and other text-based resources. If you specify a particular subject or type of document you're interested in, I can try to locate relevant materials for you. Let me know what you need!",
+  "response_id": "resp_68d3fdbac93081958b8781b97919fe7007f98bd83932fa1a"
+}
+```
+
+</details>
+
+### Search your documents
+
+Search your document knowledge base at the `/search` endpoint.
+
+<Tabs>
+<TabItem value="python" label="Python">
+
+```python
+import requests
+
+url = "http://localhost:8000/search"
+payload = {"query": "healthcare data quality", "limit": 5}
+
+response = requests.post(url, json=payload)
+results = response.json()
+
+print("Search Results:")
+for result in results.get("results", []):
+    print(f"- {result.get('filename')}: {result.get('text', '')[:100]}...")
+```
+
+</TabItem>
+<TabItem value="typescript" label="TypeScript">
+
+```typescript
+const response = await fetch("http://localhost:8000/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+        query: "healthcare data quality",
+        limit: 5
+    })
+});
+
+const results = await response.json();
+console.log("Search Results:");
+results.results?.forEach((result, index) => {
+    const filename = result.filename || 'Unknown';
+    const text = result.text?.substring(0, 100) || '';
+    console.log(`${index + 1}. ${filename}: ${text}...`);
+});
+```
+
+</TabItem>
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST "http://localhost:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "healthcare data quality", "limit": 5}'
+```
+
+</TabItem>
+</Tabs>
+
+
+<details closed>
+<summary>Example response</summary>
+
+```
+Found 5 results
+1. 2506.08231v1.pdf: variables with high performance metrics. These variables might also require fewer replication analys...
+2. 2506.08231v1.pdf: on EHR data and may lack the clinical domain knowledge needed to perform well on the tasks where EHR...
+3. 2506.08231v1.pdf: Abstract Large language models (LLMs) are increasingly used to extract clinical data from electronic...
+4. 2506.08231v1.pdf: these multidimensional assessments, the framework not only quantifies accuracy, but can also be appl...
+5. 2506.08231v1.pdf: observed in only the model metrics, but not the abstractor metrics, it indicates that model errors m...
+```
+
+</details>
+
+### Use chat and search together 
+
+Create a complete chat application that combines an interactive terminal chat with session continuity and search functionality.
+
+<Tabs>
+<TabItem value="python" label="Python">
+
+```python
+import requests
+
+# Configuration
+OPENRAG_BASE_URL = "http://localhost:8000"
+CHAT_URL = f"{OPENRAG_BASE_URL}/chat"
+SEARCH_URL = f"{OPENRAG_BASE_URL}/search"
+DEFAULT_SEARCH_LIMIT = 5
+
+def chat_with_openrag(message, previous_response_id=None):
+    try:
+        response = requests.post(CHAT_URL, json={
+            "prompt": message, 
+            "previous_response_id": previous_response_id
+        })
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response"), data.get("response_id")
+    except Exception as e:
+        return f"Error: {str(e)}", None
+
+def search_documents(query, limit=DEFAULT_SEARCH_LIMIT):
+    try:
+        response = requests.post(SEARCH_URL, json={
+            "query": query,
+            "limit": limit
+        })
+        response.raise_for_status()
+        data = response.json()
+        return data.get("results", [])
+    except Exception as e:
+        return []
+
+# Interactive chat with session continuity and search
+previous_response_id = None
+while True:
+    question = input("Your question (or 'search <query>' to search): ").strip()
+    if question.lower() in ['quit', 'exit', 'q']:
+        break
+    if not question:
+        continue
+    
+    if question.lower().startswith('search '):
+        query = question[7:].strip()
+        print("Searching documents...")
+        results = search_documents(query)
+        print(f"\nFound {len(results)} results:")
+        for i, result in enumerate(results, 1):
+            filename = result.get('filename', 'Unknown')
+            text = result.get('text', '')[:100]
+            print(f"{i}. {filename}: {text}...")
+        print()
+    else:
+        print("OpenRAG is thinking...")
+        result, response_id = chat_with_openrag(question, previous_response_id)
+        print(f"OpenRAG: {result}\n")
+        previous_response_id = response_id
+```
+
+</TabItem>
+<TabItem value="typescript" label="TypeScript">
+
+```ts
+import fetch from 'node-fetch';
+
+// Configuration
+const OPENRAG_BASE_URL = "http://localhost:8000";
+const CHAT_URL = `${OPENRAG_BASE_URL}/chat`;
+const SEARCH_URL = `${OPENRAG_BASE_URL}/search`;
+const DEFAULT_SEARCH_LIMIT = 5;
+
+async function chatWithOpenRAG(message: string, previousResponseId?: string | null) {
+    try {
+        const response = await fetch(CHAT_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                prompt: message,
+                previous_response_id: previousResponseId
+            })
+        });
+        const data = await response.json();
+        return [data.response || "No response received", data.response_id || null];
+    } catch (error) {
+        return [`Error: ${error}`, null];
+    }
+}
+
+async function searchDocuments(query: string, limit: number = DEFAULT_SEARCH_LIMIT) {
+    try {
+        const response = await fetch(SEARCH_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query, limit })
+        });
+        const data = await response.json();
+        return data.results || [];
+    } catch (error) {
+        return [];
+    }
+}
+
+// Interactive chat with session continuity and search
+let previousResponseId = null;
+const readline = require('readline');
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+const askQuestion = () => {
+    rl.question("Your question (or 'search <query>' to search): ", async (question) => {
+        if (question.toLowerCase() === 'quit' || question.toLowerCase() === 'exit' || question.toLowerCase() === 'q') {
+            console.log("Goodbye!");
+            rl.close();
+            return;
+        }
+        if (!question.trim()) {
+            askQuestion();
+            return;
+        }
+        
+        if (question.toLowerCase().startsWith('search ')) {
+            const query = question.substring(7).trim();
+            console.log("Searching documents...");
+            const results = await searchDocuments(query);
+            console.log(`\nFound ${results.length} results:`);
+            results.forEach((result, i) => {
+                const filename = result.filename || 'Unknown';
+                const text = result.text?.substring(0, 100) || '';
+                console.log(`${i + 1}. ${filename}: ${text}...`);
+            });
+            console.log();
+        } else {
+            console.log("OpenRAG is thinking...");
+            const [result, responseId] = await chatWithOpenRAG(question, previousResponseId);
+            console.log(`\nOpenRAG: ${result}\n`);
+            previousResponseId = responseId;
+        }
+        askQuestion();
+    });
+};
+
+console.log("OpenRAG Chat Interface");
+console.log("Ask questions about your documents. Type 'quit' to exit.");
+console.log("Use 'search <query>' to search documents directly.\n");
+askQuestion();
+```
+
+</TabItem>
+</Tabs>
+
+<details closed>
+<summary>Example response</summary>
+
+```
+Your question (or 'search <query>' to search): search healthcare
+Searching documents...
+
+Found 5 results:
+1. 2506.08231v1.pdf: variables with high performance metrics. These variables might also require fewer replication analys...
+2. 2506.08231v1.pdf: on EHR data and may lack the clinical domain knowledge needed to perform well on the tasks where EHR...
+3. 2506.08231v1.pdf: Abstract Large language models (LLMs) are increasingly used to extract clinical data from electronic...
+4. 2506.08231v1.pdf: Acknowledgements Darren Johnson for support in publication planning and management. The authors used...
+5. 2506.08231v1.pdf: Ensuring Reliability of Curated EHR-Derived Data: The Validation of Accuracy for LLM/ML-Extracted In...
+
+Your question (or 'search <query>' to search): what's the weather today?
+OpenRAG is thinking...
+OpenRAG: I don't have access to real-time weather data. Could you please provide me with your location? Then I can help you find the weather information.
+
+Your question (or 'search <query>' to search): newark nj
+OpenRAG is thinking...               
+```
+
+</details>
+## Next steps
+
+TBD

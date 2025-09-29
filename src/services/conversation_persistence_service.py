@@ -86,12 +86,14 @@ class ConversationPersistenceService:
         user_conversations = self.get_user_conversations(user_id)
         return user_conversations.get(response_id, {})
     
-    def delete_conversation_thread(self, user_id: str, response_id: str):
+    def delete_conversation_thread(self, user_id: str, response_id: str) -> bool:
         """Delete a specific conversation thread"""
         if user_id in self._conversations and response_id in self._conversations[user_id]:
             del self._conversations[user_id][response_id]
             self._save_conversations()
             logger.debug(f"Deleted conversation {response_id} for user {user_id}")
+            return True
+        return False
     
     def clear_user_conversations(self, user_id: str):
         """Clear all conversations for a user"""

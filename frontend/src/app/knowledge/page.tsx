@@ -1,38 +1,25 @@
 "use client";
 
-import {
-  Building2,
-  Cloud,
-  HardDrive,
-  Loader2,
-  Search,
-  Trash2,
-} from "lucide-react";
-import { AgGridReact, CustomCellRendererProps } from "ag-grid-react";
-import {
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useState,
-  useRef,
-} from "react";
+import type { ColDef } from "ag-grid-community";
+import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
+import { Building2, Cloud, HardDrive, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { type ChangeEvent, useCallback, useRef, useState } from "react";
 import { SiGoogledrive } from "react-icons/si";
 import { TbBrandOnedrive } from "react-icons/tb";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { type File, useGetSearchQuery } from "../api/queries/useGetSearchQuery";
-import { ColDef } from "ag-grid-community";
 import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
+import { toast } from "sonner";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
-import { toast } from "sonner";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -58,41 +45,48 @@ function getSourceIcon(connectorType?: string) {
 
 function SearchPage() {
   const router = useRouter();
-  const { isMenuOpen } = useTask();
-  const { parsedFilterData, isPanelOpen } = useKnowledgeFilter();
-  const [query, setQuery] = useState("");
-  const [queryInputText, setQueryInputText] = useState("");
+  const { isMenuOpen, files: taskFiles } = useTask();
+  const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
+    useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
   const deleteDocumentMutation = useDeleteDocument();
 
-  const {
-    data = [],
-    isFetching,
-    refetch: refetchSearch,
-  } = useGetSearchQuery(query, parsedFilterData);
-
-  // Update query when global filter changes
-  useEffect(() => {
-    if (parsedFilterData?.query) {
-      setQueryInputText(parsedFilterData.query);
-    }
-  }, [parsedFilterData]);
-
-  const handleSearch = useCallback(
-    (e?: FormEvent<HTMLFormElement>) => {
-      if (e) e.preventDefault();
-      if (query.trim() === queryInputText.trim()) {
-        refetchSearch();
-        return;
-      }
-      setQuery(queryInputText);
-    },
-    [queryInputText, refetchSearch, query]
+  const { data = [], isFetching } = useGetSearchQuery(
+    parsedFilterData?.query || "*",
+    parsedFilterData,
   );
 
-  const fileResults = data as File[];
+  const handleTableSearch = (e: ChangeEvent<HTMLInputElement>) => {
+    gridRef.current?.api.setGridOption("quickFilterText", e.target.value);
+  };
+
+  // Convert TaskFiles to File format and merge with backend results
+  const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
+    return {
+      filename: taskFile.filename,
+      mimetype: taskFile.mimetype,
+      source_url: taskFile.source_url,
+      size: taskFile.size,
+      connector_type: taskFile.connector_type,
+      status: taskFile.status,
+    };
+  });
+
+  const backendFiles = data as File[];
+
+  const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
+    return (
+      taskFile.status !== "active" &&
+      !backendFiles.some(
+        (backendFile) => backendFile.filename === taskFile.filename,
+      )
+    );
+  });
+
+  // Combine task files first, then backend files
+  const fileResults = [...backendFiles, ...filteredTaskFiles];
 
   const gridRef = useRef<AgGridReact>(null);
 
@@ -106,13 +100,14 @@ function SearchPage() {
       minWidth: 220,
       cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
         return (
-          <div
-            className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
+          <button
+            type="button"
+            className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors text-left w-full"
             onClick={() => {
               router.push(
                 `/knowledge/chunks?filename=${encodeURIComponent(
-                  data?.filename ?? ""
-                )}`
+                  data?.filename ?? "",
+                )}`,
               );
             }}
           >
@@ -120,7 +115,7 @@ function SearchPage() {
             <span className="font-medium text-foreground truncate">
               {value}
             </span>
-          </div>
+          </button>
         );
       },
     },
@@ -143,16 +138,27 @@ function SearchPage() {
     {
       field: "chunkCount",
       headerName: "Chunks",
+      valueFormatter: (params) => params.data?.chunkCount?.toString() || "-",
     },
     {
       field: "avgScore",
       headerName: "Avg score",
+      initialFlex: 0.5,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
           <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-            {value.toFixed(2)}
+            {value?.toFixed(2) ?? "-"}
           </span>
         );
+      },
+    },
+    {
+      field: "status",
+      headerName: "Status",
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+        // Default to 'active' status if no status is provided
+        const status = data?.status || "active";
+        return <StatusBadge status={status} />;
       },
     },
     {
@@ -167,9 +173,8 @@ function SearchPage() {
       },
       colId: "actions",
       filter: false,
-      width: 60,
-      minWidth: 60,
-      maxWidth: 60,
+      minWidth: 0,
+      width: 40,
       resizable: false,
       sortable: false,
       initialFlex: 0,
@@ -196,7 +201,7 @@ function SearchPage() {
     try {
       // Delete each file individually since the API expects one filename at a time
       const deletePromises = selectedRows.map((row) =>
-        deleteDocumentMutation.mutateAsync({ filename: row.filename })
+        deleteDocumentMutation.mutateAsync({ filename: row.filename }),
       );
 
       await Promise.all(deletePromises);
@@ -204,7 +209,7 @@ function SearchPage() {
       toast.success(
         `Successfully deleted ${selectedRows.length} document${
           selectedRows.length > 1 ? "s" : ""
-        }`
+        }`,
       );
       setSelectedRows([]);
       setShowBulkDeleteDialog(false);
@@ -217,7 +222,7 @@ function SearchPage() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to delete some documents"
+          : "Failed to delete some documents",
       );
     }
   };
@@ -244,19 +249,29 @@ function SearchPage() {
         </div>
 
         {/* Search Input Area */}
-        <div className="flex-shrink-0 mb-6 lg:max-w-[75%] xl:max-w-[50%]">
-          <form onSubmit={handleSearch} className="flex gap-3">
-            <Input
-              name="search-query"
-              id="search-query"
-              type="text"
-              defaultValue={parsedFilterData?.query}
-              value={queryInputText}
-              onChange={(e) => setQueryInputText(e.target.value)}
-              placeholder="Search your documents..."
-              className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring"
-            />
-            <Button
+        <div className="flex-shrink-0 mb-6 xl:max-w-[75%]">
+          <form className="flex gap-3">
+            <div className="primary-input min-h-10 !flex items-center flex-nowrap gap-2 focus-within:border-foreground transition-colors !py-0">
+              {selectedFilter?.name && (
+                <div className="flex items-center gap-1 bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded max-w-[300px]">
+                  <span className="truncate">{selectedFilter?.name}</span>
+                  <X
+                    aria-label="Remove filter"
+                    className="h-4 w-4 flex-shrink-0 cursor-pointer"
+                    onClick={() => setSelectedFilter(null)}
+                  />
+                </div>
+              )}
+              <input
+                className="bg-transparent w-full h-full focus:outline-none focus-visible:outline-none placeholder:font-mono"
+                name="search-query"
+                id="search-query"
+                type="text"
+                placeholder="Search your documents..."
+                onChange={handleTableSearch}
+              />
+            </div>
+            {/* <Button
               type="submit"
               variant="outline"
               className="rounded-lg p-0 flex-shrink-0"
@@ -266,7 +281,7 @@ function SearchPage() {
               ) : (
                 <Search className="h-4 w-4" />
               )}
-            </Button>
+            </Button> */}
             {/* //TODO: Implement sync button */}
             {/* <Button
               type="button"
@@ -276,15 +291,16 @@ function SearchPage() {
             >
               Sync
             </Button> */}
-            <Button
-              type="button"
-              variant="destructive"
-              className="rounded-lg flex-shrink-0"
-              onClick={() => setShowBulkDeleteDialog(true)}
-              disabled={selectedRows.length === 0}
-            >
-              <Trash2 className="h-4 w-4" /> Delete
-            </Button>
+            {selectedRows.length > 0 && (
+              <Button
+                type="button"
+                variant="destructive"
+                className="rounded-lg flex-shrink-0"
+                onClick={() => setShowBulkDeleteDialog(true)}
+              >
+                <Trash2 className="h-4 w-4" /> Delete
+              </Button>
+            )}
           </form>
         </div>
         <AgGridReact
@@ -298,8 +314,8 @@ function SearchPage() {
           rowMultiSelectWithClick={false}
           suppressRowClickSelection={true}
           getRowId={(params) => params.data.filename}
+          domLayout="autoHeight"
           onSelectionChanged={onSelectionChanged}
-          suppressHorizontalScroll={false}
           noRowsOverlayComponent={() => (
             <div className="text-center">
               <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
