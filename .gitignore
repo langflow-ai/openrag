@@ -18,3 +18,5 @@ wheels/
 1001*.pdf
 *.json
 .DS_Store
+
+config.yaml
