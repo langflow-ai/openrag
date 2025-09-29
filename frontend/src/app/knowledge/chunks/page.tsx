@@ -75,7 +75,7 @@ function ChunksPageContent() {
   }, [queryInputText, chunks]);
 
   const handleCopy = useCallback((text: string, index: number) => {
-    // Trime whitespace and remove new lines/tabs for cleaner copy
+    // Trim whitespace and remove new lines/tabs for cleaner copy
     navigator.clipboard.writeText(text.trim().replace(/[\n\r\t]/gm, ""));
     setActiveCopiedChunkIndex(index);
     setTimeout(() => setActiveCopiedChunkIndex(null), 30 * 1000); // 30 seconds
