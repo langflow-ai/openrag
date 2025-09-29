@@ -1940,7 +1940,7 @@ function ChatPage() {
                   <div key={index} className="space-y-6 group">
                     {message.role === "user" && (
                       <div className="flex gap-3">
-                        <Avatar className="w-8 h-8 flex-shrink-0">
+                        <Avatar className="w-8 h-8 flex-shrink-0 select-none">
                           <AvatarImage src={user?.picture} alt={user?.name} />
                           <AvatarFallback className="text-sm bg-primary/20 text-primary">
                             {user?.name ? (
@@ -1960,7 +1960,7 @@ function ChatPage() {
 
                     {message.role === "assistant" && (
                       <div className="flex gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
                           <Bot className="h-4 w-4 text-accent-foreground" />
                         </div>
                         <div className="flex-1 min-w-0">
