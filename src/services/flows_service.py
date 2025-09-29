@@ -249,19 +249,22 @@ class FlowsService:
                     "name": "nudges",
                     "flow_id": NUDGES_FLOW_ID,
                     "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
-                    "llm_name": OPENAI_LLM_COMPONENT_DISPLAY_NAME,
+                    "llm_text_name": OPENAI_LLM_COMPONENT_DISPLAY_NAME,
+                    "llm_name": None,
                 },
                 {
                     "name": "retrieval",
                     "flow_id": LANGFLOW_CHAT_FLOW_ID,
                     "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
                     "llm_name": OPENAI_LLM_COMPONENT_DISPLAY_NAME,
+                    "llm_text_name": None,
                 },
                 {
                     "name": "ingest",
                     "flow_id": LANGFLOW_INGEST_FLOW_ID,
                     "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
                     "llm_name": None,  # Ingestion flow might not have LLM
+                    "llm_text_name": None,
                 },
             ]
 
@@ -376,7 +379,7 @@ class FlowsService:
         components_updated = []
 
         # Replace embedding component
-        embedding_node = self._find_node_in_flow(flow_data, display_name=old_embedding_name)
+        embedding_node, _ = self._find_node_in_flow(flow_data, display_name=old_embedding_name)
         if embedding_node:
             # Preserve position
             original_position = embedding_node.get("position", {})
@@ -393,7 +396,7 @@ class FlowsService:
 
         # Replace LLM component (if exists in this flow)
         if old_llm_name:
-            llm_node = self._find_node_in_flow(flow_data, display_name=old_llm_name)
+            llm_node, _ = self._find_node_in_flow(flow_data, display_name=old_llm_name)
             if llm_node:
                 # Preserve position
                 original_position = llm_node.get("position", {})
@@ -408,7 +411,7 @@ class FlowsService:
 
         # Replace LLM component (if exists in this flow)
         if old_llm_text_name:
-            llm_text_node = self._find_node_in_flow(flow_data, display_name=old_llm_text_name)
+            llm_text_node, _ = self._find_node_in_flow(flow_data, display_name=old_llm_text_name)
             if llm_text_node:
                 # Preserve position
                 original_position = llm_text_node.get("position", {})
@@ -421,6 +424,9 @@ class FlowsService:
                 self._replace_node_in_flow(flow_data, old_llm_text_name, new_llm_text_node)
                 components_updated.append(f"llm: {old_llm_text_name} -> {new_llm_text_id}")
 
+        old_embedding_id = None
+        old_llm_id = None
+        old_llm_text_id = None
         if embedding_node:
             old_embedding_id = embedding_node.get("data", {}).get("id")
         if old_llm_name and llm_node:
@@ -751,7 +757,7 @@ class FlowsService:
         updates_made = []
 
         # Update embedding component
-        embedding_node = self._find_node_in_flow(flow_data, display_name=target_embedding_name)
+        embedding_node, _ = self._find_node_in_flow(flow_data, display_name=target_embedding_name)
         if embedding_node:
             if self._update_component_fields(
                 embedding_node, provider, embedding_model, endpoint
@@ -760,7 +766,7 @@ class FlowsService:
 
         # Update LLM component (if exists in this flow)
         if target_llm_name:
-            llm_node = self._find_node_in_flow(flow_data, display_name=target_llm_name)
+            llm_node, _ = self._find_node_in_flow(flow_data, display_name=target_llm_name)
             if llm_node:
                 if self._update_component_fields(
                     llm_node, provider, llm_model, endpoint
