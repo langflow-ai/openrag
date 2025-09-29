@@ -54,54 +54,50 @@ class ConnectorService:
         """Process a document from a connector using existing processing pipeline"""
 
         # Create temporary file from document content
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=self._get_file_extension(document.mimetype)
-        ) as tmp_file:
-            tmp_file.write(document.content)
-            tmp_file.flush()
+        from utils.file_utils import auto_cleanup_tempfile
 
-            try:
-                # Use existing process_file_common function with connector document metadata
-                # We'll use the document service's process_file_common method
-                from services.document_service import DocumentService
+        with auto_cleanup_tempfile(suffix=self._get_file_extension(document.mimetype)) as tmp_path:
+            # Write document content to temp file
+            with open(tmp_path, 'wb') as f:
+                f.write(document.content)
 
-                doc_service = DocumentService(session_manager=self.session_manager)
+            # Use existing process_file_common function with connector document metadata
+            # We'll use the document service's process_file_common method
+            from services.document_service import DocumentService
 
-                logger.debug("Processing connector document", document_id=document.id)
+            doc_service = DocumentService(session_manager=self.session_manager)
 
-                # Process using consolidated processing pipeline
-                from models.processors import TaskProcessor
-                processor = TaskProcessor(document_service=doc_service)
-                result = await processor.process_document_standard(
-                    file_path=tmp_file.name,
-                    file_hash=document.id,  # Use connector document ID as hash
-                    owner_user_id=owner_user_id,
-                    original_filename=document.filename,  # Pass the original Google Doc title
-                    jwt_token=jwt_token,
-                    owner_name=owner_name,
-                    owner_email=owner_email,
-                    file_size=len(document.content) if document.content else 0,
-                    connector_type=connector_type,
+            logger.debug("Processing connector document", document_id=document.id)
+
+            # Process using consolidated processing pipeline
+            from models.processors import TaskProcessor
+            processor = TaskProcessor(document_service=doc_service)
+            result = await processor.process_document_standard(
+                file_path=tmp_path,
+                file_hash=document.id,  # Use connector document ID as hash
+                owner_user_id=owner_user_id,
+                original_filename=document.filename,  # Pass the original Google Doc title
+                jwt_token=jwt_token,
+                owner_name=owner_name,
+                owner_email=owner_email,
+                file_size=len(document.content) if document.content else 0,
+                connector_type=connector_type,
+            )
+
+            logger.debug("Document processing result", result=result)
+
+            # If successfully indexed or already exists, update the indexed documents with connector metadata
+            if result["status"] in ["indexed", "unchanged"]:
+                # Update all chunks with connector-specific metadata
+                await self._update_connector_metadata(
+                    document, owner_user_id, connector_type, jwt_token
                 )
 
-                logger.debug("Document processing result", result=result)
-
-                # If successfully indexed or already exists, update the indexed documents with connector metadata
-                if result["status"] in ["indexed", "unchanged"]:
-                    # Update all chunks with connector-specific metadata
-                    await self._update_connector_metadata(
-                        document, owner_user_id, connector_type, jwt_token
-                    )
-
-                return {
-                    **result,
-                    "filename": document.filename,
-                    "source_url": document.source_url,
-                }
-
-            finally:
-                # Clean up temporary file
-                os.unlink(tmp_file.name)
+            return {
+                **result,
+                "filename": document.filename,
+                "source_url": document.source_url,
+            }
 
     async def _update_connector_metadata(
         self,

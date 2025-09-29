@@ -164,12 +164,9 @@ async def langflow_upload_ingest_task(
             
         except Exception:
             # Clean up temp files on error
+            from utils.file_utils import safe_unlink
             for temp_path in temp_file_paths:
-                try:
-                    if os.path.exists(temp_path):
-                        os.unlink(temp_path)
-                except Exception:
-                    pass  # Ignore cleanup errors
+                safe_unlink(temp_path)
             raise
             
     except Exception as e:

@@ -53,45 +53,46 @@ class LangflowConnectorService:
             filename=document.filename,
         )
 
+        from utils.file_utils import auto_cleanup_tempfile
+
         suffix = self._get_file_extension(document.mimetype)
 
         # Create temporary file from document content
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=suffix
-        ) as tmp_file:
-            tmp_file.write(document.content)
-            tmp_file.flush()
+        with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
+            # Write document content to temp file
+            with open(tmp_path, 'wb') as f:
+                f.write(document.content)
+
+            # Step 1: Upload file to Langflow
+            logger.debug("Uploading file to Langflow", filename=document.filename)
+            content = document.content
+            file_tuple = (
+                document.filename.replace(" ", "_").replace("/", "_")+suffix,
+                content,
+                document.mimetype or "application/octet-stream",
+            )
+
+            upload_result = await self.langflow_service.upload_user_file(
+                file_tuple, jwt_token
+            )
+            langflow_file_id = upload_result["id"]
+            langflow_file_path = upload_result["path"]
+
+            logger.debug(
+                "File uploaded to Langflow",
+                file_id=langflow_file_id,
+                path=langflow_file_path,
+            )
+
+            # Step 2: Run ingestion flow with the uploaded file
+            logger.debug(
+                "Running Langflow ingestion flow", file_path=langflow_file_path
+            )
+
+            # Use the same tweaks pattern as LangflowFileService
+            tweaks = {}  # Let Langflow handle the ingestion with default settings
 
             try:
-                # Step 1: Upload file to Langflow
-                logger.debug("Uploading file to Langflow", filename=document.filename)
-                content = document.content
-                file_tuple = (
-                    document.filename.replace(" ", "_").replace("/", "_")+suffix,
-                    content,
-                    document.mimetype or "application/octet-stream",
-                )
-
-                upload_result = await self.langflow_service.upload_user_file(
-                    file_tuple, jwt_token
-                )
-                langflow_file_id = upload_result["id"]
-                langflow_file_path = upload_result["path"]
-
-                logger.debug(
-                    "File uploaded to Langflow",
-                    file_id=langflow_file_id,
-                    path=langflow_file_path,
-                )
-
-                # Step 2: Run ingestion flow with the uploaded file
-                logger.debug(
-                    "Running Langflow ingestion flow", file_path=langflow_file_path
-                )
-
-                # Use the same tweaks pattern as LangflowFileService
-                tweaks = {}  # Let Langflow handle the ingestion with default settings
-
                 ingestion_result = await self.langflow_service.run_ingestion_flow(
                     file_paths=[langflow_file_path],
                     jwt_token=jwt_token,
@@ -125,24 +126,19 @@ class LangflowConnectorService:
                     error=str(e),
                 )
                 # Try to clean up Langflow file if upload succeeded but processing failed
-                if "langflow_file_id" in locals():
-                    try:
-                        await self.langflow_service.delete_user_file(langflow_file_id)
-                        logger.debug(
-                            "Cleaned up Langflow file after error",
-                            file_id=langflow_file_id,
-                        )
-                    except Exception as cleanup_error:
-                        logger.warning(
-                            "Failed to cleanup Langflow file",
-                            file_id=langflow_file_id,
-                            error=str(cleanup_error),
-                        )
+                try:
+                    await self.langflow_service.delete_user_file(langflow_file_id)
+                    logger.debug(
+                        "Cleaned up Langflow file after error",
+                        file_id=langflow_file_id,
+                    )
+                except Exception as cleanup_error:
+                    logger.warning(
+                        "Failed to cleanup Langflow file",
+                        file_id=langflow_file_id,
+                        error=str(cleanup_error),
+                    )
                 raise
-
-            finally:
-                # Clean up temporary file
-                os.unlink(tmp_file.name)
 
     def _get_file_extension(self, mimetype: str) -> str:
         """Get file extension based on MIME type"""
