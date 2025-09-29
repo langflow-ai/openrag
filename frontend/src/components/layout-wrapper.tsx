@@ -2,8 +2,12 @@
 
 import { Bell, Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useGetConversationsQuery, type ChatConversation } from "@/app/api/queries/useGetConversationsQuery";
+import {
+  type ChatConversation,
+  useGetConversationsQuery,
+} from "@/app/api/queries/useGetConversationsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { DoclingHealthBanner } from "@/components/docling-health-banner";
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import Logo from "@/components/logo/logo";
 import { Navigation } from "@/components/navigation";
@@ -13,12 +17,11 @@ import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/contexts/auth-context";
 import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { LayoutProvider } from "@/contexts/layout-context";
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context";
-import { DoclingHealthBanner } from "@/components/docling-health-banner";
 import { useDoclingHealthQuery } from "@/src/app/api/queries/useDoclingHealthQuery";
-import { LayoutProvider } from "@/contexts/layout-context";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -34,7 +37,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isLoading: isSettingsLoading, data: settings } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
-  const { data: health, isLoading: isHealthLoading, isError } = useDoclingHealthQuery();
+  const {
+    data: health,
+    isLoading: isHealthLoading,
+    isError,
+  } = useDoclingHealthQuery();
 
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
@@ -66,7 +73,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // Dynamic height calculations based on banner visibility
   const headerHeight = 53;
   const bannerHeight = 52; // Approximate banner height
-  const totalTopOffset = isBannerVisible ? headerHeight + bannerHeight : headerHeight;
+  const totalTopOffset = isBannerVisible
+    ? headerHeight + bannerHeight
+    : headerHeight;
   const mainContentHeight = `calc(100vh - ${totalTopOffset}px)`;
 
   // Show loading state when backend isn't ready
@@ -81,7 +90,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isAuthPage || (settings && !settings.edited)) {
+  if (isAuthPage) {
     // For auth pages, render without navigation
     return <div className="h-full">{children}</div>;
   }
@@ -157,7 +166,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         }`}
         style={{ height: mainContentHeight }}
       >
-        <LayoutProvider headerHeight={headerHeight} totalTopOffset={totalTopOffset}>
+        <LayoutProvider
+          headerHeight={headerHeight}
+          totalTopOffset={totalTopOffset}
+        >
           <div className="container py-6 lg:py-8 px-4 lg:px-6">{children}</div>
         </LayoutProvider>
       </main>
