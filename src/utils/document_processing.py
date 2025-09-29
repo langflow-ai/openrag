@@ -229,15 +229,9 @@ def process_document_sync(file_path: str):
 
         # Compute file hash
         try:
+            from utils.hash_utils import hash_id
             logger.info("Computing file hash", worker_pid=os.getpid())
-            sha256 = hashlib.sha256()
-            with open(file_path, "rb") as f:
-                while True:
-                    chunk = f.read(1 << 20)
-                    if not chunk:
-                        break
-                    sha256.update(chunk)
-            file_hash = sha256.hexdigest()
+            file_hash = hash_id(file_path)
             logger.info(
                 "File hash computed",
                 worker_pid=os.getpid(),
