@@ -1083,8 +1083,8 @@ function KnowledgeSourcesPage() {
                 </div>
               </div>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
+            <div className="">
+              <div className="flex items-center justify-between py-3 border-b border-border">
                 <div className="flex-1">
                   <Label
                     htmlFor="table-structure"
@@ -1102,7 +1102,7 @@ function KnowledgeSourcesPage() {
                   onCheckedChange={handleTableStructureChange}
                 />
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between py-3 border-b border-border">
                 <div className="flex-1">
                   <Label
                     htmlFor="ocr"
@@ -1120,7 +1120,7 @@ function KnowledgeSourcesPage() {
                   onCheckedChange={handleOcrChange}
                 />
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between py-3">
                 <div className="flex-1">
                   <Label
                     htmlFor="picture-descriptions"
