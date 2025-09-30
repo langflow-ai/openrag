@@ -1,0 +1,23 @@
+---
+title: Docling Ingestion
+slug: /ingestion
+---
+
+import Icon from "@site/src/components/icon/icon";
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import PartialModifyFlows from '@site/docs/_partial-modify-flows.mdx';
+
+OpenRAG uses [Docling](https://docling-project.github.io/docling/) for its document ingestion pipeline.
+More specifically, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve), which starts a `docling-serve` process on your local machine and runs Docling ingestion through an API service.
+
+OpenRAG chose Docling for its support for a wide variety of file formats, high performance, and advanced understanding of tables and images.
+
+## Docling ingestion settings
+
+These settings control the Docling ingestion parameters.
+
+OpenRAG will warn you if `docling-serve` is not running.
+To start or stop `docling-serve` or any other native services, in the TUI main menu, click **Start Native Services** or **Stop Native Services**.
+
+## Use OpenRAG default ingestion instead of Docling
