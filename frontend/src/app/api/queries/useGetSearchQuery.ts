@@ -179,7 +179,7 @@ export const useGetSearchQuery = (
 
   const queryResult = useQuery(
     {
-      queryKey: ["search", effectiveQuery],
+      queryKey: ["search", queryData],
       placeholderData: (prev) => prev,
       queryFn: getFiles,
       ...options,
