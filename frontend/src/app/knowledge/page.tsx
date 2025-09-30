@@ -20,6 +20,7 @@ import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdow
 import { StatusBadge } from "@/components/ui/status-badge";
 import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -55,7 +56,7 @@ function SearchPage() {
 
   const { data = [], isFetching } = useGetSearchQuery(
     parsedFilterData?.query || "*",
-    parsedFilterData,
+    parsedFilterData
   );
 
   const handleTableSearch = (e: ChangeEvent<HTMLInputElement>) => {
@@ -80,7 +81,7 @@ function SearchPage() {
     return (
       taskFile.status !== "active" &&
       !backendFiles.some(
-        (backendFile) => backendFile.filename === taskFile.filename,
+        (backendFile) => backendFile.filename === taskFile.filename
       )
     );
   });
@@ -106,8 +107,8 @@ function SearchPage() {
             onClick={() => {
               router.push(
                 `/knowledge/chunks?filename=${encodeURIComponent(
-                  data?.filename ?? "",
-                )}`,
+                  data?.filename ?? ""
+                )}`
               );
             }}
           >
@@ -146,7 +147,7 @@ function SearchPage() {
       initialFlex: 0.5,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
-          <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
+          <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
             {value?.toFixed(2) ?? "-"}
           </span>
         );
@@ -201,7 +202,7 @@ function SearchPage() {
     try {
       // Delete each file individually since the API expects one filename at a time
       const deletePromises = selectedRows.map((row) =>
-        deleteDocumentMutation.mutateAsync({ filename: row.filename }),
+        deleteDocumentMutation.mutateAsync({ filename: row.filename })
       );
 
       await Promise.all(deletePromises);
@@ -209,7 +210,7 @@ function SearchPage() {
       toast.success(
         `Successfully deleted ${selectedRows.length} document${
           selectedRows.length > 1 ? "s" : ""
-        }`,
+        }`
       );
       setSelectedRows([]);
       setShowBulkDeleteDialog(false);
@@ -222,7 +223,7 @@ function SearchPage() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to delete some documents",
+          : "Failed to delete some documents"
       );
     }
   };
@@ -251,9 +252,13 @@ function SearchPage() {
         {/* Search Input Area */}
         <div className="flex-shrink-0 mb-6 xl:max-w-[75%]">
           <form className="flex gap-3">
-            <div className="primary-input min-h-10 !flex items-center flex-nowrap gap-2 focus-within:border-foreground transition-colors !py-0">
+            <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]">
               {selectedFilter?.name && (
-                <div className="flex items-center gap-1 bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded max-w-[300px]">
+                <div
+                  className={`flex items-center gap-1 h-full px-1.5 py-0.5 rounded max-w-[300px] ${
+                    filterAccentClasses[parsedFilterData?.color || "zinc"]
+                  }`}
+                >
                   <span className="truncate">{selectedFilter?.name}</span>
                   <X
                     aria-label="Remove filter"
@@ -263,7 +268,7 @@ function SearchPage() {
                 </div>
               )}
               <input
-                className="bg-transparent w-full h-full focus:outline-none focus-visible:outline-none placeholder:font-mono"
+                className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none placeholder:font-mono"
                 name="search-query"
                 id="search-query"
                 type="text"
