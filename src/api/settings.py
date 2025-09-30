@@ -442,8 +442,6 @@ async def onboarding(request, flows_service):
                     {"error": "endpoint must be a non-empty string"}, status_code=400
                 )
             current_config.provider.endpoint = body["endpoint"].strip()
-            if "model_provider" in body and body["model_provider"].strip() == "ollama":
-                current_config.provider.endpoint = transform_localhost_url(body["endpoint"].strip())
             config_updated = True
 
         if "project_id" in body:
@@ -540,7 +538,8 @@ async def onboarding(request, flows_service):
 
                     # Set base URL for Ollama provider
                     if provider == "ollama" and "endpoint" in body:
-                        endpoint = body["endpoint"]
+                        endpoint = transform_localhost_url(body["endpoint"])
+
                         await clients._create_langflow_global_variable(
                             "OLLAMA_BASE_URL", endpoint, modify=True
                         )
