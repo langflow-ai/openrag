@@ -35,7 +35,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useTask } from "@/contexts/task-context";
 import { useDebounce } from "@/lib/debounce";
-import { DEFAULT_AGENT_SETTINGS, DEFAULT_KNOWLEDGE_SETTINGS, UI_CONSTANTS } from "@/lib/constants";
+import {
+  DEFAULT_AGENT_SETTINGS,
+  DEFAULT_KNOWLEDGE_SETTINGS,
+  UI_CONSTANTS,
+} from "@/lib/constants";
 import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
 import { ModelSelectItems } from "./helpers/model-select-item";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -109,7 +113,8 @@ function KnowledgeSourcesPage() {
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
   const [tableStructure, setTableStructure] = useState<boolean>(false);
   const [ocr, setOcr] = useState<boolean>(false);
-  const [pictureDescriptions, setPictureDescriptions] = useState<boolean>(false);
+  const [pictureDescriptions, setPictureDescriptions] =
+    useState<boolean>(false);
 
   // Fetch settings using React Query
   const { data: settings = {} } = useGetSettingsQuery({
@@ -603,13 +608,13 @@ function KnowledgeSourcesPage() {
       {/* Connectors Section */}
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight mb-2">
+          <h2 className="text-lg font-semibold tracking-tight mb-2">
             Cloud Connectors
           </h2>
         </div>
 
         {/* Conditional Sync Settings or No-Auth Message */}
-        {isNoAuthMode ? (
+        {false ? (
           <Card className="border-yellow-500/50 bg-yellow-500/5">
             <CardHeader>
               <CardTitle className="text-lg text-yellow-600">
@@ -872,32 +877,31 @@ function KnowledgeSourcesPage() {
               </LabelWrapper>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="system-prompt" className="text-base font-medium">
-                Agent Instructions
-              </Label>
-              <Textarea
-                id="system-prompt"
-                placeholder="Enter your agent instructions here..."
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                rows={6}
-                className={`resize-none ${
-                  systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-                    ? "border-red-500 focus:border-red-500"
-                    : ""
-                }`}
-              />
-              <div className="flex justify-start">
-                <span
-                  className={`text-xs ${
+              <LabelWrapper label="Agent Instructions" id="system-prompt">
+                <Textarea
+                  id="system-prompt"
+                  placeholder="Enter your agent instructions here..."
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  rows={6}
+                  className={`resize-none ${
                     systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-                      ? "text-red-500"
-                      : "text-muted-foreground"
+                      ? "border-red-500 focus:border-red-500"
+                      : ""
                   }`}
-                >
-                  {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
-                </span>
-              </div>
+                />
+                <div className="flex justify-start">
+                  <span
+                    className={`text-xs ${
+                      systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
+                        ? "text-red-500"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
+                  </span>
+                </div>
+              </LabelWrapper>
             </div>
             <div className="flex justify-end pt-2">
               <Button
@@ -929,7 +933,9 @@ function KnowledgeSourcesPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-lg mb-4">Knowledge</CardTitle>
+              <CardTitle className="text-lg mb-4">
+                Knowledge ingestion and retrieval
+              </CardTitle>
               <CardDescription>
                 Quick knowledge settings. Edit in Langflow for full control.
               </CardDescription>
@@ -1040,47 +1046,42 @@ function KnowledgeSourcesPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="chunk-size" className="text-base font-medium">
-                  Chunk size
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="chunk-size"
-                    type="number"
-                    min="1"
-                    value={chunkSize}
-                    onChange={(e) => handleChunkSizeChange(e.target.value)}
-                    className="w-full pr-20"
-                  />
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
-                    <span className="text-sm text-muted-foreground">
-                      characters
-                    </span>
+                <LabelWrapper id="chunk-size" label="Chunk size">
+                  <div className="relative">
+                    <Input
+                      id="chunk-size"
+                      type="number"
+                      min="1"
+                      value={chunkSize}
+                      onChange={(e) => handleChunkSizeChange(e.target.value)}
+                      className="w-full pr-20"
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
+                      <span className="text-sm text-muted-foreground">
+                        characters
+                      </span>
+                    </div>
                   </div>
-                </div>
+                </LabelWrapper>
               </div>
               <div className="space-y-2">
-                <Label
-                  htmlFor="chunk-overlap"
-                  className="text-base font-medium"
-                >
-                  Chunk overlap
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="chunk-overlap"
-                    type="number"
-                    min="0"
-                    value={chunkOverlap}
-                    onChange={(e) => handleChunkOverlapChange(e.target.value)}
-                    className="w-full pr-20"
-                  />
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
-                    <span className="text-sm text-muted-foreground">
-                      characters
-                    </span>
+                <LabelWrapper id="chunk-overlap" label="Chunk overlap">
+                  <div className="relative">
+                    <Input
+                      id="chunk-overlap"
+                      type="number"
+                      min="0"
+                      value={chunkOverlap}
+                      onChange={(e) => handleChunkOverlapChange(e.target.value)}
+                      className="w-full pr-20"
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
+                      <span className="text-sm text-muted-foreground">
+                        characters
+                      </span>
+                    </div>
                   </div>
-                </div>
+                </LabelWrapper>
               </div>
             </div>
             <div className="">
@@ -1111,7 +1112,8 @@ function KnowledgeSourcesPage() {
                     OCR
                   </Label>
                   <div className="text-sm text-muted-foreground">
-                    Extracts text from images/PDFs. Ingest is slower when enabled.
+                    Extracts text from images/PDFs. Ingest is slower when
+                    enabled.
                   </div>
                 </div>
                 <Switch
