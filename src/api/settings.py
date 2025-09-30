@@ -1,6 +1,7 @@
 import json
 import platform
 from starlette.responses import JSONResponse
+from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from config.settings import (
     LANGFLOW_URL,
@@ -441,6 +442,8 @@ async def onboarding(request, flows_service):
                     {"error": "endpoint must be a non-empty string"}, status_code=400
                 )
             current_config.provider.endpoint = body["endpoint"].strip()
+            if "model_provider" in body and body["model_provider"].strip() == "ollama":
+                current_config.provider.endpoint = transform_localhost_url(body["endpoint"].strip())
             config_updated = True
 
         if "project_id" in body:
