@@ -80,11 +80,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   return (
     <div className="h-full relative">
       <header className="header-arrangement bg-background sticky top-0 z-50">
-        <div className="header-start-display px-4">
+        <div className="header-start-display px-[20px]">
           {/* Logo/Title */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center">
             <Logo className="fill-primary" width={24} height={22} />
-            <span className="text-lg font-semibold">OpenRAG</span>
+            <span className="text-lg font-semibold pl-2.5">OpenRAG</span>
           </div>
         </div>
         <div className="header-end-division">
