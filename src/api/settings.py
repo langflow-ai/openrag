@@ -8,6 +8,7 @@ from config.settings import (
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
     DOCLING_COMPONENT_ID,
+    LOCALHOST_URL,
     clients,
     get_openrag_config,
     config_manager,
@@ -77,6 +78,7 @@ async def get_settings(request, session_manager):
                 "llm_model": agent_config.llm_model,
                 "system_prompt": agent_config.system_prompt,
             },
+            "localhost_url": LOCALHOST_URL,
         }
 
         # Only expose edit URLs when a public URL is configured
