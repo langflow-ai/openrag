@@ -35,9 +35,22 @@ export interface Task {
   files?: Record<string, Record<string, unknown>>;
 }
 
+export interface TaskFile {
+  filename: string;
+  mimetype: string;
+  source_url: string;
+  size: number;
+  connector_type: string;
+  status: "active" | "failed" | "processing";
+  task_id: string;
+  created_at: string;
+  updated_at: string;
+}
 interface TaskContextType {
   tasks: Task[];
+  files: TaskFile[];
   addTask: (taskId: string) => void;
+  addFiles: (files: Partial<TaskFile>[], taskId: string) => void;
   removeTask: (taskId: string) => void;
   refreshTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
@@ -51,6 +64,7 @@ const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
 export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [files, setFiles] = useState<TaskFile[]>([]);
   const [isPolling, setIsPolling] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -58,12 +72,32 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const queryClient = useQueryClient();
 
-  const refetchSearch = () => {
+  const refetchSearch = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: ["search"],
       exact: false,
     });
-  };
+  }, [queryClient]);
+
+  const addFiles = useCallback(
+    (newFiles: Partial<TaskFile>[], taskId: string) => {
+      const now = new Date().toISOString();
+      const filesToAdd: TaskFile[] = newFiles.map((file) => ({
+        filename: file.filename || "",
+        mimetype: file.mimetype || "",
+        source_url: file.source_url || "",
+        size: file.size || 0,
+        connector_type: file.connector_type || "local",
+        status: "processing",
+        task_id: taskId,
+        created_at: now,
+        updated_at: now,
+      }));
+
+      setFiles((prevFiles) => [...prevFiles, ...filesToAdd]);
+    },
+    [],
+  );
 
   const fetchTasks = useCallback(async () => {
     if (!isAuthenticated && !isNoAuthMode) return;
@@ -76,13 +110,87 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         const newTasks = data.tasks || [];
 
         // Update tasks and check for status changes in the same state update
-        setTasks(prevTasks => {
+        setTasks((prevTasks) => {
           // Check for newly completed tasks to show toasts
           if (prevTasks.length > 0) {
             newTasks.forEach((newTask: Task) => {
               const oldTask = prevTasks.find(
-                t => t.task_id === newTask.task_id
+                (t) => t.task_id === newTask.task_id,
               );
+
+              // Update or add files from task.files if available
+              if (newTask.files && typeof newTask.files === "object") {
+                const taskFileEntries = Object.entries(newTask.files);
+                const now = new Date().toISOString();
+
+                taskFileEntries.forEach(([filePath, fileInfo]) => {
+                  if (typeof fileInfo === "object" && fileInfo) {
+                    const fileName = filePath.split("/").pop() || filePath;
+                    const fileStatus = fileInfo.status as string;
+
+                    // Map backend file status to our TaskFile status
+                    let mappedStatus: TaskFile["status"];
+                    switch (fileStatus) {
+                      case "pending":
+                      case "running":
+                        mappedStatus = "processing";
+                        break;
+                      case "completed":
+                        mappedStatus = "active";
+                        break;
+                      case "failed":
+                        mappedStatus = "failed";
+                        break;
+                      default:
+                        mappedStatus = "processing";
+                    }
+
+                    setFiles((prevFiles) => {
+                      const existingFileIndex = prevFiles.findIndex(
+                        (f) =>
+                          f.source_url === filePath &&
+                          f.task_id === newTask.task_id,
+                      );
+
+                      // Detect connector type based on file path or other indicators
+                      let connectorType = "local";
+                      if (filePath.includes("/") && !filePath.startsWith("/")) {
+                        // Likely S3 key format (bucket/path/file.ext)
+                        connectorType = "s3";
+                      }
+
+                      const fileEntry: TaskFile = {
+                        filename: fileName,
+                        mimetype: "", // We don't have this info from the task
+                        source_url: filePath,
+                        size: 0, // We don't have this info from the task
+                        connector_type: connectorType,
+                        status: mappedStatus,
+                        task_id: newTask.task_id,
+                        created_at:
+                          typeof fileInfo.created_at === "string"
+                            ? fileInfo.created_at
+                            : now,
+                        updated_at:
+                          typeof fileInfo.updated_at === "string"
+                            ? fileInfo.updated_at
+                            : now,
+                      };
+
+                      if (existingFileIndex >= 0) {
+                        // Update existing file
+                        const updatedFiles = [...prevFiles];
+                        updatedFiles[existingFileIndex] = fileEntry;
+                        return updatedFiles;
+                      } else {
+                        // Add new file
+                        return [...prevFiles, fileEntry];
+                      }
+                    });
+                  }
+                });
+              }
+
               if (
                 oldTask &&
                 oldTask.status !== "completed" &&
@@ -99,9 +207,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 refetchSearch();
                 // Dispatch knowledge updated event for all knowledge-related pages
                 console.log(
-                  "Task completed successfully, dispatching knowledgeUpdated event"
+                  "Task completed successfully, dispatching knowledgeUpdated event",
                 );
                 window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
+
+                // Remove files for this completed task from the files list
+                setFiles((prevFiles) =>
+                  prevFiles.filter((file) => file.task_id !== newTask.task_id),
+                );
               } else if (
                 oldTask &&
                 oldTask.status !== "failed" &&
@@ -114,6 +227,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                     newTask.error || "Unknown error"
                   }`,
                 });
+
+                // Files will be updated to failed status by the file parsing logic above
               }
             });
           }
@@ -126,7 +241,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsFetching(false);
     }
-  }, [isAuthenticated, isNoAuthMode]); // Removed 'tasks' from dependencies to prevent infinite loop!
+  }, [isAuthenticated, isNoAuthMode, refetchSearch]); // Removed 'tasks' from dependencies to prevent infinite loop!
 
   const addTask = useCallback((taskId: string) => {
     // Immediately start aggressive polling for the new task
@@ -140,19 +255,21 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           const data = await response.json();
           const newTasks = data.tasks || [];
           const foundTask = newTasks.find(
-            (task: Task) => task.task_id === taskId
+            (task: Task) => task.task_id === taskId,
           );
 
           if (foundTask) {
             // Task found! Update the tasks state
-            setTasks(prevTasks => {
+            setTasks((prevTasks) => {
               // Check if task is already in the list
-              const exists = prevTasks.some(t => t.task_id === taskId);
+              const exists = prevTasks.some((t) => t.task_id === taskId);
               if (!exists) {
                 return [...prevTasks, foundTask];
               }
               // Update existing task
-              return prevTasks.map(t => (t.task_id === taskId ? foundTask : t));
+              return prevTasks.map((t) =>
+                t.task_id === taskId ? foundTask : t,
+              );
             });
             return; // Stop polling, we found it
           }
@@ -177,7 +294,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   }, [fetchTasks]);
 
   const removeTask = useCallback((taskId: string) => {
-    setTasks(prev => prev.filter(task => task.task_id !== taskId));
+    setTasks((prev) => prev.filter((task) => task.task_id !== taskId));
   }, []);
 
   const cancelTask = useCallback(
@@ -204,11 +321,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [fetchTasks]
+    [fetchTasks],
   );
 
   const toggleMenu = useCallback(() => {
-    setIsMenuOpen(prev => !prev);
+    setIsMenuOpen((prev) => !prev);
   }, []);
 
   // Periodic polling for task updates
@@ -231,7 +348,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const value: TaskContextType = {
     tasks,
+    files,
     addTask,
+    addFiles,
     removeTask,
     refreshTasks,
     cancelTask,

@@ -54,7 +54,7 @@ export const useGetOpenAIModelsQuery = (
       queryKey: ["models", "openai", params],
       queryFn: getOpenAIModels,
       retry: 2,
-      enabled: options?.enabled !== false, // Allow enabling/disabling from options
+      enabled: !!params?.apiKey,
       staleTime: 0, // Always fetch fresh data
       gcTime: 0, // Don't cache results
       ...options,
@@ -90,7 +90,6 @@ export const useGetOllamaModelsQuery = (
       queryKey: ["models", "ollama", params],
       queryFn: getOllamaModels,
       retry: 2,
-      enabled: !!params?.endpoint, // Only run if endpoint is provided
       staleTime: 0, // Always fetch fresh data
       gcTime: 0, // Don't cache results
       ...options,

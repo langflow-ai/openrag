@@ -1,3 +1,4 @@
+import asyncio
 from config.settings import (
     NUDGES_FLOW_ID,
     LANGFLOW_URL,
@@ -19,6 +20,7 @@ from config.settings import (
     WATSONX_LLM_COMPONENT_ID,
     OLLAMA_EMBEDDING_COMPONENT_ID,
     OLLAMA_LLM_COMPONENT_ID,
+    get_openrag_config,
 )
 import json
 import os
@@ -29,6 +31,74 @@ logger = get_logger(__name__)
 
 
 class FlowsService:
+    def __init__(self):
+        # Cache for flow file mappings to avoid repeated filesystem scans
+        self._flow_file_cache = {}
+
+    def _get_flows_directory(self):
+        """Get the flows directory path"""
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))  # src/services/
+        src_dir = os.path.dirname(current_file_dir)  # src/
+        project_root = os.path.dirname(src_dir)  # project root
+        return os.path.join(project_root, "flows")
+
+    def _find_flow_file_by_id(self, flow_id: str):
+        """
+        Scan the flows directory and find the JSON file that contains the specified flow ID.
+
+        Args:
+            flow_id: The flow ID to search for
+
+        Returns:
+            str: The path to the flow file, or None if not found
+        """
+        if not flow_id:
+            raise ValueError("flow_id is required")
+
+        # Check cache first
+        if flow_id in self._flow_file_cache:
+            cached_path = self._flow_file_cache[flow_id]
+            if os.path.exists(cached_path):
+                return cached_path
+            else:
+                # Remove stale cache entry
+                del self._flow_file_cache[flow_id]
+
+        flows_dir = self._get_flows_directory()
+
+        if not os.path.exists(flows_dir):
+            logger.warning(f"Flows directory not found: {flows_dir}")
+            return None
+
+        # Scan all JSON files in the flows directory
+        try:
+            for filename in os.listdir(flows_dir):
+                if not filename.endswith('.json'):
+                    continue
+
+                file_path = os.path.join(flows_dir, filename)
+
+                try:
+                    with open(file_path, 'r') as f:
+                        flow_data = json.load(f)
+
+                    # Check if this file contains the flow we're looking for
+                    if flow_data.get('id') == flow_id:
+                        # Cache the result
+                        self._flow_file_cache[flow_id] = file_path
+                        logger.info(f"Found flow {flow_id} in file: {filename}")
+                        return file_path
+
+                except (json.JSONDecodeError, FileNotFoundError) as e:
+                    logger.warning(f"Error reading flow file {filename}: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error scanning flows directory: {e}")
+            return None
+
+        logger.warning(f"Flow with ID {flow_id} not found in flows directory")
+        return None
     async def reset_langflow_flow(self, flow_type: str):
         """Reset a Langflow flow by uploading the corresponding JSON file
 
@@ -41,59 +111,35 @@ class FlowsService:
         if not LANGFLOW_URL:
             raise ValueError("LANGFLOW_URL environment variable is required")
 
-        # Determine flow file and ID based on type
+        # Determine flow ID based on type
         if flow_type == "nudges":
-            flow_file = "flows/openrag_nudges.json"
             flow_id = NUDGES_FLOW_ID
         elif flow_type == "retrieval":
-            flow_file = "flows/openrag_agent.json"
             flow_id = LANGFLOW_CHAT_FLOW_ID
         elif flow_type == "ingest":
-            flow_file = "flows/ingestion_flow.json"
             flow_id = LANGFLOW_INGEST_FLOW_ID
         else:
             raise ValueError(
                 "flow_type must be either 'nudges', 'retrieval', or 'ingest'"
             )
 
+        if not flow_id:
+            raise ValueError(f"Flow ID not configured for flow_type '{flow_type}'")
+
+        # Dynamically find the flow file by ID
+        flow_path = self._find_flow_file_by_id(flow_id)
+        if not flow_path:
+            raise FileNotFoundError(f"Flow file not found for flow ID: {flow_id}")
+
         # Load flow JSON file
         try:
-            # Get the project root directory (go up from src/services/ to project root)
-            # __file__ is src/services/chat_service.py
-            # os.path.dirname(__file__) is src/services/
-            # os.path.dirname(os.path.dirname(__file__)) is src/
-            # os.path.dirname(os.path.dirname(os.path.dirname(__file__))) is project root
-            current_file_dir = os.path.dirname(
-                os.path.abspath(__file__)
-            )  # src/services/
-            src_dir = os.path.dirname(current_file_dir)  # src/
-            project_root = os.path.dirname(src_dir)  # project root
-            flow_path = os.path.join(project_root, flow_file)
-
-            if not os.path.exists(flow_path):
-                # List contents of project root to help debug
-                try:
-                    contents = os.listdir(project_root)
-                    logger.info(f"Project root contents: {contents}")
-
-                    flows_dir = os.path.join(project_root, "flows")
-                    if os.path.exists(flows_dir):
-                        flows_contents = os.listdir(flows_dir)
-                        logger.info(f"Flows directory contents: {flows_contents}")
-                    else:
-                        logger.info("Flows directory does not exist")
-                except Exception as e:
-                    logger.error(f"Error listing directory contents: {e}")
-
-                raise FileNotFoundError(f"Flow file not found at: {flow_path}")
-
             with open(flow_path, "r") as f:
                 flow_data = json.load(f)
-            logger.info(f"Successfully loaded flow data from {flow_file}")
+            logger.info(f"Successfully loaded flow data for {flow_type} from {os.path.basename(flow_path)}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in flow file {flow_path}: {e}")
         except FileNotFoundError:
             raise ValueError(f"Flow file not found: {flow_path}")
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in flow file {flow_file}: {e}")
 
         # Make PATCH request to Langflow API to update the flow using shared client
         try:
@@ -106,8 +152,54 @@ class FlowsService:
                 logger.info(
                     f"Successfully reset {flow_type} flow",
                     flow_id=flow_id,
-                    flow_file=flow_file,
+                    flow_file=os.path.basename(flow_path),
                 )
+
+                # Now update the flow with current configuration settings
+                try:
+                    config = get_openrag_config()
+
+                    # Check if configuration has been edited (onboarding completed)
+                    if config.edited:
+                        logger.info(f"Updating {flow_type} flow with current configuration settings")
+
+                        provider = config.provider.model_provider.lower()
+
+                        # Step 1: Assign model provider (replace components) if not OpenAI
+                        if provider != "openai":
+                            logger.info(f"Assigning {provider} components to {flow_type} flow")
+                            provider_result = await self.assign_model_provider(provider)
+
+                            if not provider_result.get("success"):
+                                logger.warning(f"Failed to assign {provider} components: {provider_result.get('error', 'Unknown error')}")
+                                # Continue anyway, maybe just value updates will work
+
+                        # Step 2: Update model values for the specific flow being reset
+                        single_flow_config = [{
+                            "name": flow_type,
+                            "flow_id": flow_id,
+                        }]
+
+                        logger.info(f"Updating {flow_type} flow model values")
+                        update_result = await self.change_langflow_model_value(
+                            provider=provider,
+                            embedding_model=config.knowledge.embedding_model,
+                            llm_model=config.agent.llm_model,
+                            endpoint=config.provider.endpoint if config.provider.endpoint else None,
+                            flow_configs=single_flow_config
+                        )
+
+                        if update_result.get("success"):
+                            logger.info(f"Successfully updated {flow_type} flow with current configuration")
+                        else:
+                            logger.warning(f"Failed to update {flow_type} flow with current configuration: {update_result.get('error', 'Unknown error')}")
+                    else:
+                        logger.info(f"Configuration not yet edited (onboarding not completed), skipping model updates for {flow_type} flow")
+
+                except Exception as e:
+                    logger.error(f"Error updating {flow_type} flow with current configuration", error=str(e))
+                    # Don't fail the entire reset operation if configuration update fails
+
                 return {
                     "success": True,
                     "message": f"Successfully reset {flow_type} flow",
@@ -155,11 +247,10 @@ class FlowsService:
 
             logger.info(f"Assigning {provider} components")
 
-            # Define flow configurations
+            # Define flow configurations (removed hardcoded file paths)
             flow_configs = [
                 {
                     "name": "nudges",
-                    "file": "flows/openrag_nudges.json",
                     "flow_id": NUDGES_FLOW_ID,
                     "embedding_id": OPENAI_EMBEDDING_COMPONENT_ID,
                     "llm_id": OPENAI_LLM_COMPONENT_ID,
@@ -167,7 +258,6 @@ class FlowsService:
                 },
                 {
                     "name": "retrieval",
-                    "file": "flows/openrag_agent.json",
                     "flow_id": LANGFLOW_CHAT_FLOW_ID,
                     "embedding_id": OPENAI_EMBEDDING_COMPONENT_ID,
                     "llm_id": OPENAI_LLM_COMPONENT_ID,
@@ -175,7 +265,6 @@ class FlowsService:
                 },
                 {
                     "name": "ingest",
-                    "file": "flows/ingestion_flow.json",
                     "flow_id": LANGFLOW_INGEST_FLOW_ID,
                     "embedding_id": OPENAI_EMBEDDING_COMPONENT_ID,
                     "llm_id": None,  # Ingestion flow might not have LLM
@@ -272,7 +361,6 @@ class FlowsService:
     async def _update_flow_components(self, config, llm_template, embedding_template, llm_text_template):
         """Update components in a specific flow"""
         flow_name = config["name"]
-        flow_file = config["file"]
         flow_id = config["flow_id"]
         old_embedding_id = config["embedding_id"]
         old_llm_id = config["llm_id"]
@@ -281,14 +369,11 @@ class FlowsService:
         new_llm_id = llm_template["data"]["id"]
         new_embedding_id = embedding_template["data"]["id"]
         new_llm_text_id = llm_text_template["data"]["id"]
-        # Get the project root directory
-        current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        src_dir = os.path.dirname(current_file_dir)
-        project_root = os.path.dirname(src_dir)
-        flow_path = os.path.join(project_root, flow_file)
 
-        if not os.path.exists(flow_path):
-            raise FileNotFoundError(f"Flow file not found at: {flow_path}")
+        # Dynamically find the flow file by ID
+        flow_path = self._find_flow_file_by_id(flow_id)
+        if not flow_path:
+            raise FileNotFoundError(f"Flow file not found for flow ID: {flow_id}")
 
         # Load flow JSON
         with open(flow_path, "r") as f:
@@ -400,6 +485,123 @@ class FlowsService:
                 return node
         return None
 
+    def _find_node_in_flow(self, flow_data, node_id=None, display_name=None):
+        """
+        Helper function to find a node in flow data by ID or display name.
+        Returns tuple of (node, node_index) or (None, None) if not found.
+        """
+        nodes = flow_data.get("data", {}).get("nodes", [])
+
+        for i, node in enumerate(nodes):
+            node_data = node.get("data", {})
+            node_template = node_data.get("node", {})
+
+            # Check by ID if provided
+            if node_id and node_data.get("id") == node_id:
+                return node, i
+
+            # Check by display_name if provided
+            if display_name and node_template.get("display_name") == display_name:
+                return node, i
+
+        return None, None
+
+    async def _update_flow_field(self, flow_id: str, field_name: str, field_value: str, node_display_name: str = None, node_id: str = None):
+        """
+        Generic helper function to update any field in any Langflow component.
+
+        Args:
+            flow_id: The ID of the flow to update
+            field_name: The name of the field to update (e.g., 'model_name', 'system_message', 'docling_serve_opts')
+            field_value: The new value to set
+            node_display_name: The display name to search for (optional)
+            node_id: The node ID to search for (optional, used as fallback or primary)
+        """
+        if not flow_id:
+            raise ValueError("flow_id is required")
+
+        # Get the current flow data from Langflow
+        response = await clients.langflow_request(
+            "GET", f"/api/v1/flows/{flow_id}"
+        )
+
+        if response.status_code != 200:
+            raise Exception(f"Failed to get flow: HTTP {response.status_code} - {response.text}")
+
+        flow_data = response.json()
+
+        # Find the target component by display name first, then by ID as fallback
+        target_node, target_node_index = None, None
+        if node_display_name:
+            target_node, target_node_index = self._find_node_in_flow(flow_data, display_name=node_display_name)
+
+        if target_node is None and node_id:
+            target_node, target_node_index = self._find_node_in_flow(flow_data, node_id=node_id)
+
+        if target_node is None:
+            identifier = node_display_name or node_id
+            raise Exception(f"Component '{identifier}' not found in flow {flow_id}")
+
+        # Update the field value directly in the existing node
+        template = target_node.get("data", {}).get("node", {}).get("template", {})
+        if template.get(field_name):
+            flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["value"] = field_value
+        else:
+            identifier = node_display_name or node_id
+            raise Exception(f"{field_name} field not found in {identifier} component")
+
+        # Update the flow via PATCH request
+        patch_response = await clients.langflow_request(
+            "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
+        )
+
+        if patch_response.status_code != 200:
+            raise Exception(f"Failed to update flow: HTTP {patch_response.status_code} - {patch_response.text}")
+
+    async def update_chat_flow_model(self, model_name: str):
+        """Helper function to update the model in the chat flow"""
+        if not LANGFLOW_CHAT_FLOW_ID:
+            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
+        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "model_name", model_name,
+                                node_display_name="Language Model")
+
+    async def update_chat_flow_system_prompt(self, system_prompt: str):
+        """Helper function to update the system prompt in the chat flow"""
+        if not LANGFLOW_CHAT_FLOW_ID:
+            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
+        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "system_prompt", system_prompt,
+                                node_display_name="Agent")
+
+    async def update_flow_docling_preset(self, preset: str, preset_config: dict):
+        """Helper function to update docling preset in the ingest flow"""
+        if not LANGFLOW_INGEST_FLOW_ID:
+            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+
+        from config.settings import DOCLING_COMPONENT_ID
+        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "docling_serve_opts", preset_config,
+                                node_id=DOCLING_COMPONENT_ID)
+
+    async def update_ingest_flow_chunk_size(self, chunk_size: int):
+        """Helper function to update chunk size in the ingest flow"""
+        if not LANGFLOW_INGEST_FLOW_ID:
+            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "chunk_size", chunk_size,
+                                node_display_name="Split Text")
+
+    async def update_ingest_flow_chunk_overlap(self, chunk_overlap: int):
+        """Helper function to update chunk overlap in the ingest flow"""
+        if not LANGFLOW_INGEST_FLOW_ID:
+            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "chunk_overlap", chunk_overlap,
+                                node_display_name="Split Text")
+
+    async def update_ingest_flow_embedding_model(self, embedding_model: str):
+        """Helper function to update embedding model in the ingest flow"""
+        if not LANGFLOW_INGEST_FLOW_ID:
+            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "model", embedding_model,
+                                node_display_name="Embedding Model")
+
     def _replace_node_in_flow(self, flow_data, old_id, new_node):
         """Replace a node in the flow data"""
         nodes = flow_data.get("data", {}).get("nodes", [])
@@ -410,16 +612,17 @@ class FlowsService:
         return False
 
     async def change_langflow_model_value(
-        self, provider: str, embedding_model: str, llm_model: str, endpoint: str = None
+        self, provider: str, embedding_model: str, llm_model: str, endpoint: str = None, flow_configs: list = None
     ):
         """
-        Change dropdown values for provider-specific components across all flows
+        Change dropdown values for provider-specific components across flows
 
         Args:
             provider: The provider ("watsonx", "ollama", "openai")
             embedding_model: The embedding model name to set
             llm_model: The LLM model name to set
             endpoint: The endpoint URL (required for watsonx/ibm provider)
+            flow_configs: Optional list of specific flow configs to update. If None, updates all flows.
 
         Returns:
             dict: Success/error response with details for each flow
@@ -435,24 +638,22 @@ class FlowsService:
                 f"Changing dropdown values for provider {provider}, embedding: {embedding_model}, llm: {llm_model}, endpoint: {endpoint}"
             )
 
-            # Define flow configurations with provider-specific component IDs
-            flow_configs = [
-                {
-                    "name": "nudges",
-                    "file": "flows/openrag_nudges.json",
-                    "flow_id": NUDGES_FLOW_ID,
-                },
-                {
-                    "name": "retrieval",
-                    "file": "flows/openrag_agent.json",
-                    "flow_id": LANGFLOW_CHAT_FLOW_ID,
-                },
-                {
-                    "name": "ingest",
-                    "file": "flows/ingestion_flow.json",
-                    "flow_id": LANGFLOW_INGEST_FLOW_ID,
-                },
-            ]
+            # Use provided flow_configs or default to all flows
+            if flow_configs is None:
+                flow_configs = [
+                    {
+                        "name": "nudges",
+                        "flow_id": NUDGES_FLOW_ID,
+                    },
+                    {
+                        "name": "retrieval",
+                        "flow_id": LANGFLOW_CHAT_FLOW_ID,
+                    },
+                    {
+                        "name": "ingest",
+                        "flow_id": LANGFLOW_INGEST_FLOW_ID,
+                    },
+                ]
 
             # Determine target component IDs based on provider
             target_embedding_id, target_llm_id, target_llm_text_id = self._get_provider_component_ids(

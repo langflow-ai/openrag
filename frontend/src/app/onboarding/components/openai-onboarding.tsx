@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { LabelInput } from "@/components/label-input";
+import { LabelWrapper } from "@/components/label-wrapper";
 import OpenAILogo from "@/components/logo/openai-logo";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { useGetOpenAIModelsQuery } from "../../api/queries/useGetModelsQuery";
@@ -18,6 +20,7 @@ export function OpenAIOnboarding({
   setSampleDataset: (dataset: boolean) => void;
 }) {
   const [apiKey, setApiKey] = useState("");
+  const [getFromEnv, setGetFromEnv] = useState(true);
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
 
   // Fetch models from API when API key is provided
@@ -26,7 +29,12 @@ export function OpenAIOnboarding({
     isLoading: isLoadingModels,
     error: modelsError,
   } = useGetOpenAIModelsQuery(
-    debouncedApiKey ? { apiKey: debouncedApiKey } : undefined,
+    getFromEnv
+      ? { apiKey: "" }
+      : debouncedApiKey
+      ? { apiKey: debouncedApiKey }
+      : undefined,
+    { enabled: debouncedApiKey !== "" || getFromEnv },
   );
   // Use custom hook for model selection logic
   const {
@@ -41,6 +49,15 @@ export function OpenAIOnboarding({
     setSampleDataset(dataset);
   };
 
+  const handleGetFromEnvChange = (fromEnv: boolean) => {
+    setGetFromEnv(fromEnv);
+    if (fromEnv) {
+      setApiKey("");
+    }
+    setLanguageModel("");
+    setEmbeddingModel("");
+  };
+
   // Update settings when values change
   useUpdateSettings(
     "openai",
@@ -53,33 +70,50 @@ export function OpenAIOnboarding({
   );
   return (
     <>
-      <div className="space-y-1">
-        <LabelInput
-          label="OpenAI API key"
-          helperText="The API key for your OpenAI account."
-          id="api-key"
-          required
-          placeholder="sk-..."
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-        />
-        {isLoadingModels && (
-          <p className="text-mmd text-muted-foreground">
-            Validating API key...
-          </p>
+      <div className="space-y-5">
+        <LabelWrapper
+          label="Use environment OpenAI API key"
+          id="get-api-key"
+          helperText={
+            <>
+              Reuse the key from your environment config.
+              <br />
+              Uncheck to enter a different key.
+            </>
+          }
+          flex
+          start
+        >
+          <Checkbox
+            checked={getFromEnv}
+            onCheckedChange={handleGetFromEnvChange}
+          />
+        </LabelWrapper>
+        {!getFromEnv && (
+          <div className="space-y-1">
+            <LabelInput
+              label="OpenAI API key"
+              helperText="The API key for your OpenAI account."
+              className={modelsError ? "!border-destructive" : ""}
+              id="api-key"
+              type="password"
+              required
+              placeholder="sk-..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            {isLoadingModels && (
+              <p className="text-mmd text-muted-foreground">
+                Validating API key...
+              </p>
+            )}
+            {modelsError && (
+              <p className="text-mmd text-destructive">
+                Invalid OpenAI API key. Verify or replace the key.
+              </p>
+            )}
+          </div>
         )}
-        {modelsError && (
-          <p className="text-mmd text-accent-amber-foreground">
-            Invalid API key
-          </p>
-        )}
-        {modelsData &&
-          (modelsData.language_models?.length > 0 ||
-            modelsData.embedding_models?.length > 0) && (
-            <p className="text-mmd text-accent-emerald-foreground">
-              API Key is valid
-            </p>
-          )}
       </div>
       <AdvancedOnboarding
         icon={<OpenAILogo className="w-4 h-4" />}

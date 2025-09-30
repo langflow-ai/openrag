@@ -22,8 +22,18 @@ const sidebars = {
       items: [
         {
           type: "doc",
-          id: "get-started/intro",
-          label: "Introduction"
+          id: "get-started/what-is-openrag",
+          label: "About OpenRAG"
+        },
+        {
+          type: "doc",
+          id: "get-started/install",
+          label: "Installation"
+        },
+        {
+          type: "doc",
+          id: "get-started/quickstart",
+          label: "Quickstart"
         },
         {
           type: "doc",
@@ -35,6 +45,22 @@ const sidebars = {
           id: "get-started/tui",
           label: "Terminal Interface (TUI)"
         },
+      ],
+    },
+    {
+      type: "category",
+      label: "Core components",
+      items: [
+        {
+          type: "doc",
+          id: "core-components/agents",
+          label: "Langflow Agents"
+        },
+        {
+          type: "doc",
+          id: "core-components/knowledge",
+          label: "OpenSearch Knowledge"
+        }
       ],
     },
     {
