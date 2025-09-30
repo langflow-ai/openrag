@@ -1,5 +1,6 @@
 "use client";
 
+import { FilterColor, IconKey } from "@/components/filter-icon-popover";
 import React, {
   createContext,
   type ReactNode,
@@ -27,6 +28,8 @@ export interface ParsedQueryData {
   };
   limit: number;
   scoreThreshold: number;
+  color: FilterColor;
+  icon: IconKey;
 }
 
 interface KnowledgeFilterContextType {
@@ -38,6 +41,9 @@ interface KnowledgeFilterContextType {
   openPanel: () => void;
   closePanel: () => void;
   closePanelOnly: () => void;
+  createMode: boolean;
+  startCreateMode: () => void;
+  endCreateMode: () => void;
 }
 
 const KnowledgeFilterContext = createContext<
@@ -48,7 +54,7 @@ export function useKnowledgeFilter() {
   const context = useContext(KnowledgeFilterContext);
   if (context === undefined) {
     throw new Error(
-      "useKnowledgeFilter must be used within a KnowledgeFilterProvider",
+      "useKnowledgeFilter must be used within a KnowledgeFilterProvider"
     );
   }
   return context;
@@ -66,11 +72,13 @@ export function KnowledgeFilterProvider({
   const [parsedFilterData, setParsedFilterData] =
     useState<ParsedQueryData | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [createMode, setCreateMode] = useState(false);
 
   const setSelectedFilter = (filter: KnowledgeFilter | null) => {
     setSelectedFilterState(filter);
 
     if (filter) {
+      setCreateMode(false);
       try {
         const parsed = JSON.parse(filter.query_data) as ParsedQueryData;
         setParsedFilterData(parsed);
@@ -96,11 +104,36 @@ export function KnowledgeFilterProvider({
   };
 
   const closePanel = () => {
+    setCreateMode(false);
     setSelectedFilter(null); // This will also close the panel
   };
 
   const closePanelOnly = () => {
     setIsPanelOpen(false); // Close panel but keep filter selected
+  };
+
+  const startCreateMode = () => {
+    // Initialize defaults
+    setCreateMode(true);
+    setSelectedFilterState(null);
+    setParsedFilterData({
+      query: "",
+      filters: {
+        data_sources: ["*"],
+        document_types: ["*"],
+        owners: ["*"],
+        connector_types: ["*"],
+      },
+      limit: 10,
+      scoreThreshold: 0,
+      color: "zinc",
+      icon: "filter",
+    });
+    setIsPanelOpen(true);
+  };
+
+  const endCreateMode = () => {
+    setCreateMode(false);
   };
 
   const value: KnowledgeFilterContextType = {
@@ -112,6 +145,9 @@ export function KnowledgeFilterProvider({
     openPanel,
     closePanel,
     closePanelOnly,
+    createMode,
+    startCreateMode,
+    endCreateMode,
   };
 
   return (
