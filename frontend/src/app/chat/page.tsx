@@ -2116,7 +2116,7 @@ function ChatPage() {
                 <div className="flex items-center gap-2 px-4 pt-3 pb-1">
                   <span
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
-                      filterAccentClasses[parsedFilterData?.color || ""]
+                      filterAccentClasses[parsedFilterData?.color || "zinc"]
                     }`}
                   >
                     @filter:{selectedFilter.name}

@@ -7,7 +7,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-  File,
   Book,
   Scroll,
   Library,
@@ -32,13 +31,13 @@ import {
   ShoppingCart,
   ShoppingBag,
   Check,
-  Plus,
+  Filter,
 } from "lucide-react";
 import { filterAccentClasses } from "./knowledge-filter-panel";
 import { cn } from "@/lib/utils";
 
 const ICON_MAP = {
-  file: File,
+  filter: Filter,
   book: Book,
   scroll: Scroll,
   library: Library,
@@ -87,21 +86,20 @@ const COLORS = [
 export type FilterColor = (typeof COLORS)[number];
 
 const colorSwatchClasses = {
-  zinc: "bg-muted-foreground text-accent-foreground",
-  pink: "bg-accent-pink-foreground text-accent-pink",
-  purple: "bg-accent-purple-foreground text-accent-purple",
-  indigo: "bg-accent-indigo-foreground text-accent-indigo",
-  emerald: "bg-accent-emerald-foreground text-accent-emerald",
-  amber: "bg-accent-amber-foreground text-accent-amber",
-  red: "bg-accent-red-foreground text-accent-red",
-  "": "bg-muted-foreground text-accent-foreground",
+  zinc: "bg-muted-foreground",
+  pink: "bg-accent-pink-foreground",
+  purple: "bg-accent-purple-foreground",
+  indigo: "bg-accent-indigo-foreground",
+  emerald: "bg-accent-emerald-foreground",
+  amber: "bg-accent-amber-foreground",
+  red: "bg-accent-red-foreground",
 };
 
 export interface FilterIconPopoverProps {
   color: FilterColor;
-  iconKey?: IconKey | undefined;
+  iconKey: IconKey;
   onColorChange: (c: FilterColor) => void;
-  onIconChange: (k: IconKey | undefined) => void;
+  onIconChange: (k: IconKey) => void;
   triggerClassName?: string;
 }
 
@@ -118,13 +116,12 @@ export function FilterIconPopover({
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "h-10 w-10 min-w-10 min-h-10 rounded-sm flex items-center justify-center transition-colors",
-            filterAccentClasses[color || ""],
+            "h-10 w-10 min-w-10 min-h-10 rounded-md flex items-center justify-center transition-colors",
+            filterAccentClasses[color],
             triggerClassName
           )}
         >
           {Icon && <Icon className="h-5 w-5" />}
-          {!Icon && <Plus className="h-5 w-5" />}
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80" align="start">
@@ -136,8 +133,8 @@ export function FilterIconPopover({
                 type="button"
                 onClick={() => onColorChange(c)}
                 className={cn(
-                  "flex items-center justify-center h-6 w-6 rounded-sm transition-colors",
-                  colorSwatchClasses[c || ""]
+                  "flex items-center justify-center h-6 w-6 rounded-sm transition-colors text-primary",
+                  colorSwatchClasses[c]
                 )}
                 aria-label={c}
               >
@@ -153,18 +150,10 @@ export function FilterIconPopover({
                 <button
                   key={k}
                   type="button"
-                  onClick={() => {
-                    if (active) {
-                      onIconChange(undefined);
-                    } else {
-                      onIconChange(k as IconKey);
-                    }
-                  }}
+                  onClick={() => onIconChange(k as IconKey)}
                   className={
-                    "h-8 w-8 inline-flex items-center hover:text-foreground justify-center rounded border " +
-                    (active
-                      ? "border-muted-foreground text-foreground"
-                      : "border-0 text-muted-foreground")
+                    "h-8 w-8 inline-flex items-center hover:text-foreground justify-center rounded " +
+                    (active ? "bg-muted text-primary" : "text-muted-foreground")
                   }
                   aria-label={k}
                 >

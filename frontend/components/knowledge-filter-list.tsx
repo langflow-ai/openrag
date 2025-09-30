@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, X } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   useGetFiltersSearchQuery,
@@ -25,8 +25,8 @@ interface ParsedQueryData {
   };
   limit: number;
   scoreThreshold: number;
-  color?: FilterColor;
-  icon?: IconKey;
+  color: FilterColor;
+  icon: IconKey;
 }
 
 interface KnowledgeFilterListProps {
@@ -106,13 +106,13 @@ export function KnowledgeFilterList({
               <div className="flex flex-col gap-1 flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   {(() => {
-                    const parsed = parseQueryData(filter.query_data);
+                    const parsed = parseQueryData(filter.query_data) as ParsedQueryData;
                     const Icon = iconKeyToComponent(parsed.icon);
                     return (
                       <div
                         className={cn(
                           "flex items-center justify-center w-5 h-5 rounded transition-colors",
-                          filterAccentClasses[parsed.color || ""],
+                          filterAccentClasses[parsed.color],
                           parsed.color === "zinc" &&
                             "group-hover:bg-background group-[.active]:bg-background"
                         )}

@@ -1,5 +1,6 @@
 "use client";
 
+import { FilterColor, IconKey } from "@/components/filter-icon-popover";
 import React, {
   createContext,
   type ReactNode,
@@ -27,9 +28,8 @@ export interface ParsedQueryData {
   };
   limit: number;
   scoreThreshold: number;
-  // Optional visual metadata for UI
-  color?: "zinc" | "pink" | "purple" | "indigo" | "emerald" | "amber" | "red";
-  icon?: string; // lucide icon key we store in the UI mapping
+  color: FilterColor;
+  icon: IconKey;
 }
 
 interface KnowledgeFilterContextType {
@@ -54,7 +54,7 @@ export function useKnowledgeFilter() {
   const context = useContext(KnowledgeFilterContext);
   if (context === undefined) {
     throw new Error(
-      "useKnowledgeFilter must be used within a KnowledgeFilterProvider",
+      "useKnowledgeFilter must be used within a KnowledgeFilterProvider"
     );
   }
   return context;
@@ -127,7 +127,7 @@ export function KnowledgeFilterProvider({
       limit: 10,
       scoreThreshold: 0,
       color: "zinc",
-      icon: "Filter",
+      icon: "filter",
     });
     setIsPanelOpen(true);
   };

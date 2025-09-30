@@ -256,7 +256,7 @@ function SearchPage() {
               {selectedFilter?.name && (
                 <div
                   className={`flex items-center gap-1 h-full px-1.5 py-0.5 rounded max-w-[300px] ${
-                    filterAccentClasses[parsedFilterData?.color || ""]
+                    filterAccentClasses[parsedFilterData?.color || "zinc"]
                   }`}
                 >
                   <span className="truncate">{selectedFilter?.name}</span>
