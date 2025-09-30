@@ -19,7 +19,7 @@ export function OllamaOnboarding({
   sampleDataset: boolean;
   setSampleDataset: (dataset: boolean) => void;
 }) {
-  const [endpoint, setEndpoint] = useState(`http://{localhost}:11434`);
+  const [endpoint, setEndpoint] = useState(`http://localhost:11434`);
   const [showConnecting, setShowConnecting] = useState(false);
   const debouncedEndpoint = useDebouncedValue(endpoint, 500);
 
