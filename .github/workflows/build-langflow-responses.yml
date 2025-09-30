@@ -19,11 +19,11 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
 
     steps:
-      - name: Checkout langflow responses branch
+      - name: Checkout langflow load_flows_autologin_false branch
         uses: actions/checkout@v4
         with:
           repository: langflow-ai/langflow
-          ref: responses
+          ref: load_flows_autologin_false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
