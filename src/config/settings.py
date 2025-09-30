@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
+from utils.container_utils import get_container_host
 from utils.document_processing import create_document_converter
 from utils.logging_config import get_logger
 
@@ -574,6 +575,8 @@ OLLAMA_LLM_TEXT_COMPONENT_ID = os.getenv(
 
 # Docling component ID for ingest flow
 DOCLING_COMPONENT_ID = os.getenv("DOCLING_COMPONENT_ID", "DoclingRemote-78KoX")
+
+LOCALHOST_URL = get_container_host() or "localhost"
 
 # Global clients instance
 clients = AppClients()
