@@ -10,7 +10,7 @@ OpenRAG can be installed in multiple ways:
 
 * [**Python wheel**](#install-python-wheel): Install the OpenRAG Python wheel and use the [OpenRAG Terminal User Interface (TUI)](/get-started/tui) to install, run, and configure your OpenRAG deployment without running Docker commands.
 
-* [**Docker Compose**](#install-and-run-docker): Clone the OpenRAG repository and deploy OpenRAG with Docker Compose, including all services and dependencies.
+* [**Docker Compose**](get-started/docker): Clone the OpenRAG repository and deploy OpenRAG with Docker Compose, including all services and dependencies.
 
 ## Prerequisites 
 
@@ -79,8 +79,46 @@ For more information on virtual environments, see [uv](https://docs.astral.sh/uv
    Command completed successfully
    ```
 
-7. To open the OpenRAG application, click **Open App** or press <kbd>6</kbd>.
-8. Continue with the Quickstart.
+7. To open the OpenRAG application, click **Open App**, press <kbd>6</kbd>, or navigate to `http://localhost:3000`.
+   The application opens.
+8. Select your language model and embedding model provider, and complete the required fields.
+   **Your provider can only be selected once, and you must use the same provider for your language model and embedding model.**
+   The language model can be changed, but the embeddings model cannot be changed.
+   To change your provider selection, you must restart OpenRAG and delete the `config.yml` file.
+
+<Tabs groupId="Embedding provider">
+   <TabItem value="OpenAI" label="OpenAI" default>
+      9. If you already entered a value for `OPENAI_API_KEY` in the TUI in Step 5, enable **Get API key from environment variable**.
+      10. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+      11. To load 2 sample PDFs, enable **Sample dataset**.
+      This is recommended, but not required.
+      12. Click **Complete**.
+   
+     </TabItem>
+     <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
+      9. Complete the fields for **watsonx.ai API Endpoint**, **IBM API key**, and **IBM Project ID**.
+      These values are found in your IBM watsonx deployment.
+      10. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+      11. To load 2 sample PDFs, enable **Sample dataset**.
+      This is recommended, but not required.
+      12. Click **Complete**.
+   
+     </TabItem>
+     <TabItem value="Ollama" label="Ollama">
+      9. Enter your Ollama server's base URL address.
+      The default Ollama server address is `http://localhost:11434`.
+      Since OpenRAG is running in a container, you may need to change `localhost` to access services outside of the container. For example, change `http://localhost:11434` to `http://host.docker.internal:11434` to connect to Ollama.
+      OpenRAG automatically sends a test connection to your Ollama server to confirm connectivity.
+      10. Select the **Embedding Model** and **Language Model** your Ollama server is running.
+      OpenRAG automatically lists the available models from your Ollama server.
+      11. To load 2 sample PDFs, enable **Sample dataset**.
+      This is recommended, but not required.
+      12. Click **Complete**.
+       
+     </TabItem>
+</Tabs>
+
+13. Continue with the [Quickstart](/quickstart).
 
 ### Advanced Setup {#advanced-setup}
 
@@ -101,79 +139,3 @@ The `LANGFLOW_PUBLIC_URL` controls where the Langflow web interface can be acces
 The `WEBHOOK_BASE_URL` controls where the endpoint for `/connectors/CONNECTOR_TYPE/webhook` will be available.
 This connection enables real-time document synchronization with external services.
 For example, for Google Drive file synchronization the webhook URL is `/connectors/google_drive/webhook`.
-
-## Docker {#install-and-run-docker}
-
-There are two different Docker Compose files.
-They deploy the same applications and containers, but to different environments.
-
-- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing.
-
-- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
-
-To install OpenRAG with Docker Compose:
-
-1. Clone the OpenRAG repository.
-   ```bash
-   git clone https://github.com/langflow-ai/openrag.git
-   cd openrag
-   ```
-
-2. Copy the example `.env` file that is included in the repository root.
-  The example file includes all environment variables with comments to guide you in finding and setting their values.
-   ```bash
-   cp .env.example .env
-   ```
-
-   Alternatively, create a new `.env` file in the repository root.
-   ```
-   touch .env
-   ```
-
-3. Set environment variables. The Docker Compose files are populated with values from your `.env`, so the following values are **required** to be set:
-
-   ```bash
-   OPENSEARCH_PASSWORD=your_secure_password
-   OPENAI_API_KEY=your_openai_api_key
-   
-   LANGFLOW_SUPERUSER=admin
-   LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
-   LANGFLOW_SECRET_KEY=your_secret_key
-   ```
-   For more information on configuring OpenRAG with environment variables, see [Environment variables](/configure/configuration).
-   For additional configuration values, including `config.yaml`, see [Configuration](/configure/configuration).
-
-4. Deploy OpenRAG with Docker Compose based on your deployment type.
-
-   For GPU-enabled systems, run the following command:
-   ```bash
-   docker compose up -d
-   ```
-
-   For CPU-only systems, run the following command:
-   ```bash
-   docker compose -f docker-compose-cpu.yml up -d
-   ```
-
-   The OpenRAG Docker Compose file starts five containers:
-   | Container Name | Default Address | Purpose |
-   |---|---|---|
-   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
-   | OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
-   | Langflow | http://localhost:7860 | AI workflow engine and flow management. |
-   | OpenSearch | http://localhost:9200 | Vector database for document storage. |
-   | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
-
-5. Verify installation by confirming all services are running.
-
-   ```bash
-   docker compose ps
-   ```
-
-   You can now access the application at:
-
-   - **Frontend**: http://localhost:3000
-   - **Backend API**: http://localhost:8000
-   - **Langflow**: http://localhost:7860
-
-Continue with the Quickstart.
