@@ -5,8 +5,8 @@ slug: /reference/configuration
 
 OpenRAG supports multiple configuration methods with the following priority, from highest to lowest:
 
-1. [Environment variables](#environment-variables)
-2. [Configuration file (`config.yaml`)](#configuration-file)
+1. [Environment variables](#environment-variables) - Environment variables in the `.env` control Langflow authentication, Oauth settings, and the required OpenAI API key.
+2. [Configuration file (`config.yaml`)](#configuration-file) - The `config.yaml` file is generated with values input during [Application onboarding](/install#application-onboarding). If the same value is available in `.env` and `config.yaml`, the value in `.env` takes precedence.
 3. [Langflow runtime overrides](#langflow-runtime-overrides)
 4. [Default or fallback values](#default-values-and-fallbacks)
 
@@ -58,9 +58,7 @@ You can create a `.env` file in the project root to set these variables, or set 
 | `LANGFLOW_ENABLE_SUPERUSER_CLI`                                           | Enable superuser CLI (default: `False`)                            |
 | `OPENRAG_DOCUMENTS_PATHS`                                                 | Document paths for ingestion (default: `./documents`)              |
 
-## OpenRAG configuration variables
-
-These environment variables override settings in `config.yaml`:
+## OpenRAG configuration variables {#openrag-config-variables}
 
 ### Provider settings
 
@@ -89,7 +87,30 @@ These environment variables override settings in `config.yaml`:
 | `LLM_MODEL`     | Language model for the chat agent | `gpt-4o-mini`            |
 | `SYSTEM_PROMPT` | System prompt for the agent       | "You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context." |
 
-See `docker-compose-*.yml` files for runtime usage examples.
+## Configuration file (`config.yaml) {#configuration-file}
+
+The `config.yaml` file created during [Application onboarding](/install#application-onboarding) can control the variables in [OpenRAG configuration variables](#openrag-configuration-variables-openrag-config-variables), but is overridden by the `.env` if the variable is present both files.
+The `config.yaml` file controls application configuration, including language model and embedding model provider, Docling ingestion settings, and API keys.
+
+```yaml
+config.yaml:
+provider:
+  model_provider: openai
+  api_key: ${PROVIDER_API_KEY}  # optional: can be literal instead
+  endpoint: https://api.example.com
+  project_id: my-project
+
+knowledge:
+  embedding_model: text-embedding-3-small
+  chunk_size: 1000
+  chunk_overlap: 200
+  ocr: true
+  picture_descriptions: false
+
+agent:
+  llm_model: gpt-4o-mini
+  system_prompt: "You are a helpful AI assistant..."
+```
 
 ## Langflow runtime overrides
 
@@ -98,31 +119,6 @@ Langflow runtime overrides allow you to modify component settings at runtime wit
 Runtime overrides are implemented through **tweaks** - parameter modifications that are passed to specific Langflow components during flow execution.
 
 For more information on tweaks, see [Input schema (tweaks)](https://docs.langflow.org/concepts-publish#input-schema).
-
-## Configuration file (`config.yaml) {#configuration-file}
-
-Create a `config.yaml` file in the project root to configure OpenRAG:
-
-```yaml
-# OpenRAG Configuration File
-provider:
-  model_provider: "openai" # openai, anthropic, azure, etc.
-  api_key: "your-api-key" # or use OPENAI_API_KEY env var
-  endpoint: "" # For custom provider endpoints (e.g., Watson/IBM)
-  project_id: "" # For providers that need project IDs (e.g., Watson/IBM)
-
-knowledge:
-  embedding_model: "text-embedding-3-small"
-  chunk_size: 1000
-  chunk_overlap: 200
-  doclingPresets: "standard" # standard, ocr, picture_description, VLM
-  ocr: true
-  picture_descriptions: false
-
-agent:
-  llm_model: "gpt-4o-mini"
-  system_prompt: "You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context."
-```
 
 ## Default values and fallbacks
 
