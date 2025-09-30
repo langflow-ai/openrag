@@ -10,7 +10,7 @@ OpenRAG can be installed in multiple ways:
 
 * [**Python wheel**](#install-python-wheel): Install the OpenRAG Python wheel and use the [OpenRAG Terminal User Interface (TUI)](/get-started/tui) to install, run, and configure your OpenRAG deployment without running Docker commands.
 
-* [**Docker Compose**](#install-and-run-docker): Clone the OpenRAG repository and deploy OpenRAG with Docker Compose, including all services and dependencies.
+* [**Docker Compose**](get-started/docker): Clone the OpenRAG repository and deploy OpenRAG with Docker Compose, including all services and dependencies.
 
 ## Prerequisites 
 
@@ -139,79 +139,3 @@ The `LANGFLOW_PUBLIC_URL` controls where the Langflow web interface can be acces
 The `WEBHOOK_BASE_URL` controls where the endpoint for `/connectors/CONNECTOR_TYPE/webhook` will be available.
 This connection enables real-time document synchronization with external services.
 For example, for Google Drive file synchronization the webhook URL is `/connectors/google_drive/webhook`.
-
-## Docker {#install-and-run-docker}
-
-There are two different Docker Compose files.
-They deploy the same applications and containers, but to different environments.
-
-- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing.
-
-- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
-
-To install OpenRAG with Docker Compose:
-
-1. Clone the OpenRAG repository.
-   ```bash
-   git clone https://github.com/langflow-ai/openrag.git
-   cd openrag
-   ```
-
-2. Copy the example `.env` file that is included in the repository root.
-  The example file includes all environment variables with comments to guide you in finding and setting their values.
-   ```bash
-   cp .env.example .env
-   ```
-
-   Alternatively, create a new `.env` file in the repository root.
-   ```
-   touch .env
-   ```
-
-3. Set environment variables. The Docker Compose files are populated with values from your `.env`, so the following values are **required** to be set:
-
-   ```bash
-   OPENSEARCH_PASSWORD=your_secure_password
-   OPENAI_API_KEY=your_openai_api_key
-   
-   LANGFLOW_SUPERUSER=admin
-   LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
-   LANGFLOW_SECRET_KEY=your_secret_key
-   ```
-   For more information on configuring OpenRAG with environment variables, see [Environment variables](/configure/configuration).
-   For additional configuration values, including `config.yaml`, see [Configuration](/configure/configuration).
-
-4. Deploy OpenRAG with Docker Compose based on your deployment type.
-
-   For GPU-enabled systems, run the following command:
-   ```bash
-   docker compose up -d
-   ```
-
-   For CPU-only systems, run the following command:
-   ```bash
-   docker compose -f docker-compose-cpu.yml up -d
-   ```
-
-   The OpenRAG Docker Compose file starts five containers:
-   | Container Name | Default Address | Purpose |
-   |---|---|---|
-   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
-   | OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
-   | Langflow | http://localhost:7860 | AI workflow engine and flow management. |
-   | OpenSearch | http://localhost:9200 | Vector database for document storage. |
-   | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
-
-5. Verify installation by confirming all services are running.
-
-   ```bash
-   docker compose ps
-   ```
-
-   You can now access the application at:
-
-   - **Frontend**: http://localhost:3000
-   - **Backend API**: http://localhost:8000
-   - **Langflow**: http://localhost:7860
-
-Continue with the Quickstart.
