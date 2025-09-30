@@ -4,29 +4,12 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, AlertCircle } from "lucide-react";
-import { GoogleDrivePicker } from "@/components/google-drive-picker";
-import { OneDrivePicker } from "@/components/onedrive-picker";
+import { UnifiedCloudPicker, CloudFile } from "@/components/cloud-picker";
+import type { IngestSettings } from "@/components/cloud-picker/types";
 import { useTask } from "@/contexts/task-context";
 import { Toast } from "@/components/ui/toast";
 
-interface GoogleDriveFile {
-  id: string;
-  name: string;
-  mimeType: string;
-  webViewLink?: string;
-  iconLink?: string;
-}
-
-interface OneDriveFile {
-  id: string;
-  name: string;
-  mimeType?: string;
-  webUrl?: string;
-  driveItem?: {
-    file?: { mimeType: string };
-    folder?: unknown;
-  };
-}
+// CloudFile interface is now imported from the unified cloud picker
 
 interface CloudConnector {
   id: string;
@@ -35,6 +18,7 @@ interface CloudConnector {
   status: "not_connected" | "connecting" | "connected" | "error";
   type: string;
   connectionId?: string;
+  clientId: string;
   hasAccessToken: boolean;
   accessTokenError?: string;
 }
@@ -49,14 +33,19 @@ export default function UploadProviderPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [selectedFiles, setSelectedFiles] = useState<
-    GoogleDriveFile[] | OneDriveFile[]
-  >([]);
+  const [selectedFiles, setSelectedFiles] = useState<CloudFile[]>([]);
   const [isIngesting, setIsIngesting] = useState<boolean>(false);
   const [currentSyncTaskId, setCurrentSyncTaskId] = useState<string | null>(
     null
   );
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [ingestSettings, setIngestSettings] = useState<IngestSettings>({
+    chunkSize: 1000,
+    chunkOverlap: 200,
+    ocr: false,
+    pictureDescriptions: false,
+    embeddingModel: "text-embedding-3-small",
+  });
 
   useEffect(() => {
     const fetchConnectorInfo = async () => {
@@ -129,6 +118,7 @@ export default function UploadProviderPage() {
           status: isConnected ? "connected" : "not_connected",
           type: provider,
           connectionId: activeConnection?.connection_id,
+          clientId: activeConnection?.client_id,
           hasAccessToken,
           accessTokenError,
         });
@@ -159,13 +149,6 @@ export default function UploadProviderPage() {
       // Task completed successfully, show toast and redirect
       setIsIngesting(false);
       setShowSuccessToast(true);
-
-      // Dispatch knowledge updated event to refresh the knowledge table
-      console.log(
-        "Cloud provider task completed, dispatching knowledgeUpdated event"
-      );
-      window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
-
       setTimeout(() => {
         router.push("/knowledge");
       }, 2000); // 2 second delay to let user see toast
@@ -176,18 +159,10 @@ export default function UploadProviderPage() {
     }
   }, [tasks, currentSyncTaskId, router]);
 
-  const handleFileSelected = (files: GoogleDriveFile[] | OneDriveFile[]) => {
+  const handleFileSelected = (files: CloudFile[]) => {
     setSelectedFiles(files);
     console.log(`Selected ${files.length} files from ${provider}:`, files);
     // You can add additional handling here like triggering sync, etc.
-  };
-
-  const handleGoogleDriveFileSelected = (files: GoogleDriveFile[]) => {
-    handleFileSelected(files);
-  };
-
-  const handleOneDriveFileSelected = (files: OneDriveFile[]) => {
-    handleFileSelected(files);
   };
 
   const handleSync = async (connector: CloudConnector) => {
@@ -200,9 +175,11 @@ export default function UploadProviderPage() {
         connection_id: string;
         max_files?: number;
         selected_files?: string[];
+        settings?: IngestSettings;
       } = {
         connection_id: connector.connectionId,
         selected_files: selectedFiles.map(file => file.id),
+        settings: ingestSettings,
       };
 
       const response = await fetch(`/api/connectors/${connector.type}/sync`, {
@@ -353,48 +330,49 @@ export default function UploadProviderPage() {
     <div className="container mx-auto max-w-3xl p-6">
       <div className="mb-6 flex gap-2 items-center">
         <Button variant="ghost" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4 scale-125 mr-2" />
+          <ArrowLeft className="h-4 w-4 scale-125" />
         </Button>
-        <h2 className="text-2xl font-bold">Add Cloud Knowledge</h2>
+        <h2 className="text-2xl font-bold">
+          Add from {getProviderDisplayName()}
+        </h2>
       </div>
 
       <div className="max-w-3xl mx-auto">
-        {connector.type === "google_drive" && (
-          <GoogleDrivePicker
-            onFileSelected={handleGoogleDriveFileSelected}
-            selectedFiles={selectedFiles as GoogleDriveFile[]}
-            isAuthenticated={true}
-            accessToken={accessToken || undefined}
-          />
-        )}
-
-        {(connector.type === "onedrive" || connector.type === "sharepoint") && (
-          <OneDrivePicker
-            onFileSelected={handleOneDriveFileSelected}
-            selectedFiles={selectedFiles as OneDriveFile[]}
-            isAuthenticated={true}
-            accessToken={accessToken || undefined}
-            connectorType={connector.type as "onedrive" | "sharepoint"}
-          />
-        )}
+        <UnifiedCloudPicker
+          provider={
+            connector.type as "google_drive" | "onedrive" | "sharepoint"
+          }
+          onFileSelected={handleFileSelected}
+          selectedFiles={selectedFiles}
+          isAuthenticated={true}
+          accessToken={accessToken || undefined}
+          clientId={connector.clientId}
+          onSettingsChange={setIngestSettings}
+        />
       </div>
 
-      {selectedFiles.length > 0 && (
-        <div className="max-w-3xl mx-auto mt-8">
-          <div className="flex justify-end gap-3 mb-4">
-            <Button
-              onClick={() => handleSync(connector)}
-              disabled={selectedFiles.length === 0 || isIngesting}
-            >
-              {isIngesting ? (
-                <>Ingesting {selectedFiles.length} Files...</>
-              ) : (
-                <>Ingest Files ({selectedFiles.length})</>
-              )}
-            </Button>
-          </div>
+      <div className="max-w-3xl mx-auto mt-6">
+        <div className="flex justify-between gap-3 mb-4">
+          <Button
+            variant="ghost"
+            className=" border bg-transparent border-border rounded-lg text-secondary-foreground"
+            onClick={() => router.back()}
+          >
+            Back
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => handleSync(connector)}
+            disabled={selectedFiles.length === 0 || isIngesting}
+          >
+            {isIngesting ? (
+              <>Ingesting {selectedFiles.length} Files...</>
+            ) : (
+              <>Start ingest</>
+            )}
+          </Button>
         </div>
-      )}
+      </div>
 
       {/* Success toast notification */}
       <Toast
