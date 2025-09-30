@@ -79,7 +79,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
     <div className="h-full relative">
-      <header className="header-arrangement bg-background sticky top-0 z-50">
+      <header className="header-arrangement bg-background sticky top-0 z-50 h-10">
         <div className="header-start-display px-[20px]">
           {/* Logo/Title */}
           <div className="flex items-center">
@@ -104,7 +104,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             {/* Task Notification Bell */}
             <button
               onClick={toggleMenu}
-              className="h-9 w-9 hover:bg-muted rounded-lg flex items-center justify-center"
+              className="h-8 w-8 hover:bg-muted rounded-lg flex items-center justify-center"
             >
               <Bell size={20} className="text-muted-foreground" />
               {activeTasks.length > 0 && (
