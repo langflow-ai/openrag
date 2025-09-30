@@ -14,7 +14,11 @@ import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
 import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
 import { useCreateFilter } from "@/app/api/mutations/useCreateFilter";
 import { useGetSearchAggregations } from "@/src/app/api/queries/useGetSearchAggregations";
-import { FilterIconPopover, IconKey } from "@/components/filter-icon-popover";
+import {
+  FilterColor,
+  FilterIconPopover,
+  IconKey,
+} from "@/components/filter-icon-popover";
 
 interface FacetBucket {
   key: string;
@@ -28,18 +32,14 @@ interface AvailableFacets {
   connector_types: FacetBucket[];
 }
 
-export const filterAccentClasses: Record<
-  "zinc" | "pink" | "purple" | "indigo" | "emerald" | "amber" | "red" | "",
-  string
-> = {
-  zinc: "bg-accent text-muted-foreground",
+export const filterAccentClasses: Record<FilterColor, string> = {
+  zinc: "bg-muted text-muted-foreground",
   pink: "bg-accent-pink text-accent-pink-foreground",
   purple: "bg-accent-purple text-accent-purple-foreground",
   indigo: "bg-accent-indigo text-accent-indigo-foreground",
   emerald: "bg-accent-emerald text-accent-emerald-foreground",
   amber: "bg-accent-amber text-accent-amber-foreground",
   red: "bg-accent-red text-accent-red-foreground",
-  "": "bg-accent text-muted-foreground",
 };
 
 export function KnowledgeFilterPanel() {
@@ -59,10 +59,8 @@ export function KnowledgeFilterPanel() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [color, setColor] = useState<
-    "zinc" | "pink" | "purple" | "indigo" | "emerald" | "amber" | "red"
-  >("zinc");
-  const [iconKey, setIconKey] = useState<IconKey>();
+  const [color, setColor] = useState<FilterColor>("zinc");
+  const [iconKey, setIconKey] = useState<IconKey>("filter");
 
   // Filter configuration states (mirror search page exactly)
   const [query, setQuery] = useState("");
@@ -107,8 +105,8 @@ export function KnowledgeFilterPanel() {
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
       setName(selectedFilter.name);
       setDescription(selectedFilter.description || "");
-      setColor(parsedFilterData.color || "zinc");
-      setIconKey(parsedFilterData.icon as IconKey);
+      setColor(parsedFilterData.color);
+      setIconKey(parsedFilterData.icon);
     }
   }, [selectedFilter, parsedFilterData]);
 
@@ -121,8 +119,8 @@ export function KnowledgeFilterPanel() {
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
       setName("");
       setDescription("");
-      setColor(parsedFilterData.color || "zinc");
-      setIconKey(parsedFilterData.icon as IconKey);
+      setColor(parsedFilterData.color);
+      setIconKey(parsedFilterData.icon);
     }
   }, [createMode, parsedFilterData]);
 
@@ -268,7 +266,7 @@ export function KnowledgeFilterPanel() {
                   color={color}
                   iconKey={iconKey}
                   onColorChange={setColor}
-                  onIconChange={(k) => setIconKey(k)}
+                  onIconChange={setIconKey}
                 />
                 <Input
                   id="filter-name"

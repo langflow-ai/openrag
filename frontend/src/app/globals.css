@@ -27,6 +27,8 @@
     --accent-foreground: 0 0% 0%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
+    --warning: 48, 96%, 89%;
+    --warning-foreground: 26, 90%, 37%;
     --border: 240 4.8% 95.9%;
     --input: 240 6% 90%;
     --ring: 0 0% 0%;
@@ -48,10 +50,6 @@
     /* Component Colors */
     --component-icon: #d8598a;
     --flow-icon: #2f67d0;
-
-    /* Warning */
-    --warning: 48 96.6% 76.7%;
-    --warning-foreground: 240 6% 10%;
 
     --radius: 0.5rem;
   }
@@ -75,6 +73,8 @@
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
+    --warning: 22, 78%, 26%;
+    --warning-foreground: 46, 97%, 65%;
     --border: 240 3.7% 15.9%;
     --input: 240 5% 34%;
     --ring: 0 0% 100%;
