@@ -1,17 +1,15 @@
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/auth-context";
-import { LogIn, LogOut, User, Moon, Sun, ChevronsUpDown } from "lucide-react";
+import { LogOut, User, Moon, Sun, ChevronsUpDown } from "lucide-react";
 import { useTheme } from "next-themes";
 import ThemeButtons from "./ui/buttonTheme";
 
@@ -27,32 +25,27 @@ export function UserNav() {
   // In no-auth mode, show a simple theme switcher instead of auth UI
   if (isNoAuthMode) {
     return (
-      <Button
+      <button
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        variant="outline"
-        size="sm"
-        className="flex items-center gap-2"
+        className="flex justify-center items-center gap-2 h-8 w-8 mr-2 rounded-md  hover:bg-muted rounded-lg "
       >
         {theme === "dark" ? (
-          <Sun className="h-4 w-4" />
+          <Sun size={16} className="text-muted-foreground" />
         ) : (
-          <Moon className="h-4 w-4" />
+          <Moon size={16} className="text-muted-foreground" />
         )}
-      </Button>
+      </button>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <Button
+      <button
         onClick={login}
-        variant="outline"
-        size="sm"
-        className="flex items-center gap-2"
+        className="flex items-center gap-2 h-7 px-3 mr-2 rounded-md bg-primary text-primary-foreground text-sm"
       >
-        <LogIn className="h-4 w-4" />
         Sign In
-      </Button>
+      </button>
     );
   }
 
