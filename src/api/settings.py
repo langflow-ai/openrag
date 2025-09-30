@@ -1,12 +1,15 @@
 import json
 import platform
 from starlette.responses import JSONResponse
+from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from config.settings import (
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
+    DOCLING_COMPONENT_ID,
+    LOCALHOST_URL,
     clients,
     get_openrag_config,
     config_manager,
@@ -73,6 +76,7 @@ async def get_settings(request, session_manager):
                 "llm_model": agent_config.llm_model,
                 "system_prompt": agent_config.system_prompt,
             },
+            "localhost_url": LOCALHOST_URL,
         }
 
         # Only expose edit URLs when a public URL is configured
@@ -571,7 +575,8 @@ async def onboarding(request, flows_service):
 
                     # Set base URL for Ollama provider
                     if provider == "ollama" and "endpoint" in body:
-                        endpoint = body["endpoint"]
+                        endpoint = transform_localhost_url(body["endpoint"])
+
                         await clients._create_langflow_global_variable(
                             "OLLAMA_BASE_URL", endpoint, modify=True
                         )
