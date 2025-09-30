@@ -103,4 +103,5 @@ export interface IngestSettings {
   ocr: boolean;
   pictureDescriptions: boolean;
   embeddingModel: string;
+  tableStructure: boolean;
 }

@@ -10,6 +10,9 @@ import { PickerHeader } from "./picker-header";
 import { FileList } from "./file-list";
 import { IngestSettings } from "./ingest-settings";
 import { createProviderHandler } from "./provider-handlers";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useAuth } from "@/contexts/auth-context";
+import { DEFAULT_KNOWLEDGE_SETTINGS } from "@/lib/constants";
 
 export const UnifiedCloudPicker = ({
   provider,
@@ -22,20 +25,72 @@ export const UnifiedCloudPicker = ({
   baseUrl,
   onSettingsChange,
 }: UnifiedCloudPickerProps) => {
+  const { isNoAuthMode } = useAuth();
   const [isPickerLoaded, setIsPickerLoaded] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [isIngestSettingsOpen, setIsIngestSettingsOpen] = useState(false);
+  const [isIngestSettingsOpen, setIsIngestSettingsOpen] = useState(true);
   const [isLoadingBaseUrl, setIsLoadingBaseUrl] = useState(false);
   const [autoBaseUrl, setAutoBaseUrl] = useState<string | undefined>(undefined);
 
+  // Fetch settings using React Query
+  const { data: settings = {} } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+
   // Settings state with defaults
   const [ingestSettings, setIngestSettings] = useState<IngestSettingsType>({
-    chunkSize: 1000,
-    chunkOverlap: 200,
-    ocr: false,
-    pictureDescriptions: false,
-    embeddingModel: "text-embedding-3-small",
+    chunkSize: DEFAULT_KNOWLEDGE_SETTINGS.chunk_size,
+    chunkOverlap: DEFAULT_KNOWLEDGE_SETTINGS.chunk_overlap,
+    ocr: DEFAULT_KNOWLEDGE_SETTINGS.ocr,
+    pictureDescriptions: DEFAULT_KNOWLEDGE_SETTINGS.picture_descriptions,
+    embeddingModel: DEFAULT_KNOWLEDGE_SETTINGS.embedding_model,
+    tableStructure: DEFAULT_KNOWLEDGE_SETTINGS.table_structure,
   });
+
+  // Sync chunk size with backend settings
+  useEffect(() => {
+    const chunkSize = settings.knowledge?.chunk_size;
+    if (chunkSize !== undefined) {
+      setIngestSettings(prev => ({
+        ...prev,
+        chunkSize: chunkSize,
+      }));
+    }
+  }, [settings.knowledge]);
+
+  // Sync chunk overlap with backend settings
+  useEffect(() => {
+    const chunkOverlap = settings.knowledge?.chunk_overlap;
+    if (chunkOverlap !== undefined) {
+      setIngestSettings(prev => ({
+        ...prev,
+        chunkOverlap: chunkOverlap,
+      }));
+    }
+  }, [settings.knowledge]);
+
+  // Sync processing mode (doclingPresets) with OCR and picture descriptions
+  useEffect(() => {
+    const mode = settings.knowledge?.doclingPresets;
+    if (mode) {
+      setIngestSettings(prev => ({
+        ...prev,
+        ocr: mode === "ocr" || mode === "picture_description" || mode === "VLM",
+        pictureDescriptions: mode === "picture_description",
+      }));
+    }
+  }, [settings.knowledge]);
+
+  // Sync embedding model with backend settings
+  useEffect(() => {
+    const embeddingModel = settings.knowledge?.embedding_model;
+    if (embeddingModel) {
+      setIngestSettings(prev => ({
+        ...prev,
+        embeddingModel: embeddingModel,
+      }));
+    }
+  }, [settings.knowledge]);
 
   // Handle settings changes and notify parent
   const handleSettingsChange = (newSettings: IngestSettingsType) => {
