@@ -14,7 +14,7 @@ import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
 import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
 import { useCreateFilter } from "@/app/api/mutations/useCreateFilter";
 import { useGetSearchAggregations } from "@/src/app/api/queries/useGetSearchAggregations";
-import { FilterIconPopover } from "@/components/filter-icon-popover";
+import { FilterIconPopover, IconKey } from "@/components/filter-icon-popover";
 
 interface FacetBucket {
   key: string;
@@ -32,14 +32,14 @@ export const filterAccentClasses: Record<
   "zinc" | "pink" | "purple" | "indigo" | "emerald" | "amber" | "red" | "",
   string
 > = {
-  zinc: "bg-accent text-accent-foreground",
+  zinc: "bg-accent text-muted-foreground",
   pink: "bg-accent-pink text-accent-pink-foreground",
   purple: "bg-accent-purple text-accent-purple-foreground",
   indigo: "bg-accent-indigo text-accent-indigo-foreground",
   emerald: "bg-accent-emerald text-accent-emerald-foreground",
   amber: "bg-accent-amber text-accent-amber-foreground",
   red: "bg-accent-red text-accent-red-foreground",
-  "": "bg-accent text-accent-foreground",
+  "": "bg-accent text-muted-foreground",
 };
 
 export function KnowledgeFilterPanel() {
@@ -62,7 +62,7 @@ export function KnowledgeFilterPanel() {
   const [color, setColor] = useState<
     "zinc" | "pink" | "purple" | "indigo" | "emerald" | "amber" | "red"
   >("zinc");
-  const [iconKey, setIconKey] = useState<string>("Filter");
+  const [iconKey, setIconKey] = useState<IconKey>();
 
   // Filter configuration states (mirror search page exactly)
   const [query, setQuery] = useState("");
@@ -108,7 +108,7 @@ export function KnowledgeFilterPanel() {
       setName(selectedFilter.name);
       setDescription(selectedFilter.description || "");
       setColor(parsedFilterData.color || "zinc");
-      setIconKey(parsedFilterData.icon || "Filter");
+      setIconKey(parsedFilterData.icon as IconKey);
     }
   }, [selectedFilter, parsedFilterData]);
 
@@ -122,7 +122,7 @@ export function KnowledgeFilterPanel() {
       setName("");
       setDescription("");
       setColor(parsedFilterData.color || "zinc");
-      setIconKey(parsedFilterData.icon || "Filter");
+      setIconKey(parsedFilterData.icon as IconKey);
     }
   }, [createMode, parsedFilterData]);
 

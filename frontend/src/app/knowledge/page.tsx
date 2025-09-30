@@ -147,7 +147,7 @@ function SearchPage() {
       initialFlex: 0.5,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
-          <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
+          <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
             {value?.toFixed(2) ?? "-"}
           </span>
         );

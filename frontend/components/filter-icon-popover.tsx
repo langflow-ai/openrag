@@ -1,78 +1,78 @@
 "use client";
 
 import React, { type SVGProps } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-  Filter as FilterIcon,
-  Star,
+  File,
   Book,
-  FileText,
-  Folder,
-  Globe,
-  Calendar,
-  User,
-  Users,
-  Tag,
-  Briefcase,
-  Building2,
-  Cog,
+  Scroll,
+  Library,
+  Map,
+  FileImage,
+  Layers3,
   Database,
-  Cpu,
-  Bot,
-  MessageSquare,
-  Search,
+  Folder,
+  Archive,
+  MessagesSquare,
+  SquareStack,
+  Ghost,
+  Gem,
+  Swords,
+  Bolt,
   Shield,
-  Lock,
-  Key,
-  Link,
-  Mail,
-  Phone,
+  Hammer,
+  Globe,
+  HardDrive,
+  Upload,
+  Cable,
+  ShoppingCart,
+  ShoppingBag,
   Check,
+  Plus,
 } from "lucide-react";
 import { filterAccentClasses } from "./knowledge-filter-panel";
+import { cn } from "@/lib/utils";
 
 const ICON_MAP = {
-  Filter: FilterIcon,
-  Star,
-  Book,
-  FileText,
-  Folder,
-  Globe,
-  Calendar,
-  User,
-  Users,
-  Tag,
-  Briefcase,
-  Building2,
-  Cog,
-  Database,
-  Cpu,
-  Bot,
-  MessageSquare,
-  Search,
-  Shield,
-  Lock,
-  Key,
-  Link,
-  Mail,
-  Phone,
+  file: File,
+  book: Book,
+  scroll: Scroll,
+  library: Library,
+  map: Map,
+  image: FileImage,
+  layers3: Layers3,
+  database: Database,
+  folder: Folder,
+  archive: Archive,
+  messagesSquare: MessagesSquare,
+  squareStack: SquareStack,
+  ghost: Ghost,
+  gem: Gem,
+  swords: Swords,
+  bolt: Bolt,
+  shield: Shield,
+  hammer: Hammer,
+  globe: Globe,
+  hardDrive: HardDrive,
+  upload: Upload,
+  cable: Cable,
+  shoppingCart: ShoppingCart,
+  shoppingBag: ShoppingBag,
 } as const;
 
 export type IconKey = keyof typeof ICON_MAP;
 
-function iconKeyToComponent(
-  key: string
-): React.ComponentType<SVGProps<SVGSVGElement>> {
+export function iconKeyToComponent(
+  key?: string
+): React.ComponentType<SVGProps<SVGSVGElement>> | undefined {
+  if (!key) return undefined;
   return (
-    (ICON_MAP as Record<string, React.ComponentType<SVGProps<SVGSVGElement>>>)[
-      key
-    ] || FilterIcon
-  );
+    ICON_MAP as Record<string, React.ComponentType<SVGProps<SVGSVGElement>>>
+  )[key];
 }
 
 const COLORS = [
@@ -87,21 +87,21 @@ const COLORS = [
 export type FilterColor = (typeof COLORS)[number];
 
 const colorSwatchClasses = {
-  zinc: "bg-muted-foreground",
-  pink: "bg-accent-pink-foreground",
-  purple: "bg-accent-purple-foreground",
-  indigo: "bg-accent-indigo-foreground",
-  emerald: "bg-accent-emerald-foreground",
-  amber: "bg-accent-amber-foreground",
-  red: "bg-accent-red-foreground",
-  "": "bg-muted-foreground",
+  zinc: "bg-muted-foreground text-accent-foreground",
+  pink: "bg-accent-pink-foreground text-accent-pink",
+  purple: "bg-accent-purple-foreground text-accent-purple",
+  indigo: "bg-accent-indigo-foreground text-accent-indigo",
+  emerald: "bg-accent-emerald-foreground text-accent-emerald",
+  amber: "bg-accent-amber-foreground text-accent-amber",
+  red: "bg-accent-red-foreground text-accent-red",
+  "": "bg-muted-foreground text-accent-foreground",
 };
 
 export interface FilterIconPopoverProps {
   color: FilterColor;
-  iconKey: IconKey | string;
+  iconKey?: IconKey | undefined;
   onColorChange: (c: FilterColor) => void;
-  onIconChange: (k: IconKey) => void;
+  onIconChange: (k: IconKey | undefined) => void;
   triggerClassName?: string;
 }
 
@@ -116,56 +116,55 @@ export function FilterIconPopover({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className={"h-8 w-8 p-0 " + (triggerClassName || "")}
+        <button
+          className={cn(
+            "h-10 w-10 min-w-10 min-h-10 rounded-sm flex items-center justify-center transition-colors",
+            filterAccentClasses[color || ""],
+            triggerClassName
+          )}
         >
-          <span
-            className={
-              filterAccentClasses[color || ""] +
-              " inline-flex items-center justify-center rounded h-6 w-6"
-            }
-          >
-            <Icon className="h-3.5 w-3.5" />
-          </span>
-        </Button>
+          {Icon && <Icon className="h-5 w-5" />}
+          {!Icon && <Plus className="h-5 w-5" />}
+        </button>
       </PopoverTrigger>
       <PopoverContent className="w-80" align="start">
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="grid grid-cols-7 items-center gap-2">
             {COLORS.map((c) => (
               <button
                 key={c}
                 type="button"
                 onClick={() => onColorChange(c)}
-                className={
-                    
-                  "flex items-center justify-center h-6 w-6 rounded-sm transition-colors " +
+                className={cn(
+                  "flex items-center justify-center h-6 w-6 rounded-sm transition-colors",
                   colorSwatchClasses[c || ""]
-                }
+                )}
                 aria-label={c}
               >
                 {c === color && <Check className="h-3.5 w-3.5" />}
               </button>
             ))}
           </div>
-          <div className="text-xs font-medium text-muted-foreground mt-2">
-            Icon
-          </div>
           <div className="grid grid-cols-6 gap-2">
-            {(Object.keys(ICON_MAP) as IconKey[]).map((k) => {
-              const OptIcon = ICON_MAP[k];
+            {Object.keys(ICON_MAP).map((k: string) => {
+              const OptIcon = ICON_MAP[k as IconKey];
               const active = iconKey === k;
               return (
                 <button
                   key={k}
                   type="button"
-                  onClick={() => onIconChange(k)}
+                  onClick={() => {
+                    if (active) {
+                      onIconChange(undefined);
+                    } else {
+                      onIconChange(k as IconKey);
+                    }
+                  }}
                   className={
-                    "h-8 w-8 inline-flex items-center justify-center rounded border " +
-                    (active ? "border-foreground" : "border-border")
+                    "h-8 w-8 inline-flex items-center hover:text-foreground justify-center rounded border " +
+                    (active
+                      ? "border-muted-foreground text-foreground"
+                      : "border-0 text-muted-foreground")
                   }
                   aria-label={k}
                 >
