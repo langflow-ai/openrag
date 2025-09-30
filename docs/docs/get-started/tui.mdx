@@ -1,22 +1,60 @@
 ---
-title: Terminal Interface (TUI)
+title: Terminal User Interface (TUI) commands
 slug: /get-started/tui
 ---
 
 # OpenRAG TUI Guide
 
-The OpenRAG Terminal User Interface (TUI) provides a streamlined way to set up, configure, and monitor your OpenRAG deployment directly from the terminal.
+The OpenRAG Terminal User Interface (TUI) provides a streamlined way to set up, configure, and monitor your OpenRAG deployment directly from the terminal, on any operating system.
 
 ![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
-## Launch
+The TUI offers an easier way to use OpenRAG without sacrificing control.
+Instead of starting OpenRAG using Docker commands and manually editing values in the `.env` file, the TUI walks you through the setup. It prompts for variables where required, creates a `.env` file for you, and then starts OpenRAG.
+
+Once OpenRAG is running, use the TUI to monitor your application, control your containers, and retrieve logs.
+
+## Start the TUI
+
+To start the TUI, run the following commands from the directory where you installed OpenRAG.
+For more information, see [Install OpenRAG](/install).
 
 ```bash
 uv sync
 uv run openrag
 ```
 
-## Features
+The TUI Welcome Screen offers basic and advanced setup options.
+For more information on setup values during installation, see [Install OpenRAG](/install).
+
+## Container management
+
+The TUI can deploy, manage, and upgrade your OpenRAG containers.
+
+### Start container services
+
+Click **Start Container Services** to start the OpenRAG containers.
+The TUI automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses.
+The TUI then pulls the images and deploys the containers with the following command.
+```bash
+docker compose up -d
+```
+If images are missing, the TUI runs `docker compose pull`, then runs `docker compose up -d`.
+
+### Start native services
+
+A "native" service in OpenRAG refers to a service run natively on your machine, and not within a container.
+The `docling-serve` process is a native service in OpenRAG, because it's a document processing service that is run on your local machine, and controlled separately from the containers.
+
+To start or stop `docling-serve` or any other native services, in the TUI main menu, click **Start Native Services** or **Stop Native Services**.
+
+To view the status, port, or PID of a native service, in the TUI main menu, click [Status](#status).
+
+### Status
+
+The **Status** screen 
+
+### Diagnostics
 
 ### Welcome Screen
 - Quick setup options: basic (no auth) or advanced (OAuth)
@@ -56,11 +94,5 @@ uv run openrag
 - Q: quit
 - Number keys (1-4): quick access to main screens
 
-## Benefits
-1. Simplified setup without manual file edits
-2. Clear visual feedback and error messages
-3. Integrated monitoring and control
-4. Cross-platform: Linux, macOS, Windows
-5. Fully terminal-based; no browser required
 
 
