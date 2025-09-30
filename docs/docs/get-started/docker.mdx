@@ -3,6 +3,8 @@ title: Docker deployment
 slug: /get-started/docker
 ---
 
+import PartialOnboarding from '@site/docs/_partial-onboarding.mdx'; 
+
 There are two different Docker Compose files.
 They deploy the same applications and containers, but to different environments.
 
@@ -34,7 +36,6 @@ To install OpenRAG with Docker Compose:
    ```bash
    OPENSEARCH_PASSWORD=your_secure_password
    OPENAI_API_KEY=your_openai_api_key
-   
    LANGFLOW_SUPERUSER=admin
    LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
    LANGFLOW_SECRET_KEY=your_secret_key
@@ -75,7 +76,9 @@ To install OpenRAG with Docker Compose:
    - **Backend API**: http://localhost:8000
    - **Langflow**: http://localhost:7860
 
-Continue with the [Quickstart](/quickstart).
+6. To use the OpenRAG application and continue with application onboarding, access the frontend at `http://localhost:3000`.
+
+<PartialOnboarding />
 
 ## Rebuild all Docker containers
 
