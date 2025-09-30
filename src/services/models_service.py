@@ -1,5 +1,6 @@
 import httpx
 from typing import Dict, List
+from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -95,7 +96,7 @@ class ModelsService:
         """Fetch available models from Ollama API with tool calling capabilities for language models"""
         try:
             # Use provided endpoint or default
-            ollama_url = endpoint
+            ollama_url = transform_localhost_url(endpoint)
 
             # API endpoints
             tags_url = f"{ollama_url}/api/tags"
