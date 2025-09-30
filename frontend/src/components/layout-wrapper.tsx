@@ -2,7 +2,10 @@
 
 import { Bell, Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useGetConversationsQuery, type ChatConversation } from "@/app/api/queries/useGetConversationsQuery";
+import {
+  useGetConversationsQuery,
+  type ChatConversation,
+} from "@/app/api/queries/useGetConversationsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import Logo from "@/components/logo/logo";
@@ -50,10 +53,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
-    (task) =>
+    task =>
       task.status === "pending" ||
       task.status === "running" ||
-      task.status === "processing",
+      task.status === "processing"
   );
 
   // Show loading state when backend isn't ready
@@ -85,7 +88,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="header-end-division">
-          <div className="header-end-display">
+          <div className="justify-end flex items-center">
             {/* Knowledge Filter Dropdown */}
             {/* <KnowledgeFilterDropdown
               selectedFilter={selectedFilter}
@@ -99,20 +102,18 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             {/* <DiscordLink inviteCode="EqksyE2EX9" /> */}
 
             {/* Task Notification Bell */}
-            <Button
-              variant="ghost"
-              size="iconSm"
+            <button
               onClick={toggleMenu}
-              className="relative"
+              className="h-9 w-9 hover:bg-muted rounded-lg flex items-center justify-center"
             >
-              <Bell className="h-4 w-4 text-muted-foreground" />
+              <Bell size={20} className="text-muted-foreground" />
               {activeTasks.length > 0 && (
                 <div className="header-notifications" />
               )}
-            </Button>
+            </button>
 
             {/* Separator */}
-            <div className="w-px h-6 bg-border" />
+            <div className="w-px h-6 bg-border ml-3 mr-4" />
 
             <UserNav />
           </div>
