@@ -59,8 +59,8 @@ export function UserNav() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="hover:bg-muted rounded-lg flex items-center justify-center">
-          <Avatar className="rounded-md w-8 h-8">
+        <button className="hover:bg-muted rounded-lg pl-[4px] p-[3px] flex items-center justify-center">
+          <Avatar className="rounded-md w-7 h-7">
             <AvatarImage
               width={16}
               height={16}
