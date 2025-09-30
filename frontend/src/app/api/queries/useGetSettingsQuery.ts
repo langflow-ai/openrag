@@ -35,6 +35,7 @@ export interface Settings {
     separator?: string;
     embeddingModel?: string;
   };
+  localhost_url?: string;
 }
 
 export const useGetSettingsQuery = (
