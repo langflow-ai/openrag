@@ -514,6 +514,9 @@ class AppClients:
             ssl_assert_fingerprint=None,
             headers=headers,
             http_compress=True,
+            timeout=30,  # 30 second timeout
+            max_retries=3,
+            retry_on_timeout=True,
         )
 
 
