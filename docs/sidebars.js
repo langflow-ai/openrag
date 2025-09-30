@@ -72,10 +72,16 @@ const sidebars = {
           id: "reference/configuration",
           label: "Environment Variables and Configuration File"
         },
+      ],
+    },
+    {
+      type: "category",
+      label: "Support",
+      items: [
         {
           type: "doc",
-          id: "reference/troubleshooting",
-          label: "Troubleshooting"
+          id: "support/troubleshoot",
+          label: "Troubleshoot"
         },
       ],
     },
