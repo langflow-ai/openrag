@@ -5,39 +5,14 @@ slug: /reference/configuration
 
 OpenRAG supports multiple configuration methods with the following priority, from highest to lowest:
 
-1. [Configuration file (`config.yaml`)](#configuration-file) - The `config.yaml` file is generated with values input during [Application onboarding](/install#application-onboarding), and configure the [OpenRAG configuration variables](#openrag-config-variables). These values configure OpenRAG application behavior.
+1. [Configuration file (`config.yaml`)](#configuration-file) - The `config.yaml` file is generated with values input during [Application onboarding](/install#application-onboarding), and controls the [OpenRAG configuration variables](#openrag-config-variables).
 2. [Environment variables](#environment-variables) - Environment variables control how OpenRAG connects to services. Environment variables in the `.env` control underlying services such as Langflow authentication, Oauth settings, and OpenSearch security.
 3. [Langflow runtime overrides](#langflow-runtime-overrides)
 4. [Default or fallback values](#default-values-and-fallbacks)
 
-## Configuration file (`config.yaml) {#configuration-file}
-
-The `config.yaml` file controls what OpenRAG _does_, including language model and embedding model provider, Docling ingestion settings, and API keys.
-The `config.yaml` file overrides values in the `.env` if the variable is present in both files.
-
-```yaml
-config.yaml:
-provider:
-  model_provider: openai
-  api_key: ${PROVIDER_API_KEY}  # optional: can be literal instead
-  endpoint: https://api.example.com # optional: only for Ollama or IBM providers
-  project_id: my-project # optional: only for IBM providers
-
-knowledge:
-  embedding_model: text-embedding-3-small
-  chunk_size: 1000
-  chunk_overlap: 200
-  ocr: true
-  picture_descriptions: false
-
-agent:
-  llm_model: gpt-4o-mini
-  system_prompt: "You are a helpful AI assistant..."
-```
-
 ## OpenRAG configuration variables {#openrag-config-variables}
 
-The OpenRAG configuration variables are generated during [Application onboarding](/install#application-onboarding). These values configure the OpenRAG application behavior.
+These values control what the OpenRAG application does.
 
 ### Provider settings
 
@@ -67,8 +42,6 @@ The OpenRAG configuration variables are generated during [Application onboarding
 | `SYSTEM_PROMPT` | System prompt for the agent.       | "You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context." |
 
 ## Environment variables
-
-You can create a `.env` file in the project root to set these variables, or set them in the TUI, which will create a `.env` file for you.
 
 ## Required variables
 
