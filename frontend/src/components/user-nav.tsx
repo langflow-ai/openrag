@@ -79,30 +79,28 @@ export function UserNav() {
           <ChevronsUpDown size={16} className="text-muted-foreground mx-2" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
+      <DropdownMenuContent className="w-56 p-0" align="end" forceMount>
         <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col space-y-2">
+          <div className="flex flex-col space-y-2 px-1 py-1">
             <p className="text-sm font-medium leading-none">{user?.name}</p>
             <p className="text-xs leading-none text-muted-foreground">
               {user?.email}
             </p>
           </div>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {/* <DropdownMenuItem className="flex items-center justify-between"> */}
-        <div className="flex items-center justify-between px-2 h-8">
+        <DropdownMenuSeparator className="m-0" />
+        <div className="flex items-center justify-between pl-3 pr-2 h-9">
           <span className="text-sm">Theme</span>
           <ThemeButtons />
         </div>
-        {/* </DropdownMenuItem> */}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
+        <DropdownMenuSeparator className="m-0" />
+        <button
           onClick={logout}
-          className="text-red-600 focus:text-red-600"
+          className="flex items-center hover:bg-muted w-full h-9 px-3"
         >
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>Log out</span>
-        </DropdownMenuItem>
+          <LogOut className="mr-2 h-4 w-4 text-muted-foreground" />
+          <span className="text-sm">Logout</span>
+        </button>
       </DropdownMenuContent>
     </DropdownMenu>
   );

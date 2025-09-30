@@ -19,10 +19,10 @@ export const ThemeButtons = () => {
   };
 
   return (
-    <div className="flex items-center gap-1 border border-border rounded-full">
+    <div className="flex items-center border border-border rounded-full">
       {/* Light Theme Button */}
       <button
-        className={`h-7 w-7 rounded-full flex items-center justify-center ${
+        className={`h-6 w-6 rounded-full flex items-center justify-center ${
           selectedTheme === "light"
             ? "bg-amber-400 text-primary"
             : "text-foreground hover:bg-amber-400 hover:text-background"
@@ -36,7 +36,7 @@ export const ThemeButtons = () => {
 
       {/* Dark Theme Button */}
       <button
-        className={`h-7 w-7 rounded-full flex items-center justify-center ${
+        className={`h-6 w-6 rounded-full flex items-center justify-center ${
           selectedTheme === "dark"
             ? "bg-purple-500/20 text-purple-500 hover:bg-purple-500/20 hover:text-purple-500"
             : "text-foreground hover:bg-purple-500/20 hover:text-purple-500"
@@ -50,7 +50,7 @@ export const ThemeButtons = () => {
 
       {/* System Theme Button */}
       <button
-        className={`h-7 w-7 rounded-full flex items-center justify-center ${
+        className={`h-6 w-6 rounded-full flex items-center justify-center ${
           selectedTheme === "system"
             ? "bg-foreground text-background"
             : "hover:bg-foreground hover:text-background"
