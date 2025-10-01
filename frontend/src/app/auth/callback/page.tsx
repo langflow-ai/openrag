@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef, Suspense } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,17 +14,21 @@ function AuthCallbackContent() {
   const [status, setStatus] = useState<"processing" | "success" | "error">("processing")
   const [error, setError] = useState<string | null>(null)
   const [purpose, setPurpose] = useState<string>("app_auth")
-  const hasProcessed = useRef(false)
 
   useEffect(() => {
-    // Prevent double execution in React Strict Mode
-    if (hasProcessed.current) return
-    hasProcessed.current = true
+    const code = searchParams.get('code')
+    const callbackKey = `callback_processed_${code}`
+
+    // Prevent double execution across component remounts
+    if (sessionStorage.getItem(callbackKey)) {
+      console.log('Callback already processed, skipping')
+      return
+    }
+    sessionStorage.setItem(callbackKey, 'true')
 
     const handleCallback = async () => {
       try {
         // Get parameters from URL
-        const code = searchParams.get('code')
         const state = searchParams.get('state')
         const errorParam = searchParams.get('error')
         
@@ -36,14 +40,6 @@ function AuthCallbackContent() {
         // Determine purpose - default to app_auth for login, data_source for connectors
         const detectedPurpose = authPurpose || (storedConnectorType?.includes('drive') ? 'data_source' : 'app_auth')
         setPurpose(detectedPurpose)
-        
-        // Debug logging
-        console.log('OAuth Callback Debug:', {
-          urlParams: { code: !!code, state: !!state, error: errorParam },
-          localStorage: { connectorId, storedConnectorType, authPurpose },
-          detectedPurpose,
-          fullUrl: window.location.href
-        })
         
         // Use state parameter as connection_id if localStorage is missing
         const finalConnectorId = connectorId || state
