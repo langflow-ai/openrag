@@ -68,7 +68,7 @@ function OnboardingPage() {
   // Mutations
   const onboardingMutation = useOnboardingMutation({
     onSuccess: (data) => {
-      toast.success("Onboarding completed successfully!");
+      toast.success("Onboarding completed successfully");
       console.log("Onboarding completed successfully", data);
       router.push(redirect);
     },
