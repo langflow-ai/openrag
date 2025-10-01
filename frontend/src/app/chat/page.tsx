@@ -26,6 +26,7 @@ import { useTask } from "@/contexts/task-context";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import Nudges from "./nudges";
+import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 
 interface Message {
   role: "user" | "assistant";
@@ -194,7 +195,7 @@ function ChatPage() {
           "Upload failed with status:",
           response.status,
           "Response:",
-          errorText,
+          errorText
         );
         throw new Error("Failed to process document");
       }
@@ -448,7 +449,7 @@ function ChatPage() {
       console.log(
         "Loading conversation with",
         conversationData.messages.length,
-        "messages",
+        "messages"
       );
       // Convert backend message format to frontend Message interface
       const convertedMessages: Message[] = conversationData.messages.map(
@@ -576,7 +577,7 @@ function ChatPage() {
                       ) === "string"
                         ? toolCall.function?.arguments || toolCall.arguments
                         : JSON.stringify(
-                            toolCall.function?.arguments || toolCall.arguments,
+                            toolCall.function?.arguments || toolCall.arguments
                           ),
                     result: toolCall.result,
                     status: "completed",
@@ -595,7 +596,7 @@ function ChatPage() {
           }
 
           return message;
-        },
+        }
       );
 
       setMessages(convertedMessages);
@@ -684,7 +685,7 @@ function ChatPage() {
       console.log(
         "Chat page received file upload error event:",
         filename,
-        error,
+        error
       );
 
       // Replace the last message with error message
@@ -698,37 +699,37 @@ function ChatPage() {
 
     window.addEventListener(
       "fileUploadStart",
-      handleFileUploadStart as EventListener,
+      handleFileUploadStart as EventListener
     );
     window.addEventListener(
       "fileUploaded",
-      handleFileUploaded as EventListener,
+      handleFileUploaded as EventListener
     );
     window.addEventListener(
       "fileUploadComplete",
-      handleFileUploadComplete as EventListener,
+      handleFileUploadComplete as EventListener
     );
     window.addEventListener(
       "fileUploadError",
-      handleFileUploadError as EventListener,
+      handleFileUploadError as EventListener
     );
 
     return () => {
       window.removeEventListener(
         "fileUploadStart",
-        handleFileUploadStart as EventListener,
+        handleFileUploadStart as EventListener
       );
       window.removeEventListener(
         "fileUploaded",
-        handleFileUploaded as EventListener,
+        handleFileUploaded as EventListener
       );
       window.removeEventListener(
         "fileUploadComplete",
-        handleFileUploadComplete as EventListener,
+        handleFileUploadComplete as EventListener
       );
       window.removeEventListener(
         "fileUploadError",
-        handleFileUploadError as EventListener,
+        handleFileUploadError as EventListener
       );
     };
   }, [endpoint, setPreviousResponseIds]);
@@ -755,7 +756,7 @@ function ChatPage() {
   }, [isFilterDropdownOpen]);
 
   const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
-    previousResponseIds[endpoint],
+    previousResponseIds[endpoint]
   );
 
   const handleSSEStream = async (userMessage: Message) => {
@@ -860,7 +861,7 @@ function ChatPage() {
                 console.log(
                   "Received chunk:",
                   chunk.type || chunk.object,
-                  chunk,
+                  chunk
                 );
 
                 // Extract response ID if present
@@ -876,14 +877,14 @@ function ChatPage() {
                   if (chunk.delta.function_call) {
                     console.log(
                       "Function call in delta:",
-                      chunk.delta.function_call,
+                      chunk.delta.function_call
                     );
 
                     // Check if this is a new function call
                     if (chunk.delta.function_call.name) {
                       console.log(
                         "New function call:",
-                        chunk.delta.function_call.name,
+                        chunk.delta.function_call.name
                       );
                       const functionCall: FunctionCall = {
                         name: chunk.delta.function_call.name,
@@ -899,7 +900,7 @@ function ChatPage() {
                     else if (chunk.delta.function_call.arguments) {
                       console.log(
                         "Function call arguments delta:",
-                        chunk.delta.function_call.arguments,
+                        chunk.delta.function_call.arguments
                       );
                       const lastFunctionCall =
                         currentFunctionCalls[currentFunctionCalls.length - 1];
@@ -911,14 +912,14 @@ function ChatPage() {
                           chunk.delta.function_call.arguments;
                         console.log(
                           "Accumulated arguments:",
-                          lastFunctionCall.argumentsString,
+                          lastFunctionCall.argumentsString
                         );
 
                         // Try to parse arguments if they look complete
                         if (lastFunctionCall.argumentsString.includes("}")) {
                           try {
                             const parsed = JSON.parse(
-                              lastFunctionCall.argumentsString,
+                              lastFunctionCall.argumentsString
                             );
                             lastFunctionCall.arguments = parsed;
                             lastFunctionCall.status = "completed";
@@ -926,7 +927,7 @@ function ChatPage() {
                           } catch (e) {
                             console.log(
                               "Arguments not yet complete or invalid JSON:",
-                              e,
+                              e
                             );
                           }
                         }
@@ -959,7 +960,7 @@ function ChatPage() {
                         else if (toolCall.function.arguments) {
                           console.log(
                             "Tool call arguments delta:",
-                            toolCall.function.arguments,
+                            toolCall.function.arguments
                           );
                           const lastFunctionCall =
                             currentFunctionCalls[
@@ -973,7 +974,7 @@ function ChatPage() {
                               toolCall.function.arguments;
                             console.log(
                               "Accumulated tool arguments:",
-                              lastFunctionCall.argumentsString,
+                              lastFunctionCall.argumentsString
                             );
 
                             // Try to parse arguments if they look complete
@@ -982,7 +983,7 @@ function ChatPage() {
                             ) {
                               try {
                                 const parsed = JSON.parse(
-                                  lastFunctionCall.argumentsString,
+                                  lastFunctionCall.argumentsString
                                 );
                                 lastFunctionCall.arguments = parsed;
                                 lastFunctionCall.status = "completed";
@@ -990,7 +991,7 @@ function ChatPage() {
                               } catch (e) {
                                 console.log(
                                   "Tool arguments not yet complete or invalid JSON:",
-                                  e,
+                                  e
                                 );
                               }
                             }
@@ -1022,7 +1023,7 @@ function ChatPage() {
                           console.log(
                             "Error parsing function call on finish:",
                             fc,
-                            e,
+                            e
                           );
                         }
                       }
@@ -1038,12 +1039,12 @@ function ChatPage() {
                   console.log(
                     "🟢 CREATING function call (added):",
                     chunk.item.id,
-                    chunk.item.tool_name || chunk.item.name,
+                    chunk.item.tool_name || chunk.item.name
                   );
 
                   // Try to find an existing pending call to update (created by earlier deltas)
                   let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id,
+                    (fc) => fc.id === chunk.item.id
                   );
                   if (!existing) {
                     existing = [...currentFunctionCalls]
@@ -1052,7 +1053,7 @@ function ChatPage() {
                         (fc) =>
                           fc.status === "pending" &&
                           !fc.id &&
-                          fc.name === (chunk.item.tool_name || chunk.item.name),
+                          fc.name === (chunk.item.tool_name || chunk.item.name)
                       );
                   }
 
@@ -1065,7 +1066,7 @@ function ChatPage() {
                       chunk.item.inputs || existing.arguments;
                     console.log(
                       "🟢 UPDATED existing pending function call with id:",
-                      existing.id,
+                      existing.id
                     );
                   } else {
                     const functionCall: FunctionCall = {
@@ -1083,7 +1084,7 @@ function ChatPage() {
                       currentFunctionCalls.map((fc) => ({
                         id: fc.id,
                         name: fc.name,
-                      })),
+                      }))
                     );
                   }
                 }
@@ -1094,7 +1095,7 @@ function ChatPage() {
                 ) {
                   console.log(
                     "Function args delta (Realtime API):",
-                    chunk.delta,
+                    chunk.delta
                   );
                   const lastFunctionCall =
                     currentFunctionCalls[currentFunctionCalls.length - 1];
@@ -1105,7 +1106,7 @@ function ChatPage() {
                     lastFunctionCall.argumentsString += chunk.delta || "";
                     console.log(
                       "Accumulated arguments (Realtime API):",
-                      lastFunctionCall.argumentsString,
+                      lastFunctionCall.argumentsString
                     );
                   }
                 }
@@ -1116,26 +1117,26 @@ function ChatPage() {
                 ) {
                   console.log(
                     "Function args done (Realtime API):",
-                    chunk.arguments,
+                    chunk.arguments
                   );
                   const lastFunctionCall =
                     currentFunctionCalls[currentFunctionCalls.length - 1];
                   if (lastFunctionCall) {
                     try {
                       lastFunctionCall.arguments = JSON.parse(
-                        chunk.arguments || "{}",
+                        chunk.arguments || "{}"
                       );
                       lastFunctionCall.status = "completed";
                       console.log(
                         "Parsed function arguments (Realtime API):",
-                        lastFunctionCall.arguments,
+                        lastFunctionCall.arguments
                       );
                     } catch (e) {
                       lastFunctionCall.arguments = { raw: chunk.arguments };
                       lastFunctionCall.status = "error";
                       console.log(
                         "Error parsing function arguments (Realtime API):",
-                        e,
+                        e
                       );
                     }
                   }
@@ -1149,14 +1150,14 @@ function ChatPage() {
                   console.log(
                     "🔵 UPDATING function call (done):",
                     chunk.item.id,
-                    chunk.item.tool_name || chunk.item.name,
+                    chunk.item.tool_name || chunk.item.name
                   );
                   console.log(
                     "🔵 Looking for existing function calls:",
                     currentFunctionCalls.map((fc) => ({
                       id: fc.id,
                       name: fc.name,
-                    })),
+                    }))
                   );
 
                   // Find existing function call by ID or name
@@ -1164,14 +1165,14 @@ function ChatPage() {
                     (fc) =>
                       fc.id === chunk.item.id ||
                       fc.name === chunk.item.tool_name ||
-                      fc.name === chunk.item.name,
+                      fc.name === chunk.item.name
                   );
 
                   if (functionCall) {
                     console.log(
                       "🔵 FOUND existing function call, updating:",
                       functionCall.id,
-                      functionCall.name,
+                      functionCall.name
                     );
                     // Update existing function call with completion data
                     functionCall.status =
@@ -1194,7 +1195,7 @@ function ChatPage() {
                       "🔴 WARNING: Could not find existing function call to update:",
                       chunk.item.id,
                       chunk.item.tool_name,
-                      chunk.item.name,
+                      chunk.item.name
                     );
                   }
                 }
@@ -1215,7 +1216,7 @@ function ChatPage() {
                       fc.name === chunk.item.name ||
                       fc.name === chunk.item.type ||
                       fc.name.includes(chunk.item.type.replace("_call", "")) ||
-                      chunk.item.type.includes(fc.name),
+                      chunk.item.type.includes(fc.name)
                   );
 
                   if (functionCall) {
@@ -1259,12 +1260,12 @@ function ChatPage() {
                     "🟡 CREATING tool call (added):",
                     chunk.item.id,
                     chunk.item.tool_name || chunk.item.name,
-                    chunk.item.type,
+                    chunk.item.type
                   );
 
                   // Dedupe by id or pending with same name
                   let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id,
+                    (fc) => fc.id === chunk.item.id
                   );
                   if (!existing) {
                     existing = [...currentFunctionCalls]
@@ -1276,7 +1277,7 @@ function ChatPage() {
                           fc.name ===
                             (chunk.item.tool_name ||
                               chunk.item.name ||
-                              chunk.item.type),
+                              chunk.item.type)
                       );
                   }
 
@@ -1292,7 +1293,7 @@ function ChatPage() {
                       chunk.item.inputs || existing.arguments;
                     console.log(
                       "🟡 UPDATED existing pending tool call with id:",
-                      existing.id,
+                      existing.id
                     );
                   } else {
                     const functionCall = {
@@ -1313,7 +1314,7 @@ function ChatPage() {
                         id: fc.id,
                         name: fc.name,
                         type: fc.type,
-                      })),
+                      }))
                     );
                   }
                 }
@@ -1591,7 +1592,7 @@ function ChatPage() {
 
   const handleForkConversation = (
     messageIndex: number,
-    event?: React.MouseEvent,
+    event?: React.MouseEvent
   ) => {
     // Prevent any default behavior and stop event propagation
     if (event) {
@@ -1656,7 +1657,7 @@ function ChatPage() {
 
   const renderFunctionCalls = (
     functionCalls: FunctionCall[],
-    messageIndex?: number,
+    messageIndex?: number
   ) => {
     if (!functionCalls || functionCalls.length === 0) return null;
 
@@ -2024,7 +2025,7 @@ function ChatPage() {
                         <div className="flex-1 min-w-0">
                           {renderFunctionCalls(
                             message.functionCalls || [],
-                            index,
+                            index
                           )}
                           <MarkdownRenderer chatMessage={message.content} />
                         </div>
@@ -2053,7 +2054,7 @@ function ChatPage() {
                     <div className="flex-1">
                       {renderFunctionCalls(
                         streamingMessage.functionCalls,
-                        messages.length,
+                        messages.length
                       )}
                       <MarkdownRenderer
                         chatMessage={streamingMessage.content}
@@ -2115,9 +2116,7 @@ function ChatPage() {
                 <div className="flex items-center gap-2 px-4 pt-3 pb-1">
                   <span
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
-                      isFilterHighlighted
-                        ? "bg-blue-500/40 text-blue-300 ring-2 ring-blue-400/50"
-                        : "bg-blue-500/20 text-blue-400"
+                      filterAccentClasses[parsedFilterData?.color || "zinc"]
                     }`}
                   >
                     @filter:{selectedFilter.name}
@@ -2127,7 +2126,7 @@ function ChatPage() {
                         setSelectedFilter(null);
                         setIsFilterHighlighted(false);
                       }}
-                      className="ml-1 hover:bg-blue-500/30 rounded-full p-0.5"
+                      className="ml-1 rounded-full p-0.5"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -2196,7 +2195,7 @@ function ChatPage() {
                     const filteredFilters = availableFilters.filter((filter) =>
                       filter.name
                         .toLowerCase()
-                        .includes(filterSearchTerm.toLowerCase()),
+                        .includes(filterSearchTerm.toLowerCase())
                     );
 
                     if (e.key === "Escape") {
@@ -2214,7 +2213,7 @@ function ChatPage() {
                     if (e.key === "ArrowDown") {
                       e.preventDefault();
                       setSelectedFilterIndex((prev) =>
-                        prev < filteredFilters.length - 1 ? prev + 1 : 0,
+                        prev < filteredFilters.length - 1 ? prev + 1 : 0
                       );
                       return;
                     }
@@ -2222,7 +2221,7 @@ function ChatPage() {
                     if (e.key === "ArrowUp") {
                       e.preventDefault();
                       setSelectedFilterIndex((prev) =>
-                        prev > 0 ? prev - 1 : filteredFilters.length - 1,
+                        prev > 0 ? prev - 1 : filteredFilters.length - 1
                       );
                       return;
                     }
@@ -2240,7 +2239,7 @@ function ChatPage() {
                       ) {
                         e.preventDefault();
                         handleFilterSelect(
-                          filteredFilters[selectedFilterIndex],
+                          filteredFilters[selectedFilterIndex]
                         );
                         return;
                       }
@@ -2259,7 +2258,7 @@ function ChatPage() {
                       ) {
                         e.preventDefault();
                         handleFilterSelect(
-                          filteredFilters[selectedFilterIndex],
+                          filteredFilters[selectedFilterIndex]
                         );
                         return;
                       }
@@ -2339,7 +2338,7 @@ function ChatPage() {
                         .filter((filter) =>
                           filter.name
                             .toLowerCase()
-                            .includes(filterSearchTerm.toLowerCase()),
+                            .includes(filterSearchTerm.toLowerCase())
                         )
                         .map((filter, index) => (
                           <button
@@ -2365,7 +2364,7 @@ function ChatPage() {
                       {availableFilters.filter((filter) =>
                         filter.name
                           .toLowerCase()
-                          .includes(filterSearchTerm.toLowerCase()),
+                          .includes(filterSearchTerm.toLowerCase())
                       ).length === 0 &&
                         filterSearchTerm && (
                           <div className="px-2 py-3 text-sm text-muted-foreground">
