@@ -75,7 +75,7 @@ const sidebars = {
         {
           type: "doc",
           id: "reference/configuration",
-          label: "Environment Variables and Configuration File"
+          label: "Environment variables"
         },
       ],
     },
