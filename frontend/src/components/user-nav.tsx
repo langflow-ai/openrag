@@ -23,7 +23,7 @@ export function UserNav() {
   }
 
   // In no-auth mode, show a simple theme switcher instead of auth UI
-  if (isNoAuthMode) {
+  if (!isNoAuthMode) {
     return (
       <button
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -42,7 +42,7 @@ export function UserNav() {
     return (
       <button
         onClick={login}
-        className="flex items-center gap-2 h-7 px-3 mr-2 rounded-md bg-primary text-primary-foreground text-sm"
+        className="flex items-center gap-2 h-7 px-3 mr-2 rounded-md bg-primary text-primary-foreground text-[13px] line-height-[16px]"
       >
         Sign In
       </button>
@@ -52,7 +52,7 @@ export function UserNav() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="hover:bg-muted rounded-lg pl-[4px] p-[3px] flex items-center justify-center">
+        <button className="hover:bg-accent rounded-lg pl-[4px] p-[3px] flex items-center justify-center">
           <Avatar className="rounded-md w-7 h-7">
             <AvatarImage
               width={16}
