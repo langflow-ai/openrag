@@ -115,11 +115,11 @@ export function ModelSelector({
 									/>
 									<div className="flex items-center gap-2">
 										{option.label}
-										{option.default && (
-											<span className="text-xs text-foreground p-1 rounded-md bg-muted">
+										{/* {option.default && (
+											<span className="text-xs text-foreground p-1 rounded-md bg-muted">        // DISABLING DEFAULT TAG FOR NOW
 												Default
 											</span>
-										)}
+										)} */}
 									</div>
 								</CommandItem>
 							))}
