@@ -111,7 +111,7 @@ export function Navigation({
       ) {
         // Filter out the deleted conversation and find the next one
         const remainingConversations = conversations.filter(
-          (conv) => conv.response_id !== conversationToDelete.response_id,
+          conv => conv.response_id !== conversationToDelete.response_id
         );
 
         if (remainingConversations.length > 0) {
@@ -132,7 +132,7 @@ export function Navigation({
       setDeleteModalOpen(false);
       setConversationToDelete(null);
     },
-    onError: (error) => {
+    onError: error => {
       toast.error(`Failed to delete conversation: ${error.message}`);
     },
   });
@@ -164,7 +164,7 @@ export function Navigation({
     window.dispatchEvent(
       new CustomEvent("fileUploadStart", {
         detail: { filename: file.name },
-      }),
+      })
     );
 
     try {
@@ -188,7 +188,7 @@ export function Navigation({
               filename: file.name,
               error: "Failed to process document",
             },
-          }),
+          })
         );
 
         // Trigger loading end event
@@ -208,7 +208,7 @@ export function Navigation({
       window.dispatchEvent(
         new CustomEvent("fileUploaded", {
           detail: { file, result },
-        }),
+        })
       );
 
       // Trigger loading end event
@@ -222,7 +222,7 @@ export function Navigation({
       window.dispatchEvent(
         new CustomEvent("fileUploadError", {
           detail: { filename: file.name, error: "Failed to process document" },
-        }),
+        })
       );
     }
   };
@@ -244,7 +244,7 @@ export function Navigation({
 
   const handleDeleteConversation = (
     conversation: ChatConversation,
-    event?: React.MouseEvent,
+    event?: React.MouseEvent
   ) => {
     if (event) {
       event.preventDefault();
@@ -256,7 +256,7 @@ export function Navigation({
 
   const handleContextMenuAction = (
     action: string,
-    conversation: ChatConversation,
+    conversation: ChatConversation
   ) => {
     switch (action) {
       case "delete":
@@ -334,15 +334,15 @@ export function Navigation({
     <div className="flex flex-col h-full bg-background">
       <div className="px-3 py-2 flex-shrink-0">
         <div className="space-y-1">
-          {routes.map((route) => (
+          {routes.map(route => (
             <div key={route.href}>
               <Link
                 href={route.href}
                 className={cn(
-                  "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-lg transition-all",
+                  "text-[13px] group flex p-3 w-full justify-start font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-lg transition-all",
                   route.active
                     ? "bg-accent text-accent-foreground shadow-sm"
-                    : "text-foreground hover:text-accent-foreground",
+                    : "text-foreground hover:text-accent-foreground"
                 )}
               >
                 <div className="flex items-center flex-1">
@@ -350,8 +350,8 @@ export function Navigation({
                     className={cn(
                       "h-4 w-4 mr-3 shrink-0",
                       route.active
-                        ? "text-accent-foreground"
-                        : "text-muted-foreground group-hover:text-foreground",
+                        ? "text-muted-foreground"
+                        : "text-muted-foreground group-hover:text-muted-foreground"
                     )}
                   />
                   {route.label}
@@ -429,7 +429,7 @@ export function Navigation({
                       No conversations yet
                     </div>
                   ) : (
-                    conversations.map((conversation) => (
+                    conversations.map(conversation => (
                       <button
                         key={conversation.response_id}
                         type="button"
@@ -464,7 +464,7 @@ export function Navigation({
                                 disabled={
                                   loading || deleteSessionMutation.isPending
                                 }
-                                onClick={(e) => {
+                                onClick={e => {
                                   e.stopPropagation();
                                 }}
                               >
@@ -475,14 +475,14 @@ export function Navigation({
                               side="bottom"
                               align="end"
                               className="w-48"
-                              onClick={(e) => e.stopPropagation()}
+                              onClick={e => e.stopPropagation()}
                             >
                               <DropdownMenuItem
-                                onClick={(e) => {
+                                onClick={e => {
                                   e.stopPropagation();
                                   handleContextMenuAction(
                                     "delete",
-                                    conversation,
+                                    conversation
                                   );
                                 }}
                                 className="cursor-pointer text-destructive focus:text-destructive"
@@ -528,7 +528,7 @@ export function Navigation({
                     No documents yet
                   </div>
                 ) : (
-                  conversationDocs.map((doc) => (
+                  conversationDocs.map(doc => (
                     <div
                       key={`${doc.filename}-${doc.uploadTime.getTime()}`}
                       className="p-2 rounded-lg hover:bg-accent cursor-pointer group flex items-center"
