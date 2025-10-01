@@ -5,7 +5,6 @@ import {
   FileText,
   Library,
   MessageSquare,
-  MoreHorizontal,
   Plus,
   Settings2,
   Trash2,
@@ -397,7 +396,7 @@ export function Navigation({
             {/* Conversations List - grows naturally, doesn't fill all space */}
             <div className="flex-shrink-0 overflow-y-auto scrollbar-hide space-y-1 max-h-full">
               {loadingNewConversation || isConversationsLoading ? (
-                <div className="text-sm text-muted-foreground p-2">
+                <div className="text-[13px] text-muted-foreground p-2">
                   Loading...
                 </div>
               ) : (
@@ -406,7 +405,7 @@ export function Navigation({
                   {placeholderConversation && (
                     <button
                       type="button"
-                      className="w-full p-2 rounded-lg bg-accent/50 border border-dashed border-accent cursor-pointer group text-left"
+                      className="w-full px-3 rounded-lg bg-accent border border-dashed border-accent cursor-pointer group text-left h-[44px]"
                       onClick={() => {
                         // Don't load placeholder as a real conversation, just focus the input
                         if (typeof window !== "undefined") {
@@ -414,7 +413,7 @@ export function Navigation({
                         }
                       }}
                     >
-                      <div className="text-sm font-medium text-foreground mb-1 truncate">
+                      <div className="text-[13px] font-medium text-foreground truncate">
                         {placeholderConversation.title}
                       </div>
                       <div className="text-xs text-muted-foreground">
@@ -425,7 +424,7 @@ export function Navigation({
 
                   {/* Show regular conversations */}
                   {conversations.length === 0 && !placeholderConversation ? (
-                    <div className="text-[13px] text-muted-foreground p-2">
+                    <div className="text-[13px] text-muted-foreground p-2 ml-1">
                       No conversations yet
                     </div>
                   ) : (
@@ -531,16 +530,16 @@ export function Navigation({
                 className="hidden"
                 accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
               />
-              <div className="overflow-y-auto scrollbar-hide space-y-1 max-h-40 ml-1">
+              <div className="overflow-y-auto scrollbar-hide space-y-1">
                 {conversationDocs.length === 0 ? (
-                  <div className="text-[13px] text-muted-foreground p-2">
+                  <div className="text-[13px] text-muted-foreground p-2 ml-1">
                     No documents yet
                   </div>
                 ) : (
                   conversationDocs.map(doc => (
                     <div
                       key={`${doc.filename}-${doc.uploadTime.getTime()}`}
-                      className="p-2 rounded-lg hover:bg-accent cursor-pointer group flex items-center"
+                      className="w-full px-3 pr-2 h-11 rounded-lg hover:bg-accent cursor-pointer group flex items-center"
                     >
                       <FileText className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
                       <div className="flex-1 min-w-0">

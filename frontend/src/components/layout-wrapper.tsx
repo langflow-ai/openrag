@@ -119,7 +119,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <div className="side-bar-arrangement bg-background fixed left-0 top-[53px] bottom-0 md:flex hidden">
+      <div className="side-bar-arrangement bg-background fixed left-0 top-[40px] bottom-0 md:flex hidden pt-1">
         <Navigation
           conversations={conversations}
           isConversationsLoading={isConversationsLoading}
