@@ -192,7 +192,7 @@ function OnboardingPage() {
                     disabled={!isComplete}
                     loading={onboardingMutation.isPending}
                   >
-                    Complete
+                    <span className="select-none">Complete</span>
                   </Button>
                 </div>
               </TooltipTrigger>
