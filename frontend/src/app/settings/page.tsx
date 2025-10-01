@@ -621,7 +621,7 @@ function KnowledgeSourcesPage() {
         </div>
 
         {/* Conditional Sync Settings or No-Auth Message */}
-        {false ? (
+        {isNoAuthMode ? (
           <Card className="border-yellow-500/50 bg-yellow-500/5">
             <CardHeader>
               <CardTitle className="text-lg text-yellow-600">
