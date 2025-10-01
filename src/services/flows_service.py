@@ -836,10 +836,5 @@ class FlowsService:
                 template["url"]["value"] = endpoint
                 template["url"]["options"] = [endpoint]
                 updated = True
-            elif provider == "ollama" and "base_url" in template:
-                # Ollama uses "base_url" field
-                template["base_url"]["value"] = endpoint
-                # Note: base_url is typically a MessageTextInput, not dropdown, so no options field
-                updated = True
 
         return updated
