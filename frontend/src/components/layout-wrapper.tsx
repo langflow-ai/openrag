@@ -80,7 +80,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   return (
     <div className="h-full relative">
       <header className="header-arrangement bg-background sticky top-0 z-50 h-10">
-        <div className="header-start-display px-[20px]">
+        <div className="header-start-display px-[16px]">
           {/* Logo/Title */}
           <div className="flex items-center">
             <Logo className="fill-primary" width={24} height={22} />
@@ -113,7 +113,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             </button>
 
             {/* Separator */}
-            <div className="w-px h-6 bg-border ml-3 mr-4" />
+            <div className="w-px h-6 bg-border mx-3" />
 
             <UserNav />
           </div>
