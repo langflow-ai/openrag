@@ -8,7 +8,6 @@ from config.settings import (
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
-    DOCLING_COMPONENT_ID,
     LOCALHOST_URL,
     clients,
     get_openrag_config,
