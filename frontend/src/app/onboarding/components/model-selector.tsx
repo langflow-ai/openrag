@@ -64,12 +64,12 @@ export function ModelSelector({
 							{icon && <div className="w-4 h-4">{icon}</div>}
 							{options.find((framework) => framework.value === value)?.label ||
 								value}
-							{options.find((framework) => framework.value === value)
+							{/* {options.find((framework) => framework.value === value)
 								?.default && (
 								<span className="text-xs text-foreground p-1 rounded-md bg-muted">
 									Default
 								</span>
-							)}
+							)} */}
 							{custom &&
 								value &&
 								!options.find((framework) => framework.value === value) && (
@@ -86,7 +86,7 @@ export function ModelSelector({
 					<ChevronsUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent align="start" className="w-[400px] p-0">
+			<PopoverContent align="start" className=" p-0 w-[var(--radix-popover-trigger-width)]">
 				<Command>
 					<CommandInput
 						placeholder={searchPlaceholder}
