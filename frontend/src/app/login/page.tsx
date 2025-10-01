@@ -69,18 +69,12 @@ function LoginPageContent() {
       />
       <div className="flex flex-col items-center justify-center gap-4 z-10">
         <Logo className="fill-primary" width={32} height={28} />
+        <div className="flex flex-col items-center justify-center gap-8">
         <h1 className="text-2xl font-medium font-chivo">Welcome to OpenRAG</h1>
-        <p className="text-sm text-muted-foreground">
-          All your knowledge at your fingertips.
-        </p>
         <Button onClick={login} className="w-80 gap-1.5" size="lg">
           <GoogleLogo className="h-4 w-4" />
           Continue with Google
-        </Button>
-      </div>
-      <div className="flex items-center justify-center gap-2 absolute bottom-6 text-xs text-muted-foreground z-10">
-        <p className="text-accent-emerald-foreground">Systems Operational</p>•
-        <p>Privacy Policy</p>
+        </Button></div>
       </div>
     </div>
   );

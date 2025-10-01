@@ -73,6 +73,7 @@ services:
       - ./documents:/app/documents:Z
       - ./keys:/app/keys:Z
       - ./flows:/app/flows:z
+      - ./config.yaml:/app/config.yaml:Z
     gpus: all
 
   openrag-frontend:
