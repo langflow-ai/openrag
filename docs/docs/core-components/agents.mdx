@@ -4,16 +4,17 @@ slug: /agents
 ---
 
 import Icon from "@site/src/components/icon/icon";
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
 import PartialModifyFlows from '@site/docs/_partial-modify-flows.mdx'; 
-
 
 OpenRAG leverages Langflow's Agent component to power the OpenRAG OpenSearch Agent flow.
 
-This flow intelligently chats with your knowledge by embedding your query, comparing it the vector database embeddings, and generating a response with the LLM.
+[Flows](https://docs.langflow.org/concepts-overview) in Langflow are functional representations of application workflows, with multiple [component](https://docs.langflow.org/concepts-components) nodes connected as single steps in a workflow.
 
-The Agent component shines here in its ability to make decisions on not only what query should be sent, but when a query is necessary to solve the problem at hand. 
+In the OpenRAG OpenSearch Agent flow, components like the Langflow [**Agent** component](https://docs.langflow.org/agents) and [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch) are connected to intelligently chat with your knowledge by embedding your query, comparing it the vector database embeddings, and generating a response with the LLM.
+
+![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
+
+The Agent component shines here in its ability to make decisions on not only what query should be sent, but when a query is necessary to solve the problem at hand.
 
 <details closed>
 <summary>How do agents work?</summary>
@@ -31,18 +32,18 @@ In an agentic context, tools are functions that the agent can run to perform tas
 ## Use the OpenRAG OpenSearch Agent flow
 
 If you've chatted with your knowledge in OpenRAG, you've already experienced the OpenRAG OpenSearch Agent chat flow.
-To view the flow, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then click **Edit in Langflow**.
-This flow contains seven components:
+To switch OpenRAG over to the [Langflow visual editor](https://docs.langflow.org/concepts-overview) and view the OpenRAG OpenSearch Agentflow, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then click **Edit in Langflow**.
+This flow contains seven components connected together to chat with your data:
 
-* The Agent component orchestrates the entire flow by deciding when to search the knowledge base, how to formulate search queries, and how to combine retrieved information with the user's question to generate a comprehensive response.
-The Agent behaves according to the prompt in the **Agent Instructions** field.
-* The Chat Input component is connected to the Agent component's Input port. This allows to flow to be triggered by an incoming prompt from a user or application.
-* The OpenSearch component is connected to the Agent component's Tools port. The agent may not use this database for every request; the agent only uses this connection if it decides the knowledge can help respond to the prompt.
-* The Language Model component is connected to the Agent component's Language Model port. The agent uses the connected LLM to reason through the request sent through Chat Input.
-* The Embedding Model component is connected to the OpenSearch component's Embedding port. This component converts text queries into vector representations that are compared with document embeddings stored in OpenSearch for semantic similarity matching. This gives your Agent's queries context.
-* The Text Input component is populated with the global variable `OPENRAG-QUERY-FILTER`. 
-This filter is the Knowledge filter, and filters which knowledge sources to search through.
-* The Agent component's Output port is connected to the Chat Output component, which returns the final response to the user or application.
+* The [**Agent** component](https://docs.langflow.org/agents) orchestrates the entire flow by deciding when to search the knowledge base, how to formulate search queries, and how to combine retrieved information with the user's question to generate a comprehensive response.
+The **Agent** behaves according to the prompt in the **Agent Instructions** field.
+* The [**Chat Input** component](https://docs.langflow.org/components-io) is connected to the Agent component's Input port. This allows to flow to be triggered by an incoming prompt from a user or application.
+* The [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch) is connected to the Agent component's Tools port. The agent may not use this database for every request; the agent only uses this connection if it decides the knowledge can help respond to the prompt.
+* The [**Language Model** component](https://docs.langflow.org/components-models) is connected to the Agent component's Language Model port. The agent uses the connected LLM to reason through the request sent through Chat Input.
+* The [**Embedding Model** component](https://docs.langflow.org/components-embedding-models) is connected to the OpenSearch component's Embedding port. This component converts text queries into vector representations that are compared with document embeddings stored in OpenSearch for semantic similarity matching. This gives your Agent's queries context.
+* The [**Text Input** component](https://docs.langflow.org/components-io) is populated with the global variable `OPENRAG-QUERY-FILTER`. 
+This filter is the [Knowledge filter](/knowledge#create-knowledge-filters), and filters which knowledge sources to search through.
+* The **Agent** component's Output port is connected to the [**Chat Output** component](https://docs.langflow.org/components-io), which returns the final response to the user or application.
 
 <PartialModifyFlows />
 
@@ -50,3 +51,13 @@ For an example of changing out the agent's LLM in OpenRAG, see the [Quickstart](
 
 To restore the flow to its initial state, in OpenRAG, click <Icon name="Settings" aria-hidden="true"/> **Settings**, and then click **Restore Flow**.
 OpenRAG warns you that this discards all custom settings. Click **Restore** to restore the flow.
+
+## Additional Langflow functionality
+
+Langflow includes features beyond Agents to help you integrate OpenRAG into your application, and all Langflow features are included in OpenRAG.
+
+* Langflow can serve your flows as an [MCP server](https://docs.langflow.org/mcp-server), or consume other MCP servers as an [MCP client](https://docs.langflow.org/mcp-client). Get started with the [MCP tutorial](https://docs.langflow.org/mcp-tutorial).
+
+* If you don't see the component you need, extend Langflow's functionality by creating [custom Python components](https://docs.langflow.org/components-custom-components).
+
+* Langflow offers component [bundles](https://docs.langflow.org/components-bundle-components) to integrate with many popular vector stores, AI/ML providers, and search APIs.
