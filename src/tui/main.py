@@ -334,12 +334,44 @@ def copy_sample_documents():
         # This is not a critical error - the app can work without sample documents
 
 
+def copy_flows():
+    """Copy flows from package to current directory if they don't exist."""
+    flows_dir = Path("flows")
+
+    # Check if flows directory already exists and has files
+    if flows_dir.exists() and any(flows_dir.glob("*.json")):
+        return  # Flows already exist, don't overwrite
+
+    try:
+        # Get flows from package assets
+        assets_flows = files("tui._assets.flows")
+
+        # Create flows directory if it doesn't exist
+        flows_dir.mkdir(exist_ok=True)
+
+        # Copy each flow
+        for resource in assets_flows.iterdir():
+            if resource.is_file() and resource.name.endswith('.json'):
+                dest_path = flows_dir / resource.name
+                if not dest_path.exists():
+                    content = resource.read_bytes()
+                    dest_path.write_bytes(content)
+                    logger.info(f"Copied flow: {resource.name}")
+
+    except Exception as e:
+        logger.debug(f"Could not copy flows: {e}")
+        # This is not a critical error - the app can work without flows
+
+
 def run_tui():
     """Run the OpenRAG TUI application."""
     app = None
     try:
         # Copy sample documents on first run
         copy_sample_documents()
+
+        # Copy flows on first run
+        copy_flows()
 
         app = OpenRAGTUI()
         app.run()

@@ -1,6 +1,6 @@
 [project]
 name = "openrag"
-version = "0.1.13"
+version = "0.1.14"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -37,6 +37,8 @@ openrag = "tui.main:run_tui"
 [tool.uv]
 package = true
 
+[tool.setuptools.package-data]
+"tui._assets" = ["**/*"]
 
 [tool.uv.sources]
 torch = [

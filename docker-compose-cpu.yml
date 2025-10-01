@@ -73,7 +73,7 @@ services:
     volumes:
       - ./documents:/app/documents:Z
       - ./keys:/app/keys:Z
-      - ./flows:/app/flows:Z
+      - ./flows:/app/flows:z
 
   openrag-frontend:
     image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
