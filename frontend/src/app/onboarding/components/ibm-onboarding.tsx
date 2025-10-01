@@ -119,23 +119,23 @@ export function IBMOnboarding({
           />
         </LabelWrapper>
         <LabelInput
-          label="IBM API key"
-          helperText="The API key for your watsonx.ai account."
+          label="watsonx Project ID"
+          helperText="Project ID for the model"
+          id="project-id"
+          required
+          placeholder="your-project-id"
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+        />
+        <LabelInput
+          label="watsonx API key"
+          helperText="API key to access watsonx.ai"
           id="api-key"
           type="password"
           required
           placeholder="your-api-key"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-        />
-        <LabelInput
-          label="IBM Project ID"
-          helperText="The project ID for your watsonx.ai account."
-          id="project-id"
-          required
-          placeholder="your-project-id"
-          value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
         />
         {isLoadingModels && (
           <p className="text-mmd text-muted-foreground">
