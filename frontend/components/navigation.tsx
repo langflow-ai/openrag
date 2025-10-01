@@ -357,7 +357,7 @@ export function Navigation({
                 </div>
               </Link>
               {route.label === "Settings" && (
-                <div className="mx-3 my-2 border-t border-border/40" />
+                <div className="my-2 border-t border-border" />
               )}
             </div>
           ))}
