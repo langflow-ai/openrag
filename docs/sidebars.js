@@ -70,7 +70,7 @@ const sidebars = {
         {
           type: "doc",
           id: "configure/configuration",
-          label: "Environment Variables"
+          label: "Environment variables"
         },
       ],
     },
