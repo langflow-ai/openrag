@@ -65,12 +65,13 @@ const config = {
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       // Replace with your project's social card
-      image: 'img/docusaurus-social-card.jpg',
+      // image: 'img/docusaurus-social-card.jpg',
       navbar: {
-        title: 'OpenRAG',
+        // title: 'OpenRAG',
         logo: {
           alt: 'OpenRAG Logo',
-          src: 'img/logo.svg',
+          src: "img/logo-openrag-light.svg",
+          srcDark: "img/logo-openrag-dark.svg",
           href: '/',
         },
         items: [

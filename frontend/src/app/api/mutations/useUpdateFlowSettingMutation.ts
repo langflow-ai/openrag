@@ -8,7 +8,9 @@ interface UpdateFlowSettingVariables {
   llm_model?: string;
   system_prompt?: string;
   embedding_model?: string;
-  doclingPresets?: string;
+  table_structure?: boolean;
+  ocr?: boolean;
+  picture_descriptions?: boolean;
   chunk_size?: number;
   chunk_overlap?: number;
 }
