@@ -33,8 +33,8 @@ RUN uv sync --frozen --no-install-project --no-editable --extra postgresql
 
 # Build frontend
 WORKDIR /app/src/frontend
-RUN npm ci && \
-    npm run build && \
+RUN NODE_OPTIONS=--max_old_space_size=1792 npm ci && \
+    NODE_OPTIONS=--max_old_space_size=1792 npm run build && \
     mkdir -p /app/src/backend/base/langflow/frontend && \
     cp -r build/* /app/src/backend/base/langflow/frontend/
 
