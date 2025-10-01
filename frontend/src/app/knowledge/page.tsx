@@ -20,6 +20,7 @@ import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdow
 import { StatusBadge } from "@/components/ui/status-badge";
 import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -55,7 +56,7 @@ function SearchPage() {
 
   const { data = [], isFetching } = useGetSearchQuery(
     parsedFilterData?.query || "*",
-    parsedFilterData,
+    parsedFilterData
   );
 
   const handleTableSearch = (e: ChangeEvent<HTMLInputElement>) => {
@@ -63,7 +64,7 @@ function SearchPage() {
   };
 
   // Convert TaskFiles to File format and merge with backend results
-  const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
+  const taskFilesAsFiles: File[] = taskFiles.map(taskFile => {
     return {
       filename: taskFile.filename,
       mimetype: taskFile.mimetype,
@@ -76,11 +77,11 @@ function SearchPage() {
 
   const backendFiles = data as File[];
 
-  const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
+  const filteredTaskFiles = taskFilesAsFiles.filter(taskFile => {
     return (
       taskFile.status !== "active" &&
       !backendFiles.some(
-        (backendFile) => backendFile.filename === taskFile.filename,
+        backendFile => backendFile.filename === taskFile.filename
       )
     );
   });
@@ -106,8 +107,8 @@ function SearchPage() {
             onClick={() => {
               router.push(
                 `/knowledge/chunks?filename=${encodeURIComponent(
-                  data?.filename ?? "",
-                )}`,
+                  data?.filename ?? ""
+                )}`
               );
             }}
           >
@@ -122,7 +123,7 @@ function SearchPage() {
     {
       field: "size",
       headerName: "Size",
-      valueFormatter: (params) =>
+      valueFormatter: params =>
         params.value ? `${Math.round(params.value / 1024)} KB` : "-",
     },
     {
@@ -132,13 +133,13 @@ function SearchPage() {
     {
       field: "owner",
       headerName: "Owner",
-      valueFormatter: (params) =>
+      valueFormatter: params =>
         params.data?.owner_name || params.data?.owner_email || "—",
     },
     {
       field: "chunkCount",
       headerName: "Chunks",
-      valueFormatter: (params) => params.data?.chunkCount?.toString() || "-",
+      valueFormatter: params => params.data?.chunkCount?.toString() || "-",
     },
     {
       field: "avgScore",
@@ -146,7 +147,7 @@ function SearchPage() {
       initialFlex: 0.5,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
-          <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
+          <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
             {value?.toFixed(2) ?? "-"}
           </span>
         );
@@ -200,8 +201,8 @@ function SearchPage() {
 
     try {
       // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map((row) =>
-        deleteDocumentMutation.mutateAsync({ filename: row.filename }),
+      const deletePromises = selectedRows.map(row =>
+        deleteDocumentMutation.mutateAsync({ filename: row.filename })
       );
 
       await Promise.all(deletePromises);
@@ -209,7 +210,7 @@ function SearchPage() {
       toast.success(
         `Successfully deleted ${selectedRows.length} document${
           selectedRows.length > 1 ? "s" : ""
-        }`,
+        }`
       );
       setSelectedRows([]);
       setShowBulkDeleteDialog(false);
@@ -222,7 +223,7 @@ function SearchPage() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to delete some documents",
+          : "Failed to delete some documents"
       );
     }
   };
@@ -251,9 +252,13 @@ function SearchPage() {
         {/* Search Input Area */}
         <div className="flex-shrink-0 mb-6 xl:max-w-[75%]">
           <form className="flex gap-3">
-            <div className="primary-input min-h-10 !flex items-center flex-nowrap gap-2 focus-within:border-foreground transition-colors !py-0">
+            <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]">
               {selectedFilter?.name && (
-                <div className="flex items-center gap-1 bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded max-w-[300px]">
+                <div
+                  className={`flex items-center gap-1 h-full px-1.5 py-0.5 rounded max-w-[300px] ${
+                    filterAccentClasses[parsedFilterData?.color || "zinc"]
+                  }`}
+                >
                   <span className="truncate">{selectedFilter?.name}</span>
                   <X
                     aria-label="Remove filter"
@@ -263,7 +268,7 @@ function SearchPage() {
                 </div>
               )}
               <input
-                className="bg-transparent w-full h-full focus:outline-none focus-visible:outline-none placeholder:font-mono"
+                className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none placeholder:font-mono"
                 name="search-query"
                 id="search-query"
                 type="text"
@@ -313,18 +318,17 @@ function SearchPage() {
           rowSelection="multiple"
           rowMultiSelectWithClick={false}
           suppressRowClickSelection={true}
-          getRowId={(params) => params.data.filename}
-          domLayout="autoHeight"
+          getRowId={params => params.data.filename}
+          domLayout="normal"
           onSelectionChanged={onSelectionChanged}
           noRowsOverlayComponent={() => (
-            <div className="text-center">
-              <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-              <p className="text-lg text-muted-foreground">
-                No documents found
-              </p>
-              <p className="text-sm text-muted-foreground/70 mt-2">
-                Try adjusting your search terms
-              </p>
+            <div className="text-center pb-[45px]">
+              <div className="text-lg text-primary font-semibold">
+                No knowledge
+              </div>
+              <div className="text-sm mt-1 text-muted-foreground">
+                Add files from local or your preferred cloud.
+              </div>
             </div>
           )}
         />
@@ -342,7 +346,7 @@ function SearchPage() {
         }? This will remove all chunks and data associated with these documents. This action cannot be undone.
 
 Documents to be deleted:
-${selectedRows.map((row) => `• ${row.filename}`).join("\n")}`}
+${selectedRows.map(row => `• ${row.filename}`).join("\n")}`}
         confirmText="Delete All"
         onConfirm={handleBulkDelete}
         isLoading={deleteDocumentMutation.isPending}

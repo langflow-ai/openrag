@@ -53,6 +53,16 @@ const config = {
           editUrl:
             'https://github.com/openrag/openrag/tree/main/docs/',
           routeBasePath: '/',
+          // Versioning configuration - see VERSIONING_SETUP.md
+          // To enable versioning, uncomment the following lines:
+          // lastVersion: 'current',
+          // versions: {
+          //   current: {
+          //     label: 'Next (unreleased)',
+          //     path: 'next',
+          //   },
+          // },
+          // onlyIncludeVersions: ['current'],
         },
         theme: {
           customCss: './src/css/custom.css',
@@ -65,12 +75,13 @@ const config = {
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       // Replace with your project's social card
-      image: 'img/docusaurus-social-card.jpg',
+      // image: 'img/docusaurus-social-card.jpg',
       navbar: {
-        title: 'OpenRAG',
+        // title: 'OpenRAG',
         logo: {
           alt: 'OpenRAG Logo',
-          src: 'img/logo.svg',
+          src: "img/logo-openrag-light.svg",
+          srcDark: "img/logo-openrag-dark.svg",
           href: '/',
         },
         items: [
