@@ -1,6 +1,13 @@
 "use client";
 
-import { ArrowUpRight, Loader2, PlugZap, RefreshCw } from "lucide-react";
+import {
+  ArrowUpRight,
+  Loader2,
+  Minus,
+  PlugZap,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
@@ -1054,12 +1061,36 @@ function KnowledgeSourcesPage() {
                       min="1"
                       value={chunkSize}
                       onChange={(e) => handleChunkSizeChange(e.target.value)}
-                      className="w-full pr-20"
+                      className="w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
-                    <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
-                      <span className="text-sm text-muted-foreground">
+                    <div className="absolute inset-y-0 right-0 flex items-center">
+                      <span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
                         characters
                       </span>
+                      <div className="flex flex-col">
+                        <Button
+                          aria-label="Increase value"
+                          className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative"
+                          variant="outline"
+                          size="iconSm"
+                          onClick={() =>
+                            handleChunkSizeChange((chunkSize + 1).toString())
+                          }
+                        >
+                          <Plus className="text-muted-foreground" size={8} />
+                        </Button>
+                        <Button
+                          aria-label="Decrease value"
+                          className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative"
+                          variant="outline"
+                          size="iconSm"
+                          onClick={() =>
+                            handleChunkSizeChange((chunkSize - 1).toString())
+                          }
+                        >
+                          <Minus className="text-muted-foreground" size={8} />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </LabelWrapper>
@@ -1073,12 +1104,40 @@ function KnowledgeSourcesPage() {
                       min="0"
                       value={chunkOverlap}
                       onChange={(e) => handleChunkOverlapChange(e.target.value)}
-                      className="w-full pr-20"
+                      className="w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
-                    <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
-                      <span className="text-sm text-muted-foreground">
+                    <div className="absolute inset-y-0 right-0 flex items-center">
+                      <span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
                         characters
                       </span>
+                      <div className="flex flex-col">
+                        <Button
+                          aria-label="Increase value"
+                          className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative"
+                          variant="outline"
+                          size="iconSm"
+                          onClick={() =>
+                            handleChunkOverlapChange(
+                              (chunkOverlap + 1).toString()
+                            )
+                          }
+                        >
+                          <Plus className="text-muted-foreground" size={8} />
+                        </Button>
+                        <Button
+                          aria-label="Decrease value"
+                          className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative"
+                          variant="outline"
+                          size="iconSm"
+                          onClick={() =>
+                            handleChunkOverlapChange(
+                              (chunkOverlap - 1).toString()
+                            )
+                          }
+                        >
+                          <Minus className="text-muted-foreground" size={8} />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </LabelWrapper>
