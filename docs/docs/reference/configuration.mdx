@@ -71,7 +71,7 @@ For more information, see [Application onboarding](/install#application-onboardi
 ### Document processing
 
 Control how OpenRAG processes and ingests documents into your knowledge base.
-For more information, see [Ingestion](/core-components/ingestion).
+For more information, see [Ingestion](/ingestion).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -102,7 +102,6 @@ Configure Langflow authentication.
 | `LANGFLOW_URL` | `http://localhost:7860` | Langflow URL. |
 | `NUDGES_FLOW_ID` | pre-filled | This value is pre-filled. The default value is found in [.env.example](https://github.com/langflow-ai/openrag/blob/main/.env.example). |
 | `SYSTEM_PROMPT` | "You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context." | System prompt for the Langflow agent. |
-
 
 ### OAuth provider settings
 
@@ -171,7 +170,7 @@ To manually edit the `config.yaml` file, do the following:
 
 The `config.yaml` value set for `MODEL_PROVIDER` can **not** be changed after onboarding.
 If you change this value in `config.yaml`, it will have no effect on restart.
-To change your `MODEL_PROVIDER`, you must [delete the OpenRAG containers](/tui#status), delete `config.yaml`, and [install OpenRAG](/install) again.
+To change your `MODEL_PROVIDER`, you must [delete the OpenRAG containers](/get-started/tui#status), delete `config.yaml`, and [install OpenRAG](/install) again.
 
 ## Langflow runtime overrides
 
