@@ -137,7 +137,7 @@ function OnboardingPage() {
             Connect a model provider
           </h1>
         </div>
-        <Card className="w-full max-w-[580px]">
+        <Card className="w-full max-w-[600px]">
           <Tabs
             defaultValue={modelProvider}
             onValueChange={handleSetModelProvider}
