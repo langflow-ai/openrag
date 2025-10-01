@@ -197,7 +197,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 newTask.status === "completed"
               ) {
                 // Task just completed - show success toast
-                toast.success("Task completed successfully!", {
+                toast.success("Task completed successfully", {
                   description: `Task ${newTask.task_id} has finished processing.`,
                   action: {
                     label: "View",
