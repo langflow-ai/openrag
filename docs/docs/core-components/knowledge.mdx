@@ -30,7 +30,7 @@ OpenRAG supports knowledge ingestion through direct file uploads and OAuth conne
 
 The **Knowledge Ingest** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
 
-The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#advanced-setup) or in the `.env` used by Docker Compose.
+The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#setup) menu or in the `.env` used by Docker Compose.
 
 To load and process a single file from the mapped location, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then click **Add File**.
 The file is loaded into your OpenSearch database, and appears in the Knowledge page.
@@ -54,7 +54,7 @@ If you wish to use another provider, add the secrets to another provider.
   <TabItem value="TUI" label="TUI" default>
    1. If OpenRAG is running, stop it with **Status** > **Stop Services**.
    2. Click **Advanced Setup**.
-   3. Add the OAuth provider's client and secret key in the [Advanced Setup](/install#advanced-setup) menu.
+   3. Add the OAuth provider's client and secret key in the [Advanced Setup](/install#setup) menu.
    4. Click **Save Configuration**.
    The TUI generates a new `.env` file with your OAuth values.
    5. Click **Start Container Services**.
