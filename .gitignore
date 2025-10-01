@@ -19,4 +19,4 @@ wheels/
 *.json
 .DS_Store
 
-config.yaml
+config/
