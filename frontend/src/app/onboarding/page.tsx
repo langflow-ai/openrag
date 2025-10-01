@@ -150,7 +150,7 @@ function OnboardingPage() {
                 </TabsTrigger>
                 <TabsTrigger value="watsonx">
                   <IBMLogo className="w-4 h-4" />
-                  IBM
+                  IBM watsonx.ai
                 </TabsTrigger>
                 <TabsTrigger value="ollama">
                   <OllamaLogo className="w-4 h-4" />
