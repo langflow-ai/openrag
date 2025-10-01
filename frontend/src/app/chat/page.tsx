@@ -1941,7 +1941,7 @@ function ChatPage() {
                     {message.role === "user" && (
                       <div className="flex gap-3">
                         <Avatar className="w-8 h-8 flex-shrink-0 select-none">
-                          <AvatarImage src={user?.picture} alt={user?.name} />
+                          <AvatarImage draggable={false} src={user?.picture} alt={user?.name} />
                           <AvatarFallback className="text-sm bg-primary/20 text-primary">
                             {user?.name ? (
                               user.name.charAt(0).toUpperCase()
