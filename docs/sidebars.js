@@ -60,6 +60,11 @@ const sidebars = {
           type: "doc",
           id: "core-components/knowledge",
           label: "OpenSearch Knowledge"
+        },
+        {
+          type: "doc",
+          id: "core-components/ingestion",
+          label: "Docling Ingestion"
         }
       ],
     },
