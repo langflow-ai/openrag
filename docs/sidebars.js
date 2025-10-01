@@ -43,7 +43,7 @@ const sidebars = {
         {
           type: "doc",
           id: "get-started/tui",
-          label: "Terminal Interface (TUI)"
+          label: "Terminal User Interface (TUI)"
         },
       ],
     },
