@@ -7,7 +7,7 @@ ENV RUSTFLAGS="--cfg reqwest_unstable"
 
 # Accept build arguments for git repository and branch
 ARG GIT_REPO=https://github.com/langflow-ai/langflow.git
-ARG GIT_BRANCH=main
+ARG GIT_BRANCH=lf-stable-main
 
 WORKDIR /app
 
