@@ -11,7 +11,7 @@ export interface InputProps
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, inputClassName, icon, type, placeholder, ...props }, ref) => {
     const [hasValue, setHasValue] = React.useState(
-      Boolean(props.value || props.defaultValue),
+      Boolean(props.value || props.defaultValue)
     );
     const [showPassword, setShowPassword] = React.useState(false);
 
@@ -30,7 +30,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <label
         className={cn(
           "relative block h-fit w-full text-sm group",
-          icon ? className : "",
+          icon ? className : ""
         )}
       >
         {icon && (
@@ -43,10 +43,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           type={type === "password" && showPassword ? "text" : type}
           placeholder={placeholder}
           className={cn(
-            "primary-input !placeholder-transparent",
+            "primary-input",
             icon && "pl-9",
             type === "password" && "!pr-8",
-            icon ? inputClassName : className,
+            icon ? inputClassName : className
           )}
           ref={ref}
           {...props}
@@ -66,18 +66,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             )}
           </button>
         )}
-        <span
-          className={cn(
-            "pointer-events-none absolute top-1/2 -translate-y-1/2 pl-px text-placeholder-foreground font-mono",
-            icon ? "left-9" : "left-3",
-            hasValue && "hidden",
-          )}
-        >
-          {placeholder}
-        </span>
       </label>
     );
-  },
+  }
 );
 
 Input.displayName = "Input";
