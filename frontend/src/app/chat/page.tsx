@@ -121,7 +121,6 @@ function ChatPage() {
   >(new Set());
   // previousResponseIds now comes from useChat context
   const [isUploading, setIsUploading] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [availableFilters, setAvailableFilters] = useState<
     KnowledgeFilterData[]
@@ -132,7 +131,6 @@ function ChatPage() {
   const [dropdownDismissed, setDropdownDismissed] = useState(false);
   const [isUserInteracting, setIsUserInteracting] = useState(false);
   const [isForkingInProgress, setIsForkingInProgress] = useState(false);
-  const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -272,43 +270,6 @@ function ChatPage() {
     } finally {
       setIsUploading(false);
       setLoading(false);
-    }
-  };
-
-  // Remove the old pollTaskStatus function since we're using centralized system
-
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current++;
-    if (dragCounterRef.current === 1) {
-      setIsDragOver(true);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current--;
-    if (dragCounterRef.current === 0) {
-      setIsDragOver(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current = 0;
-    setIsDragOver(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      handleFileUpload(files[0]); // Upload first file only
     }
   };
 
@@ -1958,31 +1919,12 @@ function ChatPage() {
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
           {/* Messages Area */}
           <div
-            className={`flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide space-y-6 min-h-0 transition-all relative ${
-              isDragOver
-                ? "bg-primary/10 border-2 border-dashed border-primary rounded-lg p-4"
-                : ""
-            }`}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+            className={`flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide space-y-6 min-h-0 transition-all relative`}
           >
             {messages.length === 0 && !streamingMessage ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 <div className="text-center">
-                  {isDragOver ? (
-                    <>
-                      <Upload className="h-12 w-12 mx-auto mb-4 text-primary" />
-                      <p className="text-primary font-medium">
-                        Drop your document here
-                      </p>
-                      <p className="text-sm mt-2">
-                        I&apos;ll process it and add it to our conversation
-                        context
-                      </p>
-                    </>
-                  ) : isUploading ? (
+                  {isUploading ? (
                     <>
                       <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin" />
                       <p>Processing your document...</p>
@@ -1999,8 +1941,8 @@ function ChatPage() {
                   <div key={index} className="space-y-6 group">
                     {message.role === "user" && (
                       <div className="flex gap-3">
-                        <Avatar className="w-8 h-8 flex-shrink-0">
-                          <AvatarImage src={user?.picture} alt={user?.name} />
+                        <Avatar className="w-8 h-8 flex-shrink-0 select-none">
+                          <AvatarImage draggable={false} src={user?.picture} alt={user?.name} />
                           <AvatarFallback className="text-sm bg-primary/20 text-primary">
                             {user?.name ? (
                               user.name.charAt(0).toUpperCase()
@@ -2019,7 +1961,7 @@ function ChatPage() {
 
                     {message.role === "assistant" && (
                       <div className="flex gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
                           <Bot className="h-4 w-4 text-accent-foreground" />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -2082,18 +2024,6 @@ function ChatPage() {
                 )}
                 <div ref={messagesEndRef} />
               </>
-            )}
-
-            {/* Drag overlay for existing messages */}
-            {isDragOver && messages.length > 0 && (
-              <div className="absolute inset-0 bg-primary/20 backdrop-blur-sm flex items-center justify-center rounded-lg">
-                <div className="text-center">
-                  <Upload className="h-8 w-8 mx-auto mb-2 text-primary" />
-                  <p className="text-primary font-medium">
-                    Drop document to add context
-                  </p>
-                </div>
-              </div>
             )}
           </div>
         </div>
