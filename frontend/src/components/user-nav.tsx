@@ -23,7 +23,7 @@ export function UserNav() {
   }
 
   // In no-auth mode, show a simple theme switcher instead of auth UI
-  if (!isNoAuthMode) {
+  if (isNoAuthMode) {
     return (
       <button
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
