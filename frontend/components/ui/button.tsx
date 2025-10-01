@@ -14,7 +14,7 @@ const buttonVariants = cva(
           "border border-input hover:bg-muted hover:text-accent-foreground disabled:bg-muted disabled:!border-none",
         primary:
           "border bg-background text-secondary-foreground hover:bg-muted hover:shadow-sm",
-        warning: "bg-warning text-secondary hover:bg-warning/90",
+        warning: "bg-warning text-warning-foreground hover:bg-warning/90",
         secondary:
           "border border-muted bg-muted text-secondary-foreground hover:bg-secondary-foreground/5",
         ghost:
