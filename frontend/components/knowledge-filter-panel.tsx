@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Save, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Slider } from "@/components/ui/slider";
+import { cn } from "@/lib/utils";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
 import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
@@ -67,6 +68,8 @@ export function KnowledgeFilterPanel() {
   const [isSaving, setIsSaving] = useState(false);
   const [color, setColor] = useState<FilterColor>("zinc");
   const [iconKey, setIconKey] = useState<IconKey>("filter");
+  const [nameError, setNameError] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Filter configuration states (mirror search page exactly)
   const [query, setQuery] = useState("");
@@ -153,7 +156,11 @@ export function KnowledgeFilterPanel() {
   if (!isPanelOpen || !parsedFilterData) return null;
 
   const handleSaveConfiguration = async () => {
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      setNameError("Name is required");
+      nameInputRef.current?.focus();
+      return;
+    }
     const filterData = {
       query,
       filters: selectedFilters,
@@ -247,7 +254,10 @@ export function KnowledgeFilterPanel() {
           {/* Filter Name and Description */}
           <div className="space-y-3">
             <div className="space-y-2">
-              <Label htmlFor="filter-name">Filter name</Label>
+              <Label htmlFor="filter-name" className="gap-1">
+                Filter name
+                <span className="text-destructive">*</span>
+              </Label>
               <div className="flex items-center gap-2">
                 <FilterIconPopover
                   color={color}
@@ -258,8 +268,17 @@ export function KnowledgeFilterPanel() {
                 <Input
                   id="filter-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setName(v);
+                    if (nameError && v.trim()) {
+                      setNameError(null);
+                    }
+                  }}
+                  required
                   placeholder="Filter name"
+                  ref={nameInputRef}
+                  aria-invalid={!!nameError}
                 />
               </div>
             </div>
