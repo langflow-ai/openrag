@@ -37,7 +37,7 @@ export function LabelWrapper({
       >
         <Label
           htmlFor={id}
-          className="!text-mmd font-medium flex items-center gap-1.5"
+          className={cn("font-medium flex items-center gap-1.5", description ? "!text-sm" : "!text-mmd")}
         >
           {label}
           {required && <span className="text-red-500">*</span>}
