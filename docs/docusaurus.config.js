@@ -53,6 +53,16 @@ const config = {
           editUrl:
             'https://github.com/openrag/openrag/tree/main/docs/',
           routeBasePath: '/',
+          // Versioning configuration - see VERSIONING_SETUP.md
+          // To enable versioning, uncomment the following lines:
+          // lastVersion: 'current',
+          // versions: {
+          //   current: {
+          //     label: 'Next (unreleased)',
+          //     path: 'next',
+          //   },
+          // },
+          // onlyIncludeVersions: ['current'],
         },
         theme: {
           customCss: './src/css/custom.css',
