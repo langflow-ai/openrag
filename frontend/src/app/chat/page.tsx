@@ -2345,7 +2345,7 @@ function ChatPage() {
                           <button
                             key={filter.id}
                             onClick={() => handleFilterSelect(filter)}
-                            className={`w-full overflow-hidden text-left px-2 py-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
+                            className={`w-full overflow-hidden text-left px-2 py-2 gap-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
                               index === selectedFilterIndex ? "bg-muted/50" : ""
                             }`}
                           >
@@ -2360,7 +2360,7 @@ function ChatPage() {
                               )}
                             </div>
                             {selectedFilter?.id === filter.id && (
-                              <div className="w-2 h-2 rounded-full bg-blue-500" />
+                              <div className="w-2 h-2 shrink-0 rounded-full bg-blue-500" />
                             )}
                           </button>
                         ))}
