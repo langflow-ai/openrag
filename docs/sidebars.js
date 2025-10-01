@@ -28,17 +28,17 @@ const sidebars = {
         {
           type: "doc",
           id: "get-started/install",
-          label: "Installation"
+          label: "Install Python wheel"
+        },
+        {
+          type: "doc",
+          id: "get-started/docker",
+          label: "Deploy with Docker"
         },
         {
           type: "doc",
           id: "get-started/quickstart",
           label: "Quickstart"
-        },
-        {
-          type: "doc",
-          id: "get-started/docker",
-          label: "Docker Deployment"
         },
         {
           type: "doc",
