@@ -74,6 +74,7 @@ services:
       - ./documents:/app/documents:Z
       - ./keys:/app/keys:Z
       - ./flows:/app/flows:Z
+      - ./config.yaml:/app/config.yaml:Z
 
   openrag-frontend:
     image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
