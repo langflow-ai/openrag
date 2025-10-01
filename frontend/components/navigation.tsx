@@ -348,7 +348,7 @@ export function Navigation({
                 <div className="flex items-center flex-1">
                   <route.icon
                     className={cn(
-                      "h-4 w-4 mr-3 shrink-0",
+                      "h-[18px] w-[18px] mr-2 shrink-0",
                       route.active
                         ? "text-muted-foreground"
                         : "text-muted-foreground group-hover:text-muted-foreground"
@@ -377,8 +377,8 @@ export function Navigation({
         <div className="flex-1 min-h-0 flex flex-col">
           {/* Conversations Section */}
           <div className="px-3 flex-shrink-0">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-muted-foreground">
+            <div className="flex items-center justify-between mb-3 ml-3 mr-2">
+              <h3 className="text-xs font-medium text-muted-foreground">
                 Conversations
               </h3>
               <button
@@ -425,7 +425,7 @@ export function Navigation({
 
                   {/* Show regular conversations */}
                   {conversations.length === 0 && !placeholderConversation ? (
-                    <div className="text-sm text-muted-foreground p-2">
+                    <div className="text-[13px] text-muted-foreground p-2">
                       No conversations yet
                     </div>
                   ) : (
@@ -502,8 +502,8 @@ export function Navigation({
 
             {/* Conversation Knowledge Section - appears right after last conversation */}
             <div className="flex-shrink-0 mt-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-muted-foreground">
+              <div className="flex items-center justify-between mb-3 ml-3 mr-2">
+                <h3 className="text-xs font-medium text-muted-foreground">
                   Conversation knowledge
                 </h3>
                 <button
@@ -522,9 +522,9 @@ export function Navigation({
                 className="hidden"
                 accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
               />
-              <div className="overflow-y-auto scrollbar-hide space-y-1 max-h-40">
+              <div className="overflow-y-auto scrollbar-hide space-y-1 max-h-40 ml-1">
                 {conversationDocs.length === 0 ? (
-                  <div className="text-sm text-muted-foreground p-2">
+                  <div className="text-[13px] text-muted-foreground p-2">
                     No documents yet
                   </div>
                 ) : (
