@@ -111,6 +111,7 @@ export function IBMOnboarding({
           <ModelSelector
             options={options}
             value={endpoint}
+            custom
             onValueChange={setEndpoint}
             searchPlaceholder="Search endpoint..."
             noOptionsPlaceholder="No endpoints available"
