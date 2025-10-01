@@ -16,27 +16,27 @@ interface StatusBadgeProps {
 const statusConfig = {
   processing: {
     label: "Processing",
-    className: "text-muted-foreground dark:text-muted-foreground ",
+    className: "text-muted-foreground ",
   },
   active: {
     label: "Active",
-    className: "text-emerald-600 dark:text-emerald-400 ",
+    className: "text-accent-emerald-foreground ",
   },
   unavailable: {
     label: "Unavailable",
-    className: "text-red-600 dark:text-red-400 ",
+    className: "text-accent-red-foreground ",
   },
   failed: {
     label: "Failed",
-    className: "text-red-600 dark:text-red-400 ",
+    className: "text-accent-red-foreground ",
   },
   hidden: {
     label: "Hidden",
-    className: "text-zinc-400 dark:text-zinc-500 ",
+    className: "text-muted-foreground ",
   },
   sync: {
     label: "Sync",
-    className: "text-amber-700 dark:text-amber-300 underline",
+    className: "text-accent-amber-foreground underline",
   },
 };
 
