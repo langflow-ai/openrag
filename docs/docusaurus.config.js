@@ -93,14 +93,6 @@ const config = {
             rel: null,
             'aria-label': 'GitHub repository',
           },
-          {
-            position: "right",
-            href: "https://discord.gg/openrag",
-            className: "header-discord-link",
-            target: "_blank",
-            rel: null,
-            'aria-label': 'Discord community',
-          },
         ],
       },
       footer: {
