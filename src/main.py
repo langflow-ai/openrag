@@ -53,6 +53,7 @@ from auth_middleware import optional_auth, require_auth
 from config.settings import (
     DISABLE_INGEST_WITH_LANGFLOW,
     EMBED_MODEL,
+    INDEX_BODY,
     INDEX_NAME,
     SESSION_SECRET,
     clients,
@@ -81,6 +82,7 @@ logger.info(
     cuda_available=torch.cuda.is_available(),
     cuda_version=torch.version.cuda,
 )
+
 
 async def wait_for_opensearch():
     """Wait for OpenSearch to be ready with retries"""
@@ -128,6 +130,34 @@ async def configure_alerting_security():
         # Don't fail startup if alerting config fails
 
 
+async def _ensure_opensearch_index(self):
+    """Ensure OpenSearch index exists when using traditional connector service."""
+    try:
+        # Check if index already exists
+        if await clients.opensearch.indices.exists(index=INDEX_NAME):
+            logger.debug("OpenSearch index already exists", index_name=INDEX_NAME)
+            return
+
+        # Create the index with hard-coded INDEX_BODY (uses OpenAI embedding dimensions)
+        await clients.opensearch.indices.create(index=INDEX_NAME, body=INDEX_BODY)
+        logger.info(
+            "Created OpenSearch index for traditional connector service",
+            index_name=INDEX_NAME,
+            vector_dimensions=INDEX_BODY["mappings"]["properties"]["chunk_embedding"][
+                "dimension"
+            ],
+        )
+
+    except Exception as e:
+        logger.error(
+            "Failed to initialize OpenSearch index for traditional connector service",
+            error=str(e),
+            index_name=INDEX_NAME,
+        )
+        # Don't raise the exception to avoid breaking the initialization
+        # The service can still function, document operations might fail later
+
+
 async def init_index():
     """Initialize OpenSearch index and security roles"""
     await wait_for_opensearch()
@@ -141,10 +171,20 @@ async def init_index():
 
     # Create documents index
     if not await clients.opensearch.indices.exists(index=INDEX_NAME):
-        await clients.opensearch.indices.create(index=INDEX_NAME, body=dynamic_index_body)
-        logger.info("Created OpenSearch index", index_name=INDEX_NAME, embedding_model=embedding_model)
+        await clients.opensearch.indices.create(
+            index=INDEX_NAME, body=dynamic_index_body
+        )
+        logger.info(
+            "Created OpenSearch index",
+            index_name=INDEX_NAME,
+            embedding_model=embedding_model,
+        )
     else:
-        logger.info("Index already exists, skipping creation", index_name=INDEX_NAME, embedding_model=embedding_model)
+        logger.info(
+            "Index already exists, skipping creation",
+            index_name=INDEX_NAME,
+            embedding_model=embedding_model,
+        )
 
     # Create knowledge filters index
     knowledge_filter_index_name = "knowledge_filters"
@@ -405,6 +445,9 @@ async def startup_tasks(services):
     # Only initialize basic OpenSearch connection, not the index
     # Index will be created after onboarding when we know the embedding model
     await wait_for_opensearch()
+
+    if DISABLE_INGEST_WITH_LANGFLOW:
+        await _ensure_opensearch_index()
 
     # Configure alerting security
     await configure_alerting_security()
@@ -1077,14 +1120,6 @@ async def create_app():
         await cleanup_subscriptions_proper(services)
 
     return app
-
-
-async def startup():
-    """Application startup tasks"""
-    await init_index()
-    # Get services from app state if needed for initialization
-    # services = app.state.services
-    # await services['connector_service'].initialize()
 
 
 def cleanup():

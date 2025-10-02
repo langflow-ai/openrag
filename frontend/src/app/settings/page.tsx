@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowUpRight, Loader2, PlugZap, RefreshCw } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { ArrowUpRight, Loader2, Minus, Plus } from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
 import {
@@ -11,9 +12,8 @@ import {
 } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
-import { LabelWrapper } from "@/components/label-wrapper";
+import { LabelWrapper, LabelWrapper } from "@/components/label-wrapper";
 import { ProtectedRoute } from "@/components/protected-route";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -22,7 +22,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -31,18 +30,25 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+import { Switch, Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useTask } from "@/contexts/task-context";
 import {
 	DEFAULT_AGENT_SETTINGS,
+	DEFAULT_AGENT_SETTINGS,
 	DEFAULT_KNOWLEDGE_SETTINGS,
+	DEFAULT_KNOWLEDGE_SETTINGS,
+	UI_CONSTANTS,
 	UI_CONSTANTS,
 } from "@/lib/constants";
 import { useDebounce } from "@/lib/debounce";
 import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
 import { ModelSelectItems } from "./helpers/model-select-item";
+
+import GoogleDriveIcon from "./icons/google-drive-icon";
+import OneDriveIcon from "./icons/one-drive-icon";
+import SharePointIcon from "./icons/share-point-icon";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
@@ -92,10 +98,38 @@ interface Connection {
 	last_sync?: string;
 }
 
+const DEFAULT_CONNECTORS: Connector[] = [
+	{
+		id: "google_drive",
+		name: "Google Drive",
+		description: "Google Drive is not configured.",
+		icon: <GoogleDriveIcon />,
+		status: "not_connected",
+		type: "google_drive",
+	},
+	{
+		id: "one_drive",
+		name: "OneDrive",
+		description: "OneDrive is not configured.",
+		icon: <OneDriveIcon />,
+		status: "not_connected",
+		type: "one_drive",
+	},
+	{
+		id: "amazon_s3",
+		name: "SharePoint",
+		description: "SharePoint is not configured.",
+		icon: <SharePointIcon />,
+		status: "not_connected",
+		type: "sharepoint",
+	},
+];
+
 function KnowledgeSourcesPage() {
 	const { isAuthenticated, isNoAuthMode } = useAuth();
 	const { addTask, tasks } = useTask();
 	const searchParams = useSearchParams();
+	const router = useRouter();
 
 	// Connectors state
 	const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -265,19 +299,15 @@ function KnowledgeSourcesPage() {
 	// Helper function to get connector icon
 	const getConnectorIcon = useCallback((iconName: string) => {
 		const iconMap: { [key: string]: React.ReactElement } = {
-			"google-drive": (
-				<div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
-					G
-				</div>
-			),
+			"google-drive": <GoogleDriveIcon />,
 			sharepoint: (
 				<div className="w-8 h-8 bg-blue-700 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
 					SP
 				</div>
 			),
 			onedrive: (
-				<div className="w-8 h-8 bg-blue-400 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
-					OD
+				<div className="w-8 h-8 bg-white border border-gray-300 rounded flex items-center justify-center">
+					<OneDriveIcon />
 				</div>
 			),
 		};
@@ -398,91 +428,75 @@ function KnowledgeSourcesPage() {
 		}
 	};
 
-	const handleSync = async (connector: Connector) => {
-		if (!connector.connectionId) return;
+	// const handleSync = async (connector: Connector) => {
+	//   if (!connector.connectionId) return;
 
-		setIsSyncing(connector.id);
-		setSyncResults((prev) => ({ ...prev, [connector.id]: null }));
+	//   setIsSyncing(connector.id);
+	//   setSyncResults(prev => ({ ...prev, [connector.id]: null }));
 
-		try {
-			const syncBody: {
-				connection_id: string;
-				max_files?: number;
-				selected_files?: string[];
-			} = {
-				connection_id: connector.connectionId,
-				max_files: syncAllFiles ? 0 : maxFiles || undefined,
-			};
+	//   try {
+	//     const syncBody: {
+	//       connection_id: string;
+	//       max_files?: number;
+	//       selected_files?: string[];
+	//     } = {
+	//       connection_id: connector.connectionId,
+	//       max_files: syncAllFiles ? 0 : maxFiles || undefined,
+	//     };
 
-			// Note: File selection is now handled via the cloud connectors dialog
+	//     // Note: File selection is now handled via the cloud connectors dialog
 
-			const response = await fetch(`/api/connectors/${connector.type}/sync`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(syncBody),
-			});
+	//     const response = await fetch(`/api/connectors/${connector.type}/sync`, {
+	//       method: "POST",
+	//       headers: {
+	//         "Content-Type": "application/json",
+	//       },
+	//       body: JSON.stringify(syncBody),
+	//     });
 
-			const result = await response.json();
+	//     const result = await response.json();
 
-			if (response.status === 201) {
-				const taskId = result.task_id;
-				if (taskId) {
-					addTask(taskId);
-					setSyncResults((prev) => ({
-						...prev,
-						[connector.id]: {
-							processed: 0,
-							total: result.total_files || 0,
-						},
-					}));
-				}
-			} else if (response.ok) {
-				setSyncResults((prev) => ({ ...prev, [connector.id]: result }));
-				// Note: Stats will auto-refresh via task completion watcher for async syncs
-			} else {
-				console.error("Sync failed:", result.error);
-			}
-		} catch (error) {
-			console.error("Sync error:", error);
-		} finally {
-			setIsSyncing(null);
-		}
-	};
+	//     if (response.status === 201) {
+	//       const taskId = result.task_id;
+	//       if (taskId) {
+	//         addTask(taskId);
+	//         setSyncResults(prev => ({
+	//           ...prev,
+	//           [connector.id]: {
+	//             processed: 0,
+	//             total: result.total_files || 0,
+	//           },
+	//         }));
+	//       }
+	//     } else if (response.ok) {
+	//       setSyncResults(prev => ({ ...prev, [connector.id]: result }));
+	//       // Note: Stats will auto-refresh via task completion watcher for async syncs
+	//     } else {
+	//       console.error("Sync failed:", result.error);
+	//     }
+	//   } catch (error) {
+	//     console.error("Sync error:", error);
+	//   } finally {
+	//     setIsSyncing(null);
+	//   }
+	// };
 
 	const getStatusBadge = (status: Connector["status"]) => {
 		switch (status) {
 			case "connected":
-				return (
-					<Badge
-						variant="default"
-						className="bg-green-500/20 text-green-400 border-green-500/30"
-					>
-						Connected
-					</Badge>
-				);
+				return <div className="h-2 w-2 bg-green-500 rounded-full" />;
 			case "connecting":
-				return (
-					<Badge
-						variant="secondary"
-						className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-					>
-						Connecting...
-					</Badge>
-				);
+				return <div className="h-2 w-2 bg-yellow-500 rounded-full" />;
 			case "error":
-				return <Badge variant="destructive">Error</Badge>;
+				return <div className="h-2 w-2 bg-red-500 rounded-full" />;
 			default:
-				return (
-					<Badge
-						variant="outline"
-						className="bg-muted/20 text-muted-foreground border-muted whitespace-nowrap"
-					>
-						Not Connected
-					</Badge>
-				);
+				return <div className="h-2 w-2 bg-muted rounded-full" />;
 		}
+	};
+
+	const navigateToKnowledgePage = (connector: Connector) => {
+		const provider = connector.type.replace(/-/g, "_");
+		router.push(`/upload/${provider}`);
 	};
 
 	// Check connector status on mount and when returning from OAuth
@@ -609,166 +623,172 @@ function KnowledgeSourcesPage() {
 			{/* Connectors Section */}
 			<div className="space-y-6">
 				<div>
-					<h2 className="text-2xl font-semibold tracking-tight mb-2">
+					<h2 className="text-lg font-semibold tracking-tight mb-2">
 						Cloud Connectors
 					</h2>
 				</div>
 
 				{/* Conditional Sync Settings or No-Auth Message */}
-				{isNoAuthMode ? (
-					<Card className="border-yellow-500/50 bg-yellow-500/5">
-						<CardHeader>
-							<CardTitle className="text-lg text-yellow-600">
-								Cloud connectors are only available with auth mode enabled
-							</CardTitle>
-							<CardDescription className="text-sm">
-								Please provide the following environment variables and restart:
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
-							<div className="bg-muted rounded-md p-4 font-mono text-sm">
-								<div className="text-muted-foreground mb-2">
-									# make here https://console.cloud.google.com/apis/credentials
+				{
+					isNoAuthMode ? (
+						<Card className="border-yellow-500/50 bg-yellow-500/5">
+							<CardHeader>
+								<CardTitle className="text-lg text-yellow-600">
+									Cloud connectors are only available with auth mode enabled
+								</CardTitle>
+								<CardDescription className="text-sm">
+									Please provide the following environment variables and
+									restart:
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<div className="bg-muted rounded-md p-4 font-mono text-sm">
+									<div className="text-muted-foreground mb-2">
+										# make here
+										https://console.cloud.google.com/apis/credentials
+									</div>
+									<div>GOOGLE_OAUTH_CLIENT_ID=</div>
+									<div>GOOGLE_OAUTH_CLIENT_SECRET=</div>
 								</div>
-								<div>GOOGLE_OAUTH_CLIENT_ID=</div>
-								<div>GOOGLE_OAUTH_CLIENT_SECRET=</div>
-							</div>
-						</CardContent>
-					</Card>
-				) : (
-					<div className="flex items-center justify-between py-4">
-						<div>
-							<h3 className="text-lg font-medium">Sync Settings</h3>
-							<p className="text-sm text-muted-foreground">
-								Configure how many files to sync when manually triggering a sync
-							</p>
-						</div>
-						<div className="flex items-center gap-4">
-							<div className="flex items-center space-x-2">
-								<Checkbox
-									id="syncAllFiles"
-									checked={syncAllFiles}
-									onCheckedChange={(checked) => {
-										setSyncAllFiles(!!checked);
-										if (checked) {
-											setMaxFiles(0);
-										} else {
-											setMaxFiles(10);
-										}
-									}}
-								/>
-								<Label
-									htmlFor="syncAllFiles"
-									className="font-medium whitespace-nowrap"
-								>
-									Sync all files
-								</Label>
-							</div>
-							<Label
-								htmlFor="maxFiles"
-								className="font-medium whitespace-nowrap"
-							>
-								Max files per sync:
-							</Label>
-							<div className="relative">
-								<Input
-									id="maxFiles"
-									type="number"
-									value={syncAllFiles ? 0 : maxFiles}
-									onChange={(e) => setMaxFiles(parseInt(e.target.value) || 10)}
-									disabled={syncAllFiles}
-									className="w-16 min-w-16 max-w-16 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-									min="1"
-									max="100"
-									title={
-										syncAllFiles
-											? "Disabled when 'Sync all files' is checked"
-											: "Leave blank or set to 0 for unlimited"
-									}
-								/>
-							</div>
-						</div>
-					</div>
-				)}
+							</CardContent>
+						</Card>
+					) : null
+					// <div className="flex items-center justify-between py-4">
+					//   <div>
+					//     <h3 className="text-lg font-medium">Sync Settings</h3>
+					//     <p className="text-sm text-muted-foreground">
+					//       Configure how many files to sync when manually triggering a sync
+					//     </p>
+					//   </div>
+					//   <div className="flex items-center gap-4">
+					//     <div className="flex items-center space-x-2">
+					//       <Checkbox
+					//         id="syncAllFiles"
+					//         checked={syncAllFiles}
+					//         onCheckedChange={checked => {
+					//           setSyncAllFiles(!!checked);
+					//           if (checked) {
+					//             setMaxFiles(0);
+					//           } else {
+					//             setMaxFiles(10);
+					//           }
+					//         }}
+					//       />
+					//       <Label
+					//         htmlFor="syncAllFiles"
+					//         className="font-medium whitespace-nowrap"
+					//       >
+					//         Sync all files
+					//       </Label>
+					//     </div>
+					//     <Label
+					//       htmlFor="maxFiles"
+					//       className="font-medium whitespace-nowrap"
+					//     >
+					//       Max files per sync:
+					//     </Label>
+					//     <div className="relative">
+					//       <Input
+					//         id="maxFiles"
+					//         type="number"
+					//         value={syncAllFiles ? 0 : maxFiles}
+					//         onChange={e => setMaxFiles(parseInt(e.target.value) || 10)}
+					//         disabled={syncAllFiles}
+					//         className="w-16 min-w-16 max-w-16 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+					//         min="1"
+					//         max="100"
+					//         title={
+					//           syncAllFiles
+					//             ? "Disabled when 'Sync all files' is checked"
+					//             : "Leave blank or set to 0 for unlimited"
+					//         }
+					//       />
+					//     </div>
+					//   </div>
+					// </div>
+				}
 
 				{/* Connectors Grid */}
 				<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-					{connectors.map((connector) => (
-						<Card key={connector.id} className="relative flex flex-col">
-							<CardHeader>
-								<div className="flex items-center justify-between">
-									<div className="flex items-center gap-3">
-										{connector.icon}
-										<div>
-											<CardTitle className="text-lg">
+					{DEFAULT_CONNECTORS.map((connector) => {
+						const actualConnector = connectors.find(
+							(c) => c.id === connector.id,
+						);
+						return (
+							<Card key={connector.id} className="relative flex flex-col">
+								<CardHeader>
+									<div className="flex flex-col items-start justify-between">
+										<div className="flex flex-col gap-3">
+											<div className="mb-1">
+												<div
+													className={`w-8 h-8 ${
+														actualConnector ? "bg-white" : "bg-muted grayscale"
+													} rounded flex items-center justify-center`}
+												>
+													{connector.icon}
+												</div>
+											</div>
+											<CardTitle className="flex flex-row items-center gap-2">
 												{connector.name}
+												{actualConnector &&
+													getStatusBadge(actualConnector.status)}
 											</CardTitle>
-											<CardDescription className="text-sm">
-												{connector.description}
+											<CardDescription className="text-[13px]">
+												{actualConnector?.description
+													? `${actualConnector.name} is configured.`
+													: connector.description}
 											</CardDescription>
 										</div>
 									</div>
-									{getStatusBadge(connector.status)}
-								</div>
-							</CardHeader>
-							<CardContent className="flex-1 flex flex-col justify-end space-y-4">
-								{connector.status === "connected" ? (
-									<div className="space-y-3">
-										<Button
-											onClick={() => handleSync(connector)}
-											disabled={isSyncing === connector.id}
-											className="w-full"
-											variant="outline"
-										>
-											{isSyncing === connector.id ? (
-												<>
-													<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-													Syncing...
-												</>
-											) : (
-												<>
-													<RefreshCw className="mr-2 h-4 w-4" />
-													Sync Now
-												</>
-											)}
-										</Button>
+								</CardHeader>
+								<CardContent className="flex-1 flex flex-col justify-end space-y-4">
+									{actualConnector?.status === "connected" ? (
+										<div className="space-y-3">
+											<Button
+												onClick={() => navigateToKnowledgePage(connector)}
+												disabled={isSyncing === connector.id}
+												className="w-full cursor-pointer"
+												size="sm"
+											>
+												<Plus className="h-4 w-4" />
+												Add Knowledge
+											</Button>
 
-										{syncResults[connector.id] && (
-											<div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-												<div>
-													Processed: {syncResults[connector.id]?.processed || 0}
+											{syncResults[connector.id] && (
+												<div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+													<div>
+														Processed:{" "}
+														{syncResults[connector.id]?.processed || 0}
+													</div>
+													<div>
+														Added: {syncResults[connector.id]?.added || 0}
+													</div>
+													{syncResults[connector.id]?.errors && (
+														<div>
+															Errors: {syncResults[connector.id]?.errors}
+														</div>
+													)}
 												</div>
-												<div>
-													Added: {syncResults[connector.id]?.added || 0}
-												</div>
-												{syncResults[connector.id]?.errors && (
-													<div>Errors: {syncResults[connector.id]?.errors}</div>
-												)}
-											</div>
-										)}
-									</div>
-								) : (
-									<Button
-										onClick={() => handleConnect(connector)}
-										disabled={isConnecting === connector.id}
-										className="w-full"
-									>
-										{isConnecting === connector.id ? (
-											<>
-												<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-												Connecting...
-											</>
-										) : (
-											<>
-												<PlugZap className="mr-2 h-4 w-4" />
-												Connect
-											</>
-										)}
-									</Button>
-								)}
-							</CardContent>
-						</Card>
-					))}
+											)}
+										</div>
+									) : (
+										<div className="text-[13px] text-muted-foreground">
+											<p>
+												See our{" "}
+												<Link
+													className="text-accent-pink-foreground"
+													href="https://github.com/langflow-ai/openrag/pull/96/files#diff-06889aa94ccf8dac64e70c8cc30a2ceed32cc3c0c2c14a6ff0336fe882a9c2ccR41"
+												>
+													Cloud Connectors installation guide
+												</Link>{" "}
+												for more detail.
+											</p>
+										</div>
+									)}
+								</CardContent>
+							</Card>
+						);
+					})}
 				</div>
 			</div>
 			{/* Agent Behavior Section */}
@@ -878,32 +898,31 @@ function KnowledgeSourcesPage() {
 							</LabelWrapper>
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="system-prompt" className="text-base font-medium">
-								Agent Instructions
-							</Label>
-							<Textarea
-								id="system-prompt"
-								placeholder="Enter your agent instructions here..."
-								value={systemPrompt}
-								onChange={(e) => setSystemPrompt(e.target.value)}
-								rows={6}
-								className={`resize-none ${
-									systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-										? "border-red-500 focus:border-red-500"
-										: ""
-								}`}
-							/>
-							<div className="flex justify-start">
-								<span
-									className={`text-xs ${
+							<LabelWrapper label="Agent Instructions" id="system-prompt">
+								<Textarea
+									id="system-prompt"
+									placeholder="Enter your agent instructions here..."
+									value={systemPrompt}
+									onChange={(e) => setSystemPrompt(e.target.value)}
+									rows={6}
+									className={`resize-none ${
 										systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-											? "text-red-500"
-											: "text-muted-foreground"
+											? "border-red-500 focus:border-red-500"
+											: ""
 									}`}
-								>
-									{systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
-								</span>
-							</div>
+								/>
+								<div className="flex justify-start">
+									<span
+										className={`text-xs ${
+											systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
+												? "text-red-500"
+												: "text-muted-foreground"
+										}`}
+									>
+										{systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
+									</span>
+								</div>
+							</LabelWrapper>
 						</div>
 						<div className="flex justify-end pt-2">
 							<Button
@@ -935,7 +954,9 @@ function KnowledgeSourcesPage() {
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
-							<CardTitle className="text-lg mb-4">Knowledge</CardTitle>
+							<CardTitle className="text-lg mb-4">
+								Knowledge ingestion and retrieval
+							</CardTitle>
 							<CardDescription>
 								Quick knowledge settings. Edit in Langflow for full control.
 							</CardDescription>
@@ -1046,47 +1067,94 @@ function KnowledgeSourcesPage() {
 						</div>
 						<div className="grid grid-cols-2 gap-4">
 							<div className="space-y-2">
-								<Label htmlFor="chunk-size" className="text-base font-medium">
-									Chunk size
-								</Label>
-								<div className="relative">
-									<Input
-										id="chunk-size"
-										type="number"
-										min="1"
-										value={chunkSize}
-										onChange={(e) => handleChunkSizeChange(e.target.value)}
-										className="w-full pr-20"
-									/>
-									<div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
-										<span className="text-sm text-muted-foreground">
-											characters
-										</span>
+								<LabelWrapper id="chunk-size" label="Chunk size">
+									<div className="relative">
+										<Input
+											id="chunk-size"
+											type="number"
+											min="1"
+											value={chunkSize}
+											onChange={(e) => handleChunkSizeChange(e.target.value)}
+											className="w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+										/>
+										<div className="absolute inset-y-0 right-0 flex items-center">
+											<span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
+												characters
+											</span>
+											<div className="flex flex-col">
+												<Button
+													aria-label="Increase value"
+													className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative"
+													variant="outline"
+													size="iconSm"
+													onClick={() =>
+														handleChunkSizeChange((chunkSize + 1).toString())
+													}
+												>
+													<Plus className="text-muted-foreground" size={8} />
+												</Button>
+												<Button
+													aria-label="Decrease value"
+													className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative"
+													variant="outline"
+													size="iconSm"
+													onClick={() =>
+														handleChunkSizeChange((chunkSize - 1).toString())
+													}
+												>
+													<Minus className="text-muted-foreground" size={8} />
+												</Button>
+											</div>
+										</div>
 									</div>
-								</div>
+								</LabelWrapper>
 							</div>
 							<div className="space-y-2">
-								<Label
-									htmlFor="chunk-overlap"
-									className="text-base font-medium"
-								>
-									Chunk overlap
-								</Label>
-								<div className="relative">
-									<Input
-										id="chunk-overlap"
-										type="number"
-										min="0"
-										value={chunkOverlap}
-										onChange={(e) => handleChunkOverlapChange(e.target.value)}
-										className="w-full pr-20"
-									/>
-									<div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
-										<span className="text-sm text-muted-foreground">
-											characters
-										</span>
+								<LabelWrapper id="chunk-overlap" label="Chunk overlap">
+									<div className="relative">
+										<Input
+											id="chunk-overlap"
+											type="number"
+											min="0"
+											value={chunkOverlap}
+											onChange={(e) => handleChunkOverlapChange(e.target.value)}
+											className="w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+										/>
+										<div className="absolute inset-y-0 right-0 flex items-center">
+											<span className="text-sm text-placeholder-foreground mr-4 pointer-events-none">
+												characters
+											</span>
+											<div className="flex flex-col">
+												<Button
+													aria-label="Increase value"
+													className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative"
+													variant="outline"
+													size="iconSm"
+													onClick={() =>
+														handleChunkOverlapChange(
+															(chunkOverlap + 1).toString(),
+														)
+													}
+												>
+													<Plus className="text-muted-foreground" size={8} />
+												</Button>
+												<Button
+													aria-label="Decrease value"
+													className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative"
+													variant="outline"
+													size="iconSm"
+													onClick={() =>
+														handleChunkOverlapChange(
+															(chunkOverlap - 1).toString(),
+														)
+													}
+												>
+													<Minus className="text-muted-foreground" size={8} />
+												</Button>
+											</div>
+										</div>
 									</div>
-								</div>
+								</LabelWrapper>
 							</div>
 						</div>
 						<div className="">
