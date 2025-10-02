@@ -20,10 +20,10 @@ const config = {
   },
 
   // Set the production url of your site here
-  url: 'https://langflow-ai.github.io',
+  url: 'https://docs.openr.ag',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: process.env.BASE_URL ? process.env.BASE_URL : '/openrag/',
+  baseUrl: process.env.BASE_URL ? process.env.BASE_URL : '/',
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
@@ -53,6 +53,16 @@ const config = {
           editUrl:
             'https://github.com/openrag/openrag/tree/main/docs/',
           routeBasePath: '/',
+          // Versioning configuration - see VERSIONING_SETUP.md
+          // To enable versioning, uncomment the following lines:
+          // lastVersion: 'current',
+          // versions: {
+          //   current: {
+          //     label: 'Next (unreleased)',
+          //     path: 'next',
+          //   },
+          // },
+          // onlyIncludeVersions: ['current'],
         },
         theme: {
           customCss: './src/css/custom.css',
@@ -65,12 +75,13 @@ const config = {
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       // Replace with your project's social card
-      image: 'img/docusaurus-social-card.jpg',
+      // image: 'img/docusaurus-social-card.jpg',
       navbar: {
-        title: 'OpenRAG',
+        // title: 'OpenRAG',
         logo: {
           alt: 'OpenRAG Logo',
-          src: 'img/logo.svg',
+          src: "img/logo-openrag-light.svg",
+          srcDark: "img/logo-openrag-dark.svg",
           href: '/',
         },
         items: [
