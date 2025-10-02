@@ -141,9 +141,9 @@ Configure general system components, session management, and logging.
 
 ## Configuration file (`config.yaml`) {#configuration-file}
 
-A `config.yaml` file is generated with values input during [Application onboarding](/install#application-onboarding) and contains some of the same configuration variables as environment variables. The variables in `config.yaml` take precedence over environment variables.
+A `config.yaml` configuration file is generated with values input during [Application onboarding](/install#application-onboarding) and contains some of the same configuration variables as environment variables. The variables in `config.yaml` take precedence over environment variables.
 
-For an example `config.yaml` file, see [`config.example.yaml` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/config/config.example.yaml).
+The `config.yaml` file is stored in the `config/` directory of your OpenRAG installation, which is mounted as a volume in the `openrag-backend` Docker container. For an example `config.yaml` file, see [`config.example.yaml` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/config/config.example.yaml).
 
 <details closed>
 <summary>Which variables can `config.yaml` override?</summary>
