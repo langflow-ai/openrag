@@ -2353,7 +2353,7 @@ function ChatPage() {
                             selectedFilterIndex === -1 ? "bg-muted/50" : ""
                           }`}
                         >
-                          <span>No filter</span>
+                          <span>No knowledge filter</span>
                           {!selectedFilter && (
                            <Check
                             className="h-4 w-4 shrink-0"
