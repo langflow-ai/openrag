@@ -21,8 +21,6 @@ For an example `.env` file, see [`.env.example` in the OpenRAG repository](https
 
 The Docker Compose files are populated with values from your `.env`, so you don't need to edit the Docker Compose files manually.
 
-### Precedence
-
 Environment variables always take precedence over other variables.
 
 ### Set environment variables
@@ -37,6 +35,20 @@ To set environment variables, do the following.
    SERVICE_NAME=openrag-dev
    ```
 3. Start OpenRAG.
+
+Updating provider API keys or provider endpoints in the `.env` file will not take effect after [Application onboarding](/install#application-onboarding). To change these values, you must:
+
+1. Stop OpenRAG.
+2. Remove the containers:
+   ```
+   docker-compose down
+   ```
+3. Update the values in your `.env` file.
+4. Start OpenRAG containers.
+   ```
+   docker-compose up -d
+   ```
+5. Complete [Application onboarding](/install#application-onboarding) again.
 
 ## Supported environment variables
 
