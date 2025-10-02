@@ -6,7 +6,6 @@ import {
   FolderOpen,
   Loader2,
   PlugZap,
-  Plus,
   Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -25,15 +24,7 @@ import { Label } from "@/components/ui/label";
 import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
 
-interface KnowledgeDropdownProps {
-  active?: boolean;
-  variant?: "navigation" | "button";
-}
-
-export function KnowledgeDropdown({
-  active,
-  variant = "navigation",
-}: KnowledgeDropdownProps) {
+export function KnowledgeDropdown() {
   const { addTask } = useTask();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -437,77 +428,35 @@ export function KnowledgeDropdown({
   return (
     <>
       <div ref={dropdownRef} className="relative">
-        <button
+        <Button
           onClick={() => !isLoading && setIsOpen(!isOpen)}
           disabled={isLoading}
-          className={cn(
-            variant === "button"
-              ? "rounded-lg h-12 px-4 flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              : "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed",
-            variant === "navigation" && active
-              ? "bg-accent text-accent-foreground shadow-sm"
-              : variant === "navigation"
-              ? "text-foreground hover:text-accent-foreground"
-              : ""
-          )}
         >
-          {variant === "button" ? (
-            <>
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-              <span>
-                {isLoading
-                  ? fileUploading
-                    ? "Uploading..."
-                    : folderLoading
-                    ? "Processing Folder..."
-                    : s3Loading
-                    ? "Processing S3..."
-                    : isNavigatingToCloud
-                    ? "Loading..."
-                    : "Processing..."
-                  : "Add Knowledge"}
-              </span>
-              {!isLoading && (
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 transition-transform",
-                    isOpen && "rotate-180"
-                  )}
-                />
-              )}
-            </>
-          ) : (
-            <>
-              <div className="flex items-center flex-1">
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 mr-3 shrink-0 animate-spin" />
-                ) : (
-                  <Upload
-                    className={cn(
-                      "h-4 w-4 mr-3 shrink-0",
-                      active
-                        ? "text-accent-foreground"
-                        : "text-muted-foreground group-hover:text-foreground"
-                    )}
-                  />
+          <>
+            {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span>
+              {isLoading
+                ? fileUploading
+                  ? "Uploading..."
+                  : folderLoading
+                  ? "Processing Folder..."
+                  : s3Loading
+                  ? "Processing S3..."
+                  : isNavigatingToCloud
+                  ? "Loading..."
+                  : "Processing..."
+                : "Add Knowledge"}
+            </span>
+            {!isLoading && (
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition-transform",
+                  isOpen && "rotate-180"
                 )}
-                Knowledge
-              </div>
-              {!isLoading && (
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 transition-transform",
-                    isOpen && "rotate-180"
-                  )}
-                />
-              )}
-            </>
-          )}
-        </button>
+              />
+            )}
+          </>
+        </Button>
 
         {isOpen && !isLoading && (
           <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-md z-50">
@@ -519,12 +468,13 @@ export function KnowledgeDropdown({
                   disabled={"disabled" in item ? item.disabled : false}
                   title={"tooltip" in item ? item.tooltip : undefined}
                   className={cn(
-                    "w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+                    "w-full flex flex-nowrap items-center px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground",
                     "disabled" in item &&
                       item.disabled &&
                       "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-current"
                   )}
                 >
+                  {item.icon && <item.icon className="h-4 w-4 mr-2 text-muted-foreground" />}
                   {item.label}
                 </button>
               ))}
@@ -561,7 +511,7 @@ export function KnowledgeDropdown({
                 type="text"
                 placeholder="/path/to/documents"
                 value={folderPath}
-                onChange={e => setFolderPath(e.target.value)}
+                onChange={(e) => setFolderPath(e.target.value)}
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -603,7 +553,7 @@ export function KnowledgeDropdown({
                 type="text"
                 placeholder="s3://bucket/path"
                 value={bucketUrl}
-                onChange={e => setBucketUrl(e.target.value)}
+                onChange={(e) => setBucketUrl(e.target.value)}
               />
             </div>
             <div className="flex justify-end gap-2">

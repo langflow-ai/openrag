@@ -53,6 +53,8 @@
     --flow-icon: #2f67d0;
 
     --radius: 0.5rem;
+
+    --app-header-height: 53px;
   }
 
   .dark {
@@ -108,6 +110,29 @@
 }
 
 @layer components {
+  .app-grid-cols-arrangement {
+    --sidebar-width: 0px;
+    --notifications-width: 0px;
+    --filters-width: 0px;
+
+    @media (width >= 48rem) {
+      --sidebar-width: 288px;
+    }
+
+    &.notifications-open {
+      --notifications-width: 320px;
+    }
+    &.filters-open {
+      --filters-width: 320px;
+    }
+    display: grid;
+    height: calc(100% - var(--app-header-height));
+    grid-template-columns: var(--sidebar-width) 1fr var(--notifications-width) var(
+        --filters-width
+      );
+    transition: grid-template-columns 0.3s ease-in-out;
+  }
+
   .header-arrangement {
     @apply flex w-full h-[53px] items-center justify-between border-b border-border;
   }

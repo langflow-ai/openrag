@@ -1,8 +1,8 @@
 "use client";
 
-import type { ColDef } from "ag-grid-community";
+import { themeQuartz, type ColDef } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { Building2, Cloud, HardDrive, Search, Trash2, X } from "lucide-react";
+import { Building2, Cloud, HardDrive, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, useCallback, useRef, useState } from "react";
 import { SiGoogledrive } from "react-icons/si";
@@ -46,8 +46,8 @@ function getSourceIcon(connectorType?: string) {
 
 function SearchPage() {
   const router = useRouter();
-  const { isMenuOpen, files: taskFiles } = useTask();
-  const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
+  const { files: taskFiles } = useTask();
+  const { selectedFilter, setSelectedFilter, parsedFilterData } =
     useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
@@ -144,7 +144,6 @@ function SearchPage() {
     {
       field: "avgScore",
       headerName: "Avg score",
-      initialFlex: 0.5,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
           <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
@@ -229,32 +228,19 @@ function SearchPage() {
   };
 
   return (
-    <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
-        isMenuOpen && isPanelOpen
-          ? "md:right-[704px]"
-          : // Both open: 384px (menu) + 320px (KF panel)
-          isMenuOpen
-          ? "md:right-96"
-          : // Only menu open: 384px
-          isPanelOpen
-          ? "md:right-80"
-          : // Only KF panel open: 320px
-            "md:right-6" // Neither open: 24px
-      }`}
-    >
-      <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
+    <>
+      <div className="flex flex-col h-full">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold">Project Knowledge</h2>
-          <KnowledgeDropdown variant="button" />
+          <h2 className="text-lg font-semibold">Knowledge</h2>
         </div>
 
         {/* Search Input Area */}
-        <div className="flex-shrink-0 mb-6 xl:max-w-[75%]">
-          <form className="flex gap-3">
-            <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]">
+        <div className="flex-1 flex flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
+          <form className="flex flex-1 gap-3 max-w-full">
+            <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem] max-w-[min(640px,100%)] min-w-[100px]">
               {selectedFilter?.name && (
                 <div
+                  title={selectedFilter?.name}
                   className={`flex items-center gap-1 h-full px-1.5 py-0.5 mr-1 rounded max-w-[25%] ${
                     filterAccentClasses[parsedFilterData?.color || "zinc"]
                   }`}
@@ -307,10 +293,13 @@ function SearchPage() {
                 className="rounded-lg flex-shrink-0"
                 onClick={() => setShowBulkDeleteDialog(true)}
               >
-                <Trash2 className="h-4 w-4" /> Delete
+                Delete
               </Button>
             )}
           </form>
+          <div className="ml-auto">
+            <KnowledgeDropdown />
+          </div>
         </div>
         <AgGridReact
           className="w-full overflow-auto"
@@ -324,6 +313,7 @@ function SearchPage() {
           suppressRowClickSelection={true}
           getRowId={(params) => params.data.filename}
           domLayout="normal"
+          theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
           onSelectionChanged={onSelectionChanged}
           noRowsOverlayComponent={() => (
             <div className="text-center pb-[45px]">
@@ -347,15 +337,12 @@ function SearchPage() {
           selectedRows.length
         } document${
           selectedRows.length > 1 ? "s" : ""
-        }? This will remove all chunks and data associated with these documents. This action cannot be undone.
-
-Documents to be deleted:
-${selectedRows.map((row) => `• ${row.filename}`).join("\n")}`}
+        }? This will remove all chunks and data associated with these documents. This action cannot be undone.`}
         confirmText="Delete All"
         onConfirm={handleBulkDelete}
         isLoading={deleteDocumentMutation.isPending}
       />
-    </div>
+    </>
   );
 }
 

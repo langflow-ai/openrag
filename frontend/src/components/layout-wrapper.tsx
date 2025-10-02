@@ -2,7 +2,10 @@
 
 import { Bell, Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useGetConversationsQuery, type ChatConversation } from "@/app/api/queries/useGetConversationsQuery";
+import {
+  useGetConversationsQuery,
+  type ChatConversation,
+} from "@/app/api/queries/useGetConversationsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import Logo from "@/components/logo/logo";
@@ -16,6 +19,7 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context";
+import { cn } from "@/lib/utils";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -34,6 +38,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
+  const isOnKnowledgePage = pathname === "/knowledge";
   const { data: conversations = [], isLoading: isConversationsLoading } =
     useGetConversationsQuery(endpoint, refreshTrigger, {
       enabled: isOnChatPage && (isAuthenticated || isNoAuthMode),
@@ -53,7 +58,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     (task) =>
       task.status === "pending" ||
       task.status === "running" ||
-      task.status === "processing",
+      task.status === "processing"
   );
 
   // Show loading state when backend isn't ready
@@ -75,8 +80,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
-    <div className="h-full relative">
-      <header className="header-arrangement bg-background sticky top-0 z-50">
+    <div className="h-screen">
+      {/* Header */}
+      <header className="header-arrangement bg-background">
         <div className="header-start-display px-4">
           {/* Logo/Title */}
           <div className="flex items-center gap-2">
@@ -118,31 +124,38 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <div className="side-bar-arrangement bg-background fixed left-0 top-[53px] bottom-0 md:flex hidden">
-        <Navigation
-          conversations={conversations}
-          isConversationsLoading={isConversationsLoading}
-          onNewConversation={handleNewConversation}
-        />
-      </div>
-      <main
-        className={`md:pl-72 transition-all duration-300 overflow-y-auto h-[calc(100vh-53px)] ${
-          isMenuOpen && isPanelOpen
-            ? "md:pr-[728px]"
-            : // Both open: 384px (menu) + 320px (KF panel) + 24px (original padding)
-            isMenuOpen
-            ? "md:pr-96"
-            : // Only menu open: 384px
-            isPanelOpen
-            ? "md:pr-80"
-            : // Only KF panel open: 320px
-              "md:pr-0" // Neither open: 24px
-        }`}
+
+      <div
+        className={cn(
+          "app-grid-cols-arrangement group",
+          isPanelOpen && isOnKnowledgePage && !isMenuOpen && "filters-open",
+          isMenuOpen && "notifications-open"
+        )}
       >
-        <div className="container py-6 lg:py-8 px-4 lg:px-6">{children}</div>
-      </main>
-      <TaskNotificationMenu />
-      <KnowledgeFilterPanel />
+        {/* Sidebar Navigation */}
+        <aside className="bg-background border-r overflow-hidden">
+          <Navigation
+            conversations={conversations}
+            isConversationsLoading={isConversationsLoading}
+            onNewConversation={handleNewConversation}
+          />
+        </aside>
+
+        {/* Main Content */}
+        <main className="overflow-y-auto">
+          <div className="container p-6 h-full">{children}</div>
+        </main>
+
+        {/* Task Notifications Panel */}
+        <aside className="overflow-y-auto overflow-x-hidden">
+          {isMenuOpen && <TaskNotificationMenu />}
+        </aside>
+
+        {/* Knowledge Filter Panel */}
+        <aside className="overflow-y-auto overflow-x-hidden">
+          {isPanelOpen && <KnowledgeFilterPanel />}
+        </aside>
+      </div>
     </div>
   );
 }
