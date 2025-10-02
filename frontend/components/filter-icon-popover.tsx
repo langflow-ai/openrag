@@ -133,7 +133,7 @@ export function FilterIconPopover({
                 type="button"
                 onClick={() => onColorChange(c)}
                 className={cn(
-                  "flex items-center justify-center h-6 w-6 rounded-sm transition-colors text-primary",
+                  "flex items-center justify-center h-6 w-6 rounded-sm transition-colors text-white",
                   colorSwatchClasses[c]
                 )}
                 aria-label={c}

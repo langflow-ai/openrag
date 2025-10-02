@@ -13,12 +13,12 @@ This page provides troubleshooting advice for issues you might encounter when us
 
 ## OpenSearch fails to start
 
-Check that `OPENSEARCH_PASSWORD` is set and meets requirements.
+Check that `OPENSEARCH_PASSWORD` set in [Environment variables](/configure/configuration) meets requirements.
 The password must contain at least 8 characters, and must contain at least one uppercase letter, one lowercase letter, one digit, and one special character that is strong.
 
 ## Langflow connection issues
 
-Verify the `LANGFLOW_SUPERUSER` credentials are correct.
+Verify the `LANGFLOW_SUPERUSER` credentials set in [Environment variables](/configure/configuration) are correct.
 
 ## Memory errors
 
@@ -51,57 +51,58 @@ To reset your local containers and pull new images, do the following:
 
 1. Stop your containers and completely remove them.
 
-<Tabs groupId="Container software">
-  <TabItem value="Docker" label="Docker" default>
-
-    ```bash
-    # Stop all running containers
-    docker stop $(docker ps -q)
+    <Tabs groupId="Container software">
+    <TabItem value="Podman" label="Podman">
     
-    # Remove all containers (including stopped ones)
-    docker rm --force $(docker ps -aq)
+        ```bash
+        # Stop all running containers
+        podman stop --all
+        
+        # Remove all containers (including stopped ones)
+        podman rm --all --force
+        
+        # Remove all images
+        podman rmi --all --force
+        
+        # Remove all volumes
+        podman volume prune --force
+        
+        # Remove all networks (except default)
+        podman network prune --force
+        
+        # Clean up any leftover data
+        podman system prune --all --force --volumes
+        ```
     
-    # Remove all images
-    docker rmi --force $(docker images -q)
+      </TabItem>
+      <TabItem value="Docker" label="Docker" default>
     
-    # Remove all volumes
-    docker volume prune --force
+        ```bash
+        # Stop all running containers
+        docker stop $(docker ps -q)
+        
+        # Remove all containers (including stopped ones)
+        docker rm --force $(docker ps -aq)
+        
+        # Remove all images
+        docker rmi --force $(docker images -q)
+        
+        # Remove all volumes
+        docker volume prune --force
+        
+        # Remove all networks (except default)
+        docker network prune --force
+        
+        # Clean up any leftover data
+        docker system prune --all --force --volumes
+        ```
     
-    # Remove all networks (except default)
-    docker network prune --force
-    
-    # Clean up any leftover data
-    docker system prune --all --force --volumes
-    ```
-
-   </TabItem>
-   <TabItem value="Podman" label="Podman">
-
-    ```bash
-    # Stop all running containers
-    podman stop --all
-    
-    # Remove all containers (including stopped ones)
-    podman rm --all --force
-    
-    # Remove all images
-    podman rmi --all --force
-    
-    # Remove all volumes
-    podman volume prune --force
-    
-    # Remove all networks (except default)
-    podman network prune --force
-    
-    # Clean up any leftover data
-    podman system prune --all --force --volumes
-    ```
-
-  </TabItem>
-</Tabs>
+       </TabItem>
+    </Tabs>
 
 2. Restart OpenRAG and upgrade to get the latest images for your containers.
    ```bash
+   uv sync
    uv run openrag
    ```
 
