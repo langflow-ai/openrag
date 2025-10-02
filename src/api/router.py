@@ -114,20 +114,22 @@ async def langflow_upload_ingest_task(
         temp_file_paths = []
         
         try:
+            # Create temp directory reference once
+            temp_dir = tempfile.gettempdir()
+
             for upload_file in upload_files:
                 # Read file content
                 content = await upload_file.read()
-                
-                # Create temporary file
+
+                # Create temporary file with the actual filename (not a temp prefix)
+                # Store in temp directory but use the real filename
                 safe_filename = upload_file.filename.replace(" ", "_").replace("/", "_")
-                temp_fd, temp_path = tempfile.mkstemp(
-                    suffix=f"_{safe_filename}"
-                )
-                
+                temp_path = os.path.join(temp_dir, safe_filename)
+
                 # Write content to temp file
-                with os.fdopen(temp_fd, 'wb') as temp_file:
+                with open(temp_path, 'wb') as temp_file:
                     temp_file.write(content)
-                
+
                 temp_file_paths.append(temp_path)
 
             logger.debug(
