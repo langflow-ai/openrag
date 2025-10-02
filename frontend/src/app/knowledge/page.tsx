@@ -255,7 +255,7 @@ function SearchPage() {
             <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]">
               {selectedFilter?.name && (
                 <div
-                  className={`flex items-center gap-1 h-full px-1.5 py-0.5 rounded max-w-[300px] ${
+                  className={`flex items-center gap-1 h-full px-1.5 py-0.5 rounded max-w-[25%] ${
                     filterAccentClasses[parsedFilterData?.color || "zinc"]
                   }`}
                 >
@@ -267,7 +267,10 @@ function SearchPage() {
                   />
                 </div>
               )}
-              <Search className="h-4 w-4" />
+              <Search
+                className="h-4 w-4 ml-2 flex-shrink-0 text-placeholder-foreground"
+                strokeWidth={1.5}
+              />
               <input
                 className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none font-mono placeholder:font-mono"
                 name="search-query"

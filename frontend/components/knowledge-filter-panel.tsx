@@ -241,7 +241,10 @@ export function KnowledgeFilterPanel() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={closePanelOnly}
+              onClick={() => {
+                setSelectedFilter(null);
+                closePanelOnly();
+              }}
               className="h-8 w-8 p-0"
             >
               <X className="h-4 w-4" />
