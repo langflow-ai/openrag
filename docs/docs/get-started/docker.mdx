@@ -1,8 +1,9 @@
 ---
-title: Docker deployment
+title: Deploy with Docker
 slug: /get-started/docker
 ---
 
+import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
 import PartialExternalPreview from '@site/docs/_partial-external-preview.mdx';
 
 <PartialExternalPreview />
@@ -14,7 +15,18 @@ They deploy the same applications and containers, but to different environments.
 
 - [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
 
-To install OpenRAG with Docker Compose:
+## Prerequisites
+
+- [Python Version 3.10 to 3.13](https://www.python.org/downloads/release/python-3100/)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/) installed
+- [Docker Compose](https://docs.docker.com/compose/install/) installed. If you're using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
+- Create an [OpenAI API key](https://platform.openai.com/api-keys). This key is **required** to start OpenRAG, but you can choose a different model provider during [Application Onboarding](#application-onboarding).
+- Optional: GPU support requires an NVIDIA GPU with CUDA support and compatible NVIDIA drivers installed on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
+
+## Deploy OpenRAG with Docker Compose
+
+To install OpenRAG with Docker Compose, do the following:
 
 1. Clone the OpenRAG repository.
    ```bash
@@ -22,7 +34,7 @@ To install OpenRAG with Docker Compose:
    cd openrag
    ```
 
-2. Copy the example `.env` file that is included in the repository root.
+2. Copy the example `.env` file included in the repository root.
   The example file includes all environment variables with comments to guide you in finding and setting their values.
    ```bash
    cp .env.example .env
@@ -33,7 +45,8 @@ To install OpenRAG with Docker Compose:
    touch .env
    ```
 
-3. Set environment variables. The Docker Compose files are populated with values from your `.env`, so the following values are **required** to be set:
+3. Set environment variables. The Docker Compose files will be populated with values from your `.env`.
+The following values are **required** to be set:
 
    ```bash
    OPENSEARCH_PASSWORD=your_secure_password
@@ -44,7 +57,6 @@ To install OpenRAG with Docker Compose:
    LANGFLOW_SECRET_KEY=your_secret_key
    ```
    For more information on configuring OpenRAG with environment variables, see [Environment variables](/configure/configuration).
-   For additional configuration values, including `config.yaml`, see [Configuration](/configure/configuration).
 
 4. Deploy OpenRAG with Docker Compose based on your deployment type.
 
@@ -79,7 +91,9 @@ To install OpenRAG with Docker Compose:
    - **Backend API**: http://localhost:8000
    - **Langflow**: http://localhost:7860
 
-Continue with the [Quickstart](/quickstart).
+6. Continue with [Application Onboarding](#application-onboarding).
+
+<PartialOnboarding />
 
 ## Rebuild all Docker containers
 
