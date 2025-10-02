@@ -2095,29 +2095,6 @@ function ChatPage() {
 							<textarea
 								ref={inputRef}
 								value={input}
-								onFocus={(e) => {
-									// Handle case where user focuses back on textarea with trailing @
-									const textarea = e.target;
-									const value = textarea.value;
-									const words = value.split(" ");
-									const lastWord = words[words.length - 1];
-									
-									if (lastWord === "@" && !isFilterDropdownOpen) {
-										// Set cursor to end of text and calculate position
-										const endPos = value.length;
-										textarea.setSelectionRange(endPos, endPos);
-										
-										// Get cursor position for popover anchoring
-										const pos = getCursorPosition(textarea);
-										setAnchorPosition(pos);
-										
-										// Open popover
-										loadAvailableFilters();
-										setIsFilterDropdownOpen(true);
-										setFilterSearchTerm("");
-										setSelectedFilterIndex(0);
-									}
-								}}
 								onChange={(e) => {
 									const newValue = e.target.value;
 									setInput(newValue);
