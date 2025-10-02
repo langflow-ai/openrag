@@ -1,13 +1,16 @@
 import json
 import platform
 from starlette.responses import JSONResponse
+from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from config.settings import (
+    DISABLE_INGEST_WITH_LANGFLOW,
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
     DOCLING_COMPONENT_ID,
+    LOCALHOST_URL,
     clients,
     get_openrag_config,
     config_manager,
@@ -74,6 +77,7 @@ async def get_settings(request, session_manager):
                 "llm_model": agent_config.llm_model,
                 "system_prompt": agent_config.system_prompt,
             },
+            "localhost_url": LOCALHOST_URL,
         }
 
         # Only expose edit URLs when a public URL is configured
@@ -447,7 +451,7 @@ async def onboarding(request, flows_service):
             config_updated = True
 
         # Update knowledge settings
-        if "embedding_model" in body:
+        if "embedding_model" in body and not DISABLE_INGEST_WITH_LANGFLOW:
             if (
                 not isinstance(body["embedding_model"], str)
                 or not body["embedding_model"].strip()
@@ -570,7 +574,8 @@ async def onboarding(request, flows_service):
 
                     # Set base URL for Ollama provider
                     if provider == "ollama" and "endpoint" in body:
-                        endpoint = body["endpoint"]
+                        endpoint = transform_localhost_url(body["endpoint"])
+
                         await clients._create_langflow_global_variable(
                             "OLLAMA_BASE_URL", endpoint, modify=True
                         )
@@ -596,11 +601,16 @@ async def onboarding(request, flows_service):
                 # Import here to avoid circular imports
                 from main import init_index
 
-                logger.info("Initializing OpenSearch index after onboarding configuration")
+                logger.info(
+                    "Initializing OpenSearch index after onboarding configuration"
+                )
                 await init_index()
                 logger.info("OpenSearch index initialization completed successfully")
             except Exception as e:
-                logger.error("Failed to initialize OpenSearch index after onboarding", error=str(e))
+                logger.error(
+                    "Failed to initialize OpenSearch index after onboarding",
+                    error=str(e),
+                )
                 # Don't fail the entire onboarding process if index creation fails
                 # The application can still work, but document operations may fail
 

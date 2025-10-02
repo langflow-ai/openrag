@@ -1,5 +1,6 @@
 "use client";
 
+<<<<<<< HEAD
 import {
   ArrowUpRight,
   Loader2,
@@ -9,6 +10,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+=======
+import { ArrowUpRight, Loader2, PlugZap, Plus, RefreshCw } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+>>>>>>> main
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
 import {
@@ -103,6 +108,7 @@ function KnowledgeSourcesPage() {
   const { isAuthenticated, isNoAuthMode } = useAuth();
   const { addTask, tasks } = useTask();
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   // Connectors state
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -171,7 +177,7 @@ function KnowledgeSourcesPage() {
     onSuccess: () => {
       console.log("Setting updated successfully");
     },
-    onError: (error) => {
+    onError: error => {
       console.error("Failed to update setting:", error.message);
     },
   });
@@ -310,8 +316,8 @@ function KnowledgeSourcesPage() {
 
       // Initialize connectors list with metadata from backend
       const initialConnectors = connectorTypes
-        .filter((type) => connectorsResult.connectors[type].available) // Only show available connectors
-        .map((type) => ({
+        .filter(type => connectorsResult.connectors[type].available) // Only show available connectors
+        .map(type => ({
           id: type,
           name: connectorsResult.connectors[type].name,
           description: connectorsResult.connectors[type].description,
@@ -334,8 +340,8 @@ function KnowledgeSourcesPage() {
           );
           const isConnected = activeConnection !== undefined;
 
-          setConnectors((prev) =>
-            prev.map((c) =>
+          setConnectors(prev =>
+            prev.map(c =>
               c.type === connectorType
                 ? {
                     ...c,
@@ -354,7 +360,7 @@ function KnowledgeSourcesPage() {
 
   const handleConnect = async (connector: Connector) => {
     setIsConnecting(connector.id);
-    setSyncResults((prev) => ({ ...prev, [connector.id]: null }));
+    setSyncResults(prev => ({ ...prev, [connector.id]: null }));
 
     try {
       // Use the shared auth callback URL, same as connectors page
@@ -404,58 +410,58 @@ function KnowledgeSourcesPage() {
     }
   };
 
-  const handleSync = async (connector: Connector) => {
-    if (!connector.connectionId) return;
+  // const handleSync = async (connector: Connector) => {
+  //   if (!connector.connectionId) return;
 
-    setIsSyncing(connector.id);
-    setSyncResults((prev) => ({ ...prev, [connector.id]: null }));
+  //   setIsSyncing(connector.id);
+  //   setSyncResults(prev => ({ ...prev, [connector.id]: null }));
 
-    try {
-      const syncBody: {
-        connection_id: string;
-        max_files?: number;
-        selected_files?: string[];
-      } = {
-        connection_id: connector.connectionId,
-        max_files: syncAllFiles ? 0 : maxFiles || undefined,
-      };
+  //   try {
+  //     const syncBody: {
+  //       connection_id: string;
+  //       max_files?: number;
+  //       selected_files?: string[];
+  //     } = {
+  //       connection_id: connector.connectionId,
+  //       max_files: syncAllFiles ? 0 : maxFiles || undefined,
+  //     };
 
-      // Note: File selection is now handled via the cloud connectors dialog
+  //     // Note: File selection is now handled via the cloud connectors dialog
 
-      const response = await fetch(`/api/connectors/${connector.type}/sync`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(syncBody),
-      });
+  //     const response = await fetch(`/api/connectors/${connector.type}/sync`, {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify(syncBody),
+  //     });
 
-      const result = await response.json();
+  //     const result = await response.json();
 
-      if (response.status === 201) {
-        const taskId = result.task_id;
-        if (taskId) {
-          addTask(taskId);
-          setSyncResults((prev) => ({
-            ...prev,
-            [connector.id]: {
-              processed: 0,
-              total: result.total_files || 0,
-            },
-          }));
-        }
-      } else if (response.ok) {
-        setSyncResults((prev) => ({ ...prev, [connector.id]: result }));
-        // Note: Stats will auto-refresh via task completion watcher for async syncs
-      } else {
-        console.error("Sync failed:", result.error);
-      }
-    } catch (error) {
-      console.error("Sync error:", error);
-    } finally {
-      setIsSyncing(null);
-    }
-  };
+  //     if (response.status === 201) {
+  //       const taskId = result.task_id;
+  //       if (taskId) {
+  //         addTask(taskId);
+  //         setSyncResults(prev => ({
+  //           ...prev,
+  //           [connector.id]: {
+  //             processed: 0,
+  //             total: result.total_files || 0,
+  //           },
+  //         }));
+  //       }
+  //     } else if (response.ok) {
+  //       setSyncResults(prev => ({ ...prev, [connector.id]: result }));
+  //       // Note: Stats will auto-refresh via task completion watcher for async syncs
+  //     } else {
+  //       console.error("Sync failed:", result.error);
+  //     }
+  //   } catch (error) {
+  //     console.error("Sync error:", error);
+  //   } finally {
+  //     setIsSyncing(null);
+  //   }
+  // };
 
   const getStatusBadge = (status: Connector["status"]) => {
     switch (status) {
@@ -491,6 +497,11 @@ function KnowledgeSourcesPage() {
     }
   };
 
+  const navigateToKnowledgePage = (connector: Connector) => {
+    const provider = connector.type.replace(/-/g, "_");
+    router.push(`/upload/${provider}`);
+  };
+
   // Check connector status on mount and when returning from OAuth
   useEffect(() => {
     if (isAuthenticated) {
@@ -510,9 +521,9 @@ function KnowledgeSourcesPage() {
   // Watch for task completions and refresh stats
   useEffect(() => {
     // Find newly completed tasks by comparing with previous state
-    const newlyCompletedTasks = tasks.filter((task) => {
+    const newlyCompletedTasks = tasks.filter(task => {
       const wasCompleted =
-        prevTasks.find((prev) => prev.task_id === task.task_id)?.status ===
+        prevTasks.find(prev => prev.task_id === task.task_id)?.status ===
         "completed";
       return task.status === "completed" && !wasCompleted;
     });
@@ -566,7 +577,7 @@ function KnowledgeSourcesPage() {
     fetch(`/api/reset-flow/retrieval`, {
       method: "POST",
     })
-      .then((response) => {
+      .then(response => {
         if (response.ok) {
           return response.json();
         }
@@ -579,7 +590,7 @@ function KnowledgeSourcesPage() {
         handleModelChange(DEFAULT_AGENT_SETTINGS.llm_model);
         closeDialog(); // Close after successful completion
       })
-      .catch((error) => {
+      .catch(error => {
         console.error("Error restoring retrieval flow:", error);
         closeDialog(); // Close even on error (could show error toast instead)
       });
@@ -589,7 +600,7 @@ function KnowledgeSourcesPage() {
     fetch(`/api/reset-flow/ingest`, {
       method: "POST",
     })
-      .then((response) => {
+      .then(response => {
         if (response.ok) {
           return response.json();
         }
@@ -604,7 +615,7 @@ function KnowledgeSourcesPage() {
         setPictureDescriptions(false);
         closeDialog(); // Close after successful completion
       })
-      .catch((error) => {
+      .catch(error => {
         console.error("Error restoring ingest flow:", error);
         closeDialog(); // Close even on error (could show error toast instead)
       });
@@ -621,85 +632,88 @@ function KnowledgeSourcesPage() {
         </div>
 
         {/* Conditional Sync Settings or No-Auth Message */}
-        {isNoAuthMode ? (
-          <Card className="border-yellow-500/50 bg-yellow-500/5">
-            <CardHeader>
-              <CardTitle className="text-lg text-yellow-600">
-                Cloud connectors are only available with auth mode enabled
-              </CardTitle>
-              <CardDescription className="text-sm">
-                Please provide the following environment variables and restart:
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-muted rounded-md p-4 font-mono text-sm">
-                <div className="text-muted-foreground mb-2">
-                  # make here https://console.cloud.google.com/apis/credentials
+        {
+          isNoAuthMode ? (
+            <Card className="border-yellow-500/50 bg-yellow-500/5">
+              <CardHeader>
+                <CardTitle className="text-lg text-yellow-600">
+                  Cloud connectors are only available with auth mode enabled
+                </CardTitle>
+                <CardDescription className="text-sm">
+                  Please provide the following environment variables and
+                  restart:
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-muted rounded-md p-4 font-mono text-sm">
+                  <div className="text-muted-foreground mb-2">
+                    # make here
+                    https://console.cloud.google.com/apis/credentials
+                  </div>
+                  <div>GOOGLE_OAUTH_CLIENT_ID=</div>
+                  <div>GOOGLE_OAUTH_CLIENT_SECRET=</div>
                 </div>
-                <div>GOOGLE_OAUTH_CLIENT_ID=</div>
-                <div>GOOGLE_OAUTH_CLIENT_SECRET=</div>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="flex items-center justify-between py-4">
-            <div>
-              <h3 className="text-lg font-medium">Sync Settings</h3>
-              <p className="text-sm text-muted-foreground">
-                Configure how many files to sync when manually triggering a sync
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="syncAllFiles"
-                  checked={syncAllFiles}
-                  onCheckedChange={(checked) => {
-                    setSyncAllFiles(!!checked);
-                    if (checked) {
-                      setMaxFiles(0);
-                    } else {
-                      setMaxFiles(10);
-                    }
-                  }}
-                />
-                <Label
-                  htmlFor="syncAllFiles"
-                  className="font-medium whitespace-nowrap"
-                >
-                  Sync all files
-                </Label>
-              </div>
-              <Label
-                htmlFor="maxFiles"
-                className="font-medium whitespace-nowrap"
-              >
-                Max files per sync:
-              </Label>
-              <div className="relative">
-                <Input
-                  id="maxFiles"
-                  type="number"
-                  value={syncAllFiles ? 0 : maxFiles}
-                  onChange={(e) => setMaxFiles(parseInt(e.target.value) || 10)}
-                  disabled={syncAllFiles}
-                  className="w-16 min-w-16 max-w-16 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                  min="1"
-                  max="100"
-                  title={
-                    syncAllFiles
-                      ? "Disabled when 'Sync all files' is checked"
-                      : "Leave blank or set to 0 for unlimited"
-                  }
-                />
-              </div>
-            </div>
-          </div>
-        )}
+              </CardContent>
+            </Card>
+          ) : null
+          // <div className="flex items-center justify-between py-4">
+          //   <div>
+          //     <h3 className="text-lg font-medium">Sync Settings</h3>
+          //     <p className="text-sm text-muted-foreground">
+          //       Configure how many files to sync when manually triggering a sync
+          //     </p>
+          //   </div>
+          //   <div className="flex items-center gap-4">
+          //     <div className="flex items-center space-x-2">
+          //       <Checkbox
+          //         id="syncAllFiles"
+          //         checked={syncAllFiles}
+          //         onCheckedChange={checked => {
+          //           setSyncAllFiles(!!checked);
+          //           if (checked) {
+          //             setMaxFiles(0);
+          //           } else {
+          //             setMaxFiles(10);
+          //           }
+          //         }}
+          //       />
+          //       <Label
+          //         htmlFor="syncAllFiles"
+          //         className="font-medium whitespace-nowrap"
+          //       >
+          //         Sync all files
+          //       </Label>
+          //     </div>
+          //     <Label
+          //       htmlFor="maxFiles"
+          //       className="font-medium whitespace-nowrap"
+          //     >
+          //       Max files per sync:
+          //     </Label>
+          //     <div className="relative">
+          //       <Input
+          //         id="maxFiles"
+          //         type="number"
+          //         value={syncAllFiles ? 0 : maxFiles}
+          //         onChange={e => setMaxFiles(parseInt(e.target.value) || 10)}
+          //         disabled={syncAllFiles}
+          //         className="w-16 min-w-16 max-w-16 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          //         min="1"
+          //         max="100"
+          //         title={
+          //           syncAllFiles
+          //             ? "Disabled when 'Sync all files' is checked"
+          //             : "Leave blank or set to 0 for unlimited"
+          //         }
+          //       />
+          //     </div>
+          //   </div>
+          // </div>
+        }
 
         {/* Connectors Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {connectors.map((connector) => (
+          {connectors.map(connector => (
             <Card key={connector.id} className="relative flex flex-col">
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -721,22 +735,13 @@ function KnowledgeSourcesPage() {
                 {connector.status === "connected" ? (
                   <div className="space-y-3">
                     <Button
-                      onClick={() => handleSync(connector)}
+                      onClick={() => navigateToKnowledgePage(connector)}
                       disabled={isSyncing === connector.id}
                       className="w-full"
                       variant="outline"
                     >
-                      {isSyncing === connector.id ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Syncing...
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          Sync Now
-                        </>
-                      )}
+                      <Plus className="h-4 w-4" />
+                      Add Knowledge
                     </Button>
 
                     {syncResults[connector.id] && (
@@ -842,7 +847,7 @@ function KnowledgeSourcesPage() {
                 }
                 confirmText="Proceed"
                 confirmIcon={<ArrowUpRight />}
-                onConfirm={(closeDialog) =>
+                onConfirm={closeDialog =>
                   handleEditInLangflow("chat", closeDialog)
                 }
                 variant="warning"
@@ -862,8 +867,7 @@ function KnowledgeSourcesPage() {
                 <Select
                   value={
                     settings.agent?.llm_model ||
-                    modelsData?.language_models?.find((m) => m.default)
-                      ?.value ||
+                    modelsData?.language_models?.find(m => m.default)?.value ||
                     "gpt-4"
                   }
                   onValueChange={handleModelChange}
@@ -1003,7 +1007,7 @@ function KnowledgeSourcesPage() {
                 confirmText="Proceed"
                 confirmIcon={<ArrowUpRight />}
                 variant="warning"
-                onConfirm={(closeDialog) =>
+                onConfirm={closeDialog =>
                   handleEditInLangflow("ingest", closeDialog)
                 }
               />
@@ -1023,8 +1027,7 @@ function KnowledgeSourcesPage() {
                   disabled={true}
                   value={
                     settings.knowledge?.embedding_model ||
-                    modelsData?.embedding_models?.find((m) => m.default)
-                      ?.value ||
+                    modelsData?.embedding_models?.find(m => m.default)?.value ||
                     "text-embedding-ada-002"
                   }
                   onValueChange={handleEmbeddingModelChange}

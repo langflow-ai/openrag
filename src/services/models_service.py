@@ -1,5 +1,6 @@
 import httpx
 from typing import Dict, List
+from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -18,6 +19,27 @@ class ModelsService:
         "paraphrase-multilingual",
         "granite-embedding",
         "jina-embeddings-v2-base-en",
+    ]
+
+    OPENAI_TOOL_CALLING_MODELS = [
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "gpt-4o-mini",
+        "gpt-4o",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
+        "gpt-4-turbo",
+        "gpt-4-turbo-preview",
+        "gpt-4",
+        "gpt-3.5-turbo",
+        "o1",
+        "o3-mini",
+        "o3",
+        "o3-pro",
+        "o4-mini",
+        "o4-mini-high",
     ]
 
     def __init__(self):
@@ -48,12 +70,12 @@ class ModelsService:
                     model_id = model.get("id", "")
 
                     # Language models (GPT models)
-                    if any(prefix in model_id for prefix in ["gpt-4", "gpt-3.5"]):
+                    if model_id in self.OPENAI_TOOL_CALLING_MODELS:
                         language_models.append(
                             {
                                 "value": model_id,
                                 "label": model_id,
-                                "default": model_id == "gpt-4o-mini",
+                                "default": model_id == "gpt-5",
                             }
                         )
 
@@ -95,7 +117,7 @@ class ModelsService:
         """Fetch available models from Ollama API with tool calling capabilities for language models"""
         try:
             # Use provided endpoint or default
-            ollama_url = endpoint
+            ollama_url = transform_localhost_url(endpoint)
 
             # API endpoints
             tags_url = f"{ollama_url}/api/tags"
