@@ -110,14 +110,13 @@ class ChatService:
             filter_expression["score_threshold"] = score_threshold
 
         # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
-        if filter_expression:
-            logger.info(
-                "Sending OpenRAG query filter to Langflow",
-                filter_expression=filter_expression,
-            )
-            extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
-                filter_expression
-            )
+        logger.info(
+            "Sending OpenRAG query filter to Langflow",
+            filter_expression=filter_expression,
+        )
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
+            filter_expression
+        )
         logger.info(f"[LF] Extra headers {extra_headers}")
         # Ensure the Langflow client exists; try lazy init if needed
         langflow_client = await clients.ensure_langflow_client()
