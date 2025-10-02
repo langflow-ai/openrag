@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Funnel,
   GitBranch,
   Loader2,
   Plus,
@@ -2018,36 +2019,24 @@ function ChatPage() {
   };
 
   const onAtClick = () => {
-    if (inputRef.current) {
-      // Insert @ at current cursor position
-      const textarea = inputRef.current;
-      const start = textarea.selectionStart || 0;
-      const end = textarea.selectionEnd || 0;
-      const currentValue = textarea.value;
-
-      // Insert @ at cursor position
-      const newValue =
-        currentValue.substring(0, start) + "@" + currentValue.substring(end);
-      setInput(newValue);
-
-      // Set cursor position after the @
-      const newCursorPos = start + 1;
-      setTimeout(() => {
-        textarea.setSelectionRange(newCursorPos, newCursorPos);
-        textarea.focus();
-      }, 0);
-
-      // Open popover and set anchor position
+    if (!isFilterDropdownOpen) {
       loadAvailableFilters();
       setIsFilterDropdownOpen(true);
       setFilterSearchTerm("");
       setSelectedFilterIndex(0);
-
-      // Get cursor position for popover anchoring
-      setTimeout(() => {
-        const cursorPos = getCursorPosition(textarea);
-        setAnchorPosition(cursorPos);
-      }, 0);
+      
+      // Get button position for popover anchoring
+      const button = document.querySelector('[data-filter-button]') as HTMLElement;
+      if (button) {
+        const rect = button.getBoundingClientRect();
+        setAnchorPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2 - 12
+        });
+      }
+    } else {
+      setIsFilterDropdownOpen(false);
+      setAnchorPosition(null);
     }
   };
 
@@ -2289,15 +2278,16 @@ function ChatPage() {
             />
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
+              variant="outline"
+              size="iconSm"
               className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
               onMouseDown={(e) => {
                 e.preventDefault();
               }}
               onClick={onAtClick}
+              data-filter-button
             >
-              <AtSign className="h-4 w-4" />
+              <Funnel className="h-4 w-4" />
             </Button>
             <Popover
               open={isFilterDropdownOpen}
@@ -2410,8 +2400,8 @@ function ChatPage() {
             </Popover>
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
+              variant="outline"
+              size="iconSm"
               onClick={handleFilePickerClick}
               disabled={isUploading}
               className="absolute bottom-3 left-12 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
