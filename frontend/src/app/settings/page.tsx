@@ -12,7 +12,7 @@ import {
 } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
-import { LabelWrapper, LabelWrapper } from "@/components/label-wrapper";
+import { LabelWrapper } from "@/components/label-wrapper";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,16 +30,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Switch, Switch } from "@/components/ui/switch";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { useTask } from "@/contexts/task-context";
 import {
 	DEFAULT_AGENT_SETTINGS,
-	DEFAULT_AGENT_SETTINGS,
 	DEFAULT_KNOWLEDGE_SETTINGS,
-	DEFAULT_KNOWLEDGE_SETTINGS,
-	UI_CONSTANTS,
 	UI_CONSTANTS,
 } from "@/lib/constants";
 import { useDebounce } from "@/lib/debounce";
