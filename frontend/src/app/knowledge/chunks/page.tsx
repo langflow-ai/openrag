@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, Copy, Loader2, Search } from "lucide-react";
+import { ArrowLeft, Check, Copy, Loader2, Search, X } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -14,7 +14,7 @@ import {
 } from "../../api/queries/useGetSearchQuery";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 
 const getFileTypeLabel = (mimetype: string) => {
   if (mimetype === "application/pdf") return "PDF";
@@ -26,8 +26,9 @@ const getFileTypeLabel = (mimetype: string) => {
 function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
+    useKnowledgeFilter();
   const { isMenuOpen } = useTask();
-  const { parsedFilterData, isPanelOpen } = useKnowledgeFilter();
 
   const filename = searchParams.get("filename");
   const [chunks, setChunks] = useState<ChunkResult[]>([]);
@@ -158,17 +159,35 @@ function ChunksPageContent() {
             </h1>
           </div>
           <div className="flex flex-col items-start mt-2">
-            <div className="flex-1 flex items-center gap-2 w-full max-w-[616px] mb-8">
-              <Input
-                name="search-query"
-                icon={!queryInputText.length ? <Search size={18} /> : null}
-                id="search-query"
-                type="text"
-                defaultValue={parsedFilterData?.query}
-                value={queryInputText}
-                onChange={(e) => setQueryInputText(e.target.value)}
-                placeholder="Search chunks..."
-              />
+            <div className="flex-1 flex items-center gap-2 w-full mb-8">
+              <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]">
+                {selectedFilter?.name && (
+                  <div
+                    className={`flex items-center gap-1 h-full px-1.5 py-0.5 mr-1 rounded max-w-[25%] ${
+                      filterAccentClasses[parsedFilterData?.color || "zinc"]
+                    }`}
+                  >
+                    <span className="truncate">{selectedFilter?.name}</span>
+                    <X
+                      aria-label="Remove filter"
+                      className="h-4 w-4 flex-shrink-0 cursor-pointer"
+                      onClick={() => setSelectedFilter(null)}
+                    />
+                  </div>
+                )}
+                <Search
+                  className="h-4 w-4 ml-1 flex-shrink-0 text-placeholder-foreground"
+                  strokeWidth={1.5}
+                />
+                <input
+                  className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none font-mono placeholder:font-mono"
+                  name="search-query"
+                  id="search-query"
+                  type="text"
+                  placeholder="Search your documents..."
+                  onChange={(e) => setQueryInputText(e.target.value)}
+                />
+              </div>
             </div>
             <div className="flex items-center pl-4 gap-2">
               <Checkbox
