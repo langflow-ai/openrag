@@ -10,7 +10,7 @@ import PartialExternalPreview from '@site/docs/_partial-external-preview.mdx';
 
 <PartialExternalPreview />
 
-[Install the OpenRAG Python wheel](#install-python-wheel) and then use the [OpenRAG Terminal User Interface(TUI)](#setup) to run and configure your OpenRAG deployment with a guided setup process.
+[Install the OpenRAG Python wheel](#install-python-wheel), and then run the [OpenRAG Terminal User Interface(TUI)](#setup) to start your OpenRAG deployment with a guided setup process.
 
 If you prefer running Docker commands and manually editing `.env` files, see [Deploy with Docker](/get-started/docker).
 
@@ -31,15 +31,14 @@ The `.whl` file is currently available as an internal download during public pre
 
 The OpenRAG wheel installs the Terminal User Interface (TUI) for running and managing OpenRAG.
 
-1. Create a new project with a virtual environment using `uv`.
-   This creates and activates a virtual environment for your project.
+1. Create a new project with a virtual environment using `uv init`.
 
    ```bash
    uv init YOUR_PROJECT_NAME
    cd YOUR_PROJECT_NAME
    ```
 
-   The terminal prompt won't change like it would when using `venv`, but the `uv` commands will use the project's virtual environment.
+   The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
    For more information on virtual environments, see the [uv documentation](https://docs.astral.sh/uv/pip/environments).
 
 2. Add the local OpenRAG wheel to your project's virtual environment.

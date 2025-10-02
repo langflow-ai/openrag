@@ -36,10 +36,9 @@ To change your provider selection, you must completely reinstall OpenRAG.
     :::   
     1. Enter your Ollama server's base URL address.
     The default Ollama server address is `http://localhost:11434`.
-    Since OpenRAG is running in a container, you may need to change `localhost` to access services outside of the container. For example, change `http://localhost:11434` to `http://host.docker.internal:11434` to connect to Ollama.
-    OpenRAG automatically sends a test connection to your Ollama server to confirm connectivity.
+    OpenRAG automatically transforms `localhost` to access services outside of the container, and sends a test connection to your Ollama server to confirm connectivity.
     2. Select the **Embedding Model** and **Language Model** your Ollama server is running.
-    OpenRAG automatically lists the available models from your Ollama server.
+    OpenRAG retrieves the available models from your Ollama server.
     3. To load 2 sample PDFs, enable **Sample dataset**.
     This is recommended, but not required.
     4. Click **Complete**.
