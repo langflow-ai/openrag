@@ -5,10 +5,12 @@ import TabItem from '@theme/TabItem';
 
 The first time you start OpenRAG, whether using the TUI or a `.env` file, you must complete application onboarding.
 
-Values input during onboarding can be changed later in the OpenRAG **Settings** page, except for the language model and embedding model _provider_. 
-**Your provider can only be selected once, and you must use the same provider for your language model and embedding model.**
-The language model can be changed, but the embeddings model cannot be changed.
-To change your provider selection, you must completely reinstall OpenRAG.
+Most values from onboarding can be changed later in the OpenRAG **Settings** page, but there are important restrictions.
+
+The **language model provider** and **embeddings model provider** can only be selected at onboarding, and you must use the same provider for your language model and embedding model.
+To change your provider selection later, you must completely reinstall OpenRAG.
+
+The **language model** can be changed later in **Settings**, but the **embeddings model** cannot be changed later.
 
     <Tabs groupId="Provider">
     <TabItem value="OpenAI" label="OpenAI" default>
@@ -45,4 +47,3 @@ To change your provider selection, you must completely reinstall OpenRAG.
     5. Continue with the [Quickstart](/quickstart).        
     </TabItem>
     </Tabs>
-
