@@ -9,8 +9,7 @@ import TabItem from '@theme/TabItem';
 
 OpenRAG recognizes [supported environment variables](#supported-environment-variables) from the following sources:
 
-* [Environment variables](#supported-environment-variables) - Values set in `.env` or `docker-compose.yml` file.
-* [Configuration file variables (`config.yaml`)](#configuration-file) - Values generated during application onboarding and saved to `config.yaml`. These are internal OpenRAG application settings that are not user-configurable, but may override environment variables.
+* [Environment variables](#supported-environment-variables) - Values set in the `.env` file.
 * [Langflow runtime overrides](#langflow-runtime-overrides) - Langflow components may tweak environment variables at runtime.
 * [Default or fallback values](#default-values-and-fallbacks) - These values are default or fallback values if OpenRAG doesn't find a value.
 
@@ -18,21 +17,24 @@ OpenRAG recognizes [supported environment variables](#supported-environment-vari
 
 Environment variables are set in a `.env` file in the root of your OpenRAG project directory.
 
-The Docker Compose files are populated with values from your `.env`, so you don't need to edit the Compose files manually.
+For an example `.env` file, see [`.env.example` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/.env.example).
+
+The Docker Compose files are populated with values from your `.env`, so you don't need to edit the Docker Compose files manually.
 
 ### Precedence
 
-Environment variables always take precedence over other variables, except when the same variable exists in both [config.yaml](#configuration-file) and the `.env`. In this case, the variable in `config.yaml` takes precedence.
+Environment variables always take precedence over other variables.
 
 ### Set environment variables
 
 To set environment variables, do the following.
 
-1. Stop OpenRAG. , and then 
+1. Stop OpenRAG.
 2. Set the values in the `.env` file:
    ```bash
-   OPENAI_API_KEY=your-api-key-here
-   CHUNK_SIZE=1000
+   LOG_LEVEL=DEBUG
+   LOG_FORMAT=json
+   SERVICE_NAME=openrag-dev
    ```
 3. Start OpenRAG.
 
@@ -124,30 +126,7 @@ Configure general system components, session management, and logging.
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR). |
 | `MAX_WORKERS` | - | Maximum number of workers for document processing. |
 | `SERVICE_NAME` | `openrag` | Service name for logging. |
-| `SESSION_SECRET` | auto-generated | Session management.. |
-
-## Configuration file (`config.yaml`) {#configuration-file}
-
-A `config.yaml` configuration file is generated with values input during [Application onboarding](/install#application-onboarding) and contains some of the same configuration variables as environment variables. These are internal OpenRAG application settings that are not user-configurable, but may override environment variables.
-
-For an example `config.yaml` file, see [`config.example.yaml` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/config/config.example.yaml).
-
-<details closed>
-<summary>Which variables can `config.yaml` override?</summary>
-
-* CHUNK_OVERLAP
-* CHUNK_SIZE
-* EMBEDDING_MODEL
-* LLM_MODEL
-* MODEL_PROVIDER
-* OCR_ENABLED
-* OPENAI_API_KEY
-* PICTURE_DESCRIPTIONS_ENABLED
-* PROVIDER_API_KEY
-* PROVIDER_ENDPOINT
-* PROVIDER_PROJECT_ID
-* SYSTEM_PROMPT
-</details>
+| `SESSION_SECRET` | auto-generated | Session management. |
 
 ## Langflow runtime overrides
 
