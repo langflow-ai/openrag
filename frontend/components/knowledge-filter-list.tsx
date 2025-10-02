@@ -66,7 +66,7 @@ export function KnowledgeFilterList({
 
   return (
     <>
-      <div className="flex flex-col gap-1 px-3 !mb-12 mt-0 h-full overflow-y-auto">
+      <div className="flex flex-col gap-2 px-3 !mb-12 mt-0 h-full overflow-y-auto">
         <div className="flex items-center w-full justify-between pl-3">
           <div className="text-sm font-medium text-muted-foreground">
             Knowledge Filters
@@ -76,7 +76,7 @@ export function KnowledgeFilterList({
             size="sm"
             onClick={handleCreateNew}
             title="Create New Filter"
-            className="h-8 px-3 text-muted-foreground"
+            className="!h-8 w-8 px-0 text-muted-foreground"
           >
             <Plus className="h-3 w-3" />
           </Button>
@@ -106,12 +106,14 @@ export function KnowledgeFilterList({
               <div className="flex flex-col gap-1 flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   {(() => {
-                    const parsed = parseQueryData(filter.query_data) as ParsedQueryData;
+                    const parsed = parseQueryData(
+                      filter.query_data
+                    ) as ParsedQueryData;
                     const Icon = iconKeyToComponent(parsed.icon);
                     return (
                       <div
                         className={cn(
-                          "flex items-center justify-center w-5 h-5 rounded transition-colors",
+                          "flex items-center justify-center w-5 h-5 rounded flex-shrink-0 transition-colors",
                           filterAccentClasses[parsed.color],
                           parsed.color === "zinc" &&
                             "group-hover:bg-background group-[.active]:bg-background"
