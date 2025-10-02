@@ -28,7 +28,7 @@ const sidebars = {
         {
           type: "doc",
           id: "get-started/install",
-          label: "Install Python wheel"
+          label: "Install OpenRAG"
         },
         {
           type: "doc",
