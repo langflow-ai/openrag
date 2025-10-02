@@ -9,7 +9,6 @@ from config.settings import (
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
-    DOCLING_COMPONENT_ID,
     LOCALHOST_URL,
     clients,
     get_openrag_config,
@@ -206,7 +205,7 @@ async def update_settings(request, session_manager):
             # Also update the chat flow with the new model
             try:
                 flows_service = _get_flows_service()
-                await flows_service.update_chat_flow_model(body["llm_model"])
+                await flows_service.update_chat_flow_model(body["llm_model"], current_config.provider.model_provider.lower())
                 logger.info(
                     f"Successfully updated chat flow model to '{body['llm_model']}'"
                 )
@@ -223,7 +222,8 @@ async def update_settings(request, session_manager):
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_chat_flow_system_prompt(
-                    body["system_prompt"]
+                    body["system_prompt"],
+                    current_config.provider.model_provider.lower()
                 )
                 logger.info(f"Successfully updated chat flow system prompt")
             except Exception as e:
@@ -248,7 +248,8 @@ async def update_settings(request, session_manager):
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_ingest_flow_embedding_model(
-                    body["embedding_model"].strip()
+                    body["embedding_model"].strip(),
+                    current_config.provider.model_provider.lower()
                 )
                 logger.info(
                     f"Successfully updated ingest flow embedding model to '{body['embedding_model'].strip()}'"
