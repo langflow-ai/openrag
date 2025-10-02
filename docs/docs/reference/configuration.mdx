@@ -16,7 +16,9 @@ OpenRAG recognizes [supported environment variables](#supported-environment-vari
 
 ## Configure environment variables
 
-Environment variables can be set in a `.env` or `docker-compose.yml` file.
+Environment variables are set in a `.env` file in the root of your OpenRAG project directory.
+
+The Docker Compose files are populated with values from your `.env`, so you don't need to edit the Compose files manually.
 
 ### Precedence
 
@@ -33,8 +35,6 @@ To set environment variables, do the following.
    CHUNK_SIZE=1000
    ```
 3. Start OpenRAG.
-
-The Docker Compose files are also populated with values from your `.env`, so you don't need to edit the files manually.
 
 ## Supported environment variables
 

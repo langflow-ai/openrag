@@ -29,7 +29,7 @@ If you prefer running Docker commands and manually editing `.env` files, see [De
 The `.whl` file is currently available as an internal download during public preview, and will be published to PyPI in a future release.
 :::
 
-The OpenRAG wheel installs the Terminal User Interface (TUI) for running and managing OpenRAG.
+The OpenRAG wheel installs the Terminal User Interface (TUI) for configuring and running OpenRAG.
 
 1. Create a new project with a virtual environment using `uv init`.
 
@@ -64,7 +64,9 @@ The OpenRAG wheel installs the Terminal User Interface (TUI) for running and man
 
 ## Set up OpenRAG with the TUI {#setup}
 
-**Basic Setup** completes or auto-generates most of the required values to start OpenRAG.
+The TUI creates a `.env` file in your OpenRAG directory root and starts OpenRAG.
+
+**Basic Setup** generates all of the required values except the OpenAI API key.
 **Basic Setup** does not set up OAuth connections for ingestion from Google Drive, OneDrive, or AWS.
 For OAuth setup, use **Advanced Setup**.
 
