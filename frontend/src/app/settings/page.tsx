@@ -1,19 +1,7 @@
 "use client";
 
-<<<<<<< HEAD
-import {
-  ArrowUpRight,
-  Loader2,
-  Minus,
-  PlugZap,
-  Plus,
-  RefreshCw,
-} from "lucide-react";
-import { useSearchParams } from "next/navigation";
-=======
-import { ArrowUpRight, Loader2, PlugZap, Plus, RefreshCw } from "lucide-react";
+import { ArrowUpRight, Loader2, PlugZap, Plus, Minus } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
->>>>>>> main
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
 import {
@@ -177,7 +165,7 @@ function KnowledgeSourcesPage() {
     onSuccess: () => {
       console.log("Setting updated successfully");
     },
-    onError: error => {
+    onError: (error) => {
       console.error("Failed to update setting:", error.message);
     },
   });
@@ -316,8 +304,8 @@ function KnowledgeSourcesPage() {
 
       // Initialize connectors list with metadata from backend
       const initialConnectors = connectorTypes
-        .filter(type => connectorsResult.connectors[type].available) // Only show available connectors
-        .map(type => ({
+        .filter((type) => connectorsResult.connectors[type].available) // Only show available connectors
+        .map((type) => ({
           id: type,
           name: connectorsResult.connectors[type].name,
           description: connectorsResult.connectors[type].description,
@@ -340,8 +328,8 @@ function KnowledgeSourcesPage() {
           );
           const isConnected = activeConnection !== undefined;
 
-          setConnectors(prev =>
-            prev.map(c =>
+          setConnectors((prev) =>
+            prev.map((c) =>
               c.type === connectorType
                 ? {
                     ...c,
@@ -360,7 +348,7 @@ function KnowledgeSourcesPage() {
 
   const handleConnect = async (connector: Connector) => {
     setIsConnecting(connector.id);
-    setSyncResults(prev => ({ ...prev, [connector.id]: null }));
+    setSyncResults((prev) => ({ ...prev, [connector.id]: null }));
 
     try {
       // Use the shared auth callback URL, same as connectors page
@@ -521,9 +509,9 @@ function KnowledgeSourcesPage() {
   // Watch for task completions and refresh stats
   useEffect(() => {
     // Find newly completed tasks by comparing with previous state
-    const newlyCompletedTasks = tasks.filter(task => {
+    const newlyCompletedTasks = tasks.filter((task) => {
       const wasCompleted =
-        prevTasks.find(prev => prev.task_id === task.task_id)?.status ===
+        prevTasks.find((prev) => prev.task_id === task.task_id)?.status ===
         "completed";
       return task.status === "completed" && !wasCompleted;
     });
@@ -577,7 +565,7 @@ function KnowledgeSourcesPage() {
     fetch(`/api/reset-flow/retrieval`, {
       method: "POST",
     })
-      .then(response => {
+      .then((response) => {
         if (response.ok) {
           return response.json();
         }
@@ -590,7 +578,7 @@ function KnowledgeSourcesPage() {
         handleModelChange(DEFAULT_AGENT_SETTINGS.llm_model);
         closeDialog(); // Close after successful completion
       })
-      .catch(error => {
+      .catch((error) => {
         console.error("Error restoring retrieval flow:", error);
         closeDialog(); // Close even on error (could show error toast instead)
       });
@@ -600,7 +588,7 @@ function KnowledgeSourcesPage() {
     fetch(`/api/reset-flow/ingest`, {
       method: "POST",
     })
-      .then(response => {
+      .then((response) => {
         if (response.ok) {
           return response.json();
         }
@@ -615,7 +603,7 @@ function KnowledgeSourcesPage() {
         setPictureDescriptions(false);
         closeDialog(); // Close after successful completion
       })
-      .catch(error => {
+      .catch((error) => {
         console.error("Error restoring ingest flow:", error);
         closeDialog(); // Close even on error (could show error toast instead)
       });
@@ -713,7 +701,7 @@ function KnowledgeSourcesPage() {
 
         {/* Connectors Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {connectors.map(connector => (
+          {connectors.map((connector) => (
             <Card key={connector.id} className="relative flex flex-col">
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -847,7 +835,7 @@ function KnowledgeSourcesPage() {
                 }
                 confirmText="Proceed"
                 confirmIcon={<ArrowUpRight />}
-                onConfirm={closeDialog =>
+                onConfirm={(closeDialog) =>
                   handleEditInLangflow("chat", closeDialog)
                 }
                 variant="warning"
@@ -867,7 +855,8 @@ function KnowledgeSourcesPage() {
                 <Select
                   value={
                     settings.agent?.llm_model ||
-                    modelsData?.language_models?.find(m => m.default)?.value ||
+                    modelsData?.language_models?.find((m) => m.default)
+                      ?.value ||
                     "gpt-4"
                   }
                   onValueChange={handleModelChange}
@@ -1007,7 +996,7 @@ function KnowledgeSourcesPage() {
                 confirmText="Proceed"
                 confirmIcon={<ArrowUpRight />}
                 variant="warning"
-                onConfirm={closeDialog =>
+                onConfirm={(closeDialog) =>
                   handleEditInLangflow("ingest", closeDialog)
                 }
               />
@@ -1027,7 +1016,8 @@ function KnowledgeSourcesPage() {
                   disabled={true}
                   value={
                     settings.knowledge?.embedding_model ||
-                    modelsData?.embedding_models?.find(m => m.default)?.value ||
+                    modelsData?.embedding_models?.find((m) => m.default)
+                      ?.value ||
                     "text-embedding-ada-002"
                   }
                   onValueChange={handleEmbeddingModelChange}
