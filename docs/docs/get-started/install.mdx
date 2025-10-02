@@ -10,7 +10,7 @@ import PartialExternalPreview from '@site/docs/_partial-external-preview.mdx';
 
 <PartialExternalPreview />
 
-Install the OpenRAG Python wheel and use the [OpenRAG Terminal User Interface (TUI)](/get-started/tui) to install, run, and configure your OpenRAG deployment without running Docker commands.
+[Install the OpenRAG Python wheel](#install-python-wheel) and then use the [OpenRAG Terminal User Interface(TUI)](#setup) to run and configure your OpenRAG deployment with a guided setup process.
 
 If you prefer running Docker commands and manually editing `.env` files, see [Deploy with Docker](/get-started/docker).
 
@@ -18,26 +18,39 @@ If you prefer running Docker commands and manually editing `.env` files, see [De
 
 - [Python Version 3.10 to 3.13](https://www.python.org/downloads/release/python-3100/)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- [Docker](https://docs.docker.com/get-docker/) or [Podman](https://podman.io/docs/installation) installed
+- [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/) installed
 - [Docker Compose](https://docs.docker.com/compose/install/) installed. If using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
-- Create an [OpenAI API key](https://platform.openai.com/api-keys)
-- Optional: GPU support requires an NVIDIA GPU with CUDA support and compatible NVIDIA drivers installed on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
+- Create an [OpenAI API key](https://platform.openai.com/api-keys). This key is **required** to start OpenRAG, but you can choose a different model provider during [Application Onboarding](#application-onboarding).
+- Optional: GPU support requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support and compatible NVIDIA drivers installed on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
 
-## Install Python wheel {#install-python-wheel}
+## Install the OpenRAG Python wheel {#install-python-wheel}
 
-The OpenRAG Python wheel is available on PyPI.
-The wheel includes the TUI for installing, running, and managing OpenRAG.
+:::important
+The `.whl` file is currently available as an internal download during public preview, and will be published to PyPI in a future release.
+:::
+
+The OpenRAG wheel installs the Terminal User Interface (TUI) for running and managing OpenRAG.
 
 1. Create a new project with a virtual environment using `uv`.
-   For more information on virtual environments, see the [uv documentation](https://docs.astral.sh/uv/pip/environments).
+   This creates and activates a virtual environment for your project.
+
    ```bash
    uv init YOUR_PROJECT_NAME
    cd YOUR_PROJECT_NAME
    ```
-2. Add the OpenRAG wheel to your project and install it in the virtual environment.
+
+   The terminal prompt won't change like it would when using `venv`, but the `uv` commands will use the project's virtual environment.
+   For more information on virtual environments, see the [uv documentation](https://docs.astral.sh/uv/pip/environments).
+
+2. Add the local OpenRAG wheel to your project's virtual environment.
+
    ```bash
-   uv add openrag
+   uv add PATH/TO/openrag-VERSION-py3-none-any.whl
    ```
+   Replace `PATH/TO/` and `VERSION` with the path and version of your downloaded OpenRAG `.whl` file.
+
+   For example, if your `.whl` file is in the `~/Downloads` directory, the command is `uv add ~/Downloads/openrag-0.1.8-py3-none-any.whl`.
+
 3. Ensure all dependencies are installed and updated in your virtual environment.
    ```bash
    uv sync
@@ -48,7 +61,9 @@ The wheel includes the TUI for installing, running, and managing OpenRAG.
    uv run openrag
    ```
 
-## Setup OpenRAG with the TUI {#setup}
+5. Continue with [Setup OpenRAG with the TUI](#setup).
+
+## Set up OpenRAG with the TUI {#setup}
 
 **Basic Setup** completes or auto-generates most of the required values to start OpenRAG.
 **Basic Setup** does not set up OAuth connections for ingestion from Google Drive, OneDrive, or AWS.

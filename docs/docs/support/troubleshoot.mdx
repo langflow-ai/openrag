@@ -52,6 +52,29 @@ To reset your local containers and pull new images, do the following:
 1. Stop your containers and completely remove them.
 
     <Tabs groupId="Container software">
+    <TabItem value="Podman" label="Podman">
+    
+        ```bash
+        # Stop all running containers
+        podman stop --all
+        
+        # Remove all containers (including stopped ones)
+        podman rm --all --force
+        
+        # Remove all images
+        podman rmi --all --force
+        
+        # Remove all volumes
+        podman volume prune --force
+        
+        # Remove all networks (except default)
+        podman network prune --force
+        
+        # Clean up any leftover data
+        podman system prune --all --force --volumes
+        ```
+    
+      </TabItem>
       <TabItem value="Docker" label="Docker" default>
     
         ```bash
@@ -75,33 +98,11 @@ To reset your local containers and pull new images, do the following:
         ```
     
        </TabItem>
-       <TabItem value="Podman" label="Podman">
-    
-        ```bash
-        # Stop all running containers
-        podman stop --all
-        
-        # Remove all containers (including stopped ones)
-        podman rm --all --force
-        
-        # Remove all images
-        podman rmi --all --force
-        
-        # Remove all volumes
-        podman volume prune --force
-        
-        # Remove all networks (except default)
-        podman network prune --force
-        
-        # Clean up any leftover data
-        podman system prune --all --force --volumes
-        ```
-    
-      </TabItem>
     </Tabs>
 
 2. Restart OpenRAG and upgrade to get the latest images for your containers.
    ```bash
+   uv sync
    uv run openrag
    ```
 
