@@ -64,7 +64,7 @@ function SearchPage() {
   };
 
   // Convert TaskFiles to File format and merge with backend results
-  const taskFilesAsFiles: File[] = taskFiles.map(taskFile => {
+  const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
     return {
       filename: taskFile.filename,
       mimetype: taskFile.mimetype,
@@ -77,11 +77,11 @@ function SearchPage() {
 
   const backendFiles = data as File[];
 
-  const filteredTaskFiles = taskFilesAsFiles.filter(taskFile => {
+  const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
     return (
       taskFile.status !== "active" &&
       !backendFiles.some(
-        backendFile => backendFile.filename === taskFile.filename
+        (backendFile) => backendFile.filename === taskFile.filename
       )
     );
   });
@@ -123,7 +123,7 @@ function SearchPage() {
     {
       field: "size",
       headerName: "Size",
-      valueFormatter: params =>
+      valueFormatter: (params) =>
         params.value ? `${Math.round(params.value / 1024)} KB` : "-",
     },
     {
@@ -133,13 +133,13 @@ function SearchPage() {
     {
       field: "owner",
       headerName: "Owner",
-      valueFormatter: params =>
+      valueFormatter: (params) =>
         params.data?.owner_name || params.data?.owner_email || "—",
     },
     {
       field: "chunkCount",
       headerName: "Chunks",
-      valueFormatter: params => params.data?.chunkCount?.toString() || "-",
+      valueFormatter: (params) => params.data?.chunkCount?.toString() || "-",
     },
     {
       field: "avgScore",
@@ -201,7 +201,7 @@ function SearchPage() {
 
     try {
       // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map(row =>
+      const deletePromises = selectedRows.map((row) =>
         deleteDocumentMutation.mutateAsync({ filename: row.filename })
       );
 
@@ -267,8 +267,9 @@ function SearchPage() {
                   />
                 </div>
               )}
+              <Search className="h-4 w-4" />
               <input
-                className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none placeholder:font-mono"
+                className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none font-mono placeholder:font-mono"
                 name="search-query"
                 id="search-query"
                 type="text"
@@ -318,7 +319,7 @@ function SearchPage() {
           rowSelection="multiple"
           rowMultiSelectWithClick={false}
           suppressRowClickSelection={true}
-          getRowId={params => params.data.filename}
+          getRowId={(params) => params.data.filename}
           domLayout="normal"
           onSelectionChanged={onSelectionChanged}
           noRowsOverlayComponent={() => (
@@ -346,7 +347,7 @@ function SearchPage() {
         }? This will remove all chunks and data associated with these documents. This action cannot be undone.
 
 Documents to be deleted:
-${selectedRows.map(row => `• ${row.filename}`).join("\n")}`}
+${selectedRows.map((row) => `• ${row.filename}`).join("\n")}`}
         confirmText="Delete All"
         onConfirm={handleBulkDelete}
         isLoading={deleteDocumentMutation.isPending}

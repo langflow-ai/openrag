@@ -314,8 +314,9 @@ export function KnowledgeFilterPanel() {
               id="search-query"
               placeholder="Enter your search query..."
               value={query}
+              className="font-mono placeholder:font-mono"
               onChange={(e) => setQuery(e.target.value)}
-              rows={3}
+              rows={2}
             />
           </div>
 
