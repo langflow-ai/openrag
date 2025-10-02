@@ -189,19 +189,20 @@ async def upload_and_ingest_user_file(
         # Create temporary file for task processing
         import tempfile
         import os
-        
+
         # Read file content
         content = await upload_file.read()
-        
-        # Create temporary file
+
+        # Create temporary file with the actual filename (not a temp prefix)
+        # Store in temp directory but use the real filename
+        temp_dir = tempfile.gettempdir()
         safe_filename = upload_file.filename.replace(" ", "_").replace("/", "_")
-        temp_fd, temp_path = tempfile.mkstemp(
-            suffix=f"_{safe_filename}"
-        )
+        temp_path = os.path.join(temp_dir, safe_filename)
+
         
         try:
             # Write content to temp file
-            with os.fdopen(temp_fd, 'wb') as temp_file:
+            with open(temp_path, 'wb') as temp_file:
                 temp_file.write(content)
 
             logger.debug("Created temporary file for task processing", temp_path=temp_path)
