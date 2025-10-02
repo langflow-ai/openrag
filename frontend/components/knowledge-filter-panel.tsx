@@ -1,9 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Save, RefreshCw } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -61,6 +67,8 @@ export function KnowledgeFilterPanel() {
   const [isSaving, setIsSaving] = useState(false);
   const [color, setColor] = useState<FilterColor>("zinc");
   const [iconKey, setIconKey] = useState<IconKey>("filter");
+  const [nameError, setNameError] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Filter configuration states (mirror search page exactly)
   const [query, setQuery] = useState("");
@@ -146,27 +154,12 @@ export function KnowledgeFilterPanel() {
   // Don't render if panel is closed or we don't have any data
   if (!isPanelOpen || !parsedFilterData) return null;
 
-  const selectAllFilters = () => {
-    // Use wildcards instead of listing all specific items
-    setSelectedFilters({
-      data_sources: ["*"],
-      document_types: ["*"],
-      owners: ["*"],
-      connector_types: ["*"],
-    });
-  };
-
-  const clearAllFilters = () => {
-    setSelectedFilters({
-      data_sources: [],
-      document_types: [],
-      owners: [],
-      connector_types: [],
-    });
-  };
-
   const handleSaveConfiguration = async () => {
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      setNameError("Name is required");
+      nameInputRef.current?.focus();
+      return;
+    }
     const filterData = {
       query,
       filters: selectedFilters,
@@ -238,8 +231,8 @@ export function KnowledgeFilterPanel() {
   };
 
   return (
-    <div className="fixed right-0 top-14 bottom-0 w-80 bg-background border-l border-border/40 z-40 overflow-y-auto">
-      <Card className="h-full rounded-none border-0 shadow-lg">
+    <div className="fixed right-0 top-14 bottom-0 w-80 bg-background border-l z-40 overflow-y-auto">
+      <Card className="h-full rounded-none border-0 shadow-lg flex flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -248,7 +241,10 @@ export function KnowledgeFilterPanel() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={closePanelOnly}
+              onClick={() => {
+                setSelectedFilter(null);
+                closePanelOnly();
+              }}
               className="h-8 w-8 p-0"
             >
               <X className="h-4 w-4" />
@@ -260,7 +256,10 @@ export function KnowledgeFilterPanel() {
           {/* Filter Name and Description */}
           <div className="space-y-3">
             <div className="space-y-2">
-              <Label htmlFor="filter-name">Filter name</Label>
+              <Label htmlFor="filter-name" className="gap-1">
+                Filter name
+                <span className="text-destructive">*</span>
+              </Label>
               <div className="flex items-center gap-2">
                 <FilterIconPopover
                   color={color}
@@ -271,8 +270,17 @@ export function KnowledgeFilterPanel() {
                 <Input
                   id="filter-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setName(v);
+                    if (nameError && v.trim()) {
+                      setNameError(null);
+                    }
+                  }}
+                  required
                   placeholder="Filter name"
+                  ref={nameInputRef}
+                  aria-invalid={!!nameError}
                 />
               </div>
             </div>
@@ -282,13 +290,19 @@ export function KnowledgeFilterPanel() {
                 {formatDate(selectedFilter.created_at)}
               </div>
             )}
+            {createMode && (
+              <div className="space-y-2 text-xs text-right text-muted-foreground">
+                <span className="text-placeholder-foreground">Created</span>{" "}
+                {formatDate(new Date().toISOString())}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="filter-description">Description</Label>
               <Textarea
                 id="filter-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional description"
+                placeholder="Provide a brief description of your knowledge filter..."
                 rows={3}
               />
             </div>
@@ -301,17 +315,17 @@ export function KnowledgeFilterPanel() {
             </Label>
             <Textarea
               id="search-query"
-              placeholder="e.g., 'financial reports from Q4'"
+              placeholder="Enter your search query..."
               value={query}
+              className="font-mono placeholder:font-mono"
               onChange={(e) => setQuery(e.target.value)}
-              rows={3}
+              rows={2}
             />
           </div>
 
           {/* Filter Dropdowns */}
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Data Sources</Label>
               <MultiSelect
                 options={(availableFacets.data_sources || []).map((bucket) => ({
                   value: bucket.key,
@@ -322,13 +336,12 @@ export function KnowledgeFilterPanel() {
                 onValueChange={(values) =>
                   handleFilterChange("data_sources", values)
                 }
-                placeholder="Select data sources..."
-                allOptionLabel="All Data Sources"
+                placeholder="Select sources..."
+                allOptionLabel="All sources"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Document Types</Label>
               <MultiSelect
                 options={(availableFacets.document_types || []).map(
                   (bucket) => ({
@@ -341,13 +354,12 @@ export function KnowledgeFilterPanel() {
                 onValueChange={(values) =>
                   handleFilterChange("document_types", values)
                 }
-                placeholder="Select document types..."
-                allOptionLabel="All Document Types"
+                placeholder="Select types..."
+                allOptionLabel="All types"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Owners</Label>
               <MultiSelect
                 options={(availableFacets.owners || []).map((bucket) => ({
                   value: bucket.key,
@@ -362,7 +374,6 @@ export function KnowledgeFilterPanel() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Sources</Label>
               <MultiSelect
                 options={(availableFacets.connector_types || []).map(
                   (bucket) => ({
@@ -375,33 +386,13 @@ export function KnowledgeFilterPanel() {
                 onValueChange={(values) =>
                   handleFilterChange("connector_types", values)
                 }
-                placeholder="Select sources..."
-                allOptionLabel="All Sources"
+                placeholder="Select connectors..."
+                allOptionLabel="All connectors"
               />
             </div>
 
-            {/* All/None buttons */}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={selectAllFilters}
-                className="h-auto px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 border-border/50"
-              >
-                All
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearAllFilters}
-                className="h-auto px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 border-border/50"
-              >
-                None
-              </Button>
-            </div>
-
             {/* Result Limit Control - exactly like search page */}
-            <div className="space-y-4 pt-4 border-t border-border/50">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-medium text-nowrap">
@@ -462,39 +453,45 @@ export function KnowledgeFilterPanel() {
                 />
               </div>
             </div>
-
-            {/* Save Configuration Button */}
-            <div className="flex flex-col gap-3 pt-4 border-t border-border/50">
-              <Button
-                onClick={handleSaveConfiguration}
-                disabled={isSaving}
-                className="w-full"
-                size="sm"
-              >
-                {isSaving ? (
-                  <>
-                    <RefreshCw className="h-3 w-3 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-3 w-3 mr-2" />
-                    Save Configuration
-                  </>
-                )}
-              </Button>
-              {!createMode && (
-                <Button
-                  variant="destructive"
-                  className="w-full"
-                  onClick={handleDeleteFilter}
-                >
-                  Delete Filter
-                </Button>
-              )}
-            </div>
           </div>
         </CardContent>
+        <CardFooter className="mt-auto align-bottom justify-end gap-2">
+          {/* Save Configuration Button */}
+          {createMode && (
+            <Button
+              onClick={closePanelOnly}
+              disabled={isSaving}
+              variant="outline"
+              size="sm"
+            >
+              Cancel
+            </Button>
+          )}
+          {!createMode && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDeleteFilter}
+              disabled={isSaving}
+            >
+              Delete Filter
+            </Button>
+          )}
+          <Button
+            onClick={handleSaveConfiguration}
+            disabled={isSaving}
+            size="sm"
+            className="relative"
+          >
+            {isSaving && (
+              <>
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                Saving...
+              </>
+            )}
+            {!isSaving && (createMode ? "Create Filter" : "Update Filter")}
+          </Button>
+        </CardFooter>
       </Card>
     </div>
   );
