@@ -25,27 +25,28 @@
     --muted-foreground: 240 4% 46%;
     --accent: 240 5% 96%;
     --accent-foreground: 0 0% 0%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --warning: 48, 96%, 89%;
-    --warning-foreground: 26, 90%, 37%;
     --border: 240 4.8% 95.9%;
     --input: 240 6% 90%;
     --ring: 0 0% 0%;
     --placeholder-foreground: 240 5% 65%;
 
-    --accent-amber: 48, 96%, 89%; /* amber-100 #fef3c7 */
-    --accent-amber-foreground: 26, 90%, 37%; /* amber-700 #b45309 */
-    --accent-emerald: 149, 80%, 90%; /* emerald-100 #d1fae5 */
-    --accent-emerald-foreground: 161, 94%, 30%; /* emerald-600 #059669 */
-    --accent-red: 0, 93%, 94%; /* red-100 #fee2e2 */
-    --accent-red-foreground: 0, 72%, 51%; /* red-600 #dc2626 */
-    --accent-indigo: 226, 100%, 94%; /* indigo-100 #e0e7ff */
-    --accent-indigo-foreground: 243, 75%, 59%; /* indigo-600 #4f46e5 */
-    --accent-pink: 326, 78%, 95%; /* pink-100 #fce7f3 */
-    --accent-pink-foreground: 333, 71%, 51%; /* pink-600 #db2777 */
-    --accent-purple: 269, 100%, 95%; /* purple-100 #f3e8ff */
-    --accent-purple-foreground: 271, 81%, 56%; /* purple-600 #7c3aed */
+    --accent-amber: 48 96% 89%; /* amber-100 #fef3c7 */
+    --accent-amber-foreground: 26 90% 37%; /* amber-700 #b45309 */
+    --accent-emerald: 149 80% 90%; /* emerald-100 #d1fae5 */
+    --accent-emerald-foreground: 161 94% 30%; /* emerald-600 #059669 */
+    --accent-red: 0 93% 94%; /* red-100 #fee2e2 */
+    --accent-red-foreground: 0 72% 51%; /* red-600 #dc2626 */
+    --accent-indigo: 226 100% 94%; /* indigo-100 #e0e7ff */
+    --accent-indigo-foreground: 243 75% 59%; /* indigo-600 #4f46e5 */
+    --accent-pink: 326 78% 95%; /* pink-100 #fce7f3 */
+    --accent-pink-foreground: 333 71% 51%; /* pink-600 #db2777 */
+    --accent-purple: 269 100% 95%; /* purple-100 #f3e8ff */
+    --accent-purple-foreground: 271 81% 56%; /* purple-600 #7c3aed */
+
+    --destructive: 0 72% 51%; /* red-600 #dc2626 */
+    --destructive-foreground: 0 0% 100%;
+    --warning: 26 90% 37%; /* amber-700 #b45309 */
+    --warning-foreground: 0 0% 100%;
 
     /* Component Colors */
     --component-icon: #d8598a;
@@ -71,27 +72,28 @@
     --muted-foreground: 240 5% 65%;
     --accent: 240 4% 16%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --warning: 22, 78%, 26%;
-    --warning-foreground: 46, 97%, 65%;
     --border: 240 3.7% 15.9%;
     --input: 240 5% 34%;
     --ring: 0 0% 100%;
     --placeholder-foreground: 240 4% 46%;
 
-    --accent-amber: 22, 78%, 26%; /* amber-900 #78350f */
-    --accent-amber-foreground: 46, 97%, 65%; /* amber-300 #fcd34d */
-    --accent-emerald: 164, 86%, 16%; /* emerald-900 #064e3b */
-    --accent-emerald-foreground: 158, 64%, 52%; /* emerald-400 #34d399 */
-    --accent-red: 0, 63%, 31%; /* red-900 #7f1d1d */
-    --accent-red-foreground: 0, 91%, 71%; /* red-400 #f87171 */
-    --accent-indigo: 242, 47%, 34%; /* indigo-900 #312e81 */
-    --accent-indigo-foreground: 234, 89%, 74%; /* indigo-400 #818cf8 */
-    --accent-pink: 336, 69%, 30%; /* pink-900 #831843 */
-    --accent-pink-foreground: 329, 86%, 70%; /* pink-400 #f472b6 */
-    --accent-purple: 274, 66%, 32%; /* purple-900 #4c1d95 */
-    --accent-purple-foreground: 270, 95%, 75%; /* purple-400 #a78bfa */
+    --accent-amber: 22 78% 26%; /* amber-900 #78350f */
+    --accent-amber-foreground: 46 97% 65%; /* amber-300 #fcd34d */
+    --accent-emerald: 164 86% 16%; /* emerald-900 #064e3b */
+    --accent-emerald-foreground: 158 64% 52%; /* emerald-400 #34d399 */
+    --accent-red: 0 63% 31%; /* red-900 #7f1d1d */
+    --accent-red-foreground: 0 91% 71%; /* red-400 #f87171 */
+    --accent-indigo: 242 47% 34%; /* indigo-900 #312e81 */
+    --accent-indigo-foreground: 234 89% 74%; /* indigo-400 #818cf8 */
+    --accent-pink: 336 69% 30%; /* pink-900 #831843 */
+    --accent-pink-foreground: 329 86% 70%; /* pink-400 #f472b6 */
+    --accent-purple: 274 66% 32%; /* purple-900 #4c1d95 */
+    --accent-purple-foreground: 270 95% 75%; /* purple-400 #a78bfa */
+
+    --destructive: 0 84% 60%; /* red-500 #ef4444 */
+    --destructive-foreground: 0 0% 100%;
+    --warning: 46 97% 65%; /* amber-300 #fcd34d */
+    --warning-foreground: 0 0% 0%;
   }
 
   * {
