@@ -331,7 +331,7 @@ export function Navigation({
 
   return (
     <div className="flex flex-col h-full bg-background">
-      <div className="px-3 py-2 flex-shrink-0">
+      <div className="px-4 py-2 flex-shrink-0">
         <div className="space-y-1">
           {routes.map(route => (
             <div key={route.href}>
@@ -373,10 +373,10 @@ export function Navigation({
 
       {/* Chat Page Specific Sections */}
       {isOnChatPage && (
-        <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col px-4">
           {/* Conversations Section */}
-          <div className="px-3 flex-shrink-0">
-            <div className="flex items-center justify-between mb-3 ml-3 mr-2">
+          <div className="flex-shrink-0">
+            <div className="flex items-center justify-between mb-3 mx-3">
               <h3 className="text-xs font-medium text-muted-foreground">
                 Conversations
               </h3>
@@ -392,7 +392,7 @@ export function Navigation({
             </div>
           </div>
 
-          <div className="px-3 flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 flex flex-col">
             {/* Conversations List - grows naturally, doesn't fill all space */}
             <div className="flex-shrink-0 overflow-y-auto scrollbar-hide space-y-1 max-h-full">
               {loadingNewConversation || isConversationsLoading ? (
@@ -424,7 +424,7 @@ export function Navigation({
 
                   {/* Show regular conversations */}
                   {conversations.length === 0 && !placeholderConversation ? (
-                    <div className="text-[13px] text-muted-foreground p-2 ml-1">
+                    <div className="text-[13px] text-muted-foreground py-2 pl-3">
                       No conversations yet
                     </div>
                   ) : (
@@ -432,7 +432,7 @@ export function Navigation({
                       <button
                         key={conversation.response_id}
                         type="button"
-                        className={`w-full px-3 pr-2 h-11 rounded-lg group relative text-left ${
+                        className={`w-full px-3 h-11 rounded-lg group relative text-left ${
                           loading
                             ? "opacity-50 cursor-not-allowed"
                             : "hover:bg-accent cursor-pointer"
@@ -510,7 +510,7 @@ export function Navigation({
 
             {/* Conversation Knowledge Section - appears right after last conversation */}
             <div className="flex-shrink-0 mt-4">
-              <div className="flex items-center justify-between mb-3 ml-3 mr-2">
+              <div className="flex items-center justify-between mb-3 mx-3">
                 <h3 className="text-xs font-medium text-muted-foreground">
                   Conversation knowledge
                 </h3>
@@ -532,14 +532,14 @@ export function Navigation({
               />
               <div className="overflow-y-auto scrollbar-hide space-y-1">
                 {conversationDocs.length === 0 ? (
-                  <div className="text-[13px] text-muted-foreground p-2 ml-1">
+                  <div className="text-[13px] text-muted-foreground py-2 px-3">
                     No documents yet
                   </div>
                 ) : (
                   conversationDocs.map(doc => (
                     <div
                       key={`${doc.filename}-${doc.uploadTime.getTime()}`}
-                      className="w-full px-3 pr-2 h-11 rounded-lg hover:bg-accent cursor-pointer group flex items-center"
+                      className="w-full px-3 h-11 rounded-lg hover:bg-accent cursor-pointer group flex items-center"
                     >
                       <FileText className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
                       <div className="flex-1 min-w-0">
