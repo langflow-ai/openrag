@@ -17,6 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import TextareaAutosize from "react-textarea-autosize";
 import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -132,6 +133,7 @@ function ChatPage() {
   const [availableFilters, setAvailableFilters] = useState<
     KnowledgeFilterData[]
   >([]);
+  const [textareaHeight, setTextareaHeight] = useState(40);
   const [filterSearchTerm, setFilterSearchTerm] = useState("");
   const [selectedFilterIndex, setSelectedFilterIndex] = useState(0);
   const [isFilterHighlighted, setIsFilterHighlighted] = useState(false);
@@ -2024,14 +2026,16 @@ function ChatPage() {
       setIsFilterDropdownOpen(true);
       setFilterSearchTerm("");
       setSelectedFilterIndex(0);
-      
+
       // Get button position for popover anchoring
-      const button = document.querySelector('[data-filter-button]') as HTMLElement;
+      const button = document.querySelector(
+        "[data-filter-button]",
+      ) as HTMLElement;
       if (button) {
         const rect = button.getBoundingClientRect();
         setAnchorPosition({
           x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2 - 12
+          y: rect.top + rect.height / 2 - 12,
         });
       }
     } else {
@@ -2256,18 +2260,29 @@ function ChatPage() {
                   </span>
                 </div>
               )}
-              <textarea
+              <div className="relative" style={{height: `${textareaHeight + 60}px`}}>
+              <TextareaAutosize
                 ref={inputRef}
                 value={input}
                 onChange={onChange}
                 onKeyDown={handleKeyDown}
+                onHeightChange={(height) => setTextareaHeight(height)}
+                maxRows={7}
+                minRows={2}
                 placeholder="Type to ask a question..."
                 disabled={loading}
                 className={`w-full bg-transparent px-4 ${
-                  selectedFilter ? "py-2 pb-4" : "py-4"
-                } min-h-[100px] focus-visible:outline-none resize-none`}
-                rows={1}
+                  selectedFilter ? "pt-2" : "pt-4"
+                } focus-visible:outline-none resize-none`}
+                rows={2}
               />
+                {/* Safe area at bottom for buttons */}
+                <div 
+                  className="absolute bottom-0 left-0 right-0 bg-transparent pointer-events-none"
+                  style={{ height: '60px' }}
+                />
+              </div>
+              
             </div>
             <input
               ref={fileInputRef}
@@ -2344,9 +2359,7 @@ function ChatPage() {
                         >
                           <span>No knowledge filter</span>
                           {!selectedFilter && (
-                           <Check
-                            className="h-4 w-4 shrink-0"
-                           />
+                            <Check className="h-4 w-4 shrink-0" />
                           )}
                         </button>
                       )}
@@ -2376,9 +2389,7 @@ function ChatPage() {
                               )}
                             </div>
                             {selectedFilter?.id === filter.id && (
-                              <Check
-                              className="h-4 w-4 shrink-0"
-                             />
+                              <Check className="h-4 w-4 shrink-0" />
                             )}
                           </button>
                         ))}
