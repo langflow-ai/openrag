@@ -136,10 +136,10 @@ export function TaskNotificationMenu() {
   }
 
   return (
-    <div className="fixed top-14 right-0 z-40 w-80 h-[calc(100vh-3.5rem)] bg-background border-l border-border/40">
+    <div className="h-full bg-background border-l">
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="p-4 border-b border-border/40">
+        <div className="p-4 border-b">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Bell className="h-5 w-5 text-muted-foreground" />

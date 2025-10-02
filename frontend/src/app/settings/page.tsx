@@ -114,7 +114,8 @@ function KnowledgeSourcesPage() {
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
   const [tableStructure, setTableStructure] = useState<boolean>(false);
   const [ocr, setOcr] = useState<boolean>(false);
-  const [pictureDescriptions, setPictureDescriptions] = useState<boolean>(false);
+  const [pictureDescriptions, setPictureDescriptions] =
+    useState<boolean>(false);
 
   // Fetch settings using React Query
   const { data: settings = {} } = useGetSettingsQuery({
@@ -164,7 +165,7 @@ function KnowledgeSourcesPage() {
     onSuccess: () => {
       console.log("Setting updated successfully");
     },
-    onError: error => {
+    onError: (error) => {
       console.error("Failed to update setting:", error.message);
     },
   });
@@ -303,8 +304,8 @@ function KnowledgeSourcesPage() {
 
       // Initialize connectors list with metadata from backend
       const initialConnectors = connectorTypes
-        .filter(type => connectorsResult.connectors[type].available) // Only show available connectors
-        .map(type => ({
+        .filter((type) => connectorsResult.connectors[type].available) // Only show available connectors
+        .map((type) => ({
           id: type,
           name: connectorsResult.connectors[type].name,
           description: connectorsResult.connectors[type].description,
@@ -327,8 +328,8 @@ function KnowledgeSourcesPage() {
           );
           const isConnected = activeConnection !== undefined;
 
-          setConnectors(prev =>
-            prev.map(c =>
+          setConnectors((prev) =>
+            prev.map((c) =>
               c.type === connectorType
                 ? {
                     ...c,
@@ -347,7 +348,7 @@ function KnowledgeSourcesPage() {
 
   const handleConnect = async (connector: Connector) => {
     setIsConnecting(connector.id);
-    setSyncResults(prev => ({ ...prev, [connector.id]: null }));
+    setSyncResults((prev) => ({ ...prev, [connector.id]: null }));
 
     try {
       // Use the shared auth callback URL, same as connectors page
@@ -508,9 +509,9 @@ function KnowledgeSourcesPage() {
   // Watch for task completions and refresh stats
   useEffect(() => {
     // Find newly completed tasks by comparing with previous state
-    const newlyCompletedTasks = tasks.filter(task => {
+    const newlyCompletedTasks = tasks.filter((task) => {
       const wasCompleted =
-        prevTasks.find(prev => prev.task_id === task.task_id)?.status ===
+        prevTasks.find((prev) => prev.task_id === task.task_id)?.status ===
         "completed";
       return task.status === "completed" && !wasCompleted;
     });
@@ -564,7 +565,7 @@ function KnowledgeSourcesPage() {
     fetch(`/api/reset-flow/retrieval`, {
       method: "POST",
     })
-      .then(response => {
+      .then((response) => {
         if (response.ok) {
           return response.json();
         }
@@ -577,7 +578,7 @@ function KnowledgeSourcesPage() {
         handleModelChange(DEFAULT_AGENT_SETTINGS.llm_model);
         closeDialog(); // Close after successful completion
       })
-      .catch(error => {
+      .catch((error) => {
         console.error("Error restoring retrieval flow:", error);
         closeDialog(); // Close even on error (could show error toast instead)
       });
@@ -587,7 +588,7 @@ function KnowledgeSourcesPage() {
     fetch(`/api/reset-flow/ingest`, {
       method: "POST",
     })
-      .then(response => {
+      .then((response) => {
         if (response.ok) {
           return response.json();
         }
@@ -602,14 +603,14 @@ function KnowledgeSourcesPage() {
         setPictureDescriptions(false);
         closeDialog(); // Close after successful completion
       })
-      .catch(error => {
+      .catch((error) => {
         console.error("Error restoring ingest flow:", error);
         closeDialog(); // Close even on error (could show error toast instead)
       });
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-6">
       {/* Connectors Section */}
       <div className="space-y-6">
         <div>
@@ -700,7 +701,7 @@ function KnowledgeSourcesPage() {
 
         {/* Connectors Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {connectors.map(connector => (
+          {connectors.map((connector) => (
             <Card key={connector.id} className="relative flex flex-col">
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -834,7 +835,7 @@ function KnowledgeSourcesPage() {
                 }
                 confirmText="Proceed"
                 confirmIcon={<ArrowUpRight />}
-                onConfirm={closeDialog =>
+                onConfirm={(closeDialog) =>
                   handleEditInLangflow("chat", closeDialog)
                 }
                 variant="warning"
@@ -854,7 +855,8 @@ function KnowledgeSourcesPage() {
                 <Select
                   value={
                     settings.agent?.llm_model ||
-                    modelsData?.language_models?.find(m => m.default)?.value ||
+                    modelsData?.language_models?.find((m) => m.default)
+                      ?.value ||
                     "gpt-4"
                   }
                   onValueChange={handleModelChange}
@@ -882,7 +884,7 @@ function KnowledgeSourcesPage() {
                 id="system-prompt"
                 placeholder="Enter your agent instructions here..."
                 value={systemPrompt}
-                onChange={e => setSystemPrompt(e.target.value)}
+                onChange={(e) => setSystemPrompt(e.target.value)}
                 rows={6}
                 className={`resize-none ${
                   systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
@@ -993,7 +995,7 @@ function KnowledgeSourcesPage() {
                 confirmText="Proceed"
                 confirmIcon={<ArrowUpRight />}
                 variant="warning"
-                onConfirm={closeDialog =>
+                onConfirm={(closeDialog) =>
                   handleEditInLangflow("ingest", closeDialog)
                 }
               />
@@ -1013,7 +1015,8 @@ function KnowledgeSourcesPage() {
                   disabled={true}
                   value={
                     settings.knowledge?.embedding_model ||
-                    modelsData?.embedding_models?.find(m => m.default)?.value ||
+                    modelsData?.embedding_models?.find((m) => m.default)
+                      ?.value ||
                     "text-embedding-ada-002"
                   }
                   onValueChange={handleEmbeddingModelChange}
@@ -1051,7 +1054,7 @@ function KnowledgeSourcesPage() {
                     type="number"
                     min="1"
                     value={chunkSize}
-                    onChange={e => handleChunkSizeChange(e.target.value)}
+                    onChange={(e) => handleChunkSizeChange(e.target.value)}
                     className="w-full pr-20"
                   />
                   <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
@@ -1074,7 +1077,7 @@ function KnowledgeSourcesPage() {
                     type="number"
                     min="0"
                     value={chunkOverlap}
-                    onChange={e => handleChunkOverlapChange(e.target.value)}
+                    onChange={(e) => handleChunkOverlapChange(e.target.value)}
                     className="w-full pr-20"
                   />
                   <div className="absolute inset-y-0 right-0 flex items-center pr-8 pointer-events-none">
@@ -1113,7 +1116,8 @@ function KnowledgeSourcesPage() {
                     OCR
                   </Label>
                   <div className="text-sm text-muted-foreground">
-                    Extracts text from images/PDFs. Ingest is slower when enabled.
+                    Extracts text from images/PDFs. Ingest is slower when
+                    enabled.
                   </div>
                 </div>
                 <Switch
