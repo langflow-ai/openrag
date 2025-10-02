@@ -4,6 +4,7 @@ from starlette.responses import JSONResponse
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from config.settings import (
+    DISABLE_INGEST_WITH_LANGFLOW,
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
@@ -451,7 +452,7 @@ async def onboarding(request, flows_service):
             config_updated = True
 
         # Update knowledge settings
-        if "embedding_model" in body:
+        if "embedding_model" in body and not DISABLE_INGEST_WITH_LANGFLOW:
             if (
                 not isinstance(body["embedding_model"], str)
                 or not body["embedding_model"].strip()
@@ -601,11 +602,16 @@ async def onboarding(request, flows_service):
                 # Import here to avoid circular imports
                 from main import init_index
 
-                logger.info("Initializing OpenSearch index after onboarding configuration")
+                logger.info(
+                    "Initializing OpenSearch index after onboarding configuration"
+                )
                 await init_index()
                 logger.info("OpenSearch index initialization completed successfully")
             except Exception as e:
-                logger.error("Failed to initialize OpenSearch index after onboarding", error=str(e))
+                logger.error(
+                    "Failed to initialize OpenSearch index after onboarding",
+                    error=str(e),
+                )
                 # Don't fail the entire onboarding process if index creation fails
                 # The application can still work, but document operations may fail
 
