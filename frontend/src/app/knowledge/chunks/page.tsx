@@ -298,12 +298,12 @@ function ChunksPageContent() {
         <div className="mb-8">
           <h2 className="text-xl font-semibold mt-2 mb-3">Original document</h2>
           <dl>
-            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+            {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Name</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 {fileData?.filename}
               </dd>
-            </div>
+            </div> */}
             <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Type</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
@@ -318,23 +318,23 @@ function ChunksPageContent() {
                   : "Unknown"}
               </dd>
             </div>
-            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+            {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Uploaded</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 N/A
               </dd>
-            </div>
+            </div> */}
             {/* TODO: Uncomment after data is available */}
             {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Source</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0"></dd>
             </div> */}
-            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+            {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Updated</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 N/A
               </dd>
-            </div>
+            </div> */}
           </dl>
         </div>
       </div>
