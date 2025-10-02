@@ -2320,7 +2320,6 @@ function ChatPage() {
                   // Prevent auto focus on the popover content
                   e.preventDefault();
                   // Keep focus on the input
-                  inputRef.current?.focus();
                 }}
               >
                 <div className="space-y-1">
