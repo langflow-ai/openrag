@@ -86,39 +86,28 @@ const config = {
         },
         items: [
           {
-            href: 'https://github.com/openrag/openrag',
-            label: 'GitHub',
-            position: 'right',
+            position: "right",
+            href: "https://github.com/langflow-ai/openrag",
+            className: "header-github-link",
+            target: "_blank",
+            rel: null,
+            'aria-label': 'GitHub repository',
           },
         ],
       },
       footer: {
-        style: 'dark',
         links: [
           {
-            title: 'Documentation',
+            title: null,
             items: [
               {
-                label: 'Getting Started',
-                to: '/',
-              },
-            ],
-          },
-          {
-            title: 'Community',
-            items: [
-              {
-                label: 'GitHub',
-                href: 'https://github.com/openrag/openrag',
-              },
-              {
-                label: 'Discord',
-                href: 'https://discord.gg/openrag',
+                html: `<div class="footer-links">
+                  <span>© ${new Date().getFullYear()} OpenRAG</span>
+                  </div>`,
               },
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} OpenRAG. Built with Docusaurus.`,
       },
       prism: {
         theme: prismThemes.github,
