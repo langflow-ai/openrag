@@ -53,6 +53,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const authPaths = ["/login", "/auth/callback", "/onboarding"];
   const isAuthPage = authPaths.includes(pathname);
 
+  // List of paths with smaller max-width
+  const smallWidthPaths = ["/settings", "/settings/connector/new"];
+  const isSmallWidthPath = smallWidthPaths.includes(pathname);
+
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
     (task) =>
