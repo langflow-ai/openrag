@@ -26,7 +26,7 @@ const SelectTrigger = React.forwardRef<
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex h-10 w-full items-center justify-between rounded-md border border-input px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-muted [&>span]:line-clamp-1",
+        "flex h-10 w-full items-center justify-between rounded-md border border-input px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-muted [&>span]:line-clamp-1 disabled:border-none",
         className
       )}
       {...props}
@@ -34,7 +34,7 @@ const SelectTrigger = React.forwardRef<
       {children}
       <SelectPrimitive.Icon asChild>
         {props.disabled ? (
-          <LockIcon className="text-base h-5 w-5 opacity-50" />
+          <LockIcon className="text-base h-4 w-4 opacity-50" />
         ) : (
           <ChevronsUpDown className="text-base h-5 w-5" />
         )}
