@@ -20,11 +20,7 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { useAuth } from "@/contexts/auth-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
@@ -136,6 +132,7 @@ function ChatPage() {
 	const [dropdownDismissed, setDropdownDismissed] = useState(false);
 	const [isUserInteracting, setIsUserInteracting] = useState(false);
 	const [isForkingInProgress, setIsForkingInProgress] = useState(false);
+	const [anchorPosition, setAnchorPosition] = useState<{ x: number; y: number } | null>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -148,6 +145,59 @@ function ChatPage() {
 
 	const scrollToBottom = () => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+	};
+
+	const getCursorPosition = (textarea: HTMLTextAreaElement) => {
+		// Create a hidden div with the same styles as the textarea
+		const div = document.createElement('div');
+		const computedStyle = getComputedStyle(textarea);
+		
+		// Copy all computed styles to the hidden div
+		for (const style of computedStyle) {
+			(div.style as any)[style] = computedStyle.getPropertyValue(style);
+		}
+		
+		// Set the div to be hidden but not un-rendered
+		div.style.position = 'absolute';
+		div.style.visibility = 'hidden';
+		div.style.whiteSpace = 'pre-wrap';
+		div.style.wordWrap = 'break-word';
+		div.style.overflow = 'hidden';
+		div.style.height = 'auto';
+		div.style.width = `${textarea.getBoundingClientRect().width}px`;
+		
+		// Get the text up to the cursor position
+		const cursorPos = textarea.selectionStart || 0;
+		const textBeforeCursor = textarea.value.substring(0, cursorPos);
+		
+		// Add the text before cursor
+		div.textContent = textBeforeCursor;
+		
+		// Create a span to mark the end position
+		const span = document.createElement('span');
+		span.textContent = '|'; // Cursor marker
+		div.appendChild(span);
+		
+		// Add the text after cursor to handle word wrapping
+		const textAfterCursor = textarea.value.substring(cursorPos);
+		div.appendChild(document.createTextNode(textAfterCursor));
+		
+		// Add the div to the document temporarily
+		document.body.appendChild(div);
+		
+		// Get positions
+		const inputRect = textarea.getBoundingClientRect();
+		const divRect = div.getBoundingClientRect();
+		const spanRect = span.getBoundingClientRect();
+		
+		// Calculate the cursor position relative to the input
+		const x = inputRect.left + (spanRect.left - divRect.left);
+		const y = inputRect.top + (spanRect.top - divRect.top);
+		
+		// Clean up
+		document.body.removeChild(div);
+		
+		return { x, y };
 	};
 
 	const handleEndpointChange = (newEndpoint: EndpointType) => {
@@ -692,7 +742,6 @@ function ChatPage() {
 		};
 	}, [endpoint, setPreviousResponseIds]);
 
-	// Handle click outside to close dropdown
 
 	const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
 		previousResponseIds[endpoint],
@@ -2065,6 +2114,12 @@ function ChatPage() {
 										setFilterSearchTerm(searchTerm);
 										setSelectedFilterIndex(0);
 
+										// Only set anchor position when @ is first detected (search term is empty)
+										if (searchTerm === "" && !anchorPosition) {
+											const cursorPos = getCursorPosition(e.target);
+											setAnchorPosition(cursorPos);
+										}
+
 										if (!isFilterDropdownOpen) {
 											loadAvailableFilters();
 											setIsFilterDropdownOpen(true);
@@ -2074,6 +2129,7 @@ function ChatPage() {
 										console.log("Closing dropdown - no @ found");
 										setIsFilterDropdownOpen(false);
 										setFilterSearchTerm("");
+										setAnchorPosition(null);
 									}
 
 									// Reset dismissed flag when user moves to a different word
@@ -2205,30 +2261,64 @@ function ChatPage() {
 							className="hidden"
 							accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
 						/>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
+							onClick={() => {
+								if (!isFilterDropdownOpen) {
+									loadAvailableFilters();
+									setIsFilterDropdownOpen(true);
+									// Get cursor position when manually opening
+									if (inputRef.current) {
+										const cursorPos = getCursorPosition(inputRef.current);
+										setAnchorPosition(cursorPos);
+									}
+								} else {
+									setIsFilterDropdownOpen(false);
+									setAnchorPosition(null);
+								}
+							}}
+						>
+							<AtSign className="h-4 w-4" />
+						</Button>
 						<Popover
 							open={isFilterDropdownOpen}
 							onOpenChange={(open) => {
 								setIsFilterDropdownOpen(open);
-								if (open) {
-									loadAvailableFilters();
+								if (!open) {
+									setAnchorPosition(null);
 								}
 							}}
 						>
-							<PopoverTrigger asChild>
-								<Button
-									type="button"
-									variant="ghost"
-									size="sm"
-									className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
+							{anchorPosition && (
+								<PopoverAnchor
+									asChild
+									style={{
+										position: 'fixed',
+										left: anchorPosition.x,
+										top: anchorPosition.y,
+										width: 1,
+										height: 1,
+										pointerEvents: 'none',
+									}}
 								>
-									<AtSign className="h-4 w-4" />
-								</Button>
-							</PopoverTrigger>
+									<div />
+								</PopoverAnchor>
+							)}
 							<PopoverContent
 								className="w-64 p-2"
 								side="top"
 								align="start"
-								sideOffset={8}
+								sideOffset={6}
+                alignOffset={-18}
+								onOpenAutoFocus={(e) => {
+									// Prevent auto focus on the popover content
+									e.preventDefault();
+									// Keep focus on the input
+									inputRef.current?.focus();
+								}}
 							>
 								<div className="space-y-1">
 									{filterSearchTerm && (
