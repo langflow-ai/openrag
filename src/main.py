@@ -382,6 +382,10 @@ async def _ingest_default_documents_langflow(services, file_paths):
                 settings=None,  # Use default ingestion settings
                 jwt_token=effective_jwt,  # Use JWT token (anonymous if needed)
                 delete_after_ingest=True,  # Clean up after ingestion
+                owner=None,
+                owner_name=anonymous_user.name,
+                owner_email=anonymous_user.email,
+                connector_type="system_default",
             )
 
             logger.info(
