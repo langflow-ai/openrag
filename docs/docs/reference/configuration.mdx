@@ -9,10 +9,10 @@ import TabItem from '@theme/TabItem';
 
 OpenRAG recognizes [supported environment variables](#supported-environment-variables) from the following sources:
 
-* **[Environment variables](#supported-environment-variables)** - Values set in `.env` or `docker-compose.yml` file.
-* **[Configuration file variables (`config.yaml`)](#configuration-file)** - Values generated during application onboarding and saved to `config.yaml`.
-* **[Langflow runtime overrides](#langflow-runtime-overrides)** - Langflow components may tweak environment variables at runtime.
-* **[Default or fallback values](#default-values-and-fallbacks)** - These values are default or fallback values if OpenRAG doesn't find a value.
+* [Environment variables](#supported-environment-variables) - Values set in `.env` or `docker-compose.yml` file.
+* [Configuration file variables (`config.yaml`)](#configuration-file) - Values generated during application onboarding and saved to `config.yaml`. These are internal OpenRAG application settings that are not user-configurable, but may override environment variables.
+* [Langflow runtime overrides](#langflow-runtime-overrides) - Langflow components may tweak environment variables at runtime.
+* [Default or fallback values](#default-values-and-fallbacks) - These values are default or fallback values if OpenRAG doesn't find a value.
 
 ## Configure environment variables
 
@@ -20,34 +20,21 @@ Environment variables can be set in a `.env` or `docker-compose.yml` file.
 
 ### Precedence
 
-Environment variables always take precedence over other variables, except when the same variable exists in both [config.yaml](#configuration-file) and the `.env`. In this case, the variable in `config.yaml` will take precedence.
+Environment variables always take precedence over other variables, except when the same variable exists in both [config.yaml](#configuration-file) and the `.env`. In this case, the variable in `config.yaml` takes precedence.
 
 ### Set environment variables
 
-To set environment variables, do the following:
+To set environment variables, do the following.
 
-<Tabs>
-<TabItem value="env-file" label=".env file" default>
+1. Stop OpenRAG. , and then 
+2. Set the values in the `.env` file:
+   ```bash
+   OPENAI_API_KEY=your-api-key-here
+   CHUNK_SIZE=1000
+   ```
+3. Start OpenRAG.
 
-Stop OpenRAG, set the values in the .env file, and then start OpenRAG.
-```bash
-OPENAI_API_KEY=your-api-key-here
-EMBEDDING_MODEL=text-embedding-3-small
-CHUNK_SIZE=1000
-```
-</TabItem>
-
-<TabItem value="docker" label="Docker Compose">
-Stop OpenRAG, set the values in the `docker-compose.yml` file, and then start OpenRAG.
-```yaml
-environment:
-  - OPENAI_API_KEY=your-api-key-here
-  - EMBEDDING_MODEL=text-embedding-3-small
-  - CHUNK_SIZE=1000
-```
-
-</TabItem>
-</Tabs>
+The Docker Compose files are also populated with values from your `.env`, so you don't need to edit the files manually.
 
 ## Supported environment variables
 
@@ -141,9 +128,9 @@ Configure general system components, session management, and logging.
 
 ## Configuration file (`config.yaml`) {#configuration-file}
 
-A `config.yaml` configuration file is generated with values input during [Application onboarding](/install#application-onboarding) and contains some of the same configuration variables as environment variables. The variables in `config.yaml` take precedence over environment variables.
+A `config.yaml` configuration file is generated with values input during [Application onboarding](/install#application-onboarding) and contains some of the same configuration variables as environment variables. These are internal OpenRAG application settings that are not user-configurable, but may override environment variables.
 
-The `config.yaml` file is stored in the `config/` directory of your OpenRAG installation, which is mounted as a volume in the `openrag-backend` Docker container. For an example `config.yaml` file, see [`config.example.yaml` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/config/config.example.yaml).
+For an example `config.yaml` file, see [`config.example.yaml` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/config/config.example.yaml).
 
 <details closed>
 <summary>Which variables can `config.yaml` override?</summary>
@@ -154,25 +141,13 @@ The `config.yaml` file is stored in the `config/` directory of your OpenRAG inst
 * LLM_MODEL
 * MODEL_PROVIDER
 * OCR_ENABLED
-* OPENAI_API_KEY (backward compatibility)
+* OPENAI_API_KEY
 * PICTURE_DESCRIPTIONS_ENABLED
 * PROVIDER_API_KEY
 * PROVIDER_ENDPOINT
 * PROVIDER_PROJECT_ID
 * SYSTEM_PROMPT
 </details>
-
-### Edit the `config.yaml` file
-
-To manually edit the `config.yaml` file, do the following:
-1. Stop OpenRAG.
-2. In the `config.yaml` file, change the value `edited:false` to `edited:true`.
-4. Make your changes, and then save your file.
-3. Start OpenRAG.
-
-The `config.yaml` value set for `MODEL_PROVIDER` can **not** be changed after onboarding.
-If you change this value in `config.yaml`, it will have no effect on restart.
-To change your `MODEL_PROVIDER`, you must [delete the OpenRAG containers](/get-started/tui#status), delete `config.yaml`, and [install OpenRAG](/install) again.
 
 ## Langflow runtime overrides
 
