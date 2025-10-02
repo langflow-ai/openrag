@@ -142,6 +142,31 @@
         "sourceHandle": "{œdataTypeœ:œLanguageModelComponentœ,œidœ:œLanguageModelComponent-0YME7œ,œnameœ:œmodel_outputœ,œoutput_typesœ:[œLanguageModelœ]}",
         "target": "Agent-crjWf",
         "targetHandle": "{œfieldNameœ:œagent_llmœ,œidœ:œAgent-crjWfœ,œinputTypesœ:[œLanguageModelœ],œtypeœ:œstrœ}"
+      },
+      {
+        "data": {
+          "sourceHandle": {
+            "dataType": "TextInput",
+            "id": "TextInput-aHsQb",
+            "name": "text",
+            "output_types": [
+              "Message"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "filter_expression",
+            "id": "OpenSearch-iYfjf",
+            "inputTypes": [
+              "Message"
+            ],
+            "type": "str"
+          }
+        },
+        "id": "xy-edge__TextInput-aHsQb{œdataTypeœ:œTextInputœ,œidœ:œTextInput-aHsQbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-OpenSearch-iYfjf{œfieldNameœ:œfilter_expressionœ,œidœ:œOpenSearch-iYfjfœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "source": "TextInput-aHsQb",
+        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-aHsQbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "OpenSearch-iYfjf",
+        "targetHandle": "{œfieldNameœ:œfilter_expressionœ,œidœ:œOpenSearch-iYfjfœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}"
       }
     ],
     "nodes": [
@@ -702,7 +727,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2025-10-01T15:31:22.241Z",
+            "last_updated": "2025-10-02T20:05:34.814Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -1356,7 +1381,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-10-01T15:31:22.243Z",
+            "last_updated": "2025-10-02T20:05:34.815Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -1681,7 +1706,7 @@
             ],
             "frozen": false,
             "icon": "bot",
-            "last_updated": "2025-10-01T15:31:45.879Z",
+            "last_updated": "2025-10-02T20:05:34.872Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2220,7 +2245,7 @@
             ],
             "frozen": false,
             "icon": "brain-circuit",
-            "last_updated": "2025-10-01T15:31:22.244Z",
+            "last_updated": "2025-10-02T20:05:34.815Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2526,9 +2551,9 @@
       }
     ],
     "viewport": {
-      "x": -325.1448543831343,
-      "y": 117.81831162150468,
-      "zoom": 0.6031333914833354
+      "x": -237.0727605845459,
+      "y": 154.6885920024542,
+      "zoom": 0.602433700773958
     }
   },
   "description": "OpenRAG Open Search Agent",
