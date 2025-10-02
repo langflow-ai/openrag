@@ -1,51 +1,49 @@
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-### Application onboarding 
+## Application onboarding 
 
-The first time you start OpenRAG, whether using the TUI or a `.env` file, a `config.yaml` file is generated if OpenRAG detects one doesn't exist.
-The `config.yaml` file controls application configuration, including language model and embedding model provider, Docling ingestion settings, and API keys.
+The first time you start OpenRAG, whether using the TUI or a `.env` file, you must complete application onboarding.
 
-Values input during onboarding can be changed later in the OpenRAG **Settings** page, except for the language model and embedding model _provider_. The provider can only be selected during onboarding, and you must use the same provider for your language model and embedding model.
+Values input during onboarding can be changed later in the OpenRAG **Settings** page, except for the language model and embedding model _provider_. 
+**Your provider can only be selected once, and you must use the same provider for your language model and embedding model.**
+The language model can be changed, but the embeddings model cannot be changed.
+To change your provider selection, you must completely reinstall OpenRAG.
 
-1. Select your language model and embedding model provider, and complete the required fields.
-   **Your provider can only be selected once, and you must use the same provider for your language model and embedding model.**
-   The language model can be changed, but the embeddings model cannot be changed.
-   To change your provider selection, you must restart OpenRAG and delete the `config.yml` file.
+    <Tabs groupId="Provider">
+    <TabItem value="OpenAI" label="OpenAI" default>
+    1. Enable **Get API key from environment variable** to automatically enter your key from the TUI-generated `.env` file.
+    2. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+    3. To load 2 sample PDFs, enable **Sample dataset**.
+    This is recommended, but not required.
+    4. Click **Complete**.
+    5. Continue with the [Quickstart](/quickstart).
 
-<Tabs groupId="Embedding provider">
-   <TabItem value="OpenAI" label="OpenAI" default>
-      2. If you already entered a value for `OPENAI_API_KEY` in the TUI in Step 5, enable **Get API key from environment variable**.
-      3. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
-      4. To load 2 sample PDFs, enable **Sample dataset**.
-      This is recommended, but not required.
-      5. Click **Complete**.
-   
-     </TabItem>
-     <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
-      2. Complete the fields for **watsonx.ai API Endpoint**, **IBM API key**, and **IBM Project ID**.
-      These values are found in your IBM watsonx deployment.
-      3. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
-      4. To load 2 sample PDFs, enable **Sample dataset**.
-      This is recommended, but not required.
-      5. Click **Complete**.
-   
-     </TabItem>
-     <TabItem value="Ollama" label="Ollama">
-      :::tip
-      Ollama is not included with OpenRAG. To install Ollama, see the [Ollama documentation](https://docs.ollama.com/).
-      :::   
-      2. Enter your Ollama server's base URL address.
-      The default Ollama server address is `http://localhost:11434`.
-      Since OpenRAG is running in a container, you may need to change `localhost` to access services outside of the container. For example, change `http://localhost:11434` to `http://host.docker.internal:11434` to connect to Ollama.
-      OpenRAG automatically sends a test connection to your Ollama server to confirm connectivity.
-      3. Select the **Embedding Model** and **Language Model** your Ollama server is running.
-      OpenRAG automatically lists the available models from your Ollama server.
-      4. To load 2 sample PDFs, enable **Sample dataset**.
-      This is recommended, but not required.
-      5. Click **Complete**.
+    </TabItem>
+    <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
+    1. Complete the fields for **watsonx.ai API Endpoint**, **IBM API key**, and **IBM Project ID**.
+    These values are found in your IBM watsonx deployment.
+    2. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+    3. To load 2 sample PDFs, enable **Sample dataset**.
+    This is recommended, but not required.
+    4. Click **Complete**.
+    5. Continue with the [Quickstart](/quickstart).       
        
-     </TabItem>
-</Tabs>
+    </TabItem>
+    <TabItem value="Ollama" label="Ollama">
+    :::tip
+    Ollama is not included with OpenRAG. To install Ollama, see the [Ollama documentation](https://docs.ollama.com/).
+    :::   
+    1. Enter your Ollama server's base URL address.
+    The default Ollama server address is `http://localhost:11434`.
+    Since OpenRAG is running in a container, you may need to change `localhost` to access services outside of the container. For example, change `http://localhost:11434` to `http://host.docker.internal:11434` to connect to Ollama.
+    OpenRAG automatically sends a test connection to your Ollama server to confirm connectivity.
+    2. Select the **Embedding Model** and **Language Model** your Ollama server is running.
+    OpenRAG automatically lists the available models from your Ollama server.
+    3. To load 2 sample PDFs, enable **Sample dataset**.
+    This is recommended, but not required.
+    4. Click **Complete**.
+    5. Continue with the [Quickstart](/quickstart).        
+    </TabItem>
+    </Tabs>
 
-6. Continue with the [Quickstart](/quickstart).
