@@ -2095,6 +2095,29 @@ function ChatPage() {
 							<textarea
 								ref={inputRef}
 								value={input}
+								onFocus={(e) => {
+									// Handle case where user focuses back on textarea with trailing @
+									const textarea = e.target;
+									const value = textarea.value;
+									const words = value.split(" ");
+									const lastWord = words[words.length - 1];
+									
+									if (lastWord === "@" && !isFilterDropdownOpen) {
+										// Set cursor to end of text and calculate position
+										const endPos = value.length;
+										textarea.setSelectionRange(endPos, endPos);
+										
+										// Get cursor position for popover anchoring
+										const pos = getCursorPosition(textarea);
+										setAnchorPosition(pos);
+										
+										// Open popover
+										loadAvailableFilters();
+										setIsFilterDropdownOpen(true);
+										setFilterSearchTerm("");
+										setSelectedFilterIndex(0);
+									}
+								}}
 								onChange={(e) => {
 									const newValue = e.target.value;
 									setInput(newValue);
@@ -2115,9 +2138,9 @@ function ChatPage() {
 										setSelectedFilterIndex(0);
 
 										// Only set anchor position when @ is first detected (search term is empty)
-										if (searchTerm === "" && !anchorPosition) {
-											const cursorPos = getCursorPosition(e.target);
-											setAnchorPosition(cursorPos);
+										if (searchTerm === "") {
+											const pos = getCursorPosition(e.target);
+											setAnchorPosition(pos);
 										}
 
 										if (!isFilterDropdownOpen) {
@@ -2129,7 +2152,6 @@ function ChatPage() {
 										console.log("Closing dropdown - no @ found");
 										setIsFilterDropdownOpen(false);
 										setFilterSearchTerm("");
-										setAnchorPosition(null);
 									}
 
 									// Reset dismissed flag when user moves to a different word
@@ -2266,18 +2288,39 @@ function ChatPage() {
 							variant="ghost"
 							size="sm"
 							className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
-							onClick={() => {
-								if (!isFilterDropdownOpen) {
+              onMouseDown={(e) => {
+                e.preventDefault();
+              }}
+							onClick={(e) => {
+								if (inputRef.current) {
+									// Insert @ at current cursor position
+									const textarea = inputRef.current;
+									const start = textarea.selectionStart || 0;
+									const end = textarea.selectionEnd || 0;
+									const currentValue = textarea.value;
+									
+									// Insert @ at cursor position
+									const newValue = currentValue.substring(0, start) + '@' + currentValue.substring(end);
+									setInput(newValue);
+									
+									// Set cursor position after the @
+									const newCursorPos = start + 1;
+									setTimeout(() => {
+										textarea.setSelectionRange(newCursorPos, newCursorPos);
+										textarea.focus();
+									}, 0);
+									
+									// Open popover and set anchor position
 									loadAvailableFilters();
 									setIsFilterDropdownOpen(true);
-									// Get cursor position when manually opening
-									if (inputRef.current) {
-										const cursorPos = getCursorPosition(inputRef.current);
+									setFilterSearchTerm("");
+									setSelectedFilterIndex(0);
+									
+									// Get cursor position for popover anchoring
+									setTimeout(() => {
+										const cursorPos = getCursorPosition(textarea);
 										setAnchorPosition(cursorPos);
-									}
-								} else {
-									setIsFilterDropdownOpen(false);
-									setAnchorPosition(null);
+									}, 0);
 								}
 							}}
 						>
@@ -2287,9 +2330,6 @@ function ChatPage() {
 							open={isFilterDropdownOpen}
 							onOpenChange={(open) => {
 								setIsFilterDropdownOpen(open);
-								if (!open) {
-									setAnchorPosition(null);
-								}
 							}}
 						>
 							{anchorPosition && (
