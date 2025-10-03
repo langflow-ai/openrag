@@ -62,14 +62,14 @@ const getProviderIcon = (provider: string) => {
 export const FileItem = ({ file, onRemove, provider }: FileItemProps) => (
   <div
     key={file.id}
-    className="flex items-center justify-between p-2 rounded-md text-xs"
+    className="flex items-center justify-between p-1.5 rounded-md text-xs"
   >
     <div className="flex items-center gap-2 flex-1 min-w-0">
       {provider ? getProviderIcon(provider) : getFileIcon(file.mimeType)}
       <span className="truncate font-medium text-sm mr-2">{file.name}</span>
-      <Badge variant="secondary" className="text-xs px-1 py-0.5 h-auto">
+      <span className="text-sm text-muted-foreground">
         {getMimeTypeLabel(file.mimeType)}
-      </Badge>
+      </span>
     </div>
     <div className="flex items-center gap-1">
       <span className="text-xs text-muted-foreground mr-4" title="file size">
