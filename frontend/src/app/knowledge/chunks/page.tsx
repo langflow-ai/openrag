@@ -188,6 +188,7 @@ function ChunksPageContent() {
                   type="text"
                   placeholder="Search your documents..."
                   onChange={(e) => setQueryInputText(e.target.value)}
+                  value={queryInputText}
                 />
               </div>
             </div>
