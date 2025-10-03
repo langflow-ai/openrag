@@ -11,7 +11,6 @@ import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import Logo from "@/components/logo/logo";
 import { Navigation } from "@/components/navigation";
 import { TaskNotificationMenu } from "@/components/task-notification-menu";
-import { Button } from "@/components/ui/button";
 import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/contexts/auth-context";
 import { useChat } from "@/contexts/chat-context";
@@ -51,10 +50,6 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // List of paths that should not show navigation
   const authPaths = ["/login", "/auth/callback", "/onboarding"];
   const isAuthPage = authPaths.includes(pathname);
-
-  // List of paths with smaller max-width
-  const smallWidthPaths = ["/settings", "/settings/connector/new"];
-  const isSmallWidthPath = smallWidthPaths.includes(pathname);
 
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
@@ -145,12 +140,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
               "md:pr-0" // Neither open: 24px
         }`}
       >
-        <div
-          className={cn(
-            "py-6 lg:py-8 px-4 lg:px-6",
-            isSmallWidthPath ? "max-w-[850px]" : "container"
-          )}
-        >
+        <div className={cn("pb-6 pt-6 lg:pb-8 px-4 lg:px-6 container mx-auto")}>
           {children}
         </div>
       </main>

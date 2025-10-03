@@ -442,7 +442,7 @@ export function KnowledgeDropdown({
           disabled={isLoading}
           className={cn(
             variant === "button"
-              ? "rounded-lg h-12 px-4 flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              ? "rounded-lg h-10 px-4 flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               : "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed",
             variant === "navigation" && active
               ? "bg-accent text-accent-foreground shadow-sm"
