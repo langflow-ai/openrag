@@ -126,7 +126,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       </header>
       <div
         className={cn(
-          "app-grid-cols-arrangement group",
+          "app-grid-cols-arrangement",
           isPanelOpen && isOnKnowledgePage && !isMenuOpen && "filters-open",
           isMenuOpen && "notifications-open"
         )}

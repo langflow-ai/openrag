@@ -5,6 +5,7 @@ import React, {
   createContext,
   type ReactNode,
   useContext,
+  useEffect,
   useState,
 } from "react";
 
@@ -75,7 +76,7 @@ export function KnowledgeFilterProvider({
     useState<ParsedQueryData | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [createMode, setCreateMode] = useState(false);
-  const [queryOverride, setQueryOverride] = useState('');
+  const [queryOverride, setQueryOverride] = useState("");
 
   const setSelectedFilter = (filter: KnowledgeFilter | null) => {
     setSelectedFilterState(filter);
@@ -138,6 +139,11 @@ export function KnowledgeFilterProvider({
   const endCreateMode = () => {
     setCreateMode(false);
   };
+
+  // Clear the search override when we change filters
+  useEffect(() => {
+    setQueryOverride("");
+  }, [selectedFilter]);
 
   const value: KnowledgeFilterContextType = {
     selectedFilter,
