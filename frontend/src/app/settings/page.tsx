@@ -26,6 +26,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
 	Select,
 	SelectContent,
 	SelectTrigger,
@@ -1051,16 +1056,16 @@ function KnowledgeSourcesPage() {
 									}
 									onValueChange={handleEmbeddingModelChange}
 								>
-									{/* <Tooltip>
-                    <TooltipTrigger> */}
-									<SelectTrigger disabled id="embedding-model-select">
-										<SelectValue placeholder="Select an embedding model" />
-									</SelectTrigger>
-									{/* <TooltipContent>
-                        Locked to keep embeddings consistent
-                      </TooltipContent>
-                    </TooltipTrigger>
-                  </Tooltip> */}
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<SelectTrigger disabled id="embedding-model-select">
+												<SelectValue placeholder="Select an embedding model" />
+											</SelectTrigger>
+										</TooltipTrigger>
+										<TooltipContent>
+											Locked to keep embeddings consistent
+										</TooltipContent>
+									</Tooltip>
 									<SelectContent>
 										<ModelSelectItems
 											models={modelsData?.embedding_models}
