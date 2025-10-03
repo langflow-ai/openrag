@@ -2,7 +2,7 @@
 
 import type { ColDef } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { Building2, Cloud, HardDrive, Search, Trash2, X } from "lucide-react";
+import { Building2, Cloud, Globe, HardDrive, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, useCallback, useRef, useState } from "react";
 import { SiGoogledrive } from "react-icons/si";
@@ -22,8 +22,12 @@ import { DeleteConfirmationDialog } from "../../../components/confirmation-dialo
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 
-// Function to get the appropriate icon for a connector type
-function getSourceIcon(connectorType?: string) {
+// Function to get the appropriate icon for a connector type or mimetype
+function getSourceIcon(connectorType?: string, mimetype?: string) {
+  // If the document is HTML, show a web globe icon regardless of connector
+  if (typeof mimetype === "string" && mimetype.startsWith("text/html")) {
+    return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" strokeWidth={1.25} />;
+  }
   switch (connectorType) {
     case "google_drive":
       return (
@@ -112,7 +116,7 @@ function SearchPage() {
               );
             }}
           >
-            {getSourceIcon(data?.connector_type)}
+            {getSourceIcon(data?.connector_type, data?.mimetype)}
             <span className="font-medium text-foreground truncate">
               {value}
             </span>
