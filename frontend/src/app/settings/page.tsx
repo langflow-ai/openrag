@@ -644,19 +644,19 @@ function KnowledgeSourcesPage() {
                   <div className="text-muted-foreground">
                     <div>
                       <span className="mr-3 text-placeholder-foreground">
-                        18
+                        27
                       </span>
                       <span># Google OAuth</span>
                     </div>
                     <div>
                       <span className="mr-3 text-placeholder-foreground">
-                        19
+                        28
                       </span>
                       <span># Create credentials here:</span>
                     </div>
                     <div>
                       <span className="mr-3 text-placeholder-foreground">
-                        20
+                        29
                       </span>
                       <span>
                         # https://console.cloud.google.com/apis/credentials
@@ -664,11 +664,11 @@ function KnowledgeSourcesPage() {
                     </div>
                   </div>
                   <div>
-                    <span className="mr-3 text-placeholder-foreground">21</span>
+                    <span className="mr-3 text-placeholder-foreground">30</span>
                     <span>GOOGLE_OAUTH_CLIENT_ID=</span>
                   </div>
                   <div>
-                    <span className="mr-3 text-placeholder-foreground">22</span>
+                    <span className="mr-3 text-placeholder-foreground">31</span>
                     <span>GOOGLE_OAUTH_CLIENT_SECRET=</span>
                   </div>
                 </div>
