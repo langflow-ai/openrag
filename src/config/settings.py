@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
+from utils.container_utils import get_container_host
 from utils.document_processing import create_document_converter
 from utils.logging_config import get_logger
 
@@ -514,6 +515,9 @@ class AppClients:
             ssl_assert_fingerprint=None,
             headers=headers,
             http_compress=True,
+            timeout=30,  # 30 second timeout
+            max_retries=3,
+            retry_on_timeout=True,
         )
 
 
@@ -539,38 +543,30 @@ OLLAMA_EMBEDDING_COMPONENT_PATH = os.getenv(
 
 # Component IDs in flows
 
-OPENAI_EMBEDDING_COMPONENT_ID = os.getenv(
-    "OPENAI_EMBEDDING_COMPONENT_ID", "EmbeddingModel-eZ6bT"
+OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME = os.getenv(
+    "OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME", "Embedding Model"
 )
-OPENAI_LLM_COMPONENT_ID = os.getenv(
-    "OPENAI_LLM_COMPONENT_ID", "LanguageModelComponent-0YME7"
-)
-OPENAI_LLM_TEXT_COMPONENT_ID = os.getenv(
-    "OPENAI_LLM_TEXT_COMPONENT_ID", "LanguageModelComponent-NSTA6"
+OPENAI_LLM_COMPONENT_DISPLAY_NAME = os.getenv(
+    "OPENAI_LLM_COMPONENT_DISPLAY_NAME", "Language Model"
 )
 
 # Provider-specific component IDs
-WATSONX_EMBEDDING_COMPONENT_ID = os.getenv(
-    "WATSONX_EMBEDDING_COMPONENT_ID", "WatsonxEmbeddingsComponent-pJfXI"
+WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME = os.getenv(
+    "WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME", "IBM watsonx.ai Embeddings"
 )
-WATSONX_LLM_COMPONENT_ID = os.getenv(
-    "WATSONX_LLM_COMPONENT_ID", "IBMwatsonxModel-jA4Nw"
-)
-WATSONX_LLM_TEXT_COMPONENT_ID = os.getenv(
-    "WATSONX_LLM_TEXT_COMPONENT_ID", "IBMwatsonxModel-18kmA"
+WATSONX_LLM_COMPONENT_DISPLAY_NAME = os.getenv(
+    "WATSONX_LLM_COMPONENT_DISPLAY_NAME", "IBM watsonx.ai"
 )
 
-
-OLLAMA_EMBEDDING_COMPONENT_ID = os.getenv(
-    "OLLAMA_EMBEDDING_COMPONENT_ID", "OllamaEmbeddings-4ah5Q"
+OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME = os.getenv(
+    "OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME", "Ollama Model"
 )
-OLLAMA_LLM_COMPONENT_ID = os.getenv("OLLAMA_LLM_COMPONENT_ID", "OllamaModel-eCsJx")
-OLLAMA_LLM_TEXT_COMPONENT_ID = os.getenv(
-    "OLLAMA_LLM_TEXT_COMPONENT_ID", "OllamaModel-XDGqZ"
-)
+OLLAMA_LLM_COMPONENT_DISPLAY_NAME = os.getenv("OLLAMA_LLM_COMPONENT_DISPLAY_NAME", "Ollama")
 
 # Docling component ID for ingest flow
-DOCLING_COMPONENT_ID = os.getenv("DOCLING_COMPONENT_ID", "DoclingRemote-78KoX")
+DOCLING_COMPONENT_DISPLAY_NAME = os.getenv("DOCLING_COMPONENT_DISPLAY_NAME", "Docling Serve")
+
+LOCALHOST_URL = get_container_host() or "localhost"
 
 # Global clients instance
 clients = AppClients()

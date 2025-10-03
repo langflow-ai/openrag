@@ -1,13 +1,15 @@
 import json
 import platform
 from starlette.responses import JSONResponse
+from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from config.settings import (
+    DISABLE_INGEST_WITH_LANGFLOW,
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
     LANGFLOW_PUBLIC_URL,
-    DOCLING_COMPONENT_ID,
+    LOCALHOST_URL,
     clients,
     get_openrag_config,
     config_manager,
@@ -17,34 +19,29 @@ logger = get_logger(__name__)
 
 
 # Docling preset configurations
-def get_docling_preset_configs():
-    """Get docling preset configurations with platform-specific settings"""
+def get_docling_preset_configs(table_structure=False, ocr=False, picture_descriptions=False):
+    """Get docling preset configurations based on toggle settings
+
+    Args:
+        table_structure: Enable table structure parsing (default: False)
+        ocr: Enable OCR for text extraction from images (default: False)
+        picture_descriptions: Enable picture descriptions/captions (default: False)
+    """
     is_macos = platform.system() == "Darwin"
 
-    return {
-        "standard": {"do_ocr": False},
-        "ocr": {"do_ocr": True, "ocr_engine": "ocrmac" if is_macos else "easyocr"},
-        "picture_description": {
-            "do_ocr": True,
-            "ocr_engine": "ocrmac" if is_macos else "easyocr",
-            "do_picture_classification": True,
-            "do_picture_description": True,
-            "picture_description_local": {
-                "repo_id": "HuggingFaceTB/SmolVLM-256M-Instruct",
-                "prompt": "Describe this image in a few sentences.",
-            },
-        },
-        "VLM": {
-            "pipeline": "vlm",
-            "vlm_pipeline_model_local": {
-                "repo_id": "ds4sd/SmolDocling-256M-preview-mlx-bf16"
-                if is_macos
-                else "ds4sd/SmolDocling-256M-preview",
-                "response_format": "doctags",
-                "inference_framework": "mlx",
-            },
-        },
+    config = {
+        "do_ocr": ocr,
+        "ocr_engine": "ocrmac" if is_macos else "easyocr",
+        "do_table_structure": table_structure,
+        "do_picture_classification": picture_descriptions,
+        "do_picture_description": picture_descriptions,
+        "picture_description_local": {
+            "repo_id": "HuggingFaceTB/SmolVLM-256M-Instruct",
+            "prompt": "Describe this image in a few sentences.",
+        }
     }
+
+    return config
 
 
 async def get_settings(request, session_manager):
@@ -71,12 +68,15 @@ async def get_settings(request, session_manager):
                 "embedding_model": knowledge_config.embedding_model,
                 "chunk_size": knowledge_config.chunk_size,
                 "chunk_overlap": knowledge_config.chunk_overlap,
-                "doclingPresets": knowledge_config.doclingPresets,
+                "table_structure": knowledge_config.table_structure,
+                "ocr": knowledge_config.ocr,
+                "picture_descriptions": knowledge_config.picture_descriptions,
             },
             "agent": {
                 "llm_model": agent_config.llm_model,
                 "system_prompt": agent_config.system_prompt,
             },
+            "localhost_url": LOCALHOST_URL,
         }
 
         # Only expose edit URLs when a public URL is configured
@@ -178,7 +178,9 @@ async def update_settings(request, session_manager):
             "system_prompt",
             "chunk_size",
             "chunk_overlap",
-            "doclingPresets",
+            "table_structure",
+            "ocr",
+            "picture_descriptions",
             "embedding_model",
         }
 
@@ -203,7 +205,7 @@ async def update_settings(request, session_manager):
             # Also update the chat flow with the new model
             try:
                 flows_service = _get_flows_service()
-                await flows_service.update_chat_flow_model(body["llm_model"])
+                await flows_service.update_chat_flow_model(body["llm_model"], current_config.provider.model_provider.lower())
                 logger.info(
                     f"Successfully updated chat flow model to '{body['llm_model']}'"
                 )
@@ -220,7 +222,8 @@ async def update_settings(request, session_manager):
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_chat_flow_system_prompt(
-                    body["system_prompt"]
+                    body["system_prompt"],
+                    current_config.provider.model_provider.lower()
                 )
                 logger.info(f"Successfully updated chat flow system prompt")
             except Exception as e:
@@ -245,7 +248,8 @@ async def update_settings(request, session_manager):
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_ingest_flow_embedding_model(
-                    body["embedding_model"].strip()
+                    body["embedding_model"].strip(),
+                    current_config.provider.model_provider.lower()
                 )
                 logger.info(
                     f"Successfully updated ingest flow embedding model to '{body['embedding_model'].strip()}'"
@@ -255,32 +259,68 @@ async def update_settings(request, session_manager):
                 # Don't fail the entire settings update if flow update fails
                 # The config will still be saved
 
-        if "doclingPresets" in body:
-            preset_configs = get_docling_preset_configs()
-            valid_presets = list(preset_configs.keys())
-            if body["doclingPresets"] not in valid_presets:
+        if "table_structure" in body:
+            if not isinstance(body["table_structure"], bool):
                 return JSONResponse(
-                    {
-                        "error": f"doclingPresets must be one of: {', '.join(valid_presets)}"
-                    },
-                    status_code=400,
+                    {"error": "table_structure must be a boolean"}, status_code=400
                 )
-            current_config.knowledge.doclingPresets = body["doclingPresets"]
+            current_config.knowledge.table_structure = body["table_structure"]
             config_updated = True
 
-            # Also update the flow with the new docling preset
+            # Also update the flow with the new docling settings
             try:
                 flows_service = _get_flows_service()
-                await flows_service.update_flow_docling_preset(
-                    body["doclingPresets"], preset_configs[body["doclingPresets"]]
+                preset_config = get_docling_preset_configs(
+                    table_structure=body["table_structure"],
+                    ocr=current_config.knowledge.ocr,
+                    picture_descriptions=current_config.knowledge.picture_descriptions
                 )
-                logger.info(
-                    f"Successfully updated docling preset in flow to '{body['doclingPresets']}'"
-                )
+                await flows_service.update_flow_docling_preset("custom", preset_config)
+                logger.info(f"Successfully updated table_structure setting in flow")
             except Exception as e:
-                logger.error(f"Failed to update docling preset in flow: {str(e)}")
-                # Don't fail the entire settings update if flow update fails
-                # The config will still be saved
+                logger.error(f"Failed to update docling settings in flow: {str(e)}")
+
+        if "ocr" in body:
+            if not isinstance(body["ocr"], bool):
+                return JSONResponse(
+                    {"error": "ocr must be a boolean"}, status_code=400
+                )
+            current_config.knowledge.ocr = body["ocr"]
+            config_updated = True
+
+            # Also update the flow with the new docling settings
+            try:
+                flows_service = _get_flows_service()
+                preset_config = get_docling_preset_configs(
+                    table_structure=current_config.knowledge.table_structure,
+                    ocr=body["ocr"],
+                    picture_descriptions=current_config.knowledge.picture_descriptions
+                )
+                await flows_service.update_flow_docling_preset("custom", preset_config)
+                logger.info(f"Successfully updated ocr setting in flow")
+            except Exception as e:
+                logger.error(f"Failed to update docling settings in flow: {str(e)}")
+
+        if "picture_descriptions" in body:
+            if not isinstance(body["picture_descriptions"], bool):
+                return JSONResponse(
+                    {"error": "picture_descriptions must be a boolean"}, status_code=400
+                )
+            current_config.knowledge.picture_descriptions = body["picture_descriptions"]
+            config_updated = True
+
+            # Also update the flow with the new docling settings
+            try:
+                flows_service = _get_flows_service()
+                preset_config = get_docling_preset_configs(
+                    table_structure=current_config.knowledge.table_structure,
+                    ocr=current_config.knowledge.ocr,
+                    picture_descriptions=body["picture_descriptions"]
+                )
+                await flows_service.update_flow_docling_preset("custom", preset_config)
+                logger.info(f"Successfully updated picture_descriptions setting in flow")
+            except Exception as e:
+                logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
         if "chunk_size" in body:
             if not isinstance(body["chunk_size"], int) or body["chunk_size"] <= 0:
@@ -412,7 +452,7 @@ async def onboarding(request, flows_service):
             config_updated = True
 
         # Update knowledge settings
-        if "embedding_model" in body:
+        if "embedding_model" in body and not DISABLE_INGEST_WITH_LANGFLOW:
             if (
                 not isinstance(body["embedding_model"], str)
                 or not body["embedding_model"].strip()
@@ -535,7 +575,8 @@ async def onboarding(request, flows_service):
 
                     # Set base URL for Ollama provider
                     if provider == "ollama" and "endpoint" in body:
-                        endpoint = body["endpoint"]
+                        endpoint = transform_localhost_url(body["endpoint"])
+
                         await clients._create_langflow_global_variable(
                             "OLLAMA_BASE_URL", endpoint, modify=True
                         )
@@ -561,11 +602,16 @@ async def onboarding(request, flows_service):
                 # Import here to avoid circular imports
                 from main import init_index
 
-                logger.info("Initializing OpenSearch index after onboarding configuration")
+                logger.info(
+                    "Initializing OpenSearch index after onboarding configuration"
+                )
                 await init_index()
                 logger.info("OpenSearch index initialization completed successfully")
             except Exception as e:
-                logger.error("Failed to initialize OpenSearch index after onboarding", error=str(e))
+                logger.error(
+                    "Failed to initialize OpenSearch index after onboarding",
+                    error=str(e),
+                )
                 # Don't fail the entire onboarding process if index creation fails
                 # The application can still work, but document operations may fail
 
@@ -624,48 +670,56 @@ def _get_flows_service():
 
 
 async def update_docling_preset(request, session_manager):
-    """Update docling preset in the ingest flow"""
+    """Update docling settings in the ingest flow - deprecated endpoint, use /settings instead"""
     try:
         # Parse request body
         body = await request.json()
 
-        # Validate preset parameter
-        if "preset" not in body:
-            return JSONResponse(
-                {"error": "preset parameter is required"}, status_code=400
-            )
+        # Support old preset-based API for backwards compatibility
+        if "preset" in body:
+            # Map old presets to new toggle settings
+            preset_map = {
+                "standard": {"table_structure": False, "ocr": False, "picture_descriptions": False},
+                "ocr": {"table_structure": False, "ocr": True, "picture_descriptions": False},
+                "picture_description": {"table_structure": False, "ocr": True, "picture_descriptions": True},
+                "VLM": {"table_structure": False, "ocr": False, "picture_descriptions": False},
+            }
 
-        preset = body["preset"]
-        preset_configs = get_docling_preset_configs()
+            preset = body["preset"]
+            if preset not in preset_map:
+                return JSONResponse(
+                    {"error": f"Invalid preset '{preset}'. Valid presets: {', '.join(preset_map.keys())}"},
+                    status_code=400,
+                )
 
-        if preset not in preset_configs:
-            valid_presets = list(preset_configs.keys())
-            return JSONResponse(
-                {
-                    "error": f"Invalid preset '{preset}'. Valid presets: {', '.join(valid_presets)}"
-                },
-                status_code=400,
-            )
+            settings = preset_map[preset]
+        else:
+            # Support new toggle-based API
+            settings = {
+                "table_structure": body.get("table_structure", False),
+                "ocr": body.get("ocr", False),
+                "picture_descriptions": body.get("picture_descriptions", False),
+            }
 
         # Get the preset configuration
-        preset_config = preset_configs[preset]
+        preset_config = get_docling_preset_configs(**settings)
 
         # Use the helper function to update the flow
         flows_service = _get_flows_service()
-        await flows_service.update_flow_docling_preset(preset, preset_config)
+        await flows_service.update_flow_docling_preset("custom", preset_config)
 
-        logger.info(f"Successfully updated docling preset to '{preset}' in ingest flow")
+        logger.info(f"Successfully updated docling settings in ingest flow")
 
         return JSONResponse(
             {
-                "message": f"Successfully updated docling preset to '{preset}'",
-                "preset": preset,
+                "message": f"Successfully updated docling settings",
+                "settings": settings,
                 "preset_config": preset_config,
             }
         )
 
     except Exception as e:
-        logger.error("Failed to update docling preset", error=str(e))
+        logger.error("Failed to update docling settings", error=str(e))
         return JSONResponse(
-            {"error": f"Failed to update docling preset: {str(e)}"}, status_code=500
+            {"error": f"Failed to update docling settings: {str(e)}"}, status_code=500
         )

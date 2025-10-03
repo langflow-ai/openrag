@@ -40,9 +40,9 @@ services:
 
   openrag-backend:
     image: phact/openrag-backend:${OPENRAG_VERSION:-latest}
-    #build:
-    #context: .
-    #dockerfile: Dockerfile.backend
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.backend
     container_name: openrag-backend
     depends_on:
       - langflow
@@ -77,9 +77,10 @@ services:
 
   openrag-frontend:
     image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
-    #build:
-    #context: .
-    #dockerfile: Dockerfile.frontend
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.frontend
+    #   #dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
     depends_on:
       - openrag-backend
@@ -92,6 +93,9 @@ services:
     volumes:
       - ./flows:/app/flows:z
     image: phact/openrag-langflow:${LANGFLOW_VERSION:-latest}
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.langflow
     container_name: langflow
     ports:
       - "7860:7860"
@@ -99,7 +103,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
       - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
-      - JWT="dummy"
+      - JWT=None  
       - OWNER=None
       - OWNER_NAME=None
       - OWNER_EMAIL=None
@@ -113,3 +117,5 @@ services:
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - LANGFLOW_NEW_USER_IS_ACTIVE=${LANGFLOW_NEW_USER_IS_ACTIVE}
       - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI}
+      - DEFAULT_FOLDER_NAME="OpenRAG"
+      - HIDE_GETTING_STARTED_PROGRESS=true

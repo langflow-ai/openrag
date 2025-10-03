@@ -1,66 +1,94 @@
 ---
-title: Terminal Interface (TUI)
+title: Terminal User Interface (TUI) commands
 slug: /get-started/tui
 ---
 
-# OpenRAG TUI Guide
+import PartialExternalPreview from '@site/docs/_partial-external-preview.mdx';
 
-The OpenRAG Terminal User Interface (TUI) provides a streamlined way to set up, configure, and monitor your OpenRAG deployment directly from the terminal.
+<PartialExternalPreview />
+
+The OpenRAG Terminal User Interface (TUI) allows you to set up, configure, and monitor your OpenRAG deployment directly from the terminal, on any operating system.
 
 ![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
-## Launch
+Instead of starting OpenRAG using Docker commands and manually editing values in the `.env` file, the TUI walks you through the setup. It prompts for variables where required, creates a `.env` file for you, and then starts OpenRAG.
+
+Once OpenRAG is running, use the TUI to monitor your application, control your containers, and retrieve logs.
+
+## Start the TUI
+
+To start the TUI, run the following commands from the directory where you installed OpenRAG.
 
 ```bash
 uv sync
 uv run openrag
 ```
 
-## Features
-
-### Welcome Screen
-- Quick setup options: basic (no auth) or advanced (OAuth)
-- Service monitoring: container status at a glance
-- Quick actions: diagnostics, logs, configuration
-
-### Configuration Screen
-- Environment variables: guided forms for required settings
-- API keys: secure input with validation
-- OAuth setup: Google and Microsoft
-- Document paths: configure ingestion directories
-- Auto-save: generates and updates `.env`
-
-### Service Monitor
-- Container status: real-time state of services
-- Resource usage: CPU, memory, network
-- Service control: start/stop/restart
-- Health checks: health indicators for all components
-
-### Log Viewer
-- Live logs: stream logs across services
-- Filtering: by service (backend, frontend, Langflow, OpenSearch)
-- Levels: DEBUG/INFO/WARNING/ERROR
-- Export: save logs for later analysis
-
-### Diagnostics
-- System checks: Docker/Podman availability and configuration
-- Environment validation: verify required variables
-- Network tests: connectivity between services
-- Performance metrics: system capacity and recommendations
+The TUI Welcome Screen offers basic and advanced setup options.
+For more information on setup values during installation, see [Install OpenRAG](/install).
 
 ## Navigation
-- Arrow keys: move between options
-- Tab/Shift+Tab: switch fields and buttons
-- Enter: select/confirm
-- Escape: back
-- Q: quit
-- Number keys (1-4): quick access to main screens
 
-## Benefits
-1. Simplified setup without manual file edits
-2. Clear visual feedback and error messages
-3. Integrated monitoring and control
-4. Cross-platform: Linux, macOS, Windows
-5. Fully terminal-based; no browser required
+The TUI accepts mouse input or keyboard commands.
 
+- <kbd>Arrow keys</kbd>: move between options
+- <kbd>Tab</kbd>/<kbd>Shift+Tab</kbd>: switch fields and buttons
+- <kbd>Enter</kbd>: select/confirm
+- <kbd>Escape</kbd>: back
+- <kbd>Q</kbd>: quit
+- <kbd>Number keys (1-4)</kbd>: quick access to main screens
 
+## Container management
+
+The TUI can deploy, manage, and upgrade your OpenRAG containers.
+
+### Start container services
+
+Click **Start Container Services** to start the OpenRAG containers.
+The TUI automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses.
+The TUI then pulls the images and deploys the containers with the following command.
+```bash
+docker compose up -d
+```
+If images are missing, the TUI runs `docker compose pull`, then runs `docker compose up -d`.
+
+### Start native services
+
+A "native" service in OpenRAG refers to a service run natively on your machine, and not within a container.
+The `docling-serve` process is a native service in OpenRAG, because it's a document processing service that is run on your local machine, and controlled separately from the containers.
+
+To start or stop `docling-serve` or any other native services, in the TUI main menu, click **Start Native Services** or **Stop Native Services**.
+
+To view the status, port, or PID of a native service, in the TUI main menu, click [Status](#status).
+
+### Status
+
+The **Status** menu displays information on your container deployment.
+Here you can check container health, find your service ports, view logs, and upgrade your containers.
+
+To view streaming logs, select the container you want to view, and press <kbd>l</kbd>.
+To copy your logs, click **Copy to Clipboard**.
+
+To **upgrade** your containers, click **Upgrade**.
+**Upgrade** runs `docker compose pull` and then `docker compose up -d --force-recreate`.
+The first command pulls the latest images of OpenRAG.
+The second command recreates the containers with your data persisted.
+
+To **reset** your containers, click **Reset**.
+Reset gives you a completely fresh start.
+Reset deletes all of your data, including OpenSearch data, uploaded documents, and authentication.
+**Reset** runs two commands.
+It first stops and removes all containers, volumes, and local images.
+```
+docker compose down --volumes --remove-orphans --rmi local
+```
+
+When the first command is complete, OpenRAG removes any additional Docker objects with `prune`.
+
+```
+docker system prune -f
+```
+
+## Diagnostics
+
+The **Diagnostics** menu provides health monitoring for your container runtimes and monitoring of your OpenSearch security.

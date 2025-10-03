@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  ArrowLeft,
-  Copy,
-  File as FileIcon,
-  Loader2,
-  Search,
-} from "lucide-react";
+import { ArrowLeft, Check, Copy, Loader2, Search } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -43,6 +37,9 @@ function ChunksPageContent() {
     ChunkResult[]
   >([]);
   const [selectedChunks, setSelectedChunks] = useState<Set<number>>(new Set());
+  const [activeCopiedChunkIndex, setActiveCopiedChunkIndex] = useState<
+    number | null
+  >(null);
 
   // Calculate average chunk length
   const averageChunkLength = useMemo(
@@ -72,8 +69,11 @@ function ChunksPageContent() {
     }
   }, [queryInputText, chunks]);
 
-  const handleCopy = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = useCallback((text: string, index: number) => {
+    // Trim whitespace and remove new lines/tabs for cleaner copy
+    navigator.clipboard.writeText(text.trim().replace(/[\n\r\t]/gm, ""));
+    setActiveCopiedChunkIndex(index);
+    setTimeout(() => setActiveCopiedChunkIndex(null), 10 * 1000); // 10 seconds
   }, []);
 
   const fileData = (data as File[]).find(
@@ -151,17 +151,29 @@ function ChunksPageContent() {
       <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
         {/* Header */}
         <div className="flex flex-col mb-6">
-          <div className="flex items-center gap-3 mb-2">
-            <Button variant="ghost" onClick={handleBack}>
-              <ArrowLeft size={18} />
-              <FileIcon className="text-muted-foreground" size={18} />
-              <h1 className="text-lg font-semibold">
-                {filename.replace(/\.[^/.]+$/, "")}
-              </h1>
+          <div className="flex flex-row items-center gap-3 mb-6">
+            <Button variant="ghost" onClick={handleBack} size="sm">
+              <ArrowLeft size={24} />
             </Button>
+            <h1 className="text-lg font-semibold">
+              {/* Removes file extension from filename */}
+              {filename.replace(/\.[^/.]+$/, "")}
+            </h1>
           </div>
-          <div className="flex items-center gap-3 pl-4 mt-2">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col items-start mt-2">
+            <div className="flex-1 flex items-center gap-2 w-full max-w-[616px] mb-8">
+              <Input
+                name="search-query"
+                icon={!queryInputText.length ? <Search size={18} /> : null}
+                id="search-query"
+                type="text"
+                defaultValue={parsedFilterData?.query}
+                value={queryInputText}
+                onChange={(e) => setQueryInputText(e.target.value)}
+                placeholder="Search chunks..."
+              />
+            </div>
+            <div className="flex items-center pl-4 gap-2">
               <Checkbox
                 id="selectAllChunks"
                 checked={selectAll}
@@ -176,26 +188,11 @@ function ChunksPageContent() {
                 Select all
               </Label>
             </div>
-            <div className="flex-1 flex items-center gap-2">
-              <Input
-                name="search-query"
-                id="search-query"
-                type="text"
-                defaultValue={parsedFilterData?.query}
-                value={queryInputText}
-                onChange={(e) => setQueryInputText(e.target.value)}
-                placeholder="Search chunks..."
-                className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring"
-              />
-              <Button variant="outline" size="sm">
-                <Search />
-              </Button>
-            </div>
           </div>
         </div>
 
         {/* Content Area - matches knowledge page structure */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-scroll pr-6">
           {isFetching ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
@@ -240,12 +237,15 @@ function ChunksPageContent() {
                       </span>
                       <div className="py-1">
                         <Button
-                          className="p-1"
-                          onClick={() => handleCopy(chunk.text)}
+                          onClick={() => handleCopy(chunk.text, index)}
                           variant="ghost"
-                          size="xs"
+                          size="sm"
                         >
-                          <Copy className="text-muted-foreground" />
+                          {activeCopiedChunkIndex === index ? (
+                            <Check className="text-muted-foreground" />
+                          ) : (
+                            <Copy className="text-muted-foreground" />
+                          )}
                         </Button>
                       </div>
                     </div>

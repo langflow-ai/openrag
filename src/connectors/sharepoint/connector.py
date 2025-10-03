@@ -20,7 +20,7 @@ class SharePointConnector(BaseConnector):
     
     # Connector metadata
     CONNECTOR_NAME = "SharePoint"
-    CONNECTOR_DESCRIPTION = "Connect to SharePoint to sync documents and files"
+    CONNECTOR_DESCRIPTION = "Add knowledge from SharePoint"
     CONNECTOR_ICON = "sharepoint"
         
     def __init__(self, config: Dict[str, Any]):

@@ -4,7 +4,6 @@ import tailwindcssTypography from "@tailwindcss/typography";
 import { fontFamily } from "tailwindcss/defaultTheme";
 import plugin from "tailwindcss/plugin";
 import tailwindcssAnimate from "tailwindcss-animate";
-import tailwindcssLineClamp from "@tailwindcss/line-clamp";
 
 const config = {
   darkMode: ["class"],
@@ -109,14 +108,29 @@ const config = {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
-        "accent-emerald-foreground": {
-          DEFAULT: "hsl(var(--accent-emerald-foreground))",
+        "accent-emerald": {
+          DEFAULT: "hsl(var(--accent-emerald))",
+          foreground: "hsl(var(--accent-emerald-foreground))",
         },
-        "accent-pink-foreground": {
-          DEFAULT: "hsl(var(--accent-pink-foreground))",
+        "accent-pink": {
+          DEFAULT: "hsl(var(--accent-pink))",
+          foreground: "hsl(var(--accent-pink-foreground))",
         },
-        "accent-amber-foreground": {
-          DEFAULT: "hsl(var(--accent-amber-foreground))",
+        "accent-amber": {
+          DEFAULT: "hsl(var(--accent-amber))",
+          foreground: "hsl(var(--accent-amber-foreground))",
+        },
+        "accent-purple": {
+          DEFAULT: "hsl(var(--accent-purple))",
+          foreground: "hsl(var(--accent-purple-foreground))",
+        },
+        "accent-indigo": {
+          DEFAULT: "hsl(var(--accent-indigo))",
+          foreground: "hsl(var(--accent-indigo-foreground))",
+        },
+        "accent-red": {
+          DEFAULT: "hsl(var(--accent-red))",
+          foreground: "hsl(var(--accent-red-foreground))",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",
@@ -126,33 +140,9 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        "status-blue": "var(--status-blue)",
-        "status-green": "var(--status-green)",
-        "status-red": "var(--status-red)",
-        "status-yellow": "var(--status-yellow)",
         "component-icon": "var(--component-icon)",
         "flow-icon": "var(--flow-icon)",
         "placeholder-foreground": "hsl(var(--placeholder-foreground))",
-        "datatype-blue": {
-          DEFAULT: "hsl(var(--datatype-blue))",
-          foreground: "hsl(var(--datatype-blue-foreground))",
-        },
-        "datatype-yellow": {
-          DEFAULT: "hsl(var(--datatype-yellow))",
-          foreground: "hsl(var(--datatype-yellow-foreground))",
-        },
-        "datatype-red": {
-          DEFAULT: "hsl(var(--datatype-red))",
-          foreground: "hsl(var(--datatype-red-foreground))",
-        },
-        "datatype-emerald": {
-          DEFAULT: "hsl(var(--datatype-emerald))",
-          foreground: "hsl(var(--datatype-emerald-foreground))",
-        },
-        "datatype-violet": {
-          DEFAULT: "hsl(var(--datatype-violet))",
-          foreground: "hsl(var(--datatype-violet-foreground))",
-        },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
@@ -176,7 +166,6 @@ const config = {
   },
   plugins: [
     tailwindcssAnimate,
-    tailwindcssLineClamp,
     tailwindcssForms({
       strategy: "class",
     }),

@@ -140,6 +140,14 @@ async def langflow_upload_ingest_task(
             )
 
             # Create langflow upload task
+            print(f"tweaks: {tweaks}")
+            print(f"settings: {settings}")
+            print(f"jwt_token: {jwt_token}")
+            print(f"user_name: {user_name}")
+            print(f"user_email: {user_email}")
+            print(f"session_id: {session_id}")
+            print(f"delete_after_ingest: {delete_after_ingest}")
+            print(f"temp_file_paths: {temp_file_paths}")
             task_id = await task_service.create_langflow_upload_task(
                 user_id=user_id,
                 file_paths=temp_file_paths,
@@ -164,12 +172,9 @@ async def langflow_upload_ingest_task(
             
         except Exception:
             # Clean up temp files on error
+            from utils.file_utils import safe_unlink
             for temp_path in temp_file_paths:
-                try:
-                    if os.path.exists(temp_path):
-                        os.unlink(temp_path)
-                except Exception:
-                    pass  # Ignore cleanup errors
+                safe_unlink(temp_path)
             raise
             
     except Exception as e:
