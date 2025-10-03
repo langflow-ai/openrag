@@ -50,6 +50,7 @@ export const filterAccentClasses: Record<FilterColor, string> = {
 
 export function KnowledgeFilterPanel() {
   const {
+    queryOverride,
     selectedFilter,
     parsedFilterData,
     setSelectedFilter,
@@ -320,6 +321,7 @@ export function KnowledgeFilterPanel() {
               className="font-mono placeholder:font-mono"
               onChange={(e) => setQuery(e.target.value)}
               rows={2}
+              disabled={!!queryOverride}
             />
           </div>
 

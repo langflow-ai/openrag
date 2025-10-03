@@ -2,12 +2,13 @@
 
 import { themeQuartz, type ColDef } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { Cloud, FileIcon, Search, X } from "lucide-react";
+import { ArrowRight, Cloud, FileIcon, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   type ChangeEvent,
   FormEvent,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -28,6 +29,7 @@ import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 import GoogleDriveIcon from "../settings/icons/google-drive-icon";
 import OneDriveIcon from "../settings/icons/one-drive-icon";
 import SharePointIcon from "../settings/icons/share-point-icon";
+import { cn } from "@/lib/utils";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -244,6 +246,11 @@ function SearchPage() {
     }
   };
 
+  // Reset the query text when the selected filter changes
+  useEffect(() => {
+    setSearchQueryInput(queryOverride);
+  }, [queryOverride]);
+
   return (
     <>
       <div className="flex flex-col h-full">
@@ -257,7 +264,7 @@ function SearchPage() {
             className="flex flex-1 gap-3 max-w-full"
             onSubmit={handleSearch}
           >
-            <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem] max-w-[min(640px,100%)] min-w-[100px]">
+            <div className="primary-input group/input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem] max-w-[min(640px,100%)] min-w-[100px]">
               {selectedFilter?.name && (
                 <div
                   title={selectedFilter?.name}
@@ -288,6 +295,29 @@ function SearchPage() {
                   setSearchQueryInput(e.target.value)
                 }
               />
+              {queryOverride && (
+                <Button
+                  variant="ghost"
+                  className="h-full !px-1.5 !py-0"
+                  type="button"
+                  onClick={() => {
+                    setSearchQueryInput("");
+                    setQueryOverride("");
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                className={cn(
+                  "h-full !px-1.5 !py-0 hidden group-focus-within/input:block",
+                  searchQueryInput && "block"
+                )}
+                type="submit"
+              >
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             </div>
             {/* <Button
               type="submit"
