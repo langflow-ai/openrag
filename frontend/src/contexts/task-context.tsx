@@ -226,7 +226,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           setTimeout(() => {
           refetchSearch();
           setFiles((prevFiles) =>
-            prevFiles.filter((file) => file.task_id !== currentTask.task_id && file.status !== "failed"),
+            prevFiles.filter((file) => file.task_id !== currentTask.task_id || file.status === "failed"),
             );
           }, 500);
         } else if (
@@ -258,6 +258,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   );
 
   const refreshTasks = useCallback(async () => {
+    setFiles([]);
     await refetchTasks();
   }, [refetchTasks]);
 
