@@ -742,8 +742,7 @@ function KnowledgeSourcesPage() {
                       <Button
                         onClick={() => navigateToKnowledgePage(connector)}
                         disabled={isSyncing === connector.id}
-                        className="w-full cursor-pointer"
-                        size="sm"
+                        className="w-full cursor-pointer h-10"
                       >
                         <Plus className="h-4 w-4" />
                         Add Knowledge
