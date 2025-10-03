@@ -70,11 +70,11 @@ const sidebars = {
     },
     {
       type: "category",
-      label: "Configuration",
+      label: "Reference",
       items: [
         {
           type: "doc",
-          id: "configure/configuration",
+          id: "reference/configuration",
           label: "Environment variables"
         },
       ],
