@@ -86,12 +86,12 @@ class LangflowFileService:
 
         # Pass files via tweaks to File component (File-PSU37 from the flow)
         if file_paths:
-            tweaks["File-PSU37"] = {"path": file_paths}
+            tweaks["DoclingRemote-78KoX"] = {"path": file_paths}
 
         # Pass JWT token via tweaks using the x-langflow-global-var- pattern
         if jwt_token:
             # Using the global variable pattern that Langflow expects for OpenSearch components
-            tweaks["OpenSearchHybrid-Ve6bS"] = {"jwt_token": jwt_token}
+            tweaks["OpenSearchHybrid-XtKoA"] = {"jwt_token": jwt_token}
             logger.debug("[LF] Added JWT token to tweaks for OpenSearch components")
         else:
             logger.warning("[LF] No JWT token provided")
