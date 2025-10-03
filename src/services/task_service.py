@@ -1,6 +1,5 @@
 import asyncio
 import random
-from typing import Dict, Optional
 import time
 import uuid
 
@@ -59,7 +58,7 @@ class TaskService:
         file_paths: list,
         langflow_file_service,
         session_manager,
-        original_filenames: list = None,
+        original_filenames: dict | None = None,
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
@@ -88,7 +87,7 @@ class TaskService:
         )
         return await self.create_custom_task(user_id, file_paths, processor, original_filenames)
 
-    async def create_custom_task(self, user_id: str, items: list, processor, original_filenames: list = None) -> str:
+    async def create_custom_task(self, user_id: str, items: list, processor, original_filenames: dict | None = None) -> str:
         """Create a new task with custom processor for any type of items"""
         import os
         # Store anonymous tasks under a stable key so they can be retrieved later
@@ -96,14 +95,18 @@ class TaskService:
         task_id = str(uuid.uuid4())
 
         # Create file tasks with original filenames if provided
-        file_tasks = {}
-        for i, item in enumerate(items):
-            if original_filenames and i < len(original_filenames):
-                filename = original_filenames[i]
-            else:
-                filename = os.path.basename(str(item))
-
-            file_tasks[str(item)] = FileTask(file_path=str(item), filename=filename)
+        normalized_originals = (
+            {str(k): v for k, v in original_filenames.items()} if original_filenames else {}
+        )
+        file_tasks = {
+            str(item): FileTask(
+                file_path=str(item),
+                filename=normalized_originals.get(
+                    str(item), os.path.basename(str(item))
+                ),
+            )
+            for item in items
+        }
 
         upload_task = UploadTask(
             task_id=task_id,
