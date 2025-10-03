@@ -58,7 +58,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
-    (task) =>
+    task =>
       task.status === "pending" ||
       task.status === "running" ||
       task.status === "processing"
@@ -84,16 +84,16 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
     <div className="h-full relative">
-      <header className="header-arrangement bg-background sticky top-0 z-50">
-        <div className="header-start-display px-4">
+      <header className="header-arrangement bg-background sticky top-0 z-50 h-10">
+        <div className="header-start-display px-[16px]">
           {/* Logo/Title */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center">
             <Logo className="fill-primary" width={24} height={22} />
-            <span className="text-lg font-semibold">OpenRAG</span>
+            <span className="text-lg font-semibold pl-2.5">OpenRAG</span>
           </div>
         </div>
         <div className="header-end-division">
-          <div className="header-end-display">
+          <div className="justify-end flex items-center">
             {/* Knowledge Filter Dropdown */}
             {/* <KnowledgeFilterDropdown
               selectedFilter={selectedFilter}
@@ -107,26 +107,24 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             {/* <DiscordLink inviteCode="EqksyE2EX9" /> */}
 
             {/* Task Notification Bell */}
-            <Button
-              variant="ghost"
-              size="iconSm"
+            <button
               onClick={toggleMenu}
-              className="relative"
+              className="h-8 w-8 hover:bg-muted rounded-lg flex items-center justify-center"
             >
-              <Bell className="h-4 w-4 text-muted-foreground" />
+              <Bell size={16} className="text-muted-foreground" />
               {activeTasks.length > 0 && (
                 <div className="header-notifications" />
               )}
-            </Button>
+            </button>
 
             {/* Separator */}
-            <div className="w-px h-6 bg-border" />
+            <div className="w-px h-6 bg-border mx-3" />
 
             <UserNav />
           </div>
         </div>
       </header>
-      <div className="side-bar-arrangement bg-background fixed left-0 top-[53px] bottom-0 md:flex hidden">
+      <div className="side-bar-arrangement bg-background fixed left-0 top-[40px] bottom-0 md:flex hidden pt-1">
         <Navigation
           conversations={conversations}
           isConversationsLoading={isConversationsLoading}
