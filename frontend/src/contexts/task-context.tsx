@@ -135,7 +135,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
           taskFileEntries.forEach(([filePath, fileInfo]) => {
             if (typeof fileInfo === "object" && fileInfo) {
-              const fileName = filePath.split("/").pop() || filePath;
+              // Use the filename from backend if available, otherwise extract from path
+              const fileName = (fileInfo as any).filename || filePath.split("/").pop() || filePath;
               const fileStatus = fileInfo.status as string;
 
               // Map backend file status to our TaskFile status

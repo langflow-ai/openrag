@@ -59,6 +59,7 @@ class TaskService:
         file_paths: list,
         langflow_file_service,
         session_manager,
+        original_filenames: list = None,
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
@@ -66,6 +67,7 @@ class TaskService:
         tweaks: dict = None,
         settings: dict = None,
         delete_after_ingest: bool = True,
+        replace_duplicates: bool = False,
     ) -> str:
         """Create a new upload task for Langflow file processing with upload and ingest"""
         # Use LangflowFileProcessor with user context
@@ -82,18 +84,31 @@ class TaskService:
             tweaks=tweaks,
             settings=settings,
             delete_after_ingest=delete_after_ingest,
+            replace_duplicates=replace_duplicates,
         )
-        return await self.create_custom_task(user_id, file_paths, processor)
+        return await self.create_custom_task(user_id, file_paths, processor, original_filenames)
 
-    async def create_custom_task(self, user_id: str, items: list, processor) -> str:
+    async def create_custom_task(self, user_id: str, items: list, processor, original_filenames: list = None) -> str:
         """Create a new task with custom processor for any type of items"""
+        import os
         # Store anonymous tasks under a stable key so they can be retrieved later
         store_user_id = user_id or AnonymousUser().user_id
         task_id = str(uuid.uuid4())
+
+        # Create file tasks with original filenames if provided
+        file_tasks = {}
+        for i, item in enumerate(items):
+            if original_filenames and i < len(original_filenames):
+                filename = original_filenames[i]
+            else:
+                filename = os.path.basename(str(item))
+
+            file_tasks[str(item)] = FileTask(file_path=str(item), filename=filename)
+
         upload_task = UploadTask(
             task_id=task_id,
             total_files=len(items),
-            file_tasks={str(item): FileTask(file_path=str(item)) for item in items},
+            file_tasks=file_tasks,
         )
 
         # Attach the custom processor to the task
@@ -268,6 +283,7 @@ class TaskService:
                 "created_at": file_task.created_at,
                 "updated_at": file_task.updated_at,
                 "duration_seconds": file_task.duration_seconds,
+                "filename": file_task.filename,
             }
 
             # Count running and pending files
@@ -322,6 +338,7 @@ class TaskService:
                             "created_at": file_task.created_at,
                             "updated_at": file_task.updated_at,
                             "duration_seconds": file_task.duration_seconds,
+                            "filename": file_task.filename,
                         }
 
                     if file_task.status.value == "running":
