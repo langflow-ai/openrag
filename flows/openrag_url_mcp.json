@@ -3602,6 +3602,7 @@
   },
   "description": "This flow is to ingest the URL to open search.",
   "endpoint_name": null,
+  "mcp_enabled": true,
   "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
   "is_component": false,
   "last_tested_version": "1.6.0",
