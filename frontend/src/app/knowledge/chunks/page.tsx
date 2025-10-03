@@ -224,10 +224,9 @@ function ChunksPageContent() {
           ) : chunks.length === 0 ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                <p className="text-lg text-muted-foreground">No chunks found</p>
-                <p className="text-sm text-muted-foreground/70 mt-2">
-                  This file may not have been indexed yet
+                <p className="text-xl font-semibold mb-2">No knowledge</p>
+                <p className="text-sm text-secondary-foreground">
+                  Clear the knowledge filter or return to the knowledge page
                 </p>
               </div>
             </div>
@@ -292,24 +291,29 @@ function ChunksPageContent() {
         </div>
       </div>
       {/* Right panel - Summary (TODO), Technical details,  */}
-      <div className="w-[320px] py-20 px-2">
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold mt-3 mb-4">Technical details</h2>
-          <dl>
-            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-              <dt className="text-sm/6 text-muted-foreground">Total chunks</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                {chunks.length}
-              </dd>
-            </div>
-            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-              <dt className="text-sm/6 text-muted-foreground">Avg length</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                {averageChunkLength.toFixed(0)} chars
-              </dd>
-            </div>
-            {/* TODO: Uncomment after data is available */}
-            {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+      {chunks.length > 0 && (
+        <div className="w-[320px] py-20 px-2">
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold mt-3 mb-4">
+              Technical details
+            </h2>
+            <dl>
+              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                <dt className="text-sm/6 text-muted-foreground">
+                  Total chunks
+                </dt>
+                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  {chunks.length}
+                </dd>
+              </div>
+              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                <dt className="text-sm/6 text-muted-foreground">Avg length</dt>
+                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  {averageChunkLength.toFixed(0)} chars
+                </dd>
+              </div>
+              {/* TODO: Uncomment after data is available */}
+              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Process time</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
               </dd>
@@ -319,51 +323,54 @@ function ChunksPageContent() {
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
               </dd>
             </div> */}
-          </dl>
-        </div>
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold mt-2 mb-3">Original document</h2>
-          <dl>
-            {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+            </dl>
+          </div>
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold mt-2 mb-3">
+              Original document
+            </h2>
+            <dl>
+              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Name</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 {fileData?.filename}
               </dd>
             </div> */}
-            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-              <dt className="text-sm/6 text-muted-foreground">Type</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                {fileData ? getFileTypeLabel(fileData.mimetype) : "Unknown"}
-              </dd>
-            </div>
-            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-              <dt className="text-sm/6 text-muted-foreground">Size</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                {fileData?.size
-                  ? `${Math.round(fileData.size / 1024)} KB`
-                  : "Unknown"}
-              </dd>
-            </div>
-            {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                <dt className="text-sm/6 text-muted-foreground">Type</dt>
+                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  {fileData ? getFileTypeLabel(fileData.mimetype) : "Unknown"}
+                </dd>
+              </div>
+              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                <dt className="text-sm/6 text-muted-foreground">Size</dt>
+                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  {fileData?.size
+                    ? `${Math.round(fileData.size / 1024)} KB`
+                    : "Unknown"}
+                </dd>
+              </div>
+              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Uploaded</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 N/A
               </dd>
             </div> */}
-            {/* TODO: Uncomment after data is available */}
-            {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              {/* TODO: Uncomment after data is available */}
+              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Source</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0"></dd>
             </div> */}
-            {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Updated</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 N/A
               </dd>
             </div> */}
-          </dl>
+            </dl>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
