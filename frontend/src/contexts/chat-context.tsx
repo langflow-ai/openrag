@@ -96,7 +96,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const refreshConversations = useCallback((force = false) => {
     if (force) {
       // Immediate refresh for important updates like new conversations
-      setRefreshTrigger((prev) => prev + 1);
+      setRefreshTrigger(prev => prev + 1);
       return;
     }
 
@@ -107,7 +107,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
     // Set a new timeout to debounce multiple rapid refresh calls
     refreshTimeoutRef.current = setTimeout(() => {
-      setRefreshTrigger((prev) => prev + 1);
+      setRefreshTrigger(prev => prev + 1);
     }, 250); // 250ms debounce
   }, []);
 
@@ -123,7 +123,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   // Silent refresh - updates data without loading states
   const refreshConversationsSilent = useCallback(async () => {
     // Trigger silent refresh that updates conversation data without showing loading states
-    setRefreshTriggerSilent((prev) => prev + 1);
+    setRefreshTriggerSilent(prev => prev + 1);
   }, []);
 
   const loadConversation = useCallback((conversation: ConversationData) => {
@@ -164,7 +164,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   }, [endpoint, refreshConversations]);
 
   const addConversationDoc = useCallback((filename: string) => {
-    setConversationDocs((prev) => [
+    setConversationDocs(prev => [
       ...prev,
       { filename, uploadTime: new Date() },
     ]);
@@ -180,7 +180,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       setCurrentConversationId(null); // Clear current conversation to indicate new conversation
       setConversationData(null); // Clear conversation data to prevent reloading
       // Set the response ID that we're forking from as the previous response ID
-      setPreviousResponseIds((prev) => ({
+      setPreviousResponseIds(prev => ({
         ...prev,
         [endpoint]: responseId,
       }));
