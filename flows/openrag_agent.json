@@ -170,6 +170,31 @@
         "sourceHandle": "{œdataTypeœ:œMCPœ,œidœ:œMCP-Uk5Vfœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
         "target": "Agent-crjWf",
         "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-crjWfœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
+      },
+      {
+        "data": {
+          "sourceHandle": {
+            "dataType": "TextInput",
+            "id": "TextInput-aHsQb",
+            "name": "text",
+            "output_types": [
+              "Message"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "filter_expression",
+            "id": "OpenSearch-iYfjf",
+            "inputTypes": [
+              "Message"
+            ],
+            "type": "str"
+          }
+        },
+        "id": "xy-edge__TextInput-aHsQb{œdataTypeœ:œTextInputœ,œidœ:œTextInput-aHsQbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-OpenSearch-iYfjf{œfieldNameœ:œfilter_expressionœ,œidœ:œOpenSearch-iYfjfœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "source": "TextInput-aHsQb",
+        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-aHsQbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "OpenSearch-iYfjf",
+        "targetHandle": "{œfieldNameœ:œfilter_expressionœ,œidœ:œOpenSearch-iYfjfœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}"
       }
     ],
     "nodes": [
@@ -730,7 +755,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2025-10-03T14:42:51.280Z",
+            "last_updated": "2025-10-03T15:07:58.068Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -1384,7 +1409,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-10-03T14:42:51.281Z",
+            "last_updated": "2025-10-03T15:07:58.070Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -1663,9 +1688,9 @@
         },
         "position": {
           "x": 727.4791597769406,
-          "y": 518.0820551650631
+          "y": 416.82609966052854
         },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       },
       {
@@ -1709,7 +1734,7 @@
             ],
             "frozen": false,
             "icon": "bot",
-            "last_updated": "2025-10-03T14:42:51.349Z",
+            "last_updated": "2025-10-03T15:07:58.132Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2248,7 +2273,7 @@
             ],
             "frozen": false,
             "icon": "brain-circuit",
-            "last_updated": "2025-10-03T14:42:51.281Z",
+            "last_updated": "2025-10-03T15:07:58.071Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2576,7 +2601,7 @@
             "frozen": false,
             "icon": "Mcp",
             "key": "mcp_lf-starter_project",
-            "last_updated": "2025-10-03T14:42:51.282Z",
+            "last_updated": "2025-10-03T15:07:58.072Z",
             "legacy": false,
             "mcpServerName": "lf-starter_project",
             "metadata": {
