@@ -13,6 +13,7 @@ import {
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
+import OpenAILogo from "@/components/logo/openai-logo";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +25,11 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
 	Select,
 	SelectContent,
@@ -40,6 +46,7 @@ import {
 	UI_CONSTANTS,
 } from "@/lib/constants";
 import { useDebounce } from "@/lib/debounce";
+import { ModelSelector } from "../onboarding/components/model-selector";
 import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
 import { ModelSelectItems } from "./helpers/model-select-item";
 
@@ -864,34 +871,19 @@ function KnowledgeSourcesPage() {
 				<CardContent>
 					<div className="space-y-6">
 						<div className="space-y-2">
-							<LabelWrapper
-								helperText="Model used for chat"
-								id="model-select"
+						<LabelWrapper
 								label="Language model"
-								required
+								helperText="Model used for chat"
+								id="embedding-model"
+								required={true}
 							>
-								<Select
-									value={
-										settings.agent?.llm_model ||
-										modelsData?.language_models?.find((m) => m.default)
-											?.value ||
-										"gpt-4"
-									}
+								<ModelSelector
+									options={modelsData?.language_models || []}
+                  noOptionsPlaceholder={modelsData ? "No language models detected." : "Loading models..."}
+									icon={<OpenAILogo className="w-4 h-4" />}
+									value={modelsData ? settings.agent?.llm_model || "" : ""}
 									onValueChange={handleModelChange}
-								>
-									<SelectTrigger id="model-select">
-										<SelectValue placeholder="Select a model" />
-									</SelectTrigger>
-									<SelectContent>
-										<ModelSelectItems
-											models={modelsData?.language_models}
-											fallbackModels={
-												getFallbackModels(currentProvider).language
-											}
-											provider={currentProvider}
-										/>
-									</SelectContent>
-								</Select>
+								/>
 							</LabelWrapper>
 						</div>
 						<div className="space-y-2">
@@ -1040,16 +1032,16 @@ function KnowledgeSourcesPage() {
 									}
 									onValueChange={handleEmbeddingModelChange}
 								>
-									{/* <Tooltip>
-                    <TooltipTrigger> */}
-									<SelectTrigger disabled id="embedding-model-select">
-										<SelectValue placeholder="Select an embedding model" />
-									</SelectTrigger>
-									{/* <TooltipContent>
-                        Locked to keep embeddings consistent
-                      </TooltipContent>
-                    </TooltipTrigger>
-                  </Tooltip> */}
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<SelectTrigger disabled id="embedding-model-select">
+												<SelectValue placeholder="Select an embedding model" />
+											</SelectTrigger>
+										</TooltipTrigger>
+										<TooltipContent>
+											Locked to keep embeddings consistent
+										</TooltipContent>
+									</Tooltip>
 									<SelectContent>
 										<ModelSelectItems
 											models={modelsData?.embedding_models}
