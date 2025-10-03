@@ -220,7 +220,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             description,
             action: {
               label: "View",
-              onClick: () => console.log("View task", currentTask.task_id),
+              onClick: () => setIsMenuOpen(true),
             },
           });
           setTimeout(() => {
@@ -252,7 +252,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     (_taskId: string) => {
       // React Query will automatically handle polling when tasks are active
       // Just trigger a refetch to get the latest data
-      refetchTasks();
+      setTimeout(() => {
+        refetchTasks();
+      }, 500);
     },
     [refetchTasks],
   );
