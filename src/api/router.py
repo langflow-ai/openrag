@@ -77,6 +77,7 @@ async def langflow_upload_ingest_task(
         settings_json = form.get("settings")
         tweaks_json = form.get("tweaks")
         delete_after_ingest = form.get("delete_after_ingest", "true").lower() == "true"
+        replace_duplicates = form.get("replace_duplicates", "false").lower() == "true"
 
         # Parse JSON fields if provided
         settings = None
@@ -112,7 +113,8 @@ async def langflow_upload_ingest_task(
         import tempfile
         import os
         temp_file_paths = []
-        
+        original_filenames = []
+
         try:
             # Create temp directory reference once
             temp_dir = tempfile.gettempdir()
@@ -121,8 +123,11 @@ async def langflow_upload_ingest_task(
                 # Read file content
                 content = await upload_file.read()
 
-                # Create temporary file with the actual filename (not a temp prefix)
-                # Store in temp directory but use the real filename
+                # Store ORIGINAL filename (not transformed)
+                original_filenames.append(upload_file.filename)
+
+                # Create temporary file with TRANSFORMED filename for filesystem safety
+                # Transform: spaces and / to underscore
                 safe_filename = upload_file.filename.replace(" ", "_").replace("/", "_")
                 temp_path = os.path.join(temp_dir, safe_filename)
 
@@ -153,6 +158,7 @@ async def langflow_upload_ingest_task(
             task_id = await task_service.create_langflow_upload_task(
                 user_id=user_id,
                 file_paths=temp_file_paths,
+                original_filenames=original_filenames,
                 langflow_file_service=langflow_file_service,
                 session_manager=session_manager,
                 jwt_token=jwt_token,
@@ -162,6 +168,7 @@ async def langflow_upload_ingest_task(
                 tweaks=tweaks,
                 settings=settings,
                 delete_after_ingest=delete_after_ingest,
+                replace_duplicates=replace_duplicates,
             )
 
             logger.debug("Langflow upload task created successfully", task_id=task_id)

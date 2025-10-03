@@ -55,6 +55,108 @@ class TaskProcessor:
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
 
+    async def check_filename_exists(
+        self,
+        filename: str,
+        opensearch_client,
+    ) -> bool:
+        """
+        Check if a document with the given filename already exists in OpenSearch.
+        Returns True if any chunks with this filename exist.
+        """
+        from config.settings import INDEX_NAME
+        import asyncio
+
+        max_retries = 3
+        retry_delay = 1.0
+
+        for attempt in range(max_retries):
+            try:
+                # Search for any document with this exact filename
+                search_body = {
+                    "query": {
+                        "term": {
+                            "filename.keyword": filename
+                        }
+                    },
+                    "size": 1,
+                    "_source": False
+                }
+
+                response = await opensearch_client.search(
+                    index=INDEX_NAME,
+                    body=search_body
+                )
+
+                # Check if any hits were found
+                hits = response.get("hits", {}).get("hits", [])
+                return len(hits) > 0
+
+            except (asyncio.TimeoutError, Exception) as e:
+                if attempt == max_retries - 1:
+                    logger.error(
+                        "OpenSearch filename check failed after retries",
+                        filename=filename,
+                        error=str(e),
+                        attempt=attempt + 1
+                    )
+                    # On final failure, assume document doesn't exist (safer to reprocess than skip)
+                    logger.warning(
+                        "Assuming filename doesn't exist due to connection issues",
+                        filename=filename
+                    )
+                    return False
+                else:
+                    logger.warning(
+                        "OpenSearch filename check failed, retrying",
+                        filename=filename,
+                        error=str(e),
+                        attempt=attempt + 1,
+                        retry_in=retry_delay
+                    )
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+
+    async def delete_document_by_filename(
+        self,
+        filename: str,
+        opensearch_client,
+    ) -> None:
+        """
+        Delete all chunks of a document with the given filename from OpenSearch.
+        """
+        from config.settings import INDEX_NAME
+
+        try:
+            # Delete all documents with this filename
+            delete_body = {
+                "query": {
+                    "term": {
+                        "filename.keyword": filename
+                    }
+                }
+            }
+
+            response = await opensearch_client.delete_by_query(
+                index=INDEX_NAME,
+                body=delete_body
+            )
+
+            deleted_count = response.get("deleted", 0)
+            logger.info(
+                "Deleted existing document chunks",
+                filename=filename,
+                deleted_count=deleted_count
+            )
+
+        except Exception as e:
+            logger.error(
+                "Failed to delete existing document",
+                filename=filename,
+                error=str(e)
+            )
+            raise
+
     async def process_document_standard(
         self,
         file_path: str,
@@ -527,6 +629,7 @@ class LangflowFileProcessor(TaskProcessor):
         tweaks: dict = None,
         settings: dict = None,
         delete_after_ingest: bool = True,
+        replace_duplicates: bool = False,
     ):
         super().__init__()
         self.langflow_file_service = langflow_file_service
@@ -539,6 +642,7 @@ class LangflowFileProcessor(TaskProcessor):
         self.tweaks = tweaks or {}
         self.settings = settings
         self.delete_after_ingest = delete_after_ingest
+        self.replace_duplicates = replace_duplicates
 
     async def process_item(
         self, upload_task: UploadTask, item: str, file_task: FileTask
@@ -554,33 +658,40 @@ class LangflowFileProcessor(TaskProcessor):
         file_task.updated_at = time.time()
 
         try:
-            # Compute hash and check if already exists
-            from utils.hash_utils import hash_id
-            file_hash = hash_id(item)
+            # Use the ORIGINAL filename stored in file_task (not the transformed temp path)
+            # This ensures we check/store the original filename with spaces, etc.
+            original_filename = file_task.filename or os.path.basename(item)
 
-            # Check if document already exists
+            # Check if document with same filename already exists
             opensearch_client = self.session_manager.get_user_opensearch_client(
                 self.owner_user_id, self.jwt_token
             )
-            if await self.check_document_exists(file_hash, opensearch_client):
-                file_task.status = TaskStatus.COMPLETED
-                file_task.result = {"status": "unchanged", "id": file_hash}
+
+            filename_exists = await self.check_filename_exists(original_filename, opensearch_client)
+
+            if filename_exists and not self.replace_duplicates:
+                # Duplicate exists and user hasn't confirmed replacement
+                file_task.status = TaskStatus.FAILED
+                file_task.error = f"File with name '{original_filename}' already exists"
                 file_task.updated_at = time.time()
-                upload_task.successful_files += 1
+                upload_task.failed_files += 1
                 return
+            elif filename_exists and self.replace_duplicates:
+                # Delete existing document before uploading new one
+                logger.info(f"Replacing existing document: {original_filename}")
+                await self.delete_document_by_filename(original_filename, opensearch_client)
 
             # Read file content for processing
             with open(item, 'rb') as f:
                 content = f.read()
 
-            # Create file tuple for upload
-            # The temp file now has the actual filename, no need to extract it
-            filename = os.path.basename(item)
-            content_type, _ = mimetypes.guess_type(filename)
+            # Create file tuple for upload using ORIGINAL filename
+            # This ensures the document is indexed with the original name
+            content_type, _ = mimetypes.guess_type(original_filename)
             if not content_type:
                 content_type = 'application/octet-stream'
-            
-            file_tuple = (filename, content, content_type)
+
+            file_tuple = (original_filename, content, content_type)
 
             # Get JWT token using same logic as DocumentFileProcessor
             # This will handle anonymous JWT creation if needed
