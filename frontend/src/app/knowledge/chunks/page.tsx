@@ -240,14 +240,14 @@ function ChunksPageContent() {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
-                      <div>
+                      {/* <div>
                         <Checkbox
                           checked={selectedChunks.has(index)}
                           onCheckedChange={() =>
                             handleChunkCardCheckboxChange(index)
                           }
                         />
-                      </div>
+                      </div> */}
                       <span className="text-sm font-bold">
                         Chunk {chunk.index}
                       </span>
@@ -282,7 +282,7 @@ function ChunksPageContent() {
                       Active
                     </span> */}
                   </div>
-                  <blockquote className="text-sm text-muted-foreground leading-relaxed border-l-2 border-input ml-1.5 pl-4">
+                  <blockquote className="text-sm text-muted-foreground leading-relaxed ml-1.5">
                     {chunk.text}
                   </blockquote>
                 </div>
