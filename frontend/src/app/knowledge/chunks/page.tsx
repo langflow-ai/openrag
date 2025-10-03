@@ -161,7 +161,7 @@ function ChunksPageContent() {
             </h1>
           </div>
           <div className="flex flex-col items-start mt-2">
-            <div className="flex-1 flex items-center gap-2 w-full mb-8">
+            <div className="flex-1 flex items-center gap-2 w-full max-w-[640px]">
               <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]">
                 {selectedFilter?.name && (
                   <div
@@ -186,13 +186,13 @@ function ChunksPageContent() {
                   name="search-query"
                   id="search-query"
                   type="text"
-                  placeholder="Search your documents..."
+                  placeholder="Enter your search query..."
                   onChange={(e) => setQueryInputText(e.target.value)}
                   value={queryInputText}
                 />
               </div>
             </div>
-            <div className="flex items-center pl-4 gap-2">
+            {/* <div className="flex items-center pl-4 gap-2">
               <Checkbox
                 id="selectAllChunks"
                 checked={selectAll}
@@ -206,7 +206,7 @@ function ChunksPageContent() {
               >
                 Select all
               </Label>
-            </div>
+            </div> */}
           </div>
         </div>
 
@@ -268,6 +268,10 @@ function ChunksPageContent() {
                         </Button>
                       </div>
                     </div>
+
+                    <span className="bg-background p-1 rounded text-xs text-muted-foreground/70">
+                      {chunk.score.toFixed(2)} score
+                    </span>
 
                     {/* TODO: Update to use active toggle */}
                     {/* <span className="px-2 py-1 text-green-500">
