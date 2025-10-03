@@ -212,11 +212,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               onClick: () => console.log("View task", currentTask.task_id),
             },
           });
+          setTimeout(() => {
           refetchSearch();
-          // Remove files for this completed task from the files list
-          // setFiles((prevFiles) =>
-          //   prevFiles.filter((file) => file.task_id !== currentTask.task_id),
-          // );
+          setFiles((prevFiles) =>
+            prevFiles.filter((file) => file.task_id !== currentTask.task_id && file.status !== "failed"),
+            );
+          }, 500);
         } else if (
           previousTask && previousTask.status !== "failed" &&
           previousTask.status !== "error" &&

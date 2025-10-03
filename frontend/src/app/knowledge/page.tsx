@@ -75,14 +75,13 @@ function SearchPage() {
 		};
 	});
 
-	const backendFiles = data as File[];
+	const backendFiles = (data as File[]).filter((file) => !taskFilesAsFiles.some((taskFile) => taskFile.filename === file.filename && taskFile.status === "processing"));
 
 	const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
 		return (
 			taskFile.status !== "active" &&
 			!backendFiles.some(
-				(backendFile) => backendFile.filename === taskFile.filename,
-			)
+				(backendFile) => backendFile.filename === taskFile.filename,)
 		);
 	});
 
@@ -91,7 +90,7 @@ function SearchPage() {
 
 	const gridRef = useRef<AgGridReact>(null);
 
-	const [columnDefs] = useState<ColDef<File>[]>([
+	const columnDefs = [
 		{
 			field: "filename",
 			headerName: "Source",
@@ -189,8 +188,8 @@ function SearchPage() {
 			resizable: false,
 			sortable: false,
 			initialFlex: 0,
-		},
-	]);
+		}
+	];
 
 	const defaultColDef: ColDef<File> = {
 		resizable: false,
