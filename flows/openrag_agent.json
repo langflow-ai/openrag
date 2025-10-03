@@ -172,6 +172,8 @@
         "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-crjWfœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}"
       },
       {
+        "animated": false,
+        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "TextInput",
@@ -191,6 +193,7 @@
           }
         },
         "id": "xy-edge__TextInput-aHsQb{œdataTypeœ:œTextInputœ,œidœ:œTextInput-aHsQbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-OpenSearch-iYfjf{œfieldNameœ:œfilter_expressionœ,œidœ:œOpenSearch-iYfjfœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "selected": true,
         "source": "TextInput-aHsQb",
         "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-aHsQbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
         "target": "OpenSearch-iYfjf",
@@ -755,7 +758,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2025-10-03T15:07:58.068Z",
+            "last_updated": "2025-10-03T20:53:32.145Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -1409,7 +1412,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-10-03T15:07:58.070Z",
+            "last_updated": "2025-10-03T20:53:32.146Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -1690,7 +1693,7 @@
           "x": 727.4791597769406,
           "y": 416.82609966052854
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
@@ -1734,7 +1737,7 @@
             ],
             "frozen": false,
             "icon": "bot",
-            "last_updated": "2025-10-03T15:07:58.132Z",
+            "last_updated": "2025-10-03T20:53:32.216Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2273,7 +2276,7 @@
             ],
             "frozen": false,
             "icon": "brain-circuit",
-            "last_updated": "2025-10-03T15:07:58.071Z",
+            "last_updated": "2025-10-03T20:53:32.147Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2601,7 +2604,7 @@
             "frozen": false,
             "icon": "Mcp",
             "key": "mcp_lf-starter_project",
-            "last_updated": "2025-10-03T15:07:58.072Z",
+            "last_updated": "2025-10-03T20:53:32.149Z",
             "legacy": false,
             "mcpServerName": "lf-starter_project",
             "metadata": {
@@ -2839,9 +2842,9 @@
       }
     ],
     "viewport": {
-      "x": -184.98015964664273,
-      "y": 154.6885920024542,
-      "zoom": 0.602433700773958
+      "x": -125.84420166020391,
+      "y": 161.94501551784947,
+      "zoom": 0.5780225995341656
     }
   },
   "description": "OpenRAG Open Search Agent",
