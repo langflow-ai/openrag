@@ -44,7 +44,7 @@ export function ModelSelector({
 	const [searchValue, setSearchValue] = useState("");
 
 	useEffect(() => {
-		if (value && (!options.find((option) => option.value === value) && !custom)) {
+		if (value && value !== "" && (!options.find((option) => option.value === value) && !custom)) {
 			onValueChange("");
 		}
 	}, [options, value, custom, onValueChange]);
