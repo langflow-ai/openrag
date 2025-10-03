@@ -145,7 +145,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           <div
             className={cn(
               "p-6 h-full container",
-              isSmallWidthPath && "max-w-[850px]"
+              isSmallWidthPath && "max-w-[850px] ml-0"
             )}
           >
             {children}
