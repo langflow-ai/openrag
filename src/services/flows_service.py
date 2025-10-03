@@ -1,25 +1,22 @@
-import asyncio
 from config.settings import (
+    DISABLE_INGEST_WITH_LANGFLOW,
     NUDGES_FLOW_ID,
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
-    OLLAMA_LLM_TEXT_COMPONENT_ID,
     OLLAMA_LLM_TEXT_COMPONENT_PATH,
-    OPENAI_EMBEDDING_COMPONENT_ID,
-    OPENAI_LLM_COMPONENT_ID,
-    OPENAI_LLM_TEXT_COMPONENT_ID,
-    WATSONX_LLM_TEXT_COMPONENT_ID,
+    OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
+    OPENAI_LLM_COMPONENT_DISPLAY_NAME,
     WATSONX_LLM_TEXT_COMPONENT_PATH,
     clients,
     WATSONX_LLM_COMPONENT_PATH,
     WATSONX_EMBEDDING_COMPONENT_PATH,
     OLLAMA_LLM_COMPONENT_PATH,
     OLLAMA_EMBEDDING_COMPONENT_PATH,
-    WATSONX_EMBEDDING_COMPONENT_ID,
-    WATSONX_LLM_COMPONENT_ID,
-    OLLAMA_EMBEDDING_COMPONENT_ID,
-    OLLAMA_LLM_COMPONENT_ID,
+    WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME,
+    WATSONX_LLM_COMPONENT_DISPLAY_NAME,
+    OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME,
+    OLLAMA_LLM_COMPONENT_DISPLAY_NAME,
     get_openrag_config,
 )
 import json
@@ -73,17 +70,17 @@ class FlowsService:
         # Scan all JSON files in the flows directory
         try:
             for filename in os.listdir(flows_dir):
-                if not filename.endswith('.json'):
+                if not filename.endswith(".json"):
                     continue
 
                 file_path = os.path.join(flows_dir, filename)
 
                 try:
-                    with open(file_path, 'r') as f:
+                    with open(file_path, "r") as f:
                         flow_data = json.load(f)
 
                     # Check if this file contains the flow we're looking for
-                    if flow_data.get('id') == flow_id:
+                    if flow_data.get("id") == flow_id:
                         # Cache the result
                         self._flow_file_cache[flow_id] = file_path
                         logger.info(f"Found flow {flow_id} in file: {filename}")
@@ -99,6 +96,7 @@ class FlowsService:
 
         logger.warning(f"Flow with ID {flow_id} not found in flows directory")
         return None
+
     async def reset_langflow_flow(self, flow_type: str):
         """Reset a Langflow flow by uploading the corresponding JSON file
 
@@ -135,7 +133,9 @@ class FlowsService:
         try:
             with open(flow_path, "r") as f:
                 flow_data = json.load(f)
-            logger.info(f"Successfully loaded flow data for {flow_type} from {os.path.basename(flow_path)}")
+            logger.info(
+                f"Successfully loaded flow data for {flow_type} from {os.path.basename(flow_path)}"
+            )
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in flow file {flow_path}: {e}")
         except FileNotFoundError:
@@ -161,43 +161,62 @@ class FlowsService:
 
                     # Check if configuration has been edited (onboarding completed)
                     if config.edited:
-                        logger.info(f"Updating {flow_type} flow with current configuration settings")
+                        logger.info(
+                            f"Updating {flow_type} flow with current configuration settings"
+                        )
 
                         provider = config.provider.model_provider.lower()
 
                         # Step 1: Assign model provider (replace components) if not OpenAI
                         if provider != "openai":
-                            logger.info(f"Assigning {provider} components to {flow_type} flow")
+                            logger.info(
+                                f"Assigning {provider} components to {flow_type} flow"
+                            )
                             provider_result = await self.assign_model_provider(provider)
 
                             if not provider_result.get("success"):
-                                logger.warning(f"Failed to assign {provider} components: {provider_result.get('error', 'Unknown error')}")
+                                logger.warning(
+                                    f"Failed to assign {provider} components: {provider_result.get('error', 'Unknown error')}"
+                                )
                                 # Continue anyway, maybe just value updates will work
 
                         # Step 2: Update model values for the specific flow being reset
-                        single_flow_config = [{
-                            "name": flow_type,
-                            "flow_id": flow_id,
-                        }]
+                        single_flow_config = [
+                            {
+                                "name": flow_type,
+                                "flow_id": flow_id,
+                            }
+                        ]
 
                         logger.info(f"Updating {flow_type} flow model values")
                         update_result = await self.change_langflow_model_value(
                             provider=provider,
                             embedding_model=config.knowledge.embedding_model,
                             llm_model=config.agent.llm_model,
-                            endpoint=config.provider.endpoint if config.provider.endpoint else None,
-                            flow_configs=single_flow_config
+                            endpoint=config.provider.endpoint
+                            if config.provider.endpoint
+                            else None,
+                            flow_configs=single_flow_config,
                         )
 
                         if update_result.get("success"):
-                            logger.info(f"Successfully updated {flow_type} flow with current configuration")
+                            logger.info(
+                                f"Successfully updated {flow_type} flow with current configuration"
+                            )
                         else:
-                            logger.warning(f"Failed to update {flow_type} flow with current configuration: {update_result.get('error', 'Unknown error')}")
+                            logger.warning(
+                                f"Failed to update {flow_type} flow with current configuration: {update_result.get('error', 'Unknown error')}"
+                            )
                     else:
-                        logger.info(f"Configuration not yet edited (onboarding not completed), skipping model updates for {flow_type} flow")
+                        logger.info(
+                            f"Configuration not yet edited (onboarding not completed), skipping model updates for {flow_type} flow"
+                        )
 
                 except Exception as e:
-                    logger.error(f"Error updating {flow_type} flow with current configuration", error=str(e))
+                    logger.error(
+                        f"Error updating {flow_type} flow with current configuration",
+                        error=str(e),
+                    )
                     # Don't fail the entire reset operation if configuration update fails
 
                 return {
@@ -243,7 +262,9 @@ class FlowsService:
 
         try:
             # Load component templates based on provider
-            llm_template, embedding_template, llm_text_template = self._load_component_templates(provider)
+            llm_template, embedding_template, llm_text_template = (
+                self._load_component_templates(provider)
+            )
 
             logger.info(f"Assigning {provider} components")
 
@@ -252,23 +273,23 @@ class FlowsService:
                 {
                     "name": "nudges",
                     "flow_id": NUDGES_FLOW_ID,
-                    "embedding_id": OPENAI_EMBEDDING_COMPONENT_ID,
-                    "llm_id": OPENAI_LLM_COMPONENT_ID,
-                    "llm_text_id": OPENAI_LLM_TEXT_COMPONENT_ID,
+                    "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
+                    "llm_text_name": OPENAI_LLM_COMPONENT_DISPLAY_NAME,
+                    "llm_name": None,
                 },
                 {
                     "name": "retrieval",
                     "flow_id": LANGFLOW_CHAT_FLOW_ID,
-                    "embedding_id": OPENAI_EMBEDDING_COMPONENT_ID,
-                    "llm_id": OPENAI_LLM_COMPONENT_ID,
-                    "llm_text_id": None,
+                    "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
+                    "llm_name": OPENAI_LLM_COMPONENT_DISPLAY_NAME,
+                    "llm_text_name": None,
                 },
                 {
                     "name": "ingest",
                     "flow_id": LANGFLOW_INGEST_FLOW_ID,
-                    "embedding_id": OPENAI_EMBEDDING_COMPONENT_ID,
-                    "llm_id": None,  # Ingestion flow might not have LLM
-                    "llm_text_id": None,  # Ingestion flow might not have LLM Text
+                    "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
+                    "llm_name": None,  # Ingestion flow might not have LLM
+                    "llm_text_name": None,
                 },
             ]
 
@@ -358,13 +379,15 @@ class FlowsService:
         logger.info(f"Loaded component templates for {provider}")
         return llm_template, embedding_template, llm_text_template
 
-    async def _update_flow_components(self, config, llm_template, embedding_template, llm_text_template):
+    async def _update_flow_components(
+        self, config, llm_template, embedding_template, llm_text_template
+    ):
         """Update components in a specific flow"""
         flow_name = config["name"]
         flow_id = config["flow_id"]
-        old_embedding_id = config["embedding_id"]
-        old_llm_id = config["llm_id"]
-        old_llm_text_id = config["llm_text_id"]
+        old_embedding_name = config["embedding_name"]
+        old_llm_name = config["llm_name"]
+        old_llm_text_name = config["llm_text_name"]
         # Extract IDs from templates
         new_llm_id = llm_template["data"]["id"]
         new_embedding_id = embedding_template["data"]["id"]
@@ -383,24 +406,25 @@ class FlowsService:
         components_updated = []
 
         # Replace embedding component
-        embedding_node = self._find_node_by_id(flow_data, old_embedding_id)
-        if embedding_node:
-            # Preserve position
-            original_position = embedding_node.get("position", {})
+        if not DISABLE_INGEST_WITH_LANGFLOW:
+            embedding_node, _ = self._find_node_in_flow(flow_data, display_name=old_embedding_name)
+            if embedding_node:
+                # Preserve position
+                original_position = embedding_node.get("position", {})
 
-            # Replace with new template
-            new_embedding_node = embedding_template.copy()
-            new_embedding_node["position"] = original_position
+                # Replace with new template
+                new_embedding_node = embedding_template.copy()
+                new_embedding_node["position"] = original_position
 
-            # Replace in flow
-            self._replace_node_in_flow(flow_data, old_embedding_id, new_embedding_node)
-            components_updated.append(
-                f"embedding: {old_embedding_id} -> {new_embedding_id}"
-            )
+                # Replace in flow
+                self._replace_node_in_flow(flow_data, old_embedding_name, new_embedding_node)
+                components_updated.append(
+                    f"embedding: {old_embedding_name} -> {new_embedding_id}"
+                )
 
         # Replace LLM component (if exists in this flow)
-        if old_llm_id:
-            llm_node = self._find_node_by_id(flow_data, old_llm_id)
+        if old_llm_name:
+            llm_node, _ = self._find_node_in_flow(flow_data, display_name=old_llm_name)
             if llm_node:
                 # Preserve position
                 original_position = llm_node.get("position", {})
@@ -410,12 +434,12 @@ class FlowsService:
                 new_llm_node["position"] = original_position
 
                 # Replace in flow
-                self._replace_node_in_flow(flow_data, old_llm_id, new_llm_node)
-                components_updated.append(f"llm: {old_llm_id} -> {new_llm_id}")
+                self._replace_node_in_flow(flow_data, old_llm_name, new_llm_node)
+                components_updated.append(f"llm: {old_llm_name} -> {new_llm_id}")
 
         # Replace LLM component (if exists in this flow)
-        if old_llm_text_id:
-            llm_text_node = self._find_node_by_id(flow_data, old_llm_text_id)
+        if old_llm_text_name:
+            llm_text_node, _ = self._find_node_in_flow(flow_data, display_name=old_llm_text_name)
             if llm_text_node:
                 # Preserve position
                 original_position = llm_text_node.get("position", {})
@@ -425,35 +449,54 @@ class FlowsService:
                 new_llm_text_node["position"] = original_position
 
                 # Replace in flow
-                self._replace_node_in_flow(flow_data, old_llm_text_id, new_llm_text_node)
-                components_updated.append(f"llm: {old_llm_text_id} -> {new_llm_text_id}")
+                self._replace_node_in_flow(flow_data, old_llm_text_name, new_llm_text_node)
+                components_updated.append(f"llm: {old_llm_text_name} -> {new_llm_text_id}")
+
+        old_embedding_id = None
+        old_llm_id = None
+        old_llm_text_id = None
+        if embedding_node:
+            old_embedding_id = embedding_node.get("data", {}).get("id")
+        if old_llm_name and llm_node:
+            old_llm_id = llm_node.get("data", {}).get("id")
+        if old_llm_text_name and llm_text_node:
+            old_llm_text_id = llm_text_node.get("data", {}).get("id")
 
         # Update all edge references using regex replacement
         flow_json_str = json.dumps(flow_data)
 
         # Replace embedding ID references
-        flow_json_str = re.sub(
-            re.escape(old_embedding_id), new_embedding_id, flow_json_str
-        )
-        flow_json_str = re.sub(
-            re.escape(old_embedding_id.split("-")[0]),
-            new_embedding_id.split("-")[0],
-            flow_json_str,
-        )
+        if not DISABLE_INGEST_WITH_LANGFLOW:
+            flow_json_str = re.sub(
+                re.escape(old_embedding_id), new_embedding_id, flow_json_str
+            )
+            flow_json_str = re.sub(
+                re.escape(old_embedding_id.split("-")[0]),
+                new_embedding_id.split("-")[0],
+                flow_json_str,
+            )
 
         # Replace LLM ID references (if applicable)
         if old_llm_id:
             flow_json_str = re.sub(
                 re.escape(old_llm_id), new_llm_id, flow_json_str
             )
-            if old_llm_text_id:
-                flow_json_str = re.sub(
-                    re.escape(old_llm_text_id), new_llm_text_id, flow_json_str
-                )
 
             flow_json_str = re.sub(
                 re.escape(old_llm_id.split("-")[0]),
                 new_llm_id.split("-")[0],
+                flow_json_str,
+            )
+        
+        # Replace text LLM ID references (if applicable)
+        if old_llm_text_id:
+            flow_json_str = re.sub(
+                re.escape(old_llm_text_id), new_llm_text_id, flow_json_str
+            )
+
+            flow_json_str = re.sub(
+                re.escape(old_llm_text_id.split("-")[0]),
+                new_llm_text_id.split("-")[0],
                 flow_json_str,
             )
 
@@ -477,14 +520,6 @@ class FlowsService:
             "flow_id": flow_id,
         }
 
-    def _find_node_by_id(self, flow_data, node_id):
-        """Find a node by ID in the flow data"""
-        nodes = flow_data.get("data", {}).get("nodes", [])
-        for node in nodes:
-            if node.get("id") == node_id:
-                return node
-        return None
-
     def _find_node_in_flow(self, flow_data, node_id=None, display_name=None):
         """
         Helper function to find a node in flow data by ID or display name.
@@ -506,7 +541,7 @@ class FlowsService:
 
         return None, None
 
-    async def _update_flow_field(self, flow_id: str, field_name: str, field_value: str, node_display_name: str = None, node_id: str = None):
+    async def _update_flow_field(self, flow_id: str, field_name: str, field_value: str, node_display_name: str = None):
         """
         Generic helper function to update any field in any Langflow component.
 
@@ -521,33 +556,34 @@ class FlowsService:
             raise ValueError("flow_id is required")
 
         # Get the current flow data from Langflow
-        response = await clients.langflow_request(
-            "GET", f"/api/v1/flows/{flow_id}"
-        )
+        response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
 
         if response.status_code != 200:
-            raise Exception(f"Failed to get flow: HTTP {response.status_code} - {response.text}")
+            raise Exception(
+                f"Failed to get flow: HTTP {response.status_code} - {response.text}"
+            )
 
         flow_data = response.json()
 
         # Find the target component by display name first, then by ID as fallback
         target_node, target_node_index = None, None
         if node_display_name:
-            target_node, target_node_index = self._find_node_in_flow(flow_data, display_name=node_display_name)
-
-        if target_node is None and node_id:
-            target_node, target_node_index = self._find_node_in_flow(flow_data, node_id=node_id)
+            target_node, target_node_index = self._find_node_in_flow(
+                flow_data, display_name=node_display_name
+            )
 
         if target_node is None:
-            identifier = node_display_name or node_id
+            identifier = node_display_name
             raise Exception(f"Component '{identifier}' not found in flow {flow_id}")
 
         # Update the field value directly in the existing node
         template = target_node.get("data", {}).get("node", {}).get("template", {})
         if template.get(field_name):
             flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["value"] = field_value
+            if "options" in flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name] and field_value not in flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["options"]:
+                flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["options"].append(field_value)
         else:
-            identifier = node_display_name or node_id
+            identifier = node_display_name
             raise Exception(f"{field_name} field not found in {identifier} component")
 
         # Update the flow via PATCH request
@@ -556,63 +592,90 @@ class FlowsService:
         )
 
         if patch_response.status_code != 200:
-            raise Exception(f"Failed to update flow: HTTP {patch_response.status_code} - {patch_response.text}")
+            raise Exception(
+                f"Failed to update flow: HTTP {patch_response.status_code} - {patch_response.text}"
+            )
 
-    async def update_chat_flow_model(self, model_name: str):
+    async def update_chat_flow_model(self, model_name: str, provider: str):
         """Helper function to update the model in the chat flow"""
         if not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
-        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "model_name", model_name,
-                                node_display_name="Language Model")
 
-    async def update_chat_flow_system_prompt(self, system_prompt: str):
+        # Determine target component IDs based on provider
+        target_llm_id = self._get_provider_component_ids(provider)[1]
+
+        await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "model_name", model_name,
+                                node_display_name=target_llm_id)
+
+    async def update_chat_flow_system_prompt(self, system_prompt: str, provider: str):
         """Helper function to update the system prompt in the chat flow"""
         if not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
+
+        # Determine target component IDs based on provider
+        target_agent_id = self._get_provider_component_ids(provider)[1]
+
         await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "system_prompt", system_prompt,
-                                node_display_name="Agent")
+                                node_display_name=target_agent_id)
 
     async def update_flow_docling_preset(self, preset: str, preset_config: dict):
         """Helper function to update docling preset in the ingest flow"""
         if not LANGFLOW_INGEST_FLOW_ID:
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
 
-        from config.settings import DOCLING_COMPONENT_ID
+        from config.settings import DOCLING_COMPONENT_DISPLAY_NAME
         await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "docling_serve_opts", preset_config,
-                                node_id=DOCLING_COMPONENT_ID)
+                                node_display_name=DOCLING_COMPONENT_DISPLAY_NAME)
 
     async def update_ingest_flow_chunk_size(self, chunk_size: int):
         """Helper function to update chunk size in the ingest flow"""
         if not LANGFLOW_INGEST_FLOW_ID:
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
-        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "chunk_size", chunk_size,
-                                node_display_name="Split Text")
+        await self._update_flow_field(
+            LANGFLOW_INGEST_FLOW_ID,
+            "chunk_size",
+            chunk_size,
+            node_display_name="Split Text",
+        )
 
     async def update_ingest_flow_chunk_overlap(self, chunk_overlap: int):
         """Helper function to update chunk overlap in the ingest flow"""
         if not LANGFLOW_INGEST_FLOW_ID:
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
-        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "chunk_overlap", chunk_overlap,
-                                node_display_name="Split Text")
+        await self._update_flow_field(
+            LANGFLOW_INGEST_FLOW_ID,
+            "chunk_overlap",
+            chunk_overlap,
+            node_display_name="Split Text",
+        )
 
-    async def update_ingest_flow_embedding_model(self, embedding_model: str):
+    async def update_ingest_flow_embedding_model(self, embedding_model: str, provider: str):
         """Helper function to update embedding model in the ingest flow"""
         if not LANGFLOW_INGEST_FLOW_ID:
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
-        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "model", embedding_model,
-                                node_display_name="Embedding Model")
 
-    def _replace_node_in_flow(self, flow_data, old_id, new_node):
+        # Determine target component IDs based on provider
+        target_embedding_id = self._get_provider_component_ids(provider)[0]
+
+        await self._update_flow_field(LANGFLOW_INGEST_FLOW_ID, "model", embedding_model,
+                                node_display_name=target_embedding_id)
+
+    def _replace_node_in_flow(self, flow_data, old_display_name, new_node):
         """Replace a node in the flow data"""
         nodes = flow_data.get("data", {}).get("nodes", [])
         for i, node in enumerate(nodes):
-            if node.get("id") == old_id:
+            if node.get("data", {}).get("node", {}).get("display_name") == old_display_name:
                 nodes[i] = new_node
                 return True
         return False
 
     async def change_langflow_model_value(
-        self, provider: str, embedding_model: str, llm_model: str, endpoint: str = None, flow_configs: list = None
+        self,
+        provider: str,
+        embedding_model: str,
+        llm_model: str,
+        endpoint: str = None,
+        flow_configs: list = None,
     ):
         """
         Change dropdown values for provider-specific components across flows
@@ -656,7 +719,7 @@ class FlowsService:
                 ]
 
             # Determine target component IDs based on provider
-            target_embedding_id, target_llm_id, target_llm_text_id = self._get_provider_component_ids(
+            target_embedding_name, target_llm_name = self._get_provider_component_ids(
                 provider
             )
 
@@ -668,9 +731,8 @@ class FlowsService:
                     result = await self._update_provider_components(
                         config,
                         provider,
-                        target_embedding_id,
-                        target_llm_id,
-                        target_llm_text_id,
+                        target_embedding_name,
+                        target_llm_name,
                         embedding_model,
                         llm_model,
                         endpoint,
@@ -713,12 +775,12 @@ class FlowsService:
     def _get_provider_component_ids(self, provider: str):
         """Get the component IDs for a specific provider"""
         if provider == "watsonx":
-            return WATSONX_EMBEDDING_COMPONENT_ID, WATSONX_LLM_COMPONENT_ID, WATSONX_LLM_TEXT_COMPONENT_ID
+            return WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME, WATSONX_LLM_COMPONENT_DISPLAY_NAME
         elif provider == "ollama":
-            return OLLAMA_EMBEDDING_COMPONENT_ID, OLLAMA_LLM_COMPONENT_ID, OLLAMA_LLM_TEXT_COMPONENT_ID
+            return OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME, OLLAMA_LLM_COMPONENT_DISPLAY_NAME
         elif provider == "openai":
             # OpenAI components are the default ones
-            return OPENAI_EMBEDDING_COMPONENT_ID, OPENAI_LLM_COMPONENT_ID, OPENAI_LLM_TEXT_COMPONENT_ID
+            return OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME, OPENAI_LLM_COMPONENT_DISPLAY_NAME
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -726,9 +788,8 @@ class FlowsService:
         self,
         config,
         provider: str,
-        target_embedding_id: str,
-        target_llm_id: str,
-        target_llm_text_id: str,
+        target_embedding_name: str,
+        target_llm_name: str,
         embedding_model: str,
         llm_model: str,
         endpoint: str = None,
@@ -738,41 +799,32 @@ class FlowsService:
         flow_id = config["flow_id"]
 
         # Get flow data from Langflow API instead of file
-        response = await clients.langflow_request(
-            "GET", f"/api/v1/flows/{flow_id}"
-        )
-        
+        response = await clients.langflow_request("GET", f"/api/v1/flows/{flow_id}")
+
         if response.status_code != 200:
             raise Exception(
                 f"Failed to get flow from Langflow: HTTP {response.status_code} - {response.text}"
             )
-        
+
         flow_data = response.json()
 
         updates_made = []
 
         # Update embedding component
-        embedding_node = self._find_node_by_id(flow_data, target_embedding_id)
-        if embedding_node:
-            if self._update_component_fields(
-                embedding_node, provider, embedding_model, endpoint
-            ):
-                updates_made.append(f"embedding model: {embedding_model}")
+        if not DISABLE_INGEST_WITH_LANGFLOW:
+            embedding_node, _ = self._find_node_in_flow(flow_data, display_name=target_embedding_name)
+            if embedding_node:
+                if self._update_component_fields(
+                    embedding_node, provider, embedding_model, endpoint
+                ):
+                    updates_made.append(f"embedding model: {embedding_model}")
 
         # Update LLM component (if exists in this flow)
-        if target_llm_id:
-            llm_node = self._find_node_by_id(flow_data, target_llm_id)
+        if target_llm_name:
+            llm_node, _ = self._find_node_in_flow(flow_data, display_name=target_llm_name)
             if llm_node:
                 if self._update_component_fields(
                     llm_node, provider, llm_model, endpoint
-                ):
-                    updates_made.append(f"llm model: {llm_model}")
-
-        if target_llm_text_id:
-            llm_text_node = self._find_node_by_id(flow_data, target_llm_text_id)
-            if llm_text_node:
-                if self._update_component_fields(
-                    llm_text_node, provider, llm_model, endpoint
                 ):
                     updates_made.append(f"llm model: {llm_model}")
 
@@ -835,11 +887,6 @@ class FlowsService:
                 # Watson uses "url" field
                 template["url"]["value"] = endpoint
                 template["url"]["options"] = [endpoint]
-                updated = True
-            elif provider == "ollama" and "base_url" in template:
-                # Ollama uses "base_url" field
-                template["base_url"]["value"] = endpoint
-                # Note: base_url is typically a MessageTextInput, not dropdown, so no options field
                 updated = True
 
         return updated

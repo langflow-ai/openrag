@@ -62,7 +62,7 @@ LANGFLOW_CHAT_FLOW_ID=your_chat_flow_id
 LANGFLOW_INGEST_FLOW_ID=your_ingest_flow_id
 NUDGES_FLOW_ID=your_nudges_flow_id
 ```
-See extended configuration, including ingestion and optional variables: [docs/configure/configuration.md](docs/docs/configure/configuration.md)
+See extended configuration, including ingestion and optional variables: [docs/reference/configuration.md](docs/docs/reference/configuration.md)
 ### 3. Start OpenRAG
 
 ```bash
@@ -138,7 +138,7 @@ podman machine start
 
 ### Common Issues
 
-See common issues and fixes: [docs/reference/troubleshooting.mdx](docs/docs/reference/troubleshooting.mdx)
+See common issues and fixes: [docs/support/troubleshoot.mdx](docs/docs/reference/troubleshoot.mdx)
 
 
 

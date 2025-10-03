@@ -70,22 +70,22 @@ async def run_ingestion(
         if settings:
             logger.debug("Applying ingestion settings", settings=settings)
 
-            # Split Text component tweaks (SplitText-QIKhg)
+            # Split Text component tweaks (SplitText-PC36h)
             if (
                 settings.get("chunkSize")
                 or settings.get("chunkOverlap")
                 or settings.get("separator")
             ):
-                if "SplitText-QIKhg" not in tweaks:
-                    tweaks["SplitText-QIKhg"] = {}
+                if "SplitText-PC36h" not in tweaks:
+                    tweaks["SplitText-PC36h"] = {}
                 if settings.get("chunkSize"):
-                    tweaks["SplitText-QIKhg"]["chunk_size"] = settings["chunkSize"]
+                    tweaks["SplitText-PC36h"]["chunk_size"] = settings["chunkSize"]
                 if settings.get("chunkOverlap"):
-                    tweaks["SplitText-QIKhg"]["chunk_overlap"] = settings[
+                    tweaks["SplitText-PC36h"]["chunk_overlap"] = settings[
                         "chunkOverlap"
                     ]
                 if settings.get("separator"):
-                    tweaks["SplitText-QIKhg"]["separator"] = settings["separator"]
+                    tweaks["SplitText-PC36h"]["separator"] = settings["separator"]
 
             # OpenAI Embeddings component tweaks (OpenAIEmbeddings-joRJ6)
             if settings.get("embeddingModel"):
@@ -231,11 +231,8 @@ async def upload_and_ingest_user_file(
 
         except Exception:
             # Clean up temp file on error
-            try:
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
-            except Exception:
-                pass  # Ignore cleanup errors
+            from utils.file_utils import safe_unlink
+            safe_unlink(temp_path)
             raise
         
     except Exception as e:

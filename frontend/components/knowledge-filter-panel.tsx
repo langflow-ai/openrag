@@ -1,9 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Edit3, Save, RefreshCw } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,7 +18,13 @@ import { Slider } from "@/components/ui/slider";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
 import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
+import { useCreateFilter } from "@/app/api/mutations/useCreateFilter";
 import { useGetSearchAggregations } from "@/src/app/api/queries/useGetSearchAggregations";
+import {
+  FilterColor,
+  FilterIconPopover,
+  IconKey,
+} from "@/components/filter-icon-popover";
 
 interface FacetBucket {
   key: string;
@@ -26,6 +38,16 @@ interface AvailableFacets {
   connector_types: FacetBucket[];
 }
 
+export const filterAccentClasses: Record<FilterColor, string> = {
+  zinc: "bg-muted text-muted-foreground",
+  pink: "bg-accent-pink text-accent-pink-foreground",
+  purple: "bg-accent-purple text-accent-purple-foreground",
+  indigo: "bg-accent-indigo text-accent-indigo-foreground",
+  emerald: "bg-accent-emerald text-accent-emerald-foreground",
+  amber: "bg-accent-amber text-accent-amber-foreground",
+  red: "bg-accent-red text-accent-red-foreground",
+};
+
 export function KnowledgeFilterPanel() {
   const {
     selectedFilter,
@@ -33,15 +55,20 @@ export function KnowledgeFilterPanel() {
     setSelectedFilter,
     isPanelOpen,
     closePanelOnly,
+    createMode,
+    endCreateMode,
   } = useKnowledgeFilter();
   const deleteFilterMutation = useDeleteFilter();
   const updateFilterMutation = useUpdateFilter();
+  const createFilterMutation = useCreateFilter();
 
-  // Edit mode states
-  const [isEditingMeta, setIsEditingMeta] = useState(false);
-  const [editingName, setEditingName] = useState("");
-  const [editingDescription, setEditingDescription] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [color, setColor] = useState<FilterColor>("zinc");
+  const [iconKey, setIconKey] = useState<IconKey>("filter");
+  const [nameError, setNameError] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Filter configuration states (mirror search page exactly)
   const [query, setQuery] = useState("");
@@ -62,7 +89,7 @@ export function KnowledgeFilterPanel() {
     connector_types: [],
   });
 
-  // Load current filter data into controls
+  // Load current filter data into controls when a filter is selected
   useEffect(() => {
     if (selectedFilter && parsedFilterData) {
       setQuery(parsedFilterData.query || "");
@@ -84,10 +111,26 @@ export function KnowledgeFilterPanel() {
       setSelectedFilters(processedFilters);
       setResultLimit(parsedFilterData.limit || 10);
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
-      setEditingName(selectedFilter.name);
-      setEditingDescription(selectedFilter.description || "");
+      setName(selectedFilter.name);
+      setDescription(selectedFilter.description || "");
+      setColor(parsedFilterData.color);
+      setIconKey(parsedFilterData.icon);
     }
   }, [selectedFilter, parsedFilterData]);
+
+  // Initialize defaults when entering create mode
+  useEffect(() => {
+    if (createMode && parsedFilterData) {
+      setQuery(parsedFilterData.query || "");
+      setSelectedFilters(parsedFilterData.filters);
+      setResultLimit(parsedFilterData.limit || 10);
+      setScoreThreshold(parsedFilterData.scoreThreshold || 0);
+      setName("");
+      setDescription("");
+      setColor(parsedFilterData.color);
+      setIconKey(parsedFilterData.icon);
+    }
+  }, [createMode, parsedFilterData]);
 
   // Load available facets using search aggregations hook
   const { data: aggregations } = useGetSearchAggregations("*", 1, 0, {
@@ -108,80 +151,49 @@ export function KnowledgeFilterPanel() {
     setAvailableFacets(facets);
   }, [aggregations]);
 
-  // Don't render if panel is closed or no filter selected
-  if (!isPanelOpen || !selectedFilter || !parsedFilterData) return null;
-
-  const selectAllFilters = () => {
-    // Use wildcards instead of listing all specific items
-    setSelectedFilters({
-      data_sources: ["*"],
-      document_types: ["*"],
-      owners: ["*"],
-      connector_types: ["*"],
-    });
-  };
-
-  const clearAllFilters = () => {
-    setSelectedFilters({
-      data_sources: [],
-      document_types: [],
-      owners: [],
-      connector_types: [],
-    });
-  };
-
-  const handleEditMeta = () => {
-    setIsEditingMeta(true);
-  };
-
-  const handleCancelEdit = () => {
-    setIsEditingMeta(false);
-    setEditingName(selectedFilter.name);
-    setEditingDescription(selectedFilter.description || "");
-  };
-
-  const handleSaveMeta = async () => {
-    if (!editingName.trim()) return;
-
-    setIsSaving(true);
-    try {
-      const result = await updateFilterMutation.mutateAsync({
-        id: selectedFilter.id,
-        name: editingName.trim(),
-        description: editingDescription.trim(),
-      });
-
-      if (result.success && result.filter) {
-        setSelectedFilter(result.filter);
-        setIsEditingMeta(false);
-      }
-    } catch (error) {
-      console.error("Error updating filter:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  // Don't render if panel is closed or we don't have any data
+  if (!isPanelOpen || !parsedFilterData) return null;
 
   const handleSaveConfiguration = async () => {
+    if (!name.trim()) {
+      setNameError("Name is required");
+      nameInputRef.current?.focus();
+      return;
+    }
     const filterData = {
       query,
       filters: selectedFilters,
       limit: resultLimit,
       scoreThreshold,
+      color,
+      icon: iconKey,
     };
 
     setIsSaving(true);
     try {
-      const result = await updateFilterMutation.mutateAsync({
-        id: selectedFilter.id,
-        queryData: JSON.stringify(filterData),
-      });
-
-      if (result.success && result.filter) {
-        setSelectedFilter(result.filter);
+      if (createMode) {
+        const result = await createFilterMutation.mutateAsync({
+          name: name.trim(),
+          description: description.trim(),
+          queryData: JSON.stringify(filterData),
+        });
+        if (result.success && result.filter) {
+          setSelectedFilter(result.filter);
+          endCreateMode();
+        }
+      } else if (selectedFilter) {
+        const result = await updateFilterMutation.mutateAsync({
+          id: selectedFilter.id,
+          name: name.trim(),
+          description: description.trim(),
+          queryData: JSON.stringify(filterData),
+        });
+        if (result.success && result.filter) {
+          setSelectedFilter(result.filter);
+        }
       }
     } catch (error) {
-      console.error("Error updating filter configuration:", error);
+      console.error("Error saving knowledge filter:", error);
     } finally {
       setIsSaving(false);
     }
@@ -208,6 +220,7 @@ export function KnowledgeFilterPanel() {
   };
 
   const handleDeleteFilter = async () => {
+    if (!selectedFilter) return;
     const result = await deleteFilterMutation.mutateAsync({
       id: selectedFilter.id,
     });
@@ -218,8 +231,8 @@ export function KnowledgeFilterPanel() {
   };
 
   return (
-    <div className="fixed right-0 top-14 bottom-0 w-80 bg-background border-l border-border/40 z-40 overflow-y-auto">
-      <Card className="h-full rounded-none border-0 shadow-lg">
+    <div className="fixed right-0 top-14 bottom-0 w-80 bg-background border-l z-40 overflow-y-auto">
+      <Card className="h-full rounded-none border-0 shadow-lg flex flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -228,7 +241,10 @@ export function KnowledgeFilterPanel() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={closePanelOnly}
+              onClick={() => {
+                setSelectedFilter(null);
+                closePanelOnly();
+              }}
               className="h-8 w-8 p-0"
             >
               <X className="h-4 w-4" />
@@ -238,81 +254,58 @@ export function KnowledgeFilterPanel() {
 
         <CardContent className="space-y-6">
           {/* Filter Name and Description */}
-          <div className="space-y-4">
-            {isEditingMeta ? (
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="filter-name">Name</Label>
-                  <Input
-                    id="filter-name"
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    placeholder="Filter name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="filter-description">Description</Label>
-                  <Textarea
-                    id="filter-description"
-                    value={editingDescription}
-                    onChange={(e) => setEditingDescription(e.target.value)}
-                    placeholder="Optional description"
-                    rows={3}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleSaveMeta}
-                    disabled={!editingName.trim() || isSaving}
-                    size="sm"
-                    className="flex-1"
-                  >
-                    <Save className="h-3 w-3 mr-1" />
-                    {isSaving ? "Saving..." : "Save"}
-                  </Button>
-                  <Button
-                    onClick={handleCancelEdit}
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                </div>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="filter-name" className="gap-1">
+                Filter name
+                <span className="text-destructive">*</span>
+              </Label>
+              <div className="flex items-center gap-2">
+                <FilterIconPopover
+                  color={color}
+                  iconKey={iconKey}
+                  onColorChange={setColor}
+                  onIconChange={setIconKey}
+                />
+                <Input
+                  id="filter-name"
+                  value={name}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setName(v);
+                    if (nameError && v.trim()) {
+                      setNameError(null);
+                    }
+                  }}
+                  required
+                  placeholder="Filter name"
+                  ref={nameInputRef}
+                  aria-invalid={!!nameError}
+                />
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg">
-                      {selectedFilter.name}
-                    </h3>
-                    {selectedFilter.description && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {selectedFilter.description}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    onClick={handleEditMeta}
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                  >
-                    <Edit3 className="h-3 w-3" />
-                  </Button>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Created {formatDate(selectedFilter.created_at)}
-                  {selectedFilter.updated_at !== selectedFilter.created_at && (
-                    <span>
-                      {" "}
-                      • Updated {formatDate(selectedFilter.updated_at)}
-                    </span>
-                  )}
-                </div>
+            </div>
+            {!createMode && selectedFilter?.created_at && (
+              <div className="space-y-2 text-xs text-right text-muted-foreground">
+                <span className="text-placeholder-foreground">Created</span>{" "}
+                {formatDate(selectedFilter.created_at)}
               </div>
             )}
+            {createMode && (
+              <div className="space-y-2 text-xs text-right text-muted-foreground">
+                <span className="text-placeholder-foreground">Created</span>{" "}
+                {formatDate(new Date().toISOString())}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="filter-description">Description</Label>
+              <Textarea
+                id="filter-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Provide a brief description of your knowledge filter..."
+                rows={3}
+              />
+            </div>
           </div>
 
           {/* Search Query */}
@@ -322,17 +315,17 @@ export function KnowledgeFilterPanel() {
             </Label>
             <Textarea
               id="search-query"
-              placeholder="e.g., 'financial reports from Q4'"
+              placeholder="Enter your search query..."
               value={query}
+              className="font-mono placeholder:font-mono"
               onChange={(e) => setQuery(e.target.value)}
-              rows={3}
+              rows={2}
             />
           </div>
 
           {/* Filter Dropdowns */}
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Data Sources</Label>
               <MultiSelect
                 options={(availableFacets.data_sources || []).map((bucket) => ({
                   value: bucket.key,
@@ -343,13 +336,12 @@ export function KnowledgeFilterPanel() {
                 onValueChange={(values) =>
                   handleFilterChange("data_sources", values)
                 }
-                placeholder="Select data sources..."
-                allOptionLabel="All Data Sources"
+                placeholder="Select sources..."
+                allOptionLabel="All sources"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Document Types</Label>
               <MultiSelect
                 options={(availableFacets.document_types || []).map(
                   (bucket) => ({
@@ -362,13 +354,12 @@ export function KnowledgeFilterPanel() {
                 onValueChange={(values) =>
                   handleFilterChange("document_types", values)
                 }
-                placeholder="Select document types..."
-                allOptionLabel="All Document Types"
+                placeholder="Select types..."
+                allOptionLabel="All types"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Owners</Label>
               <MultiSelect
                 options={(availableFacets.owners || []).map((bucket) => ({
                   value: bucket.key,
@@ -383,7 +374,6 @@ export function KnowledgeFilterPanel() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Sources</Label>
               <MultiSelect
                 options={(availableFacets.connector_types || []).map(
                   (bucket) => ({
@@ -396,33 +386,13 @@ export function KnowledgeFilterPanel() {
                 onValueChange={(values) =>
                   handleFilterChange("connector_types", values)
                 }
-                placeholder="Select sources..."
-                allOptionLabel="All Sources"
+                placeholder="Select connectors..."
+                allOptionLabel="All connectors"
               />
             </div>
 
-            {/* All/None buttons */}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={selectAllFilters}
-                className="h-auto px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 border-border/50"
-              >
-                All
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearAllFilters}
-                className="h-auto px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 border-border/50"
-              >
-                None
-              </Button>
-            </div>
-
             {/* Result Limit Control - exactly like search page */}
-            <div className="space-y-4 pt-4 border-t border-border/50">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-medium text-nowrap">
@@ -483,37 +453,45 @@ export function KnowledgeFilterPanel() {
                 />
               </div>
             </div>
-
-            {/* Save Configuration Button */}
-            <div className="flex flex-col gap-3 pt-4 border-t border-border/50">
-              <Button
-                onClick={handleSaveConfiguration}
-                disabled={isSaving}
-                className="w-full"
-                size="sm"
-              >
-                {isSaving ? (
-                  <>
-                    <RefreshCw className="h-3 w-3 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-3 w-3 mr-2" />
-                    Save Configuration
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="destructive"
-                className="w-full"
-                onClick={handleDeleteFilter}
-              >
-                Delete Filter
-              </Button>
-            </div>
           </div>
         </CardContent>
+        <CardFooter className="mt-auto align-bottom justify-end gap-2">
+          {/* Save Configuration Button */}
+          {createMode && (
+            <Button
+              onClick={closePanelOnly}
+              disabled={isSaving}
+              variant="outline"
+              size="sm"
+            >
+              Cancel
+            </Button>
+          )}
+          {!createMode && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDeleteFilter}
+              disabled={isSaving}
+            >
+              Delete Filter
+            </Button>
+          )}
+          <Button
+            onClick={handleSaveConfiguration}
+            disabled={isSaving}
+            size="sm"
+            className="relative"
+          >
+            {isSaving && (
+              <>
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                Saving...
+              </>
+            )}
+            {!isSaving && (createMode ? "Create Filter" : "Update Filter")}
+          </Button>
+        </CardFooter>
       </Card>
     </div>
   );

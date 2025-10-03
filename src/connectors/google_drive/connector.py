@@ -73,7 +73,7 @@ class GoogleDriveConnector(BaseConnector):
 
     # Connector metadata
     CONNECTOR_NAME = "Google Drive"
-    CONNECTOR_DESCRIPTION = "Connect your Google Drive to automatically sync documents"
+    CONNECTOR_DESCRIPTION = "Add knowledge from Google Drive"
     CONNECTOR_ICON = "google-drive"
 
     # Supported alias keys coming from various frontends / pickers

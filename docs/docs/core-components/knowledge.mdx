@@ -7,20 +7,13 @@ import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialModifyFlows from '@site/docs/_partial-modify-flows.mdx';
+import PartialExternalPreview from '@site/docs/_partial-external-preview.mdx';
+
+<PartialExternalPreview />
 
 OpenRAG uses [OpenSearch](https://docs.opensearch.org/latest/) for its vector-backed knowledge store.
+This is a specialized database for storing and retrieving embeddings, which helps your Agent efficiently find relevant information.
 OpenSearch provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
-
-## Explore knowledge
-
-The Knowledge page lists the documents OpenRAG has ingested into the OpenSearch vector database's `documents` index.
-
-To explore your current knowledge, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
-Click on a document to display the chunks derived from splitting the default documents into the vector database.
-
-Documents are processed with the default **Knowledge Ingest** flow, so if you want to split your documents differently, edit the **Knowledge Ingest** flow.
-
-<PartialModifyFlows />
 
 ## Ingest knowledge
 
@@ -30,7 +23,7 @@ OpenRAG supports knowledge ingestion through direct file uploads and OAuth conne
 
 The **Knowledge Ingest** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
 
-The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#advanced-setup) or in the `.env` used by Docker Compose.
+The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#setup) menu or in the `.env` used by Docker Compose.
 
 To load and process a single file from the mapped location, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then click **Add File**.
 The file is loaded into your OpenSearch database, and appears in the Knowledge page.
@@ -38,13 +31,9 @@ The file is loaded into your OpenSearch database, and appears in the Knowledge p
 To load and process a directory from the mapped location, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then click **Process Folder**. 
 The files are loaded into your OpenSearch database, and appear in the Knowledge page.
 
-### Ingest files through OAuth connectors (#oauth-ingestion)
+### Ingest files through OAuth connectors {#oauth-ingestion}
 
-OpenRAG supports the following enterprise-grade OAuth connectors for seamless document synchronization.
-
-- **Google Drive**
-- **OneDrive**
-- **AWS**
+OpenRAG supports Google Drive, OneDrive, and AWS S3 as OAuth connectors for seamless document synchronization.
 
 OAuth integration allows individual users to connect their personal cloud storage accounts to OpenRAG. Each user must separately authorize OpenRAG to access their own cloud storage files. When a user connects a cloud service, they are redirected to authenticate with that service provider and grant OpenRAG permission to sync documents from their personal cloud storage.
 
@@ -58,7 +47,7 @@ If you wish to use another provider, add the secrets to another provider.
   <TabItem value="TUI" label="TUI" default>
    1. If OpenRAG is running, stop it with **Status** > **Stop Services**.
    2. Click **Advanced Setup**.
-   3. Add the OAuth provider's client and secret key in the [Advanced Setup](/install#advanced-setup) menu.
+   3. Add the OAuth provider's client and secret key in the [Advanced Setup](/install#setup) menu.
    4. Click **Save Configuration**.
    The TUI generates a new `.env` file with your OAuth values.
    5. Click **Start Container Services**.
@@ -101,6 +90,21 @@ You can monitor the sync progress in the <Icon name="Bell" aria-hidden="true"/> 
 
 Once processing is complete, the synced documents become available in your knowledge base and can be searched through the chat interface or Knowledge page.
 
+## Explore knowledge
+
+The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database's `documents` index.
+
+To explore your current knowledge, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
+Click on a document to display the chunks derived from splitting the default documents into the vector database.
+
+Documents are processed with the default **Knowledge Ingest** flow, so if you want to split your documents differently, edit the **Knowledge Ingest** flow.
+
+<PartialModifyFlows />
+
+### Knowledge ingestion settings
+
+To configure the knowledge ingestion pipeline parameters, see [Docling Ingestion](/ingestion).
+
 ## Create knowledge filters
 
 OpenRAG includes a knowledge filter system for organizing and managing document collections.
@@ -136,7 +140,7 @@ A new filter is created with default settings that match everything.
 
 OpenRAG automatically detects and configures the correct vector dimensions for embedding models, ensuring optimal search performance and compatibility.
 
-The complete list of supported models is available at [/src/services/models_service.py](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py).
+The complete list of supported models is available at [`models_service.py` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py).
 
 You can use custom embedding models by specifying them in your configuration.
 
@@ -144,4 +148,4 @@ If you use an unknown embedding model, OpenRAG will automatically fall back to `
 
 The default embedding dimension is `1536` and the default model is `text-embedding-3-small`.
 
-For models with known vector dimensions, see [/src/config/settings.py](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
+For models with known vector dimensions, see [`settings.py` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
