@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import {
 	type ChangeEvent,
 	useCallback,
+	useEffect,
 	useRef,
 	useState,
 } from "react";
@@ -51,13 +52,17 @@ function getSourceIcon(connectorType?: string) {
 
 function SearchPage() {
 	const router = useRouter();
-	const { isMenuOpen, files: taskFiles } = useTask();
+	const { isMenuOpen, files: taskFiles, refreshTasks } = useTask();
 	const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
 		useKnowledgeFilter();
 	const [selectedRows, setSelectedRows] = useState<File[]>([]);
 	const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
 	const deleteDocumentMutation = useDeleteDocument();
+
+	useEffect(() => {
+		refreshTasks();
+	}, [refreshTasks]);
 
 	const { data: searchData = [], isFetching } = useGetSearchQuery(
 		parsedFilterData?.query || "*",
