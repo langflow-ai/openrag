@@ -459,8 +459,8 @@ export function KnowledgeDropdown() {
         </Button>
 
         {isOpen && !isLoading && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-md z-50">
-            <div className="py-1">
+          <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-md z-50">
+            <div className="p-1">
               {menuItems.map((item, index) => (
                 <button
                   key={index}
@@ -468,13 +468,15 @@ export function KnowledgeDropdown() {
                   disabled={"disabled" in item ? item.disabled : false}
                   title={"tooltip" in item ? item.tooltip : undefined}
                   className={cn(
-                    "w-full flex flex-nowrap items-center px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+                    "w-full flex flex-nowrap items-center px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground rounded-sm",
                     "disabled" in item &&
                       item.disabled &&
                       "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-current"
                   )}
                 >
-                  {item.icon && <item.icon className="h-4 w-4 mr-2 text-muted-foreground" />}
+                  {item.icon && (
+                    <item.icon className="h-4 w-4 mr-2 text-muted-foreground" />
+                  )}
                   {item.label}
                 </button>
               ))}
