@@ -51,19 +51,13 @@ export const PickerHeader = ({
           Select files from {getProviderName(provider)} to ingest.
         </p>
         <Button
-          size="sm"
           onClick={onAddFiles}
           disabled={!isPickerLoaded || isPickerOpen || !accessToken}
           className="bg-foreground text-background hover:bg-foreground/90 font-semibold"
         >
           <Plus className="h-4 w-4" />
-          {isPickerOpen ? "Opening Picker..." : "Add Files"}
+          {isPickerOpen ? "Opening picker..." : "Add files"}
         </Button>
-        <div className="text-xs text-muted-foreground pt-4">
-          csv, json, pdf,{" "}
-          <a className="underline dark:text-pink-400 text-pink-600">+16 more</a>{" "}
-          <b>150 MB</b> max
-        </div>
       </CardContent>
     </Card>
   );
