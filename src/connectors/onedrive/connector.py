@@ -19,7 +19,7 @@ class OneDriveConnector(BaseConnector):
 
     # Connector metadata
     CONNECTOR_NAME = "OneDrive"
-    CONNECTOR_DESCRIPTION = "Connect to OneDrive (personal) to sync documents and files"
+    CONNECTOR_DESCRIPTION = "Add knowledge from OneDrive"
     CONNECTOR_ICON = "onedrive"
 
     def __init__(self, config: Dict[str, Any]):

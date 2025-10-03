@@ -2,7 +2,10 @@
 
 import { Bell, Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useGetConversationsQuery, type ChatConversation } from "@/app/api/queries/useGetConversationsQuery";
+import {
+  useGetConversationsQuery,
+  type ChatConversation,
+} from "@/app/api/queries/useGetConversationsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import Logo from "@/components/logo/logo";
@@ -16,6 +19,7 @@ import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context";
+import { cn } from "@/lib/utils";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -48,12 +52,16 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const authPaths = ["/login", "/auth/callback", "/onboarding"];
   const isAuthPage = authPaths.includes(pathname);
 
+  // List of paths with smaller max-width
+  const smallWidthPaths = ["/settings", "/settings/connector/new"];
+  const isSmallWidthPath = smallWidthPaths.includes(pathname);
+
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
     (task) =>
       task.status === "pending" ||
       task.status === "running" ||
-      task.status === "processing",
+      task.status === "processing"
   );
 
   // Show loading state when backend isn't ready
@@ -139,7 +147,14 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
               "md:pr-0" // Neither open: 24px
         }`}
       >
-        <div className="container py-6 lg:py-8 px-4 lg:px-6">{children}</div>
+        <div
+          className={cn(
+            "py-6 lg:py-8 px-4 lg:px-6",
+            isSmallWidthPath ? "max-w-[850px]" : "container"
+          )}
+        >
+          {children}
+        </div>
       </main>
       <TaskNotificationMenu />
       <KnowledgeFilterPanel />

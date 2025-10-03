@@ -20,4 +20,4 @@ wheels/
 !flows/*.json
 .DS_Store
 
-config.yaml
+config/

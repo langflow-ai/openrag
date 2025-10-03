@@ -73,7 +73,7 @@ class ConfigManager:
         Args:
             config_file: Path to configuration file. Defaults to 'config.yaml' in project root.
         """
-        self.config_file = Path(config_file) if config_file else Path("config.yaml")
+        self.config_file = Path(config_file) if config_file else Path("config/config.yaml")
         self._config: Optional[OpenRAGConfig] = None
 
     def load_config(self) -> OpenRAGConfig:

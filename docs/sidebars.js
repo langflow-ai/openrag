@@ -28,7 +28,12 @@ const sidebars = {
         {
           type: "doc",
           id: "get-started/install",
-          label: "Installation"
+          label: "Install OpenRAG"
+        },
+        {
+          type: "doc",
+          id: "get-started/docker",
+          label: "Deploy with Docker"
         },
         {
           type: "doc",
@@ -37,13 +42,8 @@ const sidebars = {
         },
         {
           type: "doc",
-          id: "get-started/docker",
-          label: "Docker Deployment"
-        },
-        {
-          type: "doc",
           id: "get-started/tui",
-          label: "Terminal Interface (TUI)"
+          label: "Terminal User Interface (TUI)"
         },
       ],
     },
@@ -70,12 +70,12 @@ const sidebars = {
     },
     {
       type: "category",
-      label: "Configuration",
+      label: "Reference",
       items: [
         {
           type: "doc",
-          id: "configure/configuration",
-          label: "Environment Variables"
+          id: "reference/configuration",
+          label: "Environment variables"
         },
       ],
     },
