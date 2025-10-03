@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
 	ChevronDown,
 	Cloud,
@@ -26,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
+import type { File as SearchFile } from "@/src/app/api/queries/useGetSearchQuery";
 
 interface KnowledgeDropdownProps {
 	active?: boolean;
@@ -38,6 +40,7 @@ export function KnowledgeDropdown({
 }: KnowledgeDropdownProps) {
 	const { addTask } = useTask();
 	const { refetch: refetchTasks } = useGetTasksQuery();
+	const queryClient = useQueryClient();
 	const router = useRouter();
 	const [isOpen, setIsOpen] = useState(false);
 	const [showFolderDialog, setShowFolderDialog] = useState(false);
@@ -326,6 +329,15 @@ export function KnowledgeDropdown({
 
 	const handleOverwriteFile = async () => {
 		if (pendingFile) {
+			// Remove the old file from all search query caches before overwriting
+			queryClient.setQueriesData({ queryKey: ["search"] }, (oldData: []) => {
+				if (!oldData) return oldData;
+				// Filter out the file that's being overwritten
+				return oldData.filter(
+					(file: SearchFile) => file.filename !== pendingFile.name,
+				);
+			});
+
 			await uploadFile(pendingFile, true);
 			setPendingFile(null);
 			setDuplicateFilename("");
@@ -676,7 +688,6 @@ export function KnowledgeDropdown({
 			<DuplicateHandlingDialog
 				open={showDuplicateDialog}
 				onOpenChange={setShowDuplicateDialog}
-				filename={duplicateFilename}
 				onOverwrite={handleOverwriteFile}
 				isLoading={fileUploading}
 			/>
