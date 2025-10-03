@@ -68,7 +68,6 @@ function OnboardingPage() {
   // Mutations
   const onboardingMutation = useOnboardingMutation({
     onSuccess: (data) => {
-      toast.success("Onboarding completed successfully!");
       console.log("Onboarding completed successfully", data);
       router.push(redirect);
     },
@@ -137,7 +136,7 @@ function OnboardingPage() {
             Connect a model provider
           </h1>
         </div>
-        <Card className="w-full max-w-[580px]">
+        <Card className="w-full max-w-[600px]">
           <Tabs
             defaultValue={modelProvider}
             onValueChange={handleSetModelProvider}
@@ -150,7 +149,7 @@ function OnboardingPage() {
                 </TabsTrigger>
                 <TabsTrigger value="watsonx">
                   <IBMLogo className="w-4 h-4" />
-                  IBM
+                  IBM watsonx.ai
                 </TabsTrigger>
                 <TabsTrigger value="ollama">
                   <OllamaLogo className="w-4 h-4" />
@@ -192,7 +191,7 @@ function OnboardingPage() {
                     disabled={!isComplete}
                     loading={onboardingMutation.isPending}
                   >
-                    Complete
+                    <span className="select-none">Complete</span>
                   </Button>
                 </div>
               </TooltipTrigger>

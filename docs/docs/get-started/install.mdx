@@ -5,38 +5,51 @@ slug: /install
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import PartialOnboarding from '@site/docs/_partial-onboarding.mdx'; 
+import PartialExternalPreview from '@site/docs/_partial-external-preview.mdx';
 
-OpenRAG can be installed in multiple ways:
+<PartialExternalPreview />
 
-* [**Python wheel**](#install-python-wheel): Install the OpenRAG Python wheel and use the [OpenRAG Terminal User Interface (TUI)](/get-started/tui) to install, run, and configure your OpenRAG deployment without running Docker commands.
+[Install the OpenRAG Python wheel](#install-python-wheel), and then run the [OpenRAG Terminal User Interface(TUI)](#setup) to start your OpenRAG deployment with a guided setup process.
 
-* [**Docker Compose**](get-started/docker): Clone the OpenRAG repository and deploy OpenRAG with Docker Compose, including all services and dependencies.
+If you prefer running Docker commands and manually editing `.env` files, see [Deploy with Docker](/get-started/docker).
 
 ## Prerequisites 
 
 - [Python Version 3.10 to 3.13](https://www.python.org/downloads/release/python-3100/)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- [Docker](https://docs.docker.com/get-docker/) or [Podman](https://podman.io/docs/installation) installed
+- [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/) installed
 - [Docker Compose](https://docs.docker.com/compose/install/) installed. If using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
-- For GPU support: (TBD)
+- Create an [OpenAI API key](https://platform.openai.com/api-keys). This key is **required** to start OpenRAG, but you can choose a different model provider during [Application Onboarding](#application-onboarding).
+- Optional: GPU support requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support and compatible NVIDIA drivers installed on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
 
-## Python wheel {#install-python-wheel}
+## Install the OpenRAG Python wheel {#install-python-wheel}
 
-The Python wheel is currently available internally, but will be available on PyPI at launch.
-The wheel installs the OpenRAG wheel, which includes the TUI for installing, running, and managing OpenRAG.
-For more information on virtual environments, see [uv](https://docs.astral.sh/uv/pip/environments).
+:::important
+The `.whl` file is currently available as an internal download during public preview, and will be published to PyPI in a future release.
+:::
 
-1. Create a new project with a virtual environment using [uv](https://docs.astral.sh/uv/pip/environments).
+The OpenRAG wheel installs the Terminal User Interface (TUI) for configuring and running OpenRAG.
+
+1. Create a new project with a virtual environment using `uv init`.
 
    ```bash
    uv init YOUR_PROJECT_NAME
    cd YOUR_PROJECT_NAME
    ```
-2. Add the OpenRAG wheel to your project and install it in the virtual environment.
-   Replace `PATH/TO/` and `VERSION` with your OpenRAG wheel location and version.
+
+   The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
+   For more information on virtual environments, see the [uv documentation](https://docs.astral.sh/uv/pip/environments).
+
+2. Add the local OpenRAG wheel to your project's virtual environment.
+
    ```bash
    uv add PATH/TO/openrag-VERSION-py3-none-any.whl
    ```
+   Replace `PATH/TO/` and `VERSION` with the path and version of your downloaded OpenRAG `.whl` file.
+
+   For example, if your `.whl` file is in the `~/Downloads` directory, the command is `uv add ~/Downloads/openrag-0.1.8-py3-none-any.whl`.
+
 3. Ensure all dependencies are installed and updated in your virtual environment.
    ```bash
    uv sync
@@ -47,95 +60,66 @@ For more information on virtual environments, see [uv](https://docs.astral.sh/uv
    uv run openrag
    ```
 
-   The OpenRAG TUI opens.
+5. Continue with [Setup OpenRAG with the TUI](#setup).
 
-5. To install OpenRAG with Basic Setup, click **Basic Setup** or press <kbd>1</kbd>. Basic Setup does not set up OAuth connections for ingestion from Google Drive, OneDrive, or AWS. For OAuth setup, see [Advanced Setup](#advanced-setup).
-   The TUI prompts you for the required startup values.
-   Click **Generate Passwords** to autocomplete fields that contain **Auto-generated Secure Password**, or bring your own passwords.
-    <details closed>
-    <summary>Where do I find the required startup values?</summary>
-    
-    | Variable | Where to Find | Description |
-    |----------|---------------|-------------|
-    | `OPENSEARCH_PASSWORD` | Auto-generated secure password | The password for OpenSearch database access. Must be at least 8 characters and must contain at least one uppercase letter, one lowercase letter, one digit, and one special character. |
-    | `OPENAI_API_KEY` | [OpenAI Platform](https://platform.openai.com/api-keys) | API key from your OpenAI account. |
-    | `LANGFLOW_SUPERUSER` | User generated | Username for Langflow admin access. For more, see [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-superuser). |
-    | `LANGFLOW_SUPERUSER_PASSWORD` | Auto-generated secure password | Password for Langflow admin access. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-superuser). |
-    | `LANGFLOW_SECRET_KEY` | Auto-generated secure key | Secret key for Langflow security. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key). |
-    | `LANGFLOW_AUTO_LOGIN` | Auto-generated or manual | Auto-login configuration. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login). |
-    | `LANGFLOW_NEW_USER_IS_ACTIVE` | Langflow | New user activation setting. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-new-user-is-active). |
-    | `LANGFLOW_ENABLE_SUPERUSER_CLI` | Langflow server | Superuser CLI access setting. For more, see the [Langflow docs](https://docs.langflow.org/api-keys-and-authentication#langflow-enable-superuser-cli). |
-    | `DOCUMENTS_PATH` | Set your local path | Path to your document storage directory. |
-    
-    </details>
-   
-   To complete credentials, click **Save Configuration**.
+## Set up OpenRAG with the TUI {#setup}
 
-6. To start OpenRAG with your credentials, click **Start Container Services**.
-   Startup pulls container images and starts them, so it can take some time.
-   The operation has completed when the **Close** button is available and the terminal displays:
-   ```bash
-   Services started successfully
-   Command completed successfully
-   ```
+The TUI creates a `.env` file in your OpenRAG directory root and starts OpenRAG.
 
-7. To open the OpenRAG application, click **Open App**, press <kbd>6</kbd>, or navigate to `http://localhost:3000`.
-   The application opens.
-8. Select your language model and embedding model provider, and complete the required fields.
-   **Your provider can only be selected once, and you must use the same provider for your language model and embedding model.**
-   The language model can be changed, but the embeddings model cannot be changed.
-   To change your provider selection, you must restart OpenRAG and delete the `config.yml` file.
+**Basic Setup** generates all of the required values except the OpenAI API key.
+**Basic Setup** does not set up OAuth connections for ingestion from Google Drive, OneDrive, or AWS.
+For OAuth setup, use **Advanced Setup**.
 
-<Tabs groupId="Embedding provider">
-   <TabItem value="OpenAI" label="OpenAI" default>
-      9. If you already entered a value for `OPENAI_API_KEY` in the TUI in Step 5, enable **Get API key from environment variable**.
-      10. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
-      11. To load 2 sample PDFs, enable **Sample dataset**.
-      This is recommended, but not required.
-      12. Click **Complete**.
-   
-     </TabItem>
-     <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
-      9. Complete the fields for **watsonx.ai API Endpoint**, **IBM API key**, and **IBM Project ID**.
-      These values are found in your IBM watsonx deployment.
-      10. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
-      11. To load 2 sample PDFs, enable **Sample dataset**.
-      This is recommended, but not required.
-      12. Click **Complete**.
-   
-     </TabItem>
-     <TabItem value="Ollama" label="Ollama">
-      9. Enter your Ollama server's base URL address.
-      The default Ollama server address is `http://localhost:11434`.
-      Since OpenRAG is running in a container, you may need to change `localhost` to access services outside of the container. For example, change `http://localhost:11434` to `http://host.docker.internal:11434` to connect to Ollama.
-      OpenRAG automatically sends a test connection to your Ollama server to confirm connectivity.
-      10. Select the **Embedding Model** and **Language Model** your Ollama server is running.
-      OpenRAG automatically lists the available models from your Ollama server.
-      11. To load 2 sample PDFs, enable **Sample dataset**.
-      This is recommended, but not required.
-      12. Click **Complete**.
+If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
+If the TUI detects a `.env` file in the OpenRAG root directory, it will source any variables from the `.env` file.
+<Tabs groupId="Setup method">
+  <TabItem value="Basic setup" label="Basic setup" default>
+
+   1. To install OpenRAG with **Basic Setup**, click **Basic Setup** or press <kbd>1</kbd>. 
+   2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
+   3. Paste your OpenAI API key in the OpenAI API key field.
+   4. Click **Save Configuration**.
+   5. To start OpenRAG, click **Start Container Services**.
+      Startup pulls container images and runs them, so it can take some time.
+      When startup is complete, the TUI displays the following:
+      ```bash
+      Services started successfully
+      Command completed successfully
+      ```
+   6. To open the OpenRAG application, click **Open App**.
+   7. Continue with [Application Onboarding](#application-onboarding).
+  </TabItem>
+  <TabItem value="Advanced setup" label="Advanced setup">
+   1. To install OpenRAG with **Advanced Setup**, click **Advanced Setup** or press <kbd>2</kbd>. 
+   2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
+   3. Paste your OpenAI API key in the OpenAI API key field.
+   4. Add your client and secret values for Google, Azure, or AWS OAuth.
+   These values can be found in your OAuth provider.
+   5. The OpenRAG TUI presents redirect URIs for your OAuth app.
+   These are the URLs your OAuth provider will redirect back to after user sign-in.
+   Register these redirect values with your OAuth provider as they are presented in the TUI.
+   6. Click **Save Configuration**.
+   7. To start OpenRAG, click **Start Container Services**.
+      Startup pulls container images and runs them, so it can take some time.
+      When startup is complete, the TUI displays the following:
+      ```bash
+      Services started successfully
+      Command completed successfully
+      ```
+   8. To open the OpenRAG application, click **Open App**, press <kbd>6</kbd>, or navigate to `http://localhost:3000`.
+   You will be presented with your provider's OAuth sign-in screen, and be redirected to the redirect URI after sign-in.
+   Continue with Application Onboarding.
+
+       Two additional variables are available for Advanced Setup:
+
+       The `LANGFLOW_PUBLIC_URL` controls where the Langflow web interface can be accessed. This is where users interact with their flows in a browser.
+
+       The `WEBHOOK_BASE_URL` controls where the endpoint for `/connectors/CONNECTOR_TYPE/webhook` will be available.
+       This connection enables real-time document synchronization with external services.
+       For example, for Google Drive file synchronization the webhook URL is `/connectors/google_drive/webhook`.
        
-     </TabItem>
+   9. Continue with [Application Onboarding](#application-onboarding).
+  </TabItem>
 </Tabs>
 
-13. Continue with the [Quickstart](/quickstart).
-
-### Advanced Setup {#advanced-setup}
-
-**Advanced Setup** includes the required values from **Basic Setup**, with additional settings for OAuth credentials.
-If the OpenRAG TUI detects OAuth credentials, it enforces the Advanced Setup path.
-1. Add your client and secret values for Google, Azure, or AWS OAuth.
-These values can be found in your OAuth provider.
-2. The OpenRAG TUI presents redirect URIs for your OAuth app.
-These are the URLs your OAuth provider will redirect back to after user sign-in.
-Register these redirect values with your OAuth provider as they are presented in the TUI.
-3. To open the OpenRAG application, click **Open App** or press <kbd>6</kbd>.
-You will be presented with your provider's OAuth sign-in screen, and be redirected to the redirect URI after sign-in.
-
-Two additional variables are available for Advanced Setup:
-
-The `LANGFLOW_PUBLIC_URL` controls where the Langflow web interface can be accessed. This is where users interact with their flows in a browser.
-
-The `WEBHOOK_BASE_URL` controls where the endpoint for `/connectors/CONNECTOR_TYPE/webhook` will be available.
-This connection enables real-time document synchronization with external services.
-For example, for Google Drive file synchronization the webhook URL is `/connectors/google_drive/webhook`.
+<PartialOnboarding />
