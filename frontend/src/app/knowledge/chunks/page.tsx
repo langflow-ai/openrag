@@ -86,7 +86,9 @@ function ChunksPageContent() {
       return;
     }
 
-    setChunks(fileData?.chunks || []);
+    setChunks(
+      fileData?.chunks?.map((chunk, i) => ({ ...chunk, index: i + 1 })) || []
+    );
   }, [data, filename]);
 
   // Set selected state for all checkboxes when selectAll changes
@@ -246,7 +248,7 @@ function ChunksPageContent() {
                         />
                       </div>
                       <span className="text-sm font-bold">
-                        Chunk {chunk.page}
+                        Chunk {chunk.index}
                       </span>
                       <span className="bg-background p-1 rounded text-xs text-muted-foreground/70">
                         {chunk.text.length} chars
