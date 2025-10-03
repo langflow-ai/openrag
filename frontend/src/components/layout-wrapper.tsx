@@ -11,7 +11,6 @@ import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import Logo from "@/components/logo/logo";
 import { Navigation } from "@/components/navigation";
 import { TaskNotificationMenu } from "@/components/task-notification-menu";
-import { Button } from "@/components/ui/button";
 import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/contexts/auth-context";
 import { useChat } from "@/contexts/chat-context";
@@ -38,7 +37,6 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
-  const isOnKnowledgePage = pathname === "/knowledge";
   const { data: conversations = [], isLoading: isConversationsLoading } =
     useGetConversationsQuery(endpoint, refreshTrigger, {
       enabled: isOnChatPage && (isAuthenticated || isNoAuthMode),
@@ -52,6 +50,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // List of paths that should not show navigation
   const authPaths = ["/login", "/auth/callback", "/onboarding"];
   const isAuthPage = authPaths.includes(pathname);
+  const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
   // List of paths with smaller max-width
   const smallWidthPaths = ["/settings", "/settings/connector/new"];
@@ -59,7 +58,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
-    task =>
+    (task) =>
       task.status === "pending" ||
       task.status === "running" ||
       task.status === "processing"
@@ -84,10 +83,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
-    <div className="h-screen">
-      {/* Header */}
-      <header className="header-arrangement bg-background">
-        <div className="header-start-display px-4">
+    <div className="h-full relative">
+      <header className="header-arrangement bg-background sticky top-0 z-50 h-10">
+        <div className="header-start-display px-[16px]">
           {/* Logo/Title */}
           <div className="flex items-center">
             <Logo className="fill-primary" width={24} height={22} />
@@ -126,7 +124,6 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-
       <div
         className={cn(
           "app-grid-cols-arrangement group",
@@ -145,7 +142,14 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
         {/* Main Content */}
         <main className="overflow-y-auto">
-          <div className="container p-6 h-full">{children}</div>
+          <div
+            className={cn(
+              "p-6 h-full container",
+              isSmallWidthPath && "max-w-[850px]"
+            )}
+          >
+            {children}
+          </div>
         </main>
 
         {/* Task Notifications Panel */}
