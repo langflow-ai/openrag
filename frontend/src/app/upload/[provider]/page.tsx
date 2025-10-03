@@ -328,7 +328,7 @@ export default function UploadProviderPage() {
 
   return (
     <div className="container mx-auto max-w-3xl p-6">
-      <div className="mb-8 flex gap-2 items-center">
+      <div className="mb- flex gap-2 items-center">
         <Button variant="ghost" onClick={() => router.back()} size="icon">
           <ArrowLeft size={18} />
         </Button>
@@ -366,12 +366,9 @@ export default function UploadProviderPage() {
             disabled={selectedFiles.length === 0 || isIngesting}
           >
             {isIngesting ? (
-              <>
-                Ingesting {selectedFiles.length} file
-                {selectedFiles.length > 1 ? "s" : ""}...
-              </>
+              <>Ingesting {selectedFiles.length} Files...</>
             ) : (
-              <>Ingest files</>
+              <>Start ingest</>
             )}
           </Button>
         </div>

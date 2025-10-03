@@ -116,7 +116,7 @@ export const UnifiedCloudPicker = ({
       const handler = createProviderHandler(
         provider,
         accessToken,
-        isOpen => {
+        (isOpen) => {
           setIsPickerOpen(isOpen);
           onPickerStateChange?.(isOpen);
         },
@@ -126,8 +126,8 @@ export const UnifiedCloudPicker = ({
 
       handler.openPicker((files: CloudFile[]) => {
         // Merge new files with existing ones, avoiding duplicates
-        const existingIds = new Set(selectedFiles.map(f => f.id));
-        const newFiles = files.filter(f => !existingIds.has(f.id));
+        const existingIds = new Set(selectedFiles.map((f) => f.id));
+        const newFiles = files.filter((f) => !existingIds.has(f.id));
         onFileSelected([...selectedFiles, ...newFiles]);
       });
     } catch (error) {
@@ -138,7 +138,7 @@ export const UnifiedCloudPicker = ({
   };
 
   const handleRemoveFile = (fileId: string) => {
-    const updatedFiles = selectedFiles.filter(file => file.id !== fileId);
+    const updatedFiles = selectedFiles.filter((file) => file.id !== fileId);
     onFileSelected(updatedFiles);
   };
 
@@ -179,6 +179,7 @@ export const UnifiedCloudPicker = ({
       />
 
       <FileList
+        provider={provider}
         files={selectedFiles}
         onClearAll={handleClearAll}
         onRemoveFile={handleRemoveFile}

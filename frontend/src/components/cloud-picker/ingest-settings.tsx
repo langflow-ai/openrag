@@ -44,7 +44,7 @@ export const IngestSettings = ({
     <Collapsible
       open={isOpen}
       onOpenChange={onOpenChange}
-      className="border rounded-md p-4 border-muted-foreground/20"
+      className="border rounded-xl p-4 border-border"
     >
       <CollapsibleTrigger className="flex items-center gap-2 justify-between w-full -m-4 p-4 rounded-md transition-colors">
         <div className="flex items-center gap-2">
@@ -65,7 +65,7 @@ export const IngestSettings = ({
               <Input
                 type="number"
                 value={currentSettings.chunkSize}
-                onChange={e =>
+                onChange={(e) =>
                   handleSettingsChange({
                     chunkSize: parseInt(e.target.value) || 0,
                   })
@@ -77,7 +77,7 @@ export const IngestSettings = ({
               <Input
                 type="number"
                 value={currentSettings.chunkOverlap}
-                onChange={e =>
+                onChange={(e) =>
                   handleSettingsChange({
                     chunkOverlap: parseInt(e.target.value) || 0,
                   })
@@ -95,7 +95,7 @@ export const IngestSettings = ({
             </div>
             <Switch
               checked={currentSettings.ocr}
-              onCheckedChange={checked =>
+              onCheckedChange={(checked) =>
                 handleSettingsChange({ ocr: checked })
               }
             />
@@ -112,7 +112,7 @@ export const IngestSettings = ({
             </div>
             <Switch
               checked={currentSettings.pictureDescriptions}
-              onCheckedChange={checked =>
+              onCheckedChange={(checked) =>
                 handleSettingsChange({ pictureDescriptions: checked })
               }
             />
@@ -126,7 +126,7 @@ export const IngestSettings = ({
             <Input
               disabled
               value={currentSettings.embeddingModel}
-              onChange={e =>
+              onChange={(e) =>
                 handleSettingsChange({ embeddingModel: e.target.value })
               }
               placeholder="text-embedding-3-small"
