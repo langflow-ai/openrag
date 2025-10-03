@@ -205,9 +205,19 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           previousTask && previousTask.status !== "completed" &&
           currentTask.status === "completed"
         ) {
-          // Task just completed - show success toast
-          toast.success("Task completed successfully", {
-            description: `Task ${currentTask.task_id} has finished processing.`,
+          // Task just completed - show success toast with file counts
+          const successfulFiles = currentTask.successful_files || 0;
+          const failedFiles = currentTask.failed_files || 0;
+
+          let description = "";
+          if (failedFiles > 0) {
+            description = `${successfulFiles} file${successfulFiles !== 1 ? 's' : ''} uploaded successfully, ${failedFiles} file${failedFiles !== 1 ? 's' : ''} failed`;
+          } else {
+            description = `${successfulFiles} file${successfulFiles !== 1 ? 's' : ''} uploaded successfully`;
+          }
+
+          toast.success("Task completed", {
+            description,
             action: {
               label: "View",
               onClick: () => console.log("View task", currentTask.task_id),
