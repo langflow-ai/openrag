@@ -15,21 +15,16 @@ import {
 interface DuplicateHandlingDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	filename: string;
 	onOverwrite: () => void | Promise<void>;
 	isLoading?: boolean;
 }
 
 export const DuplicateHandlingDialog: React.FC<
 	DuplicateHandlingDialogProps
-> = ({ open, onOpenChange, filename, onOverwrite, isLoading = false }) => {
+> = ({ open, onOpenChange, onOverwrite, isLoading = false }) => {
 	const handleOverwrite = async () => {
-		try {
-			await onOverwrite();
-			onOpenChange(false);
-		} catch (error) {
-			// Error handling is done by the parent component
-		}
+		await onOverwrite();
+		onOpenChange(false);
 	};
 
 	return (
