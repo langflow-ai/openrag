@@ -310,14 +310,13 @@ function SearchPage() {
 							)}
 							<Search
 								className="h-4 w-4 ml-1 flex-shrink-0 text-placeholder-foreground"
-								strokeWidth={1.5}
 							/>
 							<input
 								className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none font-mono placeholder:font-mono"
 								name="search-query"
 								id="search-query"
 								type="text"
-								placeholder="Search your documents..."
+								placeholder="Enter your search query..."
 								onChange={handleTableSearch}
 							/>
 						</div>
