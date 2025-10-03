@@ -2,11 +2,15 @@
 
 import { themeQuartz, type ColDef } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { Building2, Cloud, HardDrive, Search, X } from "lucide-react";
+import { Cloud, FileIcon, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, useCallback, useRef, useState } from "react";
-import { SiGoogledrive } from "react-icons/si";
-import { TbBrandOnedrive } from "react-icons/tb";
+import {
+  type ChangeEvent,
+  FormEvent,
+  useCallback,
+  useRef,
+  useState,
+} from "react";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
@@ -21,25 +25,28 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 import { filterAccentClasses } from "@/components/knowledge-filter-panel";
+import GoogleDriveIcon from "../settings/icons/google-drive-icon";
+import OneDriveIcon from "../settings/icons/one-drive-icon";
+import SharePointIcon from "../settings/icons/share-point-icon";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
   switch (connectorType) {
     case "google_drive":
       return (
-        <SiGoogledrive className="h-4 w-4 text-foreground flex-shrink-0" />
+        <GoogleDriveIcon className="h-4 w-4 text-foreground flex-shrink-0" />
       );
     case "onedrive":
-      return (
-        <TbBrandOnedrive className="h-4 w-4 text-foreground flex-shrink-0" />
-      );
+      return <OneDriveIcon className="h-4 w-4 text-foreground flex-shrink-0" />;
     case "sharepoint":
-      return <Building2 className="h-4 w-4 text-foreground flex-shrink-0" />;
+      return (
+        <SharePointIcon className="h-4 w-4 text-foreground flex-shrink-0" />
+      );
     case "s3":
       return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
     default:
       return (
-        <HardDrive className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
       );
   }
 }
@@ -47,21 +54,31 @@ function getSourceIcon(connectorType?: string) {
 function SearchPage() {
   const router = useRouter();
   const { files: taskFiles } = useTask();
-  const { selectedFilter, setSelectedFilter, parsedFilterData } =
-    useKnowledgeFilter();
+  const {
+    selectedFilter,
+    setSelectedFilter,
+    parsedFilterData,
+    queryOverride,
+    setQueryOverride,
+  } = useKnowledgeFilter();
+  const [searchQueryInput, setSearchQueryInput] = useState(queryOverride || "");
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
   const deleteDocumentMutation = useDeleteDocument();
 
   const { data = [], isFetching } = useGetSearchQuery(
-    parsedFilterData?.query || "*",
+    queryOverride,
     parsedFilterData
   );
 
-  const handleTableSearch = (e: ChangeEvent<HTMLInputElement>) => {
-    gridRef.current?.api.setGridOption("quickFilterText", e.target.value);
-  };
+  const handleSearch = useCallback(
+    (e?: FormEvent<HTMLFormElement>) => {
+      if (e) e.preventDefault();
+      setQueryOverride(searchQueryInput.trim());
+    },
+    [searchQueryInput, setQueryOverride]
+  );
 
   // Convert TaskFiles to File format and merge with backend results
   const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
@@ -236,7 +253,10 @@ function SearchPage() {
 
         {/* Search Input Area */}
         <div className="flex-1 flex flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
-          <form className="flex flex-1 gap-3 max-w-full">
+          <form
+            className="flex flex-1 gap-3 max-w-full"
+            onSubmit={handleSearch}
+          >
             <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem] max-w-[min(640px,100%)] min-w-[100px]">
               {selectedFilter?.name && (
                 <div
@@ -263,7 +283,10 @@ function SearchPage() {
                 id="search-query"
                 type="text"
                 placeholder="Search your documents..."
-                onChange={handleTableSearch}
+                value={searchQueryInput}
+                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                  setSearchQueryInput(e.target.value)
+                }
               />
             </div>
             {/* <Button

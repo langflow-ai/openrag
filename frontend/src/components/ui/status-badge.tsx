@@ -49,9 +49,7 @@ export const StatusBadge = ({ status, className }: StatusBadgeProps) => {
         className || ""
       }`}
     >
-      {status === "processing" && (
-        <AnimatedProcessingIcon className="text-current mr-2" size={10} />
-      )}
+      {status === "processing" && <AnimatedProcessingIcon className="mr-1.5" />}
       {config.label}
     </div>
   );

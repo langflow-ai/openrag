@@ -1,49 +1,70 @@
-interface AnimatedProcessingIconProps {
-  className?: string;
-  size?: number;
-}
+import { cn } from "@/lib/utils";
+import { motion, easeInOut } from "framer-motion";
 
 export const AnimatedProcessingIcon = ({
-  className = "",
-  size = 10,
-}: AnimatedProcessingIconProps) => {
-  const width = Math.round((size * 6) / 10);
-  const height = size;
+  className,
+}: {
+  className?: string;
+}) => {
+  const createAnimationFrames = (delay: number) => ({
+    opacity: [1, 1, 0.5, 0], // Opacity Steps
+    transition: {
+      delay,
+      duration: 1,
+      ease: easeInOut,
+      repeat: Infinity,
+      times: [0, 0.33, 0.66, 1], // Duration Percentages that Correspond to opacity Array
+    },
+  });
 
   return (
     <svg
-      width={width}
-      height={height}
+      data-testid="rotating-dot-animation"
+      className={cn("h-[10px] w-[6px]", className)}
       viewBox="0 0 6 10"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
     >
-      <style>
-        {`
-          .dot-1 { animation: pulse-wave 1.5s infinite; animation-delay: 0s; }
-          .dot-2 { animation: pulse-wave 1.5s infinite; animation-delay: 0.1s; }
-          .dot-3 { animation: pulse-wave 1.5s infinite; animation-delay: 0.2s; }
-          .dot-4 { animation: pulse-wave 1.5s infinite; animation-delay: 0.3s; }
-          .dot-5 { animation: pulse-wave 1.5s infinite; animation-delay: 0.4s; }
-          
-          @keyframes pulse-wave {
-            0%, 60%, 100% { 
-              opacity: 0.25; 
-              transform: scale(1);
-            }
-            30% { 
-              opacity: 1; 
-              transform: scale(1.2);
-            }
-          }
-        `}
-      </style>
-      <circle className="dot-1" cx="1" cy="5" r="1" fill="currentColor" />
-      <circle className="dot-2" cx="1" cy="9" r="1" fill="currentColor" />
-      <circle className="dot-3" cx="5" cy="1" r="1" fill="currentColor" />
-      <circle className="dot-4" cx="5" cy="5" r="1" fill="currentColor" />
-      <circle className="dot-5" cx="5" cy="9" r="1" fill="currentColor" />
+      <motion.circle
+        animate={createAnimationFrames(0)}
+        fill="currentColor"
+        cx="1"
+        cy="1"
+        r="1"
+      />
+      <motion.circle
+        animate={createAnimationFrames(0.16)}
+        fill="currentColor"
+        cx="1"
+        cy="5"
+        r="1"
+      />
+      <motion.circle
+        animate={createAnimationFrames(0.33)}
+        fill="currentColor"
+        cx="1"
+        cy="9"
+        r="1"
+      />
+      <motion.circle
+        animate={createAnimationFrames(0.83)}
+        fill="currentColor"
+        cx="5"
+        cy="1"
+        r="1"
+      />
+      <motion.circle
+        animate={createAnimationFrames(0.66)}
+        fill="currentColor"
+        cx="5"
+        cy="5"
+        r="1"
+      />
+      <motion.circle
+        animate={createAnimationFrames(0.5)}
+        fill="currentColor"
+        cx="5"
+        cy="9"
+        r="1"
+      />
     </svg>
   );
 };
