@@ -57,7 +57,7 @@ export const PickerHeader = ({
           className="bg-foreground text-background hover:bg-foreground/90 font-semibold"
         >
           <Plus className="h-4 w-4" />
-          {isPickerOpen ? "Opening Picker..." : "Add Files"}
+          Add Files
         </Button>
         <div className="text-xs text-muted-foreground pt-4">
           csv, json, pdf,{" "}
