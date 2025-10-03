@@ -232,7 +232,7 @@ function ChatPage() {
       content: `🔄 Starting upload of **${file.name}**...`,
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, uploadStartMessage]);
+    setMessages(prev => [...prev, uploadStartMessage]);
 
     try {
       const formData = new FormData();
@@ -258,7 +258,7 @@ function ChatPage() {
           "Upload failed with status:",
           response.status,
           "Response:",
-          errorText,
+          errorText
         );
         throw new Error("Failed to process document");
       }
@@ -284,7 +284,7 @@ function ChatPage() {
           content: `⏳ Upload initiated for **${file.name}**. Processing in background... (Task ID: ${taskId})`,
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev.slice(0, -1), pollingMessage]);
+        setMessages(prev => [...prev.slice(0, -1), pollingMessage]);
       } else if (response.ok) {
         // Original flow: Direct response
 
@@ -298,7 +298,7 @@ function ChatPage() {
           timestamp: new Date(),
         };
 
-        setMessages((prev) => [...prev.slice(0, -1), uploadMessage]);
+        setMessages(prev => [...prev.slice(0, -1), uploadMessage]);
 
         // Add file to conversation docs
         if (result.filename) {
@@ -307,7 +307,7 @@ function ChatPage() {
 
         // Update the response ID for this endpoint
         if (result.response_id) {
-          setPreviousResponseIds((prev) => ({
+          setPreviousResponseIds(prev => ({
             ...prev,
             [endpoint]: result.response_id,
           }));
@@ -331,7 +331,7 @@ function ChatPage() {
         content: `❌ Failed to process document. Please try again.`,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+      setMessages(prev => [...prev.slice(0, -1), errorMessage]);
     } finally {
       setIsUploading(false);
       setLoading(false);
@@ -468,7 +468,7 @@ function ChatPage() {
       console.log(
         "Loading conversation with",
         conversationData.messages.length,
-        "messages",
+        "messages"
       );
       // Convert backend message format to frontend Message interface
       const convertedMessages: Message[] = conversationData.messages.map(
@@ -596,7 +596,7 @@ function ChatPage() {
                       ) === "string"
                         ? toolCall.function?.arguments || toolCall.arguments
                         : JSON.stringify(
-                            toolCall.function?.arguments || toolCall.arguments,
+                            toolCall.function?.arguments || toolCall.arguments
                           ),
                     result: toolCall.result,
                     status: "completed",
@@ -615,14 +615,14 @@ function ChatPage() {
           }
 
           return message;
-        },
+        }
       );
 
       setMessages(convertedMessages);
       lastLoadedConversationRef.current = conversationData.response_id;
 
       // Set the previous response ID for this conversation
-      setPreviousResponseIds((prev) => ({
+      setPreviousResponseIds(prev => ({
         ...prev,
         [conversationData.endpoint]: conversationData.response_id,
       }));
@@ -664,7 +664,7 @@ function ChatPage() {
         content: `🔄 Starting upload of **${filename}**...`,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, uploadStartMessage]);
+      setMessages(prev => [...prev, uploadStartMessage]);
     };
 
     const handleFileUploaded = (event: CustomEvent) => {
@@ -682,11 +682,11 @@ function ChatPage() {
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev.slice(0, -1), uploadMessage]);
+      setMessages(prev => [...prev.slice(0, -1), uploadMessage]);
 
       // Update the response ID for this endpoint
       if (result.response_id) {
-        setPreviousResponseIds((prev) => ({
+        setPreviousResponseIds(prev => ({
           ...prev,
           [endpoint]: result.response_id,
         }));
@@ -704,7 +704,7 @@ function ChatPage() {
       console.log(
         "Chat page received file upload error event:",
         filename,
-        error,
+        error
       );
 
       // Replace the last message with error message
@@ -713,48 +713,48 @@ function ChatPage() {
         content: `❌ Upload failed for **${filename}**: ${error}`,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+      setMessages(prev => [...prev.slice(0, -1), errorMessage]);
     };
 
     window.addEventListener(
       "fileUploadStart",
-      handleFileUploadStart as EventListener,
+      handleFileUploadStart as EventListener
     );
     window.addEventListener(
       "fileUploaded",
-      handleFileUploaded as EventListener,
+      handleFileUploaded as EventListener
     );
     window.addEventListener(
       "fileUploadComplete",
-      handleFileUploadComplete as EventListener,
+      handleFileUploadComplete as EventListener
     );
     window.addEventListener(
       "fileUploadError",
-      handleFileUploadError as EventListener,
+      handleFileUploadError as EventListener
     );
 
     return () => {
       window.removeEventListener(
         "fileUploadStart",
-        handleFileUploadStart as EventListener,
+        handleFileUploadStart as EventListener
       );
       window.removeEventListener(
         "fileUploaded",
-        handleFileUploaded as EventListener,
+        handleFileUploaded as EventListener
       );
       window.removeEventListener(
         "fileUploadComplete",
-        handleFileUploadComplete as EventListener,
+        handleFileUploadComplete as EventListener
       );
       window.removeEventListener(
         "fileUploadError",
-        handleFileUploadError as EventListener,
+        handleFileUploadError as EventListener
       );
     };
   }, [endpoint, setPreviousResponseIds]);
 
   const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
-    previousResponseIds[endpoint],
+    previousResponseIds[endpoint]
   );
 
   const handleSSEStream = async (userMessage: Message) => {
@@ -859,7 +859,7 @@ function ChatPage() {
                 console.log(
                   "Received chunk:",
                   chunk.type || chunk.object,
-                  chunk,
+                  chunk
                 );
 
                 // Extract response ID if present
@@ -875,14 +875,14 @@ function ChatPage() {
                   if (chunk.delta.function_call) {
                     console.log(
                       "Function call in delta:",
-                      chunk.delta.function_call,
+                      chunk.delta.function_call
                     );
 
                     // Check if this is a new function call
                     if (chunk.delta.function_call.name) {
                       console.log(
                         "New function call:",
-                        chunk.delta.function_call.name,
+                        chunk.delta.function_call.name
                       );
                       const functionCall: FunctionCall = {
                         name: chunk.delta.function_call.name,
@@ -898,7 +898,7 @@ function ChatPage() {
                     else if (chunk.delta.function_call.arguments) {
                       console.log(
                         "Function call arguments delta:",
-                        chunk.delta.function_call.arguments,
+                        chunk.delta.function_call.arguments
                       );
                       const lastFunctionCall =
                         currentFunctionCalls[currentFunctionCalls.length - 1];
@@ -910,14 +910,14 @@ function ChatPage() {
                           chunk.delta.function_call.arguments;
                         console.log(
                           "Accumulated arguments:",
-                          lastFunctionCall.argumentsString,
+                          lastFunctionCall.argumentsString
                         );
 
                         // Try to parse arguments if they look complete
                         if (lastFunctionCall.argumentsString.includes("}")) {
                           try {
                             const parsed = JSON.parse(
-                              lastFunctionCall.argumentsString,
+                              lastFunctionCall.argumentsString
                             );
                             lastFunctionCall.arguments = parsed;
                             lastFunctionCall.status = "completed";
@@ -925,7 +925,7 @@ function ChatPage() {
                           } catch (e) {
                             console.log(
                               "Arguments not yet complete or invalid JSON:",
-                              e,
+                              e
                             );
                           }
                         }
@@ -958,7 +958,7 @@ function ChatPage() {
                         else if (toolCall.function.arguments) {
                           console.log(
                             "Tool call arguments delta:",
-                            toolCall.function.arguments,
+                            toolCall.function.arguments
                           );
                           const lastFunctionCall =
                             currentFunctionCalls[
@@ -972,7 +972,7 @@ function ChatPage() {
                               toolCall.function.arguments;
                             console.log(
                               "Accumulated tool arguments:",
-                              lastFunctionCall.argumentsString,
+                              lastFunctionCall.argumentsString
                             );
 
                             // Try to parse arguments if they look complete
@@ -981,7 +981,7 @@ function ChatPage() {
                             ) {
                               try {
                                 const parsed = JSON.parse(
-                                  lastFunctionCall.argumentsString,
+                                  lastFunctionCall.argumentsString
                                 );
                                 lastFunctionCall.arguments = parsed;
                                 lastFunctionCall.status = "completed";
@@ -989,7 +989,7 @@ function ChatPage() {
                               } catch (e) {
                                 console.log(
                                   "Tool arguments not yet complete or invalid JSON:",
-                                  e,
+                                  e
                                 );
                               }
                             }
@@ -1009,7 +1009,7 @@ function ChatPage() {
                   if (chunk.delta.finish_reason) {
                     console.log("Finish reason:", chunk.delta.finish_reason);
                     // Mark any pending function calls as completed
-                    currentFunctionCalls.forEach((fc) => {
+                    currentFunctionCalls.forEach(fc => {
                       if (fc.status === "pending" && fc.argumentsString) {
                         try {
                           fc.arguments = JSON.parse(fc.argumentsString);
@@ -1021,7 +1021,7 @@ function ChatPage() {
                           console.log(
                             "Error parsing function call on finish:",
                             fc,
-                            e,
+                            e
                           );
                         }
                       }
@@ -1037,21 +1037,21 @@ function ChatPage() {
                   console.log(
                     "🟢 CREATING function call (added):",
                     chunk.item.id,
-                    chunk.item.tool_name || chunk.item.name,
+                    chunk.item.tool_name || chunk.item.name
                   );
 
                   // Try to find an existing pending call to update (created by earlier deltas)
                   let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id,
+                    fc => fc.id === chunk.item.id
                   );
                   if (!existing) {
                     existing = [...currentFunctionCalls]
                       .reverse()
                       .find(
-                        (fc) =>
+                        fc =>
                           fc.status === "pending" &&
                           !fc.id &&
-                          fc.name === (chunk.item.tool_name || chunk.item.name),
+                          fc.name === (chunk.item.tool_name || chunk.item.name)
                       );
                   }
 
@@ -1064,7 +1064,7 @@ function ChatPage() {
                       chunk.item.inputs || existing.arguments;
                     console.log(
                       "🟢 UPDATED existing pending function call with id:",
-                      existing.id,
+                      existing.id
                     );
                   } else {
                     const functionCall: FunctionCall = {
@@ -1079,10 +1079,10 @@ function ChatPage() {
                     currentFunctionCalls.push(functionCall);
                     console.log(
                       "🟢 Function calls now:",
-                      currentFunctionCalls.map((fc) => ({
+                      currentFunctionCalls.map(fc => ({
                         id: fc.id,
                         name: fc.name,
-                      })),
+                      }))
                     );
                   }
                 }
@@ -1093,7 +1093,7 @@ function ChatPage() {
                 ) {
                   console.log(
                     "Function args delta (Realtime API):",
-                    chunk.delta,
+                    chunk.delta
                   );
                   const lastFunctionCall =
                     currentFunctionCalls[currentFunctionCalls.length - 1];
@@ -1104,7 +1104,7 @@ function ChatPage() {
                     lastFunctionCall.argumentsString += chunk.delta || "";
                     console.log(
                       "Accumulated arguments (Realtime API):",
-                      lastFunctionCall.argumentsString,
+                      lastFunctionCall.argumentsString
                     );
                   }
                 }
@@ -1115,26 +1115,26 @@ function ChatPage() {
                 ) {
                   console.log(
                     "Function args done (Realtime API):",
-                    chunk.arguments,
+                    chunk.arguments
                   );
                   const lastFunctionCall =
                     currentFunctionCalls[currentFunctionCalls.length - 1];
                   if (lastFunctionCall) {
                     try {
                       lastFunctionCall.arguments = JSON.parse(
-                        chunk.arguments || "{}",
+                        chunk.arguments || "{}"
                       );
                       lastFunctionCall.status = "completed";
                       console.log(
                         "Parsed function arguments (Realtime API):",
-                        lastFunctionCall.arguments,
+                        lastFunctionCall.arguments
                       );
                     } catch (e) {
                       lastFunctionCall.arguments = { raw: chunk.arguments };
                       lastFunctionCall.status = "error";
                       console.log(
                         "Error parsing function arguments (Realtime API):",
-                        e,
+                        e
                       );
                     }
                   }
@@ -1148,29 +1148,29 @@ function ChatPage() {
                   console.log(
                     "🔵 UPDATING function call (done):",
                     chunk.item.id,
-                    chunk.item.tool_name || chunk.item.name,
+                    chunk.item.tool_name || chunk.item.name
                   );
                   console.log(
                     "🔵 Looking for existing function calls:",
-                    currentFunctionCalls.map((fc) => ({
+                    currentFunctionCalls.map(fc => ({
                       id: fc.id,
                       name: fc.name,
-                    })),
+                    }))
                   );
 
                   // Find existing function call by ID or name
                   const functionCall = currentFunctionCalls.find(
-                    (fc) =>
+                    fc =>
                       fc.id === chunk.item.id ||
                       fc.name === chunk.item.tool_name ||
-                      fc.name === chunk.item.name,
+                      fc.name === chunk.item.name
                   );
 
                   if (functionCall) {
                     console.log(
                       "🔵 FOUND existing function call, updating:",
                       functionCall.id,
-                      functionCall.name,
+                      functionCall.name
                     );
                     // Update existing function call with completion data
                     functionCall.status =
@@ -1193,7 +1193,7 @@ function ChatPage() {
                       "🔴 WARNING: Could not find existing function call to update:",
                       chunk.item.id,
                       chunk.item.tool_name,
-                      chunk.item.name,
+                      chunk.item.name
                     );
                   }
                 }
@@ -1208,13 +1208,13 @@ function ChatPage() {
 
                   // Find existing function call by ID, or by name/type if ID not available
                   const functionCall = currentFunctionCalls.find(
-                    (fc) =>
+                    fc =>
                       fc.id === chunk.item.id ||
                       fc.name === chunk.item.tool_name ||
                       fc.name === chunk.item.name ||
                       fc.name === chunk.item.type ||
                       fc.name.includes(chunk.item.type.replace("_call", "")) ||
-                      chunk.item.type.includes(fc.name),
+                      chunk.item.type.includes(fc.name)
                   );
 
                   if (functionCall) {
@@ -1258,24 +1258,24 @@ function ChatPage() {
                     "🟡 CREATING tool call (added):",
                     chunk.item.id,
                     chunk.item.tool_name || chunk.item.name,
-                    chunk.item.type,
+                    chunk.item.type
                   );
 
                   // Dedupe by id or pending with same name
                   let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id,
+                    fc => fc.id === chunk.item.id
                   );
                   if (!existing) {
                     existing = [...currentFunctionCalls]
                       .reverse()
                       .find(
-                        (fc) =>
+                        fc =>
                           fc.status === "pending" &&
                           !fc.id &&
                           fc.name ===
                             (chunk.item.tool_name ||
                               chunk.item.name ||
-                              chunk.item.type),
+                              chunk.item.type)
                       );
                   }
 
@@ -1291,7 +1291,7 @@ function ChatPage() {
                       chunk.item.inputs || existing.arguments;
                     console.log(
                       "🟡 UPDATED existing pending tool call with id:",
-                      existing.id,
+                      existing.id
                     );
                   } else {
                     const functionCall = {
@@ -1308,11 +1308,11 @@ function ChatPage() {
                     currentFunctionCalls.push(functionCall);
                     console.log(
                       "🟡 Function calls now:",
-                      currentFunctionCalls.map((fc) => ({
+                      currentFunctionCalls.map(fc => ({
                         id: fc.id,
                         name: fc.name,
                         type: fc.type,
-                      })),
+                      }))
                     );
                   }
                 }
@@ -1406,7 +1406,7 @@ function ChatPage() {
       };
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
-        setMessages((prev) => [...prev, finalMessage]);
+        setMessages(prev => [...prev, finalMessage]);
         setStreamingMessage(null);
         if (previousResponseIds[endpoint]) {
           cancelNudges();
@@ -1419,7 +1419,7 @@ function ChatPage() {
         !controller.signal.aborted &&
         thisStreamId === streamIdRef.current
       ) {
-        setPreviousResponseIds((prev) => ({
+        setPreviousResponseIds(prev => ({
           ...prev,
           [endpoint]: newResponseId,
         }));
@@ -1447,7 +1447,7 @@ function ChatPage() {
           "Sorry, I couldn't connect to the chat service. Please try again.",
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages(prev => [...prev, errorMessage]);
     }
   };
 
@@ -1460,7 +1460,7 @@ function ChatPage() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     setInput("");
     setLoading(true);
     setIsFilterHighlighted(false);
@@ -1526,14 +1526,14 @@ function ChatPage() {
             content: result.response,
             timestamp: new Date(),
           };
-          setMessages((prev) => [...prev, assistantMessage]);
+          setMessages(prev => [...prev, assistantMessage]);
           if (result.response_id) {
             cancelNudges();
           }
 
           // Store the response ID if present for this endpoint
           if (result.response_id) {
-            setPreviousResponseIds((prev) => ({
+            setPreviousResponseIds(prev => ({
               ...prev,
               [endpoint]: result.response_id,
             }));
@@ -1554,7 +1554,7 @@ function ChatPage() {
             content: "Sorry, I encountered an error. Please try again.",
             timestamp: new Date(),
           };
-          setMessages((prev) => [...prev, errorMessage]);
+          setMessages(prev => [...prev, errorMessage]);
         }
       } catch (error) {
         console.error("Chat error:", error);
@@ -1564,7 +1564,7 @@ function ChatPage() {
             "Sorry, I couldn't connect to the chat service. Please try again.",
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages(prev => [...prev, errorMessage]);
       }
     }
 
@@ -1577,7 +1577,7 @@ function ChatPage() {
   };
 
   const toggleFunctionCall = (functionCallId: string) => {
-    setExpandedFunctionCalls((prev) => {
+    setExpandedFunctionCalls(prev => {
       const newSet = new Set(prev);
       if (newSet.has(functionCallId)) {
         newSet.delete(functionCallId);
@@ -1590,7 +1590,7 @@ function ChatPage() {
 
   const handleForkConversation = (
     messageIndex: number,
-    event?: React.MouseEvent,
+    event?: React.MouseEvent
   ) => {
     // Prevent any default behavior and stop event propagation
     if (event) {
@@ -1634,7 +1634,7 @@ function ChatPage() {
 
       // Set the response_id we want to continue from as the previous response ID
       // This tells the backend to continue the conversation from this point
-      setPreviousResponseIds((prev) => ({
+      setPreviousResponseIds(prev => ({
         ...prev,
         [endpoint]: responseIdToForkFrom,
       }));
@@ -1655,7 +1655,7 @@ function ChatPage() {
 
   const renderFunctionCalls = (
     functionCalls: FunctionCall[],
-    messageIndex?: number,
+    messageIndex?: number
   ) => {
     if (!functionCalls || functionCalls.length === 0) return null;
 
@@ -1905,8 +1905,8 @@ function ChatPage() {
     }
 
     if (isFilterDropdownOpen) {
-      const filteredFilters = availableFilters.filter((filter) =>
-        filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase()),
+      const filteredFilters = availableFilters.filter(filter =>
+        filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase())
       );
 
       if (e.key === "Escape") {
@@ -1923,16 +1923,16 @@ function ChatPage() {
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedFilterIndex((prev) =>
-          prev < filteredFilters.length - 1 ? prev + 1 : 0,
+        setSelectedFilterIndex(prev =>
+          prev < filteredFilters.length - 1 ? prev + 1 : 0
         );
         return;
       }
 
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedFilterIndex((prev) =>
-          prev > 0 ? prev - 1 : filteredFilters.length - 1,
+        setSelectedFilterIndex(prev =>
+          prev > 0 ? prev - 1 : filteredFilters.length - 1
         );
         return;
       }
@@ -2029,7 +2029,7 @@ function ChatPage() {
 
       // Get button position for popover anchoring
       const button = document.querySelector(
-        "[data-filter-button]",
+        "[data-filter-button]"
       ) as HTMLElement;
       if (button) {
         const rect = button.getBoundingClientRect();
@@ -2046,7 +2046,7 @@ function ChatPage() {
 
   return (
     <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
+      className={`fixed inset-0 md:left-72 top-[40px] flex flex-col transition-all duration-300 container mx-auto ${
         isMenuOpen && isPanelOpen
           ? "md:right-[704px]" // Both open: 384px (menu) + 320px (KF panel)
           : isMenuOpen
@@ -2164,14 +2164,14 @@ function ChatPage() {
                         <div className="flex-1 min-w-0">
                           {renderFunctionCalls(
                             message.functionCalls || [],
-                            index,
+                            index
                           )}
                           <MarkdownRenderer chatMessage={message.content} />
                         </div>
                         {endpoint === "chat" && (
                           <div className="flex-shrink-0 ml-2">
                             <button
-                              onClick={(e) => handleForkConversation(index, e)}
+                              onClick={e => handleForkConversation(index, e)}
                               className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
                               title="Fork conversation from here"
                             >
@@ -2193,7 +2193,7 @@ function ChatPage() {
                     <div className="flex-1">
                       {renderFunctionCalls(
                         streamingMessage.functionCalls,
-                        messages.length,
+                        messages.length
                       )}
                       <MarkdownRenderer
                         chatMessage={streamingMessage.content}
@@ -2235,8 +2235,8 @@ function ChatPage() {
       )}
 
       {/* Input Area - Fixed at bottom */}
-      <div className="flex-shrink-0 p-6 pb-8 pt-4 flex justify-center">
-        <div className="w-full max-w-[75%]">
+      <div className="pb-8 pt-4 flex px-6">
+        <div className="w-full">
           <form onSubmit={handleSubmit} className="relative">
             <div className="relative w-full bg-muted/20 rounded-lg border border-border/50 focus-within:ring-1 focus-within:ring-ring">
               {selectedFilter && (
@@ -2260,29 +2260,31 @@ function ChatPage() {
                   </span>
                 </div>
               )}
-              <div className="relative" style={{height: `${textareaHeight + 60}px`}}>
-              <TextareaAutosize
-                ref={inputRef}
-                value={input}
-                onChange={onChange}
-                onKeyDown={handleKeyDown}
-                onHeightChange={(height) => setTextareaHeight(height)}
-                maxRows={7}
-                minRows={2}
-                placeholder="Type to ask a question..."
-                disabled={loading}
-                className={`w-full bg-transparent px-4 ${
-                  selectedFilter ? "pt-2" : "pt-4"
-                } focus-visible:outline-none resize-none`}
-                rows={2}
-              />
+              <div
+                className="relative"
+                style={{ height: `${textareaHeight + 60}px` }}
+              >
+                <TextareaAutosize
+                  ref={inputRef}
+                  value={input}
+                  onChange={onChange}
+                  onKeyDown={handleKeyDown}
+                  onHeightChange={height => setTextareaHeight(height)}
+                  maxRows={7}
+                  minRows={2}
+                  placeholder="Type to ask a question..."
+                  disabled={loading}
+                  className={`w-full bg-transparent px-4 ${
+                    selectedFilter ? "pt-2" : "pt-4"
+                  } focus-visible:outline-none resize-none`}
+                  rows={2}
+                />
                 {/* Safe area at bottom for buttons */}
-                <div 
+                <div
                   className="absolute bottom-0 left-0 right-0 bg-transparent pointer-events-none"
-                  style={{ height: '60px' }}
+                  style={{ height: "60px" }}
                 />
               </div>
-              
             </div>
             <input
               ref={fileInputRef}
@@ -2296,7 +2298,7 @@ function ChatPage() {
               variant="outline"
               size="iconSm"
               className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
-              onMouseDown={(e) => {
+              onMouseDown={e => {
                 e.preventDefault();
               }}
               onClick={onAtClick}
@@ -2306,7 +2308,7 @@ function ChatPage() {
             </Button>
             <Popover
               open={isFilterDropdownOpen}
-              onOpenChange={(open) => {
+              onOpenChange={open => {
                 setIsFilterDropdownOpen(open);
               }}
             >
@@ -2331,7 +2333,7 @@ function ChatPage() {
                 align="start"
                 sideOffset={6}
                 alignOffset={-18}
-                onOpenAutoFocus={(e) => {
+                onOpenAutoFocus={e => {
                   // Prevent auto focus on the popover content
                   e.preventDefault();
                   // Keep focus on the input
@@ -2364,10 +2366,10 @@ function ChatPage() {
                         </button>
                       )}
                       {availableFilters
-                        .filter((filter) =>
+                        .filter(filter =>
                           filter.name
                             .toLowerCase()
-                            .includes(filterSearchTerm.toLowerCase()),
+                            .includes(filterSearchTerm.toLowerCase())
                         )
                         .map((filter, index) => (
                           <button
@@ -2393,10 +2395,10 @@ function ChatPage() {
                             )}
                           </button>
                         ))}
-                      {availableFilters.filter((filter) =>
+                      {availableFilters.filter(filter =>
                         filter.name
                           .toLowerCase()
-                          .includes(filterSearchTerm.toLowerCase()),
+                          .includes(filterSearchTerm.toLowerCase())
                       ).length === 0 &&
                         filterSearchTerm && (
                           <div className="px-2 py-3 text-sm text-muted-foreground">

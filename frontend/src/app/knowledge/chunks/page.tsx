@@ -60,7 +60,7 @@ function ChunksPageContent() {
       setChunksFilteredByQuery(chunks);
     } else {
       setChunksFilteredByQuery(
-        chunks.filter((chunk) =>
+        chunks.filter(chunk =>
           chunk.text.toLowerCase().includes(queryInputText.toLowerCase())
         )
       );
@@ -103,7 +103,7 @@ function ChunksPageContent() {
 
   const handleChunkCardCheckboxChange = useCallback(
     (index: number) => {
-      setSelectedChunks((prevSelected) => {
+      setSelectedChunks(prevSelected => {
         const newSelected = new Set(prevSelected);
         if (newSelected.has(index)) {
           newSelected.delete(index);
@@ -132,7 +132,7 @@ function ChunksPageContent() {
 
   return (
     <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-row transition-all duration-300 ${
+      className={`fixed inset-0 md:left-72 top-[40px] flex flex-row transition-all duration-300 container mx-auto ${
         isMenuOpen && isPanelOpen
           ? "md:right-[704px]"
           : // Both open: 384px (menu) + 320px (KF panel)
@@ -166,7 +166,7 @@ function ChunksPageContent() {
                 type="text"
                 defaultValue={parsedFilterData?.query}
                 value={queryInputText}
-                onChange={(e) => setQueryInputText(e.target.value)}
+                onChange={e => setQueryInputText(e.target.value)}
                 placeholder="Search chunks..."
               />
             </div>
@@ -174,7 +174,7 @@ function ChunksPageContent() {
               <Checkbox
                 id="selectAllChunks"
                 checked={selectAll}
-                onCheckedChange={(handleSelectAll) =>
+                onCheckedChange={handleSelectAll =>
                   setSelectAll(!!handleSelectAll)
                 }
               />

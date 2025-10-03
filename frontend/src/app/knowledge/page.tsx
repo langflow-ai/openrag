@@ -64,7 +64,7 @@ function SearchPage() {
   };
 
   // Convert TaskFiles to File format and merge with backend results
-  const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
+  const taskFilesAsFiles: File[] = taskFiles.map(taskFile => {
     return {
       filename: taskFile.filename,
       mimetype: taskFile.mimetype,
@@ -77,11 +77,11 @@ function SearchPage() {
 
   const backendFiles = data as File[];
 
-  const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
+  const filteredTaskFiles = taskFilesAsFiles.filter(taskFile => {
     return (
       taskFile.status !== "active" &&
       !backendFiles.some(
-        (backendFile) => backendFile.filename === taskFile.filename
+        backendFile => backendFile.filename === taskFile.filename
       )
     );
   });
@@ -123,7 +123,7 @@ function SearchPage() {
     {
       field: "size",
       headerName: "Size",
-      valueFormatter: (params) =>
+      valueFormatter: params =>
         params.value ? `${Math.round(params.value / 1024)} KB` : "-",
     },
     {
@@ -133,18 +133,17 @@ function SearchPage() {
     {
       field: "owner",
       headerName: "Owner",
-      valueFormatter: (params) =>
+      valueFormatter: params =>
         params.data?.owner_name || params.data?.owner_email || "—",
     },
     {
       field: "chunkCount",
       headerName: "Chunks",
-      valueFormatter: (params) => params.data?.chunkCount?.toString() || "-",
+      valueFormatter: params => params.data?.chunkCount?.toString() || "-",
     },
     {
       field: "avgScore",
       headerName: "Avg score",
-      initialFlex: 0.5,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
           <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
@@ -201,7 +200,7 @@ function SearchPage() {
 
     try {
       // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map((row) =>
+      const deletePromises = selectedRows.map(row =>
         deleteDocumentMutation.mutateAsync({ filename: row.filename })
       );
 
@@ -230,7 +229,7 @@ function SearchPage() {
 
   return (
     <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
+      className={`fixed inset-0 md:left-72 top-[40px] flex flex-col transition-all duration-300 container mx-auto ${
         isMenuOpen && isPanelOpen
           ? "md:right-[704px]"
           : // Both open: 384px (menu) + 320px (KF panel)
@@ -244,7 +243,7 @@ function SearchPage() {
       }`}
     >
       <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 h-10">
           <h2 className="text-lg font-semibold">Project Knowledge</h2>
           <KnowledgeDropdown variant="button" />
         </div>
@@ -312,30 +311,32 @@ function SearchPage() {
             )}
           </form>
         </div>
-        <AgGridReact
-          className="w-full overflow-auto"
-          columnDefs={columnDefs}
-          defaultColDef={defaultColDef}
-          loading={isFetching}
-          ref={gridRef}
-          rowData={fileResults}
-          rowSelection="multiple"
-          rowMultiSelectWithClick={false}
-          suppressRowClickSelection={true}
-          getRowId={(params) => params.data.filename}
-          domLayout="normal"
-          onSelectionChanged={onSelectionChanged}
-          noRowsOverlayComponent={() => (
-            <div className="text-center pb-[45px]">
-              <div className="text-lg text-primary font-semibold">
-                No knowledge
+        <div className="flex-1 min-h-0 max-h-[700px] overflow-hidden h-full">
+          <AgGridReact
+            className="h-full w-full"
+            columnDefs={columnDefs}
+            defaultColDef={defaultColDef}
+            loading={isFetching}
+            ref={gridRef}
+            rowData={fileResults}
+            rowSelection="multiple"
+            rowMultiSelectWithClick={false}
+            suppressRowClickSelection={true}
+            getRowId={params => params.data.filename}
+            domLayout="normal"
+            onSelectionChanged={onSelectionChanged}
+            noRowsOverlayComponent={() => (
+              <div className="text-center pb-[45px]">
+                <div className="text-lg text-primary font-semibold">
+                  No knowledge
+                </div>
+                <div className="text-sm mt-1 text-muted-foreground">
+                  Add files from local or your preferred cloud.
+                </div>
               </div>
-              <div className="text-sm mt-1 text-muted-foreground">
-                Add files from local or your preferred cloud.
-              </div>
-            </div>
-          )}
-        />
+            )}
+          />
+        </div>
       </div>
 
       {/* Bulk Delete Confirmation Dialog */}
@@ -350,7 +351,7 @@ function SearchPage() {
         }? This will remove all chunks and data associated with these documents. This action cannot be undone.
 
 Documents to be deleted:
-${selectedRows.map((row) => `• ${row.filename}`).join("\n")}`}
+${selectedRows.map(row => `• ${row.filename}`).join("\n")}`}
         confirmText="Delete All"
         onConfirm={handleBulkDelete}
         isLoading={deleteDocumentMutation.isPending}
