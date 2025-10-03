@@ -1,94 +1,100 @@
-"use client"
+"use client";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { useAuth } from "@/contexts/auth-context"
-import { LogIn, LogOut, User, Moon, Sun, ChevronsUpDown } from "lucide-react"
-import { useTheme } from "next-themes"
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/contexts/auth-context";
+import { LogOut, User, Moon, Sun, ChevronsUpDown } from "lucide-react";
+import { useTheme } from "next-themes";
+import ThemeButtons from "./ui/buttonTheme";
 
 export function UserNav() {
-  const { user, isLoading, isAuthenticated, isNoAuthMode, login, logout } = useAuth()
-  const { theme, setTheme } = useTheme()
+  const { user, isLoading, isAuthenticated, isNoAuthMode, login, logout } =
+    useAuth();
+  const { theme, setTheme } = useTheme();
 
   if (isLoading) {
-    return (
-      <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
-    )
+    return <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />;
   }
 
   // In no-auth mode, show a simple theme switcher instead of auth UI
   if (isNoAuthMode) {
     return (
-      <Button 
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        variant="outline" 
-        size="sm"
-        className="flex items-center gap-2"
+      <button
+        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        className="flex justify-center items-center gap-2 h-8 w-8 mr-2 rounded-md  hover:bg-muted rounded-lg "
       >
-        {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      </Button>
-    )
+        {theme === "dark" ? (
+          <Sun size={16} className="text-muted-foreground" />
+        ) : (
+          <Moon size={16} className="text-muted-foreground" />
+        )}
+      </button>
+    );
   }
 
   if (!isAuthenticated) {
     return (
-      <Button 
-        onClick={login} 
-        variant="outline" 
-        size="sm"
-        className="flex items-center gap-2"
+      <button
+        onClick={login}
+        className="flex items-center gap-2 h-7 px-3 mr-2 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] line-height-[16px]"
       >
-        <LogIn className="h-4 w-4" />
         Sign In
-      </Button>
-    )
+      </button>
+    );
   }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="flex items-center gap-1 h-8 px-1 rounded-full">
-          <Avatar className="h-6 w-6">
-            <AvatarImage src={user?.picture} alt={user?.name} />
-            <AvatarFallback className="text-xs">
-              {user?.name ? user.name.charAt(0).toUpperCase() : <User className="h-3 w-3" />}
+        <button className="hover:bg-accent rounded-lg pl-[4px] p-[3px] flex items-center justify-center">
+          <Avatar className="rounded-md w-7 h-7">
+            <AvatarImage
+              width={16}
+              height={16}
+              src={user?.picture}
+              alt={user?.name}
+              className="rounded-md"
+            />
+            <AvatarFallback className="text-xs rounded-md">
+              {user?.name ? (
+                user.name.charAt(0).toUpperCase()
+              ) : (
+                <User className="h-3 w-3" />
+              )}
             </AvatarFallback>
           </Avatar>
-          <ChevronsUpDown className="h-3 w-3 text-muted-foreground" />
-        </Button>
+          <ChevronsUpDown size={16} className="text-muted-foreground mx-2" />
+        </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
+      <DropdownMenuContent className="w-56 p-0" align="end" forceMount>
         <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col space-y-1">
+          <div className="flex flex-col space-y-2 px-1 py-1">
             <p className="text-sm font-medium leading-none">{user?.name}</p>
             <p className="text-xs leading-none text-muted-foreground">
               {user?.email}
             </p>
           </div>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
-          {theme === "light" ? (
-            <Moon className="mr-2 h-4 w-4" />
-          ) : (
-            <Sun className="mr-2 h-4 w-4" />
-          )}
-          <span>Toggle Theme</span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={logout} className="text-red-600 focus:text-red-600">
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>Log out</span>
-        </DropdownMenuItem>
+        <DropdownMenuSeparator className="m-0" />
+        <div className="flex items-center justify-between pl-3 pr-2 h-9">
+          <span className="text-sm">Theme</span>
+          <ThemeButtons />
+        </div>
+        <DropdownMenuSeparator className="m-0" />
+        <button
+          onClick={logout}
+          className="flex items-center hover:bg-muted w-full h-9 px-3"
+        >
+          <LogOut className="mr-2 h-4 w-4 text-muted-foreground" />
+          <span className="text-sm">Logout</span>
+        </button>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
-} 
+  );
+}
