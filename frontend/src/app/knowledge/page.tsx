@@ -1,10 +1,15 @@
 "use client";
 
-import type { ColDef } from "ag-grid-community";
+import type { ColDef, GetRowIdParams } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import { Building2, Cloud, HardDrive, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, useCallback, useRef, useState } from "react";
+import {
+	type ChangeEvent,
+	useCallback,
+	useRef,
+	useState,
+} from "react";
 import { SiGoogledrive } from "react-icons/si";
 import { TbBrandOnedrive } from "react-icons/tb";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
@@ -54,15 +59,10 @@ function SearchPage() {
 
 	const deleteDocumentMutation = useDeleteDocument();
 
-	const { data = [], isFetching } = useGetSearchQuery(
+	const { data: searchData = [], isFetching } = useGetSearchQuery(
 		parsedFilterData?.query || "*",
 		parsedFilterData,
 	);
-
-	const handleTableSearch = (e: ChangeEvent<HTMLInputElement>) => {
-		gridRef.current?.api.setGridOption("quickFilterText", e.target.value);
-	};
-
 	// Convert TaskFiles to File format and merge with backend results
 	const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
 		return {
@@ -75,18 +75,42 @@ function SearchPage() {
 		};
 	});
 
-	const backendFiles = (data as File[]).filter((file) => !taskFilesAsFiles.some((taskFile) => taskFile.filename === file.filename && taskFile.status === "processing"));
+	// Create a map of task files by filename for quick lookup
+	const taskFileMap = new Map(
+		taskFilesAsFiles.map((file) => [file.filename, file]),
+	);
+
+	// Override backend files with task file status if they exist
+	const backendFiles = (searchData as File[])
+		.map((file) => {
+			const taskFile = taskFileMap.get(file.filename);
+			if (taskFile) {
+				// Override backend file with task file data (includes status)
+				return { ...file, ...taskFile };
+			}
+			return file;
+		})
+		.filter((file) => {
+			// Only filter out files that are currently processing AND in taskFiles
+			const taskFile = taskFileMap.get(file.filename);
+			return !taskFile || taskFile.status !== "processing";
+		});
 
 	const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
 		return (
 			taskFile.status !== "active" &&
 			!backendFiles.some(
-				(backendFile) => backendFile.filename === taskFile.filename,)
+				(backendFile) => backendFile.filename === taskFile.filename,
+			)
 		);
 	});
 
 	// Combine task files first, then backend files
 	const fileResults = [...backendFiles, ...filteredTaskFiles];
+
+	const handleTableSearch = (e: ChangeEvent<HTMLInputElement>) => {
+		gridRef.current?.api.setGridOption("quickFilterText", e.target.value);
+	};
 
 	const gridRef = useRef<AgGridReact>(null);
 
@@ -94,41 +118,48 @@ function SearchPage() {
 		{
 			field: "filename",
 			headerName: "Source",
-			checkboxSelection: (data) => (data?.data?.status || "active") === "active",
+			checkboxSelection: (params: CustomCellRendererProps<File>) =>
+				(params?.data?.status || "active") === "active",
 			headerCheckboxSelection: true,
 			initialFlex: 2,
 			minWidth: 220,
 			cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
+				// Read status directly from data on each render
+				const status = data?.status || "active";
+				const isActive = status === "active";
+				console.log(data?.filename, status, "a");
 				return (
-          <div className="flex items-center overflow-hidden w-full">{((data?.status || "active") !== "active") && 
-            <div className="min-w-7"></div>
-          }
-					<button
-						type="button"
-						className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors text-left flex-1 overflow-hidden"
-						onClick={() => {
-              if ((data?.status || "active") !== "active") {
-                return;
-              }
-							router.push(
-								`/knowledge/chunks?filename=${encodeURIComponent(
-									data?.filename ?? "",
-								)}`,
-							);
-						}}
-					>
-						{getSourceIcon(data?.connector_type)}
-						<span className="font-medium text-foreground truncate">
-							{value}
-						</span>
-					</button></div>
+					<div className="flex items-center overflow-hidden w-full">
+						<div
+							className={`transition-opacity duration-200 ${isActive ? "w-0" : "w-7"}`}
+						></div>
+						<button
+							type="button"
+							className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors text-left flex-1 overflow-hidden"
+							onClick={() => {
+								if (!isActive) {
+									return;
+								}
+								router.push(
+									`/knowledge/chunks?filename=${encodeURIComponent(
+										data?.filename ?? "",
+									)}`,
+								);
+							}}
+						>
+							{getSourceIcon(data?.connector_type)}
+							<span className="font-medium text-foreground truncate">
+								{value}
+							</span>
+						</button>
+					</div>
 				);
 			},
 		},
 		{
 			field: "size",
 			headerName: "Size",
-			valueFormatter: (params) =>
+			valueFormatter: (params: CustomCellRendererProps<File>) =>
 				params.value ? `${Math.round(params.value / 1024)} KB` : "-",
 		},
 		{
@@ -138,13 +169,13 @@ function SearchPage() {
 		{
 			field: "owner",
 			headerName: "Owner",
-			valueFormatter: (params) =>
+			valueFormatter: (params: CustomCellRendererProps<File>) =>
 				params.data?.owner_name || params.data?.owner_email || "—",
 		},
 		{
 			field: "chunkCount",
 			headerName: "Chunks",
-			valueFormatter: (params) => params.data?.chunkCount?.toString() || "-",
+			valueFormatter: (params: CustomCellRendererProps<File>) => params.data?.chunkCount?.toString() || "-",
 		},
 		{
 			field: "avgScore",
@@ -162,6 +193,7 @@ function SearchPage() {
 			field: "status",
 			headerName: "Status",
 			cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+				console.log(data?.filename, data?.status, "b");
 				// Default to 'active' status if no status is provided
 				const status = data?.status || "active";
 				return <StatusBadge status={status} />;
@@ -188,7 +220,7 @@ function SearchPage() {
 			resizable: false,
 			sortable: false,
 			initialFlex: 0,
-		}
+		},
 	];
 
 	const defaultColDef: ColDef<File> = {
@@ -323,7 +355,7 @@ function SearchPage() {
 				</div>
 				<AgGridReact
 					className="w-full overflow-auto"
-					columnDefs={columnDefs}
+					columnDefs={columnDefs as ColDef<File>[]}
 					defaultColDef={defaultColDef}
 					loading={isFetching}
 					ref={gridRef}
@@ -331,7 +363,7 @@ function SearchPage() {
 					rowSelection="multiple"
 					rowMultiSelectWithClick={false}
 					suppressRowClickSelection={true}
-					getRowId={(params) => params.data.filename}
+					getRowId={(params: GetRowIdParams<File>) => params.data?.filename}
 					domLayout="normal"
 					onSelectionChanged={onSelectionChanged}
 					noRowsOverlayComponent={() => (
