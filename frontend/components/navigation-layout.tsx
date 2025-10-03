@@ -1,7 +1,10 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useGetConversationsQuery, type ChatConversation } from "@/app/api/queries/useGetConversationsQuery";
+import {
+  useGetConversationsQuery,
+  type ChatConversation,
+} from "@/app/api/queries/useGetConversationsQuery";
 import { KnowledgeFilterDropdown } from "@/components/knowledge-filter-dropdown";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Navigation } from "@/components/navigation";
