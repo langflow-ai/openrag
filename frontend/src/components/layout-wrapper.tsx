@@ -12,6 +12,7 @@ import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import Logo from "@/components/logo/logo";
 import { Navigation } from "@/components/navigation";
 import { TaskNotificationMenu } from "@/components/task-notification-menu";
+import { Button } from "@/components/ui/button";
 import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/contexts/auth-context";
 import { useChat } from "@/contexts/chat-context";
@@ -34,7 +35,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     refreshConversations,
     startNewConversation,
   } = useChat();
-  const { isLoading: isSettingsLoading } = useGetSettingsQuery({
+  const { isLoading: isSettingsLoading, data: settings } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
   const {
@@ -102,7 +103,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
     <div className="h-full relative">
-      <DoclingHealthBanner className="w-full px-6 pt-2" />
+      <DoclingHealthBanner className="w-full pt-2" />
       <header className="header-arrangement bg-background sticky top-0 z-50 h-10">
         <div className="header-start-display px-[16px]">
           {/* Logo/Title */}
