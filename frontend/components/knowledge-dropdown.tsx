@@ -3,10 +3,10 @@
 import {
   ChevronDown,
   Cloud,
+  File,
   FolderOpen,
   Loader2,
   PlugZap,
-  Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -23,6 +23,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
+import GoogleDriveIcon from "@/app/settings/icons/google-drive-icon";
+import SharePointIcon from "@/app/settings/icons/share-point-icon";
+import OneDriveIcon from "@/app/settings/icons/one-drive-icon";
 
 export function KnowledgeDropdown() {
   const { addTask } = useTask();
@@ -47,6 +50,15 @@ export function KnowledgeDropdown() {
   }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const connectorIconMap: Record<
+    string,
+    React.ComponentType<{ className?: string }>
+  > = {
+    google_drive: GoogleDriveIcon,
+    sharepoint: SharePointIcon,
+    onedrive: OneDriveIcon,
+  };
 
   // Check AWS availability and cloud connectors on mount
   useEffect(() => {
@@ -368,7 +380,7 @@ export function KnowledgeDropdown() {
     .filter(([, info]) => info.available)
     .map(([type, info]) => ({
       label: info.name,
-      icon: PlugZap,
+      icon: connectorIconMap[type] || PlugZap,
       onClick: async () => {
         setIsOpen(false);
         if (info.connected && info.hasToken) {
@@ -395,7 +407,7 @@ export function KnowledgeDropdown() {
   const menuItems = [
     {
       label: "Add File",
-      icon: Upload,
+      icon: File,
       onClick: handleFileUpload,
     },
     {

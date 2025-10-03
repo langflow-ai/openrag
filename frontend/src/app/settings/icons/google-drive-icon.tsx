@@ -1,10 +1,11 @@
-const GoogleDriveIcon = () => (
+const GoogleDriveIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="18"
     height="16"
     viewBox="0 0 18 16"
     fill="none"
+    className={className}
   >
     <path
       d="M2.03338 13.2368L2.75732 14.4872C2.90774 14.7504 3.12398 14.9573 3.37783 15.1077L5.9633 10.6325H0.792358C0.792358 10.9239 0.867572 11.2154 1.018 11.4786L2.03338 13.2368Z"
