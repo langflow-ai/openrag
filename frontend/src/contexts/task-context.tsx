@@ -43,6 +43,8 @@ interface TaskContextType {
   isFetching: boolean;
   isMenuOpen: boolean;
   toggleMenu: () => void;
+  isRecentTasksExpanded: boolean;
+  setRecentTasksExpanded: (expanded: boolean) => void;
   // React Query states
   isLoading: boolean;
   error: Error | null;
@@ -53,6 +55,7 @@ const TaskContext = createContext<TaskContextType | undefined>(undefined);
 export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [files, setFiles] = useState<TaskFile[]>([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isRecentTasksExpanded, setIsRecentTasksExpanded] = useState(false);
   const previousTasksRef = useRef<Task[]>([]);
   const { isAuthenticated, isNoAuthMode } = useAuth();
 
@@ -220,7 +223,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             description,
             action: {
               label: "View",
-              onClick: () => setIsMenuOpen(true),
+              onClick: () => {
+                setIsMenuOpen(true);
+                setIsRecentTasksExpanded(true);
+              },
             },
           });
           setTimeout(() => {
@@ -302,6 +308,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     isFetching,
     isMenuOpen,
     toggleMenu,
+    isRecentTasksExpanded,
+    setRecentTasksExpanded: setIsRecentTasksExpanded,
     isLoading,
     error,
   };
