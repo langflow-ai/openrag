@@ -621,7 +621,12 @@ class LangflowFileProcessor(TaskProcessor):
                 tweaks=final_tweaks,
                 settings=self.settings,
                 jwt_token=effective_jwt,
-                delete_after_ingest=self.delete_after_ingest
+                delete_after_ingest=self.delete_after_ingest,
+                owner=self.owner_user_id,
+                owner_name=self.owner_name,
+                owner_email=self.owner_email,
+                connector_type="local",
+
             )
 
             # Update task with success
