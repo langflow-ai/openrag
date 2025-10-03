@@ -142,6 +142,14 @@ async def langflow_upload_ingest_task(
             )
 
             # Create langflow upload task
+            print(f"tweaks: {tweaks}")
+            print(f"settings: {settings}")
+            print(f"jwt_token: {jwt_token}")
+            print(f"user_name: {user_name}")
+            print(f"user_email: {user_email}")
+            print(f"session_id: {session_id}")
+            print(f"delete_after_ingest: {delete_after_ingest}")
+            print(f"temp_file_paths: {temp_file_paths}")
             task_id = await task_service.create_langflow_upload_task(
                 user_id=user_id,
                 file_paths=temp_file_paths,
