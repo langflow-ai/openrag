@@ -59,7 +59,6 @@ export class GoogleDriveHandler {
 
       const picker = new window.google.picker.PickerBuilder()
         .addView(docsView)
-        .addView(window.google.picker.ViewId.FOLDERS)
         .setOAuthToken(this.accessToken)
         .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
         .setTitle("Select files or folders from Google Drive")
