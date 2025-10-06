@@ -1,11 +1,16 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
-import { FileText, Folder, Trash } from "lucide-react";
+import { FileText, Folder, Trash2 } from "lucide-react";
 import { CloudFile } from "./types";
+import GoogleDriveIcon from "@/app/settings/icons/google-drive-icon";
+import SharePointIcon from "@/app/settings/icons/share-point-icon";
+import OneDriveIcon from "@/app/settings/icons/one-drive-icon";
+import { Button } from "@/components/ui/button";
 
 interface FileItemProps {
+  provider: string;
   file: CloudFile;
+  shouldDisableActions: boolean;
   onRemove: (fileId: string) => void;
 }
 
@@ -41,27 +46,43 @@ const formatFileSize = (bytes?: number) => {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
 };
 
-export const FileItem = ({ file, onRemove }: FileItemProps) => (
+const getProviderIcon = (provider: string) => {
+  switch (provider) {
+    case "google_drive":
+      return <GoogleDriveIcon />;
+    case "onedrive":
+      return <OneDriveIcon />;
+    case "sharepoint":
+      return <SharePointIcon />;
+    default:
+      return <FileText className="h-6 w-6" />;
+  }
+};
+
+export const FileItem = ({ file, onRemove, provider }: FileItemProps) => (
   <div
     key={file.id}
-    className="flex items-center justify-between p-2 rounded-md text-xs"
+    className="flex items-center justify-between p-1.5 rounded-md text-xs"
   >
     <div className="flex items-center gap-2 flex-1 min-w-0">
-      {getFileIcon(file.mimeType)}
+      {provider ? getProviderIcon(provider) : getFileIcon(file.mimeType)}
       <span className="truncate font-medium text-sm mr-2">{file.name}</span>
-      <Badge variant="secondary" className="text-xs px-1 py-0.5 h-auto">
+      <span className="text-sm text-muted-foreground">
         {getMimeTypeLabel(file.mimeType)}
-      </Badge>
+      </span>
     </div>
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1">
       <span className="text-xs text-muted-foreground mr-4" title="file size">
         {formatFileSize(file.size) || "—"}
       </span>
-
-      <Trash
-        className="text-muted-foreground w-5 h-5 cursor-pointer hover:text-destructive"
+      <Button
+        className="text-muted-foreground  hover:text-destructive"
+        size="icon"
+        variant="ghost"
         onClick={() => onRemove(file.id)}
-      />
+      >
+        <Trash2 size={16} />
+      </Button>
     </div>
   </div>
 );
