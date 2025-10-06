@@ -14,19 +14,19 @@ import { Label } from "@/components/ui/label";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import {
-	type ChunkResult,
-	type File,
-	useGetSearchQuery,
+  type ChunkResult,
+  type File,
+  useGetSearchQuery,
 } from "../../api/queries/useGetSearchQuery";
 // import { Label } from "@/components/ui/label";
 // import { Checkbox } from "@/components/ui/checkbox";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 
 const getFileTypeLabel = (mimetype: string) => {
-	if (mimetype === "application/pdf") return "PDF";
-	if (mimetype === "text/plain") return "Text";
-	if (mimetype === "application/msword") return "Word Document";
-	return "Unknown";
+  if (mimetype === "application/pdf") return "PDF";
+  if (mimetype === "text/plain") return "Text";
+  if (mimetype === "application/msword") return "Word Document";
+  return "Unknown";
 };
 
 function ChunksPageContent() {
@@ -43,13 +43,13 @@ function ChunksPageContent() {
     number | null
   >(null);
 
-	// Calculate average chunk length
-	const averageChunkLength = useMemo(
-		() =>
-			chunks.reduce((acc, chunk) => acc + chunk.text.length, 0) /
-				chunks.length || 0,
-		[chunks],
-	);
+  // Calculate average chunk length
+  const averageChunkLength = useMemo(
+    () =>
+      chunks.reduce((acc, chunk) => acc + chunk.text.length, 0) /
+        chunks.length || 0,
+    [chunks]
+  );
 
   // const [selectAll, setSelectAll] = useState(false);
 
@@ -59,70 +59,70 @@ function ChunksPageContent() {
     parsedFilterData
   );
 
-	const handleCopy = useCallback((text: string, index: number) => {
-		// Trim whitespace and remove new lines/tabs for cleaner copy
-		navigator.clipboard.writeText(text.trim().replace(/[\n\r\t]/gm, ""));
-		setActiveCopiedChunkIndex(index);
-		setTimeout(() => setActiveCopiedChunkIndex(null), 10 * 1000); // 10 seconds
-	}, []);
+  const handleCopy = useCallback((text: string, index: number) => {
+    // Trim whitespace and remove new lines/tabs for cleaner copy
+    navigator.clipboard.writeText(text.trim().replace(/[\n\r\t]/gm, ""));
+    setActiveCopiedChunkIndex(index);
+    setTimeout(() => setActiveCopiedChunkIndex(null), 10 * 1000); // 10 seconds
+  }, []);
 
-	const fileData = (data as File[]).find(
-		(file: File) => file.filename === filename,
-	);
+  const fileData = (data as File[]).find(
+    (file: File) => file.filename === filename
+  );
 
-	// Extract chunks for the specific file
-	useEffect(() => {
-		if (!filename || !(data as File[]).length) {
-			setChunks([]);
-			return;
-		}
+  // Extract chunks for the specific file
+  useEffect(() => {
+    if (!filename || !(data as File[]).length) {
+      setChunks([]);
+      return;
+    }
 
-		setChunks(
-			fileData?.chunks?.map((chunk, i) => ({ ...chunk, index: i + 1 })) || [],
-		);
-	}, [data, filename]);
+    setChunks(
+      fileData?.chunks?.map((chunk, i) => ({ ...chunk, index: i + 1 })) || []
+    );
+  }, [data, filename]);
 
-	// Set selected state for all checkboxes when selectAll changes
-	useEffect(() => {
-		if (selectAll) {
-			setSelectedChunks(new Set(chunks.map((_, index) => index)));
-		} else {
-			setSelectedChunks(new Set());
-		}
-	}, [selectAll, setSelectedChunks, chunks]);
+  // Set selected state for all checkboxes when selectAll changes
+  useEffect(() => {
+    if (selectAll) {
+      setSelectedChunks(new Set(chunks.map((_, index) => index)));
+    } else {
+      setSelectedChunks(new Set());
+    }
+  }, [selectAll, setSelectedChunks, chunks]);
 
-	const handleBack = useCallback(() => {
-		router.push("/knowledge");
-	}, [router]);
+  const handleBack = useCallback(() => {
+    router.push("/knowledge");
+  }, [router]);
 
-	// const handleChunkCardCheckboxChange = useCallback(
-	//   (index: number) => {
-	//     setSelectedChunks((prevSelected) => {
-	//       const newSelected = new Set(prevSelected);
-	//       if (newSelected.has(index)) {
-	//         newSelected.delete(index);
-	//       } else {
-	//         newSelected.add(index);
-	//       }
-	//       return newSelected;
-	//     });
-	//   },
-	//   [setSelectedChunks]
-	// );
+  // const handleChunkCardCheckboxChange = useCallback(
+  //   (index: number) => {
+  //     setSelectedChunks((prevSelected) => {
+  //       const newSelected = new Set(prevSelected);
+  //       if (newSelected.has(index)) {
+  //         newSelected.delete(index);
+  //       } else {
+  //         newSelected.add(index);
+  //       }
+  //       return newSelected;
+  //     });
+  //   },
+  //   [setSelectedChunks]
+  // );
 
-	if (!filename) {
-		return (
-			<div className="flex items-center justify-center h-64">
-				<div className="text-center">
-					<Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-					<p className="text-lg text-muted-foreground">No file specified</p>
-					<p className="text-sm text-muted-foreground/70 mt-2">
-						Please select a file from the knowledge page
-					</p>
-				</div>
-			</div>
-		);
-	}
+  if (!filename) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+          <p className="text-lg text-muted-foreground">No file specified</p>
+          <p className="text-sm text-muted-foreground/70 mt-2">
+            Please select a file from the knowledge page
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -149,7 +149,7 @@ function ChunksPageContent() {
               <Checkbox
                 id="selectAllChunks"
                 checked={selectAll}
-                onCheckedChange={(handleSelectAll) =>
+                onCheckedChange={handleSelectAll =>
                   setSelectAll(!!handleSelectAll)
                 }
               />
@@ -160,8 +160,8 @@ function ChunksPageContent() {
                 Select all
               </Label>
             </div> */}
-					</div>
-				</div>
+          </div>
+        </div>
 
         {/* Content Area - matches knowledge page structure */}
         <div className="flex-1 overflow-auto pr-6">
@@ -200,73 +200,73 @@ function ChunksPageContent() {
                           }
                         />
                       </div> */}
-											<span className="text-sm font-bold">
-												Chunk {chunk.index}
-											</span>
-											<span className="bg-background p-1 rounded text-xs text-muted-foreground/70">
-												{chunk.text.length} chars
-											</span>
-											<div className="py-1">
-												<Button
-													onClick={() => handleCopy(chunk.text, index)}
-													variant="ghost"
-													size="sm"
-												>
-													{activeCopiedChunkIndex === index ? (
-														<Check className="text-muted-foreground" />
-													) : (
-														<Copy className="text-muted-foreground" />
-													)}
-												</Button>
-											</div>
-										</div>
+                      <span className="text-sm font-bold">
+                        Chunk {chunk.index}
+                      </span>
+                      <span className="bg-background p-1 rounded text-xs text-muted-foreground/70">
+                        {chunk.text.length} chars
+                      </span>
+                      <div className="py-1">
+                        <Button
+                          onClick={() => handleCopy(chunk.text, index)}
+                          variant="ghost"
+                          size="sm"
+                        >
+                          {activeCopiedChunkIndex === index ? (
+                            <Check className="text-muted-foreground" />
+                          ) : (
+                            <Copy className="text-muted-foreground" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
 
-										<span className="bg-background p-1 rounded text-xs text-muted-foreground/70">
-											{chunk.score.toFixed(2)} score
-										</span>
+                    <span className="bg-background p-1 rounded text-xs text-muted-foreground/70">
+                      {chunk.score.toFixed(2)} score
+                    </span>
 
-										{/* TODO: Update to use active toggle */}
-										{/* <span className="px-2 py-1 text-green-500">
+                    {/* TODO: Update to use active toggle */}
+                    {/* <span className="px-2 py-1 text-green-500">
                       <Switch
                         className="ml-2 bg-green-500"
                         checked={true}
                       />
                       Active
                     </span> */}
-									</div>
-									<blockquote className="text-sm text-muted-foreground leading-relaxed ml-1.5">
-										{chunk.text}
-									</blockquote>
-								</div>
-							))}
-						</div>
-					)}
-				</div>
-			</div>
-			{/* Right panel - Summary (TODO), Technical details,  */}
-			{chunks.length > 0 && (
-				<div className="w-[320px] py-20 px-2">
-					<div className="mb-8">
-						<h2 className="text-xl font-semibold mt-3 mb-4">
-							Technical details
-						</h2>
-						<dl>
-							<div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-								<dt className="text-sm/6 text-muted-foreground">
-									Total chunks
-								</dt>
-								<dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-									{chunks.length}
-								</dd>
-							</div>
-							<div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-								<dt className="text-sm/6 text-muted-foreground">Avg length</dt>
-								<dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-									{averageChunkLength.toFixed(0)} chars
-								</dd>
-							</div>
-							{/* TODO: Uncomment after data is available */}
-							{/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                  </div>
+                  <blockquote className="text-sm text-muted-foreground leading-relaxed ml-1.5">
+                    {chunk.text}
+                  </blockquote>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {/* Right panel - Summary (TODO), Technical details,  */}
+      {chunks.length > 0 && (
+        <div className="w-[320px] py-20 px-2">
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold mt-3 mb-4">
+              Technical details
+            </h2>
+            <dl>
+              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                <dt className="text-sm/6 text-muted-foreground">
+                  Total chunks
+                </dt>
+                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  {chunks.length}
+                </dd>
+              </div>
+              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                <dt className="text-sm/6 text-muted-foreground">Avg length</dt>
+                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  {averageChunkLength.toFixed(0)} chars
+                </dd>
+              </div>
+              {/* TODO: Uncomment after data is available */}
+              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Process time</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
               </dd>
@@ -276,79 +276,79 @@ function ChunksPageContent() {
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
               </dd>
             </div> */}
-						</dl>
-					</div>
-					<div className="mb-8">
-						<h2 className="text-xl font-semibold mt-2 mb-3">
-							Original document
-						</h2>
-						<dl>
-							{/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+            </dl>
+          </div>
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold mt-2 mb-3">
+              Original document
+            </h2>
+            <dl>
+              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Name</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 {fileData?.filename}
               </dd>
             </div> */}
-							<div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-								<dt className="text-sm/6 text-muted-foreground">Type</dt>
-								<dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-									{fileData ? getFileTypeLabel(fileData.mimetype) : "Unknown"}
-								</dd>
-							</div>
-							<div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-								<dt className="text-sm/6 text-muted-foreground">Size</dt>
-								<dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-									{fileData?.size
-										? `${Math.round(fileData.size / 1024)} KB`
-										: "Unknown"}
-								</dd>
-							</div>
-							{/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                <dt className="text-sm/6 text-muted-foreground">Type</dt>
+                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  {fileData ? getFileTypeLabel(fileData.mimetype) : "Unknown"}
+                </dd>
+              </div>
+              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                <dt className="text-sm/6 text-muted-foreground">Size</dt>
+                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  {fileData?.size
+                    ? `${Math.round(fileData.size / 1024)} KB`
+                    : "Unknown"}
+                </dd>
+              </div>
+              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Uploaded</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 N/A
               </dd>
             </div> */}
-							{/* TODO: Uncomment after data is available */}
-							{/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              {/* TODO: Uncomment after data is available */}
+              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Source</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0"></dd>
             </div> */}
-							{/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Updated</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 N/A
               </dd>
             </div> */}
-						</dl>
-					</div>
-				</div>
-			)}
-		</div>
-	);
+            </dl>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ChunksPage() {
-	return (
-		<Suspense
-			fallback={
-				<div className="flex items-center justify-center h-64">
-					<div className="text-center">
-						<Loader2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
-						<p className="text-lg text-muted-foreground">Loading...</p>
-					</div>
-				</div>
-			}
-		>
-			<ChunksPageContent />
-		</Suspense>
-	);
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Loader2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
+            <p className="text-lg text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <ChunksPageContent />
+    </Suspense>
+  );
 }
 
 export default function ProtectedChunksPage() {
-	return (
-		<ProtectedRoute>
-			<ChunksPage />
-		</ProtectedRoute>
-	);
+  return (
+    <ProtectedRoute>
+      <ChunksPage />
+    </ProtectedRoute>
+  );
 }
