@@ -60,6 +60,7 @@ class LangflowFileService:
     async def run_ingestion_flow(
         self,
         file_paths: List[str],
+        file_tuples: list[tuple[str, str, str]],
         jwt_token: str,
         session_id: Optional[str] = None,
         tweaks: Optional[Dict[str, Any]] = None,
@@ -67,7 +68,6 @@ class LangflowFileService:
         owner_name: Optional[str] = None,
         owner_email: Optional[str] = None,
         connector_type: Optional[str] = None,
-        file_tuples: Optional[list[tuple[str, str, str]]] = None,
     ) -> Dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
@@ -135,14 +135,19 @@ class LangflowFileService:
         # To compute the file size in bytes, use len() on the file content (which should be bytes)
         file_size_bytes = len(file_tuples[0][1]) if file_tuples and len(file_tuples[0]) > 1 else 0
         # Avoid logging full payload to prevent leaking sensitive data (e.g., JWT)
+
+        # Extract file metadata if file_tuples is provided
+        filename = str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
+        mimetype = str(file_tuples[0][2]) if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2 else ""
+
         headers={
                 "X-Langflow-Global-Var-JWT": str(jwt_token),
                 "X-Langflow-Global-Var-OWNER": str(owner),
                 "X-Langflow-Global-Var-OWNER_NAME": str(owner_name),
                 "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
                 "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
-                "X-Langflow-Global-Var-FILENAME": str(file_tuples[0][0]),
-                "X-Langflow-Global-Var-MIMETYPE": str(file_tuples[0][2]),
+                "X-Langflow-Global-Var-FILENAME": filename,
+                "X-Langflow-Global-Var-MIMETYPE": mimetype,
                 "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
             }
         logger.info(f"[LF] Headers {headers}")
@@ -271,14 +276,14 @@ class LangflowFileService:
         try:
             ingest_result = await self.run_ingestion_flow(
                 file_paths=[file_path],
+                file_tuples=[file_tuple],
+                jwt_token=jwt_token,
                 session_id=session_id,
                 tweaks=final_tweaks,
-                jwt_token=jwt_token,
                 owner=owner,
                 owner_name=owner_name,
                 owner_email=owner_email,
                 connector_type=connector_type,
-                file_tuples=[file_tuple],
             )
             logger.debug("[LF] Ingestion completed successfully")
         except Exception as e:
