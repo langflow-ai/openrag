@@ -31,7 +31,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
 
-// Function to get the appropriate icon for a connector type or mimetype
+// Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
 
 	switch (connectorType) {
