@@ -169,15 +169,17 @@ export const UnifiedCloudPicker = ({
   }
 
   return (
-    <div className="space-y-6">
-      <PickerHeader
-        provider={provider}
-        onAddFiles={handleAddFiles}
-        isPickerLoaded={isPickerLoaded}
-        isPickerOpen={isPickerOpen}
-        accessToken={accessToken}
-        isAuthenticated={isAuthenticated}
-      />
+    <div>
+      <div className="mb-6">
+        <PickerHeader
+          provider={provider}
+          onAddFiles={handleAddFiles}
+          isPickerLoaded={isPickerLoaded}
+          isPickerOpen={isPickerOpen}
+          accessToken={accessToken}
+          isAuthenticated={isAuthenticated}
+        />
+      </div>
 
       <FileList
         provider={provider}
