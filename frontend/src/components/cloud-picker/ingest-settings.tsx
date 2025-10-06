@@ -1,14 +1,28 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronRight, Info } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { IngestSettings as IngestSettingsType } from "./types";
+import { LabelWrapper } from "@/components/label-wrapper";
+import {
+  Select,
+  SelectContent,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { ModelSelectItems } from "@/app/settings/helpers/model-select-item";
+import { getFallbackModels } from "@/app/settings/helpers/model-helpers";
+import { NumberInput } from "@/components/ui/inputs/number-input";
 
 interface IngestSettingsProps {
   isOpen: boolean;
@@ -44,7 +58,7 @@ export const IngestSettings = ({
     <Collapsible
       open={isOpen}
       onOpenChange={onOpenChange}
-      className="border rounded-md p-4 border-muted-foreground/20"
+      className="border rounded-xl p-4 border-border"
     >
       <CollapsibleTrigger className="flex items-center gap-2 justify-between w-full -m-4 p-4 rounded-md transition-colors">
         <div className="flex items-center gap-2">
@@ -58,35 +72,85 @@ export const IngestSettings = ({
       </CollapsibleTrigger>
 
       <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-up-2 data-[state=open]:slide-down-2">
-        <div className="pt-5 space-y-5">
-          <div className="flex items-center gap-4 w-full">
+        <div className="mt-6">
+          {/* Embedding model selection - currently disabled */}
+          <LabelWrapper
+            helperText="Model used for knowledge ingest and retrieval"
+            id="embedding-model-select"
+            label="Embedding model"
+          >
+            <Select
+              // Disabled until API supports multiple embedding models
+              disabled={true}
+              value={currentSettings.embeddingModel}
+              onValueChange={() => {}}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <SelectTrigger disabled id="embedding-model-select">
+                    <SelectValue placeholder="Select an embedding model" />
+                  </SelectTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Locked to keep embeddings consistent
+                </TooltipContent>
+              </Tooltip>
+              <SelectContent>
+                <ModelSelectItems
+                  models={[
+                    {
+                      value: "text-embedding-3-small",
+                      label: "text-embedding-3-small",
+                    },
+                  ]}
+                  fallbackModels={getFallbackModels("openai").embedding}
+                  provider={"openai"}
+                />
+              </SelectContent>
+            </Select>
+          </LabelWrapper>
+        </div>
+        <div className="mt-6">
+          <div className="flex items-center gap-4 w-full mb-6">
             <div className="w-full">
-              <div className="text-sm mb-2 font-semibold">Chunk size</div>
-              <Input
-                type="number"
+              <NumberInput
+                id="chunk-size"
+                label="Chunk size"
                 value={currentSettings.chunkSize}
-                onChange={e =>
-                  handleSettingsChange({
-                    chunkSize: parseInt(e.target.value) || 0,
-                  })
-                }
+                onChange={(value) => handleSettingsChange({ chunkSize: value })}
+                unit="characters"
               />
             </div>
             <div className="w-full">
-              <div className="text-sm mb-2 font-semibold">Chunk overlap</div>
-              <Input
-                type="number"
+              <NumberInput
+                id="chunk-overlap"
+                label="Chunk overlap"
                 value={currentSettings.chunkOverlap}
-                onChange={e =>
-                  handleSettingsChange({
-                    chunkOverlap: parseInt(e.target.value) || 0,
-                  })
+                onChange={(value) =>
+                  handleSettingsChange({ chunkOverlap: value })
                 }
+                unit="characters"
               />
             </div>
           </div>
 
-          <div className="flex gap-2 items-center justify-between">
+          {/* <div className="flex gap-2 items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold pb-2">Table Structure</div>
+              <div className="text-sm text-muted-foreground">
+                Capture table structure during ingest.
+              </div>
+            </div>
+            <Switch
+              id="table-structure"
+              checked={currentSettings.tableStructure}
+              onCheckedChange={(checked) =>
+                handleSettingsChange({ tableStructure: checked })
+              }
+            />
+          </div> */}
+
+          <div className="flex items-center justify-between border-b pb-3 mb-3">
             <div>
               <div className="text-sm font-semibold pb-2">OCR</div>
               <div className="text-sm text-muted-foreground">
@@ -95,13 +159,13 @@ export const IngestSettings = ({
             </div>
             <Switch
               checked={currentSettings.ocr}
-              onCheckedChange={checked =>
+              onCheckedChange={(checked) =>
                 handleSettingsChange({ ocr: checked })
               }
             />
           </div>
 
-          <div className="flex gap-2 items-center justify-between">
+          <div className="flex items-center justify-between">
             <div>
               <div className="text-sm pb-2 font-semibold">
                 Picture descriptions
@@ -112,24 +176,9 @@ export const IngestSettings = ({
             </div>
             <Switch
               checked={currentSettings.pictureDescriptions}
-              onCheckedChange={checked =>
+              onCheckedChange={(checked) =>
                 handleSettingsChange({ pictureDescriptions: checked })
               }
-            />
-          </div>
-
-          <div>
-            <div className="text-sm font-semibold pb-2 flex items-center">
-              Embedding model
-              <Info className="w-3.5 h-3.5 text-muted-foreground ml-2" />
-            </div>
-            <Input
-              disabled
-              value={currentSettings.embeddingModel}
-              onChange={e =>
-                handleSettingsChange({ embeddingModel: e.target.value })
-              }
-              placeholder="text-embedding-3-small"
             />
           </div>
         </div>
