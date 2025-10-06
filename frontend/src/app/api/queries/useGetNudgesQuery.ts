@@ -7,9 +7,6 @@ import {
 type Nudge = string;
 
 const DEFAULT_NUDGES = [
-  "Show me this quarter's top 10 deals",
-  "Summarize recent client interactions",
-  "Search OpenSearch for mentions of our competitors",
 ];
 
 export const useGetNudgesQuery = (

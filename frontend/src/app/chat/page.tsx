@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  AtSign,
   Bot,
   Check,
   ChevronDown,
@@ -11,7 +10,6 @@ import {
   Loader2,
   Plus,
   Settings,
-  Upload,
   User,
   X,
   Zap,
@@ -150,8 +148,8 @@ function ChatPage() {
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef(0);
   const lastLoadedConversationRef = useRef<string | null>(null);
-  const { addTask, isMenuOpen } = useTask();
-  const { selectedFilter, parsedFilterData, isPanelOpen, setSelectedFilter } =
+  const { addTask } = useTask();
+  const { selectedFilter, parsedFilterData, setSelectedFilter } =
     useKnowledgeFilter();
 
   const scrollToBottom = () => {
@@ -258,7 +256,7 @@ function ChatPage() {
           "Upload failed with status:",
           response.status,
           "Response:",
-          errorText,
+          errorText
         );
         throw new Error("Failed to process document");
       }
@@ -468,7 +466,7 @@ function ChatPage() {
       console.log(
         "Loading conversation with",
         conversationData.messages.length,
-        "messages",
+        "messages"
       );
       // Convert backend message format to frontend Message interface
       const convertedMessages: Message[] = conversationData.messages.map(
@@ -596,7 +594,7 @@ function ChatPage() {
                       ) === "string"
                         ? toolCall.function?.arguments || toolCall.arguments
                         : JSON.stringify(
-                            toolCall.function?.arguments || toolCall.arguments,
+                            toolCall.function?.arguments || toolCall.arguments
                           ),
                     result: toolCall.result,
                     status: "completed",
@@ -615,7 +613,7 @@ function ChatPage() {
           }
 
           return message;
-        },
+        }
       );
 
       setMessages(convertedMessages);
@@ -704,7 +702,7 @@ function ChatPage() {
       console.log(
         "Chat page received file upload error event:",
         filename,
-        error,
+        error
       );
 
       // Replace the last message with error message
@@ -718,43 +716,43 @@ function ChatPage() {
 
     window.addEventListener(
       "fileUploadStart",
-      handleFileUploadStart as EventListener,
+      handleFileUploadStart as EventListener
     );
     window.addEventListener(
       "fileUploaded",
-      handleFileUploaded as EventListener,
+      handleFileUploaded as EventListener
     );
     window.addEventListener(
       "fileUploadComplete",
-      handleFileUploadComplete as EventListener,
+      handleFileUploadComplete as EventListener
     );
     window.addEventListener(
       "fileUploadError",
-      handleFileUploadError as EventListener,
+      handleFileUploadError as EventListener
     );
 
     return () => {
       window.removeEventListener(
         "fileUploadStart",
-        handleFileUploadStart as EventListener,
+        handleFileUploadStart as EventListener
       );
       window.removeEventListener(
         "fileUploaded",
-        handleFileUploaded as EventListener,
+        handleFileUploaded as EventListener
       );
       window.removeEventListener(
         "fileUploadComplete",
-        handleFileUploadComplete as EventListener,
+        handleFileUploadComplete as EventListener
       );
       window.removeEventListener(
         "fileUploadError",
-        handleFileUploadError as EventListener,
+        handleFileUploadError as EventListener
       );
     };
   }, [endpoint, setPreviousResponseIds]);
 
   const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
-    previousResponseIds[endpoint],
+    previousResponseIds[endpoint]
   );
 
   const handleSSEStream = async (userMessage: Message) => {
@@ -859,7 +857,7 @@ function ChatPage() {
                 console.log(
                   "Received chunk:",
                   chunk.type || chunk.object,
-                  chunk,
+                  chunk
                 );
 
                 // Extract response ID if present
@@ -875,14 +873,14 @@ function ChatPage() {
                   if (chunk.delta.function_call) {
                     console.log(
                       "Function call in delta:",
-                      chunk.delta.function_call,
+                      chunk.delta.function_call
                     );
 
                     // Check if this is a new function call
                     if (chunk.delta.function_call.name) {
                       console.log(
                         "New function call:",
-                        chunk.delta.function_call.name,
+                        chunk.delta.function_call.name
                       );
                       const functionCall: FunctionCall = {
                         name: chunk.delta.function_call.name,
@@ -898,7 +896,7 @@ function ChatPage() {
                     else if (chunk.delta.function_call.arguments) {
                       console.log(
                         "Function call arguments delta:",
-                        chunk.delta.function_call.arguments,
+                        chunk.delta.function_call.arguments
                       );
                       const lastFunctionCall =
                         currentFunctionCalls[currentFunctionCalls.length - 1];
@@ -910,14 +908,14 @@ function ChatPage() {
                           chunk.delta.function_call.arguments;
                         console.log(
                           "Accumulated arguments:",
-                          lastFunctionCall.argumentsString,
+                          lastFunctionCall.argumentsString
                         );
 
                         // Try to parse arguments if they look complete
                         if (lastFunctionCall.argumentsString.includes("}")) {
                           try {
                             const parsed = JSON.parse(
-                              lastFunctionCall.argumentsString,
+                              lastFunctionCall.argumentsString
                             );
                             lastFunctionCall.arguments = parsed;
                             lastFunctionCall.status = "completed";
@@ -925,7 +923,7 @@ function ChatPage() {
                           } catch (e) {
                             console.log(
                               "Arguments not yet complete or invalid JSON:",
-                              e,
+                              e
                             );
                           }
                         }
@@ -958,7 +956,7 @@ function ChatPage() {
                         else if (toolCall.function.arguments) {
                           console.log(
                             "Tool call arguments delta:",
-                            toolCall.function.arguments,
+                            toolCall.function.arguments
                           );
                           const lastFunctionCall =
                             currentFunctionCalls[
@@ -972,7 +970,7 @@ function ChatPage() {
                               toolCall.function.arguments;
                             console.log(
                               "Accumulated tool arguments:",
-                              lastFunctionCall.argumentsString,
+                              lastFunctionCall.argumentsString
                             );
 
                             // Try to parse arguments if they look complete
@@ -981,7 +979,7 @@ function ChatPage() {
                             ) {
                               try {
                                 const parsed = JSON.parse(
-                                  lastFunctionCall.argumentsString,
+                                  lastFunctionCall.argumentsString
                                 );
                                 lastFunctionCall.arguments = parsed;
                                 lastFunctionCall.status = "completed";
@@ -989,7 +987,7 @@ function ChatPage() {
                               } catch (e) {
                                 console.log(
                                   "Tool arguments not yet complete or invalid JSON:",
-                                  e,
+                                  e
                                 );
                               }
                             }
@@ -1021,7 +1019,7 @@ function ChatPage() {
                           console.log(
                             "Error parsing function call on finish:",
                             fc,
-                            e,
+                            e
                           );
                         }
                       }
@@ -1037,12 +1035,12 @@ function ChatPage() {
                   console.log(
                     "🟢 CREATING function call (added):",
                     chunk.item.id,
-                    chunk.item.tool_name || chunk.item.name,
+                    chunk.item.tool_name || chunk.item.name
                   );
 
                   // Try to find an existing pending call to update (created by earlier deltas)
                   let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id,
+                    (fc) => fc.id === chunk.item.id
                   );
                   if (!existing) {
                     existing = [...currentFunctionCalls]
@@ -1051,7 +1049,7 @@ function ChatPage() {
                         (fc) =>
                           fc.status === "pending" &&
                           !fc.id &&
-                          fc.name === (chunk.item.tool_name || chunk.item.name),
+                          fc.name === (chunk.item.tool_name || chunk.item.name)
                       );
                   }
 
@@ -1064,7 +1062,7 @@ function ChatPage() {
                       chunk.item.inputs || existing.arguments;
                     console.log(
                       "🟢 UPDATED existing pending function call with id:",
-                      existing.id,
+                      existing.id
                     );
                   } else {
                     const functionCall: FunctionCall = {
@@ -1082,7 +1080,7 @@ function ChatPage() {
                       currentFunctionCalls.map((fc) => ({
                         id: fc.id,
                         name: fc.name,
-                      })),
+                      }))
                     );
                   }
                 }
@@ -1093,7 +1091,7 @@ function ChatPage() {
                 ) {
                   console.log(
                     "Function args delta (Realtime API):",
-                    chunk.delta,
+                    chunk.delta
                   );
                   const lastFunctionCall =
                     currentFunctionCalls[currentFunctionCalls.length - 1];
@@ -1104,7 +1102,7 @@ function ChatPage() {
                     lastFunctionCall.argumentsString += chunk.delta || "";
                     console.log(
                       "Accumulated arguments (Realtime API):",
-                      lastFunctionCall.argumentsString,
+                      lastFunctionCall.argumentsString
                     );
                   }
                 }
@@ -1115,26 +1113,26 @@ function ChatPage() {
                 ) {
                   console.log(
                     "Function args done (Realtime API):",
-                    chunk.arguments,
+                    chunk.arguments
                   );
                   const lastFunctionCall =
                     currentFunctionCalls[currentFunctionCalls.length - 1];
                   if (lastFunctionCall) {
                     try {
                       lastFunctionCall.arguments = JSON.parse(
-                        chunk.arguments || "{}",
+                        chunk.arguments || "{}"
                       );
                       lastFunctionCall.status = "completed";
                       console.log(
                         "Parsed function arguments (Realtime API):",
-                        lastFunctionCall.arguments,
+                        lastFunctionCall.arguments
                       );
                     } catch (e) {
                       lastFunctionCall.arguments = { raw: chunk.arguments };
                       lastFunctionCall.status = "error";
                       console.log(
                         "Error parsing function arguments (Realtime API):",
-                        e,
+                        e
                       );
                     }
                   }
@@ -1148,14 +1146,14 @@ function ChatPage() {
                   console.log(
                     "🔵 UPDATING function call (done):",
                     chunk.item.id,
-                    chunk.item.tool_name || chunk.item.name,
+                    chunk.item.tool_name || chunk.item.name
                   );
                   console.log(
                     "🔵 Looking for existing function calls:",
                     currentFunctionCalls.map((fc) => ({
                       id: fc.id,
                       name: fc.name,
-                    })),
+                    }))
                   );
 
                   // Find existing function call by ID or name
@@ -1163,14 +1161,14 @@ function ChatPage() {
                     (fc) =>
                       fc.id === chunk.item.id ||
                       fc.name === chunk.item.tool_name ||
-                      fc.name === chunk.item.name,
+                      fc.name === chunk.item.name
                   );
 
                   if (functionCall) {
                     console.log(
                       "🔵 FOUND existing function call, updating:",
                       functionCall.id,
-                      functionCall.name,
+                      functionCall.name
                     );
                     // Update existing function call with completion data
                     functionCall.status =
@@ -1193,7 +1191,7 @@ function ChatPage() {
                       "🔴 WARNING: Could not find existing function call to update:",
                       chunk.item.id,
                       chunk.item.tool_name,
-                      chunk.item.name,
+                      chunk.item.name
                     );
                   }
                 }
@@ -1214,7 +1212,7 @@ function ChatPage() {
                       fc.name === chunk.item.name ||
                       fc.name === chunk.item.type ||
                       fc.name.includes(chunk.item.type.replace("_call", "")) ||
-                      chunk.item.type.includes(fc.name),
+                      chunk.item.type.includes(fc.name)
                   );
 
                   if (functionCall) {
@@ -1258,12 +1256,12 @@ function ChatPage() {
                     "🟡 CREATING tool call (added):",
                     chunk.item.id,
                     chunk.item.tool_name || chunk.item.name,
-                    chunk.item.type,
+                    chunk.item.type
                   );
 
                   // Dedupe by id or pending with same name
                   let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id,
+                    (fc) => fc.id === chunk.item.id
                   );
                   if (!existing) {
                     existing = [...currentFunctionCalls]
@@ -1275,7 +1273,7 @@ function ChatPage() {
                           fc.name ===
                             (chunk.item.tool_name ||
                               chunk.item.name ||
-                              chunk.item.type),
+                              chunk.item.type)
                       );
                   }
 
@@ -1291,7 +1289,7 @@ function ChatPage() {
                       chunk.item.inputs || existing.arguments;
                     console.log(
                       "🟡 UPDATED existing pending tool call with id:",
-                      existing.id,
+                      existing.id
                     );
                   } else {
                     const functionCall = {
@@ -1312,7 +1310,7 @@ function ChatPage() {
                         id: fc.id,
                         name: fc.name,
                         type: fc.type,
-                      })),
+                      }))
                     );
                   }
                 }
@@ -1590,7 +1588,7 @@ function ChatPage() {
 
   const handleForkConversation = (
     messageIndex: number,
-    event?: React.MouseEvent,
+    event?: React.MouseEvent
   ) => {
     // Prevent any default behavior and stop event propagation
     if (event) {
@@ -1655,7 +1653,7 @@ function ChatPage() {
 
   const renderFunctionCalls = (
     functionCalls: FunctionCall[],
-    messageIndex?: number,
+    messageIndex?: number
   ) => {
     if (!functionCalls || functionCalls.length === 0) return null;
 
@@ -1906,7 +1904,7 @@ function ChatPage() {
 
     if (isFilterDropdownOpen) {
       const filteredFilters = availableFilters.filter((filter) =>
-        filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase()),
+        filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase())
       );
 
       if (e.key === "Escape") {
@@ -1924,7 +1922,7 @@ function ChatPage() {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedFilterIndex((prev) =>
-          prev < filteredFilters.length - 1 ? prev + 1 : 0,
+          prev < filteredFilters.length - 1 ? prev + 1 : 0
         );
         return;
       }
@@ -1932,7 +1930,7 @@ function ChatPage() {
       if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedFilterIndex((prev) =>
-          prev > 0 ? prev - 1 : filteredFilters.length - 1,
+          prev > 0 ? prev - 1 : filteredFilters.length - 1
         );
         return;
       }
@@ -2029,7 +2027,7 @@ function ChatPage() {
 
       // Get button position for popover anchoring
       const button = document.querySelector(
-        "[data-filter-button]",
+        "[data-filter-button]"
       ) as HTMLElement;
       if (button) {
         const rect = button.getBoundingClientRect();
@@ -2045,20 +2043,10 @@ function ChatPage() {
   };
 
   return (
-    <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
-        isMenuOpen && isPanelOpen
-          ? "md:right-[704px]" // Both open: 384px (menu) + 320px (KF panel)
-          : isMenuOpen
-          ? "md:right-96" // Only menu open: 384px
-          : isPanelOpen
-          ? "md:right-80" // Only KF panel open: 320px
-          : "md:right-6" // Neither open: 24px
-      }`}
-    >
+    <div className="flex flex-col h-full">
       {/* Debug header - only show in debug mode */}
       {isDebugMode && (
-        <div className="flex items-center justify-between mb-6 px-6 pt-6">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2"></div>
           <div className="flex items-center gap-4">
             {/* Async Mode Toggle */}
@@ -2164,7 +2152,7 @@ function ChatPage() {
                         <div className="flex-1 min-w-0">
                           {renderFunctionCalls(
                             message.functionCalls || [],
-                            index,
+                            index
                           )}
                           <MarkdownRenderer chatMessage={message.content} />
                         </div>
@@ -2193,7 +2181,7 @@ function ChatPage() {
                     <div className="flex-1">
                       {renderFunctionCalls(
                         streamingMessage.functionCalls,
-                        messages.length,
+                        messages.length
                       )}
                       <MarkdownRenderer
                         chatMessage={streamingMessage.content}
@@ -2260,29 +2248,31 @@ function ChatPage() {
                   </span>
                 </div>
               )}
-              <div className="relative" style={{height: `${textareaHeight + 60}px`}}>
-              <TextareaAutosize
-                ref={inputRef}
-                value={input}
-                onChange={onChange}
-                onKeyDown={handleKeyDown}
-                onHeightChange={(height) => setTextareaHeight(height)}
-                maxRows={7}
-                minRows={2}
-                placeholder="Type to ask a question..."
-                disabled={loading}
-                className={`w-full bg-transparent px-4 ${
-                  selectedFilter ? "pt-2" : "pt-4"
-                } focus-visible:outline-none resize-none`}
-                rows={2}
-              />
+              <div
+                className="relative"
+                style={{ height: `${textareaHeight + 60}px` }}
+              >
+                <TextareaAutosize
+                  ref={inputRef}
+                  value={input}
+                  onChange={onChange}
+                  onKeyDown={handleKeyDown}
+                  onHeightChange={(height) => setTextareaHeight(height)}
+                  maxRows={7}
+                  minRows={2}
+                  placeholder="Type to ask a question..."
+                  disabled={loading}
+                  className={`w-full bg-transparent px-4 ${
+                    selectedFilter ? "pt-2" : "pt-4"
+                  } focus-visible:outline-none resize-none`}
+                  rows={2}
+                />
                 {/* Safe area at bottom for buttons */}
-                <div 
+                <div
                   className="absolute bottom-0 left-0 right-0 bg-transparent pointer-events-none"
-                  style={{ height: '60px' }}
+                  style={{ height: "60px" }}
                 />
               </div>
-              
             </div>
             <input
               ref={fileInputRef}
@@ -2367,7 +2357,7 @@ function ChatPage() {
                         .filter((filter) =>
                           filter.name
                             .toLowerCase()
-                            .includes(filterSearchTerm.toLowerCase()),
+                            .includes(filterSearchTerm.toLowerCase())
                         )
                         .map((filter, index) => (
                           <button
@@ -2396,7 +2386,7 @@ function ChatPage() {
                       {availableFilters.filter((filter) =>
                         filter.name
                           .toLowerCase()
-                          .includes(filterSearchTerm.toLowerCase()),
+                          .includes(filterSearchTerm.toLowerCase())
                       ).length === 0 &&
                         filterSearchTerm && (
                           <div className="px-2 py-3 text-sm text-muted-foreground">
