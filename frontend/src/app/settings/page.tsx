@@ -149,7 +149,7 @@ function KnowledgeSourcesPage() {
   const [systemPrompt, setSystemPrompt] = useState<string>("");
   const [chunkSize, setChunkSize] = useState<number>(1024);
   const [chunkOverlap, setChunkOverlap] = useState<number>(50);
-  const [tableStructure, setTableStructure] = useState<boolean>(false);
+  const [tableStructure, setTableStructure] = useState<boolean>(true);
   const [ocr, setOcr] = useState<boolean>(false);
   const [pictureDescriptions, setPictureDescriptions] =
     useState<boolean>(false);
