@@ -234,7 +234,7 @@ export function KnowledgeFilterPanel() {
   return (
     <div className="h-full bg-background border-l">
       <Card className="h-full rounded-none border-0 flex flex-col">
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 pt-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
               Knowledge Filter
