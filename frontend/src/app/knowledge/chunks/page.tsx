@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useLayout } from "@/contexts/layout-context";
 import { useTask } from "@/contexts/task-context";
 import {
   type ChunkResult,
@@ -29,6 +30,7 @@ function ChunksPageContent() {
   const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
     useKnowledgeFilter();
   const { isMenuOpen } = useTask();
+  const { totalTopOffset } = useLayout();
 
   const filename = searchParams.get("filename");
   const [chunks, setChunks] = useState<ChunkResult[]>([]);
@@ -135,7 +137,7 @@ function ChunksPageContent() {
 
   return (
     <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-row transition-all duration-300 ${
+      className={`fixed inset-0 md:left-72 flex flex-row transition-all duration-300 ${
         isMenuOpen && isPanelOpen
           ? "md:right-[704px]"
           : // Both open: 384px (menu) + 320px (KF panel)
@@ -147,6 +149,7 @@ function ChunksPageContent() {
           : // Only KF panel open: 320px
             "md:right-6" // Neither open: 24px
       }`}
+      style={{ top: `${totalTopOffset}px` }}
     >
       <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
         {/* Header */}

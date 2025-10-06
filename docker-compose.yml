@@ -43,7 +43,7 @@ services:
     # build:
     #   context: .
     #   dockerfile: Dockerfile.backend
-    container_name: openrag-backend
+    # container_name: openrag-backend
     depends_on:
       - langflow
     environment:
@@ -54,6 +54,7 @@ services:
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - LANGFLOW_CHAT_FLOW_ID=${LANGFLOW_CHAT_FLOW_ID}
       - LANGFLOW_INGEST_FLOW_ID=${LANGFLOW_INGEST_FLOW_ID}
+      - LANGFLOW_URL_INGEST_FLOW_ID=${LANGFLOW_URL_INGEST_FLOW_ID}
       - DISABLE_INGEST_WITH_LANGFLOW=${DISABLE_INGEST_WITH_LANGFLOW:-false}
       - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
       - OPENSEARCH_PORT=9200
@@ -80,7 +81,7 @@ services:
     # build:
     #   context: .
     #   dockerfile: Dockerfile.frontend
-    #   #dockerfile: Dockerfile.frontend
+      #dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
     depends_on:
       - openrag-backend
@@ -109,11 +110,16 @@ services:
       - OWNER_EMAIL=None
       - CONNECTOR_TYPE=system
       - OPENRAG-QUERY-FILTER="{}"
+      - FILENAME=None
+      - MIMETYPE=None
+      - FILESIZE=0
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
-      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE
+      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,FILENAME,MIMETYPE,FILESIZE
       - LANGFLOW_LOG_LEVEL=DEBUG
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - LANGFLOW_NEW_USER_IS_ACTIVE=${LANGFLOW_NEW_USER_IS_ACTIVE}
       - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI}
+      # - DEFAULT_FOLDER_NAME=OpenRAG
+      - HIDE_GETTING_STARTED_PROGRESS=true

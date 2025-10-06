@@ -40,10 +40,10 @@ services:
 
   openrag-backend:
     image: phact/openrag-backend:${OPENRAG_VERSION:-latest}
-    #build:
-    #context: .
-    #dockerfile: Dockerfile.backend
-    container_name: openrag-backend
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.backend
+    # container_name: openrag-backend
     depends_on:
       - langflow
     environment:
@@ -55,6 +55,7 @@ services:
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - LANGFLOW_CHAT_FLOW_ID=${LANGFLOW_CHAT_FLOW_ID}
       - LANGFLOW_INGEST_FLOW_ID=${LANGFLOW_INGEST_FLOW_ID}
+      - LANGFLOW_URL_INGEST_FLOW_ID=${LANGFLOW_URL_INGEST_FLOW_ID}
       - DISABLE_INGEST_WITH_LANGFLOW=${DISABLE_INGEST_WITH_LANGFLOW:-false}
       - NUDGES_FLOW_ID=${NUDGES_FLOW_ID}
       - OPENSEARCH_PORT=9200
@@ -77,9 +78,9 @@ services:
 
   openrag-frontend:
     image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
-    #build:
-    #context: .
-    #dockerfile: Dockerfile.frontend
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
     depends_on:
       - openrag-backend
@@ -92,6 +93,9 @@ services:
     volumes:
       - ./flows:/app/flows:Z
     image: phact/openrag-langflow:${LANGFLOW_VERSION:-latest}
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.langflow
     container_name: langflow
     ports:
       - "7860:7860"
@@ -99,13 +103,23 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
       - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
-      - JWT="dummy"
+      - JWT=None  
+      - OWNER=None
+      - OWNER_NAME=None
+      - OWNER_EMAIL=None
+      - CONNECTOR_TYPE=system
       - OPENRAG-QUERY-FILTER="{}"
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
-      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD
+      - FILENAME=None
+      - MIMETYPE=None
+      - FILESIZE=0
+      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,FILENAME,MIMETYPE,FILESIZE
       - LANGFLOW_LOG_LEVEL=DEBUG
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - LANGFLOW_NEW_USER_IS_ACTIVE=${LANGFLOW_NEW_USER_IS_ACTIVE}
       - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI}
+      # - DEFAULT_FOLDER_NAME=OpenRAG
+      - HIDE_GETTING_STARTED_PROGRESS=true
+
