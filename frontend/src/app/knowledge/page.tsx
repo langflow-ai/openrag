@@ -11,6 +11,7 @@ import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useLayout } from "@/contexts/layout-context";
 import { useTask } from "@/contexts/task-context";
 import { type File, useGetSearchQuery } from "../api/queries/useGetSearchQuery";
 import "@/components/AgGrid/registerAgGridModules";
@@ -47,6 +48,7 @@ function getSourceIcon(connectorType?: string) {
 function SearchPage() {
   const router = useRouter();
   const { isMenuOpen, files: taskFiles } = useTask();
+  const { totalTopOffset } = useLayout();
   const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
     useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
@@ -230,7 +232,7 @@ function SearchPage() {
 
   return (
     <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
+      className={`fixed inset-0 md:left-72 flex flex-col transition-all duration-300 ${
         isMenuOpen && isPanelOpen
           ? "md:right-[704px]"
           : // Both open: 384px (menu) + 320px (KF panel)
@@ -242,6 +244,7 @@ function SearchPage() {
           : // Only KF panel open: 320px
             "md:right-6" // Neither open: 24px
       }`}
+      style={{ top: `${totalTopOffset}px` }}
     >
       <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
         <div className="flex items-center justify-between mb-6">
