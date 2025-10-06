@@ -336,8 +336,31 @@ class WelcomeScreen(Screen):
         self.call_after_refresh(self._focus_appropriate_button)
 
     async def _start_all_services(self) -> None:
-        """Start all services: native first, then containers."""
-        # Step 1: Start native services (docling-serve)
+        """Start all services: containers first, then native services."""
+        # Step 1: Start container services first (to create the network)
+        if self.container_manager.is_available():
+            command_generator = self.container_manager.start_services()
+            modal = CommandOutputModal(
+                "Starting Container Services",
+                command_generator,
+                on_complete=self._on_containers_started_start_native,
+            )
+            self.app.push_screen(modal)
+        else:
+            self.notify("No container runtime available", severity="warning")
+            # Still try to start native services
+            await self._start_native_services_after_containers()
+
+    async def _on_containers_started_start_native(self) -> None:
+        """Called after containers start successfully, now start native services."""
+        # Update container state
+        self._detect_services_sync()
+
+        # Now start native services (docling-serve can now detect the compose network)
+        await self._start_native_services_after_containers()
+
+    async def _start_native_services_after_containers(self) -> None:
+        """Start native services after containers have been started."""
         if not self.docling_manager.is_running():
             self.notify("Starting native services...", severity="information")
             success, message = await self.docling_manager.start()
@@ -345,25 +368,12 @@ class WelcomeScreen(Screen):
                 self.notify(message, severity="information")
             else:
                 self.notify(f"Failed to start native services: {message}", severity="error")
-                # Continue anyway - user might want containers even if native fails
         else:
             self.notify("Native services already running", severity="information")
 
         # Update state
         self.docling_running = self.docling_manager.is_running()
-
-        # Step 2: Start container services
-        if self.container_manager.is_available():
-            command_generator = self.container_manager.start_services()
-            modal = CommandOutputModal(
-                "Starting Container Services",
-                command_generator,
-                on_complete=self._on_services_operation_complete,
-            )
-            self.app.push_screen(modal)
-        else:
-            self.notify("No container runtime available", severity="warning")
-            await self._refresh_welcome_content()
+        await self._refresh_welcome_content()
 
     async def _stop_all_services(self) -> None:
         """Stop all services: containers first, then native."""
