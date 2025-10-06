@@ -136,3 +136,138 @@ def transform_localhost_url(url: str) -> str:
             return url.replace(pattern, container_host)
 
     return url
+
+
+def guess_host_ip_for_containers(logger=None) -> str:
+    """Best-effort detection of a host IP reachable from container networks.
+
+    The logic mirrors what the TUI uses when launching docling-serve so that
+    both CLI and API use consistent addresses. Preference order:
+    1. Docker/Podman compose networks (ended with ``_default``)
+    2. Networks with active containers
+    3. Any discovered bridge or CNI gateway interfaces
+
+    Args:
+        logger: Optional logger to emit diagnostics; falls back to module logger.
+
+    Returns:
+        The most appropriate host IP address if discovered, otherwise ``"127.0.0.1"``.
+    """
+    import json
+    import logging
+    import re
+    import shutil
+    import subprocess
+
+    log = logger or logging.getLogger(__name__)
+
+    def run(cmd, timeout=2, text=True):
+        return subprocess.run(cmd, capture_output=True, text=text, timeout=timeout)
+
+    gateways: list[str] = []
+    compose_gateways: list[str] = []
+    active_gateways: list[str] = []
+
+    # ---- Docker networks
+    if shutil.which("docker"):
+        try:
+            ls = run(["docker", "network", "ls", "--format", "{{.Name}}"])
+            if ls.returncode == 0:
+                for name in filter(None, ls.stdout.splitlines()):
+                    try:
+                        insp = run(["docker", "network", "inspect", name, "--format", "{{json .}}"])
+                        if insp.returncode == 0 and insp.stdout.strip():
+                            payload = insp.stdout.strip()
+                            nw = json.loads(payload)[0] if payload.startswith("[") else json.loads(payload)
+                            ipam = nw.get("IPAM", {})
+                            containers = nw.get("Containers", {})
+                            for cfg in ipam.get("Config", []) or []:
+                                gw = cfg.get("Gateway")
+                                if not gw:
+                                    continue
+                                if name.endswith("_default"):
+                                    compose_gateways.append(gw)
+                                elif len(containers) > 0:
+                                    active_gateways.append(gw)
+                                else:
+                                    gateways.append(gw)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+    # ---- Podman networks
+    if shutil.which("podman"):
+        try:
+            ls = run(["podman", "network", "ls", "--format", "json"])
+            if ls.returncode == 0 and ls.stdout.strip():
+                for net in json.loads(ls.stdout):
+                    name = net.get("name") or net.get("Name")
+                    if not name:
+                        continue
+                    try:
+                        insp = run(["podman", "network", "inspect", name, "--format", "json"])
+                        if insp.returncode == 0 and insp.stdout.strip():
+                            arr = json.loads(insp.stdout)
+                            for item in (arr if isinstance(arr, list) else [arr]):
+                                for sn in item.get("subnets", []) or []:
+                                    gw = sn.get("gateway")
+                                    if not gw:
+                                        continue
+                                    if name.endswith("_default") or "_" in name:
+                                        compose_gateways.append(gw)
+                                    else:
+                                        gateways.append(gw)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+    # ---- Host bridge interfaces
+    if not gateways and not compose_gateways and not active_gateways:
+        try:
+            if shutil.which("ip"):
+                show = run(["ip", "-o", "-4", "addr", "show"])
+                if show.returncode == 0:
+                    for line in show.stdout.splitlines():
+                        match = re.search(r"^\d+:\s+([\w_.:-]+)\s+.*\binet\s+(\d+\.\d+\.\d+\.\d+)/", line)
+                        if not match:
+                            continue
+                        ifname, ip_addr = match.group(1), match.group(2)
+                        if ifname == "docker0" or ifname.startswith(("br-", "cni")):
+                            gateways.append(ip_addr)
+            elif shutil.which("ifconfig"):
+                show = run(["ifconfig"])
+                for block in show.stdout.split("\n\n"):
+                    if any(block.strip().startswith(n) for n in ("docker0", "cni", "br-")):
+                        match = re.search(r"inet (?:addr:)?(\d+\.\d+\.\d+\.\d+)", block)
+                        if match:
+                            gateways.append(match.group(1))
+        except Exception:
+            pass
+
+    seen: set[str] = set()
+    ordered_candidates: list[str] = []
+
+    for collection in (compose_gateways, active_gateways, gateways):
+        for ip_addr in collection:
+            if ip_addr not in seen:
+                ordered_candidates.append(ip_addr)
+                seen.add(ip_addr)
+
+    if ordered_candidates:
+        if len(ordered_candidates) > 1:
+            log.info(
+                "Container-reachable host IP candidates: %s",
+                ", ".join(ordered_candidates),
+            )
+        else:
+            log.info("Container-reachable host IP: %s", ordered_candidates[0])
+
+        return ordered_candidates[0]
+
+    log.warning(
+        "No container bridge IP found. For rootless Podman (slirp4netns) there may be no host bridge; publish ports or use 10.0.2.2 from the container."
+    )
+
+    return "127.0.0.1"
