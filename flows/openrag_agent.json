@@ -144,6 +144,8 @@
         "targetHandle": "{œfieldNameœ:œagent_llmœ,œidœ:œAgent-crjWfœ,œinputTypesœ:[œLanguageModelœ],œtypeœ:œstrœ}"
       },
       {
+        "animated": false,
+        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "TextInput",
@@ -163,6 +165,7 @@
           }
         },
         "id": "xy-edge__TextInput-aHsQb{œdataTypeœ:œTextInputœ,œidœ:œTextInput-aHsQbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-OpenSearch-iYfjf{œfieldNameœ:œfilter_expressionœ,œidœ:œOpenSearch-iYfjfœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
         "source": "TextInput-aHsQb",
         "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-aHsQbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
         "target": "OpenSearch-iYfjf",
@@ -727,7 +730,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2025-10-02T20:05:34.814Z",
+            "last_updated": "2025-10-04T05:41:33.344Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -1381,7 +1384,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-10-02T20:05:34.815Z",
+            "last_updated": "2025-10-04T05:41:33.345Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -1660,7 +1663,7 @@
         },
         "position": {
           "x": 727.4791597769406,
-          "y": 518.0820551650631
+          "y": 416.82609966052854
         },
         "selected": false,
         "type": "genericNode"
@@ -1706,7 +1709,7 @@
             ],
             "frozen": false,
             "icon": "bot",
-            "last_updated": "2025-10-02T20:05:34.872Z",
+            "last_updated": "2025-10-04T05:41:33.399Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2245,7 +2248,7 @@
             ],
             "frozen": false,
             "icon": "brain-circuit",
-            "last_updated": "2025-10-02T20:05:34.815Z",
+            "last_updated": "2025-10-04T05:41:33.347Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2551,7 +2554,7 @@
       }
     ],
     "viewport": {
-      "x": -237.0727605845459,
+      "x": -149.48015964664273,
       "y": 154.6885920024542,
       "zoom": 0.602433700773958
     }
@@ -2560,7 +2563,7 @@
   "endpoint_name": null,
   "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
-  "last_tested_version": "1.6.0",
+  "last_tested_version": "1.6.3.dev0",
   "name": "OpenRAG Open Search Agent",
   "tags": [
     "assistants",
