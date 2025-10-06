@@ -6,15 +6,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { useTask } from "@/contexts/task-context";
 import {
   type ChunkResult,
   type File,
   useGetSearchQuery,
 } from "../../api/queries/useGetSearchQuery";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 
 const getFileTypeLabel = (mimetype: string) => {
   if (mimetype === "application/pdf") return "PDF";
@@ -26,8 +24,7 @@ const getFileTypeLabel = (mimetype: string) => {
 function ChunksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isMenuOpen } = useTask();
-  const { parsedFilterData, isPanelOpen } = useKnowledgeFilter();
+  const { parsedFilterData, queryOverride } = useKnowledgeFilter();
 
   const filename = searchParams.get("filename");
   const [chunks, setChunks] = useState<ChunkResult[]>([]);
@@ -47,25 +44,25 @@ function ChunksPageContent() {
     [chunks]
   );
 
-  const [selectAll, setSelectAll] = useState(false);
-  const [queryInputText, setQueryInputText] = useState(
-    parsedFilterData?.query ?? ""
-  );
+  // const [selectAll, setSelectAll] = useState(false);
 
   // Use the same search query as the knowledge page, but we'll filter for the specific file
-  const { data = [], isFetching } = useGetSearchQuery("*", parsedFilterData);
+  const { data = [], isFetching } = useGetSearchQuery(
+    queryOverride,
+    parsedFilterData
+  );
 
-  useEffect(() => {
-    if (queryInputText === "") {
-      setChunksFilteredByQuery(chunks);
-    } else {
-      setChunksFilteredByQuery(
-        chunks.filter((chunk) =>
-          chunk.text.toLowerCase().includes(queryInputText.toLowerCase())
-        )
-      );
-    }
-  }, [queryInputText, chunks]);
+  // useEffect(() => {
+  //   if (queryInputText === "") {
+  //     setChunksFilteredByQuery(chunks);
+  //   } else {
+  //     setChunksFilteredByQuery(
+  //       chunks.filter((chunk) =>
+  //         chunk.text.toLowerCase().includes(queryInputText.toLowerCase())
+  //       )
+  //     );
+  //   }
+  // }, [queryInputText, chunks]);
 
   const handleCopy = useCallback((text: string, index: number) => {
     // Trim whitespace and remove new lines/tabs for cleaner copy
@@ -89,13 +86,13 @@ function ChunksPageContent() {
   }, [data, filename]);
 
   // Set selected state for all checkboxes when selectAll changes
-  useEffect(() => {
-    if (selectAll) {
-      setSelectedChunks(new Set(chunks.map((_, index) => index)));
-    } else {
-      setSelectedChunks(new Set());
-    }
-  }, [selectAll, setSelectedChunks, chunks]);
+  // useEffect(() => {
+  //   if (selectAll) {
+  //     setSelectedChunks(new Set(chunks.map((_, index) => index)));
+  //   } else {
+  //     setSelectedChunks(new Set());
+  //   }
+  // }, [selectAll, setSelectedChunks, chunks]);
 
   const handleBack = useCallback(() => {
     router.push("/knowledge");
@@ -131,25 +128,17 @@ function ChunksPageContent() {
   }
 
   return (
-    <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-row transition-all duration-300 ${
-        isMenuOpen && isPanelOpen
-          ? "md:right-[704px]"
-          : // Both open: 384px (menu) + 320px (KF panel)
-          isMenuOpen
-          ? "md:right-96"
-          : // Only menu open: 384px
-          isPanelOpen
-          ? "md:right-80"
-          : // Only KF panel open: 320px
-            "md:right-6" // Neither open: 24px
-      }`}
-    >
-      <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
+    <div className="flex">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Header */}
-        <div className="flex flex-col mb-6">
-          <div className="flex flex-row items-center gap-3 mb-6">
-            <Button variant="ghost" onClick={handleBack} size="sm">
+        <div className="flex flex-col mb-6 gap-6">
+          <div className="flex flex-row items-center">
+            <Button
+              variant="ghost"
+              onClick={handleBack}
+              size="sm"
+              className="max-h-8 max-w-8 -m-2 mr-1"
+            >
               <ArrowLeft size={24} />
             </Button>
             <h1 className="text-lg font-semibold">
@@ -157,39 +146,12 @@ function ChunksPageContent() {
               {filename.replace(/\.[^/.]+$/, "")}
             </h1>
           </div>
-          <div className="flex flex-col items-start mt-2">
-            <div className="flex-1 flex items-center gap-2 w-full max-w-[616px] mb-8">
-              <Input
-                name="search-query"
-                icon={!queryInputText.length ? <Search size={18} /> : null}
-                id="search-query"
-                type="text"
-                defaultValue={parsedFilterData?.query}
-                value={queryInputText}
-                onChange={(e) => setQueryInputText(e.target.value)}
-                placeholder="Search chunks..."
-              />
-            </div>
-            <div className="flex items-center pl-4 gap-2">
-              <Checkbox
-                id="selectAllChunks"
-                checked={selectAll}
-                onCheckedChange={(handleSelectAll) =>
-                  setSelectAll(!!handleSelectAll)
-                }
-              />
-              <Label
-                htmlFor="selectAllChunks"
-                className="font-medium text-muted-foreground whitespace-nowrap cursor-pointer"
-              >
-                Select all
-              </Label>
-            </div>
-          </div>
+          {/* Search input */}
+          <KnowledgeSearchInput />
         </div>
 
         {/* Content Area - matches knowledge page structure */}
-        <div className="flex-1 overflow-scroll pr-6">
+        <div className="flex-1 pr-6">
           {isFetching ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
@@ -211,7 +173,23 @@ function ChunksPageContent() {
             </div>
           ) : (
             <div className="space-y-4 pb-6">
-              {chunksFilteredByQuery.map((chunk, index) => (
+              {/* TODO - add chunk selection when sync and delete are ready */}
+              {/* <div className="flex items-center pl-4 gap-2">
+                <Checkbox
+                  id="selectAllChunks"
+                  checked={selectAll}
+                  onCheckedChange={(handleSelectAll) =>
+                    setSelectAll(!!handleSelectAll)
+                  }
+                />
+                <Label
+                  htmlFor="selectAllChunks"
+                  className="font-medium text-muted-foreground whitespace-nowrap cursor-pointer"
+                >
+                  Select all
+                </Label>
+              </div> */}
+              {chunks.map((chunk, index) => (
                 <div
                   key={chunk.filename + index}
                   className="bg-muted rounded-lg p-4 border border-border/50"

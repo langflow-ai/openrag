@@ -321,7 +321,7 @@ export function KnowledgeFilterPanel() {
               className="font-mono placeholder:font-mono"
               onChange={(e) => setQuery(e.target.value)}
               rows={2}
-              disabled={!!queryOverride}
+              disabled={!!queryOverride && !createMode}
             />
           </div>
 
