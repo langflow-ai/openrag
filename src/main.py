@@ -31,6 +31,7 @@ from api import (
     auth,
     chat,
     connectors,
+    docling,
     documents,
     flows,
     knowledge_filter,
@@ -1110,6 +1111,12 @@ async def create_app():
                 )
             ),
             methods=["POST"],
+        ),
+        # Docling service proxy
+        Route(
+            "/docling/health",
+            partial(docling.health),
+            methods=["GET"],
         ),
     ]
 
