@@ -20,7 +20,8 @@ class FileTask:
     retry_count: int = 0
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
-    
+    filename: Optional[str] = None  # Original filename for display
+
     @property
     def duration_seconds(self) -> float:
         """Duration in seconds from creation to last update"""
