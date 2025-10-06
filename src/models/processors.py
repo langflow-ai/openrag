@@ -65,6 +65,7 @@ class TaskProcessor:
         Returns True if any chunks with this filename exist.
         """
         from config.settings import INDEX_NAME
+        from utils.opensearch_queries import build_filename_search_body
         import asyncio
 
         max_retries = 3
@@ -73,15 +74,7 @@ class TaskProcessor:
         for attempt in range(max_retries):
             try:
                 # Search for any document with this exact filename
-                search_body = {
-                    "query": {
-                        "term": {
-                            "filename.keyword": filename
-                        }
-                    },
-                    "size": 1,
-                    "_source": False
-                }
+                search_body = build_filename_search_body(filename, size=1, source=False)
 
                 response = await opensearch_client.search(
                     index=INDEX_NAME,
@@ -126,16 +119,11 @@ class TaskProcessor:
         Delete all chunks of a document with the given filename from OpenSearch.
         """
         from config.settings import INDEX_NAME
+        from utils.opensearch_queries import build_filename_delete_body
 
         try:
             # Delete all documents with this filename
-            delete_body = {
-                "query": {
-                    "term": {
-                        "filename.keyword": filename
-                    }
-                }
-            }
+            delete_body = build_filename_delete_body(filename)
 
             response = await opensearch_client.delete_by_query(
                 index=INDEX_NAME,

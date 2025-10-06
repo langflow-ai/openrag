@@ -23,20 +23,9 @@ async def check_filename_exists(request: Request, document_service, session_mana
         )
 
         # Search for any document with this exact filename
-        # Try both .keyword (exact match) and regular field (analyzed match)
-        search_body = {
-            "query": {
-                "bool": {
-                    "should": [
-                        {"term": {"filename.keyword": filename}},
-                        {"term": {"filename": filename}}
-                    ],
-                    "minimum_should_match": 1
-                }
-            },
-            "size": 1,
-            "_source": ["filename"]
-        }
+        from utils.opensearch_queries import build_filename_search_body
+
+        search_body = build_filename_search_body(filename, size=1, source=["filename"])
 
         logger.debug(f"Checking filename existence: {filename}")
 
@@ -83,18 +72,9 @@ async def delete_documents_by_filename(request: Request, document_service, sessi
         )
 
         # Delete by query to remove all chunks of this document
-        # Use both .keyword and regular field to ensure we catch all variations
-        delete_query = {
-            "query": {
-                "bool": {
-                    "should": [
-                        {"term": {"filename.keyword": filename}},
-                        {"term": {"filename": filename}}
-                    ],
-                    "minimum_should_match": 1
-                }
-            }
-        }
+        from utils.opensearch_queries import build_filename_delete_body
+
+        delete_query = build_filename_delete_body(filename)
 
         logger.debug(f"Deleting documents with filename: {filename}")
 
