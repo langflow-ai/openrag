@@ -36,7 +36,6 @@ interface TaskContextType {
   files: TaskFile[];
   addTask: (taskId: string) => void;
   addFiles: (files: Partial<TaskFile>[], taskId: string) => void;
-  removeTask: (taskId: string) => void;
   refreshTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
   isPolling: boolean;
@@ -285,10 +284,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     await refetchTasks();
   }, [refetchTasks]);
 
-  const removeTask = useCallback((_taskId: string) => {
-    // This is now handled by React Query automatically
-    // Tasks will be removed from the list when they're no longer returned by the API
-  }, []);
 
   const cancelTask = useCallback(
     async (taskId: string) => {
@@ -316,7 +311,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     files,
     addTask,
     addFiles,
-    removeTask,
     refreshTasks,
     cancelTask,
     isPolling,
