@@ -172,18 +172,16 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           headerHeight={headerHeight}
           totalTopOffset={totalTopOffset}
         >
-          <div
-            className={cn(
-              "py-6 lg:py-8 px-4 lg:px-6",
-              isSmallWidthPath ? "max-w-[850px]" : "container"
-            )}
-          >
+          <div className={cn("py-6 lg:py-8 px-4 lg:px-6 h-full")}>
             {children}
           </div>
         </LayoutProvider>
       </main>
       <TaskNotificationMenu />
-      <KnowledgeFilterPanel />
+      <KnowledgeFilterPanel
+        totalTopOffset={totalTopOffset}
+        headerHeight={headerHeight}
+      />
     </div>
   );
 }
