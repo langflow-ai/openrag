@@ -10,6 +10,9 @@ body {
   --ag-row-hover-color: hsl(var(--muted));
   --ag-wrapper-border: none;
   --ag-font-family: var(--font-sans);
+  --ag-selected-row-background-color: hsl(var(--accent));
+  --ag-focus-shadow: none;
+  --ag-range-selection-border-color: hsl(var(--primary));
 
   /* Checkbox styling */
   --ag-checkbox-background-color: hsl(var(--background));
