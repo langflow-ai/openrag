@@ -1,5 +1,6 @@
 from config.settings import (
     DISABLE_INGEST_WITH_LANGFLOW,
+    LANGFLOW_URL_INGEST_FLOW_ID,
     NUDGES_FLOW_ID,
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
@@ -116,9 +117,11 @@ class FlowsService:
             flow_id = LANGFLOW_CHAT_FLOW_ID
         elif flow_type == "ingest":
             flow_id = LANGFLOW_INGEST_FLOW_ID
+        elif flow_type == "url_ingest":
+            flow_id = LANGFLOW_URL_INGEST_FLOW_ID
         else:
             raise ValueError(
-                "flow_type must be either 'nudges', 'retrieval', or 'ingest'"
+                "flow_type must be either 'nudges', 'retrieval', 'ingest', or 'url_ingest'"
             )
 
         if not flow_id:
@@ -289,6 +292,13 @@ class FlowsService:
                     "flow_id": LANGFLOW_INGEST_FLOW_ID,
                     "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
                     "llm_name": None,  # Ingestion flow might not have LLM
+                    "llm_text_name": None,
+                },
+                {
+                    "name": "url_ingest",
+                    "flow_id": LANGFLOW_URL_INGEST_FLOW_ID,
+                    "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
+                    "llm_name": None,
                     "llm_text_name": None,
                 },
             ]
@@ -715,6 +725,10 @@ class FlowsService:
                     {
                         "name": "ingest",
                         "flow_id": LANGFLOW_INGEST_FLOW_ID,
+                    },
+                    {
+                        "name": "url_ingest",
+                        "flow_id": LANGFLOW_URL_INGEST_FLOW_ID,
                     },
                 ]
 
