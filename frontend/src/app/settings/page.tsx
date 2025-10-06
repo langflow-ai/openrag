@@ -690,9 +690,6 @@ function KnowledgeSourcesPage() {
         {/* Connectors Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {connectors.map((connector) => {
-            const actualConnector = connectors.find(
-              (c) => c.id === connector.id
-            );
             return (
               <Card key={connector.id} className="relative flex flex-col">
                 <CardHeader>
@@ -701,7 +698,7 @@ function KnowledgeSourcesPage() {
                       <div className="mb-1">
                         <div
                           className={`w-8 h-8 ${
-                            actualConnector ? "bg-white" : "bg-muted grayscale"
+                            connector ? "bg-white" : "bg-muted grayscale"
                           } rounded flex items-center justify-center`}
                         >
                           {connector.icon}
@@ -709,12 +706,11 @@ function KnowledgeSourcesPage() {
                       </div>
                       <CardTitle className="flex flex-row items-center gap-2">
                         {connector.name}
-                        {actualConnector &&
-                          getStatusBadge(actualConnector.status)}
+                        {connector && getStatusBadge(connector.status)}
                       </CardTitle>
                       <CardDescription className="text-[13px]">
-                        {actualConnector?.description
-                          ? `${actualConnector.name} is configured.`
+                        {connector?.description
+                          ? `${connector.name} is configured.`
                           : connector.description}
                       </CardDescription>
                     </div>
@@ -723,7 +719,7 @@ function KnowledgeSourcesPage() {
                 <CardContent className="flex-1 flex flex-col justify-end space-y-4">
                   {connector?.available ? (
                     <div className="space-y-3">
-                      {actualConnector?.status === "connected" ? (
+                      {connector?.status === "connected" ? (
                         <>
                           <Button
                             onClick={() => navigateToKnowledgePage(connector)}
@@ -755,7 +751,8 @@ function KnowledgeSourcesPage() {
                         <Button
                           onClick={() => handleConnect(connector)}
                           disabled={isConnecting === connector.id}
-                          className="w-full"
+                          className="w-full cursor-pointer"
+                          size="sm"
                         >
                           {isConnecting === connector.id ? (
                             <>
