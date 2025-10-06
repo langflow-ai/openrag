@@ -55,6 +55,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     startNewConversation();
   };
 
+  // List of paths with smaller max-width
+  const smallWidthPaths = ["/settings", "/settings/connector/new"];
+  const isSmallWidthPath = smallWidthPaths.includes(pathname);
+
   // List of paths that should not show navigation
   const authPaths = ["/login", "/auth/callback", "/onboarding"];
   const isAuthPage = authPaths.includes(pathname);
