@@ -2,13 +2,10 @@
 
 import { themeQuartz, type ColDef } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { ArrowRight, Cloud, FileIcon, Search, X } from "lucide-react";
+import { Cloud, FileIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
-  type ChangeEvent,
-  FormEvent,
   useCallback,
-  useEffect,
   useRef,
   useState,
 } from "react";
@@ -25,11 +22,10 @@ import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdow
 import { StatusBadge } from "@/components/ui/status-badge";
 import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
-import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 import GoogleDriveIcon from "../settings/icons/google-drive-icon";
 import OneDriveIcon from "../settings/icons/one-drive-icon";
 import SharePointIcon from "../settings/icons/share-point-icon";
-import { cn } from "@/lib/utils";
+import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -57,13 +53,9 @@ function SearchPage() {
   const router = useRouter();
   const { files: taskFiles } = useTask();
   const {
-    selectedFilter,
-    setSelectedFilter,
     parsedFilterData,
     queryOverride,
-    setQueryOverride,
   } = useKnowledgeFilter();
-  const [searchQueryInput, setSearchQueryInput] = useState(queryOverride || "");
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
@@ -72,14 +64,6 @@ function SearchPage() {
   const { data = [], isFetching } = useGetSearchQuery(
     queryOverride,
     parsedFilterData
-  );
-
-  const handleSearch = useCallback(
-    (e?: FormEvent<HTMLFormElement>) => {
-      if (e) e.preventDefault();
-      setQueryOverride(searchQueryInput.trim());
-    },
-    [searchQueryInput, setQueryOverride]
   );
 
   // Convert TaskFiles to File format and merge with backend results
@@ -246,11 +230,6 @@ function SearchPage() {
     }
   };
 
-  // Reset the query text when the selected filter changes
-  useEffect(() => {
-    setSearchQueryInput(queryOverride);
-  }, [queryOverride]);
-
   return (
     <>
       <div className="flex flex-col h-full">
@@ -260,78 +239,9 @@ function SearchPage() {
 
         {/* Search Input Area */}
         <div className="flex-1 flex flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
-          <form
-            className="flex flex-1 gap-3 max-w-full"
-            onSubmit={handleSearch}
-          >
-            <div className="primary-input group/input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem] max-w-[min(640px,100%)] min-w-[100px]">
-              {selectedFilter?.name && (
-                <div
-                  title={selectedFilter?.name}
-                  className={`flex items-center gap-1 h-full px-1.5 py-0.5 mr-1 rounded max-w-[25%] ${
-                    filterAccentClasses[parsedFilterData?.color || "zinc"]
-                  }`}
-                >
-                  <span className="truncate">{selectedFilter?.name}</span>
-                  <X
-                    aria-label="Remove filter"
-                    className="h-4 w-4 flex-shrink-0 cursor-pointer"
-                    onClick={() => setSelectedFilter(null)}
-                  />
-                </div>
-              )}
-              <Search
-                className="h-4 w-4 ml-1 flex-shrink-0 text-placeholder-foreground"
-                strokeWidth={1.5}
-              />
-              <input
-                className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none font-mono placeholder:font-mono"
-                name="search-query"
-                id="search-query"
-                type="text"
-                placeholder="Search your documents..."
-                value={searchQueryInput}
-                onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                  setSearchQueryInput(e.target.value)
-                }
-              />
-              {queryOverride && (
-                <Button
-                  variant="ghost"
-                  className="h-full !px-1.5 !py-0"
-                  type="button"
-                  onClick={() => {
-                    setSearchQueryInput("");
-                    setQueryOverride("");
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                className={cn(
-                  "h-full !px-1.5 !py-0 hidden group-focus-within/input:block",
-                  searchQueryInput && "block"
-                )}
-                type="submit"
-              >
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-            {/* <Button
-              type="submit"
-              variant="outline"
-              className="rounded-lg p-0 flex-shrink-0"
-            >
-              {isFetching ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
-            </Button> */}
-            {/* //TODO: Implement sync button */}
-            {/* <Button
+          <KnowledgeSearchInput />
+          {/* //TODO: Implement sync button */}
+          {/* <Button
               type="button"
               variant="outline"
               className="rounded-lg flex-shrink-0"
@@ -339,17 +249,16 @@ function SearchPage() {
             >
               Sync
             </Button> */}
-            {selectedRows.length > 0 && (
-              <Button
-                type="button"
-                variant="destructive"
-                className="rounded-lg flex-shrink-0"
-                onClick={() => setShowBulkDeleteDialog(true)}
-              >
-                Delete
-              </Button>
-            )}
-          </form>
+          {selectedRows.length > 0 && (
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-lg flex-shrink-0"
+              onClick={() => setShowBulkDeleteDialog(true)}
+            >
+              Delete
+            </Button>
+          )}
           <div className="ml-auto">
             <KnowledgeDropdown />
           </div>
