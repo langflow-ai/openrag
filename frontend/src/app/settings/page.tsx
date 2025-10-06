@@ -101,34 +101,6 @@ interface Connection {
   created_at: string;
   last_sync?: string;
 }
-
-const DEFAULT_CONNECTORS: Connector[] = [
-  {
-    id: "google_drive",
-    name: "Google Drive",
-    description: "Google Drive is not configured.",
-    icon: <GoogleDriveIcon />,
-    status: "not_connected",
-    type: "google_drive",
-  },
-  {
-    id: "one_drive",
-    name: "OneDrive",
-    description: "OneDrive is not configured.",
-    icon: <OneDriveIcon />,
-    status: "not_connected",
-    type: "one_drive",
-  },
-  {
-    id: "amazon_s3",
-    name: "SharePoint",
-    description: "SharePoint is not configured.",
-    icon: <SharePointIcon />,
-    status: "not_connected",
-    type: "sharepoint",
-  },
-];
-
 function KnowledgeSourcesPage() {
   const { isAuthenticated, isNoAuthMode } = useAuth();
   const { addTask, tasks } = useTask();
@@ -203,7 +175,7 @@ function KnowledgeSourcesPage() {
     onSuccess: () => {
       console.log("Setting updated successfully");
     },
-    onError: error => {
+    onError: (error) => {
       console.error("Failed to update setting:", error.message);
     },
   });
@@ -304,16 +276,8 @@ function KnowledgeSourcesPage() {
   const getConnectorIcon = useCallback((iconName: string) => {
     const iconMap: { [key: string]: React.ReactElement } = {
       "google-drive": <GoogleDriveIcon />,
-      sharepoint: (
-        <div className="w-8 h-8 bg-blue-700 rounded flex items-center justify-center text-white font-bold leading-none shrink-0">
-          SP
-        </div>
-      ),
-      onedrive: (
-        <div className="w-8 h-8 bg-white border border-gray-300 rounded flex items-center justify-center">
-          <OneDriveIcon />
-        </div>
-      ),
+      sharepoint: <SharePointIcon />,
+      onedrive: <OneDriveIcon />,
     };
     return (
       iconMap[iconName] || (
@@ -338,8 +302,8 @@ function KnowledgeSourcesPage() {
 
       // Initialize connectors list with metadata from backend
       const initialConnectors = connectorTypes
-        .filter(type => connectorsResult.connectors[type].available) // Only show available connectors
-        .map(type => ({
+        .filter((type) => connectorsResult.connectors[type].available) // Only show available connectors
+        .map((type) => ({
           id: type,
           name: connectorsResult.connectors[type].name,
           description: connectorsResult.connectors[type].description,
@@ -362,8 +326,8 @@ function KnowledgeSourcesPage() {
           );
           const isConnected = activeConnection !== undefined;
 
-          setConnectors(prev =>
-            prev.map(c =>
+          setConnectors((prev) =>
+            prev.map((c) =>
               c.type === connectorType
                 ? {
                     ...c,
@@ -382,7 +346,7 @@ function KnowledgeSourcesPage() {
 
   const handleConnect = async (connector: Connector) => {
     setIsConnecting(connector.id);
-    setSyncResults(prev => ({ ...prev, [connector.id]: null }));
+    setSyncResults((prev) => ({ ...prev, [connector.id]: null }));
 
     try {
       // Use the shared auth callback URL, same as connectors page
@@ -522,9 +486,9 @@ function KnowledgeSourcesPage() {
   // Watch for task completions and refresh stats
   useEffect(() => {
     // Find newly completed tasks by comparing with previous state
-    const newlyCompletedTasks = tasks.filter(task => {
+    const newlyCompletedTasks = tasks.filter((task) => {
       const wasCompleted =
-        prevTasks.find(prev => prev.task_id === task.task_id)?.status ===
+        prevTasks.find((prev) => prev.task_id === task.task_id)?.status ===
         "completed";
       return task.status === "completed" && !wasCompleted;
     });
@@ -578,7 +542,7 @@ function KnowledgeSourcesPage() {
     fetch(`/api/reset-flow/retrieval`, {
       method: "POST",
     })
-      .then(response => {
+      .then((response) => {
         if (response.ok) {
           return response.json();
         }
@@ -591,7 +555,7 @@ function KnowledgeSourcesPage() {
         handleModelChange(DEFAULT_AGENT_SETTINGS.llm_model);
         closeDialog(); // Close after successful completion
       })
-      .catch(error => {
+      .catch((error) => {
         console.error("Error restoring retrieval flow:", error);
         closeDialog(); // Close even on error (could show error toast instead)
       });
@@ -601,7 +565,7 @@ function KnowledgeSourcesPage() {
     fetch(`/api/reset-flow/ingest`, {
       method: "POST",
     })
-      .then(response => {
+      .then((response) => {
         if (response.ok) {
           return response.json();
         }
@@ -616,7 +580,7 @@ function KnowledgeSourcesPage() {
         setPictureDescriptions(false);
         closeDialog(); // Close after successful completion
       })
-      .catch(error => {
+      .catch((error) => {
         console.error("Error restoring ingest flow:", error);
         closeDialog(); // Close even on error (could show error toast instead)
       });
@@ -735,11 +699,9 @@ function KnowledgeSourcesPage() {
           //   </div>
           // </div>
         }
-
         {/* Connectors Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {DEFAULT_CONNECTORS.map(connector => {
-            const actualConnector = connectors.find(c => c.id === connector.id);
+          {connectors.map((connector) => {
             return (
               <Card key={connector.id} className="relative flex flex-col">
                 <CardHeader>
@@ -748,7 +710,7 @@ function KnowledgeSourcesPage() {
                       <div className="mb-1">
                         <div
                           className={`w-8 h-8 ${
-                            actualConnector ? "bg-white" : "bg-muted grayscale"
+                            connector ? "bg-white" : "bg-muted grayscale"
                           } rounded flex items-center justify-center`}
                         >
                           {connector.icon}
@@ -756,45 +718,66 @@ function KnowledgeSourcesPage() {
                       </div>
                       <CardTitle className="flex flex-row items-center gap-2">
                         {connector.name}
-                        {actualConnector &&
-                          getStatusBadge(actualConnector.status)}
+                        {connector && getStatusBadge(connector.status)}
                       </CardTitle>
                       <CardDescription className="text-[13px]">
-                        {actualConnector?.description
-                          ? `${actualConnector.name} is configured.`
+                        {connector?.description
+                          ? `${connector.name} is configured.`
                           : connector.description}
                       </CardDescription>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="flex-1 flex flex-col justify-end space-y-4">
-                  {actualConnector?.status === "connected" ? (
+                  {connector?.available ? (
                     <div className="space-y-3">
-                      <Button
-                        onClick={() => navigateToKnowledgePage(connector)}
-                        disabled={isSyncing === connector.id}
-                        className="w-full cursor-pointer"
-                        size="sm"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Knowledge
-                      </Button>
-
-                      {syncResults[connector.id] && (
-                        <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                          <div>
-                            Processed:{" "}
-                            {syncResults[connector.id]?.processed || 0}
-                          </div>
-                          <div>
-                            Added: {syncResults[connector.id]?.added || 0}
-                          </div>
-                          {syncResults[connector.id]?.errors && (
-                            <div>
-                              Errors: {syncResults[connector.id]?.errors}
+                      {connector?.status === "connected" ? (
+                        <>
+                          <Button
+                            onClick={() => navigateToKnowledgePage(connector)}
+                            disabled={isSyncing === connector.id}
+                            className="w-full cursor-pointer"
+                            size="sm"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Knowledge
+                          </Button>
+                          {syncResults[connector.id] && (
+                            <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                              <div>
+                                Processed:{" "}
+                                {syncResults[connector.id]?.processed || 0}
+                              </div>
+                              <div>
+                                Added: {syncResults[connector.id]?.added || 0}
+                              </div>
+                              {syncResults[connector.id]?.errors && (
+                                <div>
+                                  Errors: {syncResults[connector.id]?.errors}
+                                </div>
+                              )}
                             </div>
                           )}
-                        </div>
+                        </>
+                      ) : (
+                        <Button
+                          onClick={() => handleConnect(connector)}
+                          disabled={isConnecting === connector.id}
+                          className="w-full cursor-pointer"
+                          size="sm"
+                        >
+                          {isConnecting === connector.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Connecting...
+                            </>
+                          ) : (
+                            <>
+                              <PlugZap className="mr-2 h-4 w-4" />
+                              Connect
+                            </>
+                          )}
+                        </Button>
                       )}
                     </div>
                   ) : (
@@ -882,7 +865,7 @@ function KnowledgeSourcesPage() {
                 }
                 confirmText="Proceed"
                 confirmIcon={<ArrowUpRight />}
-                onConfirm={closeDialog =>
+                onConfirm={(closeDialog) =>
                   handleEditInLangflow("chat", closeDialog)
                 }
                 variant="warning"
@@ -918,7 +901,7 @@ function KnowledgeSourcesPage() {
                   id="system-prompt"
                   placeholder="Enter your agent instructions here..."
                   value={systemPrompt}
-                  onChange={e => setSystemPrompt(e.target.value)}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
                   rows={6}
                   className={`resize-none ${
                     systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
@@ -1032,7 +1015,7 @@ function KnowledgeSourcesPage() {
                 confirmText="Proceed"
                 confirmIcon={<ArrowUpRight />}
                 variant="warning"
-                onConfirm={closeDialog =>
+                onConfirm={(closeDialog) =>
                   handleEditInLangflow("ingest", closeDialog)
                 }
               />
@@ -1052,7 +1035,8 @@ function KnowledgeSourcesPage() {
                   disabled={true}
                   value={
                     settings.knowledge?.embedding_model ||
-                    modelsData?.embedding_models?.find(m => m.default)?.value ||
+                    modelsData?.embedding_models?.find((m) => m.default)
+                      ?.value ||
                     "text-embedding-ada-002"
                   }
                   onValueChange={handleEmbeddingModelChange}
@@ -1088,7 +1072,7 @@ function KnowledgeSourcesPage() {
                       type="number"
                       min="1"
                       value={chunkSize}
-                      onChange={e => handleChunkSizeChange(e.target.value)}
+                      onChange={(e) => handleChunkSizeChange(e.target.value)}
                       className="w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                     <div className="absolute inset-y-0 right-0 flex items-center">
@@ -1131,7 +1115,7 @@ function KnowledgeSourcesPage() {
                       type="number"
                       min="0"
                       value={chunkOverlap}
-                      onChange={e => handleChunkOverlapChange(e.target.value)}
+                      onChange={(e) => handleChunkOverlapChange(e.target.value)}
                       className="w-full pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                     <div className="absolute inset-y-0 right-0 flex items-center">
