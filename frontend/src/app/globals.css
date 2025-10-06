@@ -145,7 +145,8 @@
       "banner banner banner banner"
       "header header header header"
       "nav main notifications filters";
-    transition: grid-template-columns 0.25s ease-in-out;
+    transition: grid-template-columns 0.25s ease-in-out,
+      grid-template-rows 0.25s ease-in-out;
   }
 
   .header-arrangement {
