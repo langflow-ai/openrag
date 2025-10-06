@@ -8,6 +8,7 @@ import threading
 import time
 from typing import Optional, Tuple, Dict, Any, List, AsyncIterator
 from utils.logging_config import get_logger
+from utils.container_utils import guess_host_ip_for_containers
 
 logger = get_logger(__name__)
 
@@ -31,7 +32,7 @@ class DoclingManager:
 
         self._process: Optional[subprocess.Popen] = None
         self._port = 5001
-        self._host = self._get_host_for_containers()  # Get appropriate host IP based on runtime
+        self._host = guess_host_ip_for_containers(logger=logger)  # Get appropriate host IP based on runtime
         self._running = False
         self._external_process = False
 
@@ -48,136 +49,6 @@ class DoclingManager:
 
         # Try to recover existing process from PID file
         self._recover_from_pid_file()
-
-    def _get_host_for_containers(self) -> str:
-        """
-        Return a host IP that containers can reach (a bridge/CNI gateway).
-        Prefers Docker/Podman network gateways; falls back to bridge interfaces.
-        """
-        import subprocess, json, shutil, re, logging
-        logger = logging.getLogger(__name__)
-
-        def run(cmd, timeout=2, text=True):
-            return subprocess.run(cmd, capture_output=True, text=text, timeout=timeout)
-
-        gateways = []
-        compose_gateways = []  # Highest priority - compose project networks
-        active_gateways = []   # Medium priority - networks with containers
-
-        # ---- Docker: enumerate networks and collect gateways
-        if shutil.which("docker"):
-            try:
-                ls = run(["docker", "network", "ls", "--format", "{{.Name}}"])
-                if ls.returncode == 0:
-                    for name in filter(None, ls.stdout.splitlines()):
-                        try:
-                            insp = run(["docker", "network", "inspect", name, "--format", "{{json .}}"])
-                            if insp.returncode == 0 and insp.stdout.strip():
-                                nw = json.loads(insp.stdout)[0] if insp.stdout.strip().startswith("[") else json.loads(insp.stdout)
-                                ipam = nw.get("IPAM", {})
-                                containers = nw.get("Containers", {})
-                                for cfg in ipam.get("Config", []) or []:
-                                    gw = cfg.get("Gateway")
-                                    if gw:
-                                        # Highest priority: compose networks (ending in _default)
-                                        if name.endswith("_default"):
-                                            compose_gateways.append(gw)
-                                        # Medium priority: networks with active containers
-                                        elif len(containers) > 0:
-                                            active_gateways.append(gw)
-                                        # Low priority: empty networks
-                                        else:
-                                            gateways.append(gw)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
-        # ---- Podman: enumerate networks and collect gateways (netavark)
-        if shutil.which("podman"):
-            try:
-                # modern podman supports JSON format
-                ls = run(["podman", "network", "ls", "--format", "json"])
-                if ls.returncode == 0 and ls.stdout.strip():
-                    for net in json.loads(ls.stdout):
-                        name = net.get("name") or net.get("Name")
-                        if not name:
-                            continue
-                        try:
-                            insp = run(["podman", "network", "inspect", name, "--format", "json"])
-                            if insp.returncode == 0 and insp.stdout.strip():
-                                arr = json.loads(insp.stdout)
-                                for item in (arr if isinstance(arr, list) else [arr]):
-                                    for sn in item.get("subnets", []) or []:
-                                        gw = sn.get("gateway")
-                                        if gw:
-                                            # Prioritize compose/project networks
-                                            if name.endswith("_default") or "_" in name:
-                                                compose_gateways.append(gw)
-                                            else:
-                                                gateways.append(gw)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
-        # ---- Fallback: parse host interfaces for common bridges
-        if not gateways:
-            try:
-                if shutil.which("ip"):
-                    show = run(["ip", "-o", "-4", "addr", "show"])
-                    if show.returncode == 0:
-                        for line in show.stdout.splitlines():
-                            # e.g. "12: br-3f0f...    inet 172.18.0.1/16 ..."
-                            m = re.search(r"^\d+:\s+([a-zA-Z0-9_.:-]+)\s+.*\binet\s+(\d+\.\d+\.\d+\.\d+)/", line)
-                            if not m:
-                                continue
-                            ifname, ip = m.group(1), m.group(2)
-                            if ifname == "docker0" or ifname.startswith(("br-", "cni")):
-                                gateways.append(ip)
-                else:
-                    # As a last resort, try net-tools ifconfig output
-                    if shutil.which("ifconfig"):
-                        show = run(["ifconfig"])
-                        for block in show.stdout.split("\n\n"):
-                            if any(block.strip().startswith(n) for n in ("docker0", "cni", "br-")):
-                                m = re.search(r"inet (?:addr:)?(\d+\.\d+\.\d+\.\d+)", block)
-                                if m:
-                                    gateways.append(m.group(1))
-            except Exception:
-                pass
-
-        # Dedup, prioritizing: 1) compose networks, 2) active networks, 3) all others
-        seen, uniq = set(), []
-        # First: compose project networks (_default suffix)
-        for ip in compose_gateways:
-            if ip not in seen:
-                uniq.append(ip)
-                seen.add(ip)
-        # Second: networks with active containers
-        for ip in active_gateways:
-            if ip not in seen:
-                uniq.append(ip)
-                seen.add(ip)
-        # Third: all other gateways
-        for ip in gateways:
-            if ip not in seen:
-                uniq.append(ip)
-                seen.add(ip)
-
-        if uniq:
-            if len(uniq) > 1:
-                logger.info("Container-reachable host IP candidates: %s", ", ".join(uniq))
-            else:
-                logger.info("Container-reachable host IP: %s", uniq[0])
-            return uniq[0]
-
-        # Nothing found: warn clearly
-        logger.warning(
-            "No container bridge IP found. If using rootless Podman (slirp4netns), there is no host bridge; publish ports or use 10.0.2.2 from the container."
-        )
-        # Returning localhost is honest only for same-namespace; keep it explicit:
-        return "127.0.0.1"
 
     def cleanup(self):
         """Cleanup resources but keep docling-serve running across sessions."""
