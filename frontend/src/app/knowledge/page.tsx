@@ -19,6 +19,7 @@ import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useLayout } from "@/contexts/layout-context";
 import { useTask } from "@/contexts/task-context";
 import { type File, useGetSearchQuery } from "../api/queries/useGetSearchQuery";
 import "@/components/AgGrid/registerAgGridModules";
@@ -60,12 +61,13 @@ function getSourceIcon(connectorType?: string) {
 }
 
 function SearchPage() {
-	const router = useRouter();
-	const { isMenuOpen, files: taskFiles } = useTask();
-	const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
-		useKnowledgeFilter();
-	const [selectedRows, setSelectedRows] = useState<File[]>([]);
-	const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+  const router = useRouter();
+  const { isMenuOpen, files: taskFiles } = useTask();
+  const { totalTopOffset } = useLayout();
+  const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
+    useKnowledgeFilter();
+  const [selectedRows, setSelectedRows] = useState<File[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
 	const deleteDocumentMutation = useDeleteDocument();
 
@@ -243,26 +245,27 @@ function SearchPage() {
 		}
 	};
 
-	return (
-		<div
-			className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
-				isMenuOpen && isPanelOpen
-					? "md:right-[704px]"
-					: // Both open: 384px (menu) + 320px (KF panel)
-						isMenuOpen
-						? "md:right-96"
-						: // Only menu open: 384px
-							isPanelOpen
-							? "md:right-80"
-							: // Only KF panel open: 320px
-								"md:right-6" // Neither open: 24px
-			}`}
-		>
-			<div className="flex-1 flex flex-col min-h-0 px-6 py-6">
-				<div className="flex items-center justify-between mb-6">
-					<h2 className="text-lg font-semibold">Project Knowledge</h2>
-					<KnowledgeDropdown variant="button" />
-				</div>
+  return (
+    <div
+      className={`fixed inset-0 md:left-72 flex flex-col transition-all duration-300 ${
+        isMenuOpen && isPanelOpen
+          ? "md:right-[704px]"
+          : // Both open: 384px (menu) + 320px (KF panel)
+          isMenuOpen
+          ? "md:right-96"
+          : // Only menu open: 384px
+          isPanelOpen
+          ? "md:right-80"
+          : // Only KF panel open: 320px
+            "md:right-6" // Neither open: 24px
+      }`}
+      style={{ top: `${totalTopOffset}px` }}
+    >
+      <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold">Project Knowledge</h2>
+          <KnowledgeDropdown variant="button" />
+        </div>
 
 				{/* Search Input Area */}
 				<div className="flex-shrink-0 mb-6 xl:max-w-[75%]">
