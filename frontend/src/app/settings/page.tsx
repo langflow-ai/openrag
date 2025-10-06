@@ -26,6 +26,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Select,
   SelectContent,
   SelectTrigger,
@@ -618,11 +623,13 @@ function KnowledgeSourcesPage() {
   };
 
   return (
-    <div className="space-y-8 container mx-auto">
+    <div className="space-y-8">
       {/* Connectors Section */}
       <div className="space-y-6">
-        <div className="flex items-center justify-between mb-6 h-10">
-          <h2 className="text-lg font-semibold">Cloud Connectors</h2>
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight mb-2">
+            Cloud Connectors
+          </h2>
         </div>
 
         {/* Conditional Sync Settings or No-Auth Message */}
@@ -742,7 +749,8 @@ function KnowledgeSourcesPage() {
                       <Button
                         onClick={() => navigateToKnowledgePage(connector)}
                         disabled={isSyncing === connector.id}
-                        className="w-full cursor-pointer h-10"
+                        className="w-full cursor-pointer"
+                        size="sm"
                       >
                         <Plus className="h-4 w-4" />
                         Add Knowledge
@@ -1025,16 +1033,16 @@ function KnowledgeSourcesPage() {
                   }
                   onValueChange={handleEmbeddingModelChange}
                 >
-                  {/* <Tooltip>
-                    <TooltipTrigger> */}
-                  <SelectTrigger disabled id="embedding-model-select">
-                    <SelectValue placeholder="Select an embedding model" />
-                  </SelectTrigger>
-                  {/* <TooltipContent>
-                        Locked to keep embeddings consistent
-                      </TooltipContent>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <SelectTrigger disabled id="embedding-model-select">
+                        <SelectValue placeholder="Select an embedding model" />
+                      </SelectTrigger>
                     </TooltipTrigger>
-                  </Tooltip> */}
+                    <TooltipContent>
+                      Locked to keep embeddings consistent
+                    </TooltipContent>
+                  </Tooltip>
                   <SelectContent>
                     <ModelSelectItems
                       models={modelsData?.embedding_models}
