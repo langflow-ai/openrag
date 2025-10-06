@@ -2,7 +2,7 @@
 
 import type { ColDef, GetRowIdParams } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { Cloud, FileIcon, Search, Trash2, X } from "lucide-react";
+import { Cloud, FileIcon, Globe } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   type ChangeEvent,
@@ -21,7 +21,6 @@ import "@/components/AgGrid/registerAgGridModules";
 import "@/components/AgGrid/agGridStyles.css";
 import { toast } from "sonner";
 import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
-import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
@@ -43,6 +42,8 @@ function getSourceIcon(connectorType?: string) {
       return (
         <SharePointIcon className="h-4 w-4 text-foreground flex-shrink-0" />
       );
+    case "url":
+      return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
     case "s3":
       return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
     default:
@@ -54,14 +55,8 @@ function getSourceIcon(connectorType?: string) {
 
 function SearchPage() {
   const router = useRouter();
-  const { isMenuOpen, files: taskFiles, refreshTasks } = useTask();
-  const {
-    selectedFilter,
-    setSelectedFilter,
-    parsedFilterData,
-    isPanelOpen,
-    queryOverride,
-  } = useKnowledgeFilter();
+  const { files: taskFiles, refreshTasks } = useTask();
+  const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
@@ -191,6 +186,7 @@ function SearchPage() {
     {
       field: "avgScore",
       headerName: "Avg score",
+      initialFlex: 0.5,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
           <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
