@@ -7,6 +7,7 @@ import {
   type ChatConversation,
 } from "@/app/api/queries/useGetConversationsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { DoclingHealthBanner } from "@/components/docling-health-banner";
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import Logo from "@/components/logo/logo";
 import { Navigation } from "@/components/navigation";
@@ -15,9 +16,11 @@ import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/contexts/auth-context";
 import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { LayoutProvider } from "@/contexts/layout-context";
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context";
+import { useDoclingHealthQuery } from "@/src/app/api/queries/useDoclingHealthQuery";
 import { cn } from "@/lib/utils";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
@@ -34,6 +37,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isLoading: isSettingsLoading, data: settings } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
+  const {
+    data: health,
+    isLoading: isHealthLoading,
+    isError,
+  } = useDoclingHealthQuery();
 
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
@@ -59,6 +67,17 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       task.status === "processing"
   );
 
+  const isUnhealthy = health?.status === "unhealthy" || isError;
+  const isBannerVisible = !isHealthLoading && isUnhealthy;
+
+  // Dynamic height calculations based on banner visibility
+  const headerHeight = 53;
+  const bannerHeight = 52; // Approximate banner height
+  const totalTopOffset = isBannerVisible
+    ? headerHeight + bannerHeight
+    : headerHeight;
+  const mainContentHeight = `calc(100vh - ${totalTopOffset}px)`;
+
   // Show loading state when backend isn't ready
   if (isLoading || isSettingsLoading) {
     return (
@@ -71,7 +90,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isAuthPage || (settings && !settings.edited)) {
+  if (isAuthPage) {
     // For auth pages, render without navigation
     return <div className="h-full">{children}</div>;
   }
@@ -79,6 +98,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
     <div className="h-full relative">
+      <DoclingHealthBanner className="w-full pt-2" />
       <header className="header-arrangement bg-background sticky top-0 z-50 h-10">
         <div className="header-start-display px-[16px]">
           {/* Logo/Title */}
@@ -119,7 +139,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <div className="side-bar-arrangement bg-background fixed left-0 top-[40px] bottom-0 md:flex hidden pt-1">
+      <div
+        className="side-bar-arrangement bg-background fixed left-0 top-[40px] bottom-0 md:flex hidden pt-1"
+        style={{ top: `${totalTopOffset}px` }}
+      >
         <Navigation
           conversations={conversations}
           isConversationsLoading={isConversationsLoading}
@@ -127,7 +150,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         />
       </div>
       <main
-        className={`md:pl-72 transition-all duration-300 overflow-y-auto h-[calc(100vh-53px)] ${
+        className={`md:pl-72 transition-all duration-300 overflow-y-auto ${
           isMenuOpen && isPanelOpen
             ? "md:pr-[728px]"
             : // Both open: 384px (menu) + 320px (KF panel) + 24px (original padding)
@@ -139,10 +162,21 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             : // Only KF panel open: 320px
               "md:pr-0" // Neither open: 24px
         }`}
+        style={{ height: mainContentHeight }}
       >
-        <div className={cn("pb-6 pt-6 lg:pb-8 px-4 lg:px-6 container mx-auto")}>
-          {children}
-        </div>
+        <LayoutProvider
+          headerHeight={headerHeight}
+          totalTopOffset={totalTopOffset}
+        >
+          <div
+            className={cn(
+              "py-6 lg:py-8 px-4 lg:px-6",
+              isSmallWidthPath ? "max-w-[850px]" : "container"
+            )}
+          >
+            {children}
+          </div>
+        </LayoutProvider>
       </main>
       <TaskNotificationMenu />
       <KnowledgeFilterPanel />

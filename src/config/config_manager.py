@@ -27,7 +27,7 @@ class KnowledgeConfig:
     embedding_model: str = "text-embedding-3-small"
     chunk_size: int = 1000
     chunk_overlap: int = 200
-    table_structure: bool = False
+    table_structure: bool = True
     ocr: bool = False
     picture_descriptions: bool = False
 
