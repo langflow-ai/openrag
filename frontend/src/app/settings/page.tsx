@@ -820,13 +820,8 @@ function KnowledgeSourcesPage() {
       {/* Agent Behavior Section */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg mb-4">Agent</CardTitle>
-              <CardDescription>
-                Quick Agent settings. Edit in Langflow for full control.
-              </CardDescription>
-            </div>
+          <div className="flex items-center justify-between mb-3">
+            <CardTitle className="text-lg">Agent</CardTitle>
             <div className="flex gap-2">
               <ConfirmationDialog
                 trigger={
@@ -834,7 +829,7 @@ function KnowledgeSourcesPage() {
                     Restore flow
                   </Button>
                 }
-                title="Restore default Retrieval flow"
+                title="Restore default Agent flow"
                 description="This restores defaults and discards all custom settings and overrides. This can’t be undone."
                 confirmText="Restore"
                 variant="destructive"
@@ -868,12 +863,12 @@ function KnowledgeSourcesPage() {
                     Edit in Langflow
                   </Button>
                 }
-                title="Edit Retrieval flow in Langflow"
+                title="Edit Agent flow in Langflow"
                 description={
                   <>
                     <p className="mb-2">
                       You're entering Langflow. You can edit the{" "}
-                      <b>Retrieval flow</b> and other underlying flows. Manual
+                      <b>Agent flow</b> and other underlying flows. Manual
                       changes to components, wiring, or I/O can break this
                       experience.
                     </p>
@@ -889,6 +884,9 @@ function KnowledgeSourcesPage() {
               />
             </div>
           </div>
+          <CardDescription>
+            This Agent retrieves from your knowledge and generates chat responses. Edit in Langflow for full control.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
@@ -967,15 +965,10 @@ function KnowledgeSourcesPage() {
       {/* Knowledge Ingest Section */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg mb-4">
-                Knowledge ingestion and retrieval
-              </CardTitle>
-              <CardDescription>
-                Quick knowledge settings. Edit in Langflow for full control.
-              </CardDescription>
-            </div>
+          <div className="flex items-center justify-between mb-3">
+            <CardTitle className="text-lg">
+              Knowledge Ingest
+            </CardTitle>
             <div className="flex gap-2">
               <ConfirmationDialog
                 trigger={
@@ -1038,6 +1031,9 @@ function KnowledgeSourcesPage() {
               />
             </div>
           </div>
+          <CardDescription>
+            Configure how files are ingested and stored for retrieval. Edit in Langflow for full control.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
