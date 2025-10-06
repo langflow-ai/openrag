@@ -13,8 +13,8 @@ import {
   type File,
   useGetSearchQuery,
 } from "../../api/queries/useGetSearchQuery";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+// import { Label } from "@/components/ui/label";
+// import { Checkbox } from "@/components/ui/checkbox";
 import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 
 const getFileTypeLabel = (mimetype: string) => {
@@ -106,20 +106,20 @@ function ChunksPageContent() {
     router.push("/knowledge");
   }, [router]);
 
-  const handleChunkCardCheckboxChange = useCallback(
-    (index: number) => {
-      setSelectedChunks((prevSelected) => {
-        const newSelected = new Set(prevSelected);
-        if (newSelected.has(index)) {
-          newSelected.delete(index);
-        } else {
-          newSelected.add(index);
-        }
-        return newSelected;
-      });
-    },
-    [setSelectedChunks]
-  );
+  // const handleChunkCardCheckboxChange = useCallback(
+  //   (index: number) => {
+  //     setSelectedChunks((prevSelected) => {
+  //       const newSelected = new Set(prevSelected);
+  //       if (newSelected.has(index)) {
+  //         newSelected.delete(index);
+  //       } else {
+  //         newSelected.add(index);
+  //       }
+  //       return newSelected;
+  //     });
+  //   },
+  //   [setSelectedChunks]
+  // );
 
   if (!filename) {
     return (
