@@ -43,7 +43,7 @@ services:
     # build:
     #   context: .
     #   dockerfile: Dockerfile.backend
-    # container_name: openrag-backend
+    container_name: openrag-backend
     depends_on:
       - langflow
     environment:
