@@ -7,7 +7,6 @@ import {
 	FolderOpen,
 	Loader2,
 	PlugZap,
-	Plus,
 	Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -29,15 +28,7 @@ import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
 import type { File as SearchFile } from "@/src/app/api/queries/useGetSearchQuery";
 
-interface KnowledgeDropdownProps {
-	active?: boolean;
-	variant?: "navigation" | "button";
-}
-
-export function KnowledgeDropdown({
-	active,
-	variant = "navigation",
-}: KnowledgeDropdownProps) {
+export function KnowledgeDropdown() {
 	const { addTask } = useTask();
 	const { refetch: refetchTasks } = useGetTasksQuery();
 	const queryClient = useQueryClient();
@@ -498,28 +489,16 @@ export function KnowledgeDropdown({
 	return (
 		<>
 			<div ref={dropdownRef} className="relative">
-				<button
+				<Button
 					type="button"
 					onClick={() => !isLoading && setIsOpen(!isOpen)}
 					disabled={isLoading}
-					className={cn(
-						variant === "button"
-							? "rounded-lg h-12 px-4 flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-							: "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed",
-						variant === "navigation" && active
-							? "bg-accent text-accent-foreground shadow-sm"
-							: variant === "navigation"
-								? "text-foreground hover:text-accent-foreground"
-								: "",
-					)}
 				>
-					{variant === "button" ? (
+			
 						<>
-							{isLoading ? (
+							{isLoading && 
 								<Loader2 className="h-4 w-4 animate-spin" />
-							) : (
-								<Plus className="h-4 w-4" />
-							)}
+							}
 							<span>
 								{isLoading
 									? fileUploading
@@ -542,34 +521,7 @@ export function KnowledgeDropdown({
 								/>
 							)}
 						</>
-					) : (
-						<>
-							<div className="flex items-center flex-1">
-								{isLoading ? (
-									<Loader2 className="h-4 w-4 mr-3 shrink-0 animate-spin" />
-								) : (
-									<Upload
-										className={cn(
-											"h-4 w-4 mr-3 shrink-0",
-											active
-												? "text-accent-foreground"
-												: "text-muted-foreground group-hover:text-foreground",
-										)}
-									/>
-								)}
-								Knowledge
-							</div>
-							{!isLoading && (
-								<ChevronDown
-									className={cn(
-										"h-4 w-4 transition-transform",
-										isOpen && "rotate-180",
-									)}
-								/>
-							)}
-						</>
-					)}
-				</button>
+				</Button>
 
 				{isOpen && !isLoading && (
 					<div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-md z-50">

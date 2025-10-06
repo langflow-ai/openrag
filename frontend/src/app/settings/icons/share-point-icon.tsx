@@ -1,10 +1,11 @@
-const SharePointIcon = () => (
+const SharePointIcon = ({ className }: { className?: string }) => (
   <svg
     width="15"
     height="16"
     viewBox="0 0 15 16"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
+    className={className}
   >
     <g clip-path="url(#clip0_3016_409)">
       <path
