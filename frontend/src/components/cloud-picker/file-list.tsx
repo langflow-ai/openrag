@@ -9,6 +9,7 @@ interface FileListProps {
   files: CloudFile[];
   onClearAll: () => void;
   onRemoveFile: (fileId: string) => void;
+  shouldDisableActions: boolean;
 }
 
 export const FileList = ({
@@ -16,10 +17,13 @@ export const FileList = ({
   files,
   onClearAll,
   onRemoveFile,
+  shouldDisableActions,
 }: FileListProps) => {
   if (files.length === 0) {
     return null;
   }
+
+  console.log({ shouldDisableActions });
 
   return (
     <div className="space-y-2">
@@ -42,6 +46,7 @@ export const FileList = ({
             file={file}
             onRemove={onRemoveFile}
             provider={provider}
+            shouldDisableActions={shouldDisableActions}
           />
         ))}
       </div>

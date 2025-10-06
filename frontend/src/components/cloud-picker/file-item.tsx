@@ -1,7 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
-import { FileText, Folder, Trash, Trash2 } from "lucide-react";
+import { FileText, Folder, Trash2 } from "lucide-react";
 import { CloudFile } from "./types";
 import GoogleDriveIcon from "@/app/settings/icons/google-drive-icon";
 import SharePointIcon from "@/app/settings/icons/share-point-icon";
@@ -11,6 +10,7 @@ import { Button } from "@/components/ui/button";
 interface FileItemProps {
   provider: string;
   file: CloudFile;
+  shouldDisableActions: boolean;
   onRemove: (fileId: string) => void;
 }
 
