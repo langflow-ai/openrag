@@ -12,7 +12,7 @@ export const DEFAULT_AGENT_SETTINGS = {
 export const DEFAULT_KNOWLEDGE_SETTINGS = {
   chunk_size: 1000,
   chunk_overlap: 200,
-  table_structure: false,
+  table_structure: true,
   ocr: false,
   picture_descriptions: false
 } as const;
