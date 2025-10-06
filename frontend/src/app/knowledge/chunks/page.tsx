@@ -12,13 +12,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { useLayout } from "@/contexts/layout-context";
 import { useTask } from "@/contexts/task-context";
 import {
 	type ChunkResult,
 	type File,
 	useGetSearchQuery,
 } from "../../api/queries/useGetSearchQuery";
+// import { Label } from "@/components/ui/label";
+// import { Checkbox } from "@/components/ui/checkbox";
+import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 
 const getFileTypeLabel = (mimetype: string) => {
 	if (mimetype === "application/pdf") return "PDF";
@@ -28,22 +30,18 @@ const getFileTypeLabel = (mimetype: string) => {
 };
 
 function ChunksPageContent() {
-	const router = useRouter();
-	const searchParams = useSearchParams();
-	const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
-		useKnowledgeFilter();
-	const { isMenuOpen } = useTask();
-	const { totalTopOffset } = useLayout();
-
-	const filename = searchParams.get("filename");
-	const [chunks, setChunks] = useState<ChunkResult[]>([]);
-	const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
-		ChunkResult[]
-	>([]);
-	const [selectedChunks, setSelectedChunks] = useState<Set<number>>(new Set());
-	const [activeCopiedChunkIndex, setActiveCopiedChunkIndex] = useState<
-		number | null
-	>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { parsedFilterData, queryOverride } = useKnowledgeFilter();
+  const filename = searchParams.get("filename");
+  const [chunks, setChunks] = useState<ChunkResult[]>([]);
+  const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
+    ChunkResult[]
+  >([]);
+  // const [selectedChunks, setSelectedChunks] = useState<Set<number>>(new Set());
+  const [activeCopiedChunkIndex, setActiveCopiedChunkIndex] = useState<
+    number | null
+  >(null);
 
 	// Calculate average chunk length
 	const averageChunkLength = useMemo(
@@ -53,25 +51,13 @@ function ChunksPageContent() {
 		[chunks],
 	);
 
-	const [selectAll, setSelectAll] = useState(false);
-	const [queryInputText, setQueryInputText] = useState(
-		parsedFilterData?.query ?? "",
-	);
+  // const [selectAll, setSelectAll] = useState(false);
 
-	// Use the same search query as the knowledge page, but we'll filter for the specific file
-	const { data = [], isFetching } = useGetSearchQuery("*", parsedFilterData);
-
-	useEffect(() => {
-		if (queryInputText === "") {
-			setChunksFilteredByQuery(chunks);
-		} else {
-			setChunksFilteredByQuery(
-				chunks.filter((chunk) =>
-					chunk.text.toLowerCase().includes(queryInputText.toLowerCase()),
-				),
-			);
-		}
-	}, [queryInputText, chunks]);
+  // Use the same search query as the knowledge page, but we'll filter for the specific file
+  const { data = [], isFetching } = useGetSearchQuery(
+    queryOverride,
+    parsedFilterData
+  );
 
 	const handleCopy = useCallback((text: string, index: number) => {
 		// Trim whitespace and remove new lines/tabs for cleaner copy
@@ -138,67 +124,28 @@ function ChunksPageContent() {
 		);
 	}
 
-	return (
-		<div
-			className={`fixed inset-0 md:left-72 flex flex-row transition-all duration-300 ${
-				isMenuOpen && isPanelOpen
-					? "md:right-[704px]"
-					: // Both open: 384px (menu) + 320px (KF panel)
-						isMenuOpen
-						? "md:right-96"
-						: // Only menu open: 384px
-							isPanelOpen
-							? "md:right-80"
-							: // Only KF panel open: 320px
-								"md:right-6" // Neither open: 24px
-			}`}
-			style={{ top: `${totalTopOffset}px` }}
-		>
-			<div className="flex-1 flex flex-col min-h-0 px-6 py-6">
-				{/* Header */}
-				<div className="flex flex-col mb-6">
-					<div className="flex flex-row items-center gap-3 mb-6">
-						<Button variant="ghost" onClick={handleBack} size="sm">
-							<ArrowLeft size={24} />
-						</Button>
-						<h1 className="text-lg font-semibold">
-							{/* Removes file extension from filename */}
-							{filename.replace(/\.[^/.]+$/, "")}
-						</h1>
-					</div>
-					<div className="flex flex-col items-start mt-2">
-						<div className="flex-1 flex items-center gap-2 w-full max-w-[640px]">
-							<div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]">
-								{selectedFilter?.name && (
-									<div
-										className={`flex items-center gap-1 h-full px-1.5 py-0.5 mr-1 rounded max-w-[25%] ${
-											filterAccentClasses[parsedFilterData?.color || "zinc"]
-										}`}
-									>
-										<span className="truncate">{selectedFilter?.name}</span>
-										<X
-											aria-label="Remove filter"
-											className="h-4 w-4 flex-shrink-0 cursor-pointer"
-											onClick={() => setSelectedFilter(null)}
-										/>
-									</div>
-								)}
-								<Search
-									className="h-4 w-4 ml-1 flex-shrink-0 text-placeholder-foreground"
-									strokeWidth={1.5}
-								/>
-								<input
-									className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none font-mono placeholder:font-mono"
-									name="search-query"
-									id="search-query"
-									type="text"
-									placeholder="Enter your search query..."
-									onChange={(e) => setQueryInputText(e.target.value)}
-									value={queryInputText}
-								/>
-							</div>
-						</div>
-						{/* <div className="flex items-center pl-4 gap-2">
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full">
+        {/* Header */}
+        <div className="flex flex-col mb-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Button
+              variant="ghost"
+              onClick={handleBack}
+              size="sm"
+              className="max-w-8 max-h-8 -m-2"
+            >
+              <ArrowLeft size={24} />
+            </Button>
+            <h1 className="text-lg font-semibold">
+              {/* Removes file extension from filename */}
+              {filename.replace(/\.[^/.]+$/, "")}
+            </h1>
+          </div>
+          <div className="flex flex-1">
+            <KnowledgeSearchInput />
+            {/* <div className="flex items-center pl-4 gap-2">
               <Checkbox
                 id="selectAllChunks"
                 checked={selectAll}
@@ -216,36 +163,36 @@ function ChunksPageContent() {
 					</div>
 				</div>
 
-				{/* Content Area - matches knowledge page structure */}
-				<div className="flex-1 overflow-scroll pr-6">
-					{isFetching ? (
-						<div className="flex items-center justify-center h-64">
-							<div className="text-center">
-								<Loader2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
-								<p className="text-lg text-muted-foreground">
-									Loading chunks...
-								</p>
-							</div>
-						</div>
-					) : chunks.length === 0 ? (
-						<div className="flex items-center justify-center h-64">
-							<div className="text-center">
-								<p className="text-xl font-semibold mb-2">No knowledge</p>
-								<p className="text-sm text-secondary-foreground">
-									Clear the knowledge filter or return to the knowledge page
-								</p>
-							</div>
-						</div>
-					) : (
-						<div className="space-y-4 pb-6">
-							{chunksFilteredByQuery.map((chunk, index) => (
-								<div
-									key={chunk.filename + index}
-									className="bg-muted rounded-lg p-4 border border-border/50"
-								>
-									<div className="flex items-center justify-between mb-2">
-										<div className="flex items-center gap-3">
-											{/* <div>
+        {/* Content Area - matches knowledge page structure */}
+        <div className="flex-1 overflow-auto pr-6">
+          {isFetching ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <Loader2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50 animate-spin" />
+                <p className="text-lg text-muted-foreground">
+                  Loading chunks...
+                </p>
+              </div>
+            </div>
+          ) : chunks.length === 0 ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <p className="text-xl font-semibold mb-2">No knowledge</p>
+                <p className="text-sm text-secondary-foreground">
+                  Clear the knowledge filter or return to the knowledge page
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 pb-6">
+              {chunksFilteredByQuery.map((chunk, index) => (
+                <div
+                  key={chunk.filename + index}
+                  className="bg-muted rounded-lg p-4 border border-border/50"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      {/* <div>
                         <Checkbox
                           checked={selectedChunks.has(index)}
                           onCheckedChange={() =>
