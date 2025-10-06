@@ -25,6 +25,7 @@ export interface UnifiedCloudPickerProps {
   baseUrl?: string;
   // Ingest settings
   onSettingsChange?: (settings: IngestSettings) => void;
+  isIngesting: boolean;
 }
 
 export interface GoogleAPI {
