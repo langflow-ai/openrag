@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  AtSign,
   Bot,
   Check,
   ChevronDown,
@@ -11,7 +10,6 @@ import {
   Loader2,
   Plus,
   Settings,
-  Upload,
   User,
   X,
   Zap,
@@ -31,7 +29,6 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { useLayout } from "@/contexts/layout-context";
 import { useTask } from "@/contexts/task-context";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
@@ -151,9 +148,8 @@ function ChatPage() {
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef(0);
   const lastLoadedConversationRef = useRef<string | null>(null);
-  const { addTask, isMenuOpen } = useTask();
-  const { totalTopOffset } = useLayout();
-  const { selectedFilter, parsedFilterData, isPanelOpen, setSelectedFilter } =
+  const { addTask } = useTask();
+  const { selectedFilter, parsedFilterData, setSelectedFilter } =
     useKnowledgeFilter();
 
   const scrollToBottom = () => {
@@ -2047,10 +2043,10 @@ function ChatPage() {
   };
 
   return (
-    <div className="h-full flex flex-col container">
+    <div className="flex flex-col h-full">
       {/* Debug header - only show in debug mode */}
       {isDebugMode && (
-        <div className="flex items-center justify-between mb-6 px-6 pt-6 ">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2"></div>
           <div className="flex items-center gap-4">
             {/* Async Mode Toggle */}
