@@ -43,7 +43,7 @@ services:
     # build:
     #   context: .
     #   dockerfile: Dockerfile.backend
-    # container_name: openrag-backend
+    container_name: openrag-backend
     depends_on:
       - langflow
     environment:
@@ -78,10 +78,9 @@ services:
 
   openrag-frontend:
     image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile.frontend
-      #dockerfile: Dockerfile.frontend
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
     depends_on:
       - openrag-backend
@@ -109,6 +108,7 @@ services:
       - OWNER_NAME=None
       - OWNER_EMAIL=None
       - CONNECTOR_TYPE=system
+      - CONNECTOR_TYPE_URL=url
       - OPENRAG-QUERY-FILTER="{}"
       - FILENAME=None
       - MIMETYPE=None

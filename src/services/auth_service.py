@@ -296,6 +296,7 @@ class AuthService:
             try:
                 if self.langflow_mcp_service and isinstance(jwt_token, str) and jwt_token.strip():
                     global_vars = {"JWT": jwt_token}
+                    global_vars["CONNECTOR_TYPE_URL"] = "url"
                     if user_info:
                         if user_info.get("id"):
                             global_vars["OWNER"] = user_info.get("id")
