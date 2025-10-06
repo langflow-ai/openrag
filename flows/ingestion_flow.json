@@ -35,36 +35,6 @@
         "className": "",
         "data": {
           "sourceHandle": {
-            "dataType": "File",
-            "id": "File-PSU37",
-            "name": "message",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "data_inputs",
-            "id": "SplitText-QIKhg",
-            "inputTypes": [
-              "Data",
-              "DataFrame",
-              "Message"
-            ],
-            "type": "other"
-          }
-        },
-        "id": "xy-edge__File-PSU37{œdataTypeœ:œFileœ,œidœ:œFile-PSU37œ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}-SplitText-QIKhg{œfieldNameœ:œdata_inputsœ,œidœ:œSplitText-QIKhgœ,œinputTypesœ:[œDataœ,œDataFrameœ,œMessageœ],œtypeœ:œotherœ}",
-        "selected": false,
-        "source": "File-PSU37",
-        "sourceHandle": "{œdataTypeœ:œFileœ,œidœ:œFile-PSU37œ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "SplitText-QIKhg",
-        "targetHandle": "{œfieldNameœ:œdata_inputsœ,œidœ:œSplitText-QIKhgœ,œinputTypesœ:[œDataœ,œDataFrameœ,œMessageœ],œtypeœ:œotherœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
             "dataType": "EmbeddingModel",
             "id": "EmbeddingModel-eZ6bT",
             "name": "embeddings",
@@ -206,7 +176,7 @@
       },
       {
         "animated": false,
-        "className": "not-running",
+        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "AdvancedDynamicFormBuilder",
@@ -231,6 +201,149 @@
         "sourceHandle": "{œdataTypeœ:œAdvancedDynamicFormBuilderœ,œidœ:œAdvancedDynamicFormBuilder-81Exwœ,œnameœ:œform_dataœ,œoutput_typesœ:[œDataœ]}",
         "target": "OpenSearchHybrid-Ve6bS",
         "targetHandle": "{œfieldNameœ:œdocs_metadataœ,œidœ:œOpenSearchHybrid-Ve6bSœ,œinputTypesœ:[œDataœ],œtypeœ:œtableœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "DoclingRemote",
+            "id": "DoclingRemote-Dp3PX",
+            "name": "dataframe",
+            "output_types": [
+              "DataFrame"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "data_inputs",
+            "id": "ExportDoclingDocument-zZdRg",
+            "inputTypes": [
+              "Data",
+              "DataFrame"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__DoclingRemote-Dp3PX{œdataTypeœ:œDoclingRemoteœ,œidœ:œDoclingRemote-Dp3PXœ,œnameœ:œdataframeœ,œoutput_typesœ:[œDataFrameœ]}-ExportDoclingDocument-zZdRg{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œDataFrameœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "DoclingRemote-Dp3PX",
+        "sourceHandle": "{œdataTypeœ:œDoclingRemoteœ,œidœ:œDoclingRemote-Dp3PXœ,œnameœ:œdataframeœ,œoutput_typesœ:[œDataFrameœ]}",
+        "target": "ExportDoclingDocument-zZdRg",
+        "targetHandle": "{œfieldNameœ:œdata_inputsœ,œidœ:œExportDoclingDocument-zZdRgœ,œinputTypesœ:[œDataœ,œDataFrameœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "ExportDoclingDocument",
+            "id": "ExportDoclingDocument-zZdRg",
+            "name": "dataframe",
+            "output_types": [
+              "DataFrame"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "df",
+            "id": "DataFrameOperations-1BWXB",
+            "inputTypes": [
+              "DataFrame"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__ExportDoclingDocument-zZdRg{œdataTypeœ:œExportDoclingDocumentœ,œidœ:œExportDoclingDocument-zZdRgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œDataFrameœ]}-DataFrameOperations-1BWXB{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-1BWXBœ,œinputTypesœ:[œDataFrameœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "ExportDoclingDocument-zZdRg",
+        "sourceHandle": "{œdataTypeœ:œExportDoclingDocumentœ,œidœ:œExportDoclingDocument-zZdRgœ,œnameœ:œdataframeœ,œoutput_typesœ:[œDataFrameœ]}",
+        "target": "DataFrameOperations-1BWXB",
+        "targetHandle": "{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-1BWXBœ,œinputTypesœ:[œDataFrameœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "DataFrameOperations",
+            "id": "DataFrameOperations-N80fC",
+            "name": "output",
+            "output_types": [
+              "DataFrame"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "data_inputs",
+            "id": "SplitText-QIKhg",
+            "inputTypes": [
+              "Data",
+              "DataFrame",
+              "Message"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__DataFrameOperations-N80fC{œdataTypeœ:œDataFrameOperationsœ,œidœ:œDataFrameOperations-N80fCœ,œnameœ:œoutputœ,œoutput_typesœ:[œDataFrameœ]}-SplitText-QIKhg{œfieldNameœ:œdata_inputsœ,œidœ:œSplitText-QIKhgœ,œinputTypesœ:[œDataœ,œDataFrameœ,œMessageœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "DataFrameOperations-N80fC",
+        "sourceHandle": "{œdataTypeœ:œDataFrameOperationsœ,œidœ:œDataFrameOperations-N80fCœ,œnameœ:œoutputœ,œoutput_typesœ:[œDataFrameœ]}",
+        "target": "SplitText-QIKhg",
+        "targetHandle": "{œfieldNameœ:œdata_inputsœ,œidœ:œSplitText-QIKhgœ,œinputTypesœ:[œDataœ,œDataFrameœ,œMessageœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "DataFrameOperations",
+            "id": "DataFrameOperations-1BWXB",
+            "name": "output",
+            "output_types": [
+              "DataFrame"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "df",
+            "id": "DataFrameOperations-9vMrp",
+            "inputTypes": [
+              "DataFrame"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__DataFrameOperations-1BWXB{œdataTypeœ:œDataFrameOperationsœ,œidœ:œDataFrameOperations-1BWXBœ,œnameœ:œoutputœ,œoutput_typesœ:[œDataFrameœ]}-DataFrameOperations-9vMrp{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-9vMrpœ,œinputTypesœ:[œDataFrameœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "DataFrameOperations-1BWXB",
+        "sourceHandle": "{œdataTypeœ:œDataFrameOperationsœ,œidœ:œDataFrameOperations-1BWXBœ,œnameœ:œoutputœ,œoutput_typesœ:[œDataFrameœ]}",
+        "target": "DataFrameOperations-9vMrp",
+        "targetHandle": "{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-9vMrpœ,œinputTypesœ:[œDataFrameœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "DataFrameOperations",
+            "id": "DataFrameOperations-9vMrp",
+            "name": "output",
+            "output_types": [
+              "DataFrame"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "df",
+            "id": "DataFrameOperations-N80fC",
+            "inputTypes": [
+              "DataFrame"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__DataFrameOperations-9vMrp{œdataTypeœ:œDataFrameOperationsœ,œidœ:œDataFrameOperations-9vMrpœ,œnameœ:œoutputœ,œoutput_typesœ:[œDataFrameœ]}-DataFrameOperations-N80fC{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-N80fCœ,œinputTypesœ:[œDataFrameœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "DataFrameOperations-9vMrp",
+        "sourceHandle": "{œdataTypeœ:œDataFrameOperationsœ,œidœ:œDataFrameOperations-9vMrpœ,œnameœ:œoutputœ,œoutput_typesœ:[œDataFrameœ]}",
+        "target": "DataFrameOperations-N80fC",
+        "targetHandle": "{œfieldNameœ:œdfœ,œidœ:œDataFrameOperations-N80fCœ,œinputTypesœ:[œDataFrameœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
@@ -261,7 +374,7 @@
             "frozen": false,
             "icon": "scissors-line-dashed",
             "legacy": false,
-            "lf_version": "1.6.0",
+            "lf_version": "1.6.3.dev0",
             "metadata": {
               "code_hash": "f2867efda61f",
               "dependencies": {
@@ -466,8 +579,8 @@
           "width": 320
         },
         "position": {
-          "x": 1729.1788373023007,
-          "y": 1330.8003441546418
+          "x": 1704.25352249077,
+          "y": 1199.364065218893
         },
         "positionAbsolute": {
           "x": 1683.4543896546102,
@@ -476,481 +589,6 @@
         "selected": false,
         "type": "genericNode",
         "width": 320
-      },
-      {
-        "data": {
-          "id": "File-PSU37",
-          "node": {
-            "base_classes": [
-              "Message"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Loads content from one or more files.",
-            "display_name": "File",
-            "documentation": "https://docs.langflow.org/components-data#file",
-            "edited": true,
-            "field_order": [
-              "path",
-              "file_path",
-              "separator",
-              "silent_errors",
-              "delete_server_file_after_processing",
-              "ignore_unsupported_extensions",
-              "ignore_unspecified_files",
-              "advanced_mode",
-              "pipeline",
-              "ocr_engine",
-              "md_image_placeholder",
-              "md_page_break_placeholder",
-              "doc_key",
-              "use_multithreading",
-              "concurrency_multithreading",
-              "markdown"
-            ],
-            "frozen": false,
-            "icon": "file-text",
-            "last_updated": "2025-09-26T14:37:42.811Z",
-            "legacy": false,
-            "lf_version": "1.6.0",
-            "metadata": {
-              "code_hash": "9a1d497f4f91",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "lfx",
-                    "version": null
-                  }
-                ],
-                "total_dependencies": 1
-              },
-              "module": "custom_components.file"
-            },
-            "minimized": false,
-            "output_types": [],
-            "outputs": [
-              {
-                "allows_loop": false,
-                "cache": true,
-                "display_name": "Raw Content",
-                "group_outputs": false,
-                "hidden": null,
-                "method": "load_files_message",
-                "name": "message",
-                "options": null,
-                "required_inputs": null,
-                "selected": "Message",
-                "tool_mode": true,
-                "types": [
-                  "Message"
-                ],
-                "value": "__UNDEFINED__"
-              }
-            ],
-            "pinned": false,
-            "template": {
-              "_type": "Component",
-              "advanced_mode": {
-                "_input_type": "BoolInput",
-                "advanced": false,
-                "display_name": "Advanced Parser",
-                "dynamic": false,
-                "info": "Enable advanced document processing and export with Docling for PDFs, images, and office documents. Available only for single file processing.Note that advanced document processing can consume significant resources.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "advanced_mode",
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": false
-              },
-              "code": {
-                "advanced": true,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "\"\"\"Enhanced file component with Docling support and process isolation.\n\nNotes:\n-----\n- ALL Docling parsing/export runs in a separate OS process to prevent memory\n  growth and native library state from impacting the main Langflow process.\n- Standard text/structured parsing continues to use existing BaseFileComponent\n  utilities (and optional threading via `parallel_load_data`).\n\"\"\"\n\nfrom __future__ import annotations\n\nimport json\nimport subprocess\nimport sys\nimport textwrap\nfrom copy import deepcopy\nfrom typing import Any\n\nfrom lfx.base.data.base_file import BaseFileComponent\nfrom lfx.base.data.utils import TEXT_FILE_TYPES, parallel_load_data, parse_text_file_to_data\nfrom lfx.inputs.inputs import DropdownInput, MessageTextInput, StrInput\nfrom lfx.io import BoolInput, FileInput, IntInput, Output\nfrom lfx.schema import DataFrame  # noqa: TC001\nfrom lfx.schema.data import Data\nfrom lfx.schema.message import Message\n\n\nclass FileComponent(BaseFileComponent):\n    \"\"\"File component with optional Docling processing (isolated in a subprocess).\"\"\"\n\n    display_name = \"File\"\n    description = \"Loads content from one or more files.\"\n    documentation: str = \"https://docs.langflow.org/components-data#file\"\n    icon = \"file-text\"\n    name = \"File\"\n\n    # Docling-supported/compatible extensions; TEXT_FILE_TYPES are supported by the base loader.\n    VALID_EXTENSIONS = [\n        *TEXT_FILE_TYPES,\n        \"adoc\",\n        \"asciidoc\",\n        \"asc\",\n        \"bmp\",\n        \"dotx\",\n        \"dotm\",\n        \"docm\",\n        \"jpeg\",\n        \"png\",\n        \"potx\",\n        \"ppsx\",\n        \"pptm\",\n        \"potm\",\n        \"ppsm\",\n        \"pptx\",\n        \"tiff\",\n        \"xls\",\n        \"xlsx\",\n        \"xhtml\",\n        \"webp\",\n    ]\n\n    # Fixed export settings used when markdown export is requested.\n    EXPORT_FORMAT = \"Markdown\"\n    IMAGE_MODE = \"placeholder\"\n\n    _base_inputs = deepcopy(BaseFileComponent.get_base_inputs())\n\n    for input_item in _base_inputs:\n        if isinstance(input_item, FileInput) and input_item.name == \"path\":\n            input_item.real_time_refresh = True\n            break\n\n    inputs = [\n        *_base_inputs,\n        BoolInput(\n            name=\"advanced_mode\",\n            display_name=\"Advanced Parser\",\n            value=False,\n            real_time_refresh=True,\n            info=(\n                \"Enable advanced document processing and export with Docling for PDFs, images, and office documents. \"\n                \"Available only for single file processing.\"\n                \"Note that advanced document processing can consume significant resources.\"\n            ),\n            show=False,\n        ),\n        DropdownInput(\n            name=\"pipeline\",\n            display_name=\"Pipeline\",\n            info=\"Docling pipeline to use\",\n            options=[\"standard\", \"vlm\"],\n            value=\"standard\",\n            advanced=True,\n            real_time_refresh=True,\n        ),\n        DropdownInput(\n            name=\"ocr_engine\",\n            display_name=\"OCR Engine\",\n            info=\"OCR engine to use. Only available when pipeline is set to 'standard'.\",\n            options=[\"None\", \"easyocr\"],\n            value=\"easyocr\",\n            show=False,\n            advanced=True,\n        ),\n        StrInput(\n            name=\"md_image_placeholder\",\n            display_name=\"Image placeholder\",\n            info=\"Specify the image placeholder for markdown exports.\",\n            value=\"<!-- image -->\",\n            advanced=True,\n            show=False,\n        ),\n        StrInput(\n            name=\"md_page_break_placeholder\",\n            display_name=\"Page break placeholder\",\n            info=\"Add this placeholder between pages in the markdown output.\",\n            value=\"\",\n            advanced=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"doc_key\",\n            display_name=\"Doc Key\",\n            info=\"The key to use for the DoclingDocument column.\",\n            value=\"doc\",\n            advanced=True,\n            show=False,\n        ),\n        # Deprecated input retained for backward-compatibility.\n        BoolInput(\n            name=\"use_multithreading\",\n            display_name=\"[Deprecated] Use Multithreading\",\n            advanced=True,\n            value=True,\n            info=\"Set 'Processing Concurrency' greater than 1 to enable multithreading.\",\n        ),\n        IntInput(\n            name=\"concurrency_multithreading\",\n            display_name=\"Processing Concurrency\",\n            advanced=True,\n            info=\"When multiple files are being processed, the number of files to process concurrently.\",\n            value=1,\n        ),\n        BoolInput(\n            name=\"markdown\",\n            display_name=\"Markdown Export\",\n            info=\"Export processed documents to Markdown format. Only available when advanced mode is enabled.\",\n            value=False,\n            show=False,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Raw Content\", name=\"message\", method=\"load_files_message\"),\n    ]\n\n    # ------------------------------ UI helpers --------------------------------------\n\n    def _path_value(self, template: dict) -> list[str]:\n        \"\"\"Return the list of currently selected file paths from the template.\"\"\"\n        return template.get(\"path\", {}).get(\"file_path\", [])\n\n    def update_build_config(\n        self,\n        build_config: dict[str, Any],\n        field_value: Any,\n        field_name: str | None = None,\n    ) -> dict[str, Any]:\n        \"\"\"Show/hide Advanced Parser and related fields based on selection context.\"\"\"\n        if field_name == \"path\":\n            paths = self._path_value(build_config)\n            file_path = paths[0] if paths else \"\"\n            file_count = len(field_value) if field_value else 0\n\n            # Advanced mode only for single (non-tabular) file\n            allow_advanced = file_count == 1 and not file_path.endswith((\".csv\", \".xlsx\", \".parquet\"))\n            build_config[\"advanced_mode\"][\"show\"] = allow_advanced\n            if not allow_advanced:\n                build_config[\"advanced_mode\"][\"value\"] = False\n                for f in (\"pipeline\", \"ocr_engine\", \"doc_key\", \"md_image_placeholder\", \"md_page_break_placeholder\"):\n                    if f in build_config:\n                        build_config[f][\"show\"] = False\n\n        # Docling Processing\n        elif field_name == \"advanced_mode\":\n            for f in (\"pipeline\", \"ocr_engine\", \"doc_key\", \"md_image_placeholder\", \"md_page_break_placeholder\"):\n                if f in build_config:\n                    build_config[f][\"show\"] = bool(field_value)\n\n        elif field_name == \"pipeline\":\n            if field_value == \"standard\":\n                build_config[\"ocr_engine\"][\"show\"] = True\n                build_config[\"ocr_engine\"][\"value\"] = \"easyocr\"\n            else:\n                build_config[\"ocr_engine\"][\"show\"] = False\n                build_config[\"ocr_engine\"][\"value\"] = \"None\"\n\n        return build_config\n\n    def update_outputs(self, frontend_node: dict[str, Any], field_name: str, field_value: Any) -> dict[str, Any]:  # noqa: ARG002\n        \"\"\"Dynamically show outputs based on file count/type and advanced mode.\"\"\"\n        if field_name not in [\"path\", \"advanced_mode\", \"pipeline\"]:\n            return frontend_node\n\n        template = frontend_node.get(\"template\", {})\n        paths = self._path_value(template)\n        if not paths:\n            return frontend_node\n\n        frontend_node[\"outputs\"] = []\n        if len(paths) == 1:\n            file_path = paths[0] if field_name == \"path\" else frontend_node[\"template\"][\"path\"][\"file_path\"][0]\n            if file_path.endswith((\".csv\", \".xlsx\", \".parquet\")):\n                frontend_node[\"outputs\"].append(\n                    Output(display_name=\"Structured Content\", name=\"dataframe\", method=\"load_files_structured\"),\n                )\n            elif file_path.endswith(\".json\"):\n                frontend_node[\"outputs\"].append(\n                    Output(display_name=\"Structured Content\", name=\"json\", method=\"load_files_json\"),\n                )\n\n            advanced_mode = frontend_node.get(\"template\", {}).get(\"advanced_mode\", {}).get(\"value\", False)\n            if advanced_mode:\n                frontend_node[\"outputs\"].append(\n                    Output(display_name=\"Structured Output\", name=\"advanced_dataframe\", method=\"load_files_dataframe\"),\n                )\n                frontend_node[\"outputs\"].append(\n                    Output(display_name=\"Markdown\", name=\"advanced_markdown\", method=\"load_files_markdown\"),\n                )\n                frontend_node[\"outputs\"].append(\n                    Output(display_name=\"File Path\", name=\"path\", method=\"load_files_path\"),\n                )\n            else:\n                frontend_node[\"outputs\"].append(\n                    Output(display_name=\"Raw Content\", name=\"message\", method=\"load_files_message\"),\n                )\n                frontend_node[\"outputs\"].append(\n                    Output(display_name=\"File Path\", name=\"path\", method=\"load_files_path\"),\n                )\n        else:\n            # Multiple files => DataFrame output; advanced parser disabled\n            frontend_node[\"outputs\"].append(Output(display_name=\"Files\", name=\"dataframe\", method=\"load_files\"))\n\n        return frontend_node\n\n    # ------------------------------ Core processing ----------------------------------\n\n    def _is_docling_compatible(self, file_path: str) -> bool:\n        \"\"\"Lightweight extension gate for Docling-compatible types.\"\"\"\n        docling_exts = (\n            \".adoc\",\n            \".asciidoc\",\n            \".asc\",\n            \".bmp\",\n            \".csv\",\n            \".dotx\",\n            \".dotm\",\n            \".docm\",\n            \".docx\",\n            \".htm\",\n            \".html\",\n            \".jpeg\",\n            \".json\",\n            \".md\",\n            \".pdf\",\n            \".png\",\n            \".potx\",\n            \".ppsx\",\n            \".pptm\",\n            \".potm\",\n            \".ppsm\",\n            \".pptx\",\n            \".tiff\",\n            \".txt\",\n            \".xls\",\n            \".xlsx\",\n            \".xhtml\",\n            \".xml\",\n            \".webp\",\n        )\n        return file_path.lower().endswith(docling_exts)\n\n    def _process_docling_in_subprocess(self, file_path: str) -> Data | None:\n        \"\"\"Run Docling in a separate OS process and map the result to a Data object.\n\n        We avoid multiprocessing pickling by launching `python -c \"<script>\"` and\n        passing JSON config via stdin. The child prints a JSON result to stdout.\n        \"\"\"\n        if not file_path:\n            return None\n\n        args: dict[str, Any] = {\n            \"file_path\": file_path,\n            \"markdown\": bool(self.markdown),\n            \"image_mode\": str(self.IMAGE_MODE),\n            \"md_image_placeholder\": str(self.md_image_placeholder),\n            \"md_page_break_placeholder\": str(self.md_page_break_placeholder),\n            \"pipeline\": str(self.pipeline),\n            \"ocr_engine\": (\n                self.ocr_engine if self.ocr_engine and self.ocr_engine != \"None\" and self.pipeline != \"vlm\" else None\n            ),\n        }\n\n        self.log(f\"Starting Docling subprocess for file: {file_path}\")\n        self.log(args)\n\n        # Child script for isolating the docling processing\n        child_script = textwrap.dedent(\n            r\"\"\"\n            import json, sys\n\n            def try_imports():\n                # Strategy 1: latest layout\n                try:\n                    from docling.datamodel.base_models import ConversionStatus, InputFormat  # type: ignore\n                    from docling.document_converter import DocumentConverter  # type: ignore\n                    from docling_core.types.doc import ImageRefMode  # type: ignore\n                    return ConversionStatus, InputFormat, DocumentConverter, ImageRefMode, \"latest\"\n                except Exception:\n                    pass\n                # Strategy 2: alternative layout\n                try:\n                    from docling.document_converter import DocumentConverter  # type: ignore\n                    try:\n                        from docling_core.types import ConversionStatus, InputFormat  # type: ignore\n                    except Exception:\n                        try:\n                            from docling.datamodel import ConversionStatus, InputFormat  # type: ignore\n                        except Exception:\n                            class ConversionStatus: SUCCESS = \"success\"\n                            class InputFormat:\n                                PDF=\"pdf\"; IMAGE=\"image\"\n                    try:\n                        from docling_core.types.doc import ImageRefMode  # type: ignore\n                    except Exception:\n                        class ImageRefMode:\n                            PLACEHOLDER=\"placeholder\"; EMBEDDED=\"embedded\"\n                    return ConversionStatus, InputFormat, DocumentConverter, ImageRefMode, \"alternative\"\n                except Exception:\n                    pass\n                # Strategy 3: basic converter only\n                try:\n                    from docling.document_converter import DocumentConverter  # type: ignore\n                    class ConversionStatus: SUCCESS = \"success\"\n                    class InputFormat:\n                        PDF=\"pdf\"; IMAGE=\"image\"\n                    class ImageRefMode:\n                        PLACEHOLDER=\"placeholder\"; EMBEDDED=\"embedded\"\n                    return ConversionStatus, InputFormat, DocumentConverter, ImageRefMode, \"basic\"\n                except Exception as e:\n                    raise ImportError(f\"Docling imports failed: {e}\") from e\n\n            def create_converter(strategy, input_format, DocumentConverter, pipeline, ocr_engine):\n                # --- Standard PDF/IMAGE pipeline (your existing behavior), with optional OCR ---\n                if pipeline == \"standard\":\n                    try:\n                        from docling.datamodel.pipeline_options import PdfPipelineOptions  # type: ignore\n                        from docling.document_converter import PdfFormatOption  # type: ignore\n\n                        pipe = PdfPipelineOptions()\n                        pipe.do_ocr = False\n\n                        if ocr_engine:\n                            try:\n                                from docling.models.factories import get_ocr_factory  # type: ignore\n                                pipe.do_ocr = True\n                                fac = get_ocr_factory(allow_external_plugins=False)\n                                pipe.ocr_options = fac.create_options(kind=ocr_engine)\n                            except Exception:\n                                # If OCR setup fails, disable it\n                                pipe.do_ocr = False\n\n                        fmt = {}\n                        if hasattr(input_format, \"PDF\"):\n                            fmt[getattr(input_format, \"PDF\")] = PdfFormatOption(pipeline_options=pipe)\n                        if hasattr(input_format, \"IMAGE\"):\n                            fmt[getattr(input_format, \"IMAGE\")] = PdfFormatOption(pipeline_options=pipe)\n\n                        return DocumentConverter(format_options=fmt)\n                    except Exception:\n                        return DocumentConverter()\n\n                # --- Vision-Language Model (VLM) pipeline ---\n                if pipeline == \"vlm\":\n                    try:\n                        from docling.pipeline.vlm_pipeline import VlmPipeline\n                        from docling.document_converter import PdfFormatOption  # type: ignore\n\n                        vl_pipe = VlmPipelineOptions()\n\n                        # VLM paths generally don't need OCR; keep OCR off by default here.\n                        fmt = {}\n                        if hasattr(input_format, \"PDF\"):\n                            fmt[getattr(input_format, \"PDF\")] = PdfFormatOption(pipeline_cls=VlmPipeline)\n                        if hasattr(input_format, \"IMAGE\"):\n                            fmt[getattr(input_format, \"IMAGE\")] = PdfFormatOption(pipeline_cls=VlmPipeline)\n\n                        return DocumentConverter(format_options=fmt)\n                    except Exception:\n                        return DocumentConverter()\n\n                # --- Fallback: default converter with no special options ---\n                return DocumentConverter()\n\n            def export_markdown(document, ImageRefMode, image_mode, img_ph, pg_ph):\n                try:\n                    mode = getattr(ImageRefMode, image_mode.upper(), image_mode)\n                    return document.export_to_markdown(\n                        image_mode=mode,\n                        image_placeholder=img_ph,\n                        page_break_placeholder=pg_ph,\n                    )\n                except Exception:\n                    try:\n                        return document.export_to_text()\n                    except Exception:\n                        return str(document)\n\n            def to_rows(doc_dict):\n                rows = []\n                for t in doc_dict.get(\"texts\", []):\n                    prov = t.get(\"prov\") or []\n                    page_no = None\n                    if prov and isinstance(prov, list) and isinstance(prov[0], dict):\n                        page_no = prov[0].get(\"page_no\")\n                    rows.append({\n                        \"page_no\": page_no,\n                        \"label\": t.get(\"label\"),\n                        \"text\": t.get(\"text\"),\n                        \"level\": t.get(\"level\"),\n                    })\n                return rows\n\n            def main():\n                cfg = json.loads(sys.stdin.read())\n                file_path = cfg[\"file_path\"]\n                markdown = cfg[\"markdown\"]\n                image_mode = cfg[\"image_mode\"]\n                img_ph = cfg[\"md_image_placeholder\"]\n                pg_ph = cfg[\"md_page_break_placeholder\"]\n                pipeline = cfg[\"pipeline\"]\n                ocr_engine = cfg.get(\"ocr_engine\")\n                meta = {\"file_path\": file_path}\n\n                try:\n                    ConversionStatus, InputFormat, DocumentConverter, ImageRefMode, strategy = try_imports()\n                    converter = create_converter(strategy, InputFormat, DocumentConverter, pipeline, ocr_engine)\n                    try:\n                        res = converter.convert(file_path)\n                    except Exception as e:\n                        print(json.dumps({\"ok\": False, \"error\": f\"Docling conversion error: {e}\", \"meta\": meta}))\n                        return\n\n                    ok = False\n                    if hasattr(res, \"status\"):\n                        try:\n                            ok = (res.status == ConversionStatus.SUCCESS) or (str(res.status).lower() == \"success\")\n                        except Exception:\n                            ok = (str(res.status).lower() == \"success\")\n                    if not ok and hasattr(res, \"document\"):\n                        ok = getattr(res, \"document\", None) is not None\n                    if not ok:\n                        print(json.dumps({\"ok\": False, \"error\": \"Docling conversion failed\", \"meta\": meta}))\n                        return\n\n                    doc = getattr(res, \"document\", None)\n                    if doc is None:\n                        print(json.dumps({\"ok\": False, \"error\": \"Docling produced no document\", \"meta\": meta}))\n                        return\n\n                    if markdown:\n                        text = export_markdown(doc, ImageRefMode, image_mode, img_ph, pg_ph)\n                        print(json.dumps({\"ok\": True, \"mode\": \"markdown\", \"text\": text, \"meta\": meta}))\n                        return\n\n                    # structured\n                    try:\n                        doc_dict = doc.export_to_dict()\n                    except Exception as e:\n                        print(json.dumps({\"ok\": False, \"error\": f\"Docling export_to_dict failed: {e}\", \"meta\": meta}))\n                        return\n\n                    rows = to_rows(doc_dict)\n                    print(json.dumps({\"ok\": True, \"mode\": \"structured\", \"doc\": rows, \"meta\": meta}))\n                except Exception as e:\n                    print(\n                        json.dumps({\n                            \"ok\": False,\n                            \"error\": f\"Docling processing error: {e}\",\n                            \"meta\": {\"file_path\": file_path},\n                        })\n                    )\n\n            if __name__ == \"__main__\":\n                main()\n            \"\"\"\n        )\n\n        # Validate file_path to avoid command injection or unsafe input\n        if not isinstance(args[\"file_path\"], str) or any(c in args[\"file_path\"] for c in [\";\", \"|\", \"&\", \"$\", \"`\"]):\n            return Data(data={\"error\": \"Unsafe file path detected.\", \"file_path\": args[\"file_path\"]})\n\n        proc = subprocess.run(  # noqa: S603\n            [sys.executable, \"-u\", \"-c\", child_script],\n            input=json.dumps(args).encode(\"utf-8\"),\n            capture_output=True,\n            check=False,\n        )\n\n        if not proc.stdout:\n            err_msg = proc.stderr.decode(\"utf-8\", errors=\"replace\") or \"no output from child process\"\n            return Data(data={\"error\": f\"Docling subprocess error: {err_msg}\", \"file_path\": file_path})\n\n        try:\n            result = json.loads(proc.stdout.decode(\"utf-8\"))\n        except Exception as e:  # noqa: BLE001\n            err_msg = proc.stderr.decode(\"utf-8\", errors=\"replace\")\n            return Data(\n                data={\"error\": f\"Invalid JSON from Docling subprocess: {e}. stderr={err_msg}\", \"file_path\": file_path},\n            )\n\n        if not result.get(\"ok\"):\n            return Data(data={\"error\": result.get(\"error\", \"Unknown Docling error\"), **result.get(\"meta\", {})})\n\n        meta = result.get(\"meta\", {})\n        if result.get(\"mode\") == \"markdown\":\n            exported_content = str(result.get(\"text\", \"\"))\n            return Data(\n                text=exported_content,\n                data={\"exported_content\": exported_content, \"export_format\": self.EXPORT_FORMAT, **meta},\n            )\n\n        rows = list(result.get(\"doc\", []))\n        return Data(data={\"doc\": rows, \"export_format\": self.EXPORT_FORMAT, **meta})\n\n    def process_files(\n        self,\n        file_list: list[BaseFileComponent.BaseFile],\n    ) -> list[BaseFileComponent.BaseFile]:\n        \"\"\"Process input files.\n\n        - Single file + advanced_mode => Docling in a separate process.\n        - Otherwise => standard parsing in current process (optionally threaded).\n        \"\"\"\n        if not file_list:\n            msg = \"No files to process.\"\n            raise ValueError(msg)\n\n        def process_file_standard(file_path: str, *, silent_errors: bool = False) -> Data | None:\n            try:\n                return parse_text_file_to_data(file_path, silent_errors=silent_errors)\n            except FileNotFoundError as e:\n                self.log(f\"File not found: {file_path}. Error: {e}\")\n                if not silent_errors:\n                    raise\n                return None\n            except Exception as e:\n                self.log(f\"Unexpected error processing {file_path}: {e}\")\n                if not silent_errors:\n                    raise\n                return None\n\n        # Advanced path: only for a single Docling-compatible file\n        if len(file_list) == 1:\n            file_path = str(file_list[0].path)\n            if self.advanced_mode and self._is_docling_compatible(file_path):\n                advanced_data: Data | None = self._process_docling_in_subprocess(file_path)\n\n                # --- UNNEST: expand each element in `doc` to its own Data row\n                payload = getattr(advanced_data, \"data\", {}) or {}\n                doc_rows = payload.get(\"doc\")\n                if isinstance(doc_rows, list):\n                    rows: list[Data | None] = [\n                        Data(\n                            data={\n                                \"file_path\": file_path,\n                                **(item if isinstance(item, dict) else {\"value\": item}),\n                            },\n                        )\n                        for item in doc_rows\n                    ]\n                    return self.rollup_data(file_list, rows)\n\n                # If not structured, keep as-is (e.g., markdown export or error dict)\n                return self.rollup_data(file_list, [advanced_data])\n\n        # Standard multi-file (or single non-advanced) path\n        concurrency = 1 if not self.use_multithreading else max(1, self.concurrency_multithreading)\n        file_paths = [str(f.path) for f in file_list]\n        self.log(f\"Starting parallel processing of {len(file_paths)} files with concurrency: {concurrency}.\")\n        my_data = parallel_load_data(\n            file_paths,\n            silent_errors=self.silent_errors,\n            load_function=process_file_standard,\n            max_concurrency=concurrency,\n        )\n        return self.rollup_data(file_list, my_data)\n\n    # ------------------------------ Output helpers -----------------------------------\n\n    def load_files_helper(self) -> DataFrame:\n        result = self.load_files()\n\n        # Error condition - raise error if no text and an error is present\n        if not hasattr(result, \"text\"):\n            if hasattr(result, \"error\"):\n                raise ValueError(result.error[0])\n            msg = \"No content generated.\"\n            raise ValueError(msg)\n\n        return result\n\n    def load_files_dataframe(self) -> DataFrame:\n        \"\"\"Load files using advanced Docling processing and export to DataFrame format.\"\"\"\n        self.markdown = False\n        return self.load_files_helper()\n\n    def load_files_markdown(self) -> Message:\n        \"\"\"Load files using advanced Docling processing and export to Markdown format.\"\"\"\n        self.markdown = True\n        result = self.load_files_helper()\n        return Message(text=str(result.text[0]))\n"
-              },
-              "concurrency_multithreading": {
-                "_input_type": "IntInput",
-                "advanced": true,
-                "display_name": "Processing Concurrency",
-                "dynamic": false,
-                "info": "When multiple files are being processed, the number of files to process concurrently.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "concurrency_multithreading",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "int",
-                "value": 1
-              },
-              "delete_server_file_after_processing": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Delete Server File After Processing",
-                "dynamic": false,
-                "info": "If true, the Server File Path will be deleted after processing.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "delete_server_file_after_processing",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": true
-              },
-              "doc_key": {
-                "_input_type": "MessageTextInput",
-                "advanced": true,
-                "display_name": "Doc Key",
-                "dynamic": false,
-                "info": "The key to use for the DoclingDocument column.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "doc_key",
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": "doc"
-              },
-              "file_path": {
-                "_input_type": "HandleInput",
-                "advanced": true,
-                "display_name": "Server File Path",
-                "dynamic": false,
-                "info": "Data object with a 'file_path' property pointing to server file or a Message object with a path to the file. Supercedes 'Path' but supports same file types.",
-                "input_types": [
-                  "Data",
-                  "Message"
-                ],
-                "list": true,
-                "list_add_label": "Add More",
-                "name": "file_path",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "trace_as_metadata": true,
-                "type": "other",
-                "value": ""
-              },
-              "ignore_unspecified_files": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Ignore Unspecified Files",
-                "dynamic": false,
-                "info": "If true, Data with no 'file_path' property will be ignored.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "ignore_unspecified_files",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": false
-              },
-              "ignore_unsupported_extensions": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Ignore Unsupported Extensions",
-                "dynamic": false,
-                "info": "If true, files with unsupported extensions will not be processed.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "ignore_unsupported_extensions",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": true
-              },
-              "markdown": {
-                "_input_type": "BoolInput",
-                "advanced": false,
-                "display_name": "Markdown Export",
-                "dynamic": false,
-                "info": "Export processed documents to Markdown format. Only available when advanced mode is enabled.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "markdown",
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": false
-              },
-              "md_image_placeholder": {
-                "_input_type": "StrInput",
-                "advanced": true,
-                "display_name": "Image placeholder",
-                "dynamic": false,
-                "info": "Specify the image placeholder for markdown exports.",
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "md_image_placeholder",
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": "<!-- image -->"
-              },
-              "md_page_break_placeholder": {
-                "_input_type": "StrInput",
-                "advanced": true,
-                "display_name": "Page break placeholder",
-                "dynamic": false,
-                "info": "Add this placeholder between pages in the markdown output.",
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "md_page_break_placeholder",
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": ""
-              },
-              "ocr_engine": {
-                "_input_type": "DropdownInput",
-                "advanced": true,
-                "combobox": false,
-                "dialog_inputs": {},
-                "display_name": "OCR Engine",
-                "dynamic": false,
-                "external_options": {},
-                "info": "OCR engine to use. Only available when pipeline is set to 'standard'.",
-                "load_from_db": false,
-                "name": "ocr_engine",
-                "options": [
-                  "None",
-                  "easyocr"
-                ],
-                "options_metadata": [],
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "toggle": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": ""
-              },
-              "path": {
-                "_input_type": "FileInput",
-                "advanced": false,
-                "display_name": "Files",
-                "dynamic": false,
-                "fileTypes": [
-                  "csv",
-                  "json",
-                  "pdf",
-                  "txt",
-                  "md",
-                  "mdx",
-                  "yaml",
-                  "yml",
-                  "xml",
-                  "html",
-                  "htm",
-                  "docx",
-                  "py",
-                  "sh",
-                  "sql",
-                  "js",
-                  "ts",
-                  "tsx",
-                  "adoc",
-                  "asciidoc",
-                  "asc",
-                  "bmp",
-                  "dotx",
-                  "dotm",
-                  "docm",
-                  "jpeg",
-                  "png",
-                  "potx",
-                  "ppsx",
-                  "pptm",
-                  "potm",
-                  "ppsm",
-                  "pptx",
-                  "tiff",
-                  "xls",
-                  "xlsx",
-                  "xhtml",
-                  "webp",
-                  "zip",
-                  "tar",
-                  "tgz",
-                  "bz2",
-                  "gz"
-                ],
-                "file_path": [],
-                "info": "Supported file extensions: csv, json, pdf, txt, md, mdx, yaml, yml, xml, html, htm, docx, py, sh, sql, js, ts, tsx, adoc, asciidoc, asc, bmp, dotx, dotm, docm, jpeg, png, potx, ppsx, pptm, potm, ppsm, pptx, tiff, xls, xlsx, xhtml, webp; optionally bundled in file extensions: zip, tar, tgz, bz2, gz",
-                "list": true,
-                "list_add_label": "Add More",
-                "name": "path",
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "temp_file": false,
-                "title_case": false,
-                "trace_as_metadata": true,
-                "type": "file",
-                "value": ""
-              },
-              "pipeline": {
-                "_input_type": "DropdownInput",
-                "advanced": true,
-                "combobox": false,
-                "dialog_inputs": {},
-                "display_name": "Pipeline",
-                "dynamic": false,
-                "external_options": {},
-                "info": "Docling pipeline to use",
-                "name": "pipeline",
-                "options": [
-                  "standard",
-                  "vlm"
-                ],
-                "options_metadata": [],
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "toggle": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": "standard"
-              },
-              "separator": {
-                "_input_type": "StrInput",
-                "advanced": true,
-                "display_name": "Separator",
-                "dynamic": false,
-                "info": "Specify the separator to use between multiple outputs in Message format.",
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "separator",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "str",
-                "value": "\n\n"
-              },
-              "silent_errors": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "Silent Errors",
-                "dynamic": false,
-                "info": "If true, errors will not raise an exception.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "silent_errors",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": false
-              },
-              "use_multithreading": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "display_name": "[Deprecated] Use Multithreading",
-                "dynamic": false,
-                "info": "Set 'Processing Concurrency' greater than 1 to enable multithreading.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "use_multithreading",
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "type": "bool",
-                "value": true
-              }
-            },
-            "tool_mode": false
-          },
-          "selected_output": "message",
-          "showNode": true,
-          "type": "File"
-        },
-        "dragging": false,
-        "id": "File-PSU37",
-        "measured": {
-          "height": 214,
-          "width": 320
-        },
-        "position": {
-          "x": 1270.0395728258152,
-          "y": 1372.889208749833
-        },
-        "selected": false,
-        "type": "genericNode"
       },
       {
         "data": {
@@ -995,6 +633,7 @@
             "frozen": false,
             "icon": "OpenSearch",
             "legacy": false,
+            "lf_version": "1.6.3.dev0",
             "metadata": {
               "code_hash": "c81b23acb81a",
               "dependencies": {
@@ -1606,9 +1245,9 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-09-26T14:37:42.699Z",
+            "last_updated": "2025-10-04T02:17:01.272Z",
             "legacy": false,
-            "lf_version": "1.6.0",
+            "lf_version": "1.6.3.dev0",
             "metadata": {
               "code_hash": "8607e963fdef",
               "dependencies": {
@@ -1911,9 +1550,9 @@
             ],
             "frozen": false,
             "icon": "braces",
-            "last_updated": "2025-09-26T14:37:42.700Z",
+            "last_updated": "2025-10-04T02:17:01.273Z",
             "legacy": false,
-            "lf_version": "1.6.0",
+            "lf_version": "1.6.3.dev0",
             "metadata": {},
             "minimized": false,
             "output_types": [],
@@ -2229,7 +1868,7 @@
             "frozen": false,
             "icon": "type",
             "legacy": false,
-            "lf_version": "1.6.0",
+            "lf_version": "1.6.3.dev0",
             "metadata": {},
             "minimized": false,
             "output_types": [],
@@ -2303,8 +1942,8 @@
           "width": 320
         },
         "position": {
-          "x": 714.0622664079099,
-          "y": 1763.5050239191407
+          "x": 717.1931358375118,
+          "y": 1935.3672380902274
         },
         "selected": false,
         "type": "genericNode"
@@ -2329,7 +1968,7 @@
             "frozen": false,
             "icon": "type",
             "legacy": false,
-            "lf_version": "1.6.0",
+            "lf_version": "1.6.3.dev0",
             "metadata": {},
             "minimized": false,
             "output_types": [],
@@ -2403,10 +2042,10 @@
           "width": 320
         },
         "position": {
-          "x": 714.4587372144712,
-          "y": 2004.1002386954729
+          "x": 715.4359658918343,
+          "y": 2198.0228056169435
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
@@ -2429,7 +2068,7 @@
             "frozen": false,
             "icon": "type",
             "legacy": false,
-            "lf_version": "1.6.0",
+            "lf_version": "1.6.3.dev0",
             "metadata": {},
             "minimized": false,
             "output_types": [],
@@ -2503,8 +2142,8 @@
           "width": 320
         },
         "position": {
-          "x": 709.8548852366719,
-          "y": 2250.972699431992
+          "x": 714.0740919106219,
+          "y": 2445.0562064336955
         },
         "selected": false,
         "type": "genericNode"
@@ -2529,7 +2168,7 @@
             "frozen": false,
             "icon": "type",
             "legacy": false,
-            "lf_version": "1.6.0",
+            "lf_version": "1.6.3.dev0",
             "metadata": {},
             "minimized": false,
             "output_types": [],
@@ -2604,23 +2243,1905 @@
         },
         "position": {
           "x": 712.1292482141275,
-          "y": 2505.6122587806585
+          "y": 2691.2573524344616
+        },
+        "selected": false,
+        "type": "genericNode"
+      },
+      {
+        "data": {
+          "id": "DoclingRemote-Dp3PX",
+          "node": {
+            "base_classes": [
+              "DataFrame"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Uses Docling to process input documents connecting to your instance of Docling Serve.",
+            "display_name": "Docling Serve",
+            "documentation": "https://docling-project.github.io/docling/",
+            "edited": false,
+            "field_order": [
+              "path",
+              "file_path",
+              "separator",
+              "silent_errors",
+              "delete_server_file_after_processing",
+              "ignore_unsupported_extensions",
+              "ignore_unspecified_files",
+              "api_url",
+              "max_concurrency",
+              "max_poll_timeout",
+              "api_headers",
+              "docling_serve_opts"
+            ],
+            "frozen": false,
+            "icon": "Docling",
+            "legacy": false,
+            "lf_version": "1.6.3.dev0",
+            "metadata": {
+              "code_hash": "26eeb513dded",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "httpx",
+                    "version": "0.28.1"
+                  },
+                  {
+                    "name": "docling_core",
+                    "version": "2.48.4"
+                  },
+                  {
+                    "name": "pydantic",
+                    "version": "2.10.6"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "0.1.12.dev31"
+                  }
+                ],
+                "total_dependencies": 4
+              },
+              "module": "lfx.components.docling.docling_remote.DoclingRemoteComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Files",
+                "group_outputs": false,
+                "method": "load_files",
+                "name": "dataframe",
+                "selected": "DataFrame",
+                "tool_mode": true,
+                "types": [
+                  "DataFrame"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "api_headers": {
+                "_input_type": "NestedDictInput",
+                "advanced": true,
+                "display_name": "HTTP headers",
+                "dynamic": false,
+                "info": "Optional dictionary of additional headers required for connecting to Docling Serve.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "api_headers",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "NestedDict",
+                "value": {}
+              },
+              "api_url": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "Server address",
+                "dynamic": false,
+                "info": "URL of the Docling Serve instance.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "api_url",
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "http://localhost:5001"
+              },
+              "code": {
+                "advanced": true,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "import base64\nimport time\nfrom concurrent.futures import Future, ThreadPoolExecutor\nfrom pathlib import Path\nfrom typing import Any\n\nimport httpx\nfrom docling_core.types.doc import DoclingDocument\nfrom pydantic import ValidationError\n\nfrom lfx.base.data import BaseFileComponent\nfrom lfx.inputs import IntInput, NestedDictInput, StrInput\nfrom lfx.inputs.inputs import FloatInput\nfrom lfx.schema import Data\nfrom lfx.utils.util import transform_localhost_url\n\n\nclass DoclingRemoteComponent(BaseFileComponent):\n    display_name = \"Docling Serve\"\n    description = \"Uses Docling to process input documents connecting to your instance of Docling Serve.\"\n    documentation = \"https://docling-project.github.io/docling/\"\n    trace_type = \"tool\"\n    icon = \"Docling\"\n    name = \"DoclingRemote\"\n\n    MAX_500_RETRIES = 5\n\n    # https://docling-project.github.io/docling/usage/supported_formats/\n    VALID_EXTENSIONS = [\n        \"adoc\",\n        \"asciidoc\",\n        \"asc\",\n        \"bmp\",\n        \"csv\",\n        \"dotx\",\n        \"dotm\",\n        \"docm\",\n        \"docx\",\n        \"htm\",\n        \"html\",\n        \"jpeg\",\n        \"json\",\n        \"md\",\n        \"pdf\",\n        \"png\",\n        \"potx\",\n        \"ppsx\",\n        \"pptm\",\n        \"potm\",\n        \"ppsm\",\n        \"pptx\",\n        \"tiff\",\n        \"txt\",\n        \"xls\",\n        \"xlsx\",\n        \"xhtml\",\n        \"xml\",\n        \"webp\",\n    ]\n\n    inputs = [\n        *BaseFileComponent.get_base_inputs(),\n        StrInput(\n            name=\"api_url\",\n            display_name=\"Server address\",\n            info=\"URL of the Docling Serve instance.\",\n            required=True,\n        ),\n        IntInput(\n            name=\"max_concurrency\",\n            display_name=\"Concurrency\",\n            info=\"Maximum number of concurrent requests for the server.\",\n            advanced=True,\n            value=2,\n        ),\n        FloatInput(\n            name=\"max_poll_timeout\",\n            display_name=\"Maximum poll time\",\n            info=\"Maximum waiting time for the document conversion to complete.\",\n            advanced=True,\n            value=3600,\n        ),\n        NestedDictInput(\n            name=\"api_headers\",\n            display_name=\"HTTP headers\",\n            advanced=True,\n            required=False,\n            info=(\"Optional dictionary of additional headers required for connecting to Docling Serve.\"),\n        ),\n        NestedDictInput(\n            name=\"docling_serve_opts\",\n            display_name=\"Docling options\",\n            advanced=True,\n            required=False,\n            info=(\n                \"Optional dictionary of additional options. \"\n                \"See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information.\"\n            ),\n        ),\n    ]\n\n    outputs = [\n        *BaseFileComponent.get_base_outputs(),\n    ]\n\n    def process_files(self, file_list: list[BaseFileComponent.BaseFile]) -> list[BaseFileComponent.BaseFile]:\n        # Transform localhost URLs to container-accessible hosts when running in a container\n        transformed_url = transform_localhost_url(self.api_url)\n        base_url = f\"{transformed_url}/v1\"\n\n        def _convert_document(client: httpx.Client, file_path: Path, options: dict[str, Any]) -> Data | None:\n            encoded_doc = base64.b64encode(file_path.read_bytes()).decode()\n            payload = {\n                \"options\": options,\n                \"sources\": [{\"kind\": \"file\", \"base64_string\": encoded_doc, \"filename\": file_path.name}],\n            }\n\n            response = client.post(f\"{base_url}/convert/source/async\", json=payload)\n            response.raise_for_status()\n            task = response.json()\n\n            http_failures = 0\n            retry_status_start = 500\n            retry_status_end = 600\n            start_wait_time = time.monotonic()\n            while task[\"task_status\"] not in (\"success\", \"failure\"):\n                # Check if processing exceeds the maximum poll timeout\n                processing_time = time.monotonic() - start_wait_time\n                if processing_time >= self.max_poll_timeout:\n                    msg = (\n                        f\"Processing time {processing_time=} exceeds the maximum poll timeout {self.max_poll_timeout=}.\"\n                        \"Please increase the max_poll_timeout parameter or review why the processing \"\n                        \"takes long on the server.\"\n                    )\n                    self.log(msg)\n                    raise RuntimeError(msg)\n\n                # Call for a new status update\n                time.sleep(2)\n                response = client.get(f\"{base_url}/status/poll/{task['task_id']}\")\n\n                # Check if the status call gets into 5xx errors and retry\n                if retry_status_start <= response.status_code < retry_status_end:\n                    http_failures += 1\n                    if http_failures > self.MAX_500_RETRIES:\n                        self.log(f\"The status requests got a http response {response.status_code} too many times.\")\n                        return None\n                    continue\n\n                # Update task status\n                task = response.json()\n\n            result_resp = client.get(f\"{base_url}/result/{task['task_id']}\")\n            result_resp.raise_for_status()\n            result = result_resp.json()\n\n            if \"json_content\" not in result[\"document\"] or result[\"document\"][\"json_content\"] is None:\n                self.log(\"No JSON DoclingDocument found in the result.\")\n                return None\n\n            try:\n                doc = DoclingDocument.model_validate(result[\"document\"][\"json_content\"])\n                return Data(data={\"doc\": doc, \"file_path\": str(file_path)})\n            except ValidationError as e:\n                self.log(f\"Error validating the document. {e}\")\n                return None\n\n        docling_options = {\n            \"to_formats\": [\"json\"],\n            \"image_export_mode\": \"placeholder\",\n            **(self.docling_serve_opts or {}),\n        }\n\n        processed_data: list[Data | None] = []\n        with (\n            httpx.Client(headers=self.api_headers) as client,\n            ThreadPoolExecutor(max_workers=self.max_concurrency) as executor,\n        ):\n            futures: list[tuple[int, Future]] = []\n            for i, file in enumerate(file_list):\n                if file.path is None:\n                    processed_data.append(None)\n                    continue\n\n                futures.append((i, executor.submit(_convert_document, client, file.path, docling_options)))\n\n            for _index, future in futures:\n                try:\n                    result_data = future.result()\n                    processed_data.append(result_data)\n                except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:\n                    self.log(f\"Docling remote processing failed: {exc}\")\n                    raise\n\n        return self.rollup_data(file_list, processed_data)\n"
+              },
+              "delete_server_file_after_processing": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Delete Server File After Processing",
+                "dynamic": false,
+                "info": "If true, the Server File Path will be deleted after processing.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "delete_server_file_after_processing",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "bool",
+                "value": true
+              },
+              "docling_serve_opts": {
+                "_input_type": "NestedDictInput",
+                "advanced": false,
+                "display_name": "Docling options",
+                "dynamic": false,
+                "info": "Optional dictionary of additional options. See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "docling_serve_opts",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "NestedDict",
+                "value": {
+                  "do_ocr": false
+                }
+              },
+              "file_path": {
+                "_input_type": "HandleInput",
+                "advanced": true,
+                "display_name": "Server File Path",
+                "dynamic": false,
+                "info": "Data object with a 'file_path' property pointing to server file or a Message object with a path to the file. Supercedes 'Path' but supports same file types.",
+                "input_types": [
+                  "Data",
+                  "Message"
+                ],
+                "list": true,
+                "list_add_label": "Add More",
+                "name": "file_path",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "type": "other",
+                "value": ""
+              },
+              "ignore_unspecified_files": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Ignore Unspecified Files",
+                "dynamic": false,
+                "info": "If true, Data with no 'file_path' property will be ignored.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "ignore_unspecified_files",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "bool",
+                "value": false
+              },
+              "ignore_unsupported_extensions": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Ignore Unsupported Extensions",
+                "dynamic": false,
+                "info": "If true, files with unsupported extensions will not be processed.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "ignore_unsupported_extensions",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "bool",
+                "value": true
+              },
+              "max_concurrency": {
+                "_input_type": "IntInput",
+                "advanced": false,
+                "display_name": "Concurrency",
+                "dynamic": false,
+                "info": "Maximum number of concurrent requests for the server.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "max_concurrency",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "int",
+                "value": 2
+              },
+              "max_poll_timeout": {
+                "_input_type": "FloatInput",
+                "advanced": true,
+                "display_name": "Maximum poll time",
+                "dynamic": false,
+                "info": "Maximum waiting time for the document conversion to complete.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "max_poll_timeout",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "float",
+                "value": 3600
+              },
+              "path": {
+                "_input_type": "FileInput",
+                "advanced": false,
+                "display_name": "Files",
+                "dynamic": false,
+                "fileTypes": [
+                  "adoc",
+                  "asciidoc",
+                  "asc",
+                  "bmp",
+                  "csv",
+                  "dotx",
+                  "dotm",
+                  "docm",
+                  "docx",
+                  "htm",
+                  "html",
+                  "jpeg",
+                  "json",
+                  "md",
+                  "pdf",
+                  "png",
+                  "potx",
+                  "ppsx",
+                  "pptm",
+                  "potm",
+                  "ppsm",
+                  "pptx",
+                  "tiff",
+                  "txt",
+                  "xls",
+                  "xlsx",
+                  "xhtml",
+                  "xml",
+                  "webp",
+                  "zip",
+                  "tar",
+                  "tgz",
+                  "bz2",
+                  "gz"
+                ],
+                "file_path": [],
+                "info": "Supported file extensions: adoc, asciidoc, asc, bmp, csv, dotx, dotm, docm, docx, htm, html, jpeg, json, md, pdf, png, potx, ppsx, pptm, potm, ppsm, pptx, tiff, txt, xls, xlsx, xhtml, xml, webp; optionally bundled in file extensions: zip, tar, tgz, bz2, gz",
+                "list": true,
+                "list_add_label": "Add More",
+                "name": "path",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "temp_file": false,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "type": "file",
+                "value": ""
+              },
+              "separator": {
+                "_input_type": "StrInput",
+                "advanced": true,
+                "display_name": "Separator",
+                "dynamic": false,
+                "info": "Specify the separator to use between multiple outputs in Message format.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "separator",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "\n\n"
+              },
+              "silent_errors": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Silent Errors",
+                "dynamic": false,
+                "info": "If true, errors will not raise an exception.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "silent_errors",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "bool",
+                "value": false
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "DoclingRemote"
+        },
+        "dragging": false,
+        "id": "DoclingRemote-Dp3PX",
+        "measured": {
+          "height": 475,
+          "width": 320
+        },
+        "position": {
+          "x": -248.47065093890868,
+          "y": 1040.3002495758292
+        },
+        "selected": false,
+        "type": "genericNode"
+      },
+      {
+        "data": {
+          "id": "ExportDoclingDocument-zZdRg",
+          "node": {
+            "base_classes": [
+              "Data",
+              "DataFrame"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Export DoclingDocument to markdown, html or other formats.",
+            "display_name": "Export DoclingDocument",
+            "documentation": "https://docling-project.github.io/docling/",
+            "edited": false,
+            "field_order": [
+              "data_inputs",
+              "export_format",
+              "image_mode",
+              "md_image_placeholder",
+              "md_page_break_placeholder",
+              "doc_key"
+            ],
+            "frozen": false,
+            "icon": "Docling",
+            "last_updated": "2025-10-04T01:42:10.290Z",
+            "legacy": false,
+            "lf_version": "1.6.3.dev0",
+            "metadata": {
+              "code_hash": "4de16ddd37ac",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "docling_core",
+                    "version": "2.48.4"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "0.1.12.dev31"
+                  }
+                ],
+                "total_dependencies": 2
+              },
+              "module": "lfx.components.docling.export_docling_document.ExportDoclingDocumentComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Exported data",
+                "group_outputs": false,
+                "method": "export_document",
+                "name": "data",
+                "options": null,
+                "required_inputs": null,
+                "selected": "Data",
+                "tool_mode": true,
+                "types": [
+                  "Data"
+                ],
+                "value": "__UNDEFINED__"
+              },
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "DataFrame",
+                "group_outputs": false,
+                "method": "as_dataframe",
+                "name": "dataframe",
+                "options": null,
+                "required_inputs": null,
+                "selected": "DataFrame",
+                "tool_mode": true,
+                "types": [
+                  "DataFrame"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "code": {
+                "advanced": true,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "from typing import Any\n\nfrom docling_core.types.doc import ImageRefMode\n\nfrom lfx.base.data.docling_utils import extract_docling_documents\nfrom lfx.custom import Component\nfrom lfx.io import DropdownInput, HandleInput, MessageTextInput, Output, StrInput\nfrom lfx.schema import Data, DataFrame\n\n\nclass ExportDoclingDocumentComponent(Component):\n    display_name: str = \"Export DoclingDocument\"\n    description: str = \"Export DoclingDocument to markdown, html or other formats.\"\n    documentation = \"https://docling-project.github.io/docling/\"\n    icon = \"Docling\"\n    name = \"ExportDoclingDocument\"\n\n    inputs = [\n        HandleInput(\n            name=\"data_inputs\",\n            display_name=\"Data or DataFrame\",\n            info=\"The data with documents to export.\",\n            input_types=[\"Data\", \"DataFrame\"],\n            required=True,\n        ),\n        DropdownInput(\n            name=\"export_format\",\n            display_name=\"Export format\",\n            options=[\"Markdown\", \"HTML\", \"Plaintext\", \"DocTags\"],\n            info=\"Select the export format to convert the input.\",\n            value=\"Markdown\",\n            real_time_refresh=True,\n        ),\n        DropdownInput(\n            name=\"image_mode\",\n            display_name=\"Image export mode\",\n            options=[\"placeholder\", \"embedded\"],\n            info=(\n                \"Specify how images are exported in the output. Placeholder will replace the images with a string, \"\n                \"whereas Embedded will include them as base64 encoded images.\"\n            ),\n            value=\"placeholder\",\n        ),\n        StrInput(\n            name=\"md_image_placeholder\",\n            display_name=\"Image placeholder\",\n            info=\"Specify the image placeholder for markdown exports.\",\n            value=\"<!-- image -->\",\n            advanced=True,\n        ),\n        StrInput(\n            name=\"md_page_break_placeholder\",\n            display_name=\"Page break placeholder\",\n            info=\"Add this placeholder betweek pages in the markdown output.\",\n            value=\"\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"doc_key\",\n            display_name=\"Doc Key\",\n            info=\"The key to use for the DoclingDocument column.\",\n            value=\"doc\",\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Exported data\", name=\"data\", method=\"export_document\"),\n        Output(display_name=\"DataFrame\", name=\"dataframe\", method=\"as_dataframe\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"export_format\" and field_value == \"Markdown\":\n            build_config[\"md_image_placeholder\"][\"show\"] = True\n            build_config[\"md_page_break_placeholder\"][\"show\"] = True\n            build_config[\"image_mode\"][\"show\"] = True\n        elif field_name == \"export_format\" and field_value == \"HTML\":\n            build_config[\"md_image_placeholder\"][\"show\"] = False\n            build_config[\"md_page_break_placeholder\"][\"show\"] = False\n            build_config[\"image_mode\"][\"show\"] = True\n        elif field_name == \"export_format\" and field_value in {\"Plaintext\", \"DocTags\"}:\n            build_config[\"md_image_placeholder\"][\"show\"] = False\n            build_config[\"md_page_break_placeholder\"][\"show\"] = False\n            build_config[\"image_mode\"][\"show\"] = False\n\n        return build_config\n\n    def export_document(self) -> list[Data]:\n        documents = extract_docling_documents(self.data_inputs, self.doc_key)\n\n        results: list[Data] = []\n        try:\n            image_mode = ImageRefMode(self.image_mode)\n            for doc in documents:\n                content = \"\"\n                if self.export_format == \"Markdown\":\n                    content = doc.export_to_markdown(\n                        image_mode=image_mode,\n                        image_placeholder=self.md_image_placeholder,\n                        page_break_placeholder=self.md_page_break_placeholder,\n                    )\n                elif self.export_format == \"HTML\":\n                    content = doc.export_to_html(image_mode=image_mode)\n                elif self.export_format == \"Plaintext\":\n                    content = doc.export_to_text()\n                elif self.export_format == \"DocTags\":\n                    content = doc.export_to_doctags()\n\n                results.append(Data(text=content))\n        except Exception as e:\n            msg = f\"Error splitting text: {e}\"\n            raise TypeError(msg) from e\n\n        return results\n\n    def as_dataframe(self) -> DataFrame:\n        return DataFrame(self.export_document())\n"
+              },
+              "data_inputs": {
+                "_input_type": "HandleInput",
+                "advanced": false,
+                "display_name": "Data or DataFrame",
+                "dynamic": false,
+                "info": "The data with documents to export.",
+                "input_types": [
+                  "Data",
+                  "DataFrame"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "data_inputs",
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "type": "other",
+                "value": ""
+              },
+              "doc_key": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "display_name": "Doc Key",
+                "dynamic": false,
+                "info": "The key to use for the DoclingDocument column.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "doc_key",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "doc"
+              },
+              "export_format": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Export format",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Select the export format to convert the input.",
+                "name": "export_format",
+                "options": [
+                  "Markdown",
+                  "HTML",
+                  "Plaintext",
+                  "DocTags"
+                ],
+                "options_metadata": [],
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "Markdown"
+              },
+              "image_mode": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Image export mode",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Specify how images are exported in the output. Placeholder will replace the images with a string, whereas Embedded will include them as base64 encoded images.",
+                "name": "image_mode",
+                "options": [
+                  "placeholder",
+                  "embedded"
+                ],
+                "options_metadata": [],
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "placeholder"
+              },
+              "md_image_placeholder": {
+                "_input_type": "StrInput",
+                "advanced": true,
+                "display_name": "Image placeholder",
+                "dynamic": false,
+                "info": "Specify the image placeholder for markdown exports.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "md_image_placeholder",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "<!-- image -->"
+              },
+              "md_page_break_placeholder": {
+                "_input_type": "StrInput",
+                "advanced": true,
+                "display_name": "Page break placeholder",
+                "dynamic": false,
+                "info": "Add this placeholder betweek pages in the markdown output.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "md_page_break_placeholder",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              }
+            },
+            "tool_mode": false
+          },
+          "selected_output": "dataframe",
+          "showNode": true,
+          "type": "ExportDoclingDocument"
+        },
+        "dragging": false,
+        "id": "ExportDoclingDocument-zZdRg",
+        "measured": {
+          "height": 347,
+          "width": 320
+        },
+        "position": {
+          "x": 134.00431977210877,
+          "y": 1065.2709317561028
+        },
+        "selected": false,
+        "type": "genericNode"
+      },
+      {
+        "data": {
+          "id": "DataFrameOperations-1BWXB",
+          "node": {
+            "base_classes": [
+              "DataFrame"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Perform various operations on a DataFrame.",
+            "display_name": "DataFrame Operations",
+            "documentation": "https://docs.langflow.org/components-processing#dataframe-operations",
+            "edited": false,
+            "field_order": [
+              "df",
+              "operation",
+              "column_name",
+              "filter_value",
+              "filter_operator",
+              "ascending",
+              "new_column_name",
+              "new_column_value",
+              "columns_to_select",
+              "num_rows",
+              "replace_value",
+              "replacement_value"
+            ],
+            "frozen": false,
+            "icon": "table",
+            "last_updated": "2025-10-04T02:17:01.354Z",
+            "legacy": false,
+            "lf_version": "1.6.3.dev0",
+            "metadata": {
+              "code_hash": "b4d6b19b6eef",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "pandas",
+                    "version": "2.2.3"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "0.1.12.dev31"
+                  }
+                ],
+                "total_dependencies": 2
+              },
+              "module": "lfx.components.processing.dataframe_operations.DataFrameOperationsComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "DataFrame",
+                "group_outputs": false,
+                "method": "perform_operation",
+                "name": "output",
+                "options": null,
+                "required_inputs": null,
+                "selected": "DataFrame",
+                "tool_mode": true,
+                "types": [
+                  "DataFrame"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "ascending": {
+                "_input_type": "BoolInput",
+                "advanced": false,
+                "display_name": "Sort Ascending",
+                "dynamic": true,
+                "info": "Whether to sort in ascending order.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "ascending",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "bool",
+                "value": true
+              },
+              "code": {
+                "advanced": true,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "import pandas as pd\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.inputs import SortableListInput\nfrom lfx.io import BoolInput, DataFrameInput, DropdownInput, IntInput, MessageTextInput, Output, StrInput\nfrom lfx.log.logger import logger\nfrom lfx.schema.dataframe import DataFrame\n\n\nclass DataFrameOperationsComponent(Component):\n    display_name = \"DataFrame Operations\"\n    description = \"Perform various operations on a DataFrame.\"\n    documentation: str = \"https://docs.langflow.org/components-processing#dataframe-operations\"\n    icon = \"table\"\n    name = \"DataFrameOperations\"\n\n    OPERATION_CHOICES = [\n        \"Add Column\",\n        \"Drop Column\",\n        \"Filter\",\n        \"Head\",\n        \"Rename Column\",\n        \"Replace Value\",\n        \"Select Columns\",\n        \"Sort\",\n        \"Tail\",\n        \"Drop Duplicates\",\n    ]\n\n    inputs = [\n        DataFrameInput(\n            name=\"df\",\n            display_name=\"DataFrame\",\n            info=\"The input DataFrame to operate on.\",\n            required=True,\n        ),\n        SortableListInput(\n            name=\"operation\",\n            display_name=\"Operation\",\n            placeholder=\"Select Operation\",\n            info=\"Select the DataFrame operation to perform.\",\n            options=[\n                {\"name\": \"Add Column\", \"icon\": \"plus\"},\n                {\"name\": \"Drop Column\", \"icon\": \"minus\"},\n                {\"name\": \"Filter\", \"icon\": \"filter\"},\n                {\"name\": \"Head\", \"icon\": \"arrow-up\"},\n                {\"name\": \"Rename Column\", \"icon\": \"pencil\"},\n                {\"name\": \"Replace Value\", \"icon\": \"replace\"},\n                {\"name\": \"Select Columns\", \"icon\": \"columns\"},\n                {\"name\": \"Sort\", \"icon\": \"arrow-up-down\"},\n                {\"name\": \"Tail\", \"icon\": \"arrow-down\"},\n                {\"name\": \"Drop Duplicates\", \"icon\": \"copy-x\"},\n            ],\n            real_time_refresh=True,\n            limit=1,\n        ),\n        StrInput(\n            name=\"column_name\",\n            display_name=\"Column Name\",\n            info=\"The column name to use for the operation.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"filter_value\",\n            display_name=\"Filter Value\",\n            info=\"The value to filter rows by.\",\n            dynamic=True,\n            show=False,\n        ),\n        DropdownInput(\n            name=\"filter_operator\",\n            display_name=\"Filter Operator\",\n            options=[\n                \"equals\",\n                \"not equals\",\n                \"contains\",\n                \"not contains\",\n                \"starts with\",\n                \"ends with\",\n                \"greater than\",\n                \"less than\",\n            ],\n            value=\"equals\",\n            info=\"The operator to apply for filtering rows.\",\n            advanced=False,\n            dynamic=True,\n            show=False,\n        ),\n        BoolInput(\n            name=\"ascending\",\n            display_name=\"Sort Ascending\",\n            info=\"Whether to sort in ascending order.\",\n            dynamic=True,\n            show=False,\n            value=True,\n        ),\n        StrInput(\n            name=\"new_column_name\",\n            display_name=\"New Column Name\",\n            info=\"The new column name when renaming or adding a column.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"new_column_value\",\n            display_name=\"New Column Value\",\n            info=\"The value to populate the new column with.\",\n            dynamic=True,\n            show=False,\n        ),\n        StrInput(\n            name=\"columns_to_select\",\n            display_name=\"Columns to Select\",\n            dynamic=True,\n            is_list=True,\n            show=False,\n        ),\n        IntInput(\n            name=\"num_rows\",\n            display_name=\"Number of Rows\",\n            info=\"Number of rows to return (for head/tail).\",\n            dynamic=True,\n            show=False,\n            value=5,\n        ),\n        MessageTextInput(\n            name=\"replace_value\",\n            display_name=\"Value to Replace\",\n            info=\"The value to replace in the column.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"replacement_value\",\n            display_name=\"Replacement Value\",\n            info=\"The value to replace with.\",\n            dynamic=True,\n            show=False,\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"DataFrame\",\n            name=\"output\",\n            method=\"perform_operation\",\n            info=\"The resulting DataFrame after the operation.\",\n        )\n    ]\n\n    def update_build_config(self, build_config, field_value, field_name=None):\n        dynamic_fields = [\n            \"column_name\",\n            \"filter_value\",\n            \"filter_operator\",\n            \"ascending\",\n            \"new_column_name\",\n            \"new_column_value\",\n            \"columns_to_select\",\n            \"num_rows\",\n            \"replace_value\",\n            \"replacement_value\",\n        ]\n        for field in dynamic_fields:\n            build_config[field][\"show\"] = False\n\n        if field_name == \"operation\":\n            # Handle SortableListInput format\n            if isinstance(field_value, list):\n                operation_name = field_value[0].get(\"name\", \"\") if field_value else \"\"\n            else:\n                operation_name = field_value or \"\"\n\n            # If no operation selected, all dynamic fields stay hidden (already set to False above)\n            if not operation_name:\n                return build_config\n\n            if operation_name == \"Filter\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"filter_value\"][\"show\"] = True\n                build_config[\"filter_operator\"][\"show\"] = True\n            elif operation_name == \"Sort\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"ascending\"][\"show\"] = True\n            elif operation_name == \"Drop Column\":\n                build_config[\"column_name\"][\"show\"] = True\n            elif operation_name == \"Rename Column\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"new_column_name\"][\"show\"] = True\n            elif operation_name == \"Add Column\":\n                build_config[\"new_column_name\"][\"show\"] = True\n                build_config[\"new_column_value\"][\"show\"] = True\n            elif operation_name == \"Select Columns\":\n                build_config[\"columns_to_select\"][\"show\"] = True\n            elif operation_name in {\"Head\", \"Tail\"}:\n                build_config[\"num_rows\"][\"show\"] = True\n            elif operation_name == \"Replace Value\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"replace_value\"][\"show\"] = True\n                build_config[\"replacement_value\"][\"show\"] = True\n            elif operation_name == \"Drop Duplicates\":\n                build_config[\"column_name\"][\"show\"] = True\n\n        return build_config\n\n    def perform_operation(self) -> DataFrame:\n        df_copy = self.df.copy()\n\n        # Handle SortableListInput format for operation\n        operation_input = getattr(self, \"operation\", [])\n        if isinstance(operation_input, list) and len(operation_input) > 0:\n            op = operation_input[0].get(\"name\", \"\")\n        else:\n            op = \"\"\n\n        # If no operation selected, return original DataFrame\n        if not op:\n            return df_copy\n\n        if op == \"Filter\":\n            return self.filter_rows_by_value(df_copy)\n        if op == \"Sort\":\n            return self.sort_by_column(df_copy)\n        if op == \"Drop Column\":\n            return self.drop_column(df_copy)\n        if op == \"Rename Column\":\n            return self.rename_column(df_copy)\n        if op == \"Add Column\":\n            return self.add_column(df_copy)\n        if op == \"Select Columns\":\n            return self.select_columns(df_copy)\n        if op == \"Head\":\n            return self.head(df_copy)\n        if op == \"Tail\":\n            return self.tail(df_copy)\n        if op == \"Replace Value\":\n            return self.replace_values(df_copy)\n        if op == \"Drop Duplicates\":\n            return self.drop_duplicates(df_copy)\n        msg = f\"Unsupported operation: {op}\"\n        logger.error(msg)\n        raise ValueError(msg)\n\n    def filter_rows_by_value(self, df: DataFrame) -> DataFrame:\n        column = df[self.column_name]\n        filter_value = self.filter_value\n\n        # Handle regular DropdownInput format (just a string value)\n        operator = getattr(self, \"filter_operator\", \"equals\")  # Default to equals for backward compatibility\n\n        if operator == \"equals\":\n            mask = column == filter_value\n        elif operator == \"not equals\":\n            mask = column != filter_value\n        elif operator == \"contains\":\n            mask = column.astype(str).str.contains(str(filter_value), na=False)\n        elif operator == \"not contains\":\n            mask = ~column.astype(str).str.contains(str(filter_value), na=False)\n        elif operator == \"starts with\":\n            mask = column.astype(str).str.startswith(str(filter_value), na=False)\n        elif operator == \"ends with\":\n            mask = column.astype(str).str.endswith(str(filter_value), na=False)\n        elif operator == \"greater than\":\n            try:\n                # Try to convert filter_value to numeric for comparison\n                numeric_value = pd.to_numeric(filter_value)\n                mask = column > numeric_value\n            except (ValueError, TypeError):\n                # If conversion fails, compare as strings\n                mask = column.astype(str) > str(filter_value)\n        elif operator == \"less than\":\n            try:\n                # Try to convert filter_value to numeric for comparison\n                numeric_value = pd.to_numeric(filter_value)\n                mask = column < numeric_value\n            except (ValueError, TypeError):\n                # If conversion fails, compare as strings\n                mask = column.astype(str) < str(filter_value)\n        else:\n            mask = column == filter_value  # Fallback to equals\n\n        return DataFrame(df[mask])\n\n    def sort_by_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.sort_values(by=self.column_name, ascending=self.ascending))\n\n    def drop_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.drop(columns=[self.column_name]))\n\n    def rename_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.rename(columns={self.column_name: self.new_column_name}))\n\n    def add_column(self, df: DataFrame) -> DataFrame:\n        df[self.new_column_name] = [self.new_column_value] * len(df)\n        return DataFrame(df)\n\n    def select_columns(self, df: DataFrame) -> DataFrame:\n        columns = [col.strip() for col in self.columns_to_select]\n        return DataFrame(df[columns])\n\n    def head(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.head(self.num_rows))\n\n    def tail(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.tail(self.num_rows))\n\n    def replace_values(self, df: DataFrame) -> DataFrame:\n        df[self.column_name] = df[self.column_name].replace(self.replace_value, self.replacement_value)\n        return DataFrame(df)\n\n    def drop_duplicates(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.drop_duplicates(subset=self.column_name))\n"
+              },
+              "column_name": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "Column Name",
+                "dynamic": true,
+                "info": "The column name to use for the operation.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "column_name",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "columns_to_select": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "Columns to Select",
+                "dynamic": true,
+                "info": "",
+                "list": true,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "columns_to_select",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "df": {
+                "_input_type": "DataFrameInput",
+                "advanced": false,
+                "display_name": "DataFrame",
+                "dynamic": false,
+                "info": "The input DataFrame to operate on.",
+                "input_types": [
+                  "DataFrame"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "df",
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "other",
+                "value": ""
+              },
+              "filter_operator": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Filter Operator",
+                "dynamic": true,
+                "external_options": {},
+                "info": "The operator to apply for filtering rows.",
+                "name": "filter_operator",
+                "options": [
+                  "equals",
+                  "not equals",
+                  "contains",
+                  "not contains",
+                  "starts with",
+                  "ends with",
+                  "greater than",
+                  "less than"
+                ],
+                "options_metadata": [],
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "equals"
+              },
+              "filter_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Filter Value",
+                "dynamic": true,
+                "info": "The value to filter rows by.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "filter_value",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "new_column_name": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "New Column Name",
+                "dynamic": true,
+                "info": "The new column name when renaming or adding a column.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "new_column_name",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "filename"
+              },
+              "new_column_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "New Column Value",
+                "dynamic": true,
+                "info": "The value to populate the new column with.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "new_column_value",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "FILENAME"
+              },
+              "num_rows": {
+                "_input_type": "IntInput",
+                "advanced": false,
+                "display_name": "Number of Rows",
+                "dynamic": true,
+                "info": "Number of rows to return (for head/tail).",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "num_rows",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "int",
+                "value": 5
+              },
+              "operation": {
+                "_input_type": "SortableListInput",
+                "advanced": false,
+                "display_name": "Operation",
+                "dynamic": false,
+                "info": "Select the DataFrame operation to perform.",
+                "limit": 1,
+                "name": "operation",
+                "options": [
+                  {
+                    "icon": "plus",
+                    "name": "Add Column"
+                  },
+                  {
+                    "icon": "minus",
+                    "name": "Drop Column"
+                  },
+                  {
+                    "icon": "filter",
+                    "name": "Filter"
+                  },
+                  {
+                    "icon": "arrow-up",
+                    "name": "Head"
+                  },
+                  {
+                    "icon": "pencil",
+                    "name": "Rename Column"
+                  },
+                  {
+                    "icon": "replace",
+                    "name": "Replace Value"
+                  },
+                  {
+                    "icon": "columns",
+                    "name": "Select Columns"
+                  },
+                  {
+                    "icon": "arrow-up-down",
+                    "name": "Sort"
+                  },
+                  {
+                    "icon": "arrow-down",
+                    "name": "Tail"
+                  },
+                  {
+                    "icon": "copy-x",
+                    "name": "Drop Duplicates"
+                  }
+                ],
+                "placeholder": "Select Operation",
+                "real_time_refresh": true,
+                "required": false,
+                "search_category": [],
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "sortableList",
+                "value": [
+                  {
+                    "chosen": false,
+                    "icon": "plus",
+                    "name": "Add Column",
+                    "selected": false
+                  }
+                ]
+              },
+              "replace_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Value to Replace",
+                "dynamic": true,
+                "info": "The value to replace in the column.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "replace_value",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "replacement_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Replacement Value",
+                "dynamic": true,
+                "info": "The value to replace with.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "replacement_value",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "DataFrameOperations"
+        },
+        "dragging": false,
+        "id": "DataFrameOperations-1BWXB",
+        "measured": {
+          "height": 399,
+          "width": 320
+        },
+        "position": {
+          "x": 513.7675419899799,
+          "y": 1088.8324804581666
+        },
+        "selected": false,
+        "type": "genericNode"
+      },
+      {
+        "data": {
+          "id": "DataFrameOperations-N80fC",
+          "node": {
+            "base_classes": [
+              "DataFrame"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Perform various operations on a DataFrame.",
+            "display_name": "DataFrame Operations",
+            "documentation": "https://docs.langflow.org/components-processing#dataframe-operations",
+            "edited": false,
+            "field_order": [
+              "df",
+              "operation",
+              "column_name",
+              "filter_value",
+              "filter_operator",
+              "ascending",
+              "new_column_name",
+              "new_column_value",
+              "columns_to_select",
+              "num_rows",
+              "replace_value",
+              "replacement_value"
+            ],
+            "frozen": false,
+            "icon": "table",
+            "last_updated": "2025-10-04T02:17:01.355Z",
+            "legacy": false,
+            "lf_version": "1.6.3.dev0",
+            "metadata": {
+              "code_hash": "b4d6b19b6eef",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "pandas",
+                    "version": "2.2.3"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "0.1.12.dev31"
+                  }
+                ],
+                "total_dependencies": 2
+              },
+              "module": "lfx.components.processing.dataframe_operations.DataFrameOperationsComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "DataFrame",
+                "group_outputs": false,
+                "method": "perform_operation",
+                "name": "output",
+                "options": null,
+                "required_inputs": null,
+                "selected": "DataFrame",
+                "tool_mode": true,
+                "types": [
+                  "DataFrame"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "ascending": {
+                "_input_type": "BoolInput",
+                "advanced": false,
+                "display_name": "Sort Ascending",
+                "dynamic": true,
+                "info": "Whether to sort in ascending order.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "ascending",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "bool",
+                "value": true
+              },
+              "code": {
+                "advanced": true,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "import pandas as pd\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.inputs import SortableListInput\nfrom lfx.io import BoolInput, DataFrameInput, DropdownInput, IntInput, MessageTextInput, Output, StrInput\nfrom lfx.log.logger import logger\nfrom lfx.schema.dataframe import DataFrame\n\n\nclass DataFrameOperationsComponent(Component):\n    display_name = \"DataFrame Operations\"\n    description = \"Perform various operations on a DataFrame.\"\n    documentation: str = \"https://docs.langflow.org/components-processing#dataframe-operations\"\n    icon = \"table\"\n    name = \"DataFrameOperations\"\n\n    OPERATION_CHOICES = [\n        \"Add Column\",\n        \"Drop Column\",\n        \"Filter\",\n        \"Head\",\n        \"Rename Column\",\n        \"Replace Value\",\n        \"Select Columns\",\n        \"Sort\",\n        \"Tail\",\n        \"Drop Duplicates\",\n    ]\n\n    inputs = [\n        DataFrameInput(\n            name=\"df\",\n            display_name=\"DataFrame\",\n            info=\"The input DataFrame to operate on.\",\n            required=True,\n        ),\n        SortableListInput(\n            name=\"operation\",\n            display_name=\"Operation\",\n            placeholder=\"Select Operation\",\n            info=\"Select the DataFrame operation to perform.\",\n            options=[\n                {\"name\": \"Add Column\", \"icon\": \"plus\"},\n                {\"name\": \"Drop Column\", \"icon\": \"minus\"},\n                {\"name\": \"Filter\", \"icon\": \"filter\"},\n                {\"name\": \"Head\", \"icon\": \"arrow-up\"},\n                {\"name\": \"Rename Column\", \"icon\": \"pencil\"},\n                {\"name\": \"Replace Value\", \"icon\": \"replace\"},\n                {\"name\": \"Select Columns\", \"icon\": \"columns\"},\n                {\"name\": \"Sort\", \"icon\": \"arrow-up-down\"},\n                {\"name\": \"Tail\", \"icon\": \"arrow-down\"},\n                {\"name\": \"Drop Duplicates\", \"icon\": \"copy-x\"},\n            ],\n            real_time_refresh=True,\n            limit=1,\n        ),\n        StrInput(\n            name=\"column_name\",\n            display_name=\"Column Name\",\n            info=\"The column name to use for the operation.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"filter_value\",\n            display_name=\"Filter Value\",\n            info=\"The value to filter rows by.\",\n            dynamic=True,\n            show=False,\n        ),\n        DropdownInput(\n            name=\"filter_operator\",\n            display_name=\"Filter Operator\",\n            options=[\n                \"equals\",\n                \"not equals\",\n                \"contains\",\n                \"not contains\",\n                \"starts with\",\n                \"ends with\",\n                \"greater than\",\n                \"less than\",\n            ],\n            value=\"equals\",\n            info=\"The operator to apply for filtering rows.\",\n            advanced=False,\n            dynamic=True,\n            show=False,\n        ),\n        BoolInput(\n            name=\"ascending\",\n            display_name=\"Sort Ascending\",\n            info=\"Whether to sort in ascending order.\",\n            dynamic=True,\n            show=False,\n            value=True,\n        ),\n        StrInput(\n            name=\"new_column_name\",\n            display_name=\"New Column Name\",\n            info=\"The new column name when renaming or adding a column.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"new_column_value\",\n            display_name=\"New Column Value\",\n            info=\"The value to populate the new column with.\",\n            dynamic=True,\n            show=False,\n        ),\n        StrInput(\n            name=\"columns_to_select\",\n            display_name=\"Columns to Select\",\n            dynamic=True,\n            is_list=True,\n            show=False,\n        ),\n        IntInput(\n            name=\"num_rows\",\n            display_name=\"Number of Rows\",\n            info=\"Number of rows to return (for head/tail).\",\n            dynamic=True,\n            show=False,\n            value=5,\n        ),\n        MessageTextInput(\n            name=\"replace_value\",\n            display_name=\"Value to Replace\",\n            info=\"The value to replace in the column.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"replacement_value\",\n            display_name=\"Replacement Value\",\n            info=\"The value to replace with.\",\n            dynamic=True,\n            show=False,\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"DataFrame\",\n            name=\"output\",\n            method=\"perform_operation\",\n            info=\"The resulting DataFrame after the operation.\",\n        )\n    ]\n\n    def update_build_config(self, build_config, field_value, field_name=None):\n        dynamic_fields = [\n            \"column_name\",\n            \"filter_value\",\n            \"filter_operator\",\n            \"ascending\",\n            \"new_column_name\",\n            \"new_column_value\",\n            \"columns_to_select\",\n            \"num_rows\",\n            \"replace_value\",\n            \"replacement_value\",\n        ]\n        for field in dynamic_fields:\n            build_config[field][\"show\"] = False\n\n        if field_name == \"operation\":\n            # Handle SortableListInput format\n            if isinstance(field_value, list):\n                operation_name = field_value[0].get(\"name\", \"\") if field_value else \"\"\n            else:\n                operation_name = field_value or \"\"\n\n            # If no operation selected, all dynamic fields stay hidden (already set to False above)\n            if not operation_name:\n                return build_config\n\n            if operation_name == \"Filter\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"filter_value\"][\"show\"] = True\n                build_config[\"filter_operator\"][\"show\"] = True\n            elif operation_name == \"Sort\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"ascending\"][\"show\"] = True\n            elif operation_name == \"Drop Column\":\n                build_config[\"column_name\"][\"show\"] = True\n            elif operation_name == \"Rename Column\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"new_column_name\"][\"show\"] = True\n            elif operation_name == \"Add Column\":\n                build_config[\"new_column_name\"][\"show\"] = True\n                build_config[\"new_column_value\"][\"show\"] = True\n            elif operation_name == \"Select Columns\":\n                build_config[\"columns_to_select\"][\"show\"] = True\n            elif operation_name in {\"Head\", \"Tail\"}:\n                build_config[\"num_rows\"][\"show\"] = True\n            elif operation_name == \"Replace Value\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"replace_value\"][\"show\"] = True\n                build_config[\"replacement_value\"][\"show\"] = True\n            elif operation_name == \"Drop Duplicates\":\n                build_config[\"column_name\"][\"show\"] = True\n\n        return build_config\n\n    def perform_operation(self) -> DataFrame:\n        df_copy = self.df.copy()\n\n        # Handle SortableListInput format for operation\n        operation_input = getattr(self, \"operation\", [])\n        if isinstance(operation_input, list) and len(operation_input) > 0:\n            op = operation_input[0].get(\"name\", \"\")\n        else:\n            op = \"\"\n\n        # If no operation selected, return original DataFrame\n        if not op:\n            return df_copy\n\n        if op == \"Filter\":\n            return self.filter_rows_by_value(df_copy)\n        if op == \"Sort\":\n            return self.sort_by_column(df_copy)\n        if op == \"Drop Column\":\n            return self.drop_column(df_copy)\n        if op == \"Rename Column\":\n            return self.rename_column(df_copy)\n        if op == \"Add Column\":\n            return self.add_column(df_copy)\n        if op == \"Select Columns\":\n            return self.select_columns(df_copy)\n        if op == \"Head\":\n            return self.head(df_copy)\n        if op == \"Tail\":\n            return self.tail(df_copy)\n        if op == \"Replace Value\":\n            return self.replace_values(df_copy)\n        if op == \"Drop Duplicates\":\n            return self.drop_duplicates(df_copy)\n        msg = f\"Unsupported operation: {op}\"\n        logger.error(msg)\n        raise ValueError(msg)\n\n    def filter_rows_by_value(self, df: DataFrame) -> DataFrame:\n        column = df[self.column_name]\n        filter_value = self.filter_value\n\n        # Handle regular DropdownInput format (just a string value)\n        operator = getattr(self, \"filter_operator\", \"equals\")  # Default to equals for backward compatibility\n\n        if operator == \"equals\":\n            mask = column == filter_value\n        elif operator == \"not equals\":\n            mask = column != filter_value\n        elif operator == \"contains\":\n            mask = column.astype(str).str.contains(str(filter_value), na=False)\n        elif operator == \"not contains\":\n            mask = ~column.astype(str).str.contains(str(filter_value), na=False)\n        elif operator == \"starts with\":\n            mask = column.astype(str).str.startswith(str(filter_value), na=False)\n        elif operator == \"ends with\":\n            mask = column.astype(str).str.endswith(str(filter_value), na=False)\n        elif operator == \"greater than\":\n            try:\n                # Try to convert filter_value to numeric for comparison\n                numeric_value = pd.to_numeric(filter_value)\n                mask = column > numeric_value\n            except (ValueError, TypeError):\n                # If conversion fails, compare as strings\n                mask = column.astype(str) > str(filter_value)\n        elif operator == \"less than\":\n            try:\n                # Try to convert filter_value to numeric for comparison\n                numeric_value = pd.to_numeric(filter_value)\n                mask = column < numeric_value\n            except (ValueError, TypeError):\n                # If conversion fails, compare as strings\n                mask = column.astype(str) < str(filter_value)\n        else:\n            mask = column == filter_value  # Fallback to equals\n\n        return DataFrame(df[mask])\n\n    def sort_by_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.sort_values(by=self.column_name, ascending=self.ascending))\n\n    def drop_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.drop(columns=[self.column_name]))\n\n    def rename_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.rename(columns={self.column_name: self.new_column_name}))\n\n    def add_column(self, df: DataFrame) -> DataFrame:\n        df[self.new_column_name] = [self.new_column_value] * len(df)\n        return DataFrame(df)\n\n    def select_columns(self, df: DataFrame) -> DataFrame:\n        columns = [col.strip() for col in self.columns_to_select]\n        return DataFrame(df[columns])\n\n    def head(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.head(self.num_rows))\n\n    def tail(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.tail(self.num_rows))\n\n    def replace_values(self, df: DataFrame) -> DataFrame:\n        df[self.column_name] = df[self.column_name].replace(self.replace_value, self.replacement_value)\n        return DataFrame(df)\n\n    def drop_duplicates(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.drop_duplicates(subset=self.column_name))\n"
+              },
+              "column_name": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "Column Name",
+                "dynamic": true,
+                "info": "The column name to use for the operation.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "column_name",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "columns_to_select": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "Columns to Select",
+                "dynamic": true,
+                "info": "",
+                "list": true,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "columns_to_select",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "df": {
+                "_input_type": "DataFrameInput",
+                "advanced": false,
+                "display_name": "DataFrame",
+                "dynamic": false,
+                "info": "The input DataFrame to operate on.",
+                "input_types": [
+                  "DataFrame"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "df",
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "other",
+                "value": ""
+              },
+              "filter_operator": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Filter Operator",
+                "dynamic": true,
+                "external_options": {},
+                "info": "The operator to apply for filtering rows.",
+                "name": "filter_operator",
+                "options": [
+                  "equals",
+                  "not equals",
+                  "contains",
+                  "not contains",
+                  "starts with",
+                  "ends with",
+                  "greater than",
+                  "less than"
+                ],
+                "options_metadata": [],
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "equals"
+              },
+              "filter_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Filter Value",
+                "dynamic": true,
+                "info": "The value to filter rows by.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "filter_value",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "new_column_name": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "New Column Name",
+                "dynamic": true,
+                "info": "The new column name when renaming or adding a column.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "new_column_name",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "mimetype"
+              },
+              "new_column_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "New Column Value",
+                "dynamic": true,
+                "info": "The value to populate the new column with.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "new_column_value",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "MIMETYPE"
+              },
+              "num_rows": {
+                "_input_type": "IntInput",
+                "advanced": false,
+                "display_name": "Number of Rows",
+                "dynamic": true,
+                "info": "Number of rows to return (for head/tail).",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "num_rows",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "int",
+                "value": 5
+              },
+              "operation": {
+                "_input_type": "SortableListInput",
+                "advanced": false,
+                "display_name": "Operation",
+                "dynamic": false,
+                "info": "Select the DataFrame operation to perform.",
+                "limit": 1,
+                "name": "operation",
+                "options": [
+                  {
+                    "icon": "plus",
+                    "name": "Add Column"
+                  },
+                  {
+                    "icon": "minus",
+                    "name": "Drop Column"
+                  },
+                  {
+                    "icon": "filter",
+                    "name": "Filter"
+                  },
+                  {
+                    "icon": "arrow-up",
+                    "name": "Head"
+                  },
+                  {
+                    "icon": "pencil",
+                    "name": "Rename Column"
+                  },
+                  {
+                    "icon": "replace",
+                    "name": "Replace Value"
+                  },
+                  {
+                    "icon": "columns",
+                    "name": "Select Columns"
+                  },
+                  {
+                    "icon": "arrow-up-down",
+                    "name": "Sort"
+                  },
+                  {
+                    "icon": "arrow-down",
+                    "name": "Tail"
+                  },
+                  {
+                    "icon": "copy-x",
+                    "name": "Drop Duplicates"
+                  }
+                ],
+                "placeholder": "Select Operation",
+                "real_time_refresh": true,
+                "required": false,
+                "search_category": [],
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "sortableList",
+                "value": [
+                  {
+                    "chosen": false,
+                    "icon": "plus",
+                    "name": "Add Column",
+                    "selected": false
+                  }
+                ]
+              },
+              "replace_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Value to Replace",
+                "dynamic": true,
+                "info": "The value to replace in the column.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "replace_value",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "replacement_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Replacement Value",
+                "dynamic": true,
+                "info": "The value to replace with.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "replacement_value",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "DataFrameOperations"
+        },
+        "dragging": false,
+        "id": "DataFrameOperations-N80fC",
+        "measured": {
+          "height": 399,
+          "width": 320
+        },
+        "position": {
+          "x": 1314.7870797625949,
+          "y": 1135.9990962860586
+        },
+        "selected": false,
+        "type": "genericNode"
+      },
+      {
+        "data": {
+          "id": "DataFrameOperations-9vMrp",
+          "node": {
+            "base_classes": [
+              "DataFrame"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Perform various operations on a DataFrame.",
+            "display_name": "DataFrame Operations",
+            "documentation": "https://docs.langflow.org/components-processing#dataframe-operations",
+            "edited": false,
+            "field_order": [
+              "df",
+              "operation",
+              "column_name",
+              "filter_value",
+              "filter_operator",
+              "ascending",
+              "new_column_name",
+              "new_column_value",
+              "columns_to_select",
+              "num_rows",
+              "replace_value",
+              "replacement_value"
+            ],
+            "frozen": false,
+            "icon": "table",
+            "last_updated": "2025-10-04T02:17:01.355Z",
+            "legacy": false,
+            "lf_version": "1.6.3.dev0",
+            "metadata": {
+              "code_hash": "b4d6b19b6eef",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "pandas",
+                    "version": "2.2.3"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "0.1.12.dev31"
+                  }
+                ],
+                "total_dependencies": 2
+              },
+              "module": "lfx.components.processing.dataframe_operations.DataFrameOperationsComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "DataFrame",
+                "group_outputs": false,
+                "method": "perform_operation",
+                "name": "output",
+                "options": null,
+                "required_inputs": null,
+                "selected": "DataFrame",
+                "tool_mode": true,
+                "types": [
+                  "DataFrame"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "ascending": {
+                "_input_type": "BoolInput",
+                "advanced": false,
+                "display_name": "Sort Ascending",
+                "dynamic": true,
+                "info": "Whether to sort in ascending order.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "ascending",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "bool",
+                "value": true
+              },
+              "code": {
+                "advanced": true,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "import pandas as pd\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.inputs import SortableListInput\nfrom lfx.io import BoolInput, DataFrameInput, DropdownInput, IntInput, MessageTextInput, Output, StrInput\nfrom lfx.log.logger import logger\nfrom lfx.schema.dataframe import DataFrame\n\n\nclass DataFrameOperationsComponent(Component):\n    display_name = \"DataFrame Operations\"\n    description = \"Perform various operations on a DataFrame.\"\n    documentation: str = \"https://docs.langflow.org/components-processing#dataframe-operations\"\n    icon = \"table\"\n    name = \"DataFrameOperations\"\n\n    OPERATION_CHOICES = [\n        \"Add Column\",\n        \"Drop Column\",\n        \"Filter\",\n        \"Head\",\n        \"Rename Column\",\n        \"Replace Value\",\n        \"Select Columns\",\n        \"Sort\",\n        \"Tail\",\n        \"Drop Duplicates\",\n    ]\n\n    inputs = [\n        DataFrameInput(\n            name=\"df\",\n            display_name=\"DataFrame\",\n            info=\"The input DataFrame to operate on.\",\n            required=True,\n        ),\n        SortableListInput(\n            name=\"operation\",\n            display_name=\"Operation\",\n            placeholder=\"Select Operation\",\n            info=\"Select the DataFrame operation to perform.\",\n            options=[\n                {\"name\": \"Add Column\", \"icon\": \"plus\"},\n                {\"name\": \"Drop Column\", \"icon\": \"minus\"},\n                {\"name\": \"Filter\", \"icon\": \"filter\"},\n                {\"name\": \"Head\", \"icon\": \"arrow-up\"},\n                {\"name\": \"Rename Column\", \"icon\": \"pencil\"},\n                {\"name\": \"Replace Value\", \"icon\": \"replace\"},\n                {\"name\": \"Select Columns\", \"icon\": \"columns\"},\n                {\"name\": \"Sort\", \"icon\": \"arrow-up-down\"},\n                {\"name\": \"Tail\", \"icon\": \"arrow-down\"},\n                {\"name\": \"Drop Duplicates\", \"icon\": \"copy-x\"},\n            ],\n            real_time_refresh=True,\n            limit=1,\n        ),\n        StrInput(\n            name=\"column_name\",\n            display_name=\"Column Name\",\n            info=\"The column name to use for the operation.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"filter_value\",\n            display_name=\"Filter Value\",\n            info=\"The value to filter rows by.\",\n            dynamic=True,\n            show=False,\n        ),\n        DropdownInput(\n            name=\"filter_operator\",\n            display_name=\"Filter Operator\",\n            options=[\n                \"equals\",\n                \"not equals\",\n                \"contains\",\n                \"not contains\",\n                \"starts with\",\n                \"ends with\",\n                \"greater than\",\n                \"less than\",\n            ],\n            value=\"equals\",\n            info=\"The operator to apply for filtering rows.\",\n            advanced=False,\n            dynamic=True,\n            show=False,\n        ),\n        BoolInput(\n            name=\"ascending\",\n            display_name=\"Sort Ascending\",\n            info=\"Whether to sort in ascending order.\",\n            dynamic=True,\n            show=False,\n            value=True,\n        ),\n        StrInput(\n            name=\"new_column_name\",\n            display_name=\"New Column Name\",\n            info=\"The new column name when renaming or adding a column.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"new_column_value\",\n            display_name=\"New Column Value\",\n            info=\"The value to populate the new column with.\",\n            dynamic=True,\n            show=False,\n        ),\n        StrInput(\n            name=\"columns_to_select\",\n            display_name=\"Columns to Select\",\n            dynamic=True,\n            is_list=True,\n            show=False,\n        ),\n        IntInput(\n            name=\"num_rows\",\n            display_name=\"Number of Rows\",\n            info=\"Number of rows to return (for head/tail).\",\n            dynamic=True,\n            show=False,\n            value=5,\n        ),\n        MessageTextInput(\n            name=\"replace_value\",\n            display_name=\"Value to Replace\",\n            info=\"The value to replace in the column.\",\n            dynamic=True,\n            show=False,\n        ),\n        MessageTextInput(\n            name=\"replacement_value\",\n            display_name=\"Replacement Value\",\n            info=\"The value to replace with.\",\n            dynamic=True,\n            show=False,\n        ),\n    ]\n\n    outputs = [\n        Output(\n            display_name=\"DataFrame\",\n            name=\"output\",\n            method=\"perform_operation\",\n            info=\"The resulting DataFrame after the operation.\",\n        )\n    ]\n\n    def update_build_config(self, build_config, field_value, field_name=None):\n        dynamic_fields = [\n            \"column_name\",\n            \"filter_value\",\n            \"filter_operator\",\n            \"ascending\",\n            \"new_column_name\",\n            \"new_column_value\",\n            \"columns_to_select\",\n            \"num_rows\",\n            \"replace_value\",\n            \"replacement_value\",\n        ]\n        for field in dynamic_fields:\n            build_config[field][\"show\"] = False\n\n        if field_name == \"operation\":\n            # Handle SortableListInput format\n            if isinstance(field_value, list):\n                operation_name = field_value[0].get(\"name\", \"\") if field_value else \"\"\n            else:\n                operation_name = field_value or \"\"\n\n            # If no operation selected, all dynamic fields stay hidden (already set to False above)\n            if not operation_name:\n                return build_config\n\n            if operation_name == \"Filter\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"filter_value\"][\"show\"] = True\n                build_config[\"filter_operator\"][\"show\"] = True\n            elif operation_name == \"Sort\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"ascending\"][\"show\"] = True\n            elif operation_name == \"Drop Column\":\n                build_config[\"column_name\"][\"show\"] = True\n            elif operation_name == \"Rename Column\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"new_column_name\"][\"show\"] = True\n            elif operation_name == \"Add Column\":\n                build_config[\"new_column_name\"][\"show\"] = True\n                build_config[\"new_column_value\"][\"show\"] = True\n            elif operation_name == \"Select Columns\":\n                build_config[\"columns_to_select\"][\"show\"] = True\n            elif operation_name in {\"Head\", \"Tail\"}:\n                build_config[\"num_rows\"][\"show\"] = True\n            elif operation_name == \"Replace Value\":\n                build_config[\"column_name\"][\"show\"] = True\n                build_config[\"replace_value\"][\"show\"] = True\n                build_config[\"replacement_value\"][\"show\"] = True\n            elif operation_name == \"Drop Duplicates\":\n                build_config[\"column_name\"][\"show\"] = True\n\n        return build_config\n\n    def perform_operation(self) -> DataFrame:\n        df_copy = self.df.copy()\n\n        # Handle SortableListInput format for operation\n        operation_input = getattr(self, \"operation\", [])\n        if isinstance(operation_input, list) and len(operation_input) > 0:\n            op = operation_input[0].get(\"name\", \"\")\n        else:\n            op = \"\"\n\n        # If no operation selected, return original DataFrame\n        if not op:\n            return df_copy\n\n        if op == \"Filter\":\n            return self.filter_rows_by_value(df_copy)\n        if op == \"Sort\":\n            return self.sort_by_column(df_copy)\n        if op == \"Drop Column\":\n            return self.drop_column(df_copy)\n        if op == \"Rename Column\":\n            return self.rename_column(df_copy)\n        if op == \"Add Column\":\n            return self.add_column(df_copy)\n        if op == \"Select Columns\":\n            return self.select_columns(df_copy)\n        if op == \"Head\":\n            return self.head(df_copy)\n        if op == \"Tail\":\n            return self.tail(df_copy)\n        if op == \"Replace Value\":\n            return self.replace_values(df_copy)\n        if op == \"Drop Duplicates\":\n            return self.drop_duplicates(df_copy)\n        msg = f\"Unsupported operation: {op}\"\n        logger.error(msg)\n        raise ValueError(msg)\n\n    def filter_rows_by_value(self, df: DataFrame) -> DataFrame:\n        column = df[self.column_name]\n        filter_value = self.filter_value\n\n        # Handle regular DropdownInput format (just a string value)\n        operator = getattr(self, \"filter_operator\", \"equals\")  # Default to equals for backward compatibility\n\n        if operator == \"equals\":\n            mask = column == filter_value\n        elif operator == \"not equals\":\n            mask = column != filter_value\n        elif operator == \"contains\":\n            mask = column.astype(str).str.contains(str(filter_value), na=False)\n        elif operator == \"not contains\":\n            mask = ~column.astype(str).str.contains(str(filter_value), na=False)\n        elif operator == \"starts with\":\n            mask = column.astype(str).str.startswith(str(filter_value), na=False)\n        elif operator == \"ends with\":\n            mask = column.astype(str).str.endswith(str(filter_value), na=False)\n        elif operator == \"greater than\":\n            try:\n                # Try to convert filter_value to numeric for comparison\n                numeric_value = pd.to_numeric(filter_value)\n                mask = column > numeric_value\n            except (ValueError, TypeError):\n                # If conversion fails, compare as strings\n                mask = column.astype(str) > str(filter_value)\n        elif operator == \"less than\":\n            try:\n                # Try to convert filter_value to numeric for comparison\n                numeric_value = pd.to_numeric(filter_value)\n                mask = column < numeric_value\n            except (ValueError, TypeError):\n                # If conversion fails, compare as strings\n                mask = column.astype(str) < str(filter_value)\n        else:\n            mask = column == filter_value  # Fallback to equals\n\n        return DataFrame(df[mask])\n\n    def sort_by_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.sort_values(by=self.column_name, ascending=self.ascending))\n\n    def drop_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.drop(columns=[self.column_name]))\n\n    def rename_column(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.rename(columns={self.column_name: self.new_column_name}))\n\n    def add_column(self, df: DataFrame) -> DataFrame:\n        df[self.new_column_name] = [self.new_column_value] * len(df)\n        return DataFrame(df)\n\n    def select_columns(self, df: DataFrame) -> DataFrame:\n        columns = [col.strip() for col in self.columns_to_select]\n        return DataFrame(df[columns])\n\n    def head(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.head(self.num_rows))\n\n    def tail(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.tail(self.num_rows))\n\n    def replace_values(self, df: DataFrame) -> DataFrame:\n        df[self.column_name] = df[self.column_name].replace(self.replace_value, self.replacement_value)\n        return DataFrame(df)\n\n    def drop_duplicates(self, df: DataFrame) -> DataFrame:\n        return DataFrame(df.drop_duplicates(subset=self.column_name))\n"
+              },
+              "column_name": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "Column Name",
+                "dynamic": true,
+                "info": "The column name to use for the operation.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "column_name",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "columns_to_select": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "Columns to Select",
+                "dynamic": true,
+                "info": "",
+                "list": true,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "columns_to_select",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "df": {
+                "_input_type": "DataFrameInput",
+                "advanced": false,
+                "display_name": "DataFrame",
+                "dynamic": false,
+                "info": "The input DataFrame to operate on.",
+                "input_types": [
+                  "DataFrame"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "df",
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "other",
+                "value": ""
+              },
+              "filter_operator": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Filter Operator",
+                "dynamic": true,
+                "external_options": {},
+                "info": "The operator to apply for filtering rows.",
+                "name": "filter_operator",
+                "options": [
+                  "equals",
+                  "not equals",
+                  "contains",
+                  "not contains",
+                  "starts with",
+                  "ends with",
+                  "greater than",
+                  "less than"
+                ],
+                "options_metadata": [],
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "equals"
+              },
+              "filter_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Filter Value",
+                "dynamic": true,
+                "info": "The value to filter rows by.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "filter_value",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "new_column_name": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "display_name": "New Column Name",
+                "dynamic": true,
+                "info": "The new column name when renaming or adding a column.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "new_column_name",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "file_size"
+              },
+              "new_column_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "New Column Value",
+                "dynamic": true,
+                "info": "The value to populate the new column with.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": true,
+                "name": "new_column_value",
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": "FILESIZE"
+              },
+              "num_rows": {
+                "_input_type": "IntInput",
+                "advanced": false,
+                "display_name": "Number of Rows",
+                "dynamic": true,
+                "info": "Number of rows to return (for head/tail).",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "num_rows",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "int",
+                "value": 5
+              },
+              "operation": {
+                "_input_type": "SortableListInput",
+                "advanced": false,
+                "display_name": "Operation",
+                "dynamic": false,
+                "info": "Select the DataFrame operation to perform.",
+                "limit": 1,
+                "name": "operation",
+                "options": [
+                  {
+                    "icon": "plus",
+                    "name": "Add Column"
+                  },
+                  {
+                    "icon": "minus",
+                    "name": "Drop Column"
+                  },
+                  {
+                    "icon": "filter",
+                    "name": "Filter"
+                  },
+                  {
+                    "icon": "arrow-up",
+                    "name": "Head"
+                  },
+                  {
+                    "icon": "pencil",
+                    "name": "Rename Column"
+                  },
+                  {
+                    "icon": "replace",
+                    "name": "Replace Value"
+                  },
+                  {
+                    "icon": "columns",
+                    "name": "Select Columns"
+                  },
+                  {
+                    "icon": "arrow-up-down",
+                    "name": "Sort"
+                  },
+                  {
+                    "icon": "arrow-down",
+                    "name": "Tail"
+                  },
+                  {
+                    "icon": "copy-x",
+                    "name": "Drop Duplicates"
+                  }
+                ],
+                "placeholder": "Select Operation",
+                "real_time_refresh": true,
+                "required": false,
+                "search_category": [],
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "type": "sortableList",
+                "value": [
+                  {
+                    "chosen": false,
+                    "icon": "plus",
+                    "name": "Add Column",
+                    "selected": false
+                  }
+                ]
+              },
+              "replace_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Value to Replace",
+                "dynamic": true,
+                "info": "The value to replace in the column.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "replace_value",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              },
+              "replacement_value": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Replacement Value",
+                "dynamic": true,
+                "info": "The value to replace with.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "replacement_value",
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "type": "str",
+                "value": ""
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "DataFrameOperations"
+        },
+        "dragging": false,
+        "id": "DataFrameOperations-9vMrp",
+        "measured": {
+          "height": 399,
+          "width": 320
+        },
+        "position": {
+          "x": 956.3345099816677,
+          "y": 1077.3618931222093
         },
         "selected": false,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -311.42857930212404,
-      "y": -532.9060284457172,
-      "zoom": 0.5361317364942912
+      "x": 227.3737875665738,
+      "y": -299.1651660660417,
+      "zoom": 0.43587407227641217
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
   "endpoint_name": null,
   "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
-  "last_tested_version": "1.6.0",
+  "last_tested_version": "1.6.3.dev0",
   "name": "OpenSearch Ingestion Flow",
   "tags": [
     "openai",
