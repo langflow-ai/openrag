@@ -1,10 +1,11 @@
-const OneDriveIcon = () => (
+const OneDriveIcon = ({ className }: { className?: string }) => (
   <svg
     width="17"
     height="12"
     viewBox="0 0 17 12"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
+    className={className}
   >
     <g clip-path="url(#clip0_3016_367)">
       <path
