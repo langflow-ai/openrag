@@ -351,7 +351,7 @@ export default function UploadProviderPage() {
         />
       </div>
 
-      <div className="max-w-3xl mx-auto mt-6">
+      <div className="max-w-3xl mx-auto mt-6 sticky bottom-0 left-0 right-0 pb-6 bg-background pt-4">
         <div className="flex justify-between gap-3 mb-4">
           <Button
             variant="ghost"
@@ -369,7 +369,10 @@ export default function UploadProviderPage() {
             {selectedFiles.length === 0 ? (
               <>Ingest files</>
             ) : (
-              <>Ingesting {selectedFiles.length} files</>
+              <>
+                Ingest {selectedFiles.length} file
+                {selectedFiles.length > 1 ? "s" : ""}
+              </>
             )}
           </Button>
         </div>
