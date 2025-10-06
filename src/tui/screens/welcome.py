@@ -118,9 +118,16 @@ class WelcomeScreen(Screen):
         welcome_text.append(ascii_art, style="bold white")
         welcome_text.append("Terminal User Interface for OpenRAG\n\n", style="dim")
 
-        if self.services_running:
+        # Check if all services are running
+        all_services_running = self.services_running and self.docling_running
+
+        if all_services_running:
             welcome_text.append(
-                "✓ Services are currently running\n\n", style="bold green"
+                "✓ All services are running\n\n", style="bold green"
+            )
+        elif self.services_running or self.docling_running:
+            welcome_text.append(
+                "⚠ Some services are running\n\n", style="bold yellow"
             )
         elif self.has_oauth_config:
             welcome_text.append(
@@ -140,16 +147,19 @@ class WelcomeScreen(Screen):
 
         buttons = []
 
-        if self.services_running:
-            # Services running - show app link first, then stop services
+        # Check if all services (native + container) are running
+        all_services_running = self.services_running and self.docling_running
+
+        if all_services_running:
+            # All services running - show app link first, then stop all
             buttons.append(
                 Button("Launch OpenRAG", variant="success", id="open-app-btn")
             )
             buttons.append(
-                Button("Stop Container Services", variant="error", id="stop-services-btn")
+                Button("Stop All Services", variant="error", id="stop-all-services-btn")
             )
         else:
-            # Services not running - show setup options and start services
+            # Some or no services running - show setup options and start all
             if has_oauth:
                 # If OAuth is configured, only show advanced setup
                 buttons.append(
@@ -165,25 +175,7 @@ class WelcomeScreen(Screen):
                 )
 
             buttons.append(
-                Button("Start Container Services", variant="primary", id="start-services-btn")
-            )
-
-        # Native services controls
-        if self.docling_running:
-            buttons.append(
-                Button(
-                    "Stop Native Services",
-                    variant="warning",
-                    id="stop-native-services-btn",
-                )
-            )
-        else:
-            buttons.append(
-                Button(
-                    "Start Native Services",
-                    variant="primary",
-                    id="start-native-services-btn",
-                )
+                Button("Start All Services", variant="primary", id="start-all-services-btn")
             )
 
         # Always show status option
@@ -213,7 +205,7 @@ class WelcomeScreen(Screen):
         )
 
         # Set default button focus
-        if self.services_running:
+        if self.services_running and self.docling_running:
             self.default_button_id = "open-app-btn"
         elif self.has_oauth_config:
             self.default_button_id = "advanced-setup-btn"
@@ -234,7 +226,7 @@ class WelcomeScreen(Screen):
     def _focus_appropriate_button(self) -> None:
         """Focus the appropriate button based on current state."""
         try:
-            if self.services_running:
+            if self.services_running and self.docling_running:
                 self.query_one("#open-app-btn").focus()
             elif self.has_oauth_config:
                 self.query_one("#advanced-setup-btn").focus()
@@ -253,20 +245,16 @@ class WelcomeScreen(Screen):
             self.action_monitor()
         elif event.button.id == "diagnostics-btn":
             self.action_diagnostics()
-        elif event.button.id == "start-services-btn":
-            self.action_start_stop_services()
-        elif event.button.id == "stop-services-btn":
-            self.action_start_stop_services()
-        elif event.button.id == "start-native-services-btn":
-            self.action_start_native_services()
-        elif event.button.id == "stop-native-services-btn":
-            self.action_stop_native_services()
+        elif event.button.id == "start-all-services-btn":
+            self.action_start_all_services()
+        elif event.button.id == "stop-all-services-btn":
+            self.action_stop_all_services()
         elif event.button.id == "open-app-btn":
             self.action_open_app()
 
     def action_default_action(self) -> None:
         """Handle Enter key - go to default action based on state."""
-        if self.services_running:
+        if self.services_running and self.docling_running:
             self.action_open_app()
         elif self.has_oauth_config:
             self.action_full_setup()
@@ -297,28 +285,13 @@ class WelcomeScreen(Screen):
 
         self.app.push_screen(DiagnosticsScreen())
 
-    def action_start_stop_services(self) -> None:
-        """Start or stop all services (containers + docling)."""
-        if self.services_running:
-            # Stop services - show modal with progress
-            if self.container_manager.is_available():
-                command_generator = self.container_manager.stop_services()
-                modal = CommandOutputModal(
-                    "Stopping Services",
-                    command_generator,
-                    on_complete=self._on_services_operation_complete,
-                )
-                self.app.push_screen(modal)
-        else:
-            # Start services - show modal with progress
-            if self.container_manager.is_available():
-                command_generator = self.container_manager.start_services()
-                modal = CommandOutputModal(
-                    "Starting Services",
-                    command_generator,
-                    on_complete=self._on_services_operation_complete,
-                )
-                self.app.push_screen(modal)
+    def action_start_all_services(self) -> None:
+        """Start all services (native first, then containers)."""
+        self.run_worker(self._start_all_services())
+
+    def action_stop_all_services(self) -> None:
+        """Stop all services (containers first, then native)."""
+        self.run_worker(self._stop_all_services())
 
     async def _on_services_operation_complete(self) -> None:
         """Handle completion of services start/stop operation."""
@@ -334,7 +307,7 @@ class WelcomeScreen(Screen):
 
     def _update_default_button(self) -> None:
         """Update the default button target based on state."""
-        if self.services_running:
+        if self.services_running and self.docling_running:
             self.default_button_id = "open-app-btn"
         elif self.has_oauth_config:
             self.default_button_id = "advanced-setup-btn"
@@ -362,51 +335,74 @@ class WelcomeScreen(Screen):
 
         self.call_after_refresh(self._focus_appropriate_button)
 
-    def action_start_native_services(self) -> None:
-        """Start native services (docling)."""
-        if self.docling_running:
-            self.notify("Native services are already running.", severity="warning")
-            return
-
-        self.run_worker(self._start_native_services())
-
-    async def _start_native_services(self) -> None:
-        """Worker task to start native services."""
-        try:
+    async def _start_all_services(self) -> None:
+        """Start all services: native first, then containers."""
+        # Step 1: Start native services (docling-serve)
+        if not self.docling_manager.is_running():
+            self.notify("Starting native services...", severity="information")
             success, message = await self.docling_manager.start()
             if success:
-                self.docling_running = True
                 self.notify(message, severity="information")
             else:
                 self.notify(f"Failed to start native services: {message}", severity="error")
-        except Exception as exc:
-            self.notify(f"Error starting native services: {exc}", severity="error")
-        finally:
-            self.docling_running = self.docling_manager.is_running()
+                # Continue anyway - user might want containers even if native fails
+        else:
+            self.notify("Native services already running", severity="information")
+
+        # Update state
+        self.docling_running = self.docling_manager.is_running()
+
+        # Step 2: Start container services
+        if self.container_manager.is_available():
+            command_generator = self.container_manager.start_services()
+            modal = CommandOutputModal(
+                "Starting Container Services",
+                command_generator,
+                on_complete=self._on_services_operation_complete,
+            )
+            self.app.push_screen(modal)
+        else:
+            self.notify("No container runtime available", severity="warning")
             await self._refresh_welcome_content()
 
-    def action_stop_native_services(self) -> None:
-        """Stop native services (docling)."""
-        if not self.docling_running and not self.docling_manager.is_running():
-            self.notify("Native services are not running.", severity="warning")
-            return
+    async def _stop_all_services(self) -> None:
+        """Stop all services: containers first, then native."""
+        # Step 1: Stop container services
+        if self.container_manager.is_available() and self.services_running:
+            command_generator = self.container_manager.stop_services()
+            modal = CommandOutputModal(
+                "Stopping Container Services",
+                command_generator,
+                on_complete=self._on_stop_containers_complete,
+            )
+            self.app.push_screen(modal)
+        else:
+            # No containers to stop, go directly to stopping native services
+            await self._stop_native_services_after_containers()
 
-        self.run_worker(self._stop_native_services())
+    async def _on_stop_containers_complete(self) -> None:
+        """Called after containers are stopped, now stop native services."""
+        # Update container state
+        self._detect_services_sync()
 
-    async def _stop_native_services(self) -> None:
-        """Worker task to stop native services."""
-        try:
+        # Now stop native services
+        await self._stop_native_services_after_containers()
+
+    async def _stop_native_services_after_containers(self) -> None:
+        """Stop native services after containers have been stopped."""
+        if self.docling_manager.is_running():
+            self.notify("Stopping native services...", severity="information")
             success, message = await self.docling_manager.stop()
             if success:
-                self.docling_running = False
                 self.notify(message, severity="information")
             else:
                 self.notify(f"Failed to stop native services: {message}", severity="error")
-        except Exception as exc:
-            self.notify(f"Error stopping native services: {exc}", severity="error")
-        finally:
-            self.docling_running = self.docling_manager.is_running()
-            await self._refresh_welcome_content()
+        else:
+            self.notify("Native services already stopped", severity="information")
+
+        # Update state
+        self.docling_running = self.docling_manager.is_running()
+        await self._refresh_welcome_content()
 
     def action_open_app(self) -> None:
         """Open the OpenRAG app in the default browser."""
