@@ -26,6 +26,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
 	Select,
 	SelectContent,
 	SelectTrigger,
@@ -144,7 +149,7 @@ function KnowledgeSourcesPage() {
 	const [systemPrompt, setSystemPrompt] = useState<string>("");
 	const [chunkSize, setChunkSize] = useState<number>(1024);
 	const [chunkOverlap, setChunkOverlap] = useState<number>(50);
-	const [tableStructure, setTableStructure] = useState<boolean>(false);
+	const [tableStructure, setTableStructure] = useState<boolean>(true);
 	const [ocr, setOcr] = useState<boolean>(false);
 	const [pictureDescriptions, setPictureDescriptions] =
 		useState<boolean>(false);
@@ -1027,16 +1032,16 @@ function KnowledgeSourcesPage() {
 									}
 									onValueChange={handleEmbeddingModelChange}
 								>
-									{/* <Tooltip>
-                    <TooltipTrigger> */}
-									<SelectTrigger disabled id="embedding-model-select">
-										<SelectValue placeholder="Select an embedding model" />
-									</SelectTrigger>
-									{/* <TooltipContent>
-                        Locked to keep embeddings consistent
-                      </TooltipContent>
-                    </TooltipTrigger>
-                  </Tooltip> */}
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<SelectTrigger disabled id="embedding-model-select">
+												<SelectValue placeholder="Select an embedding model" />
+											</SelectTrigger>
+										</TooltipTrigger>
+										<TooltipContent>
+											Locked to keep embeddings consistent
+										</TooltipContent>
+									</Tooltip>
 									<SelectContent>
 										<ModelSelectItems
 											models={modelsData?.embedding_models}
