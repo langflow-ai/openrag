@@ -16,7 +16,6 @@ import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/contexts/auth-context";
 import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { LayoutProvider } from "@/contexts/layout-context";
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context";
@@ -34,7 +33,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     refreshConversations,
     startNewConversation,
   } = useChat();
-  const { isLoading: isSettingsLoading, data: settings } = useGetSettingsQuery({
+  const { isLoading: isSettingsLoading } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
   const {
@@ -75,14 +74,6 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const isUnhealthy = health?.status === "unhealthy" || isError;
   const isBannerVisible = !isHealthLoading && isUnhealthy;
 
-  // Dynamic height calculations based on banner visibility
-  const headerHeight = 53;
-  const bannerHeight = 52; // Approximate banner height
-  const totalTopOffset = isBannerVisible
-    ? headerHeight + bannerHeight
-    : headerHeight;
-  const mainContentHeight = `calc(100vh - ${totalTopOffset}px)`;
-
   // Show loading state when backend isn't ready
   if (isLoading || isSettingsLoading) {
     return (
@@ -102,9 +93,18 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
-    <div className="h-full relative">
-      <DoclingHealthBanner className="w-full pt-2" />
-      <header className="header-arrangement bg-background sticky top-0 z-50 h-10">
+    <div
+      className={cn(
+        "app-grid-arrangement",
+        isBannerVisible && "banner-visible",
+        isPanelOpen && isOnKnowledgePage && !isMenuOpen && "filters-open",
+        isMenuOpen && "notifications-open"
+      )}
+    >
+      <div className="w-full [grid-area:banner]">
+        <DoclingHealthBanner className="w-full" />
+      </div>
+      <header className="header-arrangement bg-background [grid-area:header]">
         <div className="header-start-display px-[16px]">
           {/* Logo/Title */}
           <div className="flex items-center">
@@ -144,44 +144,37 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <div
-        className={cn(
-          "app-grid-cols-arrangement",
-          isPanelOpen && isOnKnowledgePage && !isMenuOpen && "filters-open",
-          isMenuOpen && "notifications-open"
-        )}
-      >
-        {/* Sidebar Navigation */}
-        <aside className="bg-background border-r overflow-hidden">
-          <Navigation
-            conversations={conversations}
-            isConversationsLoading={isConversationsLoading}
-            onNewConversation={handleNewConversation}
-          />
-        </aside>
 
-        {/* Main Content */}
-        <main className="overflow-y-auto">
-          <div
-            className={cn(
-              "p-6 h-full container",
-              isSmallWidthPath && "max-w-[850px] ml-0"
-            )}
-          >
-            {children}
-          </div>
-        </main>
+      {/* Sidebar Navigation */}
+      <aside className="bg-background border-r overflow-hidden [grid-area:nav]">
+        <Navigation
+          conversations={conversations}
+          isConversationsLoading={isConversationsLoading}
+          onNewConversation={handleNewConversation}
+        />
+      </aside>
 
-        {/* Task Notifications Panel */}
-        <aside className="overflow-y-auto overflow-x-hidden">
-          {isMenuOpen && <TaskNotificationMenu />}
-        </aside>
+      {/* Main Content */}
+      <main className="overflow-y-auto [grid-area:main]">
+        <div
+          className={cn(
+            "p-6 h-full container",
+            isSmallWidthPath && "max-w-[850px] ml-0"
+          )}
+        >
+          {children}
+        </div>
+      </main>
 
-        {/* Knowledge Filter Panel */}
-        <aside className="overflow-y-auto overflow-x-hidden">
-          {isPanelOpen && <KnowledgeFilterPanel />}
-        </aside>
-      </div>
+      {/* Task Notifications Panel */}
+      <aside className="overflow-y-auto overflow-x-hidden [grid-area:notifications]">
+        {isMenuOpen && <TaskNotificationMenu />}
+      </aside>
+
+      {/* Knowledge Filter Panel */}
+      <aside className="overflow-y-auto overflow-x-hidden [grid-area:filters]">
+        {isPanelOpen && <KnowledgeFilterPanel />}
+      </aside>
     </div>
   );
 }

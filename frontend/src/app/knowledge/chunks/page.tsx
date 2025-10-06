@@ -6,8 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { useLayout } from "@/contexts/layout-context";
-import { useTask } from "@/contexts/task-context";
 import {
   type ChunkResult,
   type File,
