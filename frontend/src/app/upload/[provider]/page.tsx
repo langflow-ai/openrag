@@ -7,6 +7,11 @@ import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
 import type { IngestSettings } from "@/components/cloud-picker/types";
 import { Button } from "@/components/ui/button";
 import { useTask } from "@/contexts/task-context";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // CloudFile interface is now imported from the unified cloud picker
 
@@ -325,6 +330,8 @@ export default function UploadProviderPage() {
     );
   }
 
+  const hasSelectedFiles = selectedFiles.length > 0;
+
   return (
     <div className="container mx-auto max-w-3xl px-6">
       <div className="mb-8 flex gap-2 items-center">
@@ -355,26 +362,36 @@ export default function UploadProviderPage() {
         <div className="flex justify-between gap-3 mb-4">
           <Button
             variant="ghost"
-            className=" border bg-transparent border-border rounded-lg text-secondary-foreground"
+            className="border bg-transparent border-border rounded-lg text-secondary-foreground"
             onClick={() => router.back()}
           >
             Back
           </Button>
-          <Button
-            className="bg-foreground text-background hover:bg-foreground/90 font-semibold"
-            variant={selectedFiles.length === 0 ? "secondary" : undefined}
-            onClick={() => handleSync(connector)}
-            disabled={selectedFiles.length === 0 || isIngesting}
-          >
-            {selectedFiles.length === 0 ? (
-              <>Ingest files</>
-            ) : (
-              <>
-                Ingest {selectedFiles.length} file
-                {selectedFiles.length > 1 ? "s" : ""}
-              </>
-            )}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                className="bg-foreground text-background hover:bg-foreground/90 font-semibold"
+                variant={!hasSelectedFiles ? "secondary" : undefined}
+                onClick={() => handleSync(connector)}
+                loading={isIngesting}
+                disabled={!hasSelectedFiles || isIngesting}
+              >
+                {!hasSelectedFiles ? (
+                  <>Ingest files</>
+                ) : (
+                  <>
+                    Ingest {selectedFiles.length} file
+                    {selectedFiles.length > 1 ? "s" : ""}
+                  </>
+                )}
+              </Button>
+            </TooltipTrigger>
+            {!hasSelectedFiles ? (
+              <TooltipContent side="left">
+                Select at least one file before ingesting
+              </TooltipContent>
+            ) : null}
+          </Tooltip>
         </div>
       </div>
     </div>
