@@ -119,7 +119,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       previousTasksRef.current = tasks;
       return;
     }
-    console.log(tasks, previousTasksRef.current);
 
     // Check for task status changes by comparing with previous tasks
     tasks.forEach((currentTask) => {
@@ -128,18 +127,22 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       );
 
       // Only show toasts if we have previous data and status has changed
-      if (((previousTask && previousTask.status !== currentTask.status) || (!previousTask && previousTasksRef.current.length !== 0))) {
-        console.log("task status changed", currentTask.status);
+      if (
+        (previousTask && previousTask.status !== currentTask.status) ||
+        (!previousTask && previousTasksRef.current.length !== 0)
+      ) {
         // Process files from failed task and add them to files list
         if (currentTask.files && typeof currentTask.files === "object") {
-          console.log("processing files", currentTask.files);
           const taskFileEntries = Object.entries(currentTask.files);
           const now = new Date().toISOString();
 
           taskFileEntries.forEach(([filePath, fileInfo]) => {
             if (typeof fileInfo === "object" && fileInfo) {
               // Use the filename from backend if available, otherwise extract from path
-              const fileName = (fileInfo as any).filename || filePath.split("/").pop() || filePath;
+              const fileName =
+                (fileInfo as any).filename ||
+                filePath.split("/").pop() ||
+                filePath;
               const fileStatus = fileInfo.status as string;
 
               // Map backend file status to our TaskFile status
@@ -205,7 +208,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           });
         }
         if (
-          previousTask && previousTask.status !== "completed" &&
+          previousTask &&
+          previousTask.status !== "completed" &&
           currentTask.status === "completed"
         ) {
           // Task just completed - show success toast with file counts
@@ -214,9 +218,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
           let description = "";
           if (failedFiles > 0) {
-            description = `${successfulFiles} file${successfulFiles !== 1 ? 's' : ''} uploaded successfully, ${failedFiles} file${failedFiles !== 1 ? 's' : ''} failed`;
+            description = `${successfulFiles} file${
+              successfulFiles !== 1 ? "s" : ""
+            } uploaded successfully, ${failedFiles} file${
+              failedFiles !== 1 ? "s" : ""
+            } failed`;
           } else {
-            description = `${successfulFiles} file${successfulFiles !== 1 ? 's' : ''} uploaded successfully`;
+            description = `${successfulFiles} file${
+              successfulFiles !== 1 ? "s" : ""
+            } uploaded successfully`;
           }
 
           toast.success("Task completed", {
@@ -230,13 +240,18 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             },
           });
           setTimeout(() => {
-          refetchSearch();
-          setFiles((prevFiles) =>
-            prevFiles.filter((file) => file.task_id !== currentTask.task_id || file.status === "failed"),
+            setFiles((prevFiles) =>
+              prevFiles.filter(
+                (file) =>
+                  file.task_id !== currentTask.task_id ||
+                  file.status === "failed",
+              ),
             );
+            refetchSearch();
           }, 500);
         } else if (
-          previousTask && previousTask.status !== "failed" &&
+          previousTask &&
+          previousTask.status !== "failed" &&
           previousTask.status !== "error" &&
           (currentTask.status === "failed" || currentTask.status === "error")
         ) {
