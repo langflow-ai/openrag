@@ -50,6 +50,7 @@ export const filterAccentClasses: Record<FilterColor, string> = {
 
 export function KnowledgeFilterPanel() {
   const {
+    queryOverride,
     selectedFilter,
     parsedFilterData,
     setSelectedFilter,
@@ -231,8 +232,8 @@ export function KnowledgeFilterPanel() {
   };
 
   return (
-    <div className="fixed right-0 top-14 bottom-0 w-80 bg-background border-l z-40 overflow-y-auto">
-      <Card className="h-full rounded-none border-0 shadow-lg flex flex-col">
+    <div className="h-full bg-background border-l">
+      <Card className="h-full rounded-none border-0 flex flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -320,6 +321,7 @@ export function KnowledgeFilterPanel() {
               className="font-mono placeholder:font-mono"
               onChange={(e) => setQuery(e.target.value)}
               rows={2}
+              disabled={!!queryOverride && !createMode}
             />
           </div>
 

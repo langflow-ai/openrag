@@ -16,7 +16,8 @@ export const useDoclingHealthQuery = (
 
   async function checkDoclingHealth(): Promise<DoclingHealthResponse> {
     try {
-      const response = await fetch("http://127.0.0.1:5001/health", {
+      // Call backend proxy endpoint instead of direct localhost
+      const response = await fetch("/api/docling/health", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
