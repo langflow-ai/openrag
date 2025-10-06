@@ -96,6 +96,7 @@ class LangflowConnectorService:
 
                 ingestion_result = await self.langflow_service.run_ingestion_flow(
                     file_paths=[langflow_file_path],
+                    file_tuples=[file_tuple],
                     jwt_token=jwt_token,
                     tweaks=tweaks,
                     owner=owner_user_id,
