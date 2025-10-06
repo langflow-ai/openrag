@@ -133,22 +133,8 @@ function ChunksPageContent() {
   }
 
   return (
-    <div
-      className={`fixed inset-0 md:left-72 flex flex-row transition-all duration-300 ${
-        isMenuOpen && isPanelOpen
-          ? "md:right-[704px]"
-          : // Both open: 384px (menu) + 320px (KF panel)
-          isMenuOpen
-          ? "md:right-96"
-          : // Only menu open: 384px
-          isPanelOpen
-          ? "md:right-80"
-          : // Only KF panel open: 320px
-            "md:right-6" // Neither open: 24px
-      }`}
-      style={{ top: `${totalTopOffset}px` }}
-    >
-      <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
+    <div className="flex flex-row h-full">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Header */}
         <div className="flex flex-col mb-6">
           <div className="flex flex-row items-center gap-3 mb-6">

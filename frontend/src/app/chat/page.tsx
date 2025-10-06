@@ -2047,21 +2047,10 @@ function ChatPage() {
   };
 
   return (
-    <div
-      className={`fixed inset-0 md:left-72 flex flex-col transition-all duration-300 ${
-        isMenuOpen && isPanelOpen
-          ? "md:right-[704px]" // Both open: 384px (menu) + 320px (KF panel)
-          : isMenuOpen
-          ? "md:right-96" // Only menu open: 384px
-          : isPanelOpen
-          ? "md:right-80" // Only KF panel open: 320px
-          : "md:right-6" // Neither open: 24px
-      }`}
-      style={{ top: `${totalTopOffset}px` }}
-    >
+    <div className="h-full flex flex-col container">
       {/* Debug header - only show in debug mode */}
       {isDebugMode && (
-        <div className="flex items-center justify-between mb-6 px-6 pt-6">
+        <div className="flex items-center justify-between mb-6 px-6 pt-6 ">
           <div className="flex items-center gap-2"></div>
           <div className="flex items-center gap-4">
             {/* Async Mode Toggle */}

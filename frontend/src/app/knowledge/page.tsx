@@ -11,7 +11,6 @@ import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { useLayout } from "@/contexts/layout-context";
 import { useTask } from "@/contexts/task-context";
 import { type File, useGetSearchQuery } from "../api/queries/useGetSearchQuery";
 import "@/components/AgGrid/registerAgGridModules";
@@ -47,9 +46,8 @@ function getSourceIcon(connectorType?: string) {
 
 function SearchPage() {
   const router = useRouter();
-  const { isMenuOpen, files: taskFiles } = useTask();
-  const { totalTopOffset } = useLayout();
-  const { selectedFilter, setSelectedFilter, parsedFilterData, isPanelOpen } =
+  const { files: taskFiles } = useTask();
+  const { selectedFilter, setSelectedFilter, parsedFilterData } =
     useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
@@ -230,116 +228,83 @@ function SearchPage() {
   };
 
   return (
-    <div
-      className={`fixed inset-0 md:left-72 flex flex-col transition-all duration-300 ${
-        isMenuOpen && isPanelOpen
-          ? "md:right-[704px]"
-          : // Both open: 384px (menu) + 320px (KF panel)
-          isMenuOpen
-          ? "md:right-96"
-          : // Only menu open: 384px
-          isPanelOpen
-          ? "md:right-80"
-          : // Only KF panel open: 320px
-            "md:right-6" // Neither open: 24px
-      }`}
-      style={{ top: `${totalTopOffset}px` }}
-    >
-      <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
-        <div className="flex items-center justify-between mb-6 h-10">
-          <h2 className="text-lg font-semibold">Project Knowledge</h2>
-          <KnowledgeDropdown variant="button" />
-        </div>
+    <div className="h-full flex flex-col container">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="flex items-center h-[40px] text-lg font-semibold">
+          Project Knowledge
+        </h2>
+        <KnowledgeDropdown variant="button" />
+      </div>
 
-        {/* Search Input Area */}
-        <div className="flex-shrink-0 mb-6 xl:max-w-[75%]">
-          <form className="flex gap-3">
-            <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]">
-              {selectedFilter?.name && (
-                <div
-                  className={`flex items-center gap-1 h-full px-1.5 py-0.5 mr-1 rounded max-w-[25%] ${
-                    filterAccentClasses[parsedFilterData?.color || "zinc"]
-                  }`}
-                >
-                  <span className="truncate">{selectedFilter?.name}</span>
-                  <X
-                    aria-label="Remove filter"
-                    className="h-4 w-4 flex-shrink-0 cursor-pointer"
-                    onClick={() => setSelectedFilter(null)}
-                  />
-                </div>
-              )}
-              <Search
-                className="h-4 w-4 ml-1 flex-shrink-0 text-placeholder-foreground"
-                strokeWidth={1.5}
-              />
-              <input
-                className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none font-mono placeholder:font-mono"
-                name="search-query"
-                id="search-query"
-                type="text"
-                placeholder="Search your documents..."
-                onChange={handleTableSearch}
-              />
-            </div>
-            {/* <Button
-              type="submit"
-              variant="outline"
-              className="rounded-lg p-0 flex-shrink-0"
-            >
-              {isFetching ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
-            </Button> */}
-            {/* //TODO: Implement sync button */}
-            {/* <Button
-              type="button"
-              variant="outline"
-              className="rounded-lg flex-shrink-0"
-              onClick={() => alert("Not implemented")}
-            >
-              Sync
-            </Button> */}
-            {selectedRows.length > 0 && (
-              <Button
-                type="button"
-                variant="destructive"
-                className="rounded-lg flex-shrink-0"
-                onClick={() => setShowBulkDeleteDialog(true)}
+      {/* Search Input Area */}
+      <div className="flex-shrink-0 mb-6 xl:max-w-[75%]">
+        <form className="flex gap-3">
+          <div className="primary-input min-h-10 !flex items-center flex-nowrap focus-within:border-foreground transition-colors !p-[0.3rem]">
+            {selectedFilter?.name && (
+              <div
+                className={`flex items-center gap-1 h-full px-1.5 py-0.5 mr-1 rounded max-w-[25%] ${
+                  filterAccentClasses[parsedFilterData?.color || "zinc"]
+                }`}
               >
-                <Trash2 className="h-4 w-4" /> Delete
-              </Button>
-            )}
-          </form>
-        </div>
-        <div className="flex-1 min-h-0 max-h-[700px] overflow-hidden h-full">
-          <AgGridReact
-            className="h-full w-full"
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            loading={isFetching}
-            ref={gridRef}
-            rowData={fileResults}
-            rowSelection="multiple"
-            rowMultiSelectWithClick={false}
-            suppressRowClickSelection={true}
-            getRowId={params => params.data.filename}
-            domLayout="normal"
-            onSelectionChanged={onSelectionChanged}
-            noRowsOverlayComponent={() => (
-              <div className="text-center pb-[45px]">
-                <div className="text-lg text-primary font-semibold">
-                  No knowledge
-                </div>
-                <div className="text-sm mt-1 text-muted-foreground">
-                  Add files from local or your preferred cloud.
-                </div>
+                <span className="truncate">{selectedFilter?.name}</span>
+                <X
+                  aria-label="Remove filter"
+                  className="h-4 w-4 flex-shrink-0 cursor-pointer"
+                  onClick={() => setSelectedFilter(null)}
+                />
               </div>
             )}
-          />
-        </div>
+            <Search
+              className="h-4 w-4 ml-1 flex-shrink-0 text-placeholder-foreground"
+              strokeWidth={1.5}
+            />
+            <input
+              className="bg-transparent w-full h-full ml-2 focus:outline-none focus-visible:outline-none font-mono placeholder:font-mono"
+              name="search-query"
+              id="search-query"
+              type="text"
+              placeholder="Search your documents..."
+              onChange={handleTableSearch}
+            />
+          </div>
+          {selectedRows.length > 0 && (
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-lg flex-shrink-0"
+              onClick={() => setShowBulkDeleteDialog(true)}
+            >
+              <Trash2 className="h-4 w-4" /> Delete
+            </Button>
+          )}
+        </form>
+      </div>
+
+      <div className="flex-1 min-h-0">
+        <AgGridReact
+          className="h-full w-full"
+          columnDefs={columnDefs}
+          defaultColDef={defaultColDef}
+          loading={isFetching}
+          ref={gridRef}
+          rowData={fileResults}
+          rowSelection="multiple"
+          rowMultiSelectWithClick={false}
+          suppressRowClickSelection={true}
+          getRowId={params => params.data.filename}
+          domLayout="normal"
+          onSelectionChanged={onSelectionChanged}
+          noRowsOverlayComponent={() => (
+            <div className="text-center pb-[45px]">
+              <div className="text-lg text-primary font-semibold">
+                No knowledge
+              </div>
+              <div className="text-sm mt-1 text-muted-foreground">
+                Add files from local or your preferred cloud.
+              </div>
+            </div>
+          )}
+        />
       </div>
 
       {/* Bulk Delete Confirmation Dialog */}
