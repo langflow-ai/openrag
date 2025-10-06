@@ -56,6 +56,7 @@ async def run_ingestion(
         payload = await request.json()
         file_ids = payload.get("file_ids")
         file_paths = payload.get("file_paths") or []
+        file_metadata = payload.get("file_metadata") or []  # List of {filename, mimetype, size}
         session_id = payload.get("session_id")
         tweaks = payload.get("tweaks") or {}
         settings = payload.get("settings", {})
@@ -65,6 +66,21 @@ async def run_ingestion(
             return JSONResponse(
                 {"error": "Provide file_paths or file_ids"}, status_code=400
             )
+
+        # Build file_tuples from file_metadata if provided, otherwise use empty strings
+        file_tuples = []
+        for i, file_path in enumerate(file_paths):
+            if i < len(file_metadata):
+                meta = file_metadata[i]
+                filename = meta.get("filename", "")
+                mimetype = meta.get("mimetype", "application/octet-stream")
+                # For files already uploaded, we don't have content, so use empty bytes
+                file_tuples.append((filename, b"", mimetype))
+            else:
+                # Extract filename from path if no metadata provided
+                import os
+                filename = os.path.basename(file_path)
+                file_tuples.append((filename, b"", "application/octet-stream"))
 
         # Convert UI settings to component tweaks using exact component IDs
         if settings:
@@ -114,6 +130,7 @@ async def run_ingestion(
 
         result = await langflow_file_service.run_ingestion_flow(
             file_paths=file_paths or [],
+            file_tuples=file_tuples,
             jwt_token=jwt_token,
             session_id=session_id,
             tweaks=tweaks,
