@@ -108,6 +108,7 @@ services:
       - OWNER_NAME=None
       - OWNER_EMAIL=None
       - CONNECTOR_TYPE=system
+      - CONNECTOR_TYPE_URL=url
       - OPENRAG-QUERY-FILTER="{}"
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - FILENAME=None
