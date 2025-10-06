@@ -31,6 +31,7 @@ from api import (
     auth,
     chat,
     connectors,
+    docling,
     documents,
     flows,
     knowledge_filter,
@@ -954,6 +955,17 @@ async def create_app():
         ),
         # Document endpoints
         Route(
+            "/documents/check-filename",
+            require_auth(services["session_manager"])(
+                partial(
+                    documents.check_filename_exists,
+                    document_service=services["document_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
             "/documents/delete-by-filename",
             require_auth(services["session_manager"])(
                 partial(
@@ -1099,6 +1111,12 @@ async def create_app():
                 )
             ),
             methods=["POST"],
+        ),
+        # Docling service proxy
+        Route(
+            "/docling/health",
+            partial(docling.health),
+            methods=["GET"],
         ),
     ]
 
