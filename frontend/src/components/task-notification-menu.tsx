@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bell, CheckCircle, XCircle, Clock, Loader2, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,8 +8,15 @@ import { Badge } from '@/components/ui/badge'
 import { useTask, Task } from '@/contexts/task-context'
 
 export function TaskNotificationMenu() {
-  const { tasks, isFetching, isMenuOpen, cancelTask } = useTask()
+  const { tasks, isFetching, isMenuOpen, isRecentTasksExpanded, cancelTask } = useTask()
   const [isExpanded, setIsExpanded] = useState(false)
+
+  // Sync local state with context state
+  useEffect(() => {
+    if (isRecentTasksExpanded) {
+      setIsExpanded(true)
+    }
+  }, [isRecentTasksExpanded])
 
   // Don't render if menu is closed
   if (!isMenuOpen) return null
