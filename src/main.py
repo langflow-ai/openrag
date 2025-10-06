@@ -954,6 +954,17 @@ async def create_app():
         ),
         # Document endpoints
         Route(
+            "/documents/check-filename",
+            require_auth(services["session_manager"])(
+                partial(
+                    documents.check_filename_exists,
+                    document_service=services["document_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
             "/documents/delete-by-filename",
             require_auth(services["session_manager"])(
                 partial(
