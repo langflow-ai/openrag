@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import { type CloudFile, UnifiedCloudPicker } from "@/components/cloud-picker";
 import type { IngestSettings } from "@/components/cloud-picker/types";
 import { Button } from "@/components/ui/button";
-import { Toast } from "@/components/ui/toast";
 import { useTask } from "@/contexts/task-context";
 
 // CloudFile interface is now imported from the unified cloud picker
@@ -345,6 +344,7 @@ export default function UploadProviderPage() {
           onFileSelected={handleFileSelected}
           selectedFiles={selectedFiles}
           isAuthenticated={true}
+          isIngesting={isIngesting}
           accessToken={accessToken || undefined}
           clientId={connector.clientId}
           onSettingsChange={setIngestSettings}
@@ -361,14 +361,15 @@ export default function UploadProviderPage() {
             Back
           </Button>
           <Button
-            variant="secondary"
+            className="bg-foreground text-background hover:bg-foreground/90 font-semibold"
+            variant={selectedFiles.length === 0 ? "secondary" : undefined}
             onClick={() => handleSync(connector)}
             disabled={selectedFiles.length === 0 || isIngesting}
           >
-            {isIngesting ? (
-              <>Ingesting {selectedFiles.length} Files...</>
+            {selectedFiles.length === 0 ? (
+              <>Ingest files</>
             ) : (
-              <>Start ingest</>
+              <>Ingesting {selectedFiles.length} files</>
             )}
           </Button>
         </div>

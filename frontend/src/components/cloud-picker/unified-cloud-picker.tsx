@@ -16,6 +16,7 @@ export const UnifiedCloudPicker = ({
   onFileSelected,
   selectedFiles = [],
   isAuthenticated,
+  isIngesting,
   accessToken,
   onPickerStateChange,
   clientId,
@@ -183,6 +184,7 @@ export const UnifiedCloudPicker = ({
         files={selectedFiles}
         onClearAll={handleClearAll}
         onRemoveFile={handleRemoveFile}
+        shouldDisableActions={isIngesting}
       />
 
       <IngestSettings
