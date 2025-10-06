@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useLayout } from "@/contexts/layout-context";
+import { useTask } from "@/contexts/task-context";
 import {
   type ChunkResult,
   type File,
@@ -28,9 +30,7 @@ function ChunksPageContent() {
 
   const filename = searchParams.get("filename");
   const [chunks, setChunks] = useState<ChunkResult[]>([]);
-  const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
-    ChunkResult[]
-  >([]);
+
   const [selectedChunks, setSelectedChunks] = useState<Set<number>>(new Set());
   const [activeCopiedChunkIndex, setActiveCopiedChunkIndex] = useState<
     number | null
