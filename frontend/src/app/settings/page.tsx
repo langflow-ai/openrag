@@ -53,7 +53,6 @@ import { ModelSelectItems } from "./helpers/model-select-item";
 import GoogleDriveIcon from "./icons/google-drive-icon";
 import OneDriveIcon from "./icons/one-drive-icon";
 import SharePointIcon from "./icons/share-point-icon";
-import { availableMemory } from "process";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
