@@ -1,6 +1,5 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   Collapsible,
@@ -54,8 +53,6 @@ export const IngestSettings = ({
     const updatedSettings = { ...currentSettings, ...newSettings };
     onSettingsChange?.(updatedSettings);
   };
-
-  console.log({ currentSettings });
 
   return (
     <Collapsible
