@@ -2337,12 +2337,12 @@
       "zoom": 0.5380793988167256
     }
   },
-  "description": "OpenRAG Open Search Nudges generator, based on the Open Search documents and the chat history.",
+  "description": "OpenRAG OpenSearch Nudges generator, based on the OpenSearch documents and the chat history.",
   "endpoint_name": null,
   "id": "ebc01d31-1976-46ce-a385-b0240327226c",
   "is_component": false,
   "last_tested_version": "1.6.0",
-  "name": "OpenRAG Open Search Nudges",
+  "name": "OpenRAG OpenSearch Nudges",
   "tags": [
     "assistants",
     "agents"
