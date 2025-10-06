@@ -63,10 +63,6 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const smallWidthPaths = ["/settings", "/settings/connector/new"];
   const isSmallWidthPath = smallWidthPaths.includes(pathname);
 
-  // List of paths that should not show navigation
-  const authPaths = ["/login", "/auth/callback", "/onboarding"];
-  const isAuthPage = authPaths.includes(pathname);
-
   // Calculate active tasks for the bell icon
   const activeTasks = tasks.filter(
     task =>

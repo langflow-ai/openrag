@@ -25,7 +25,6 @@ import {
   FilterIconPopover,
   IconKey,
 } from "@/components/filter-icon-popover";
-import { useLayout } from "@/contexts/layout-context";
 
 interface FacetBucket {
   key: string;
@@ -49,15 +48,7 @@ export const filterAccentClasses: Record<FilterColor, string> = {
   red: "bg-accent-red text-accent-red-foreground",
 };
 
-interface KnowledgeFilterPanelProps {
-  totalTopOffset: number;
-  headerHeight: number;
-}
-
-export function KnowledgeFilterPanel({
-  totalTopOffset,
-  headerHeight,
-}: KnowledgeFilterPanelProps) {
+export function KnowledgeFilterPanel() {
   const {
     queryOverride,
     selectedFilter,
