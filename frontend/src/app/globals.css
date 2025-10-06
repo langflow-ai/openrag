@@ -312,4 +312,17 @@
   .discord-error {
     @apply text-xs opacity-70;
   }
+
+  .box-shadow-inner::after {
+    content: " ";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    background: linear-gradient(to top, hsl(var(--background)), transparent);
+    display: block;
+    width: 100%;
+    height: 30px;
+  }
 }

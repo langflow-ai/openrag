@@ -23,10 +23,8 @@ export const FileList = ({
     return null;
   }
 
-  console.log({ shouldDisableActions });
-
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 relative">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">Added files ({files.length})</p>
         <Button
@@ -39,16 +37,18 @@ export const FileList = ({
           Remove all
         </Button>
       </div>
-      <div className="max-h-64 overflow-y-auto space-y-1">
-        {files.map((file) => (
-          <FileItem
-            key={file.id}
-            file={file}
-            onRemove={onRemoveFile}
-            provider={provider}
-            shouldDisableActions={shouldDisableActions}
-          />
-        ))}
+      <div className="box-shadow-inner">
+        <div className="max-h-[calc(100vh-720px)] overflow-y-auto space-y-1 pr-1 pb-4 relative">
+          {files.map((file) => (
+            <FileItem
+              key={file.id}
+              file={file}
+              onRemove={onRemoveFile}
+              provider={provider}
+              shouldDisableActions={shouldDisableActions}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
