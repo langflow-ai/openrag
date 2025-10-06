@@ -110,8 +110,8 @@ export const IngestSettings = ({
             </Select>
           </LabelWrapper>
         </div>
-        <div className="pt-5 space-y-5">
-          <div className="flex items-center gap-4 w-full">
+        <div className="mt-6">
+          <div className="flex items-center gap-4 w-full mb-6">
             <div className="w-full">
               <NumberInput
                 id="chunk-size"
@@ -134,7 +134,23 @@ export const IngestSettings = ({
             </div>
           </div>
 
-          <div className="flex gap-2 items-center justify-between">
+          {/* <div className="flex gap-2 items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold pb-2">Table Structure</div>
+              <div className="text-sm text-muted-foreground">
+                Capture table structure during ingest.
+              </div>
+            </div>
+            <Switch
+              id="table-structure"
+              checked={currentSettings.tableStructure}
+              onCheckedChange={(checked) =>
+                handleSettingsChange({ tableStructure: checked })
+              }
+            />
+          </div> */}
+
+          <div className="flex items-center justify-between border-b pb-3 mb-3">
             <div>
               <div className="text-sm font-semibold pb-2">OCR</div>
               <div className="text-sm text-muted-foreground">
@@ -149,7 +165,7 @@ export const IngestSettings = ({
             />
           </div>
 
-          <div className="flex gap-2 items-center justify-between">
+          <div className="flex items-center justify-between">
             <div>
               <div className="text-sm pb-2 font-semibold">
                 Picture descriptions
