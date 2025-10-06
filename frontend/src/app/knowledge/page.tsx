@@ -1,16 +1,14 @@
 "use client";
 
-import type { ColDef, GetRowIdParams } from "ag-grid-community";
+import {
+  themeQuartz,
+  type ColDef,
+  type GetRowIdParams,
+} from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import { Cloud, FileIcon, Globe } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {
-  type ChangeEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
@@ -314,6 +312,7 @@ function SearchPage() {
           defaultColDef={defaultColDef}
           loading={isFetching}
           ref={gridRef}
+          theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
           rowData={fileResults}
           rowSelection="multiple"
           rowMultiSelectWithClick={false}
