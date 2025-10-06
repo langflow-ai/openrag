@@ -29,6 +29,7 @@ export interface ChunkResult {
   owner_email?: string;
   file_size?: number;
   connector_type?: string;
+  index?: number;
 }
 
 export interface File {
@@ -55,7 +56,7 @@ export interface File {
 export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">
 ) => {
   const queryClient = useQueryClient();
 
@@ -184,7 +185,7 @@ export const useGetSearchQuery = (
       queryFn: getFiles,
       ...options,
     },
-    queryClient,
+    queryClient
   );
 
   return queryResult;
