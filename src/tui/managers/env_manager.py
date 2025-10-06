@@ -32,7 +32,8 @@ class EnvConfig:
     langflow_superuser: str = "admin"
     langflow_superuser_password: str = ""
     langflow_chat_flow_id: str = "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
-    langflow_ingest_flow_id: str = "1402618b-e6d1-4ff2-9a11-d6ce71186915"
+    langflow_ingest_flow_id: str = "5488df7c-b93f-4f87-a446-b67028bc0813"
+    langflow_url_ingest_flow_id: str = "72c3d17c-2dac-4a73-b48a-6518473d7830"
 
     # OAuth settings
     google_oauth_client_id: str = ""
@@ -114,6 +115,7 @@ class EnvManager:
                             "LANGFLOW_SUPERUSER_PASSWORD": "langflow_superuser_password",
                             "LANGFLOW_CHAT_FLOW_ID": "langflow_chat_flow_id",
                             "LANGFLOW_INGEST_FLOW_ID": "langflow_ingest_flow_id",
+                            "LANGFLOW_URL_INGEST_FLOW_ID": "langflow_url_ingest_flow_id",
                             "NUDGES_FLOW_ID": "nudges_flow_id",
                             "GOOGLE_OAUTH_CLIENT_ID": "google_oauth_client_id",
                             "GOOGLE_OAUTH_CLIENT_SECRET": "google_oauth_client_secret",
@@ -255,6 +257,7 @@ class EnvManager:
                 f.write(
                     f"LANGFLOW_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_ingest_flow_id)}\n"
                 )
+                f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
                 f.write(f"OPENAI_API_KEY={self._quote_env_value(self.config.openai_api_key)}\n")
