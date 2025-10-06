@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Loader2, Minus, Plus } from "lucide-react";
+import { ArrowUpRight, Loader2, Minus, PlugZap, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -310,6 +310,7 @@ function KnowledgeSourcesPage() {
           icon: getConnectorIcon(connectorsResult.connectors[type].icon),
           status: "not_connected" as const,
           type: type,
+          available: connectorsResult.connectors[type].available,
         }));
 
       setConnectors(initialConnectors);
