@@ -326,7 +326,7 @@ export default function UploadProviderPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-3xl p-6">
+    <div className="container mx-auto max-w-3xl px-6">
       <div className="mb-8 flex gap-2 items-center">
         <Button variant="ghost" onClick={() => router.back()} size="icon">
           <ArrowLeft size={18} />
