@@ -131,7 +131,7 @@ async def configure_alerting_security():
         # Don't fail startup if alerting config fails
 
 
-async def _ensure_opensearch_index(self):
+async def _ensure_opensearch_index():
     """Ensure OpenSearch index exists when using traditional connector service."""
     try:
         # Check if index already exists
