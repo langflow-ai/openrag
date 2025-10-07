@@ -157,9 +157,21 @@ def guess_host_ip_for_containers(logger=None) -> str:
     import logging
     import re
     import shutil
+    import socket
     import subprocess
 
     log = logger or logging.getLogger(__name__)
+
+    def can_bind_to_address(ip_addr: str) -> bool:
+        """Test if we can bind to the given IP address."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind((ip_addr, 0))  # Port 0 = let OS choose a free port
+                return True
+        except (OSError, socket.error) as e:
+            log.debug("Cannot bind to %s: %s", ip_addr, e)
+            return False
 
     def run(cmd, timeout=2, text=True):
         return subprocess.run(cmd, capture_output=True, text=text, timeout=timeout)
@@ -261,10 +273,23 @@ def guess_host_ip_for_containers(logger=None) -> str:
                 "Container-reachable host IP candidates: %s",
                 ", ".join(ordered_candidates),
             )
-        else:
-            log.info("Container-reachable host IP: %s", ordered_candidates[0])
 
-        return ordered_candidates[0]
+        # Try each candidate and return the first one we can bind to
+        for ip_addr in ordered_candidates:
+            if can_bind_to_address(ip_addr):
+                if len(ordered_candidates) > 1:
+                    log.info("Selected bindable host IP: %s", ip_addr)
+                else:
+                    log.info("Container-reachable host IP: %s", ip_addr)
+                return ip_addr
+            log.debug("Skipping %s (cannot bind)", ip_addr)
+
+        # None of the candidates were bindable, fall back to 127.0.0.1
+        log.warning(
+            "None of the discovered IPs (%s) can be bound; falling back to 127.0.0.1",
+            ", ".join(ordered_candidates),
+        )
+        return "127.0.0.1"
 
     log.warning(
         "No container bridge IP found. For rootless Podman (slirp4netns) there may be no host bridge; publish ports or use 10.0.2.2 from the container."
