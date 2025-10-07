@@ -192,19 +192,26 @@ test-integration:
 # CI-friendly integration test target: brings up infra, waits, runs tests, tears down
 test-ci:
 	@set -e; \
-	echo "📦 Installing test dependencies..."; \
+	echo "Installing test dependencies..."; \
 	uv sync --group dev; \
-	echo "🚀 Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
+	echo "Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
 	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow; \
-	echo "⏳ Waiting for OpenSearch..."; \
+	echo "Starting docling-serve..."; \
+	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
+	echo "Docling-serve started at $$DOCLING_ENDPOINT"; \
+	echo "Waiting for OpenSearch..."; \
 	for i in $$(seq 1 60); do \
 		curl -k -s https://localhost:9200 -u admin:$${OPENSEARCH_PASSWORD} >/dev/null 2>&1 && break || sleep 2; \
 	done; \
-	echo "⏳ Waiting for Langflow..."; \
+	echo "Waiting for Langflow..."; \
 	for i in $$(seq 1 60); do \
 		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
 	done; \
-	echo "🧪 Running integration tests"; \
+	echo "Waiting for docling-serve at $$DOCLING_ENDPOINT..."; \
+	for i in $$(seq 1 60); do \
+		curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "Running integration tests"; \
 	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
 	GOOGLE_OAUTH_CLIENT_ID="" \
 	GOOGLE_OAUTH_CLIENT_SECRET="" \
@@ -212,7 +219,8 @@ test-ci:
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
 	uv run pytest tests/integration -vv -s -o log_cli=true --log-cli-level=DEBUG; \
-	echo "🧹 Tearing down infra"; \
+	echo "Tearing down infra"; \
+	uv run python scripts/docling_ctl.py stop || true; \
 	docker compose down -v || true
 
 lint:
