@@ -29,8 +29,12 @@ const config = {
       },
       keyframes: {
         overlayShow: {
-          from: { opacity: 0 },
-          to: { opacity: 1 },
+          from: {
+            opacity: 0,
+          },
+          to: {
+            opacity: 1,
+          },
         },
         contentShow: {
           from: {
@@ -45,14 +49,36 @@ const config = {
           },
         },
         wiggle: {
-          "0%, 100%": { transform: "scale(100%)" },
-          "50%": { transform: "scale(120%)" },
+          "0%, 100%": {
+            transform: "scale(100%)",
+          },
+          "50%": {
+            transform: "scale(120%)",
+          },
+        },
+        "accordion-down": {
+          from: {
+            height: "0",
+          },
+          to: {
+            height: "var(--radix-accordion-content-height)",
+          },
+        },
+        "accordion-up": {
+          from: {
+            height: "var(--radix-accordion-content-height)",
+          },
+          to: {
+            height: "0",
+          },
         },
       },
       animation: {
         overlayShow: "overlayShow 400ms cubic-bezier(0.16, 1, 0.3, 1)",
         contentShow: "contentShow 400ms cubic-bezier(0.16, 1, 0.3, 1)",
         wiggle: "wiggle 150ms ease-in-out 1",
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
       },
       colors: {
         border: "hsl(var(--border))",
@@ -82,6 +108,30 @@ const config = {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
+        "accent-emerald": {
+          DEFAULT: "hsl(var(--accent-emerald))",
+          foreground: "hsl(var(--accent-emerald-foreground))",
+        },
+        "accent-pink": {
+          DEFAULT: "hsl(var(--accent-pink))",
+          foreground: "hsl(var(--accent-pink-foreground))",
+        },
+        "accent-amber": {
+          DEFAULT: "hsl(var(--accent-amber))",
+          foreground: "hsl(var(--accent-amber-foreground))",
+        },
+        "accent-purple": {
+          DEFAULT: "hsl(var(--accent-purple))",
+          foreground: "hsl(var(--accent-purple-foreground))",
+        },
+        "accent-indigo": {
+          DEFAULT: "hsl(var(--accent-indigo))",
+          foreground: "hsl(var(--accent-indigo-foreground))",
+        },
+        "accent-red": {
+          DEFAULT: "hsl(var(--accent-red))",
+          foreground: "hsl(var(--accent-red-foreground))",
+        },
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
@@ -90,33 +140,9 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        "status-blue": "var(--status-blue)",
-        "status-green": "var(--status-green)",
-        "status-red": "var(--status-red)",
-        "status-yellow": "var(--status-yellow)",
         "component-icon": "var(--component-icon)",
         "flow-icon": "var(--flow-icon)",
         "placeholder-foreground": "hsl(var(--placeholder-foreground))",
-        "datatype-blue": {
-          DEFAULT: "hsl(var(--datatype-blue))",
-          foreground: "hsl(var(--datatype-blue-foreground))",
-        },
-        "datatype-yellow": {
-          DEFAULT: "hsl(var(--datatype-yellow))",
-          foreground: "hsl(var(--datatype-yellow-foreground))",
-        },
-        "datatype-red": {
-          DEFAULT: "hsl(var(--datatype-red))",
-          foreground: "hsl(var(--datatype-red-foreground))",
-        },
-        "datatype-emerald": {
-          DEFAULT: "hsl(var(--datatype-emerald))",
-          foreground: "hsl(var(--datatype-emerald-foreground))",
-        },
-        "datatype-violet": {
-          DEFAULT: "hsl(var(--datatype-violet))",
-          foreground: "hsl(var(--datatype-violet-foreground))",
-        },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
@@ -178,8 +204,9 @@ const config = {
         ".primary-input": {
           display: "block",
           width: "100%",
+          height: "40px",
           borderRadius: "0.375rem",
-          border: "1px solid hsl(var(--border))",
+          border: "1px solid hsl(var(--input))",
           backgroundColor: "hsl(var(--background))",
           paddingLeft: "0.75rem",
           paddingRight: "0.75rem",

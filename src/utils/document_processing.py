@@ -12,12 +12,80 @@ logger = get_logger(__name__)
 _worker_converter = None
 
 
+def create_document_converter(ocr_engine: str | None = None):
+    """Create a Docling DocumentConverter with OCR disabled unless requested."""
+    if ocr_engine is None:
+        ocr_engine = os.getenv("DOCLING_OCR_ENGINE")
+
+    try:
+        from docling.document_converter import (
+            DocumentConverter,
+            InputFormat,
+            PdfFormatOption,
+        )
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+    except Exception as exc:  # pragma: no cover - fallback path
+        logger.debug(
+            "Falling back to default DocumentConverter import",
+            error=str(exc),
+        )
+        from docling.document_converter import DocumentConverter  # type: ignore
+
+        return DocumentConverter()
+
+    pipeline_options = PdfPipelineOptions()
+    pipeline_options.do_ocr = False
+
+    if ocr_engine:
+        try:
+            from docling.models.factories import get_ocr_factory
+
+            factory = get_ocr_factory(allow_external_plugins=False)
+            pipeline_options.do_ocr = True
+            pipeline_options.ocr_options = factory.create_options(kind=ocr_engine)
+        except Exception as exc:  # pragma: no cover - optional path
+            pipeline_options.do_ocr = False
+            logger.warning(
+                "Unable to enable requested Docling OCR engine, using OCR-off",
+                ocr_engine=ocr_engine,
+                error=str(exc),
+            )
+
+    format_options = {}
+    if hasattr(InputFormat, "PDF"):
+        format_options[getattr(InputFormat, "PDF")] = PdfFormatOption(
+            pipeline_options=pipeline_options
+        )
+    if hasattr(InputFormat, "IMAGE"):
+        format_options[getattr(InputFormat, "IMAGE")] = PdfFormatOption(
+            pipeline_options=pipeline_options
+        )
+
+    try:
+        converter = DocumentConverter(
+            format_options=format_options if format_options else None
+        )
+    except Exception as exc:  # pragma: no cover - fallback path
+        logger.warning(
+            "Docling converter initialization failed, falling back to defaults",
+            error=str(exc),
+        )
+        converter = DocumentConverter()
+
+    logger.info(
+        "Docling converter initialized",
+        ocr_engine=ocr_engine if pipeline_options.do_ocr else None,
+        ocr_enabled=pipeline_options.do_ocr,
+    )
+
+    return converter
+
+
 def get_worker_converter():
     """Get or create a DocumentConverter instance for this worker process"""
     global _worker_converter
     if _worker_converter is None:
-        from docling.document_converter import DocumentConverter
-
+        
         # Configure GPU settings for this worker
         has_gpu_devices, _ = detect_gpu_devices()
         if not has_gpu_devices:
@@ -45,7 +113,7 @@ def get_worker_converter():
         logger.info(
             "Initializing DocumentConverter in worker process", worker_pid=os.getpid()
         )
-        _worker_converter = DocumentConverter()
+        _worker_converter = create_document_converter()
         logger.info("DocumentConverter ready in worker process", worker_pid=os.getpid())
 
     return _worker_converter
@@ -161,15 +229,9 @@ def process_document_sync(file_path: str):
 
         # Compute file hash
         try:
+            from utils.hash_utils import hash_id
             logger.info("Computing file hash", worker_pid=os.getpid())
-            sha256 = hashlib.sha256()
-            with open(file_path, "rb") as f:
-                while True:
-                    chunk = f.read(1 << 20)
-                    if not chunk:
-                        break
-                    sha256.update(chunk)
-            file_hash = sha256.hexdigest()
+            file_hash = hash_id(file_path)
             logger.info(
                 "File hash computed",
                 worker_pid=os.getpid(),

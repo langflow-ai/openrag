@@ -16,6 +16,7 @@ from rich.text import Text
 from rich.table import Table
 
 from ..managers.container_manager import ContainerManager, ServiceStatus, ServiceInfo
+from ..managers.docling_manager import DoclingManager
 from ..utils.platform import RuntimeType
 from ..widgets.command_modal import CommandOutputModal
 from ..widgets.diagnostics_notification import notify_with_diagnostics
@@ -39,12 +40,23 @@ class MonitorScreen(Screen):
     def __init__(self):
         super().__init__()
         self.container_manager = ContainerManager()
+        self.docling_manager = DoclingManager()
         self.services_table = None
+        self.docling_table = None
         self.images_table = None
         self.status_text = None
         self.refresh_timer = None
         self.operation_in_progress = False
         self._follow_task = None
+
+        # Track which table was last selected for mutual exclusion
+        self._last_selected_table = None
+
+    def on_unmount(self) -> None:
+        """Clean up when the screen is unmounted."""
+        if hasattr(self, 'docling_manager'):
+            self.docling_manager.cleanup()
+        super().on_unmount()
         self._follow_service = None
         self._logs_buffer = []
 
@@ -64,13 +76,17 @@ class MonitorScreen(Screen):
             classes="button-row",
             id="mode-row",
         )
-        # Images summary table (above services)
+
+        # Container Images table
         yield Static("Container Images", classes="tab-header")
         self.images_table = DataTable(id="images-table", show_cursor=False)
         self.images_table.can_focus = False
         self.images_table.add_columns("Image", "Digest")
         yield self.images_table
         yield Static(" ")
+
+        # Container Services table
+        yield Static("Container Services", classes="tab-header")
         # Dynamic controls container; populated based on running state
         yield Horizontal(id="services-controls", classes="button-row")
         # Create services table with image + digest info
@@ -79,6 +95,16 @@ class MonitorScreen(Screen):
             "Service", "Status", "Health", "Ports", "Image", "Digest"
         )
         yield self.services_table
+        yield Static(" ")
+
+        # Docling Services table
+        yield Static("Native Services", classes="tab-header")
+        # Dynamic controls for docling service
+        yield Horizontal(id="docling-controls", classes="button-row")
+        # Create docling table with relevant columns only
+        self.docling_table = DataTable(id="docling-table")
+        self.docling_table.add_columns("Service", "Status", "Port", "PID", "Actions")
+        yield self.docling_table
 
     def _get_runtime_status(self) -> Text:
         """Get container runtime status text."""
@@ -119,11 +145,7 @@ class MonitorScreen(Screen):
         # Set up auto-refresh every 5 seconds
         self.refresh_timer = self.set_interval(5.0, self._auto_refresh)
 
-        # Focus the services table
-        try:
-            self.services_table.focus()
-        except Exception:
-            pass
+        self._focus_services_table()
 
     def on_unmount(self) -> None:
         """Clean up when unmounting."""
@@ -164,10 +186,12 @@ class MonitorScreen(Screen):
 
         # Clear existing rows
         self.services_table.clear()
+        if self.docling_table:
+            self.docling_table.clear()
         if self.images_table:
             self.images_table.clear()
 
-        # Add service rows
+        # Add container service rows
         for service_name, service_info in services.items():
             status_style = self._get_status_style(service_info.status)
 
@@ -179,6 +203,26 @@ class MonitorScreen(Screen):
                 service_info.image or "N/A",
                 digest_map.get(service_info.image or "", "-"),
             )
+
+        # Add docling serve to its own table
+        docling_status = self.docling_manager.get_status()
+        docling_running = docling_status["status"] == "running"
+        docling_status_text = "running" if docling_running else "stopped"
+        docling_style = "bold green" if docling_running else "bold red"
+        docling_port = f"{docling_status['host']}:{docling_status['port']}" if docling_running else "N/A"
+        docling_pid = str(docling_status.get("pid")) if docling_status.get("pid") else "N/A"
+
+        if self.docling_table:
+            self.docling_table.add_row(
+                "docling-serve",
+                Text(docling_status_text, style=docling_style),
+                docling_port,
+                docling_pid,
+                "Start/Stop/Logs"
+            )
+            # Restore docling selection when it was the last active table
+            if self._last_selected_table == "docling":
+                self._focus_docling_table(focus=False, set_last=False)
         # Populate images table (unique images as reported by runtime)
         if self.images_table:
             for image in sorted(images):
@@ -222,6 +266,12 @@ class MonitorScreen(Screen):
             self.run_worker(self._upgrade_services())
         elif button_id.startswith("reset-btn"):
             self.run_worker(self._reset_services())
+        elif button_id.startswith("docling-start-btn"):
+            self.run_worker(self._start_docling_serve())
+        elif button_id.startswith("docling-stop-btn"):
+            self.run_worker(self._stop_docling_serve())
+        elif button_id.startswith("docling-restart-btn"):
+            self.run_worker(self._restart_docling_serve())
         elif button_id == "toggle-mode-btn":
             self.action_toggle_mode()
         elif button_id.startswith("refresh-btn"):
@@ -321,6 +371,59 @@ class MonitorScreen(Screen):
         finally:
             self.operation_in_progress = False
 
+    async def _start_docling_serve(self) -> None:
+        """Start docling serve."""
+        self.operation_in_progress = True
+        try:
+            success, message = await self.docling_manager.start()
+            if success:
+                self.notify(message, severity="information")
+            else:
+                self.notify(f"Failed to start docling serve: {message}", severity="error")
+            # Refresh the services table to show updated status
+            await self._refresh_services()
+        except Exception as e:
+            self.notify(f"Error starting docling serve: {str(e)}", severity="error")
+        finally:
+            self.operation_in_progress = False
+
+    async def _stop_docling_serve(self) -> None:
+        """Stop docling serve."""
+        self.operation_in_progress = True
+        try:
+            success, message = await self.docling_manager.stop()
+            if success:
+                self.notify(message, severity="information")
+            else:
+                self.notify(f"Failed to stop docling serve: {message}", severity="error")
+            # Refresh the services table to show updated status
+            await self._refresh_services()
+        except Exception as e:
+            self.notify(f"Error stopping docling serve: {str(e)}", severity="error")
+        finally:
+            self.operation_in_progress = False
+
+    async def _restart_docling_serve(self) -> None:
+        """Restart docling serve."""
+        self.operation_in_progress = True
+        try:
+            success, message = await self.docling_manager.restart()
+            if success:
+                self.notify(message, severity="information")
+            else:
+                self.notify(f"Failed to restart docling serve: {message}", severity="error")
+            # Refresh the services table to show updated status
+            await self._refresh_services()
+        except Exception as e:
+            self.notify(f"Error restarting docling serve: {str(e)}", severity="error")
+        finally:
+            self.operation_in_progress = False
+
+    def _view_docling_logs(self) -> None:
+        """View docling serve logs."""
+        from .logs import LogsScreen
+        self.app.push_screen(LogsScreen(initial_service="docling-serve"))
+
     def _strip_ansi_codes(self, text: str) -> str:
         """Strip ANSI escape sequences from text."""
         ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
@@ -405,16 +508,52 @@ class MonitorScreen(Screen):
         self.run_worker(self._refresh_services())
 
     def action_cursor_down(self) -> None:
-        """Move cursor down in services table."""
+        """Move selection down, handling both tables."""
+        active_table = self._get_active_table_name()
+
         try:
-            self.services_table.action_cursor_down()
+            if active_table == "docling":
+                return  # Nothing to move within docling table
+
+            if not self.services_table:
+                return
+
+            row_count = self._table_row_count(self.services_table)
+            current = self._get_cursor_row(self.services_table)
+            if current is None:
+                current = 0
+
+            if current < row_count - 1:
+                self.services_table.action_cursor_down()
+                self._last_selected_table = "services"
+            elif self._table_row_count(self.docling_table):
+                self._focus_docling_table()
         except Exception:
             pass
 
     def action_cursor_up(self) -> None:
-        """Move cursor up in services table."""
+        """Move selection up, handling both tables."""
+        active_table = self._get_active_table_name()
+
         try:
-            self.services_table.action_cursor_up()
+            if active_table == "docling":
+                self._focus_services_table(row="last")
+                return
+
+            if not self.services_table:
+                return
+
+            current = self._get_cursor_row(self.services_table)
+            if current is None:
+                current = 0
+
+            if current > 0:
+                self.services_table.action_cursor_up()
+            else:
+                # Already at the top; nothing else to do
+                self._set_cursor_row(self.services_table, 0)
+
+            self._last_selected_table = "services"
         except Exception:
             pass
 
@@ -484,10 +623,45 @@ class MonitorScreen(Screen):
                 Button("Upgrade", variant="warning", id=f"upgrade-btn{suffix}")
             )
             controls.mount(Button("Reset", variant="error", id=f"reset-btn{suffix}"))
-
+            
         except Exception as e:
             notify_with_diagnostics(
                 self.app, f"Error updating controls: {e}", severity="error"
+            )
+
+        # Update docling controls separately
+        self._update_docling_controls()
+
+    def _update_docling_controls(self) -> None:
+        """Update docling control buttons."""
+        try:
+            # Get the docling controls container
+            docling_controls = self.query_one("#docling-controls", Horizontal)
+
+            # Clear existing buttons
+            docling_controls.remove_children()
+
+            # Use a random suffix for unique IDs
+            import random
+            suffix = f"-{random.randint(10000, 99999)}"
+
+            # Add docling serve controls
+            docling_running = self.docling_manager.is_running()
+            if docling_running:
+                docling_controls.mount(
+                    Button("Stop", variant="error", id=f"docling-stop-btn{suffix}")
+                )
+                docling_controls.mount(
+                    Button("Restart", variant="primary", id=f"docling-restart-btn{suffix}")
+                )
+            else:
+                docling_controls.mount(
+                    Button("Start", variant="success", id=f"docling-start-btn{suffix}")
+                )
+
+        except Exception as e:
+            notify_with_diagnostics(
+                self.app, f"Error updating docling controls: {e}", severity="error"
             )
 
     def action_back(self) -> None:
@@ -513,36 +687,172 @@ class MonitorScreen(Screen):
     def action_logs(self) -> None:
         """View logs for the selected service."""
         try:
-            # Get the currently focused row in the services table
-            table = self.query_one("#services-table", DataTable)
-
-            if table.cursor_row is not None and table.cursor_row >= 0:
-                # Get the service name from the first column of the selected row
-                row_data = table.get_row_at(table.cursor_row)
-                if row_data:
-                    service_name = str(row_data[0])  # First column is service name
-
-                    # Map display names to actual service names
-                    service_mapping = {
-                        "openrag-backend": "openrag-backend",
-                        "openrag-frontend": "openrag-frontend",
-                        "opensearch": "opensearch",
-                        "langflow": "langflow",
-                        "dashboards": "dashboards",
-                    }
-
-                    actual_service_name = service_mapping.get(
-                        service_name, service_name
-                    )
-
-                    # Push the logs screen with the selected service
-                    from .logs import LogsScreen
-
-                    logs_screen = LogsScreen(initial_service=actual_service_name)
-                    self.app.push_screen(logs_screen)
-                else:
-                    self.notify("No service selected", severity="warning")
+            selected_service = self._get_selected_service()
+            if selected_service:
+                # Push the logs screen with the selected service
+                from .logs import LogsScreen
+                logs_screen = LogsScreen(initial_service=selected_service)
+                self.app.push_screen(logs_screen)
             else:
                 self.notify("No service selected", severity="warning")
         except Exception as e:
             self.notify(f"Error opening logs: {e}", severity="error")
+
+    def _get_selected_service(self) -> str | None:
+        """Resolve the currently selected service based on active table."""
+        try:
+            active_table = self._get_active_table_name()
+
+            if active_table == "docling" and self.docling_table:
+                cursor = self._get_cursor_row(self.docling_table)
+                if cursor is not None and cursor >= 0:
+                    return "docling-serve"
+
+            services_table = self.query_one("#services-table", DataTable)
+            row_count = self._table_row_count(services_table)
+            if row_count == 0:
+                return None
+
+            cursor = self._get_cursor_row(services_table)
+            if cursor is None or cursor < 0 or cursor >= row_count:
+                cursor = 0
+
+            row_data = services_table.get_row_at(cursor)
+            if not row_data:
+                return None
+
+            service_name = str(row_data[0])
+            service_mapping = {
+                "openrag-backend": "openrag-backend",
+                "openrag-frontend": "openrag-frontend",
+                "opensearch": "opensearch",
+                "langflow": "langflow",
+                "dashboards": "dashboards",
+            }
+            return service_mapping.get(service_name, service_name)
+        except Exception as e:
+            self.notify(f"Error getting selected service: {e}", severity="error")
+            return None
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle row selection events to ensure mutual exclusivity."""
+        selected_table = event.data_table
+
+        try:
+            # Track which table was selected
+            if selected_table.id == "services-table":
+                self._focus_services_table(row="current")
+            elif selected_table.id == "docling-table":
+                self._focus_docling_table()
+        except Exception:
+            # Ignore errors during table manipulation
+            pass
+
+    def _get_active_table_name(self) -> str:
+        """Determine which table is currently active."""
+        if self.docling_table and self.docling_table.has_focus:
+            return "docling"
+        if self.services_table and self.services_table.has_focus:
+            return "services"
+        return self._last_selected_table or "services"
+
+    def _table_row_count(self, table: DataTable | None) -> int:
+        """Safely compute the number of rows in a DataTable."""
+        if not table:
+            return 0
+
+        count_attr = getattr(table, "row_count", None)
+        if callable(count_attr):
+            try:
+                return int(count_attr())
+            except Exception:
+                pass
+
+        if isinstance(count_attr, int):
+            return count_attr
+
+        try:
+            rows = getattr(table, "rows", None)
+            if rows is not None:
+                return len(rows)
+        except Exception:
+            pass
+
+        return 0
+
+    def _get_cursor_row(self, table: DataTable | None) -> int | None:
+        """Return the current cursor row for the given table."""
+        if not table:
+            return None
+
+        coord = getattr(table, "cursor_coordinate", None)
+        if coord is None:
+            return None
+
+        row = getattr(coord, "row", None)
+        if row is not None:
+            return row
+
+        if isinstance(coord, tuple) and coord:
+            return coord[0]
+
+        return None
+
+    def _set_cursor_row(self, table: DataTable | None, row: int) -> None:
+        """Set the cursor row for the given table, if possible."""
+        if not table:
+            return
+
+        try:
+            table.cursor_coordinate = (row, 0)
+        except Exception:
+            move_cursor = getattr(table, "move_cursor", None)
+            if callable(move_cursor):
+                try:
+                    move_cursor(row, 0, expand=False)
+                except Exception:
+                    pass
+
+    def _focus_services_table(self, row: str | None = None, set_last: bool = True) -> None:
+        """Focus the services table and update selection."""
+        if not self.services_table:
+            return
+
+        try:
+            self.services_table.focus()
+            row_count = self._table_row_count(self.services_table)
+
+            if row_count:
+                if row == "last":
+                    self._set_cursor_row(self.services_table, row_count - 1)
+                elif row == "current":
+                    # Keep existing cursor position if valid
+                    cursor = self._get_cursor_row(self.services_table)
+                    if cursor is None or cursor < 0 or cursor >= row_count:
+                        self._set_cursor_row(self.services_table, 0)
+                else:
+                    cursor = self._get_cursor_row(self.services_table)
+                    if cursor is None or cursor < 0:
+                        self._set_cursor_row(self.services_table, 0)
+
+            if set_last:
+                self._last_selected_table = "services"
+        except Exception:
+            pass
+
+    def _focus_docling_table(self, focus: bool = True, set_last: bool = True) -> None:
+        """Focus the docling table and select its row."""
+        if not self.docling_table:
+            return
+
+        try:
+            if focus:
+                self.docling_table.focus()
+
+            if self._table_row_count(self.docling_table):
+                self._set_cursor_row(self.docling_table, 0)
+
+            if set_last:
+                self._last_selected_table = "docling"
+        except Exception:
+            pass

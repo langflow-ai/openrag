@@ -1,5 +1,3 @@
-import os
-import tempfile
 from typing import Any, Dict, List, Optional
 
 # Create custom processor for connector files using Langflow
@@ -53,25 +51,27 @@ class LangflowConnectorService:
             filename=document.filename,
         )
 
+        from utils.file_utils import auto_cleanup_tempfile
+
         suffix = self._get_file_extension(document.mimetype)
 
         # Create temporary file from document content
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=suffix
-        ) as tmp_file:
-            tmp_file.write(document.content)
-            tmp_file.flush()
+        with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
+            # Write document content to temp file
+            with open(tmp_path, "wb") as f:
+                f.write(document.content)
 
+            # Step 1: Upload file to Langflow
+            logger.debug("Uploading file to Langflow", filename=document.filename)
+            content = document.content
+            file_tuple = (
+                document.filename.replace(" ", "_").replace("/", "_") + suffix,
+                content,
+                document.mimetype or "application/octet-stream",
+            )
+
+            langflow_file_id = None  # Initialize to track if upload succeeded
             try:
-                # Step 1: Upload file to Langflow
-                logger.debug("Uploading file to Langflow", filename=document.filename)
-                content = document.content
-                file_tuple = (
-                    document.filename.replace(" ", "_").replace("/", "_")+suffix,
-                    content,
-                    document.mimetype or "application/octet-stream",
-                )
-
                 upload_result = await self.langflow_service.upload_user_file(
                     file_tuple, jwt_token
                 )
@@ -94,6 +94,7 @@ class LangflowConnectorService:
 
                 ingestion_result = await self.langflow_service.run_ingestion_flow(
                     file_paths=[langflow_file_path],
+                    file_tuples=[file_tuple],
                     jwt_token=jwt_token,
                     tweaks=tweaks,
                     owner=owner_user_id,
@@ -125,7 +126,7 @@ class LangflowConnectorService:
                     error=str(e),
                 )
                 # Try to clean up Langflow file if upload succeeded but processing failed
-                if "langflow_file_id" in locals():
+                if langflow_file_id is not None:
                     try:
                         await self.langflow_service.delete_user_file(langflow_file_id)
                         logger.debug(
@@ -139,10 +140,6 @@ class LangflowConnectorService:
                             error=str(cleanup_error),
                         )
                 raise
-
-            finally:
-                # Clean up temporary file
-                os.unlink(tmp_file.name)
 
     def _get_file_extension(self, mimetype: str) -> str:
         """Get file extension based on MIME type"""
@@ -257,7 +254,10 @@ class LangflowConnectorService:
         file_ids: List[str],
         jwt_token: str = None,
     ) -> str:
-        """Sync specific files by their IDs using Langflow processing"""
+        """
+        Sync specific files by their IDs using Langflow processing.
+        Automatically expands folders to their contents.
+        """
         if not self.task_service:
             raise ValueError(
                 "TaskService not available - connector sync requires task service dependency"
@@ -280,10 +280,50 @@ class LangflowConnectorService:
         owner_name = user.name if user else None
         owner_email = user.email if user else None
 
+        # Temporarily set file_ids in the connector's config so list_files() can use them
+        # Store the original values to restore later
+        cfg = getattr(connector, "cfg", None)
+        original_file_ids = None
+        original_folder_ids = None
+
+        if cfg is not None:
+            original_file_ids = getattr(cfg, "file_ids", None)
+            original_folder_ids = getattr(cfg, "folder_ids", None)
+
+        try:
+            # Set the file_ids we want to sync in the connector's config
+            if cfg is not None:
+                cfg.file_ids = file_ids  # type: ignore
+                cfg.folder_ids = None  # type: ignore
+
+            # Get the expanded list of file IDs (folders will be expanded to their contents)
+            # This uses the connector's list_files() which calls _iter_selected_items()
+            result = await connector.list_files()
+            expanded_file_ids = [f["id"] for f in result.get("files", [])]
+
+            if not expanded_file_ids:
+                logger.warning(
+                    f"No files found after expanding file_ids. "
+                    f"Original IDs: {file_ids}. This may indicate all IDs were folders "
+                    f"with no contents, or files that were filtered out."
+                )
+                # Return empty task rather than failing
+                raise ValueError("No files to sync after expanding folders")
+
+        except Exception as e:
+            logger.error(f"Failed to expand file_ids via list_files(): {e}")
+            # Fallback to original file_ids if expansion fails
+            expanded_file_ids = file_ids
+        finally:
+            # Restore original config values
+            if cfg is not None:
+                cfg.file_ids = original_file_ids  # type: ignore
+                cfg.folder_ids = original_folder_ids  # type: ignore
+
         processor = LangflowConnectorFileProcessor(
             self,
             connection_id,
-            file_ids,
+            expanded_file_ids,
             user_id,
             jwt_token=jwt_token,
             owner_name=owner_name,
@@ -292,7 +332,7 @@ class LangflowConnectorService:
 
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(
-            user_id, file_ids, processor
+            user_id, expanded_file_ids, processor
         )
 
         return task_id

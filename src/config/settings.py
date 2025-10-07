@@ -4,18 +4,22 @@ import time
 import httpx
 import requests
 from agentd.patch import patch_openai_with_mcp
-from docling.document_converter import DocumentConverter
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
+from utils.container_utils import get_container_host
+from utils.document_processing import create_document_converter
 from utils.logging_config import get_logger
 
 load_dotenv()
 load_dotenv("../")
 
 logger = get_logger(__name__)
+
+# Import configuration manager
+from .config_manager import config_manager
 
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
@@ -30,6 +34,7 @@ _legacy_flow_id = os.getenv("FLOW_ID")
 
 LANGFLOW_CHAT_FLOW_ID = os.getenv("LANGFLOW_CHAT_FLOW_ID") or _legacy_flow_id
 LANGFLOW_INGEST_FLOW_ID = os.getenv("LANGFLOW_INGEST_FLOW_ID")
+LANGFLOW_URL_INGEST_FLOW_ID = os.getenv("LANGFLOW_URL_INGEST_FLOW_ID")
 NUDGES_FLOW_ID = os.getenv("NUDGES_FLOW_ID")
 
 if _legacy_flow_id and not os.getenv("LANGFLOW_CHAT_FLOW_ID"):
@@ -45,10 +50,12 @@ LANGFLOW_KEY = os.getenv("LANGFLOW_KEY")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "your-secret-key-change-in-production")
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+DOCLING_OCR_ENGINE = os.getenv("DOCLING_OCR_ENGINE")
 
 # Ingestion configuration
-DISABLE_INGEST_WITH_LANGFLOW = os.getenv("DISABLE_INGEST_WITH_LANGFLOW", "false").lower() in ("true", "1", "yes")
-DISABLE_STARTUP_INGEST = os.getenv("DISABLE_STARTUP_INGEST", "false").lower() in ("true", "1", "yes")
+DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
+    "DISABLE_INGEST_WITH_LANGFLOW", "false"
+).lower() in ("true", "1", "yes")
 
 
 def is_no_auth_mode():
@@ -72,6 +79,31 @@ WEBHOOK_BASE_URL = os.getenv(
 INDEX_NAME = "documents"
 VECTOR_DIM = 1536
 EMBED_MODEL = "text-embedding-3-small"
+
+OPENAI_EMBEDDING_DIMENSIONS = {
+        "text-embedding-3-small": 1536,
+        "text-embedding-3-large": 3072,
+        "text-embedding-ada-002": 1536,
+    }
+
+OLLAMA_EMBEDDING_DIMENSIONS = {
+    "nomic-embed-text": 768,
+    "all-minilm": 384,
+    "mxbai-embed-large": 1024,
+}
+
+WATSONX_EMBEDDING_DIMENSIONS = {
+# IBM Models
+"ibm/granite-embedding-107m-multilingual": 384,  
+"ibm/granite-embedding-278m-multilingual": 1024,
+"ibm/slate-125m-english-rtrvr": 768,
+"ibm/slate-125m-english-rtrvr-v2": 768,
+"ibm/slate-30m-english-rtrvr": 384,
+"ibm/slate-30m-english-rtrvr-v2": 384,
+# Third Party Models
+"intfloat/multilingual-e5-large": 1024,
+"sentence-transformers/all-minilm-l6-v2": 384,
+}
 
 INDEX_BODY = {
     "settings": {
@@ -115,7 +147,7 @@ INDEX_BODY = {
 LANGFLOW_BASE_URL = f"{LANGFLOW_URL}/api/v1"
 
 
-async def generate_langflow_api_key():
+async def generate_langflow_api_key(modify: bool = False):
     """Generate Langflow API key using superuser credentials at startup"""
     global LANGFLOW_KEY
 
@@ -288,7 +320,7 @@ class AppClients:
         self.patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
 
         # Initialize document converter
-        self.converter = DocumentConverter()
+        self.converter = create_document_converter(ocr_engine=DOCLING_OCR_ENGINE)
 
         # Initialize Langflow HTTP client
         self.langflow_http_client = httpx.AsyncClient(
@@ -296,29 +328,6 @@ class AppClients:
         )
 
         return self
-
-    async def close(self):
-        """Close all client connections"""
-        try:
-            if hasattr(self, 'opensearch') and self.opensearch:
-                await self.opensearch.close()
-                self.opensearch = None
-        except Exception as e:
-            logger.warning("Error closing OpenSearch client", error=str(e))
-            
-        try:
-            if hasattr(self, 'langflow_http_client') and self.langflow_http_client:
-                await self.langflow_http_client.aclose()
-                self.langflow_http_client = None
-        except Exception as e:
-            logger.warning("Error closing Langflow HTTP client", error=str(e))
-            
-        try:
-            if hasattr(self, 'patched_async_client') and self.patched_async_client:
-                await self.patched_async_client.close()
-                self.patched_async_client = None
-        except Exception as e:
-            logger.warning("Error closing OpenAI client", error=str(e))
 
     async def ensure_langflow_client(self):
         """Ensure Langflow client exists; try to generate key and create client lazily."""
@@ -360,7 +369,9 @@ class AppClients:
             method=method, url=url, headers=headers, **kwargs
         )
 
-    async def _create_langflow_global_variable(self, name: str, value: str):
+    async def _create_langflow_global_variable(
+        self, name: str, value: str, modify: bool = False
+    ):
         """Create a global variable in Langflow via API"""
         api_key = await generate_langflow_api_key()
         if not api_key:
@@ -388,9 +399,17 @@ class AppClients:
                         variable_name=name,
                     )
                 elif response.status_code == 400 and "already exists" in response.text:
-                    logger.info(
-                        "Langflow global variable already exists", variable_name=name
-                    )
+                    if modify:
+                        logger.info(
+                            "Langflow global variable already exists, attempting to update",
+                            variable_name=name,
+                        )
+                        await self._update_langflow_global_variable(name, value)
+                    else:
+                        logger.info(
+                            "Langflow global variable already exists",
+                            variable_name=name,
+                        )
                 else:
                     logger.warning(
                         "Failed to create Langflow global variable",
@@ -400,6 +419,86 @@ class AppClients:
         except Exception as e:
             logger.error(
                 "Exception creating Langflow global variable",
+                variable_name=name,
+                error=str(e),
+            )
+
+    async def _update_langflow_global_variable(self, name: str, value: str):
+        """Update an existing global variable in Langflow via API"""
+        api_key = await generate_langflow_api_key()
+        if not api_key:
+            logger.warning(
+                "Cannot update Langflow global variable: No API key", variable_name=name
+            )
+            return
+
+        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # First, get all variables to find the one with the matching name
+                get_response = await client.get(
+                    f"{LANGFLOW_URL}/api/v1/variables/", headers=headers
+                )
+
+                if get_response.status_code != 200:
+                    logger.error(
+                        "Failed to retrieve variables for update",
+                        variable_name=name,
+                        status_code=get_response.status_code,
+                    )
+                    return
+
+                variables = get_response.json()
+                target_variable = None
+
+                # Find the variable with matching name
+                for variable in variables:
+                    if variable.get("name") == name:
+                        target_variable = variable
+                        break
+
+                if not target_variable:
+                    logger.error("Variable not found for update", variable_name=name)
+                    return
+
+                variable_id = target_variable.get("id")
+                if not variable_id:
+                    logger.error("Variable ID not found for update", variable_name=name)
+                    return
+
+                # Update the variable using PATCH
+                update_payload = {
+                    "id": variable_id,
+                    "name": name,
+                    "value": value,
+                    "default_fields": target_variable.get("default_fields", []),
+                }
+
+                patch_response = await client.patch(
+                    f"{LANGFLOW_URL}/api/v1/variables/{variable_id}",
+                    headers=headers,
+                    json=update_payload,
+                )
+
+                if patch_response.status_code == 200:
+                    logger.info(
+                        "Successfully updated Langflow global variable",
+                        variable_name=name,
+                        variable_id=variable_id,
+                    )
+                else:
+                    logger.warning(
+                        "Failed to update Langflow global variable",
+                        variable_name=name,
+                        variable_id=variable_id,
+                        status_code=patch_response.status_code,
+                        response_text=patch_response.text,
+                    )
+
+        except Exception as e:
+            logger.error(
+                "Exception updating Langflow global variable",
                 variable_name=name,
                 error=str(e),
             )
@@ -417,8 +516,80 @@ class AppClients:
             ssl_assert_fingerprint=None,
             headers=headers,
             http_compress=True,
+            timeout=30,  # 30 second timeout
+            max_retries=3,
+            retry_on_timeout=True,
         )
 
 
+# Component template paths
+WATSONX_LLM_COMPONENT_PATH = os.getenv(
+    "WATSONX_LLM_COMPONENT_PATH", "flows/components/watsonx_llm.json"
+)
+WATSONX_LLM_TEXT_COMPONENT_PATH = os.getenv(
+    "WATSONX_LLM_TEXT_COMPONENT_PATH", "flows/components/watsonx_llm_text.json"
+)
+WATSONX_EMBEDDING_COMPONENT_PATH = os.getenv(
+    "WATSONX_EMBEDDING_COMPONENT_PATH", "flows/components/watsonx_embedding.json"
+)
+OLLAMA_LLM_COMPONENT_PATH = os.getenv(
+    "OLLAMA_LLM_COMPONENT_PATH", "flows/components/ollama_llm.json"
+)
+OLLAMA_LLM_TEXT_COMPONENT_PATH = os.getenv(
+    "OLLAMA_LLM_TEXT_COMPONENT_PATH", "flows/components/ollama_llm_text.json"
+)
+OLLAMA_EMBEDDING_COMPONENT_PATH = os.getenv(
+    "OLLAMA_EMBEDDING_COMPONENT_PATH", "flows/components/ollama_embedding.json"
+)
+
+# Component IDs in flows
+
+OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME = os.getenv(
+    "OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME", "Embedding Model"
+)
+OPENAI_LLM_COMPONENT_DISPLAY_NAME = os.getenv(
+    "OPENAI_LLM_COMPONENT_DISPLAY_NAME", "Language Model"
+)
+
+# Provider-specific component IDs
+WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME = os.getenv(
+    "WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME", "IBM watsonx.ai Embeddings"
+)
+WATSONX_LLM_COMPONENT_DISPLAY_NAME = os.getenv(
+    "WATSONX_LLM_COMPONENT_DISPLAY_NAME", "IBM watsonx.ai"
+)
+
+OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME = os.getenv(
+    "OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME", "Ollama Model"
+)
+OLLAMA_LLM_COMPONENT_DISPLAY_NAME = os.getenv("OLLAMA_LLM_COMPONENT_DISPLAY_NAME", "Ollama")
+
+# Docling component ID for ingest flow
+DOCLING_COMPONENT_DISPLAY_NAME = os.getenv("DOCLING_COMPONENT_DISPLAY_NAME", "Docling Serve")
+
+LOCALHOST_URL = get_container_host() or "localhost"
+
 # Global clients instance
 clients = AppClients()
+
+
+# Configuration access
+def get_openrag_config():
+    """Get current OpenRAG configuration."""
+    return config_manager.get_config()
+
+
+# Expose configuration settings for backward compatibility and easy access
+def get_provider_config():
+    """Get provider configuration."""
+    return get_openrag_config().provider
+
+
+def get_knowledge_config():
+    """Get knowledge configuration."""
+    return get_openrag_config().knowledge
+
+
+def get_agent_config():
+    """Get agent configuration."""
+    return get_openrag_config().agent

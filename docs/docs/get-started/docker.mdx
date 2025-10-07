@@ -1,0 +1,129 @@
+---
+title: Deploy with Docker
+slug: /get-started/docker
+---
+
+import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
+import PartialExternalPreview from '@site/docs/_partial-external-preview.mdx';
+
+<PartialExternalPreview />
+
+There are two different Docker Compose files.
+They deploy the same applications and containers, but to different environments.
+
+- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing.
+
+- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
+
+## Prerequisites
+
+- [Python Version 3.10 to 3.13](https://www.python.org/downloads/release/python-3100/)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/) installed
+- [Docker Compose](https://docs.docker.com/compose/install/) installed. If you're using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
+- Create an [OpenAI API key](https://platform.openai.com/api-keys). This key is **required** to start OpenRAG, but you can choose a different model provider during [Application Onboarding](#application-onboarding).
+- Optional: GPU support requires an NVIDIA GPU with CUDA support and compatible NVIDIA drivers installed on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
+
+## Deploy OpenRAG with Docker Compose
+
+To install OpenRAG with Docker Compose, do the following:
+
+1. Clone the OpenRAG repository.
+   ```bash
+   git clone https://github.com/langflow-ai/openrag.git
+   cd openrag
+   ```
+
+2. Copy the example `.env` file included in the repository root.
+  The example file includes all environment variables with comments to guide you in finding and setting their values.
+   ```bash
+   cp .env.example .env
+   ```
+
+   Alternatively, create a new `.env` file in the repository root.
+   ```
+   touch .env
+   ```
+
+3. Set environment variables. The Docker Compose files will be populated with values from your `.env`.
+The following values are **required** to be set:
+
+   ```bash
+   OPENSEARCH_PASSWORD=your_secure_password
+   OPENAI_API_KEY=your_openai_api_key
+   LANGFLOW_SUPERUSER=admin
+   LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
+   LANGFLOW_SECRET_KEY=your_secret_key
+   ```
+   
+   For more information on configuring OpenRAG with environment variables, see [Environment variables](/reference/configuration).
+
+4. Deploy OpenRAG with Docker Compose based on your deployment type.
+
+   For GPU-enabled systems, run the following command:
+   ```bash
+   docker compose up -d
+   ```
+
+   For CPU-only systems, run the following command:
+   ```bash
+   docker compose -f docker-compose-cpu.yml up -d
+   ```
+
+   The OpenRAG Docker Compose file starts five containers:
+   | Container Name | Default Address | Purpose |
+   |---|---|---|
+   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
+   | OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
+   | Langflow | http://localhost:7860 | AI workflow engine and flow management. |
+   | OpenSearch | http://localhost:9200 | Vector database for document storage. |
+   | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
+
+5. Verify installation by confirming all services are running.
+
+   ```bash
+   docker compose ps
+   ```
+
+   You can now access the application at:
+
+   - **Frontend**: http://localhost:3000
+   - **Backend API**: http://localhost:8000
+   - **Langflow**: http://localhost:7860
+
+6. Continue with [Application Onboarding](#application-onboarding).
+
+<PartialOnboarding />
+
+## Container management commands
+
+Manage your OpenRAG containers with the following commands.
+These commands are also available in the TUI's [Status menu](/get-started/tui#status).
+
+### Upgrade containers
+
+Upgrade your containers to the latest version while preserving your data.
+
+```bash
+docker compose pull
+docker compose up -d --force-recreate
+```
+
+### Rebuild containers (destructive)
+
+Reset state by rebuilding all of your containers.
+Your OpenSearch and Langflow databases will be lost.
+Documents stored in the `./documents` directory will persist, since the directory is mounted as a volume in the OpenRAG backend container.
+
+```bash
+docker compose up --build --force-recreate --remove-orphans
+```
+
+### Remove all containers and data (destructive)
+
+Completely remove your OpenRAG installation and delete all data.
+This deletes all of your data, including OpenSearch data, uploaded documents, and authentication. 
+```bash
+docker compose down --volumes --remove-orphans --rmi local
+docker system prune -f
+```

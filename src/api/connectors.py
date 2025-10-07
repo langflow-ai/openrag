@@ -13,8 +13,8 @@ async def list_connectors(request: Request, connector_service, session_manager):
         )
         return JSONResponse({"connectors": connector_types})
     except Exception as e:
-        logger.error("Error listing connectors", error=str(e))
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.info("Error listing connectors", error=str(e))
+        return JSONResponse({"connectors": []})
 
 
 async def connector_sync(request: Request, connector_service, session_manager):
@@ -31,7 +31,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
             max_files=max_files,
         )
         user = request.state.user
-        jwt_token = request.state.jwt_token
+        jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
 
         # Get all active connections for this connector type and user
         connections = await connector_service.connection_manager.list_connections(
@@ -127,6 +127,23 @@ async def connector_status(request: Request, connector_service, session_manager)
         user_id=user.user_id, connector_type=connector_type
     )
 
+    # Get the connector for each connection
+    connection_client_ids = {}
+    for connection in connections:
+        try:
+            connector = await connector_service._get_connector(connection.connection_id)
+            if connector is not None:
+                connection_client_ids[connection.connection_id] = connector.get_client_id()
+            else:
+                connection_client_ids[connection.connection_id] = None
+        except Exception as e:
+            logger.warning(
+                "Could not get connector for connection",
+                connection_id=connection.connection_id,
+                error=str(e),
+            )
+            connection.connector = None
+
     # Check if there are any active connections
     active_connections = [conn for conn in connections if conn.is_active]
     has_authenticated_connection = len(active_connections) > 0
@@ -140,6 +157,7 @@ async def connector_status(request: Request, connector_service, session_manager)
                 {
                     "connection_id": conn.connection_id,
                     "name": conn.name,
+                    "client_id": connection_client_ids.get(conn.connection_id),
                     "is_active": conn.is_active,
                     "created_at": conn.created_at.isoformat(),
                     "last_sync": conn.last_sync.isoformat() if conn.last_sync else None,
@@ -323,8 +341,8 @@ async def connector_webhook(request: Request, connector_service, session_manager
         )
 
 async def connector_token(request: Request, connector_service, session_manager):
-    """Get access token for connector API calls (e.g., Google Picker)"""
-    connector_type = request.path_params.get("connector_type")
+    """Get access token for connector API calls (e.g., Pickers)."""
+    url_connector_type = request.path_params.get("connector_type")
     connection_id = request.query_params.get("connection_id")
 
     if not connection_id:
@@ -333,37 +351,81 @@ async def connector_token(request: Request, connector_service, session_manager):
     user = request.state.user
 
     try:
-        # Get the connection and verify it belongs to the user
+        # 1) Load the connection and verify ownership
         connection = await connector_service.connection_manager.get_connection(connection_id)
         if not connection or connection.user_id != user.user_id:
             return JSONResponse({"error": "Connection not found"}, status_code=404)
 
-        # Get the connector instance
+        # 2) Get the ACTUAL connector instance/type for this connection_id
         connector = await connector_service._get_connector(connection_id)
         if not connector:
-            return JSONResponse({"error": f"Connector not available - authentication may have failed for {connector_type}"}, status_code=404)
+            return JSONResponse(
+                {"error": f"Connector not available - authentication may have failed for {url_connector_type}"},
+                status_code=404,
+            )
 
-        # For Google Drive, get the access token
-        if connector_type == "google_drive" and hasattr(connector, 'oauth'):
+        real_type = getattr(connector, "type", None) or getattr(connection, "connector_type", None)
+        if real_type is None:
+            return JSONResponse({"error": "Unable to determine connector type"}, status_code=500)
+
+        # Optional: warn if URL path type disagrees with real type
+        if url_connector_type and url_connector_type != real_type:
+            # You can downgrade this to debug if you expect cross-routing.
+            return JSONResponse(
+                {
+                    "error": "Connector type mismatch",
+                    "detail": {
+                        "requested_type": url_connector_type,
+                        "actual_type": real_type,
+                        "hint": "Call the token endpoint using the correct connector_type for this connection_id.",
+                    },
+                },
+                status_code=400,
+            )
+
+        # 3) Branch by the actual connector type
+        # GOOGLE DRIVE (google-auth)
+        if real_type == "google_drive" and hasattr(connector, "oauth"):
             await connector.oauth.load_credentials()
             if connector.oauth.creds and connector.oauth.creds.valid:
-                return JSONResponse({
-                    "access_token": connector.oauth.creds.token,
-                    "expires_in": (connector.oauth.creds.expiry.timestamp() - 
-                                 __import__('time').time()) if connector.oauth.creds.expiry else None
-                })
-            else:
-                return JSONResponse({"error": "Invalid or expired credentials"}, status_code=401)
-        
-        # For OneDrive and SharePoint, get the access token
-        elif connector_type in ["onedrive", "sharepoint"] and hasattr(connector, 'oauth'):
+                expires_in = None
+                try:
+                    if connector.oauth.creds.expiry:
+                        import time
+                        expires_in = max(0, int(connector.oauth.creds.expiry.timestamp() - time.time()))
+                except Exception:
+                    expires_in = None
+
+                return JSONResponse(
+                    {
+                        "access_token": connector.oauth.creds.token,
+                        "expires_in": expires_in,
+                    }
+                )
+            return JSONResponse({"error": "Invalid or expired credentials"}, status_code=401)
+
+        # ONEDRIVE / SHAREPOINT (MSAL or custom)
+        if real_type in ("onedrive", "sharepoint") and hasattr(connector, "oauth"):
+            # Ensure cache/credentials are loaded before trying to use them
             try:
+                # Prefer a dedicated is_authenticated() that loads cache internally
+                if hasattr(connector.oauth, "is_authenticated"):
+                    ok = await connector.oauth.is_authenticated()
+                else:
+                    # Fallback: try to load credentials explicitly if available
+                    ok = True
+                    if hasattr(connector.oauth, "load_credentials"):
+                        ok = await connector.oauth.load_credentials()
+
+                if not ok:
+                    return JSONResponse({"error": "Not authenticated"}, status_code=401)
+
+                # Now safe to fetch access token
                 access_token = connector.oauth.get_access_token()
-                return JSONResponse({
-                    "access_token": access_token,
-                    "expires_in": None  # MSAL handles token expiry internally
-                })
+                # MSAL result has expiry, but we’re returning a raw token; keep expires_in None for simplicity
+                return JSONResponse({"access_token": access_token, "expires_in": None})
             except ValueError as e:
+                # Typical when acquire_token_silent fails (e.g., needs re-auth)
                 return JSONResponse({"error": f"Failed to get access token: {str(e)}"}, status_code=401)
             except Exception as e:
                 return JSONResponse({"error": f"Authentication error: {str(e)}"}, status_code=500)
@@ -371,5 +433,5 @@ async def connector_token(request: Request, connector_service, session_manager):
         return JSONResponse({"error": "Token not available for this connector type"}, status_code=400)
 
     except Exception as e:
-        logger.error("Error getting connector token", error=str(e))
+        logger.error("Error getting connector token", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500)

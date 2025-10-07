@@ -1,0 +1,43 @@
+body {
+  --ag-text-color: hsl(var(--muted-foreground));
+  --ag-background-color: hsl(var(--background));
+  --ag-header-background-color: hsl(var(--background));
+  --ag-header-text-color: hsl(var(--muted-foreground));
+  --ag-header-column-resize-handle-color: hsl(var(--border));
+  --ag-header-row-border: hsl(var(--border));
+  --ag-header-font-weight: var(--font-medium);
+  --ag-row-border: undefined;
+  --ag-row-hover-color: hsl(var(--muted));
+  --ag-wrapper-border: none;
+  --ag-font-family: var(--font-sans);
+  --ag-selected-row-background-color: hsl(var(--accent));
+  --ag-focus-shadow: none;
+  --ag-range-selection-border-color: hsl(var(--primary));
+
+  /* Checkbox styling */
+  --ag-checkbox-background-color: hsl(var(--background));
+  --ag-checkbox-border-color: hsl(var(--border));
+  --ag-checkbox-checked-color: hsl(var(--primary));
+  --ag-checkbox-unchecked-color: transparent;
+
+  .ag-header {
+    border-bottom: 1px solid hsl(var(--border));
+    margin-bottom: 0.5rem;
+  }
+
+  /* Make sure checkboxes are visible */
+  .ag-selection-checkbox,
+  .ag-header-select-all {
+    opacity: 1 !important;
+  }
+
+  .ag-checkbox-input-wrapper {
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--background));
+  }
+
+  .ag-checkbox-input-wrapper.ag-checked {
+    background-color: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+  }
+}

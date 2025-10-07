@@ -5,9 +5,11 @@ import httpx
 import aiofiles
 from datetime import datetime, timedelta
 from typing import Optional
+import asyncio
 
 from config.settings import WEBHOOK_BASE_URL, is_no_auth_mode
 from session_manager import SessionManager
+from services.langflow_mcp_service import LangflowMCPService
 from connectors.google_drive.oauth import GoogleDriveOAuth
 from connectors.onedrive.oauth import OneDriveOAuth
 from connectors.sharepoint.oauth import SharePointOAuth
@@ -17,10 +19,12 @@ from connectors.sharepoint import SharePointConnector
 
 
 class AuthService:
-    def __init__(self, session_manager: SessionManager, connector_service=None):
+    def __init__(self, session_manager: SessionManager, connector_service=None, langflow_mcp_service: LangflowMCPService | None = None):
         self.session_manager = session_manager
         self.connector_service = connector_service
         self.used_auth_codes = set()  # Track used authorization codes
+        self.langflow_mcp_service = langflow_mcp_service
+        self._background_tasks = set()
 
     async def init_oauth(
         self,
@@ -287,6 +291,34 @@ class AuthService:
             user_info = await self.session_manager.get_user_info_from_token(
                 token_data["access_token"]
             )
+
+            # Best-effort: update Langflow MCP servers to include user's JWT and owner headers
+            try:
+                if self.langflow_mcp_service and isinstance(jwt_token, str) and jwt_token.strip():
+                    global_vars = {"JWT": jwt_token}
+                    global_vars["CONNECTOR_TYPE_URL"] = "url"
+                    if user_info:
+                        if user_info.get("id"):
+                            global_vars["OWNER"] = user_info.get("id")
+                        if user_info.get("name"):
+                            # OWNER_NAME may contain spaces, which can cause issues in headers.
+                            # Alternative: URL-encode the owner name to preserve spaces and special characters.
+                            owner_name = user_info.get("name")
+                            if owner_name:
+                                global_vars["OWNER_NAME"] = str(f"\"{owner_name}\"")
+                        if user_info.get("email"):
+                            global_vars["OWNER_EMAIL"] = user_info.get("email")
+
+                    # Run in background to avoid delaying login flow
+                    task = asyncio.create_task(
+                        self.langflow_mcp_service.update_mcp_servers_with_global_vars(global_vars)
+                    )
+                    # Keep reference until done to avoid premature GC
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
+            except Exception:
+                # Do not block login on MCP update issues
+                pass
             
             response_data = {
                 "status": "authenticated",

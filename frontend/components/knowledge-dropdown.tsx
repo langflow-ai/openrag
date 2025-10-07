@@ -5,12 +5,15 @@ import {
   ChevronDown,
   Cloud,
   FolderOpen,
+  Loader2,
   PlugZap,
-  Plus,
   Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
+import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,27 +26,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
+import type { File as SearchFile } from "@/src/app/api/queries/useGetSearchQuery";
 
-interface KnowledgeDropdownProps {
-  active?: boolean;
-  variant?: "navigation" | "button";
-}
-
-export function KnowledgeDropdown({
-  active,
-  variant = "navigation",
-}: KnowledgeDropdownProps) {
+export function KnowledgeDropdown() {
   const { addTask } = useTask();
+  const { refetch: refetchTasks } = useGetTasksQuery();
+  const queryClient = useQueryClient();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showS3Dialog, setShowS3Dialog] = useState(false);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [awsEnabled, setAwsEnabled] = useState(false);
   const [folderPath, setFolderPath] = useState("/app/documents/");
   const [bucketUrl, setBucketUrl] = useState("s3://");
   const [folderLoading, setFolderLoading] = useState(false);
   const [s3Loading, setS3Loading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
+  const [isNavigatingToCloud, setIsNavigatingToCloud] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [duplicateFilename, setDuplicateFilename] = useState<string>("");
   const [cloudConnectors, setCloudConnectors] = useState<{
     [key: string]: {
       name: string;
@@ -54,12 +56,6 @@ export function KnowledgeDropdown({
   }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const queryClient = useQueryClient();
-
-  const refetchSearch = () => {
-    queryClient.invalidateQueries({ queryKey: ["search"] });
-  };
 
   // Check AWS availability and cloud connectors on mount
   useEffect(() => {
@@ -107,7 +103,7 @@ export function KnowledgeDropdown({
                   const connections = statusData.connections || [];
                   const activeConnection = connections.find(
                     (conn: { is_active: boolean; connection_id: string }) =>
-                      conn.is_active,
+                      conn.is_active
                   );
                   const isConnected = activeConnection !== undefined;
 
@@ -117,7 +113,7 @@ export function KnowledgeDropdown({
                     // Check token availability
                     try {
                       const tokenRes = await fetch(
-                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
+                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`
                       );
                       if (tokenRes.ok) {
                         const tokenData = await tokenRes.json();
@@ -170,92 +166,174 @@ export function KnowledgeDropdown({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      // Close dropdown and disable button immediately after file selection
-      setIsOpen(false);
-      setFileUploading(true);
+      const file = files[0];
 
-      // Trigger the same file upload event as the chat page
-      window.dispatchEvent(
-        new CustomEvent("fileUploadStart", {
-          detail: { filename: files[0].name },
-        }),
-      );
+      // Close dropdown immediately after file selection
+      setIsOpen(false);
 
       try {
-        const formData = new FormData();
-        formData.append("file", files[0]);
+        // Check if filename already exists (using ORIGINAL filename)
+        console.log("[Duplicate Check] Checking file:", file.name);
+        const checkResponse = await fetch(
+          `/api/documents/check-filename?filename=${encodeURIComponent(
+            file.name
+          )}`
+        );
 
-        const uploadIngestRes = await fetch('/api/upload', {
-          body: formData,
-        });
-        const uploadIngestJson = await uploadIngestRes.json();
-        if (!uploadIngestRes.ok) {
+        console.log("[Duplicate Check] Response status:", checkResponse.status);
+
+        if (!checkResponse.ok) {
+          const errorText = await checkResponse.text();
+          console.error("[Duplicate Check] Error response:", errorText);
           throw new Error(
-            uploadIngestJson?.error || "Upload and ingest failed",
+            `Failed to check duplicates: ${checkResponse.statusText}`
           );
         }
 
-        // Extract results from the unified response
-        const fileId = uploadIngestJson?.upload?.id;
-        const filePath = uploadIngestJson?.upload?.path;
-        const runJson = uploadIngestJson?.ingestion;
-        const deleteResult = uploadIngestJson?.deletion;
+        const checkData = await checkResponse.json();
+        console.log("[Duplicate Check] Result:", checkData);
 
-        if (!fileId || !filePath) {
-          throw new Error("Upload successful but no file id/path returned");
-        }
-
-        // Log deletion status if provided
-        if (deleteResult) {
-          if (deleteResult.status === "deleted") {
-            console.log(
-              "File successfully cleaned up from Langflow:",
-              deleteResult.file_id,
-            );
-          } else if (deleteResult.status === "delete_failed") {
-            console.warn(
-              "Failed to cleanup file from Langflow:",
-              deleteResult.error,
-            );
+        if (checkData.exists) {
+          // Show duplicate handling dialog
+          console.log("[Duplicate Check] Duplicate detected, showing dialog");
+          setPendingFile(file);
+          setDuplicateFilename(file.name);
+          setShowDuplicateDialog(true);
+          // Reset file input
+          if (fileInputRef.current) {
+            fileInputRef.current.value = "";
           }
+          return;
         }
 
-        // Notify UI
-        window.dispatchEvent(
-          new CustomEvent("fileUploaded", {
-            detail: {
-              file: files[0],
-              result: {
-                file_id: fileId,
-                file_path: filePath,
-                run: runJson,
-                deletion: deleteResult,
-                unified: true,
-              },
-            },
-          }),
-        );
-        // Trigger search refresh after successful ingestion
-        window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
+        // No duplicate, proceed with upload
+        console.log("[Duplicate Check] No duplicate, proceeding with upload");
+        await uploadFile(file, false);
       } catch (error) {
-        window.dispatchEvent(
-          new CustomEvent("fileUploadError", {
-            detail: {
-              filename: files[0].name,
-              error: error instanceof Error ? error.message : "Upload failed",
-            },
-          }),
-        );
-      } finally {
-        window.dispatchEvent(new CustomEvent("fileUploadComplete"));
-        setFileUploading(false);
-        refetchSearch();
+        console.error("[Duplicate Check] Exception:", error);
+        toast.error("Failed to check for duplicates", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        });
       }
     }
 
     // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  };
+
+  const uploadFile = async (file: File, replace: boolean) => {
+    setFileUploading(true);
+
+    // Trigger the same file upload event as the chat page
+    window.dispatchEvent(
+      new CustomEvent("fileUploadStart", {
+        detail: { filename: file.name },
+      })
+    );
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("replace_duplicates", replace.toString());
+
+      // Use router upload and ingest endpoint (automatically routes based on configuration)
+      const uploadIngestRes = await fetch("/api/router/upload_ingest", {
+        method: "POST",
+        body: formData,
+      });
+
+      const uploadIngestJson = await uploadIngestRes.json();
+
+      if (!uploadIngestRes.ok) {
+        throw new Error(uploadIngestJson?.error || "Upload and ingest failed");
+      }
+
+      // Extract results from the response - handle both unified and simple formats
+      const fileId =
+        uploadIngestJson?.upload?.id ||
+        uploadIngestJson?.id ||
+        uploadIngestJson?.task_id;
+      const filePath =
+        uploadIngestJson?.upload?.path || uploadIngestJson?.path || "uploaded";
+      const runJson = uploadIngestJson?.ingestion;
+      const deleteResult = uploadIngestJson?.deletion;
+      console.log("c", uploadIngestJson);
+      if (!fileId) {
+        throw new Error("Upload successful but no file id returned");
+      }
+      // Check if ingestion actually succeeded
+      if (
+        runJson &&
+        runJson.status !== "COMPLETED" &&
+        runJson.status !== "SUCCESS"
+      ) {
+        const errorMsg = runJson.error || "Ingestion pipeline failed";
+        throw new Error(
+          `Ingestion failed: ${errorMsg}. Try setting DISABLE_INGEST_WITH_LANGFLOW=true if you're experiencing Langflow component issues.`
+        );
+      }
+      // Log deletion status if provided
+      if (deleteResult) {
+        if (deleteResult.status === "deleted") {
+          console.log(
+            "File successfully cleaned up from Langflow:",
+            deleteResult.file_id
+          );
+        } else if (deleteResult.status === "delete_failed") {
+          console.warn(
+            "Failed to cleanup file from Langflow:",
+            deleteResult.error
+          );
+        }
+      }
+      // Notify UI
+      window.dispatchEvent(
+        new CustomEvent("fileUploaded", {
+          detail: {
+            file: file,
+            result: {
+              file_id: fileId,
+              file_path: filePath,
+              run: runJson,
+              deletion: deleteResult,
+              unified: true,
+            },
+          },
+        })
+      );
+
+      refetchTasks();
+    } catch (error) {
+      window.dispatchEvent(
+        new CustomEvent("fileUploadError", {
+          detail: {
+            filename: file.name,
+            error: error instanceof Error ? error.message : "Upload failed",
+          },
+        })
+      );
+    } finally {
+      window.dispatchEvent(new CustomEvent("fileUploadComplete"));
+      setFileUploading(false);
+    }
+  };
+
+  const handleOverwriteFile = async () => {
+    if (pendingFile) {
+      // Remove the old file from all search query caches before overwriting
+      queryClient.setQueriesData({ queryKey: ["search"] }, (oldData: []) => {
+        if (!oldData) return oldData;
+        // Filter out the file that's being overwritten
+        return oldData.filter(
+          (file: SearchFile) => file.filename !== pendingFile.name
+        );
+      });
+
+      await uploadFile(pendingFile, true);
+      setPendingFile(null);
+      setDuplicateFilename("");
     }
   };
 
@@ -285,19 +363,24 @@ export function KnowledgeDropdown({
 
         addTask(taskId);
         setFolderPath("");
-        // Trigger search refresh after successful folder processing starts
-        window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
+        // Refetch tasks to show the new task
+        refetchTasks();
       } else if (response.ok) {
         setFolderPath("");
-        window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
+        // Refetch tasks even for direct uploads in case tasks were created
+        refetchTasks();
       } else {
         console.error("Folder upload failed:", result.error);
+        if (response.status === 400) {
+          toast.error("Upload failed", {
+            description: result.error || "Bad request",
+          });
+        }
       }
     } catch (error) {
       console.error("Folder upload error:", error);
     } finally {
       setFolderLoading(false);
-      refetchSearch();
     }
   };
 
@@ -327,16 +410,20 @@ export function KnowledgeDropdown({
 
         addTask(taskId);
         setBucketUrl("s3://");
-        // Trigger search refresh after successful S3 processing starts
-        window.dispatchEvent(new CustomEvent("knowledgeUpdated"));
+        // Refetch tasks to show the new task
+        refetchTasks();
       } else {
         console.error("S3 upload failed:", result.error);
+        if (response.status === 400) {
+          toast.error("Upload failed", {
+            description: result.error || "Bad request",
+          });
+        }
       }
     } catch (error) {
       console.error("S3 upload error:", error);
     } finally {
       setS3Loading(false);
-      refetchSearch();
     }
   };
 
@@ -345,10 +432,17 @@ export function KnowledgeDropdown({
     .map(([type, info]) => ({
       label: info.name,
       icon: PlugZap,
-      onClick: () => {
+      onClick: async () => {
         setIsOpen(false);
         if (info.connected && info.hasToken) {
-          router.push(`/upload/${type}`);
+          setIsNavigatingToCloud(true);
+          try {
+            router.push(`/upload/${type}`);
+            // Keep loading state for a short time to show feedback
+            setTimeout(() => setIsNavigatingToCloud(false), 1000);
+          } catch {
+            setIsNavigatingToCloud(false);
+          }
         } else {
           router.push("/settings");
         }
@@ -390,65 +484,51 @@ export function KnowledgeDropdown({
     ...cloudConnectorItems,
   ];
 
+  // Comprehensive loading state
+  const isLoading =
+    fileUploading || folderLoading || s3Loading || isNavigatingToCloud;
+
   return (
     <>
       <div ref={dropdownRef} className="relative">
-        <button
-          onClick={() =>
-            !(fileUploading || folderLoading || s3Loading) && setIsOpen(!isOpen)
-          }
-          disabled={fileUploading || folderLoading || s3Loading}
-          className={cn(
-            variant === "button"
-              ? "rounded-lg h-12 px-4 flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              : "text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed",
-            variant === "navigation" && active
-              ? "bg-accent text-accent-foreground shadow-sm"
-              : variant === "navigation"
-              ? "text-foreground hover:text-accent-foreground"
-              : "",
-          )}
+        <Button
+          type="button"
+          onClick={() => !isLoading && setIsOpen(!isOpen)}
+          disabled={isLoading}
         >
-          {variant === "button" ? (
-            <>
-              <Plus className="h-4 w-4" />
-              <span>Add Knowledge</span>
+          <>
+            {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span>
+              {isLoading
+                ? fileUploading
+                  ? "Uploading..."
+                  : folderLoading
+                  ? "Processing Folder..."
+                  : s3Loading
+                  ? "Processing S3..."
+                  : isNavigatingToCloud
+                  ? "Loading..."
+                  : "Processing..."
+                : "Add Knowledge"}
+            </span>
+            {!isLoading && (
               <ChevronDown
                 className={cn(
                   "h-4 w-4 transition-transform",
-                  isOpen && "rotate-180",
+                  isOpen && "rotate-180"
                 )}
               />
-            </>
-          ) : (
-            <>
-              <div className="flex items-center flex-1">
-                <Upload
-                  className={cn(
-                    "h-4 w-4 mr-3 shrink-0",
-                    active
-                      ? "text-accent-foreground"
-                      : "text-muted-foreground group-hover:text-foreground",
-                  )}
-                />
-                Knowledge
-              </div>
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 transition-transform",
-                  isOpen && "rotate-180",
-                )}
-              />
-            </>
-          )}
-        </button>
+            )}
+          </>
+        </Button>
 
-        {isOpen && (
+        {isOpen && !isLoading && (
           <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-md z-50">
             <div className="py-1">
               {menuItems.map((item, index) => (
                 <button
-                  key={index}
+                  key={`${item.label}-${index}`}
+                  type="button"
                   onClick={item.onClick}
                   disabled={"disabled" in item ? item.disabled : false}
                   title={"tooltip" in item ? item.tooltip : undefined}
@@ -456,7 +536,7 @@ export function KnowledgeDropdown({
                     "w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground",
                     "disabled" in item &&
                       item.disabled &&
-                      "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-current",
+                      "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-current"
                   )}
                 >
                   {item.label}
@@ -495,7 +575,7 @@ export function KnowledgeDropdown({
                 type="text"
                 placeholder="/path/to/documents"
                 value={folderPath}
-                onChange={(e) => setFolderPath(e.target.value)}
+                onChange={e => setFolderPath(e.target.value)}
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -537,7 +617,7 @@ export function KnowledgeDropdown({
                 type="text"
                 placeholder="s3://bucket/path"
                 value={bucketUrl}
-                onChange={(e) => setBucketUrl(e.target.value)}
+                onChange={e => setBucketUrl(e.target.value)}
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -554,6 +634,14 @@ export function KnowledgeDropdown({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Duplicate Handling Dialog */}
+      <DuplicateHandlingDialog
+        open={showDuplicateDialog}
+        onOpenChange={setShowDuplicateDialog}
+        onOverwrite={handleOverwriteFile}
+        isLoading={fileUploading}
+      />
     </>
   );
 }

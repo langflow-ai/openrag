@@ -3,10 +3,49 @@ from urllib.parse import urlparse
 import boto3
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from .upload_utils import extract_user_context
 
 
-async def upload_path(request: Request, task_service, session_manager, langflow_file_service):
+async def upload(request: Request, document_service, session_manager):
+    """Upload a single file"""
+    try:
+        form = await request.form()
+        upload_file = form["file"]
+        user = request.state.user
+        jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
+
+        from config.settings import is_no_auth_mode
+
+        # In no-auth mode, pass None for owner fields so documents have no owner
+        # This allows all users to see them when switching to auth mode
+        if is_no_auth_mode():
+            owner_user_id = None
+            owner_name = None
+            owner_email = None
+        else:
+            owner_user_id = user.user_id
+            owner_name = user.name
+            owner_email = user.email
+
+        result = await document_service.process_upload_file(
+            upload_file,
+            owner_user_id=owner_user_id,
+            jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
+        )
+        return JSONResponse(result, status_code=201)  # Created
+    except Exception as e:
+        error_msg = str(e)
+        if (
+            "AuthenticationException" in error_msg
+            or "access denied" in error_msg.lower()
+        ):
+            return JSONResponse({"error": error_msg}, status_code=403)
+        else:
+            return JSONResponse({"error": error_msg}, status_code=500)
+
+
+async def upload_path(request: Request, task_service, session_manager):
     """Upload all files from a directory path"""
     payload = await request.json()
     base_dir = payload.get("path")
@@ -20,35 +59,28 @@ async def upload_path(request: Request, task_service, session_manager, langflow_
     if not file_paths:
         return JSONResponse({"error": "No files found in directory"}, status_code=400)
 
-    ctx = await extract_user_context(request)
-    owner_user_id = ctx["owner_user_id"]
-    owner_name = ctx["owner_name"]
-    owner_email = ctx["owner_email"]
-    jwt_token = ctx["jwt_token"]
+    user = request.state.user
+    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
 
-    from config.settings import DISABLE_INGEST_WITH_LANGFLOW
-    
-    # Use same logic as single file uploads - respect the Langflow setting
-    if DISABLE_INGEST_WITH_LANGFLOW:
-        # Use direct DocumentFileProcessor (no Langflow)
-        task_id = await task_service.create_upload_task(
-            owner_user_id,
-            file_paths,
-            jwt_token=jwt_token,
-            owner_name=owner_name,
-            owner_email=owner_email,
-        )
+    from config.settings import is_no_auth_mode
+
+    # In no-auth mode, pass None for owner fields so documents have no owner
+    if is_no_auth_mode():
+        owner_user_id = None
+        owner_name = None
+        owner_email = None
     else:
-        # Use Langflow pipeline for processing
-        task_id = await task_service.create_langflow_upload_task(
-            user_id=owner_user_id,
-            file_paths=file_paths,
-            langflow_file_service=langflow_file_service,
-            session_manager=session_manager,
-            jwt_token=jwt_token,
-            owner_name=owner_name,
-            owner_email=owner_email,
-        )
+        owner_user_id = user.user_id
+        owner_name = user.name
+        owner_email = user.email
+
+    task_id = await task_service.create_upload_task(
+        owner_user_id,
+        file_paths,
+        jwt_token=jwt_token,
+        owner_name=owner_name,
+        owner_email=owner_email,
+    )
 
     return JSONResponse(
         {"task_id": task_id, "total_files": len(file_paths), "status": "accepted"},
@@ -68,8 +100,7 @@ async def upload_context(
     previous_response_id = form.get("previous_response_id")
     endpoint = form.get("endpoint", "langflow")
 
-    # Get JWT token from auth middleware
-    jwt_token = request.state.jwt_token
+    jwt_token = session_manager.get_effective_jwt_token(user_id, request.state.jwt_token)
 
     # Get user info from request state (set by auth middleware)
     user = request.state.user
@@ -136,15 +167,23 @@ async def upload_bucket(request: Request, task_service, session_manager):
     if not keys:
         return JSONResponse({"error": "No files found in bucket"}, status_code=400)
 
-    from models.processors import S3FileProcessor
-    from .upload_utils import extract_user_context
+    user = request.state.user
+    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
 
-    ctx = await extract_user_context(request)
-    owner_user_id = ctx["owner_user_id"]
-    owner_name = ctx["owner_name"]
-    owner_email = ctx["owner_email"]
-    jwt_token = ctx["jwt_token"]
-    task_user_id = owner_user_id
+    from models.processors import S3FileProcessor
+    from config.settings import is_no_auth_mode
+
+    # In no-auth mode, pass None for owner fields so documents have no owner
+    if is_no_auth_mode():
+        owner_user_id = None
+        owner_name = None
+        owner_email = None
+        task_user_id = None
+    else:
+        owner_user_id = user.user_id
+        owner_name = user.name
+        owner_email = user.email
+        task_user_id = user.user_id
 
     processor = S3FileProcessor(
         task_service.document_service,

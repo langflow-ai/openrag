@@ -1,49 +1,5 @@
-FROM python:3.12-slim
+FROM langflowai/langflow-nightly:1.6.3.dev1
 
-# Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-ENV RUSTFLAGS="--cfg reqwest_unstable"
-
-# Accept build arguments for git repository and branch
-ARG GIT_REPO=https://github.com/langflow-ai/langflow.git
-ARG GIT_BRANCH=load_flows_autologin_false   
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    ca-certificates \
-    gnupg \
-    npm \
-    rustc cargo pkg-config libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv for faster Python package management
-RUN pip install uv
-
-# Clone the repository and checkout the specified branch
-RUN git clone --depth 1 --branch ${GIT_BRANCH} ${GIT_REPO} /app
-
-# Install backend dependencies
-RUN uv sync --frozen --no-install-project --no-editable --extra postgresql
-
-# Build frontend
-WORKDIR /app/src/frontend
-RUN npm ci && \
-    npm run build && \
-    mkdir -p /app/src/backend/base/langflow/frontend && \
-    cp -r build/* /app/src/backend/base/langflow/frontend/
-
-# Return to app directory and install the project
-WORKDIR /app
-RUN uv sync --frozen --no-dev --no-editable --extra postgresql
-
-# Expose ports
 EXPOSE 7860
 
-# Start the backend server
-CMD ["uv", "run", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
