@@ -242,6 +242,9 @@ def generate_jwt_keys():
                 capture_output=True,
             )
 
+            # Set restrictive permissions on private key (readable by owner only)
+            os.chmod(private_key_path, 0o600)
+
             # Generate public key
             subprocess.run(
                 [
@@ -257,12 +260,21 @@ def generate_jwt_keys():
                 capture_output=True,
             )
 
+            # Set permissions on public key (readable by all)
+            os.chmod(public_key_path, 0o644)
+
             logger.info("Generated RSA keys for JWT signing")
         except subprocess.CalledProcessError as e:
             logger.error("Failed to generate RSA keys", error=str(e))
             raise
     else:
-        logger.info("RSA keys already exist, skipping generation")
+        # Ensure correct permissions on existing keys
+        try:
+            os.chmod(private_key_path, 0o600)
+            os.chmod(public_key_path, 0o644)
+            logger.info("RSA keys already exist, ensured correct permissions")
+        except OSError as e:
+            logger.warning("Failed to set permissions on existing keys", error=str(e))
 
 
 async def init_index_when_ready():
