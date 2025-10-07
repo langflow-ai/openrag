@@ -53,6 +53,7 @@ declare global {
           load: (callback: () => void) => void;
         };
         PickerBuilder: new () => GooglePickerBuilder;
+        DocsView: new () => GoogleDocsView;
         ViewId: {
           DOCS: string;
           FOLDERS: string;
@@ -83,8 +84,13 @@ declare global {
   }
 }
 
+export interface GoogleDocsView {
+  setIncludeFolders: (include: boolean) => GoogleDocsView;
+  setSelectFolderEnabled: (enabled: boolean) => GoogleDocsView;
+}
+
 export interface GooglePickerBuilder {
-  addView: (view: string) => GooglePickerBuilder;
+  addView: (view: GoogleDocsView | string) => GooglePickerBuilder;
   setOAuthToken: (token: string) => GooglePickerBuilder;
   setCallback: (
     callback: (data: GooglePickerData) => void
