@@ -29,34 +29,49 @@ export interface ChunkResult {
   owner_email?: string;
   file_size?: number;
   connector_type?: string;
+  index?: number;
 }
 
 export interface File {
   filename: string;
   mimetype: string;
-  chunkCount: number;
-  avgScore: number;
+  chunkCount?: number;
+  avgScore?: number;
   source_url: string;
-  owner: string;
-  owner_name: string;
-  owner_email: string;
+  owner?: string;
+  owner_name?: string;
+  owner_email?: string;
   size: number;
   connector_type: string;
-  chunks: ChunkResult[];
+  status?:
+    | "processing"
+    | "active"
+    | "unavailable"
+    | "failed"
+    | "hidden"
+    | "sync";
+  chunks?: ChunkResult[];
 }
 
 export const useGetSearchQuery = (
   query: string,
   queryData?: ParsedQueryData | null,
-  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
+  options?: Omit<UseQueryOptions, "queryKey" | "queryFn">
 ) => {
   const queryClient = useQueryClient();
+
+  // Normalize the query to match what will actually be searched
+  const effectiveQuery = query || queryData?.query || "*";
 
   async function getFiles(): Promise<File[]> {
     try {
       const searchPayload: SearchPayload = {
-        query: query || queryData?.query || "*",
-        limit: queryData?.limit || (query.trim() === "" ? 10000 : 10), // Maximum allowed limit for wildcard searches
+        query: effectiveQuery,
+        limit:
+          queryData?.limit ||
+          (effectiveQuery.trim() === "*" || effectiveQuery.trim() === ""
+            ? 10000
+            : 10), // Maximum allowed limit for wildcard searches
         scoreThreshold: queryData?.scoreThreshold || 0,
       };
       if (queryData?.filters) {
@@ -121,7 +136,7 @@ export const useGetSearchQuery = (
         }
       >();
 
-      data.results.forEach((chunk: ChunkResult) => {
+      (data.results || []).forEach((chunk: ChunkResult) => {
         const existing = fileMap.get(chunk.filename);
         if (existing) {
           existing.chunks.push(chunk);
@@ -165,12 +180,12 @@ export const useGetSearchQuery = (
 
   const queryResult = useQuery(
     {
-      queryKey: ["search", query],
+      queryKey: ["search", queryData, query],
       placeholderData: (prev) => prev,
       queryFn: getFiles,
       ...options,
     },
-    queryClient,
+    queryClient
   );
 
   return queryResult;

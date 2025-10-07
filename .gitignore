@@ -17,4 +17,9 @@ wheels/
 
 1001*.pdf
 *.json
+!flows/*.json
 .DS_Store
+
+config/
+
+.docling.pid

@@ -1,68 +1,167 @@
-## OpenRAG
+<div align="center">
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/phact/openrag)
+# OpenRAG
 
-### getting started
+</div>
+<div align="center">
+  <a href="#quick-start" style="color: #0366d6;">🚀 Quick Start</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#tui-interface" style="color: #0366d6;">💻 TUI Interface</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#docker-deployment" style="color: #0366d6;">🐳 Docker Deployment</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#development" style="color: #0366d6;">⚙️ Development</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#troubleshooting" style="color: #0366d6;">🔧 Troubleshooting</a>
+</div>
 
-Set up your secrets:
 
-    cp .env.example .env
 
-Populate the values in .env
+OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with Starlette, Next.js, OpenSearch, and Langflow integration. [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/phact/openrag)
 
-Requirements:
 
-Docker or podman with compose installed.
+<div align="center">
+  <a href="https://github.com/langflow-ai/langflow"><img src="https://img.shields.io/badge/Langflow-1C1C1E?style=flat&logo=langflow" alt="Langflow"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/opensearch-project/OpenSearch"><img src="https://img.shields.io/badge/OpenSearch-005EB8?style=flat&logo=opensearch&logoColor=white" alt="OpenSearch"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/encode/starlette"><img src="https://img.shields.io/badge/Starlette-009639?style=flat&logo=fastapi&logoColor=white" alt="Starlette"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/vercel/next.js"><img src="https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js&logoColor=white" alt="Next.js"></a>
 
-Run OpenRAG:
+</div>
 
-    docker compose build
 
-    docker compose up
 
-CPU only:
 
-    docker compose -f docker-compose-cpu.yml up
 
-If you need to reset state:
 
-    docker compose up --build --force-recreate --remove-orphans
+## 🚀 Quick Start
 
-### Configuration
+### Prerequisites
 
-OpenRAG uses environment variables for configuration. Copy `.env.example` to `.env` and populate with your values:
+- Docker or Podman with Compose installed
+- Make (for development commands)
+
+### 1. Environment Setup
 
 ```bash
-cp .env.example .env
+# Clone and setup environment
+git clone https://github.com/langflow-ai/openrag.git
+cd openrag
+make setup  # Creates .env and installs dependencies
 ```
 
-#### Key Environment Variables
+### 2. Configure Environment
 
-**Required:**
-- `OPENAI_API_KEY`: Your OpenAI API key
-- `OPENSEARCH_PASSWORD`: Password for OpenSearch admin user
-- `LANGFLOW_SUPERUSER`: Langflow admin username  
-- `LANGFLOW_SUPERUSER_PASSWORD`: Langflow admin password
-- `LANGFLOW_CHAT_FLOW_ID`: ID of your Langflow chat flow
-- `LANGFLOW_INGEST_FLOW_ID`: ID of your Langflow ingestion flow
+Edit `.env` with your API keys and credentials:
 
-**Ingestion Configuration:**
-- `DISABLE_INGEST_WITH_LANGFLOW`: Disable Langflow ingestion pipeline (default: `false`)
-  - `false` or unset: Uses Langflow pipeline (upload → ingest → delete)
-  - `true`: Uses traditional OpenRAG processor for document ingestion
+```bash
+# Required
+OPENAI_API_KEY=your_openai_api_key
+OPENSEARCH_PASSWORD=your_secure_password
+LANGFLOW_SUPERUSER=admin
+LANGFLOW_SUPERUSER_PASSWORD=your_secure_password
+LANGFLOW_CHAT_FLOW_ID=your_chat_flow_id
+LANGFLOW_INGEST_FLOW_ID=your_ingest_flow_id
+NUDGES_FLOW_ID=your_nudges_flow_id
+```
+See extended configuration, including ingestion and optional variables: [docs/reference/configuration.md](docs/docs/reference/configuration.md)
+### 3. Start OpenRAG
 
-**Optional:**
-- `LANGFLOW_PUBLIC_URL`: Public URL for Langflow (default: `http://localhost:7860`)
-- `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`: For Google OAuth authentication
-- `MICROSOFT_GRAPH_OAUTH_CLIENT_ID` / `MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET`: For Microsoft OAuth
-- `WEBHOOK_BASE_URL`: Base URL for webhook endpoints
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`: For AWS integrations
+```bash
+# Full stack with GPU support
+make dev
 
-See `.env.example` for a complete list with descriptions, or check the docker-compose.yml files.
+# Or CPU only
+make dev-cpu
+```
 
-For podman on mac you may have to increase your VM memory (`podman stats` should not show limit at only 2gb):
+Access the services:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **Langflow**: http://localhost:7860
+- **OpenSearch**: http://localhost:9200
+- **OpenSearch Dashboards**: http://localhost:5601
 
-    podman machine stop
-    podman machine rm
-    podman machine init --memory 8192   # example: 8 GB
-    podman machine start
+## 🖥️ TUI Interface
+
+OpenRAG includes a powerful Terminal User Interface (TUI) for easy setup, configuration, and monitoring. The TUI provides a user-friendly way to manage your OpenRAG installation without complex command-line operations.
+
+![OpenRAG TUI Interface](assets/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
+
+### Launching the TUI
+
+```bash
+# Install dependencies first
+uv sync
+
+# Launch the TUI
+uv run openrag
+```
+
+### TUI Features
+
+See the full TUI guide for features, navigation, and benefits: [docs/get-started/tui.mdx](docs/docs/get-started/tui.mdx)
+
+
+
+
+## 🐳 Docker Deployment
+
+### Standard Deployment
+
+```bash
+# Build and start all services
+docker compose build
+docker compose up -d
+```
+
+### CPU-Only Deployment
+
+For environments without GPU support:
+
+```bash
+docker compose -f docker-compose-cpu.yml up -d
+```
+
+More deployment commands and tips: [docs/get-started/docker.mdx](docs/docs/get-started/docker.mdx)
+
+## 🔧 Troubleshooting
+
+### Podman on macOS
+
+If using Podman on macOS, you may need to increase VM memory:
+
+```bash
+podman machine stop
+podman machine rm
+podman machine init --memory 8192   # 8 GB example
+podman machine start
+```
+
+### Common Issues
+
+See common issues and fixes: [docs/support/troubleshoot.mdx](docs/docs/reference/troubleshoot.mdx)
+
+
+
+## 🛠️ Development
+
+For developers wanting to contribute to OpenRAG or set up a development environment, please see our comprehensive development guide:
+
+**[📚 See CONTRIBUTING.md for detailed development instructions](CONTRIBUTING.md)**
+
+The contributing guide includes:
+- Complete development environment setup
+- Local development workflows  
+- Testing and debugging procedures
+- Code style guidelines
+- Architecture overview
+- Pull request guidelines
+
+### Quick Development Commands
+
+```bash
+make help                    # See all available commands
+make setup                   # Initial development setup
+make infra                   # Start infrastructure services
+make backend                 # Run backend locally
+make frontend                # Run frontend locally
+```

@@ -7,230 +7,321 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { toast } from "sonner";
+import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
+import {
+  type Task,
+  useGetTasksQuery,
+} from "@/app/api/queries/useGetTasksQuery";
 import { useAuth } from "@/contexts/auth-context";
 
-export interface Task {
+// Task interface is now imported from useGetTasksQuery
+export type { Task };
+
+export interface TaskFile {
+  filename: string;
+  mimetype: string;
+  source_url: string;
+  size: number;
+  connector_type: string;
+  status: "active" | "failed" | "processing";
   task_id: string;
-  status:
-    | "pending"
-    | "running"
-    | "processing"
-    | "completed"
-    | "failed"
-    | "error";
-  total_files?: number;
-  processed_files?: number;
-  successful_files?: number;
-  failed_files?: number;
   created_at: string;
   updated_at: string;
-  duration_seconds?: number;
-  result?: Record<string, unknown>;
-  error?: string;
-  files?: Record<string, Record<string, unknown>>;
 }
-
 interface TaskContextType {
   tasks: Task[];
+  files: TaskFile[];
   addTask: (taskId: string) => void;
-  removeTask: (taskId: string) => void;
+  addFiles: (files: Partial<TaskFile>[], taskId: string) => void;
   refreshTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
   isPolling: boolean;
   isFetching: boolean;
   isMenuOpen: boolean;
   toggleMenu: () => void;
+  isRecentTasksExpanded: boolean;
+  setRecentTasksExpanded: (expanded: boolean) => void;
+  // React Query states
+  isLoading: boolean;
+  error: Error | null;
 }
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
 export function TaskProvider({ children }: { children: React.ReactNode }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [isPolling, setIsPolling] = useState(false);
-  const [isFetching, setIsFetching] = useState(false);
+  const [files, setFiles] = useState<TaskFile[]>([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isRecentTasksExpanded, setIsRecentTasksExpanded] = useState(false);
+  const previousTasksRef = useRef<Task[]>([]);
   const { isAuthenticated, isNoAuthMode } = useAuth();
 
   const queryClient = useQueryClient();
 
-  const refetchSearch = () => {
-    queryClient.invalidateQueries({ queryKey: ["search"] });
-  };
+  // Use React Query hooks
+  const {
+    data: tasks = [],
+    isLoading,
+    error,
+    refetch: refetchTasks,
+    isFetching,
+  } = useGetTasksQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
 
-  const fetchTasks = useCallback(async () => {
-    if (!isAuthenticated && !isNoAuthMode) return;
+  const cancelTaskMutation = useCancelTaskMutation({
+    onSuccess: () => {
+      toast.success("Task cancelled", {
+        description: "Task has been cancelled successfully",
+      });
+    },
+    onError: (error) => {
+      toast.error("Failed to cancel task", {
+        description: error.message,
+      });
+    },
+  });
 
-    setIsFetching(true);
-    try {
-      const response = await fetch("/api/tasks");
-      if (response.ok) {
-        const data = await response.json();
-        const newTasks = data.tasks || [];
+  const refetchSearch = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: ["search"],
+      exact: false,
+    });
+  }, [queryClient]);
 
-        // Update tasks and check for status changes in the same state update
-        setTasks((prevTasks) => {
-          // Check for newly completed tasks to show toasts
-          if (prevTasks.length > 0) {
-            newTasks.forEach((newTask: Task) => {
-              const oldTask = prevTasks.find(
-                (t) => t.task_id === newTask.task_id,
-              );
-              if (
-                oldTask &&
-                oldTask.status !== "completed" &&
-                newTask.status === "completed"
-              ) {
-                // Task just completed - show success toast
-                toast.success("Task completed successfully!", {
-                  description: `Task ${newTask.task_id} has finished processing.`,
-                  action: {
-                    label: "View",
-                    onClick: () => console.log("View task", newTask.task_id),
-                  },
-                });
-                refetchSearch();
-              } else if (
-                oldTask &&
-                oldTask.status !== "failed" &&
-                oldTask.status !== "error" &&
-                (newTask.status === "failed" || newTask.status === "error")
-              ) {
-                // Task just failed - show error toast
-                toast.error("Task failed", {
-                  description: `Task ${newTask.task_id} failed: ${
-                    newTask.error || "Unknown error"
-                  }`,
-                });
-              }
-            });
-          }
+  const addFiles = useCallback(
+    (newFiles: Partial<TaskFile>[], taskId: string) => {
+      const now = new Date().toISOString();
+      const filesToAdd: TaskFile[] = newFiles.map((file) => ({
+        filename: file.filename || "",
+        mimetype: file.mimetype || "",
+        source_url: file.source_url || "",
+        size: file.size || 0,
+        connector_type: file.connector_type || "local",
+        status: "processing",
+        task_id: taskId,
+        created_at: now,
+        updated_at: now,
+      }));
 
-          return newTasks;
-        });
-      }
-    } catch (error) {
-      console.error("Failed to fetch tasks:", error);
-    } finally {
-      setIsFetching(false);
+      setFiles((prevFiles) => [...prevFiles, ...filesToAdd]);
+    },
+    [],
+  );
+
+  // Handle task status changes and file updates
+  useEffect(() => {
+    if (tasks.length === 0) {
+      // Store current tasks as previous for next comparison
+      previousTasksRef.current = tasks;
+      return;
     }
-  }, [isAuthenticated, isNoAuthMode]); // Removed 'tasks' from dependencies to prevent infinite loop!
 
-  const addTask = useCallback((taskId: string) => {
-    // Immediately start aggressive polling for the new task
-    let pollAttempts = 0;
-    const maxPollAttempts = 30; // Poll for up to 30 seconds
+    // Check for task status changes by comparing with previous tasks
+    tasks.forEach((currentTask) => {
+      const previousTask = previousTasksRef.current.find(
+        (prev) => prev.task_id === currentTask.task_id,
+      );
 
-    const aggressivePoll = async () => {
-      try {
-        const response = await fetch("/api/tasks");
-        if (response.ok) {
-          const data = await response.json();
-          const newTasks = data.tasks || [];
-          const foundTask = newTasks.find(
-            (task: Task) => task.task_id === taskId,
-          );
+      // Only show toasts if we have previous data and status has changed
+      if (
+        (previousTask && previousTask.status !== currentTask.status) ||
+        (!previousTask && previousTasksRef.current.length !== 0)
+      ) {
+        // Process files from failed task and add them to files list
+        if (currentTask.files && typeof currentTask.files === "object") {
+          const taskFileEntries = Object.entries(currentTask.files);
+          const now = new Date().toISOString();
 
-          if (foundTask) {
-            // Task found! Update the tasks state
-            setTasks((prevTasks) => {
-              // Check if task is already in the list
-              const exists = prevTasks.some((t) => t.task_id === taskId);
-              if (!exists) {
-                return [...prevTasks, foundTask];
+          taskFileEntries.forEach(([filePath, fileInfo]) => {
+            if (typeof fileInfo === "object" && fileInfo) {
+              // Use the filename from backend if available, otherwise extract from path
+              const fileName =
+                (fileInfo as any).filename ||
+                filePath.split("/").pop() ||
+                filePath;
+              const fileStatus = fileInfo.status as string;
+
+              // Map backend file status to our TaskFile status
+              let mappedStatus: TaskFile["status"];
+              switch (fileStatus) {
+                case "pending":
+                case "running":
+                  mappedStatus = "processing";
+                  break;
+                case "completed":
+                  mappedStatus = "active";
+                  break;
+                case "failed":
+                  mappedStatus = "failed";
+                  break;
+                default:
+                  mappedStatus = "processing";
               }
-              // Update existing task
-              return prevTasks.map((t) =>
-                t.task_id === taskId ? foundTask : t,
-              );
-            });
-            return; // Stop polling, we found it
-          }
+
+              setFiles((prevFiles) => {
+                const existingFileIndex = prevFiles.findIndex(
+                  (f) =>
+                    f.source_url === filePath &&
+                    f.task_id === currentTask.task_id,
+                );
+
+                // Detect connector type based on file path or other indicators
+                let connectorType = "local";
+                if (filePath.includes("/") && !filePath.startsWith("/")) {
+                  // Likely S3 key format (bucket/path/file.ext)
+                  connectorType = "s3";
+                }
+
+                const fileEntry: TaskFile = {
+                  filename: fileName,
+                  mimetype: "", // We don't have this info from the task
+                  source_url: filePath,
+                  size: 0, // We don't have this info from the task
+                  connector_type: connectorType,
+                  status: mappedStatus,
+                  task_id: currentTask.task_id,
+                  created_at:
+                    typeof fileInfo.created_at === "string"
+                      ? fileInfo.created_at
+                      : now,
+                  updated_at:
+                    typeof fileInfo.updated_at === "string"
+                      ? fileInfo.updated_at
+                      : now,
+                };
+
+                if (existingFileIndex >= 0) {
+                  // Update existing file
+                  const updatedFiles = [...prevFiles];
+                  updatedFiles[existingFileIndex] = fileEntry;
+                  return updatedFiles;
+                } else {
+                  // Add new file
+                  return [...prevFiles, fileEntry];
+                }
+              });
+            }
+          });
         }
-      } catch (error) {
-        console.error("Aggressive polling failed:", error);
-      }
+        if (
+          previousTask &&
+          previousTask.status !== "completed" &&
+          currentTask.status === "completed"
+        ) {
+          // Task just completed - show success toast with file counts
+          const successfulFiles = currentTask.successful_files || 0;
+          const failedFiles = currentTask.failed_files || 0;
 
-      pollAttempts++;
-      if (pollAttempts < maxPollAttempts) {
-        // Continue polling every 1 second for new tasks
-        setTimeout(aggressivePoll, 1000);
-      }
-    };
+          let description = "";
+          if (failedFiles > 0) {
+            description = `${successfulFiles} file${
+              successfulFiles !== 1 ? "s" : ""
+            } uploaded successfully, ${failedFiles} file${
+              failedFiles !== 1 ? "s" : ""
+            } failed`;
+          } else {
+            description = `${successfulFiles} file${
+              successfulFiles !== 1 ? "s" : ""
+            } uploaded successfully`;
+          }
 
-    // Start aggressive polling after a short delay to allow backend to process
-    setTimeout(aggressivePoll, 500);
-  }, []);
+          toast.success("Task completed", {
+            description,
+            action: {
+              label: "View",
+              onClick: () => {
+                setIsMenuOpen(true);
+                setIsRecentTasksExpanded(true);
+              },
+            },
+          });
+          setTimeout(() => {
+            setFiles((prevFiles) =>
+              prevFiles.filter(
+                (file) =>
+                  file.task_id !== currentTask.task_id ||
+                  file.status === "failed",
+              ),
+            );
+            refetchSearch();
+          }, 500);
+        } else if (
+          previousTask &&
+          previousTask.status !== "failed" &&
+          previousTask.status !== "error" &&
+          (currentTask.status === "failed" || currentTask.status === "error")
+        ) {
+          // Task just failed - show error toast
+          toast.error("Task failed", {
+            description: `Task ${currentTask.task_id} failed: ${
+              currentTask.error || "Unknown error"
+            }`,
+          });
+        }
+      }
+    });
+
+    // Store current tasks as previous for next comparison
+    previousTasksRef.current = tasks;
+  }, [tasks, refetchSearch]);
+
+  const addTask = useCallback(
+    (_taskId: string) => {
+      // React Query will automatically handle polling when tasks are active
+      // Just trigger a refetch to get the latest data
+      setTimeout(() => {
+        refetchTasks();
+      }, 500);
+    },
+    [refetchTasks],
+  );
 
   const refreshTasks = useCallback(async () => {
-    await fetchTasks();
-  }, [fetchTasks]);
+    setFiles([]);
+    await refetchTasks();
+  }, [refetchTasks]);
 
-  const removeTask = useCallback((taskId: string) => {
-    setTasks((prev) => prev.filter((task) => task.task_id !== taskId));
-  }, []);
 
   const cancelTask = useCallback(
     async (taskId: string) => {
-      try {
-        const response = await fetch(`/api/tasks/${taskId}/cancel`, {
-          method: "POST",
-        });
-
-        if (response.ok) {
-          // Immediately refresh tasks to show the updated status
-          await fetchTasks();
-          toast.success("Task cancelled", {
-            description: `Task ${taskId.substring(0, 8)}... has been cancelled`,
-          });
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Failed to cancel task");
-        }
-      } catch (error) {
-        console.error("Failed to cancel task:", error);
-        toast.error("Failed to cancel task", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+      cancelTaskMutation.mutate({ taskId });
     },
-    [fetchTasks],
+    [cancelTaskMutation],
   );
 
   const toggleMenu = useCallback(() => {
     setIsMenuOpen((prev) => !prev);
   }, []);
 
-  // Periodic polling for task updates
-  useEffect(() => {
-    if (!isAuthenticated && !isNoAuthMode) return;
-
-    setIsPolling(true);
-
-    // Initial fetch
-    fetchTasks();
-
-    // Set up polling interval - every 3 seconds (more responsive for active tasks)
-    const interval = setInterval(fetchTasks, 3000);
-
-    return () => {
-      clearInterval(interval);
-      setIsPolling(false);
-    };
-  }, [isAuthenticated, isNoAuthMode, fetchTasks]);
+  // Determine if we're polling based on React Query's refetch interval
+  const isPolling =
+    isFetching &&
+    tasks.some(
+      (task) =>
+        task.status === "pending" ||
+        task.status === "running" ||
+        task.status === "processing",
+    );
 
   const value: TaskContextType = {
     tasks,
+    files,
     addTask,
-    removeTask,
+    addFiles,
     refreshTasks,
     cancelTask,
     isPolling,
     isFetching,
     isMenuOpen,
     toggleMenu,
+    isRecentTasksExpanded,
+    setRecentTasksExpanded: setIsRecentTasksExpanded,
+    isLoading,
+    error,
   };
 
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;

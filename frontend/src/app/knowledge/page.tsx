@@ -1,269 +1,355 @@
 "use client";
 
 import {
-  Building2,
-  Cloud,
-  FileText,
-  HardDrive,
-  Loader2,
-  Search,
-} from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { SiGoogledrive } from "react-icons/si";
-import { TbBrandOnedrive } from "react-icons/tb";
+  themeQuartz,
+  type ColDef,
+  type GetRowIdParams,
+} from "ag-grid-community";
+import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
+import { Cloud, FileIcon, Globe } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { type File, useGetSearchQuery } from "../api/queries/useGetSearchQuery";
+import "@/components/AgGrid/registerAgGridModules";
+import "@/components/AgGrid/agGridStyles.css";
+import { toast } from "sonner";
+import { KnowledgeActionsDropdown } from "@/components/knowledge-actions-dropdown";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { DeleteConfirmationDialog } from "../../../components/confirmation-dialog";
+import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import GoogleDriveIcon from "../settings/icons/google-drive-icon";
+import OneDriveIcon from "../settings/icons/one-drive-icon";
+import SharePointIcon from "../settings/icons/share-point-icon";
+import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
   switch (connectorType) {
     case "google_drive":
-      return <SiGoogledrive className="h-4 w-4 text-foreground" />;
+      return (
+        <GoogleDriveIcon className="h-4 w-4 text-foreground flex-shrink-0" />
+      );
     case "onedrive":
-      return <TbBrandOnedrive className="h-4 w-4 text-foreground" />;
+      return <OneDriveIcon className="h-4 w-4 text-foreground flex-shrink-0" />;
     case "sharepoint":
-      return <Building2 className="h-4 w-4 text-foreground" />;
+      return (
+        <SharePointIcon className="h-4 w-4 text-foreground flex-shrink-0" />
+      );
+    case "url":
+      return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
     case "s3":
-      return <Cloud className="h-4 w-4 text-foreground" />;
+      return <Cloud className="h-4 w-4 text-foreground flex-shrink-0" />;
     default:
-      return <HardDrive className="h-4 w-4 text-muted-foreground" />;
+      return (
+        <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+      );
   }
 }
 
 function SearchPage() {
-  const { isMenuOpen } = useTask();
-  const { parsedFilterData, isPanelOpen } = useKnowledgeFilter();
-  const [query, setQuery] = useState("");
-  const [queryInputText, setQueryInputText] = useState("");
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const router = useRouter();
+  const { files: taskFiles, refreshTasks } = useTask();
+  const { parsedFilterData, queryOverride } = useKnowledgeFilter();
+  const [selectedRows, setSelectedRows] = useState<File[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
-  const {
-    data = [],
-    isFetching,
-    refetch: refetchSearch,
-  } = useGetSearchQuery(query, parsedFilterData);
+  const deleteDocumentMutation = useDeleteDocument();
 
-  // Update query when global filter changes
   useEffect(() => {
-    if (parsedFilterData?.query) {
-      setQueryInputText(parsedFilterData.query);
-    }
-  }, [parsedFilterData]);
+    refreshTasks();
+  }, [refreshTasks]);
 
-  const handleSearch = useCallback(
-    (e?: FormEvent<HTMLFormElement>) => {
-      if (e) e.preventDefault();
-      if (query.trim() === queryInputText.trim()) {
-        refetchSearch();
-        return;
-      }
-      setQuery(queryInputText);
-    },
-    [queryInputText, refetchSearch, query],
+  const { data: searchData = [], isFetching } = useGetSearchQuery(
+    queryOverride,
+    parsedFilterData
+  );
+  // Convert TaskFiles to File format and merge with backend results
+  const taskFilesAsFiles: File[] = taskFiles.map(taskFile => {
+    return {
+      filename: taskFile.filename,
+      mimetype: taskFile.mimetype,
+      source_url: taskFile.source_url,
+      size: taskFile.size,
+      connector_type: taskFile.connector_type,
+      status: taskFile.status,
+    };
+  });
+
+  // Create a map of task files by filename for quick lookup
+  const taskFileMap = new Map(
+    taskFilesAsFiles.map(file => [file.filename, file])
   );
 
-  const fileResults = data as File[];
+  // Override backend files with task file status if they exist
+  const backendFiles = (searchData as File[])
+    .map(file => {
+      const taskFile = taskFileMap.get(file.filename);
+      if (taskFile) {
+        // Override backend file with task file data (includes status)
+        return { ...file, ...taskFile };
+      }
+      return file;
+    })
+    .filter(file => {
+      // Only filter out files that are currently processing AND in taskFiles
+      const taskFile = taskFileMap.get(file.filename);
+      return !taskFile || taskFile.status !== "processing";
+    });
+
+  const filteredTaskFiles = taskFilesAsFiles.filter(taskFile => {
+    return (
+      taskFile.status !== "active" &&
+      !backendFiles.some(
+        backendFile => backendFile.filename === taskFile.filename
+      )
+    );
+  });
+
+  // Combine task files first, then backend files
+  const fileResults = [...backendFiles, ...filteredTaskFiles];
+
+  const gridRef = useRef<AgGridReact>(null);
+
+  const columnDefs = [
+    {
+      field: "filename",
+      headerName: "Source",
+      checkboxSelection: (params: CustomCellRendererProps<File>) =>
+        (params?.data?.status || "active") === "active",
+      headerCheckboxSelection: true,
+      initialFlex: 2,
+      minWidth: 220,
+      cellRenderer: ({ data, value }: CustomCellRendererProps<File>) => {
+        // Read status directly from data on each render
+        const status = data?.status || "active";
+        const isActive = status === "active";
+        console.log(data?.filename, status, "a");
+        return (
+          <div className="flex items-center overflow-hidden w-full">
+            <div
+              className={`transition-opacity duration-200 ${
+                isActive ? "w-0" : "w-7"
+              }`}
+            ></div>
+            <button
+              type="button"
+              className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors text-left flex-1 overflow-hidden"
+              onClick={() => {
+                if (!isActive) {
+                  return;
+                }
+                router.push(
+                  `/knowledge/chunks?filename=${encodeURIComponent(
+                    data?.filename ?? ""
+                  )}`
+                );
+              }}
+            >
+              {getSourceIcon(data?.connector_type)}
+              <span className="font-medium text-foreground truncate">
+                {value}
+              </span>
+            </button>
+          </div>
+        );
+      },
+    },
+    {
+      field: "size",
+      headerName: "Size",
+      valueFormatter: (params: CustomCellRendererProps<File>) =>
+        params.value ? `${Math.round(params.value / 1024)} KB` : "-",
+    },
+    {
+      field: "mimetype",
+      headerName: "Type",
+    },
+    {
+      field: "owner",
+      headerName: "Owner",
+      valueFormatter: (params: CustomCellRendererProps<File>) =>
+        params.data?.owner_name || params.data?.owner_email || "—",
+    },
+    {
+      field: "chunkCount",
+      headerName: "Chunks",
+      valueFormatter: (params: CustomCellRendererProps<File>) =>
+        params.data?.chunkCount?.toString() || "-",
+    },
+    {
+      field: "avgScore",
+      headerName: "Avg score",
+      cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
+        return (
+          <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
+            {value?.toFixed(2) ?? "-"}
+          </span>
+        );
+      },
+    },
+    {
+      field: "status",
+      headerName: "Status",
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+        console.log(data?.filename, data?.status, "b");
+        // Default to 'active' status if no status is provided
+        const status = data?.status || "active";
+        return <StatusBadge status={status} />;
+      },
+    },
+    {
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
+        const status = data?.status || "active";
+        if (status !== "active") {
+          return null;
+        }
+        return <KnowledgeActionsDropdown filename={data?.filename || ""} />;
+      },
+      cellStyle: {
+        alignItems: "center",
+        display: "flex",
+        justifyContent: "center",
+        padding: 0,
+      },
+      colId: "actions",
+      filter: false,
+      minWidth: 0,
+      width: 40,
+      resizable: false,
+      sortable: false,
+      initialFlex: 0,
+    },
+  ];
+
+  const defaultColDef: ColDef<File> = {
+    resizable: false,
+    suppressMovable: true,
+    initialFlex: 1,
+    minWidth: 100,
+  };
+
+  const onSelectionChanged = useCallback(() => {
+    if (gridRef.current) {
+      const selectedNodes = gridRef.current.api.getSelectedRows();
+      setSelectedRows(selectedNodes);
+    }
+  }, []);
+
+  const handleBulkDelete = async () => {
+    if (selectedRows.length === 0) return;
+
+    try {
+      // Delete each file individually since the API expects one filename at a time
+      const deletePromises = selectedRows.map(row =>
+        deleteDocumentMutation.mutateAsync({ filename: row.filename })
+      );
+
+      await Promise.all(deletePromises);
+
+      toast.success(
+        `Successfully deleted ${selectedRows.length} document${
+          selectedRows.length > 1 ? "s" : ""
+        }`
+      );
+      setSelectedRows([]);
+      setShowBulkDeleteDialog(false);
+
+      // Clear selection in the grid
+      if (gridRef.current) {
+        gridRef.current.api.deselectAll();
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete some documents"
+      );
+    }
+  };
 
   return (
-    <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
-        isMenuOpen && isPanelOpen
-          ? "md:right-[704px]"
-          : // Both open: 384px (menu) + 320px (KF panel)
-          isMenuOpen
-          ? "md:right-96"
-          : // Only menu open: 384px
-          isPanelOpen
-          ? "md:right-80"
-          : // Only KF panel open: 320px
-            "md:right-6" // Neither open: 24px
-      }`}
-    >
-      <div className="flex-1 flex flex-col min-h-0 px-6 py-6">
-        {/* Search Input Area */}
-        <div className="flex-shrink-0 mb-6">
-          <form onSubmit={handleSearch} className="flex gap-3">
-            <Input
-              name="search-query"
-              id="search-query"
-              type="text"
-              defaultValue={parsedFilterData?.query}
-              value={queryInputText}
-              onChange={(e) => setQueryInputText(e.target.value)}
-              placeholder="Search your documents..."
-              className="flex-1 bg-muted/20 rounded-lg border border-border/50 px-4 py-3 h-12 focus-visible:ring-1 focus-visible:ring-ring"
-            />
-            <Button
-              type="submit"
-              variant="secondary"
-              className="rounded-lg h-12 w-12 p-0 flex-shrink-0"
-            >
-              {isFetching ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
-            </Button>
-            <div className="flex-shrink-0">
-              <KnowledgeDropdown variant="button" />
-            </div>
-          </form>
+    <>
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold">Project Knowledge</h2>
         </div>
 
-        {/* Results Area */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="space-y-4">
-            {fileResults.length === 0 && !isFetching ? (
-              <div className="text-center py-12">
-                <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                <p className="text-lg text-muted-foreground">
-                  No documents found
-                </p>
-                <p className="text-sm text-muted-foreground/70 mt-2">
-                  Try adjusting your search terms
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Results Count */}
-                <div className="mb-4">
-                  <div className="text-sm text-muted-foreground">
-                    {fileResults.length} file
-                    {fileResults.length !== 1 ? "s" : ""} found
-                  </div>
-                </div>
-
-                {/* Results Display */}
-                <div
-                  className={isFetching ? "opacity-50 pointer-events-none" : ""}
-                >
-                  {selectedFile ? (
-                    // Show chunks for selected file
-                    <>
-                      <div className="flex items-center gap-2 mb-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setSelectedFile(null)}
-                        >
-                          ← Back to files
-                        </Button>
-                        <span className="text-sm text-muted-foreground">
-                          Chunks from {selectedFile}
-                        </span>
-                      </div>
-                      {fileResults
-                        .filter((file) => file.filename === selectedFile)
-                        .flatMap((file) => file.chunks)
-                        .map((chunk, index) => (
-                          <div
-                            key={chunk.filename + index}
-                            className="bg-muted/20 rounded-lg p-4 border border-border/50"
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <FileText className="h-4 w-4 text-blue-400" />
-                                <span className="font-medium truncate">
-                                  {chunk.filename}
-                                </span>
-                              </div>
-                              <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-                                {chunk.score.toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="text-sm text-muted-foreground mb-2">
-                              {chunk.mimetype} • Page {chunk.page}
-                            </div>
-                            <p className="text-sm text-foreground/90 leading-relaxed">
-                              {chunk.text}
-                            </p>
-                          </div>
-                        ))}
-                    </>
-                  ) : (
-                    // Show files table
-                    <div className="bg-muted/20 rounded-lg border border-border/50 overflow-hidden">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-border/50 bg-muted/10">
-                            <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                              Source
-                            </th>
-                            <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                              Type
-                            </th>
-                            <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                              Size
-                            </th>
-                            <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                              Matching chunks
-                            </th>
-                            <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                              Average score
-                            </th>
-                            <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                              Owner
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {fileResults.map((file) => (
-                            <tr
-                              key={file.filename}
-                              className="border-b border-border/30 hover:bg-muted/20 cursor-pointer transition-colors"
-                              onClick={() => setSelectedFile(file.filename)}
-                            >
-                              <td className="p-3">
-                                <div className="flex items-center gap-2">
-                                  {getSourceIcon(file.connector_type)}
-                                  <span
-                                    className="font-medium truncate"
-                                    title={file.filename}
-                                  >
-                                    {file.filename}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="p-3 text-sm text-muted-foreground">
-                                {file.mimetype}
-                              </td>
-                              <td className="p-3 text-sm text-muted-foreground">
-                                {file.size
-                                  ? `${Math.round(file.size / 1024)} KB`
-                                  : "—"}
-                              </td>
-                              <td className="p-3 text-sm text-muted-foreground">
-                                {file.chunkCount}
-                              </td>
-                              <td className="p-3">
-                                <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-                                  {file.avgScore.toFixed(2)}
-                                </span>
-                              </td>
-                              <td
-                                className="p-3 text-sm text-muted-foreground"
-                                title={file.owner_email}
-                              >
-                                {file.owner_name || file.owner || "—"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+        {/* Search Input Area */}
+        <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
+          <KnowledgeSearchInput />
+          {/* //TODO: Implement sync button */}
+          {/* <Button
+              type="button"
+              variant="outline"
+              className="rounded-lg flex-shrink-0"
+              onClick={() => alert("Not implemented")}
+            >
+              Sync
+            </Button> */}
+          {selectedRows.length > 0 && (
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-lg flex-shrink-0"
+              onClick={() => setShowBulkDeleteDialog(true)}
+            >
+              Delete
+            </Button>
+          )}
+          <div className="ml-auto">
+            <KnowledgeDropdown />
           </div>
         </div>
+        <AgGridReact
+          className="w-full overflow-auto"
+          columnDefs={columnDefs as ColDef<File>[]}
+          defaultColDef={defaultColDef}
+          loading={isFetching}
+          ref={gridRef}
+          theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
+          rowData={fileResults}
+          rowSelection="multiple"
+          rowMultiSelectWithClick={false}
+          suppressRowClickSelection={true}
+          getRowId={(params: GetRowIdParams<File>) => params.data?.filename}
+          domLayout="normal"
+          onSelectionChanged={onSelectionChanged}
+          noRowsOverlayComponent={() => (
+            <div className="text-center pb-[45px]">
+              <div className="text-lg text-primary font-semibold">
+                No knowledge
+              </div>
+              <div className="text-sm mt-1 text-muted-foreground">
+                Add files from local or your preferred cloud.
+              </div>
+            </div>
+          )}
+        />
       </div>
-    </div>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={showBulkDeleteDialog}
+        onOpenChange={setShowBulkDeleteDialog}
+        title="Delete Documents"
+        description={`Are you sure you want to delete ${
+          selectedRows.length
+        } document${
+          selectedRows.length > 1 ? "s" : ""
+        }? This will remove all chunks and data associated with these documents. This action cannot be undone.
+
+Documents to be deleted:
+${selectedRows.map(row => `• ${row.filename}`).join("\n")}`}
+        confirmText="Delete All"
+        onConfirm={handleBulkDelete}
+        isLoading={deleteDocumentMutation.isPending}
+      />
+    </>
   );
 }
 

@@ -1,29 +1,37 @@
 "use client";
 
-import { ProtectedRoute } from "@/components/protected-route";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { useAuth } from "@/contexts/auth-context";
-import { type EndpointType, useChat } from "@/contexts/chat-context";
-import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { useTask } from "@/contexts/task-context";
 import {
-  AtSign,
   Bot,
+  Check,
   ChevronDown,
   ChevronRight,
+  Funnel,
   GitBranch,
   Loader2,
   Plus,
   Settings,
-  Upload,
   User,
   X,
   Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
+import TextareaAutosize from "react-textarea-autosize";
+import { filterAccentClasses } from "@/components/knowledge-filter-panel";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { ProtectedRoute } from "@/components/protected-route";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@/components/ui/popover";
+import { useAuth } from "@/contexts/auth-context";
+import { type EndpointType, useChat } from "@/contexts/chat-context";
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useTask } from "@/contexts/task-context";
 import { useLoadingStore } from "@/stores/loadingStore";
+import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import Nudges from "./nudges";
 
 interface Message {
@@ -119,31 +127,86 @@ function ChatPage() {
   >(new Set());
   // previousResponseIds now comes from useChat context
   const [isUploading, setIsUploading] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [availableFilters, setAvailableFilters] = useState<
     KnowledgeFilterData[]
   >([]);
+  const [textareaHeight, setTextareaHeight] = useState(40);
   const [filterSearchTerm, setFilterSearchTerm] = useState("");
   const [selectedFilterIndex, setSelectedFilterIndex] = useState(0);
   const [isFilterHighlighted, setIsFilterHighlighted] = useState(false);
   const [dropdownDismissed, setDropdownDismissed] = useState(false);
   const [isUserInteracting, setIsUserInteracting] = useState(false);
   const [isForkingInProgress, setIsForkingInProgress] = useState(false);
-  const dragCounterRef = useRef(0);
+  const [anchorPosition, setAnchorPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef(0);
   const lastLoadedConversationRef = useRef<string | null>(null);
-  const { addTask, isMenuOpen } = useTask();
-  const { selectedFilter, parsedFilterData, isPanelOpen, setSelectedFilter } =
+  const { addTask } = useTask();
+  const { selectedFilter, parsedFilterData, setSelectedFilter } =
     useKnowledgeFilter();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const getCursorPosition = (textarea: HTMLTextAreaElement) => {
+    // Create a hidden div with the same styles as the textarea
+    const div = document.createElement("div");
+    const computedStyle = getComputedStyle(textarea);
+
+    // Copy all computed styles to the hidden div
+    for (const style of computedStyle) {
+      (div.style as any)[style] = computedStyle.getPropertyValue(style);
+    }
+
+    // Set the div to be hidden but not un-rendered
+    div.style.position = "absolute";
+    div.style.visibility = "hidden";
+    div.style.whiteSpace = "pre-wrap";
+    div.style.wordWrap = "break-word";
+    div.style.overflow = "hidden";
+    div.style.height = "auto";
+    div.style.width = `${textarea.getBoundingClientRect().width}px`;
+
+    // Get the text up to the cursor position
+    const cursorPos = textarea.selectionStart || 0;
+    const textBeforeCursor = textarea.value.substring(0, cursorPos);
+
+    // Add the text before cursor
+    div.textContent = textBeforeCursor;
+
+    // Create a span to mark the end position
+    const span = document.createElement("span");
+    span.textContent = "|"; // Cursor marker
+    div.appendChild(span);
+
+    // Add the text after cursor to handle word wrapping
+    const textAfterCursor = textarea.value.substring(cursorPos);
+    div.appendChild(document.createTextNode(textAfterCursor));
+
+    // Add the div to the document temporarily
+    document.body.appendChild(div);
+
+    // Get positions
+    const inputRect = textarea.getBoundingClientRect();
+    const divRect = div.getBoundingClientRect();
+    const spanRect = span.getBoundingClientRect();
+
+    // Calculate the cursor position relative to the input
+    const x = inputRect.left + (spanRect.left - divRect.left);
+    const y = inputRect.top + (spanRect.top - divRect.top);
+
+    // Clean up
+    document.body.removeChild(div);
+
+    return { x, y };
   };
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
@@ -167,7 +230,7 @@ function ChatPage() {
       content: `🔄 Starting upload of **${file.name}**...`,
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, uploadStartMessage]);
+    setMessages(prev => [...prev, uploadStartMessage]);
 
     try {
       const formData = new FormData();
@@ -219,7 +282,7 @@ function ChatPage() {
           content: `⏳ Upload initiated for **${file.name}**. Processing in background... (Task ID: ${taskId})`,
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev.slice(0, -1), pollingMessage]);
+        setMessages(prev => [...prev.slice(0, -1), pollingMessage]);
       } else if (response.ok) {
         // Original flow: Direct response
 
@@ -233,7 +296,7 @@ function ChatPage() {
           timestamp: new Date(),
         };
 
-        setMessages((prev) => [...prev.slice(0, -1), uploadMessage]);
+        setMessages(prev => [...prev.slice(0, -1), uploadMessage]);
 
         // Add file to conversation docs
         if (result.filename) {
@@ -242,7 +305,7 @@ function ChatPage() {
 
         // Update the response ID for this endpoint
         if (result.response_id) {
-          setPreviousResponseIds((prev) => ({
+          setPreviousResponseIds(prev => ({
             ...prev,
             [endpoint]: result.response_id,
           }));
@@ -266,47 +329,10 @@ function ChatPage() {
         content: `❌ Failed to process document. Please try again.`,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+      setMessages(prev => [...prev.slice(0, -1), errorMessage]);
     } finally {
       setIsUploading(false);
       setLoading(false);
-    }
-  };
-
-  // Remove the old pollTaskStatus function since we're using centralized system
-
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current++;
-    if (dragCounterRef.current === 1) {
-      setIsDragOver(true);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current--;
-    if (dragCounterRef.current === 0) {
-      setIsDragOver(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current = 0;
-    setIsDragOver(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      handleFileUpload(files[0]); // Upload first file only
     }
   };
 
@@ -349,13 +375,6 @@ function ChatPage() {
       console.error("Failed to load knowledge filters:", error);
       setAvailableFilters([]);
     }
-  };
-
-  const handleFilterDropdownToggle = () => {
-    if (!isFilterDropdownOpen) {
-      loadAvailableFilters();
-    }
-    setIsFilterDropdownOpen(!isFilterDropdownOpen);
   };
 
   const handleFilterSelect = (filter: KnowledgeFilterData | null) => {
@@ -601,7 +620,7 @@ function ChatPage() {
       lastLoadedConversationRef.current = conversationData.response_id;
 
       // Set the previous response ID for this conversation
-      setPreviousResponseIds((prev) => ({
+      setPreviousResponseIds(prev => ({
         ...prev,
         [conversationData.endpoint]: conversationData.response_id,
       }));
@@ -643,7 +662,7 @@ function ChatPage() {
         content: `🔄 Starting upload of **${filename}**...`,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, uploadStartMessage]);
+      setMessages(prev => [...prev, uploadStartMessage]);
     };
 
     const handleFileUploaded = (event: CustomEvent) => {
@@ -661,11 +680,11 @@ function ChatPage() {
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev.slice(0, -1), uploadMessage]);
+      setMessages(prev => [...prev.slice(0, -1), uploadMessage]);
 
       // Update the response ID for this endpoint
       if (result.response_id) {
-        setPreviousResponseIds((prev) => ({
+        setPreviousResponseIds(prev => ({
           ...prev,
           [endpoint]: result.response_id,
         }));
@@ -692,7 +711,7 @@ function ChatPage() {
         content: `❌ Upload failed for **${filename}**: ${error}`,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+      setMessages(prev => [...prev.slice(0, -1), errorMessage]);
     };
 
     window.addEventListener(
@@ -731,27 +750,6 @@ function ChatPage() {
       );
     };
   }, [endpoint, setPreviousResponseIds]);
-
-  // Handle click outside to close dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        isFilterDropdownOpen &&
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node) &&
-        !inputRef.current?.contains(event.target as Node)
-      ) {
-        setIsFilterDropdownOpen(false);
-        setFilterSearchTerm("");
-        setSelectedFilterIndex(0);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isFilterDropdownOpen]);
 
   const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
     previousResponseIds[endpoint]
@@ -1009,7 +1007,7 @@ function ChatPage() {
                   if (chunk.delta.finish_reason) {
                     console.log("Finish reason:", chunk.delta.finish_reason);
                     // Mark any pending function calls as completed
-                    currentFunctionCalls.forEach((fc) => {
+                    currentFunctionCalls.forEach(fc => {
                       if (fc.status === "pending" && fc.argumentsString) {
                         try {
                           fc.arguments = JSON.parse(fc.argumentsString);
@@ -1042,13 +1040,13 @@ function ChatPage() {
 
                   // Try to find an existing pending call to update (created by earlier deltas)
                   let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id
+                    fc => fc.id === chunk.item.id
                   );
                   if (!existing) {
                     existing = [...currentFunctionCalls]
                       .reverse()
                       .find(
-                        (fc) =>
+                        fc =>
                           fc.status === "pending" &&
                           !fc.id &&
                           fc.name === (chunk.item.tool_name || chunk.item.name)
@@ -1079,7 +1077,7 @@ function ChatPage() {
                     currentFunctionCalls.push(functionCall);
                     console.log(
                       "🟢 Function calls now:",
-                      currentFunctionCalls.map((fc) => ({
+                      currentFunctionCalls.map(fc => ({
                         id: fc.id,
                         name: fc.name,
                       }))
@@ -1152,7 +1150,7 @@ function ChatPage() {
                   );
                   console.log(
                     "🔵 Looking for existing function calls:",
-                    currentFunctionCalls.map((fc) => ({
+                    currentFunctionCalls.map(fc => ({
                       id: fc.id,
                       name: fc.name,
                     }))
@@ -1160,7 +1158,7 @@ function ChatPage() {
 
                   // Find existing function call by ID or name
                   const functionCall = currentFunctionCalls.find(
-                    (fc) =>
+                    fc =>
                       fc.id === chunk.item.id ||
                       fc.name === chunk.item.tool_name ||
                       fc.name === chunk.item.name
@@ -1208,7 +1206,7 @@ function ChatPage() {
 
                   // Find existing function call by ID, or by name/type if ID not available
                   const functionCall = currentFunctionCalls.find(
-                    (fc) =>
+                    fc =>
                       fc.id === chunk.item.id ||
                       fc.name === chunk.item.tool_name ||
                       fc.name === chunk.item.name ||
@@ -1263,13 +1261,13 @@ function ChatPage() {
 
                   // Dedupe by id or pending with same name
                   let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id
+                    fc => fc.id === chunk.item.id
                   );
                   if (!existing) {
                     existing = [...currentFunctionCalls]
                       .reverse()
                       .find(
-                        (fc) =>
+                        fc =>
                           fc.status === "pending" &&
                           !fc.id &&
                           fc.name ===
@@ -1308,7 +1306,7 @@ function ChatPage() {
                     currentFunctionCalls.push(functionCall);
                     console.log(
                       "🟡 Function calls now:",
-                      currentFunctionCalls.map((fc) => ({
+                      currentFunctionCalls.map(fc => ({
                         id: fc.id,
                         name: fc.name,
                         type: fc.type,
@@ -1406,7 +1404,7 @@ function ChatPage() {
       };
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
-        setMessages((prev) => [...prev, finalMessage]);
+        setMessages(prev => [...prev, finalMessage]);
         setStreamingMessage(null);
         if (previousResponseIds[endpoint]) {
           cancelNudges();
@@ -1419,7 +1417,7 @@ function ChatPage() {
         !controller.signal.aborted &&
         thisStreamId === streamIdRef.current
       ) {
-        setPreviousResponseIds((prev) => ({
+        setPreviousResponseIds(prev => ({
           ...prev,
           [endpoint]: newResponseId,
         }));
@@ -1447,7 +1445,7 @@ function ChatPage() {
           "Sorry, I couldn't connect to the chat service. Please try again.",
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages(prev => [...prev, errorMessage]);
     }
   };
 
@@ -1460,7 +1458,7 @@ function ChatPage() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     setInput("");
     setLoading(true);
     setIsFilterHighlighted(false);
@@ -1526,14 +1524,14 @@ function ChatPage() {
             content: result.response,
             timestamp: new Date(),
           };
-          setMessages((prev) => [...prev, assistantMessage]);
+          setMessages(prev => [...prev, assistantMessage]);
           if (result.response_id) {
             cancelNudges();
           }
 
           // Store the response ID if present for this endpoint
           if (result.response_id) {
-            setPreviousResponseIds((prev) => ({
+            setPreviousResponseIds(prev => ({
               ...prev,
               [endpoint]: result.response_id,
             }));
@@ -1554,7 +1552,7 @@ function ChatPage() {
             content: "Sorry, I encountered an error. Please try again.",
             timestamp: new Date(),
           };
-          setMessages((prev) => [...prev, errorMessage]);
+          setMessages(prev => [...prev, errorMessage]);
         }
       } catch (error) {
         console.error("Chat error:", error);
@@ -1564,7 +1562,7 @@ function ChatPage() {
             "Sorry, I couldn't connect to the chat service. Please try again.",
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages(prev => [...prev, errorMessage]);
       }
     }
 
@@ -1577,7 +1575,7 @@ function ChatPage() {
   };
 
   const toggleFunctionCall = (functionCallId: string) => {
-    setExpandedFunctionCalls((prev) => {
+    setExpandedFunctionCalls(prev => {
       const newSet = new Set(prev);
       if (newSet.has(functionCallId)) {
         newSet.delete(functionCallId);
@@ -1634,7 +1632,7 @@ function ChatPage() {
 
       // Set the response_id we want to continue from as the previous response ID
       // This tells the backend to continue the conversation from this point
-      setPreviousResponseIds((prev) => ({
+      setPreviousResponseIds(prev => ({
         ...prev,
         [endpoint]: responseIdToForkFrom,
       }));
@@ -1888,21 +1886,167 @@ function ChatPage() {
     handleSendMessage(suggestion);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle backspace for filter clearing
+    if (e.key === "Backspace" && selectedFilter && input.trim() === "") {
+      e.preventDefault();
+
+      if (isFilterHighlighted) {
+        // Second backspace - remove the filter
+        setSelectedFilter(null);
+        setIsFilterHighlighted(false);
+      } else {
+        // First backspace - highlight the filter
+        setIsFilterHighlighted(true);
+      }
+      return;
+    }
+
+    if (isFilterDropdownOpen) {
+      const filteredFilters = availableFilters.filter(filter =>
+        filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase())
+      );
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setIsFilterDropdownOpen(false);
+        setFilterSearchTerm("");
+        setSelectedFilterIndex(0);
+        setDropdownDismissed(true);
+
+        // Keep focus on the textarea so user can continue typing normally
+        inputRef.current?.focus();
+        return;
+      }
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedFilterIndex(prev =>
+          prev < filteredFilters.length - 1 ? prev + 1 : 0
+        );
+        return;
+      }
+
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedFilterIndex(prev =>
+          prev > 0 ? prev - 1 : filteredFilters.length - 1
+        );
+        return;
+      }
+
+      if (e.key === "Enter") {
+        // Check if we're at the end of an @ mention (space before cursor or end of input)
+        const cursorPos = e.currentTarget.selectionStart || 0;
+        const textBeforeCursor = input.slice(0, cursorPos);
+        const words = textBeforeCursor.split(" ");
+        const lastWord = words[words.length - 1];
+
+        if (lastWord.startsWith("@") && filteredFilters[selectedFilterIndex]) {
+          e.preventDefault();
+          handleFilterSelect(filteredFilters[selectedFilterIndex]);
+          return;
+        }
+      }
+
+      if (e.key === " ") {
+        // Select filter on space if we're typing an @ mention
+        const cursorPos = e.currentTarget.selectionStart || 0;
+        const textBeforeCursor = input.slice(0, cursorPos);
+        const words = textBeforeCursor.split(" ");
+        const lastWord = words[words.length - 1];
+
+        if (lastWord.startsWith("@") && filteredFilters[selectedFilterIndex]) {
+          e.preventDefault();
+          handleFilterSelect(filteredFilters[selectedFilterIndex]);
+          return;
+        }
+      }
+    }
+
+    if (e.key === "Enter" && !e.shiftKey && !isFilterDropdownOpen) {
+      e.preventDefault();
+      if (input.trim() && !loading) {
+        // Trigger form submission by finding the form and calling submit
+        const form = e.currentTarget.closest("form");
+        if (form) {
+          form.requestSubmit();
+        }
+      }
+    }
+  };
+
+  const onChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    setInput(newValue);
+
+    // Clear filter highlight when user starts typing
+    if (isFilterHighlighted) {
+      setIsFilterHighlighted(false);
+    }
+
+    // Find if there's an @ at the start of the last word
+    const words = newValue.split(" ");
+    const lastWord = words[words.length - 1];
+
+    if (lastWord.startsWith("@") && !dropdownDismissed) {
+      const searchTerm = lastWord.slice(1); // Remove the @
+      console.log("Setting search term:", searchTerm);
+      setFilterSearchTerm(searchTerm);
+      setSelectedFilterIndex(0);
+
+      // Only set anchor position when @ is first detected (search term is empty)
+      if (searchTerm === "") {
+        const pos = getCursorPosition(e.target);
+        setAnchorPosition(pos);
+      }
+
+      if (!isFilterDropdownOpen) {
+        loadAvailableFilters();
+        setIsFilterDropdownOpen(true);
+      }
+    } else if (isFilterDropdownOpen) {
+      // Close dropdown if @ is no longer present
+      console.log("Closing dropdown - no @ found");
+      setIsFilterDropdownOpen(false);
+      setFilterSearchTerm("");
+    }
+
+    // Reset dismissed flag when user moves to a different word
+    if (dropdownDismissed && !lastWord.startsWith("@")) {
+      setDropdownDismissed(false);
+    }
+  };
+
+  const onAtClick = () => {
+    if (!isFilterDropdownOpen) {
+      loadAvailableFilters();
+      setIsFilterDropdownOpen(true);
+      setFilterSearchTerm("");
+      setSelectedFilterIndex(0);
+
+      // Get button position for popover anchoring
+      const button = document.querySelector(
+        "[data-filter-button]"
+      ) as HTMLElement;
+      if (button) {
+        const rect = button.getBoundingClientRect();
+        setAnchorPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2 - 12,
+        });
+      }
+    } else {
+      setIsFilterDropdownOpen(false);
+      setAnchorPosition(null);
+    }
+  };
+
   return (
-    <div
-      className={`fixed inset-0 md:left-72 top-[53px] flex flex-col transition-all duration-300 ${
-        isMenuOpen && isPanelOpen
-          ? "md:right-[704px]" // Both open: 384px (menu) + 320px (KF panel)
-          : isMenuOpen
-          ? "md:right-96" // Only menu open: 384px
-          : isPanelOpen
-          ? "md:right-80" // Only KF panel open: 320px
-          : "md:right-6" // Neither open: 24px
-      }`}
-    >
+    <div className="flex flex-col h-full">
       {/* Debug header - only show in debug mode */}
       {isDebugMode && (
-        <div className="flex items-center justify-between mb-6 px-6 pt-6">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2"></div>
           <div className="flex items-center gap-4">
             {/* Async Mode Toggle */}
@@ -1956,31 +2100,12 @@ function ChatPage() {
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
           {/* Messages Area */}
           <div
-            className={`flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide space-y-6 min-h-0 transition-all relative ${
-              isDragOver
-                ? "bg-primary/10 border-2 border-dashed border-primary rounded-lg p-4"
-                : ""
-            }`}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+            className={`flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide space-y-6 min-h-0 transition-all relative`}
           >
             {messages.length === 0 && !streamingMessage ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 <div className="text-center">
-                  {isDragOver ? (
-                    <>
-                      <Upload className="h-12 w-12 mx-auto mb-4 text-primary" />
-                      <p className="text-primary font-medium">
-                        Drop your document here
-                      </p>
-                      <p className="text-sm mt-2">
-                        I&apos;ll process it and add it to our conversation
-                        context
-                      </p>
-                    </>
-                  ) : isUploading ? (
+                  {isUploading ? (
                     <>
                       <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin" />
                       <p>Processing your document...</p>
@@ -1997,8 +2122,12 @@ function ChatPage() {
                   <div key={index} className="space-y-6 group">
                     {message.role === "user" && (
                       <div className="flex gap-3">
-                        <Avatar className="w-8 h-8 flex-shrink-0">
-                          <AvatarImage src={user?.picture} alt={user?.name} />
+                        <Avatar className="w-8 h-8 flex-shrink-0 select-none">
+                          <AvatarImage
+                            draggable={false}
+                            src={user?.picture}
+                            alt={user?.name}
+                          />
                           <AvatarFallback className="text-sm bg-primary/20 text-primary">
                             {user?.name ? (
                               user.name.charAt(0).toUpperCase()
@@ -2017,7 +2146,7 @@ function ChatPage() {
 
                     {message.role === "assistant" && (
                       <div className="flex gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
                           <Bot className="h-4 w-4 text-accent-foreground" />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -2025,14 +2154,12 @@ function ChatPage() {
                             message.functionCalls || [],
                             index
                           )}
-                          <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">
-                            {message.content}
-                          </p>
+                          <MarkdownRenderer chatMessage={message.content} />
                         </div>
                         {endpoint === "chat" && (
                           <div className="flex-shrink-0 ml-2">
                             <button
-                              onClick={(e) => handleForkConversation(index, e)}
+                              onClick={e => handleForkConversation(index, e)}
                               className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
                               title="Fork conversation from here"
                             >
@@ -2056,10 +2183,10 @@ function ChatPage() {
                         streamingMessage.functionCalls,
                         messages.length
                       )}
-                      <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">
-                        {streamingMessage.content}
-                        <span className="inline-block w-2 h-4 bg-blue-400 ml-1 animate-pulse"></span>
-                      </p>
+                      <MarkdownRenderer
+                        chatMessage={streamingMessage.content}
+                      />
+                      <span className="inline-block w-2 h-4 bg-blue-400 ml-1 animate-pulse"></span>
                     </div>
                   </div>
                 )}
@@ -2083,18 +2210,6 @@ function ChatPage() {
                 <div ref={messagesEndRef} />
               </>
             )}
-
-            {/* Drag overlay for existing messages */}
-            {isDragOver && messages.length > 0 && (
-              <div className="absolute inset-0 bg-primary/20 backdrop-blur-sm flex items-center justify-center rounded-lg">
-                <div className="text-center">
-                  <Upload className="h-8 w-8 mx-auto mb-2 text-primary" />
-                  <p className="text-primary font-medium">
-                    Drop document to add context
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -2108,17 +2223,15 @@ function ChatPage() {
       )}
 
       {/* Input Area - Fixed at bottom */}
-      <div className="flex-shrink-0 p-6 pb-8 pt-4 flex justify-center">
-        <div className="w-full max-w-[75%]">
+      <div className="pb-8 pt-4 flex px-6">
+        <div className="w-full">
           <form onSubmit={handleSubmit} className="relative">
             <div className="relative w-full bg-muted/20 rounded-lg border border-border/50 focus-within:ring-1 focus-within:ring-ring">
               {selectedFilter && (
                 <div className="flex items-center gap-2 px-4 pt-3 pb-1">
                   <span
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
-                      isFilterHighlighted
-                        ? "bg-blue-500/40 text-blue-300 ring-2 ring-blue-400/50"
-                        : "bg-blue-500/20 text-blue-400"
+                      filterAccentClasses[parsedFilterData?.color || "zinc"]
                     }`}
                   >
                     @filter:{selectedFilter.name}
@@ -2128,167 +2241,38 @@ function ChatPage() {
                         setSelectedFilter(null);
                         setIsFilterHighlighted(false);
                       }}
-                      className="ml-1 hover:bg-blue-500/30 rounded-full p-0.5"
+                      className="ml-1 rounded-full p-0.5"
                     >
                       <X className="h-3 w-3" />
                     </button>
                   </span>
                 </div>
               )}
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => {
-                  const newValue = e.target.value;
-                  setInput(newValue);
-
-                  // Clear filter highlight when user starts typing
-                  if (isFilterHighlighted) {
-                    setIsFilterHighlighted(false);
-                  }
-
-                  // Find if there's an @ at the start of the last word
-                  const words = newValue.split(" ");
-                  const lastWord = words[words.length - 1];
-
-                  if (lastWord.startsWith("@") && !dropdownDismissed) {
-                    const searchTerm = lastWord.slice(1); // Remove the @
-                    console.log("Setting search term:", searchTerm);
-                    setFilterSearchTerm(searchTerm);
-                    setSelectedFilterIndex(0);
-
-                    if (!isFilterDropdownOpen) {
-                      loadAvailableFilters();
-                      setIsFilterDropdownOpen(true);
-                    }
-                  } else if (isFilterDropdownOpen) {
-                    // Close dropdown if @ is no longer present
-                    console.log("Closing dropdown - no @ found");
-                    setIsFilterDropdownOpen(false);
-                    setFilterSearchTerm("");
-                  }
-
-                  // Reset dismissed flag when user moves to a different word
-                  if (dropdownDismissed && !lastWord.startsWith("@")) {
-                    setDropdownDismissed(false);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  // Handle backspace for filter clearing
-                  if (
-                    e.key === "Backspace" &&
-                    selectedFilter &&
-                    input.trim() === ""
-                  ) {
-                    e.preventDefault();
-
-                    if (isFilterHighlighted) {
-                      // Second backspace - remove the filter
-                      setSelectedFilter(null);
-                      setIsFilterHighlighted(false);
-                    } else {
-                      // First backspace - highlight the filter
-                      setIsFilterHighlighted(true);
-                    }
-                    return;
-                  }
-
-                  if (isFilterDropdownOpen) {
-                    const filteredFilters = availableFilters.filter((filter) =>
-                      filter.name
-                        .toLowerCase()
-                        .includes(filterSearchTerm.toLowerCase())
-                    );
-
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      setIsFilterDropdownOpen(false);
-                      setFilterSearchTerm("");
-                      setSelectedFilterIndex(0);
-                      setDropdownDismissed(true);
-
-                      // Keep focus on the textarea so user can continue typing normally
-                      inputRef.current?.focus();
-                      return;
-                    }
-
-                    if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      setSelectedFilterIndex((prev) =>
-                        prev < filteredFilters.length - 1 ? prev + 1 : 0
-                      );
-                      return;
-                    }
-
-                    if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      setSelectedFilterIndex((prev) =>
-                        prev > 0 ? prev - 1 : filteredFilters.length - 1
-                      );
-                      return;
-                    }
-
-                    if (e.key === "Enter") {
-                      // Check if we're at the end of an @ mention (space before cursor or end of input)
-                      const cursorPos = e.currentTarget.selectionStart || 0;
-                      const textBeforeCursor = input.slice(0, cursorPos);
-                      const words = textBeforeCursor.split(" ");
-                      const lastWord = words[words.length - 1];
-
-                      if (
-                        lastWord.startsWith("@") &&
-                        filteredFilters[selectedFilterIndex]
-                      ) {
-                        e.preventDefault();
-                        handleFilterSelect(
-                          filteredFilters[selectedFilterIndex]
-                        );
-                        return;
-                      }
-                    }
-
-                    if (e.key === " ") {
-                      // Select filter on space if we're typing an @ mention
-                      const cursorPos = e.currentTarget.selectionStart || 0;
-                      const textBeforeCursor = input.slice(0, cursorPos);
-                      const words = textBeforeCursor.split(" ");
-                      const lastWord = words[words.length - 1];
-
-                      if (
-                        lastWord.startsWith("@") &&
-                        filteredFilters[selectedFilterIndex]
-                      ) {
-                        e.preventDefault();
-                        handleFilterSelect(
-                          filteredFilters[selectedFilterIndex]
-                        );
-                        return;
-                      }
-                    }
-                  }
-
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !isFilterDropdownOpen
-                  ) {
-                    e.preventDefault();
-                    if (input.trim() && !loading) {
-                      // Trigger form submission by finding the form and calling submit
-                      const form = e.currentTarget.closest("form");
-                      if (form) {
-                        form.requestSubmit();
-                      }
-                    }
-                  }
-                }}
-                placeholder="Type to ask a question..."
-                disabled={loading}
-                className={`w-full bg-transparent px-4 ${
-                  selectedFilter ? "py-2 pb-4" : "py-4"
-                } min-h-[100px] focus-visible:outline-none resize-none`}
-                rows={1}
-              />
+              <div
+                className="relative"
+                style={{ height: `${textareaHeight + 60}px` }}
+              >
+                <TextareaAutosize
+                  ref={inputRef}
+                  value={input}
+                  onChange={onChange}
+                  onKeyDown={handleKeyDown}
+                  onHeightChange={height => setTextareaHeight(height)}
+                  maxRows={7}
+                  minRows={2}
+                  placeholder="Type to ask a question..."
+                  disabled={loading}
+                  className={`w-full bg-transparent px-4 ${
+                    selectedFilter ? "pt-2" : "pt-4"
+                  } focus-visible:outline-none resize-none`}
+                  rows={2}
+                />
+                {/* Safe area at bottom for buttons */}
+                <div
+                  className="absolute bottom-0 left-0 right-0 bg-transparent pointer-events-none"
+                  style={{ height: "60px" }}
+                />
+              </div>
             </div>
             <input
               ref={fileInputRef}
@@ -2299,17 +2283,49 @@ function ChatPage() {
             />
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleFilterDropdownToggle}
+              variant="outline"
+              size="iconSm"
               className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
+              onMouseDown={e => {
+                e.preventDefault();
+              }}
+              onClick={onAtClick}
+              data-filter-button
             >
-              <AtSign className="h-4 w-4" />
+              <Funnel className="h-4 w-4" />
             </Button>
-            {isFilterDropdownOpen && (
-              <div
-                ref={dropdownRef}
-                className="absolute bottom-14 left-0 w-64 bg-popover border border-border rounded-md shadow-md z-50 p-2"
+            <Popover
+              open={isFilterDropdownOpen}
+              onOpenChange={open => {
+                setIsFilterDropdownOpen(open);
+              }}
+            >
+              {anchorPosition && (
+                <PopoverAnchor
+                  asChild
+                  style={{
+                    position: "fixed",
+                    left: anchorPosition.x,
+                    top: anchorPosition.y,
+                    width: 1,
+                    height: 1,
+                    pointerEvents: "none",
+                  }}
+                >
+                  <div />
+                </PopoverAnchor>
+              )}
+              <PopoverContent
+                className="w-64 p-2"
+                side="top"
+                align="start"
+                sideOffset={6}
+                alignOffset={-18}
+                onOpenAutoFocus={e => {
+                  // Prevent auto focus on the popover content
+                  e.preventDefault();
+                  // Keep focus on the input
+                }}
               >
                 <div className="space-y-1">
                   {filterSearchTerm && (
@@ -2325,19 +2341,20 @@ function ChatPage() {
                     <>
                       {!filterSearchTerm && (
                         <button
+                          type="button"
                           onClick={() => handleFilterSelect(null)}
                           className={`w-full text-left px-2 py-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
                             selectedFilterIndex === -1 ? "bg-muted/50" : ""
                           }`}
                         >
-                          <span>No filter</span>
+                          <span>No knowledge filter</span>
                           {!selectedFilter && (
-                            <div className="w-2 h-2 rounded-full bg-blue-500" />
+                            <Check className="h-4 w-4 shrink-0" />
                           )}
                         </button>
                       )}
                       {availableFilters
-                        .filter((filter) =>
+                        .filter(filter =>
                           filter.name
                             .toLowerCase()
                             .includes(filterSearchTerm.toLowerCase())
@@ -2345,13 +2362,16 @@ function ChatPage() {
                         .map((filter, index) => (
                           <button
                             key={filter.id}
+                            type="button"
                             onClick={() => handleFilterSelect(filter)}
-                            className={`w-full text-left px-2 py-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
+                            className={`w-full overflow-hidden text-left px-2 py-2 gap-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
                               index === selectedFilterIndex ? "bg-muted/50" : ""
                             }`}
                           >
-                            <div>
-                              <div className="font-medium">{filter.name}</div>
+                            <div className="overflow-hidden">
+                              <div className="font-medium truncate">
+                                {filter.name}
+                              </div>
                               {filter.description && (
                                 <div className="text-xs text-muted-foreground truncate">
                                   {filter.description}
@@ -2359,11 +2379,11 @@ function ChatPage() {
                               )}
                             </div>
                             {selectedFilter?.id === filter.id && (
-                              <div className="w-2 h-2 rounded-full bg-blue-500" />
+                              <Check className="h-4 w-4 shrink-0" />
                             )}
                           </button>
                         ))}
-                      {availableFilters.filter((filter) =>
+                      {availableFilters.filter(filter =>
                         filter.name
                           .toLowerCase()
                           .includes(filterSearchTerm.toLowerCase())
@@ -2376,12 +2396,12 @@ function ChatPage() {
                     </>
                   )}
                 </div>
-              </div>
-            )}
+              </PopoverContent>
+            </Popover>
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
+              variant="outline"
+              size="iconSm"
               onClick={handleFilePickerClick}
               disabled={isUploading}
               className="absolute bottom-3 left-12 h-8 w-8 p-0 rounded-full hover:bg-muted/50"

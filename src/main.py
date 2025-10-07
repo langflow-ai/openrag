@@ -2,6 +2,7 @@
 from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
 from services.flows_service import FlowsService
+from utils.embeddings import create_dynamic_index_body
 from utils.logging_config import configure_from_env, get_logger
 
 configure_from_env()
@@ -30,9 +31,12 @@ from api import (
     auth,
     chat,
     connectors,
+    docling,
+    documents,
     flows,
     knowledge_filter,
     langflow_files,
+    models,
     nudges,
     oidc,
     router,
@@ -55,8 +59,10 @@ from config.settings import (
     SESSION_SECRET,
     clients,
     is_no_auth_mode,
+    get_openrag_config,
 )
 from services.auth_service import AuthService
+from services.langflow_mcp_service import LangflowMCPService
 from services.chat_service import ChatService
 
 # Services
@@ -66,6 +72,7 @@ from services.knowledge_filter_service import KnowledgeFilterService
 # Configuration and setup
 # Services
 from services.langflow_file_service import LangflowFileService
+from services.models_service import ModelsService
 from services.monitor_service import MonitorService
 from services.search_service import SearchService
 from services.task_service import TaskService
@@ -124,16 +131,61 @@ async def configure_alerting_security():
         # Don't fail startup if alerting config fails
 
 
+async def _ensure_opensearch_index(self):
+    """Ensure OpenSearch index exists when using traditional connector service."""
+    try:
+        # Check if index already exists
+        if await clients.opensearch.indices.exists(index=INDEX_NAME):
+            logger.debug("OpenSearch index already exists", index_name=INDEX_NAME)
+            return
+
+        # Create the index with hard-coded INDEX_BODY (uses OpenAI embedding dimensions)
+        await clients.opensearch.indices.create(index=INDEX_NAME, body=INDEX_BODY)
+        logger.info(
+            "Created OpenSearch index for traditional connector service",
+            index_name=INDEX_NAME,
+            vector_dimensions=INDEX_BODY["mappings"]["properties"]["chunk_embedding"][
+                "dimension"
+            ],
+        )
+
+    except Exception as e:
+        logger.error(
+            "Failed to initialize OpenSearch index for traditional connector service",
+            error=str(e),
+            index_name=INDEX_NAME,
+        )
+        # Don't raise the exception to avoid breaking the initialization
+        # The service can still function, document operations might fail later
+
+
 async def init_index():
     """Initialize OpenSearch index and security roles"""
     await wait_for_opensearch()
 
+    # Get the configured embedding model from user configuration
+    config = get_openrag_config()
+    embedding_model = config.knowledge.embedding_model
+
+    # Create dynamic index body based on the configured embedding model
+    dynamic_index_body = create_dynamic_index_body(embedding_model)
+
     # Create documents index
     if not await clients.opensearch.indices.exists(index=INDEX_NAME):
-        await clients.opensearch.indices.create(index=INDEX_NAME, body=INDEX_BODY)
-        logger.info("Created OpenSearch index", index_name=INDEX_NAME)
+        await clients.opensearch.indices.create(
+            index=INDEX_NAME, body=dynamic_index_body
+        )
+        logger.info(
+            "Created OpenSearch index",
+            index_name=INDEX_NAME,
+            embedding_model=embedding_model,
+        )
     else:
-        logger.info("Index already exists, skipping creation", index_name=INDEX_NAME)
+        logger.info(
+            "Index already exists, skipping creation",
+            index_name=INDEX_NAME,
+            embedding_model=embedding_model,
+        )
 
     # Create knowledge filters index
     knowledge_filter_index_name = "knowledge_filters"
@@ -183,19 +235,15 @@ def generate_jwt_keys():
     # Generate keys if they don't exist
     if not os.path.exists(private_key_path):
         try:
-            logger.info("Generating RSA keys", private_key_path=private_key_path, public_key_path=public_key_path)
-            
             # Generate private key
-            result = subprocess.run(
+            subprocess.run(
                 ["openssl", "genrsa", "-out", private_key_path, "2048"],
                 check=True,
                 capture_output=True,
-                text=True,
             )
-            logger.info("Private key generation completed", stdout=result.stdout, stderr=result.stderr)
 
             # Generate public key
-            result = subprocess.run(
+            subprocess.run(
                 [
                     "openssl",
                     "rsa",
@@ -207,21 +255,11 @@ def generate_jwt_keys():
                 ],
                 check=True,
                 capture_output=True,
-                text=True,
             )
-            logger.info("Public key generation completed", stdout=result.stdout, stderr=result.stderr)
-            
-            # Verify files were created and are readable
-            logger.info("Verifying generated keys")
-            logger.info("Private key exists", exists=os.path.exists(private_key_path))
-            logger.info("Public key exists", exists=os.path.exists(public_key_path))
-            if os.path.exists(private_key_path):
-                stat_info = os.stat(private_key_path)
-                logger.info("Private key permissions", mode=oct(stat_info.st_mode), uid=stat_info.st_uid, gid=stat_info.st_gid)
 
             logger.info("Generated RSA keys for JWT signing")
         except subprocess.CalledProcessError as e:
-            logger.error("Failed to generate RSA keys", error=str(e), stdout=e.stdout, stderr=e.stderr)
+            logger.error("Failed to generate RSA keys", error=str(e))
             raise
     else:
         logger.info("RSA keys already exist, skipping generation")
@@ -277,60 +315,100 @@ async def ingest_default_documents_when_ready(services):
 
 
 async def _ingest_default_documents_langflow(services, file_paths):
-    """Ingest default documents using Langflow via a single background task (aligned with router semantics)."""
+    """Ingest default documents using Langflow upload-ingest-delete pipeline."""
     langflow_file_service = services["langflow_file_service"]
     session_manager = services["session_manager"]
 
     logger.info(
-        "Using Langflow ingestion pipeline for default documents (task-based)",
+        "Using Langflow ingestion pipeline for default documents",
         file_count=len(file_paths),
     )
 
-    # Use AnonymousUser for default documents
-    from session_manager import AnonymousUser
+    success_count = 0
+    error_count = 0
 
-    anonymous_user = AnonymousUser()
+    for file_path in file_paths:
+        try:
+            logger.debug("Processing file with Langflow pipeline", file_path=file_path)
 
-    # Ensure an (anonymous) JWT is available for OpenSearch/flow auth
-    effective_jwt = None
-    try:
-        session_manager.get_user_opensearch_client(anonymous_user.user_id, None)
-        if hasattr(session_manager, "_anonymous_jwt"):
-            effective_jwt = session_manager._anonymous_jwt
-    except Exception:
-        pass
+            # Read file content
+            with open(file_path, "rb") as f:
+                content = f.read()
 
-    # Prepare tweaks with anonymous metadata for OpenSearch component
-    default_tweaks = {
-        "OpenSearchHybrid-Ve6bS": {
-            "docs_metadata": [
-                {"key": "owner", "value": None},
-                {"key": "owner_name", "value": anonymous_user.name},
-                {"key": "owner_email", "value": anonymous_user.email},
-                {"key": "connector_type", "value": "system_default"},
-            ]
-        }
-    }
+            # Create file tuple for upload
+            filename = os.path.basename(file_path)
+            # Determine content type based on file extension
+            content_type, _ = mimetypes.guess_type(filename)
+            if not content_type:
+                content_type = "application/octet-stream"
 
-    # Create a single task to process all default documents through Langflow
-    task_id = await services["task_service"].create_langflow_upload_task(
-        user_id=anonymous_user.user_id,
-        file_paths=file_paths,
-        langflow_file_service=langflow_file_service,
-        session_manager=session_manager,
-        jwt_token=effective_jwt,
-        owner_name=anonymous_user.name,
-        owner_email=anonymous_user.email,
-        session_id=None,
-        tweaks=default_tweaks,
-        settings=None,
-        delete_after_ingest=True,
-    )
+            file_tuple = (filename, content, content_type)
+
+            # Use AnonymousUser details for default documents
+            from session_manager import AnonymousUser
+
+            anonymous_user = AnonymousUser()
+
+            # Get JWT token using same logic as DocumentFileProcessor
+            # This will handle anonymous JWT creation if needed for anonymous user
+            effective_jwt = None
+
+            # Let session manager handle anonymous JWT creation if needed
+            if session_manager:
+                # This call will create anonymous JWT if needed (same as DocumentFileProcessor)
+                session_manager.get_user_opensearch_client(
+                    anonymous_user.user_id, effective_jwt
+                )
+                # Get the JWT that was created by session manager
+                if hasattr(session_manager, "_anonymous_jwt"):
+                    effective_jwt = session_manager._anonymous_jwt
+
+            # Prepare tweaks for default documents with anonymous user metadata
+            default_tweaks = {
+                "OpenSearchHybrid-Ve6bS": {
+                    "docs_metadata": [
+                        {"key": "owner", "value": None},
+                        {"key": "owner_name", "value": anonymous_user.name},
+                        {"key": "owner_email", "value": anonymous_user.email},
+                        {"key": "connector_type", "value": "system_default"},
+                    ]
+                }
+            }
+
+            # Use langflow upload_and_ingest_file method with JWT token
+            result = await langflow_file_service.upload_and_ingest_file(
+                file_tuple=file_tuple,
+                session_id=None,  # No session for default documents
+                tweaks=default_tweaks,  # Add anonymous user metadata
+                settings=None,  # Use default ingestion settings
+                jwt_token=effective_jwt,  # Use JWT token (anonymous if needed)
+                delete_after_ingest=True,  # Clean up after ingestion
+                owner=None,
+                owner_name=anonymous_user.name,
+                owner_email=anonymous_user.email,
+                connector_type="system_default",
+            )
+
+            logger.info(
+                "Successfully ingested file via Langflow",
+                file_path=file_path,
+                result_status=result.get("status"),
+            )
+            success_count += 1
+
+        except Exception as e:
+            logger.error(
+                "Failed to ingest file via Langflow",
+                file_path=file_path,
+                error=str(e),
+            )
+            error_count += 1
 
     logger.info(
-        "Started Langflow ingestion task for default documents",
-        task_id=task_id,
-        file_count=len(file_paths),
+        "Langflow ingestion completed",
+        success_count=success_count,
+        error_count=error_count,
+        total_files=len(file_paths),
     )
 
 
@@ -364,14 +442,16 @@ async def _ingest_default_documents_openrag(services, file_paths):
 
 async def startup_tasks(services):
     """Startup tasks"""
-    from config.settings import DISABLE_STARTUP_INGEST
-
     logger.info("Starting startup tasks")
-    await init_index()
-    if DISABLE_STARTUP_INGEST:
-        logger.info("Startup ingest disabled via DISABLE_STARTUP_INGEST; skipping default documents ingestion")
-    else:
-        await ingest_default_documents_when_ready(services)
+    # Only initialize basic OpenSearch connection, not the index
+    # Index will be created after onboarding when we know the embedding model
+    await wait_for_opensearch()
+
+    if DISABLE_INGEST_WITH_LANGFLOW:
+        await _ensure_opensearch_index()
+
+    # Configure alerting security
+    await configure_alerting_security()
 
 
 async def initialize_services():
@@ -392,6 +472,7 @@ async def initialize_services():
     chat_service = ChatService()
     flows_service = FlowsService()
     knowledge_filter_service = KnowledgeFilterService(session_manager)
+    models_service = ModelsService()
     monitor_service = MonitorService(session_manager)
 
     # Set process pool for document service
@@ -420,7 +501,11 @@ async def initialize_services():
     )
 
     # Initialize auth service
-    auth_service = AuthService(session_manager, connector_service)
+    auth_service = AuthService(
+        session_manager,
+        connector_service,
+        langflow_mcp_service=LangflowMCPService(),
+    )
 
     # Load persisted connector connections at startup so webhooks and syncs
     # can resolve existing subscriptions immediately after server boot
@@ -453,6 +538,7 @@ async def initialize_services():
         "auth_service": auth_service,
         "connector_service": connector_service,
         "knowledge_filter_service": knowledge_filter_service,
+        "models_service": models_service,
         "monitor_service": monitor_service,
         "session_manager": session_manager,
     }
@@ -464,6 +550,41 @@ async def create_app():
 
     # Create route handlers with service dependencies injected
     routes = [
+        # Upload endpoints
+        Route(
+            "/upload",
+            require_auth(services["session_manager"])(
+                partial(
+                    upload.upload,
+                    document_service=services["document_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        # Langflow Files endpoints
+        Route(
+            "/langflow/files/upload",
+            optional_auth(services["session_manager"])(
+                partial(
+                    langflow_files.upload_user_file,
+                    langflow_file_service=services["langflow_file_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/langflow/ingest",
+            require_auth(services["session_manager"])(
+                partial(
+                    langflow_files.run_ingestion,
+                    langflow_file_service=services["langflow_file_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
         Route(
             "/langflow/files",
             require_auth(services["session_manager"])(
@@ -474,6 +595,18 @@ async def create_app():
                 )
             ),
             methods=["DELETE"],
+        ),
+        Route(
+            "/langflow/upload_ingest",
+            require_auth(services["session_manager"])(
+                partial(
+                    langflow_files.upload_and_ingest_user_file,
+                    langflow_file_service=services["langflow_file_service"],
+                    session_manager=services["session_manager"],
+                    task_service=services["task_service"],
+                )
+            ),
+            methods=["POST"],
         ),
         Route(
             "/upload_context",
@@ -494,7 +627,6 @@ async def create_app():
                     upload.upload_path,
                     task_service=services["task_service"],
                     session_manager=services["session_manager"],
-                    langflow_file_service=services["langflow_file_service"],
                 )
             ),
             methods=["POST"],
@@ -712,6 +844,18 @@ async def create_app():
             ),
             methods=["GET"],
         ),
+        # Session deletion endpoint
+        Route(
+            "/sessions/{session_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    chat.delete_session_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
+        ),
         # Authentication endpoints
         Route(
             "/auth/init",
@@ -809,6 +953,29 @@ async def create_app():
             ),
             methods=["POST", "GET"],
         ),
+        # Document endpoints
+        Route(
+            "/documents/check-filename",
+            require_auth(services["session_manager"])(
+                partial(
+                    documents.check_filename_exists,
+                    document_service=services["document_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/documents/delete-by-filename",
+            require_auth(services["session_manager"])(
+                partial(
+                    documents.delete_documents_by_filename,
+                    document_service=services["document_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
         # OIDC endpoints
         Route(
             "/.well-known/openid-configuration",
@@ -827,7 +994,7 @@ async def create_app():
             ),
             methods=["POST"],
         ),
-        # Settings endpoint
+        # Settings endpoints
         Route(
             "/settings",
             require_auth(services["session_manager"])(
@@ -836,6 +1003,69 @@ async def create_app():
                 )
             ),
             methods=["GET"],
+        ),
+        Route(
+            "/settings",
+            require_auth(services["session_manager"])(
+                partial(
+                    settings.update_settings,
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        # Models endpoints
+        Route(
+            "/models/openai",
+            require_auth(services["session_manager"])(
+                partial(
+                    models.get_openai_models,
+                    models_service=services["models_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/models/ollama",
+            require_auth(services["session_manager"])(
+                partial(
+                    models.get_ollama_models,
+                    models_service=services["models_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/models/ibm",
+            require_auth(services["session_manager"])(
+                partial(
+                    models.get_ibm_models,
+                    models_service=services["models_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET", "POST"],
+        ),
+        # Onboarding endpoint
+        Route(
+            "/onboarding",
+            require_auth(services["session_manager"])(
+                partial(settings.onboarding, flows_service=services["flows_service"])
+            ),
+            methods=["POST"],
+        ),
+        # Docling preset update endpoint
+        Route(
+            "/settings/docling-preset",
+            require_auth(services["session_manager"])(
+                partial(
+                    settings.update_docling_preset,
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["PATCH"],
         ),
         Route(
             "/nudges",
@@ -870,7 +1100,7 @@ async def create_app():
             methods=["POST"],
         ),
         Route(
-            "/upload",
+            "/router/upload_ingest",
             require_auth(services["session_manager"])(
                 partial(
                     router.upload_ingest_router,
@@ -881,6 +1111,12 @@ async def create_app():
                 )
             ),
             methods=["POST"],
+        ),
+        # Docling service proxy
+        Route(
+            "/docling/health",
+            partial(docling.health),
+            methods=["GET"],
         ),
     ]
 
@@ -900,43 +1136,8 @@ async def create_app():
     @app.on_event("shutdown")
     async def shutdown_event():
         await cleanup_subscriptions_proper(services)
-        # Close HTTP/OpenSearch clients cleanly
-        try:
-            from config.settings import clients as _clients
-
-            if getattr(_clients, "langflow_http_client", None):
-                try:
-                    await _clients.langflow_http_client.aclose()
-                except Exception:
-                    pass
-            if getattr(_clients, "opensearch", None):
-                try:
-                    await _clients.opensearch.close()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        # Close any per-user OpenSearch clients
-        try:
-            sm = services.get("session_manager")
-            if sm and getattr(sm, "user_opensearch_clients", None):
-                for oc in sm.user_opensearch_clients.values():
-                    try:
-                        await oc.close()
-                    except Exception:
-                        pass
-        except Exception:
-            pass
 
     return app
-
-
-async def startup():
-    """Application startup tasks"""
-    await init_index()
-    # Get services from app state if needed for initialization
-    # services = app.state.services
-    # await services['connector_service'].initialize()
 
 
 def cleanup():

@@ -1,37 +1,81 @@
-"use client"
+"use client";
 
-import { usePathname } from "next/navigation"
-import { Bell } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Navigation } from "@/components/navigation"
-import { UserNav } from "@/components/user-nav"
-import { TaskNotificationMenu } from "@/components/task-notification-menu"
-import { KnowledgeFilterDropdown } from "@/components/knowledge-filter-dropdown"
-import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel"
+import { Bell, Loader2 } from "lucide-react";
+import { usePathname } from "next/navigation";
+import {
+  useGetConversationsQuery,
+  type ChatConversation,
+} from "@/app/api/queries/useGetConversationsQuery";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { DoclingHealthBanner } from "@/components/docling-health-banner";
+import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
+import Logo from "@/components/logo/logo";
+import { Navigation } from "@/components/navigation";
+import { TaskNotificationMenu } from "@/components/task-notification-menu";
+import { UserNav } from "@/components/user-nav";
+import { useAuth } from "@/contexts/auth-context";
+import { useChat } from "@/contexts/chat-context";
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
-import { useTask } from "@/contexts/task-context"
-import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context"
-import { useAuth } from "@/contexts/auth-context"
-import { Loader2 } from "lucide-react"
+import { useTask } from "@/contexts/task-context";
+import { useDoclingHealthQuery } from "@/src/app/api/queries/useDoclingHealthQuery";
+import { cn } from "@/lib/utils";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-  const { tasks, isMenuOpen, toggleMenu } = useTask()
-  const { selectedFilter, setSelectedFilter, isPanelOpen } = useKnowledgeFilter()
-  const { isLoading } = useAuth()
-  
+  const pathname = usePathname();
+  const { tasks, isMenuOpen, toggleMenu } = useTask();
+  const { isPanelOpen } = useKnowledgeFilter();
+  const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
+  const {
+    endpoint,
+    refreshTrigger,
+    refreshConversations,
+    startNewConversation,
+  } = useChat();
+  const { isLoading: isSettingsLoading } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const {
+    data: health,
+    isLoading: isHealthLoading,
+    isError,
+  } = useDoclingHealthQuery();
+
+  // Only fetch conversations on chat page
+  const isOnChatPage = pathname === "/" || pathname === "/chat";
+  const { data: conversations = [], isLoading: isConversationsLoading } =
+    useGetConversationsQuery(endpoint, refreshTrigger, {
+      enabled: isOnChatPage && (isAuthenticated || isNoAuthMode),
+    }) as { data: ChatConversation[]; isLoading: boolean };
+
+  const handleNewConversation = () => {
+    refreshConversations();
+    startNewConversation();
+  };
+
   // List of paths that should not show navigation
-  const authPaths = ['/login', '/auth/callback']
-  const isAuthPage = authPaths.includes(pathname)
-  
+  const authPaths = ["/login", "/auth/callback", "/onboarding"];
+  const isAuthPage = authPaths.includes(pathname);
+  const isOnKnowledgePage = pathname.startsWith("/knowledge");
+
+  // List of paths with smaller max-width
+  const smallWidthPaths = ["/settings/connector/new"];
+  const isSmallWidthPath = smallWidthPaths.includes(pathname);
+
   // Calculate active tasks for the bell icon
-  const activeTasks = tasks.filter(task => 
-    task.status === 'pending' || task.status === 'running' || task.status === 'processing'
-  )
-  
+  const activeTasks = tasks.filter(
+    task =>
+      task.status === "pending" ||
+      task.status === "running" ||
+      task.status === "processing"
+  );
+
+  const isUnhealthy = health?.status === "unhealthy" || isError;
+  const isBannerVisible = !isHealthLoading && isUnhealthy;
+
   // Show loading state when backend isn't ready
-  if (isLoading) {
+  if (isLoading || isSettingsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
@@ -39,41 +83,43 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           <p className="text-muted-foreground">Starting OpenRAG...</p>
         </div>
       </div>
-    )
+    );
   }
-  
+
   if (isAuthPage) {
     // For auth pages, render without navigation
-    return (
-      <div className="h-full">
-        {children}
-      </div>
-    )
+    return <div className="h-full">{children}</div>;
   }
-  
+
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
-    <div className="h-full relative">
-      <header className="header-arrangement bg-background sticky top-0 z-50">
-        <div className="header-start-display px-4">
+    <div
+      className={cn(
+        "app-grid-arrangement",
+        isBannerVisible && "banner-visible",
+        isPanelOpen && isOnKnowledgePage && !isMenuOpen && "filters-open",
+        isMenuOpen && "notifications-open"
+      )}
+    >
+      <div className="w-full [grid-area:banner]">
+        <DoclingHealthBanner className="w-full" />
+      </div>
+      <header className="header-arrangement bg-background [grid-area:header]">
+        <div className="header-start-display px-[16px]">
           {/* Logo/Title */}
-          <div className="flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="22" viewBox="0 0 24 22" fill="currentColor" className="h-6 w-6 text-primary">
-              <path d="M13.0486 0.462158H9.75399C9.44371 0.462158 9.14614 0.586082 8.92674 0.806667L4.03751 5.72232C3.81811 5.9429 3.52054 6.06682 3.21026 6.06682H1.16992C0.511975 6.06682 -0.0165756 6.61212 0.000397655 7.2734L0.0515933 9.26798C0.0679586 9.90556 0.586745 10.4139 1.22111 10.4139H3.59097C3.90124 10.4139 4.19881 10.2899 4.41821 10.0694L9.34823 5.11269C9.56763 4.89211 9.8652 4.76818 10.1755 4.76818H13.0486C13.6947 4.76818 14.2185 4.24157 14.2185 3.59195V1.63839C14.2185 0.988773 13.6947 0.462158 13.0486 0.462158Z"></path>
-              <path d="M19.5355 11.5862H22.8301C23.4762 11.5862 24 12.1128 24 12.7624V14.716C24 15.3656 23.4762 15.8922 22.8301 15.8922H19.957C19.6467 15.8922 19.3491 16.0161 19.1297 16.2367L14.1997 21.1934C13.9803 21.414 13.6827 21.5379 13.3725 21.5379H11.0026C10.3682 21.5379 9.84945 21.0296 9.83309 20.392L9.78189 18.3974C9.76492 17.7361 10.2935 17.1908 10.9514 17.1908H12.9918C13.302 17.1908 13.5996 17.0669 13.819 16.8463L18.7082 11.9307C18.9276 11.7101 19.2252 11.5862 19.5355 11.5862Z"></path>
-              <path d="M19.5355 2.9796L22.8301 2.9796C23.4762 2.9796 24 3.50622 24 4.15583V6.1094C24 6.75901 23.4762 7.28563 22.8301 7.28563H19.957C19.6467 7.28563 19.3491 7.40955 19.1297 7.63014L14.1997 12.5868C13.9803 12.8074 13.6827 12.9313 13.3725 12.9313H10.493C10.1913 12.9313 9.90126 13.0485 9.68346 13.2583L4.14867 18.5917C3.93087 18.8016 3.64085 18.9187 3.33917 18.9187H1.32174C0.675616 18.9187 0.151832 18.3921 0.151832 17.7425V15.7343C0.151832 15.0846 0.675616 14.558 1.32174 14.558H3.32468C3.63496 14.558 3.93253 14.4341 4.15193 14.2135L9.40827 8.92878C9.62767 8.70819 9.92524 8.58427 10.2355 8.58427H12.9918C13.302 8.58427 13.5996 8.46034 13.819 8.23976L18.7082 3.32411C18.9276 3.10353 19.2252 2.9796 19.5355 2.9796Z"></path>
-            </svg>
-            <span className="text-lg font-semibold">OpenRAG</span>
+          <div className="flex items-center">
+            <Logo className="fill-primary" width={24} height={22} />
+            <span className="text-lg font-semibold pl-2.5">OpenRAG</span>
           </div>
         </div>
         <div className="header-end-division">
-          <div className="header-end-display">
+          <div className="justify-end flex items-center">
             {/* Knowledge Filter Dropdown */}
-            <KnowledgeFilterDropdown 
+            {/* <KnowledgeFilterDropdown
               selectedFilter={selectedFilter}
               onFilterSelect={setSelectedFilter}
-            />
-            
+            /> */}
+
             {/* GitHub Star Button */}
             {/* <GitHubStarButton repo="phact/openrag" /> */}
 
@@ -81,40 +127,54 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             {/* <DiscordLink inviteCode="EqksyE2EX9" /> */}
 
             {/* Task Notification Bell */}
-            <Button
-              variant="ghost"
-              size="iconSm"
+            <button
               onClick={toggleMenu}
-              className="relative"
+              className="h-8 w-8 hover:bg-muted rounded-lg flex items-center justify-center"
             >
-              <Bell className="h-4 w-4 text-muted-foreground" />
+              <Bell size={16} className="text-muted-foreground" />
               {activeTasks.length > 0 && (
                 <div className="header-notifications" />
               )}
-            </Button>
-            
+            </button>
+
             {/* Separator */}
-            <div className="w-px h-6 bg-border" />
-            
+            <div className="w-px h-6 bg-border mx-3" />
+
             <UserNav />
           </div>
         </div>
       </header>
-      <div className="side-bar-arrangement bg-background fixed left-0 top-[53px] bottom-0 md:flex hidden">
-        <Navigation />
-      </div>
-      <main className={`md:pl-72 transition-all duration-300 ${
-        isMenuOpen && isPanelOpen ? 'md:pr-[728px]' : // Both open: 384px (menu) + 320px (KF panel) + 24px (original padding)
-        isMenuOpen ? 'md:pr-96' : // Only menu open: 384px
-        isPanelOpen ? 'md:pr-80' : // Only KF panel open: 320px  
-        'md:pr-6' // Neither open: 24px
-      }`}>
-        <div className="container py-6 lg:py-8">
+
+      {/* Sidebar Navigation */}
+      <aside className="bg-background border-r overflow-hidden [grid-area:nav]">
+        <Navigation
+          conversations={conversations}
+          isConversationsLoading={isConversationsLoading}
+          onNewConversation={handleNewConversation}
+        />
+      </aside>
+
+      {/* Main Content */}
+      <main className="overflow-y-auto [grid-area:main]">
+        <div
+          className={cn(
+            "p-6 h-full container",
+            isSmallWidthPath && "max-w-[850px] ml-0"
+          )}
+        >
           {children}
         </div>
       </main>
-      <TaskNotificationMenu />
-      <KnowledgeFilterPanel />
+
+      {/* Task Notifications Panel */}
+      <aside className="overflow-y-auto overflow-x-hidden [grid-area:notifications]">
+        {isMenuOpen && <TaskNotificationMenu />}
+      </aside>
+
+      {/* Knowledge Filter Panel */}
+      <aside className="overflow-y-auto overflow-x-hidden [grid-area:filters]">
+        {isPanelOpen && <KnowledgeFilterPanel />}
+      </aside>
     </div>
-  )
-} 
+  );
+}

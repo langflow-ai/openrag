@@ -18,8 +18,7 @@ async def chat_endpoint(request: Request, chat_service, session_manager):
     user = request.state.user
     user_id = user.user_id
 
-    # Get JWT token from auth middleware
-    jwt_token = request.state.jwt_token
+    jwt_token = session_manager.get_effective_jwt_token(user_id, request.state.jwt_token)
 
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
@@ -76,8 +75,7 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
     user = request.state.user
     user_id = user.user_id
 
-    # Get JWT token from auth middleware
-    jwt_token = request.state.jwt_token
+    jwt_token = session_manager.get_effective_jwt_token(user_id, request.state.jwt_token)
 
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
@@ -156,4 +154,28 @@ async def langflow_history_endpoint(request: Request, chat_service, session_mana
     except Exception as e:
         return JSONResponse(
             {"error": f"Failed to get langflow history: {str(e)}"}, status_code=500
+        )
+
+
+async def delete_session_endpoint(request: Request, chat_service, session_manager):
+    """Delete a chat session"""
+    user = request.state.user
+    user_id = user.user_id
+    session_id = request.path_params["session_id"]
+
+    try:
+        # Delete from both local storage and Langflow
+        result = await chat_service.delete_session(user_id, session_id)
+
+        if result.get("success"):
+            return JSONResponse({"message": "Session deleted successfully"})
+        else:
+            return JSONResponse(
+                {"error": result.get("error", "Failed to delete session")},
+                status_code=500
+            )
+    except Exception as e:
+        logger.error(f"Error deleting session: {e}")
+        return JSONResponse(
+            {"error": f"Failed to delete session: {str(e)}"}, status_code=500
         )

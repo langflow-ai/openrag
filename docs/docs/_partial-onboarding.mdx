@@ -1,0 +1,49 @@
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+## Application onboarding 
+
+The first time you start OpenRAG, whether using the TUI or a `.env` file, you must complete application onboarding.
+
+Most values from onboarding can be changed later in the OpenRAG **Settings** page, but there are important restrictions.
+
+The **language model provider** and **embeddings model provider** can only be selected at onboarding, and you must use the same provider for your language model and embedding model.
+To change your provider selection later, you must completely reinstall OpenRAG.
+
+The **language model** can be changed later in **Settings**, but the **embeddings model** cannot be changed later.
+
+    <Tabs groupId="Provider">
+    <TabItem value="OpenAI" label="OpenAI" default>
+    1. Enable **Get API key from environment variable** to automatically enter your key from the TUI-generated `.env` file.
+    2. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+    3. To load 2 sample PDFs, enable **Sample dataset**.
+    This is recommended, but not required.
+    4. Click **Complete**.
+    5. Continue with the [Quickstart](/quickstart).
+
+    </TabItem>
+    <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
+    1. Complete the fields for **watsonx.ai API Endpoint**, **IBM API key**, and **IBM Project ID**.
+    These values are found in your IBM watsonx deployment.
+    2. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+    3. To load 2 sample PDFs, enable **Sample dataset**.
+    This is recommended, but not required.
+    4. Click **Complete**.
+    5. Continue with the [Quickstart](/quickstart).       
+       
+    </TabItem>
+    <TabItem value="Ollama" label="Ollama">
+    :::tip
+    Ollama is not included with OpenRAG. To install Ollama, see the [Ollama documentation](https://docs.ollama.com/).
+    :::   
+    1. Enter your Ollama server's base URL address.
+    The default Ollama server address is `http://localhost:11434`.
+    OpenRAG automatically transforms `localhost` to access services outside of the container, and sends a test connection to your Ollama server to confirm connectivity.
+    2. Select the **Embedding Model** and **Language Model** your Ollama server is running.
+    OpenRAG retrieves the available models from your Ollama server.
+    3. To load 2 sample PDFs, enable **Sample dataset**.
+    This is recommended, but not required.
+    4. Click **Complete**.
+    5. Continue with the [Quickstart](/quickstart).        
+    </TabItem>
+    </Tabs>

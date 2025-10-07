@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bell, CheckCircle, XCircle, Clock, Loader2, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,8 +8,15 @@ import { Badge } from '@/components/ui/badge'
 import { useTask, Task } from '@/contexts/task-context'
 
 export function TaskNotificationMenu() {
-  const { tasks, isFetching, isMenuOpen, cancelTask } = useTask()
+  const { tasks, isFetching, isMenuOpen, isRecentTasksExpanded, cancelTask } = useTask()
   const [isExpanded, setIsExpanded] = useState(false)
+
+  // Sync local state with context state
+  useEffect(() => {
+    if (isRecentTasksExpanded) {
+      setIsExpanded(true)
+    }
+  }, [isRecentTasksExpanded])
 
   // Don't render if menu is closed
   if (!isMenuOpen) return null
@@ -60,7 +67,9 @@ export function TaskNotificationMenu() {
     const processed = task.processed_files || 0
     const successful = task.successful_files || 0
     const failed = task.failed_files || 0
-    
+    const running = task.running_files || 0
+    const pending = task.pending_files || 0
+
     if (total > 0) {
       return {
         basic: `${processed}/${total} files`,
@@ -69,6 +78,8 @@ export function TaskNotificationMenu() {
           processed,
           successful,
           failed,
+          running,
+          pending,
           remaining: total - processed
         }
       }
@@ -132,10 +143,10 @@ export function TaskNotificationMenu() {
   }
 
   return (
-    <div className="fixed top-14 right-0 z-40 w-80 h-[calc(100vh-3.5rem)] bg-background border-l border-border/40">
+    <div className="h-full bg-background border-l">
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="p-4 border-b border-border/40">
+        <div className="p-4 border-b">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Bell className="h-5 w-5 text-muted-foreground" />
@@ -197,9 +208,15 @@ export function TaskNotificationMenu() {
                               </span>
                             </div>
                             <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                              <span className="text-blue-600">
+                                {formatTaskProgress(task)?.detailed.running} running
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
                               <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
                               <span className="text-yellow-600">
-                                {formatTaskProgress(task)?.detailed.remaining} pending
+                                {formatTaskProgress(task)?.detailed.pending} pending
                               </span>
                             </div>
                           </div>
@@ -288,6 +305,9 @@ export function TaskNotificationMenu() {
                           <div className="text-xs text-muted-foreground mt-1">
                             {formatTaskProgress(task)?.detailed.successful} success, {' '}
                             {formatTaskProgress(task)?.detailed.failed} failed
+                            {(formatTaskProgress(task)?.detailed.running || 0) > 0 && (
+                              <span>, {formatTaskProgress(task)?.detailed.running} running</span>
+                            )}
                           </div>
                         )}
                         {task.status === 'failed' && task.error && (

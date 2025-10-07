@@ -19,10 +19,18 @@ class KnowledgeFilterService:
 
             # Index the knowledge filter document
             result = await opensearch_client.index(
-                index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_doc["id"], body=filter_doc
+                index=KNOWLEDGE_FILTERS_INDEX_NAME,
+                id=filter_doc["id"],
+                body=filter_doc,
+                refresh="wait_for",
             )
 
             if result.get("result") == "created":
+                # Extra safety: ensure visibility in subsequent searches
+                try:
+                    await opensearch_client.indices.refresh(index=KNOWLEDGE_FILTERS_INDEX_NAME)
+                except Exception:
+                    pass
                 return {"success": True, "id": filter_doc["id"], "filter": filter_doc}
             else:
                 return {"success": False, "error": "Failed to create knowledge filter"}
@@ -138,11 +146,19 @@ class KnowledgeFilterService:
 
             # Update the document
             result = await opensearch_client.update(
-                index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id, body={"doc": updates}
+                index=KNOWLEDGE_FILTERS_INDEX_NAME,
+                id=filter_id,
+                body={"doc": updates},
+                refresh="wait_for",
             )
 
             if result.get("result") in ["updated", "noop"]:
                 # Get the updated document
+                # Ensure visibility before fetching/returning
+                try:
+                    await opensearch_client.indices.refresh(index=KNOWLEDGE_FILTERS_INDEX_NAME)
+                except Exception:
+                    pass
                 updated_doc = await opensearch_client.get(
                     index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id
                 )
@@ -164,10 +180,17 @@ class KnowledgeFilterService:
             )
 
             result = await opensearch_client.delete(
-                index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id
+                index=KNOWLEDGE_FILTERS_INDEX_NAME,
+                id=filter_id,
+                refresh="wait_for",
             )
 
             if result.get("result") == "deleted":
+                # Extra safety: ensure visibility in subsequent searches
+                try:
+                    await opensearch_client.indices.refresh(index=KNOWLEDGE_FILTERS_INDEX_NAME)
+                except Exception:
+                    pass
                 return {
                     "success": True,
                     "message": "Knowledge filter deleted successfully",
@@ -230,7 +253,10 @@ class KnowledgeFilterService:
             }
 
             result = await opensearch_client.update(
-                index=KNOWLEDGE_FILTERS_INDEX_NAME, id=filter_id, body=update_body
+                index=KNOWLEDGE_FILTERS_INDEX_NAME,
+                id=filter_id,
+                body=update_body,
+                refresh="wait_for",
             )
 
             if result.get("result") in ["updated", "noop"]:
