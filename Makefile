@@ -194,11 +194,23 @@ test-ci:
 	@set -e; \
 	echo "Installing test dependencies..."; \
 	uv sync --group dev; \
+	if [ ! -f keys/private_key.pem ]; then \
+		echo "Generating RSA keys for JWT signing..."; \
+		uv run python -c "from src.main import generate_jwt_keys; generate_jwt_keys()"; \
+	else \
+		echo "RSA keys already exist, ensuring correct permissions..."; \
+		chmod 600 keys/private_key.pem 2>/dev/null || true; \
+		chmod 644 keys/public_key.pem 2>/dev/null || true; \
+	fi; \
 	echo "Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
 	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow; \
 	echo "Starting docling-serve..."; \
 	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
 	echo "Docling-serve started at $$DOCLING_ENDPOINT"; \
+	echo "Waiting for backend OIDC endpoint..."; \
+	for i in $$(seq 1 60); do \
+		curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+	done; \
 	echo "Waiting for OpenSearch..."; \
 	for i in $$(seq 1 60); do \
 		curl -k -s https://localhost:9200 -u admin:$${OPENSEARCH_PASSWORD} >/dev/null 2>&1 && break || sleep 2; \
