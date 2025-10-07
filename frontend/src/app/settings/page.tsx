@@ -85,6 +85,7 @@ interface Connector {
   connectionId?: string;
   access_token?: string;
   selectedFiles?: GoogleDriveFile[] | OneDriveFile[];
+  available?: boolean;
 }
 
 interface SyncResult {
