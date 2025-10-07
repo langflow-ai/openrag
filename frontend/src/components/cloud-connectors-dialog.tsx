@@ -283,6 +283,7 @@ export function CloudConnectorsDialog({
                         accessToken={connectorAccessTokens[connector.type]}
                         onPickerStateChange={() => {}}
                         clientId={connector.clientId}
+                        isIngesting={false}
                       />
                     </div>
                   );

@@ -19,6 +19,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 
 // Task interface is now imported from useGetTasksQuery
+export type { Task };
 
 export interface TaskFile {
   filename: string;
