@@ -45,7 +45,9 @@ def session_manager():
     """Session manager for testing."""
     # Generate RSA keys before creating SessionManager
     generate_jwt_keys()
-    return SessionManager("test-secret-key")
+    sm = SessionManager("test-secret-key")
+    print(f"[DEBUG] SessionManager created with keys: private={sm.private_key_path}, public={sm.public_key_path}")
+    return sm
 
 
 @pytest.fixture

@@ -13,11 +13,32 @@ async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 3
     - GET /auth/me should return 200 immediately (confirms app is up).
     - POST /search with query "*" avoids embeddings and checks OpenSearch/index readiness.
     """
+    # First test OpenSearch JWT directly
+    from src.session_manager import SessionManager, AnonymousUser
+    import os
+    sm = SessionManager("test")
+    test_token = sm.create_jwt_token(AnonymousUser())
+    print(f"[DEBUG] Generated test JWT token (first 50 chars): {test_token[:50]}...")
+    print(f"[DEBUG] Using key paths: private={sm.private_key_path}, public={sm.public_key_path}")
+
+    # Test OpenSearch JWT auth directly
+    opensearch_url = f"https://{os.getenv('OPENSEARCH_HOST', 'localhost')}:{os.getenv('OPENSEARCH_PORT', '9200')}"
+    async with httpx.AsyncClient(verify=False) as os_client:
+        r_os = await os_client.post(
+            f"{opensearch_url}/documents/_search",
+            headers={"Authorization": f"Bearer {test_token}"},
+            json={"query": {"match_all": {}}, "size": 0}
+        )
+        print(f"[DEBUG] Direct OpenSearch JWT test: status={r_os.status_code}, body={r_os.text[:300]}")
+        if r_os.status_code == 401:
+            print(f"[DEBUG] OpenSearch rejected JWT! This means OIDC config is not working.")
+
     deadline = asyncio.get_event_loop().time() + timeout_s
     last_err = None
     while asyncio.get_event_loop().time() < deadline:
         try:
             r1 = await client.get("/auth/me")
+            print(f"[DEBUG] /auth/me status={r1.status_code}, body={r1.text[:200]}")
             if r1.status_code in (401, 403):
                 raise AssertionError(f"/auth/me returned {r1.status_code}: {r1.text}")
             if r1.status_code != 200:
@@ -25,15 +46,19 @@ async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 3
                 continue
             # match_all readiness probe; no embeddings
             r2 = await client.post("/search", json={"query": "*", "limit": 0})
+            print(f"[DEBUG] /search status={r2.status_code}, body={r2.text[:200]}")
             if r2.status_code in (401, 403):
+                print(f"[DEBUG] Search failed with auth error. Response: {r2.text}")
                 raise AssertionError(f"/search returned {r2.status_code}: {r2.text}")
             if r2.status_code == 200:
+                print("[DEBUG] Service ready!")
                 return
             last_err = r2.text
         except AssertionError:
             raise
         except Exception as e:
             last_err = str(e)
+            print(f"[DEBUG] Exception during readiness check: {e}")
         await asyncio.sleep(0.5)
     raise AssertionError(f"Service not ready in time: {last_err}")
 

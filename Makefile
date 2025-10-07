@@ -211,8 +211,15 @@ test-ci:
 	for i in $$(seq 1 60); do \
 		docker exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
+	echo "Checking key files..."; \
+	ls -la keys/; \
+	echo "Public key fingerprint (host):"; \
+	ssh-keygen -l -f keys/public_key.pem 2>/dev/null || openssl rsa -pubin -in keys/public_key.pem -text -noout | head -5; \
+	echo "Public key fingerprint (container):"; \
+	docker exec openrag-backend sh -c "ls -la /app/keys/ && openssl rsa -pubin -in /app/keys/public_key.pem -text -noout | head -5"; \
 	echo "Generating test JWT token..."; \
 	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))"); \
+	echo "Test token (first 100 chars): $${TEST_TOKEN:0:100}..."; \
 	echo "Waiting for OpenSearch with JWT auth to work..."; \
 	JWT_AUTH_READY=false; \
 	for i in $$(seq 1 60); do \
