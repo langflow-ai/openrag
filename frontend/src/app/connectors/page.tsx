@@ -92,6 +92,7 @@ export default function ConnectorsPage() {
           selectedFiles={selectedFiles}
           isAuthenticated={false} // This would come from auth context in real usage
           accessToken={undefined} // This would come from connected account
+          isIngesting={isSyncing}
         />
       </div>
 

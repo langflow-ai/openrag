@@ -230,7 +230,7 @@ function ChatPage() {
       content: `🔄 Starting upload of **${file.name}**...`,
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, uploadStartMessage]);
+    setMessages(prev => [...prev, uploadStartMessage]);
 
     try {
       const formData = new FormData();
@@ -282,7 +282,7 @@ function ChatPage() {
           content: `⏳ Upload initiated for **${file.name}**. Processing in background... (Task ID: ${taskId})`,
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev.slice(0, -1), pollingMessage]);
+        setMessages(prev => [...prev.slice(0, -1), pollingMessage]);
       } else if (response.ok) {
         // Original flow: Direct response
 
@@ -296,7 +296,7 @@ function ChatPage() {
           timestamp: new Date(),
         };
 
-        setMessages((prev) => [...prev.slice(0, -1), uploadMessage]);
+        setMessages(prev => [...prev.slice(0, -1), uploadMessage]);
 
         // Add file to conversation docs
         if (result.filename) {
@@ -305,7 +305,7 @@ function ChatPage() {
 
         // Update the response ID for this endpoint
         if (result.response_id) {
-          setPreviousResponseIds((prev) => ({
+          setPreviousResponseIds(prev => ({
             ...prev,
             [endpoint]: result.response_id,
           }));
@@ -329,7 +329,7 @@ function ChatPage() {
         content: `❌ Failed to process document. Please try again.`,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+      setMessages(prev => [...prev.slice(0, -1), errorMessage]);
     } finally {
       setIsUploading(false);
       setLoading(false);
@@ -620,7 +620,7 @@ function ChatPage() {
       lastLoadedConversationRef.current = conversationData.response_id;
 
       // Set the previous response ID for this conversation
-      setPreviousResponseIds((prev) => ({
+      setPreviousResponseIds(prev => ({
         ...prev,
         [conversationData.endpoint]: conversationData.response_id,
       }));
@@ -662,7 +662,7 @@ function ChatPage() {
         content: `🔄 Starting upload of **${filename}**...`,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, uploadStartMessage]);
+      setMessages(prev => [...prev, uploadStartMessage]);
     };
 
     const handleFileUploaded = (event: CustomEvent) => {
@@ -680,11 +680,11 @@ function ChatPage() {
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev.slice(0, -1), uploadMessage]);
+      setMessages(prev => [...prev.slice(0, -1), uploadMessage]);
 
       // Update the response ID for this endpoint
       if (result.response_id) {
-        setPreviousResponseIds((prev) => ({
+        setPreviousResponseIds(prev => ({
           ...prev,
           [endpoint]: result.response_id,
         }));
@@ -711,7 +711,7 @@ function ChatPage() {
         content: `❌ Upload failed for **${filename}**: ${error}`,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+      setMessages(prev => [...prev.slice(0, -1), errorMessage]);
     };
 
     window.addEventListener(
@@ -1007,7 +1007,7 @@ function ChatPage() {
                   if (chunk.delta.finish_reason) {
                     console.log("Finish reason:", chunk.delta.finish_reason);
                     // Mark any pending function calls as completed
-                    currentFunctionCalls.forEach((fc) => {
+                    currentFunctionCalls.forEach(fc => {
                       if (fc.status === "pending" && fc.argumentsString) {
                         try {
                           fc.arguments = JSON.parse(fc.argumentsString);
@@ -1040,13 +1040,13 @@ function ChatPage() {
 
                   // Try to find an existing pending call to update (created by earlier deltas)
                   let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id
+                    fc => fc.id === chunk.item.id
                   );
                   if (!existing) {
                     existing = [...currentFunctionCalls]
                       .reverse()
                       .find(
-                        (fc) =>
+                        fc =>
                           fc.status === "pending" &&
                           !fc.id &&
                           fc.name === (chunk.item.tool_name || chunk.item.name)
@@ -1077,7 +1077,7 @@ function ChatPage() {
                     currentFunctionCalls.push(functionCall);
                     console.log(
                       "🟢 Function calls now:",
-                      currentFunctionCalls.map((fc) => ({
+                      currentFunctionCalls.map(fc => ({
                         id: fc.id,
                         name: fc.name,
                       }))
@@ -1150,7 +1150,7 @@ function ChatPage() {
                   );
                   console.log(
                     "🔵 Looking for existing function calls:",
-                    currentFunctionCalls.map((fc) => ({
+                    currentFunctionCalls.map(fc => ({
                       id: fc.id,
                       name: fc.name,
                     }))
@@ -1158,7 +1158,7 @@ function ChatPage() {
 
                   // Find existing function call by ID or name
                   const functionCall = currentFunctionCalls.find(
-                    (fc) =>
+                    fc =>
                       fc.id === chunk.item.id ||
                       fc.name === chunk.item.tool_name ||
                       fc.name === chunk.item.name
@@ -1206,7 +1206,7 @@ function ChatPage() {
 
                   // Find existing function call by ID, or by name/type if ID not available
                   const functionCall = currentFunctionCalls.find(
-                    (fc) =>
+                    fc =>
                       fc.id === chunk.item.id ||
                       fc.name === chunk.item.tool_name ||
                       fc.name === chunk.item.name ||
@@ -1261,13 +1261,13 @@ function ChatPage() {
 
                   // Dedupe by id or pending with same name
                   let existing = currentFunctionCalls.find(
-                    (fc) => fc.id === chunk.item.id
+                    fc => fc.id === chunk.item.id
                   );
                   if (!existing) {
                     existing = [...currentFunctionCalls]
                       .reverse()
                       .find(
-                        (fc) =>
+                        fc =>
                           fc.status === "pending" &&
                           !fc.id &&
                           fc.name ===
@@ -1306,7 +1306,7 @@ function ChatPage() {
                     currentFunctionCalls.push(functionCall);
                     console.log(
                       "🟡 Function calls now:",
-                      currentFunctionCalls.map((fc) => ({
+                      currentFunctionCalls.map(fc => ({
                         id: fc.id,
                         name: fc.name,
                         type: fc.type,
@@ -1404,7 +1404,7 @@ function ChatPage() {
       };
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
-        setMessages((prev) => [...prev, finalMessage]);
+        setMessages(prev => [...prev, finalMessage]);
         setStreamingMessage(null);
         if (previousResponseIds[endpoint]) {
           cancelNudges();
@@ -1417,7 +1417,7 @@ function ChatPage() {
         !controller.signal.aborted &&
         thisStreamId === streamIdRef.current
       ) {
-        setPreviousResponseIds((prev) => ({
+        setPreviousResponseIds(prev => ({
           ...prev,
           [endpoint]: newResponseId,
         }));
@@ -1445,7 +1445,7 @@ function ChatPage() {
           "Sorry, I couldn't connect to the chat service. Please try again.",
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages(prev => [...prev, errorMessage]);
     }
   };
 
@@ -1458,7 +1458,7 @@ function ChatPage() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     setInput("");
     setLoading(true);
     setIsFilterHighlighted(false);
@@ -1524,14 +1524,14 @@ function ChatPage() {
             content: result.response,
             timestamp: new Date(),
           };
-          setMessages((prev) => [...prev, assistantMessage]);
+          setMessages(prev => [...prev, assistantMessage]);
           if (result.response_id) {
             cancelNudges();
           }
 
           // Store the response ID if present for this endpoint
           if (result.response_id) {
-            setPreviousResponseIds((prev) => ({
+            setPreviousResponseIds(prev => ({
               ...prev,
               [endpoint]: result.response_id,
             }));
@@ -1552,7 +1552,7 @@ function ChatPage() {
             content: "Sorry, I encountered an error. Please try again.",
             timestamp: new Date(),
           };
-          setMessages((prev) => [...prev, errorMessage]);
+          setMessages(prev => [...prev, errorMessage]);
         }
       } catch (error) {
         console.error("Chat error:", error);
@@ -1562,7 +1562,7 @@ function ChatPage() {
             "Sorry, I couldn't connect to the chat service. Please try again.",
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages(prev => [...prev, errorMessage]);
       }
     }
 
@@ -1575,7 +1575,7 @@ function ChatPage() {
   };
 
   const toggleFunctionCall = (functionCallId: string) => {
-    setExpandedFunctionCalls((prev) => {
+    setExpandedFunctionCalls(prev => {
       const newSet = new Set(prev);
       if (newSet.has(functionCallId)) {
         newSet.delete(functionCallId);
@@ -1632,7 +1632,7 @@ function ChatPage() {
 
       // Set the response_id we want to continue from as the previous response ID
       // This tells the backend to continue the conversation from this point
-      setPreviousResponseIds((prev) => ({
+      setPreviousResponseIds(prev => ({
         ...prev,
         [endpoint]: responseIdToForkFrom,
       }));
@@ -1903,7 +1903,7 @@ function ChatPage() {
     }
 
     if (isFilterDropdownOpen) {
-      const filteredFilters = availableFilters.filter((filter) =>
+      const filteredFilters = availableFilters.filter(filter =>
         filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase())
       );
 
@@ -1921,7 +1921,7 @@ function ChatPage() {
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedFilterIndex((prev) =>
+        setSelectedFilterIndex(prev =>
           prev < filteredFilters.length - 1 ? prev + 1 : 0
         );
         return;
@@ -1929,7 +1929,7 @@ function ChatPage() {
 
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedFilterIndex((prev) =>
+        setSelectedFilterIndex(prev =>
           prev > 0 ? prev - 1 : filteredFilters.length - 1
         );
         return;
@@ -2159,7 +2159,7 @@ function ChatPage() {
                         {endpoint === "chat" && (
                           <div className="flex-shrink-0 ml-2">
                             <button
-                              onClick={(e) => handleForkConversation(index, e)}
+                              onClick={e => handleForkConversation(index, e)}
                               className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
                               title="Fork conversation from here"
                             >
@@ -2223,8 +2223,8 @@ function ChatPage() {
       )}
 
       {/* Input Area - Fixed at bottom */}
-      <div className="flex-shrink-0 p-6 pb-8 pt-4 flex justify-center">
-        <div className="w-full max-w-[75%]">
+      <div className="pb-8 pt-4 flex px-6">
+        <div className="w-full">
           <form onSubmit={handleSubmit} className="relative">
             <div className="relative w-full bg-muted/20 rounded-lg border border-border/50 focus-within:ring-1 focus-within:ring-ring">
               {selectedFilter && (
@@ -2257,7 +2257,7 @@ function ChatPage() {
                   value={input}
                   onChange={onChange}
                   onKeyDown={handleKeyDown}
-                  onHeightChange={(height) => setTextareaHeight(height)}
+                  onHeightChange={height => setTextareaHeight(height)}
                   maxRows={7}
                   minRows={2}
                   placeholder="Type to ask a question..."
@@ -2286,7 +2286,7 @@ function ChatPage() {
               variant="outline"
               size="iconSm"
               className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
-              onMouseDown={(e) => {
+              onMouseDown={e => {
                 e.preventDefault();
               }}
               onClick={onAtClick}
@@ -2296,7 +2296,7 @@ function ChatPage() {
             </Button>
             <Popover
               open={isFilterDropdownOpen}
-              onOpenChange={(open) => {
+              onOpenChange={open => {
                 setIsFilterDropdownOpen(open);
               }}
             >
@@ -2321,7 +2321,7 @@ function ChatPage() {
                 align="start"
                 sideOffset={6}
                 alignOffset={-18}
-                onOpenAutoFocus={(e) => {
+                onOpenAutoFocus={e => {
                   // Prevent auto focus on the popover content
                   e.preventDefault();
                   // Keep focus on the input
@@ -2354,7 +2354,7 @@ function ChatPage() {
                         </button>
                       )}
                       {availableFilters
-                        .filter((filter) =>
+                        .filter(filter =>
                           filter.name
                             .toLowerCase()
                             .includes(filterSearchTerm.toLowerCase())
@@ -2383,7 +2383,7 @@ function ChatPage() {
                             )}
                           </button>
                         ))}
-                      {availableFilters.filter((filter) =>
+                      {availableFilters.filter(filter =>
                         filter.name
                           .toLowerCase()
                           .includes(filterSearchTerm.toLowerCase())
