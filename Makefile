@@ -227,7 +227,7 @@ test-ci:
 	JWT_AUTH_READY=false; \
 	for i in $$(seq 1 60); do \
 		if curl -k -s https://localhost:9200 -u admin:$${OPENSEARCH_PASSWORD} >/dev/null 2>&1; then \
-			if curl -k -s -H "Authorization: Bearer $$TEST_TOKEN" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1 | grep -v "Unauthorized" >/dev/null; then \
+			if curl -k -s -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1 | grep -v "Unauthorized" >/dev/null; then \
 				echo "✓ OpenSearch JWT auth working after $$((i*2)) seconds"; \
 				JWT_AUTH_READY=true; \
 				break; \
