@@ -18,7 +18,7 @@ WORKDIR /app
 
 # Copy Python dependencies
 COPY pyproject.toml uv.lock ./
-RUN uv sync --extra torch-cu128
+RUN uv sync
 
 # Copy sample document and warmup script for docling
 COPY documents/warmup_ocr.pdf ./
