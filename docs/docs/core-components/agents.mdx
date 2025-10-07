@@ -34,11 +34,11 @@ In an agentic context, tools are functions that the agent can run to perform tas
 
 </details>
 
-## Use the OpenRAG OpenSearch Agent flow
+## Use the OpenRAG OpenSearch Agent flow {#flow}
 
 If you've chatted with your knowledge in OpenRAG, you've already experienced the OpenRAG OpenSearch Agent chat flow.
 To switch OpenRAG over to the [Langflow visual editor](https://docs.langflow.org/concepts-overview) and view the OpenRAG OpenSearch Agentflow, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then click **Edit in Langflow**.
-This flow contains seven components connected together to chat with your data:
+This flow contains eight components connected together to chat with your data:
 
 * The [**Agent** component](https://docs.langflow.org/agents) orchestrates the entire flow by deciding when to search the knowledge base, how to formulate search queries, and how to combine retrieved information with the user's question to generate a comprehensive response.
 The **Agent** behaves according to the prompt in the **Agent Instructions** field.
@@ -49,6 +49,7 @@ The **Agent** behaves according to the prompt in the **Agent Instructions** fiel
 * The [**Text Input** component](https://docs.langflow.org/components-io) is populated with the global variable `OPENRAG-QUERY-FILTER`. 
 This filter is the [Knowledge filter](/knowledge#create-knowledge-filters), and filters which knowledge sources to search through.
 * The **Agent** component's Output port is connected to the [**Chat Output** component](https://docs.langflow.org/components-io), which returns the final response to the user or application.
+* An [**MCP Tools** component](https://docs.langflow.org/mcp-client) is connected to the Agent's **Tools** port. This component calls the [OpenSearch URL Ingestion flow](/ingestion#url-flow), which Langflow uses as an MCP server to fetch content from URLs and store in OpenSearch.
 
 <PartialModifyFlows />
 
