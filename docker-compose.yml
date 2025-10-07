@@ -78,9 +78,9 @@ services:
 
   openrag-frontend:
     image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
     depends_on:
       - openrag-backend
