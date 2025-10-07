@@ -227,9 +227,21 @@ test-ci:
 		sleep 2; \
 	done; \
 	if [ "$$JWT_AUTH_READY" = "false" ]; then \
+		echo ""; \
+		echo "========================================================================"; \
 		echo "✗ ERROR: OpenSearch JWT authentication failed to work after 120 seconds!"; \
-		echo "  This likely means the OIDC security configuration was not applied correctly."; \
-		echo "  Check OpenSearch logs: docker logs os"; \
+		echo "========================================================================"; \
+		echo ""; \
+		echo "Dumping OpenSearch container logs:"; \
+		echo "------------------------------------------------------------------------"; \
+		docker logs os --tail 100; \
+		echo "------------------------------------------------------------------------"; \
+		echo ""; \
+		echo "Dumping backend container logs:"; \
+		echo "------------------------------------------------------------------------"; \
+		docker logs openrag-backend --tail 50; \
+		echo "------------------------------------------------------------------------"; \
+		echo ""; \
 		exit 1; \
 	fi; \
 	echo "Waiting for Langflow..."; \
