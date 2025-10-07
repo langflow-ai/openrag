@@ -165,7 +165,7 @@ export default function UploadProviderPage() {
 
   const handleFileSelected = (files: CloudFile[]) => {
     setSelectedFiles(files);
-    console.log(`Selected ${files.length} files from ${provider}:`, files);
+    console.log(`Selected ${files.length} item(s) from ${provider}:`, files);
     // You can add additional handling here like triggering sync, etc.
   };
 
@@ -376,19 +376,19 @@ export default function UploadProviderPage() {
                 loading={isIngesting}
                 disabled={!hasSelectedFiles || isIngesting}
               >
-                {!hasSelectedFiles ? (
-                  <>Ingest files</>
-                ) : (
+                {hasSelectedFiles ? (
                   <>
-                    Ingest {selectedFiles.length} file
+                    Ingest {selectedFiles.length} item
                     {selectedFiles.length > 1 ? "s" : ""}
                   </>
+                ) : (
+                  <>Ingest selected items</>
                 )}
               </Button>
             </TooltipTrigger>
             {!hasSelectedFiles ? (
               <TooltipContent side="left">
-                Select at least one file before ingesting
+                Select at least one item before ingesting
               </TooltipContent>
             ) : null}
           </Tooltip>
