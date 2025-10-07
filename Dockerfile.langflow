@@ -1,4 +1,4 @@
-FROM langflowai/langflow-nightly:1.6.3.dev0
+FROM langflowai/langflow-nightly:1.6.3.dev1
 
 EXPOSE 7860
 
