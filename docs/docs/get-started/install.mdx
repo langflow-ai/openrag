@@ -65,13 +65,15 @@ The OpenRAG wheel installs the Terminal User Interface (TUI) for configuring and
 ## Set up OpenRAG with the TUI {#setup}
 
 The TUI creates a `.env` file in your OpenRAG directory root and starts OpenRAG.
+If the TUI detects a `.env` file in the OpenRAG root directory, it sources any variables from the `.env` file.
+If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 
-**Basic Setup** generates all of the required values except the OpenAI API key.
-**Basic Setup** does not set up OAuth connections for ingestion from Google Drive, OneDrive, or AWS.
+**Basic Setup** generates all of the required values for OpenRAG except the OpenAI API key.
+**Basic Setup** does not set up OAuth connections for ingestion from cloud providers.
 For OAuth setup, use **Advanced Setup**.
 
-If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
-If the TUI detects a `.env` file in the OpenRAG root directory, it will source any variables from the `.env` file.
+**Basic Setup** and **Advanced Setup** enforce the same authentication settings for the Langflow server, but manage document access differently. For more information, see [Authentication and document access](/knowledge#auth).
+
 <Tabs groupId="Setup method">
   <TabItem value="Basic setup" label="Basic setup" default>
 
@@ -90,6 +92,7 @@ If the TUI detects a `.env` file in the OpenRAG root directory, it will source a
    7. Continue with [Application Onboarding](#application-onboarding).
   </TabItem>
   <TabItem value="Advanced setup" label="Advanced setup">
+
    1. To install OpenRAG with **Advanced Setup**, click **Advanced Setup** or press <kbd>2</kbd>. 
    2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
    3. Paste your OpenAI API key in the OpenAI API key field.
