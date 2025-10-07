@@ -50,6 +50,7 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
         "src.api.router",
         "src.api.connector_router",
         "src.config.settings",
+        "src.auth_middleware",
         "src.main",
     ]:
         sys.modules.pop(mod, None)
@@ -68,7 +69,11 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
     app = await create_app()
     # Manually run startup tasks since httpx ASGI transport here doesn't manage lifespan
     await startup_tasks(app.state.services)
-    
+
+    # Ensure index exists for tests (startup_tasks only creates it if DISABLE_INGEST_WITH_LANGFLOW=True)
+    from src.main import _ensure_opensearch_index
+    await _ensure_opensearch_index()
+
     # Verify index is truly empty after startup
     try:
         count_response = await clients.opensearch.count(index=INDEX_NAME)
@@ -159,6 +164,7 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
         "src.api.router",
         "src.api.connector_router",
         "src.config.settings",
+        "src.auth_middleware",
         "src.main",
     ]:
         sys.modules.pop(mod, None)
@@ -176,7 +182,11 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
 
     app = await create_app()
     await startup_tasks(app.state.services)
-    
+
+    # Ensure index exists for tests (startup_tasks only creates it if DISABLE_INGEST_WITH_LANGFLOW=True)
+    from src.main import _ensure_opensearch_index
+    await _ensure_opensearch_index()
+
     # Verify index is truly empty after startup
     try:
         count_response = await clients.opensearch.count(index=INDEX_NAME)
