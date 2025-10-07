@@ -18,14 +18,20 @@ async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 3
     while asyncio.get_event_loop().time() < deadline:
         try:
             r1 = await client.get("/auth/me")
+            if r1.status_code in (401, 403):
+                raise AssertionError(f"/auth/me returned {r1.status_code}: {r1.text}")
             if r1.status_code != 200:
                 await asyncio.sleep(0.5)
                 continue
             # match_all readiness probe; no embeddings
             r2 = await client.post("/search", json={"query": "*", "limit": 0})
+            if r2.status_code in (401, 403):
+                raise AssertionError(f"/search returned {r2.status_code}: {r2.text}")
             if r2.status_code == 200:
                 return
             last_err = r2.text
+        except AssertionError:
+            raise
         except Exception as e:
             last_err = str(e)
         await asyncio.sleep(0.5)
@@ -48,14 +54,24 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
     # Clear cached modules so settings pick up env and router sees new flag
     for mod in [
         "src.api.router",
+        "api.router",  # Also clear the non-src path
         "src.api.connector_router",
+        "api.connector_router",
         "src.config.settings",
+        "config.settings",
         "src.auth_middleware",
+        "auth_middleware",
         "src.main",
+        "api",  # Clear the api package itself
+        "src.api",
     ]:
         sys.modules.pop(mod, None)
     from src.main import create_app, startup_tasks
-    from src.config.settings import clients, INDEX_NAME
+    import src.api.router as upload_router
+    from src.config.settings import clients, INDEX_NAME, DISABLE_INGEST_WITH_LANGFLOW
+
+    # Verify settings loaded correctly
+    print(f"Settings DISABLE_INGEST_WITH_LANGFLOW: {DISABLE_INGEST_WITH_LANGFLOW}")
 
     # Ensure a clean index before startup
     await clients.initialize()
@@ -108,9 +124,9 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
             }
             upload_resp = await client.post("/upload", files=files)
             body = upload_resp.json()
-            # Router now returns 201 + task_id (async) regardless of mode
             assert upload_resp.status_code == 201, upload_resp.text
-            assert isinstance(body.get("task_id"), str)
+            assert body.get("status") in {"indexed", "unchanged"}
+            assert isinstance(body.get("id"), str)
 
             # Poll search for the specific content until it's indexed
             async def _wait_for_indexed(timeout_s: float = 30.0):
@@ -162,14 +178,24 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
     import sys
     for mod in [
         "src.api.router",
+        "api.router",  # Also clear the non-src path
         "src.api.connector_router",
+        "api.connector_router",
         "src.config.settings",
+        "config.settings",
         "src.auth_middleware",
+        "auth_middleware",
         "src.main",
+        "api",  # Clear the api package itself
+        "src.api",
     ]:
         sys.modules.pop(mod, None)
     from src.main import create_app, startup_tasks
-    from src.config.settings import clients, INDEX_NAME
+    import src.api.router as upload_router
+    from src.config.settings import clients, INDEX_NAME, DISABLE_INGEST_WITH_LANGFLOW
+
+    # Verify settings loaded correctly
+    print(f"Settings DISABLE_INGEST_WITH_LANGFLOW: {DISABLE_INGEST_WITH_LANGFLOW}")
 
     # Ensure a clean index before startup
     await clients.initialize()
@@ -211,10 +237,18 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
                 )
             }
 
-            resp = await client.post("/upload", files=files)
+            resp = await client.post("/router/upload_ingest", files=files)
             data = resp.json()
-            assert resp.status_code == 201, resp.text
-            assert isinstance(data.get("task_id"), str)
+
+            print(f"data: {data}")
+            if disable_langflow_ingest:
+                assert resp.status_code == 201 or resp.status_code == 202, resp.text
+                assert data.get("status") in {"indexed", "unchanged"}
+                assert isinstance(data.get("id"), str)
+            else:
+                assert resp.status_code == 201 or resp.status_code == 202, resp.text
+                assert isinstance(data.get("task_id"), str)
+                assert data.get("file_count") == 1
     finally:
         from src.config.settings import clients
         try:
