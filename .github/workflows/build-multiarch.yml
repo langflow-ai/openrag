@@ -11,6 +11,9 @@ on:
 jobs:
   build-python-packages:
     runs-on: ubuntu-latest
+    outputs:
+      skip_release: ${{ steps.version.outputs.skip_release }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -85,6 +88,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
+    needs: build-python-packages
+    if: needs.build-python-packages.outputs.skip_release != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -182,7 +187,7 @@ jobs:
   manifest:
     needs: [build, build-python-packages]
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && needs.build-python-packages.outputs.skip_release != 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
