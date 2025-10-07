@@ -15,6 +15,14 @@ OpenRAG uses [OpenSearch](https://docs.opensearch.org/latest/) for its vector-ba
 This is a specialized database for storing and retrieving embeddings, which helps your Agent efficiently find relevant information.
 OpenSearch provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
 
+## Authentication and document access {#auth}
+
+OpenRAG supports two authentication modes based on how you [install OpenRAG](/install), and which mode you choose affects document access.
+
+**No-auth mode (Basic Setup)**: This mode uses a single anonymous JWT token for OpenSearch authentication, so documents uploaded to the `documents` index by one user are visible to all other users on the OpenRAG server.
+
+**OAuth mode (Advanced Setup)**: Each OpenRAG user is granted a JWT token, and each document is tagged with user ownership. Documents are filtered by user ownership, ensuring users only see documents they uploaded or have access to. 
+
 ## Ingest knowledge
 
 OpenRAG supports knowledge ingestion through direct file uploads and OAuth connectors.
