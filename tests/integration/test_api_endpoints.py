@@ -64,14 +64,15 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
         "src.main",
         "api",  # Clear the api package itself
         "src.api",
+        "services",  # Clear services that import clients
+        "src.services",
+        "services.search_service",
+        "src.services.search_service",
     ]:
         sys.modules.pop(mod, None)
     from src.main import create_app, startup_tasks
     import src.api.router as upload_router
     from src.config.settings import clients, INDEX_NAME, DISABLE_INGEST_WITH_LANGFLOW
-
-    # Verify settings loaded correctly
-    print(f"Settings DISABLE_INGEST_WITH_LANGFLOW: {DISABLE_INGEST_WITH_LANGFLOW}")
 
     # Ensure a clean index before startup
     await clients.initialize()
@@ -188,14 +189,15 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
         "src.main",
         "api",  # Clear the api package itself
         "src.api",
+        "services",  # Clear services that import clients
+        "src.services",
+        "services.search_service",
+        "src.services.search_service",
     ]:
         sys.modules.pop(mod, None)
     from src.main import create_app, startup_tasks
     import src.api.router as upload_router
     from src.config.settings import clients, INDEX_NAME, DISABLE_INGEST_WITH_LANGFLOW
-
-    # Verify settings loaded correctly
-    print(f"Settings DISABLE_INGEST_WITH_LANGFLOW: {DISABLE_INGEST_WITH_LANGFLOW}")
 
     # Ensure a clean index before startup
     await clients.initialize()
