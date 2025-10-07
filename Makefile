@@ -202,6 +202,10 @@ test-ci:
 		chmod 600 keys/private_key.pem 2>/dev/null || true; \
 		chmod 644 keys/public_key.pem 2>/dev/null || true; \
 	fi; \
+	echo "Cleaning up old containers and volumes..."; \
+	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
+	echo "Pulling latest images..."; \
+	docker compose -f docker-compose-cpu.yml pull; \
 	echo "Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
 	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow; \
 	echo "Starting docling-serve..."; \
@@ -230,6 +234,9 @@ test-ci:
 		echo "$$AUTHC_CONFIG" | head -50; \
 		exit 1; \
 	fi; \
+	echo "Checking if OpenSearch can reach backend OIDC endpoint..."; \
+	docker exec os curl -s http://openrag-backend:8000/.well-known/openid-configuration | head -c 200; \
+	echo ""; \
 	echo "Checking key files..."; \
 	ls -la keys/; \
 	echo "Public key hash (host):"; \
