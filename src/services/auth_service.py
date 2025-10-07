@@ -301,7 +301,11 @@ class AuthService:
                         if user_info.get("id"):
                             global_vars["OWNER"] = user_info.get("id")
                         if user_info.get("name"):
-                            global_vars["OWNER_NAME"] = user_info.get("name")
+                            # OWNER_NAME may contain spaces, which can cause issues in headers.
+                            # Alternative: URL-encode the owner name to preserve spaces and special characters.
+                            owner_name = user_info.get("name")
+                            if owner_name:
+                                global_vars["OWNER_NAME"] = str(f"\"{owner_name}\"")
                         if user_info.get("email"):
                             global_vars["OWNER_EMAIL"] = user_info.get("email")
 
