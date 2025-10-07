@@ -241,9 +241,7 @@ function ChunksPageContent() {
         {chunks.length > 0 && (
           <div className="min-w-[200px]">
             <div className="mb-8">
-              <h2 className="text-xl font-semibold mt-3 mb-4">
-                Technical details
-              </h2>
+              <h2 className="text-xl font-semibold mb-4">Technical details</h2>
               <dl>
                 <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
                   <dt className="text-sm/6 text-muted-foreground">
@@ -274,7 +272,7 @@ function ChunksPageContent() {
             </div> */}
               </dl>
             </div>
-            <div className="mb-8">
+            <div className="mb-4">
               <h2 className="text-xl font-semibold mt-2 mb-3">
                 Original document
               </h2>
