@@ -219,6 +219,17 @@ test-ci:
 		fi; \
 		sleep 2; \
 	done; \
+	echo "Verifying OIDC authenticator is active in OpenSearch..."; \
+	AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null); \
+	if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
+		echo "✓ OIDC authenticator configured"; \
+		echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
+	else \
+		echo "✗ OIDC authenticator NOT found in security config!"; \
+		echo "Security config:"; \
+		echo "$$AUTHC_CONFIG" | head -50; \
+		exit 1; \
+	fi; \
 	echo "Checking key files..."; \
 	ls -la keys/; \
 	echo "Public key hash (host):"; \
