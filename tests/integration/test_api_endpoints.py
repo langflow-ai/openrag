@@ -17,6 +17,7 @@ async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 3
     from src.session_manager import SessionManager, AnonymousUser
     import os
     import hashlib
+    import jwt as jwt_lib
     sm = SessionManager("test")
     test_token = sm.create_jwt_token(AnonymousUser())
     token_hash = hashlib.sha256(test_token.encode()).hexdigest()[:16]
@@ -25,6 +26,9 @@ async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 3
     with open(sm.public_key_path, 'rb') as f:
         pub_key_hash = hashlib.sha256(f.read()).hexdigest()[:16]
     print(f"[DEBUG] Public key hash: {pub_key_hash}")
+    # Decode token to see claims
+    decoded = jwt_lib.decode(test_token, options={"verify_signature": False})
+    print(f"[DEBUG] JWT claims: iss={decoded.get('iss')}, sub={decoded.get('sub')}, aud={decoded.get('aud')}, roles={decoded.get('roles')}")
 
     # Test OpenSearch JWT auth directly
     opensearch_url = f"https://{os.getenv('OPENSEARCH_HOST', 'localhost')}:{os.getenv('OPENSEARCH_PORT', '9200')}"
