@@ -28,7 +28,6 @@ def require_auth(session_manager):
         async def wrapper(request: Request):
             # In no-auth mode, bypass authentication entirely
             if is_no_auth_mode():
-                logger.trace("No-auth mode: Creating anonymous user")
                 # Create an anonymous user object so endpoints don't break
                 from session_manager import User
                 from datetime import datetime
@@ -36,7 +35,6 @@ def require_auth(session_manager):
                 from session_manager import AnonymousUser
                 request.state.user = AnonymousUser()
                 request.state.jwt_token = None  # No JWT in no-auth mode
-                logger.trace("Set user_id=anonymous, jwt_token=None")
                 return await handler(request)
 
             user = get_current_user(request, session_manager)
