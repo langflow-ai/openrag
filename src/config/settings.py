@@ -61,12 +61,6 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     result = not (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
-    logger.trace(
-        "Checking auth mode",
-        no_auth_mode=result,
-        has_client_id=GOOGLE_OAUTH_CLIENT_ID is not None,
-        has_client_secret=GOOGLE_OAUTH_CLIENT_SECRET is not None,
-    )
     return result
 
 
