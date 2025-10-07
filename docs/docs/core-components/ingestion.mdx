@@ -58,7 +58,7 @@ For more information, see [`processors.py` in the OpenRAG repository](https://gi
 
 The **OpenSearch Ingestion** flow is the default knowledge ingestion flow in OpenRAG: when you **Add Knowledge** in OpenRAG, you run the OpenSearch Ingestion flow in the background. The flow ingests documents using **Docling Serve** to import and process documents.
 
-This flow contains ten components connected together to process and store documents in your knowledge base:
+This flow contains ten components connected together to process and store documents in your knowledge base.
 
 * The [**Docling Serve** component](https://docs.langflow.org/bundles-docling) processes input documents by connecting to your instance of Docling Serve.
 * The [**Export DoclingDocument** component](https://docs.langflow.org/components-docling) exports the processed DoclingDocument to markdown format with image export mode set to placeholder. This conversion makes the structured document data into a standardized format for further processing.
@@ -67,12 +67,14 @@ This flow contains ten components connected together to process and store docume
 * Four **Secret Input** components provide secure access to configuration variables: `CONNECTOR_TYPE`, `OWNER`, `OWNER_EMAIL`, and `OWNER_NAME`. These are runtime variables populated from OAuth login.
 * The **Create Data** component combines the secret inputs into a structured data object that will be associated with the document embeddings.
 * The [**Embedding Model** component](https://docs.langflow.org/components-embedding-models) generates vector embeddings using OpenAI's `text-embedding-3-small` model. The embedding model is selected at [Application onboarding] and cannot be changed.
-* The [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch) stores the processed documents and their embeddings in the `documents` index at `https://opensearch:9200`.
-
+* The [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch) stores the processed documents and their embeddings in the `documents` index at `https://opensearch:9200`. By default, the component is authenticated with a JWT token, but you can also select `basic` auth mode, and enter your OpenSearch admin username and password.
 
 <PartialModifyFlows />
 
 ### OpenSearch URL Ingestion flow
 
-An additional knowledge ingestion flow is included in OpenRAG.
-The **OpenSearch URL Ingestion flow**
+An additional knowledge ingestion flow is included in OpenRAG, where it is used as an MCP tool by the [**Open Search Agent flow**](/agents#flow).
+The agent calls this component to fetch web content, and the results are ingested into OpenSearch.
+
+For more on using MCP clients in Langflow, see [MCP clients](https://docs.langflow.org/mcp-client).\
+To connect additional MCP servers to the MCP client, see [Connect to MCP servers from your application](https://docs.langflow.org/mcp-tutorial).
