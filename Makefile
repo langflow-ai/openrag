@@ -222,7 +222,7 @@ test-ci:
 	echo "Token hash (host):"; \
 	echo "$$TEST_TOKEN" | sha256sum | cut -d' ' -f1 | cut -c1-16; \
 	echo "Decoding JWT claims (host):"; \
-	uv run python -c "import jwt, sys; sys.stdin.read(); tok='$$TEST_TOKEN'; print('iss:', jwt.decode(tok, options={'verify_signature': False}).get('iss')); print('aud:', jwt.decode(tok, options={'verify_signature': False}).get('aud')); print('roles:', jwt.decode(tok, options={'verify_signature': False}).get('roles'))"; \
+	echo "$$TEST_TOKEN" | uv run python -c "import jwt, sys; tok=sys.stdin.read().strip(); claims=jwt.decode(tok, options={'verify_signature': False}); print('iss:', claims.get('iss'), 'aud:', claims.get('aud'), 'roles:', claims.get('roles'))"; \
 	echo "Waiting for OpenSearch with JWT auth to work..."; \
 	JWT_AUTH_READY=false; \
 	for i in $$(seq 1 60); do \
