@@ -74,7 +74,7 @@ export const KnowledgeSearchInput = () => {
         {queryOverride && (
           <Button
             variant="ghost"
-            className="h-full !px-1.5 !py-0"
+            className="h-full rounded-sm !px-1.5 !py-0"
             type="button"
             onClick={() => {
               setSearchQueryInput("");
@@ -87,7 +87,7 @@ export const KnowledgeSearchInput = () => {
         <Button
           variant="ghost"
           className={cn(
-            "h-full !px-1.5 !py-0 hidden group-focus-within/input:block",
+            "h-full rounded-sm !px-1.5 !py-0 hidden group-focus-within/input:block",
             searchQueryInput && "block"
           )}
           type="submit"
