@@ -213,12 +213,12 @@ test-ci:
 	done; \
 	echo "Checking key files..."; \
 	ls -la keys/; \
-	echo "Public key content:"; \
-	cat keys/public_key.pem; \
-	echo "Private key content (first 5 lines):"; \
-	head -5 keys/private_key.pem; \
+	echo "Public key hash:"; \
+	sha256sum keys/public_key.pem | cut -d' ' -f1 | cut -c1-16; \
 	echo "Generating test JWT token..."; \
 	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))"); \
+	echo "Token hash:"; \
+	echo "$$TEST_TOKEN" | sha256sum | cut -d' ' -f1 | cut -c1-16; \
 	echo "Waiting for OpenSearch with JWT auth to work..."; \
 	JWT_AUTH_READY=false; \
 	for i in $$(seq 1 60); do \
