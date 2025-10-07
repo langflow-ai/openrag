@@ -51,6 +51,7 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool):
         "src.api.router",
         "src.api.connector_router",
         "src.config.settings",
+        "src.auth_middleware",
         "src.main",
     ]:
         sys.modules.pop(mod, None)
@@ -68,6 +69,10 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool):
     app = await create_app()
     # Trigger startup tasks explicitly
     await startup_tasks(app.state.services)
+
+    # Ensure index exists for tests (startup_tasks only creates it if DISABLE_INGEST_WITH_LANGFLOW=True)
+    from src.main import _ensure_opensearch_index
+    await _ensure_opensearch_index()
 
     transport = httpx.ASGITransport(app=app)
     try:

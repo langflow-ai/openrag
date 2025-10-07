@@ -10,10 +10,10 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Force no-auth mode for testing by removing OAuth credentials
+# Force no-auth mode for testing by setting OAuth credentials to empty strings
 # This ensures anonymous JWT tokens are created automatically
-os.environ.pop('GOOGLE_OAUTH_CLIENT_ID', None)
-os.environ.pop('GOOGLE_OAUTH_CLIENT_SECRET', None)
+os.environ['GOOGLE_OAUTH_CLIENT_ID'] = ''
+os.environ['GOOGLE_OAUTH_CLIENT_SECRET'] = ''
 
 from src.config.settings import clients
 from src.session_manager import SessionManager
