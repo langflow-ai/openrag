@@ -212,18 +212,26 @@ test-ci:
 		curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "Waiting for OpenSearch with JWT auth to work..."; \
+	JWT_AUTH_READY=false; \
 	for i in $$(seq 1 60); do \
 		if curl -k -s https://localhost:9200 -u admin:$${OPENSEARCH_PASSWORD} >/dev/null 2>&1; then \
 			TOKEN=$$(curl -s http://localhost:8000/auth/me | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || echo ""); \
 			if [ -n "$$TOKEN" ]; then \
 				if curl -k -s -H "Authorization: Bearer $$TOKEN" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1 | grep -v "Unauthorized" >/dev/null; then \
-					echo "OpenSearch JWT auth working"; \
+					echo "✓ OpenSearch JWT auth working after $$((i*2)) seconds"; \
+					JWT_AUTH_READY=true; \
 					break; \
 				fi; \
 			fi; \
 		fi; \
 		sleep 2; \
 	done; \
+	if [ "$$JWT_AUTH_READY" = "false" ]; then \
+		echo "✗ ERROR: OpenSearch JWT authentication failed to work after 120 seconds!"; \
+		echo "  This likely means the OIDC security configuration was not applied correctly."; \
+		echo "  Check OpenSearch logs: docker logs os"; \
+		exit 1; \
+	fi; \
 	echo "Waiting for Langflow..."; \
 	for i in $$(seq 1 60); do \
 		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
