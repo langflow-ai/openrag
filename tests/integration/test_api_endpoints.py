@@ -16,22 +16,30 @@ async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 3
     # First test OpenSearch JWT directly
     from src.session_manager import SessionManager, AnonymousUser
     import os
+    import hashlib
     sm = SessionManager("test")
     test_token = sm.create_jwt_token(AnonymousUser())
-    print(f"[DEBUG] Generated test JWT token (first 50 chars): {test_token[:50]}...")
+    token_hash = hashlib.sha256(test_token.encode()).hexdigest()[:16]
+    print(f"[DEBUG] Generated test JWT token hash: {token_hash}")
     print(f"[DEBUG] Using key paths: private={sm.private_key_path}, public={sm.public_key_path}")
+    with open(sm.public_key_path, 'rb') as f:
+        pub_key_hash = hashlib.sha256(f.read()).hexdigest()[:16]
+    print(f"[DEBUG] Public key hash: {pub_key_hash}")
 
     # Test OpenSearch JWT auth directly
     opensearch_url = f"https://{os.getenv('OPENSEARCH_HOST', 'localhost')}:{os.getenv('OPENSEARCH_PORT', '9200')}"
+    print(f"[DEBUG] Testing JWT auth directly against: {opensearch_url}/documents/_search")
     async with httpx.AsyncClient(verify=False) as os_client:
         r_os = await os_client.post(
             f"{opensearch_url}/documents/_search",
             headers={"Authorization": f"Bearer {test_token}"},
             json={"query": {"match_all": {}}, "size": 0}
         )
-        print(f"[DEBUG] Direct OpenSearch JWT test: status={r_os.status_code}, body={r_os.text[:300]}")
+        print(f"[DEBUG] Direct OpenSearch JWT test: status={r_os.status_code}, body={r_os.text[:500]}")
         if r_os.status_code == 401:
-            print(f"[DEBUG] OpenSearch rejected JWT! This means OIDC config is not working.")
+            print(f"[DEBUG] ❌ OpenSearch rejected JWT! OIDC config not working.")
+        else:
+            print(f"[DEBUG] ✓ OpenSearch accepted JWT!")
 
     deadline = asyncio.get_event_loop().time() + timeout_s
     last_err = None
