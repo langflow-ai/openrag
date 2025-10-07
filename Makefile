@@ -209,19 +209,18 @@ test-ci:
 	echo "Docling-serve started at $$DOCLING_ENDPOINT"; \
 	echo "Waiting for backend OIDC endpoint..."; \
 	for i in $$(seq 1 60); do \
-		curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+		docker exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
+	echo "Generating test JWT token..."; \
+	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))"); \
 	echo "Waiting for OpenSearch with JWT auth to work..."; \
 	JWT_AUTH_READY=false; \
 	for i in $$(seq 1 60); do \
 		if curl -k -s https://localhost:9200 -u admin:$${OPENSEARCH_PASSWORD} >/dev/null 2>&1; then \
-			TOKEN=$$(curl -s http://localhost:8000/auth/me | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || echo ""); \
-			if [ -n "$$TOKEN" ]; then \
-				if curl -k -s -H "Authorization: Bearer $$TOKEN" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1 | grep -v "Unauthorized" >/dev/null; then \
-					echo "✓ OpenSearch JWT auth working after $$((i*2)) seconds"; \
-					JWT_AUTH_READY=true; \
-					break; \
-				fi; \
+			if curl -k -s -H "Authorization: Bearer $$TEST_TOKEN" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1 | grep -v "Unauthorized" >/dev/null; then \
+				echo "✓ OpenSearch JWT auth working after $$((i*2)) seconds"; \
+				JWT_AUTH_READY=true; \
+				break; \
 			fi; \
 		fi; \
 		sleep 2; \
