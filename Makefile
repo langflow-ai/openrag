@@ -213,12 +213,16 @@ test-ci:
 	done; \
 	echo "Checking key files..."; \
 	ls -la keys/; \
-	echo "Public key hash:"; \
+	echo "Public key hash (host):"; \
 	sha256sum keys/public_key.pem | cut -d' ' -f1 | cut -c1-16; \
+	echo "Public key hash (container):"; \
+	docker exec openrag-backend sha256sum /app/keys/public_key.pem | cut -d' ' -f1 | cut -c1-16; \
 	echo "Generating test JWT token..."; \
 	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))"); \
-	echo "Token hash:"; \
+	echo "Token hash (host):"; \
 	echo "$$TEST_TOKEN" | sha256sum | cut -d' ' -f1 | cut -c1-16; \
+	echo "Decoding JWT claims (host):"; \
+	uv run python -c "import jwt, sys; sys.stdin.read(); tok='$$TEST_TOKEN'; print('iss:', jwt.decode(tok, options={'verify_signature': False}).get('iss')); print('aud:', jwt.decode(tok, options={'verify_signature': False}).get('aud')); print('roles:', jwt.decode(tok, options={'verify_signature': False}).get('roles'))"; \
 	echo "Waiting for OpenSearch with JWT auth to work..."; \
 	JWT_AUTH_READY=false; \
 	for i in $$(seq 1 60); do \
