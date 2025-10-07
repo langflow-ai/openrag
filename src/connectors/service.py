@@ -1,15 +1,10 @@
-import tempfile
-import os
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from .base import BaseConnector, ConnectorDocument
 from utils.logging_config import get_logger
 
-logger = get_logger(__name__)
-from .google_drive import GoogleDriveConnector
-from .sharepoint import SharePointConnector
-from .onedrive import OneDriveConnector
+from .base import BaseConnector, ConnectorDocument
 from .connection_manager import ConnectionManager
+
 
 logger = get_logger(__name__)
 
@@ -56,9 +51,11 @@ class ConnectorService:
         # Create temporary file from document content
         from utils.file_utils import auto_cleanup_tempfile
 
-        with auto_cleanup_tempfile(suffix=self._get_file_extension(document.mimetype)) as tmp_path:
+        with auto_cleanup_tempfile(
+            suffix=self._get_file_extension(document.mimetype)
+        ) as tmp_path:
             # Write document content to temp file
-            with open(tmp_path, 'wb') as f:
+            with open(tmp_path, "wb") as f:
                 f.write(document.content)
 
             # Use existing process_file_common function with connector document metadata
@@ -71,6 +68,7 @@ class ConnectorService:
 
             # Process using consolidated processing pipeline
             from models.processors import TaskProcessor
+
             processor = TaskProcessor(document_service=doc_service)
             result = await processor.process_document_standard(
                 file_path=tmp_path,
@@ -301,7 +299,10 @@ class ConnectorService:
         file_ids: List[str],
         jwt_token: str = None,
     ) -> str:
-        """Sync specific files by their IDs (used for webhook-triggered syncs)"""
+        """
+        Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
+        Automatically expands folders to their contents.
+        """
         if not self.task_service:
             raise ValueError(
                 "TaskService not available - connector sync requires task service dependency"
@@ -324,14 +325,53 @@ class ConnectorService:
         owner_name = user.name if user else None
         owner_email = user.email if user else None
 
+        # Temporarily set file_ids in the connector's config so list_files() can use them
+        # Store the original values to restore later
+        original_file_ids = None
+        original_folder_ids = None
+
+        if hasattr(connector, "cfg"):
+            original_file_ids = getattr(connector.cfg, "file_ids", None)
+            original_folder_ids = getattr(connector.cfg, "folder_ids", None)
+
+        try:
+            # Set the file_ids we want to sync in the connector's config
+            if hasattr(connector, "cfg"):
+                connector.cfg.file_ids = file_ids  # type: ignore
+                connector.cfg.folder_ids = None  # type: ignore
+
+            # Get the expanded list of file IDs (folders will be expanded to their contents)
+            # This uses the connector's list_files() which calls _iter_selected_items()
+            result = await connector.list_files()
+            expanded_file_ids = [f["id"] for f in result.get("files", [])]
+
+            if not expanded_file_ids:
+                logger.warning(
+                    f"No files found after expanding file_ids. "
+                    f"Original IDs: {file_ids}. This may indicate all IDs were folders "
+                    f"with no contents, or files that were filtered out."
+                )
+                # Return empty task rather than failing
+                raise ValueError("No files to sync after expanding folders")
+
+        except Exception as e:
+            logger.error(f"Failed to expand file_ids via list_files(): {e}")
+            # Fallback to original file_ids if expansion fails
+            expanded_file_ids = file_ids
+        finally:
+            # Restore original config values
+            if hasattr(connector, "cfg"):
+                connector.cfg.file_ids = original_file_ids  # type: ignore
+                connector.cfg.folder_ids = original_folder_ids  # type: ignore
+
         # Create custom processor for specific connector files
         from models.processors import ConnectorFileProcessor
 
-        # We'll pass file_ids as the files_info, the processor will handle ID-only files
+        # Use expanded_file_ids which has folders already expanded
         processor = ConnectorFileProcessor(
             self,
             connection_id,
-            file_ids,
+            expanded_file_ids,
             user_id,
             jwt_token=jwt_token,
             owner_name=owner_name,
@@ -340,7 +380,7 @@ class ConnectorService:
 
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(
-            user_id, file_ids, processor
+            user_id, expanded_file_ids, processor
         )
 
         return task_id

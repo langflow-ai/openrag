@@ -52,12 +52,16 @@ export class GoogleDriveHandler {
     try {
       this.onPickerStateChange?.(true);
 
+      // Create a view for regular documents
+      const docsView = new window.google.picker.DocsView()
+        .setIncludeFolders(true)
+        .setSelectFolderEnabled(true);
+
       const picker = new window.google.picker.PickerBuilder()
-        .addView(window.google.picker.ViewId.DOCS)
-        .addView(window.google.picker.ViewId.FOLDERS)
+        .addView(docsView)
         .setOAuthToken(this.accessToken)
         .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
-        .setTitle("Select files from Google Drive")
+        .setTitle("Select files or folders from Google Drive")
         .setCallback(data => this.pickerCallback(data, onFileSelected))
         .build();
 
