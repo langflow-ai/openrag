@@ -39,7 +39,7 @@ export const PickerHeader = ({
     return (
       <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
         Please connect to {getProviderName(provider)} first to select specific
-        files.
+        files or folders.
       </div>
     );
   }
@@ -48,7 +48,7 @@ export const PickerHeader = ({
     <Card>
       <CardContent className="flex flex-col items-center text-center py-8">
         <p className="text-sm text-primary mb-4">
-          Select files from {getProviderName(provider)} to ingest.
+          Select files or folders from {getProviderName(provider)} to ingest.
         </p>
         <Button
           onClick={onAddFiles}
@@ -56,7 +56,7 @@ export const PickerHeader = ({
           className="bg-foreground text-background hover:bg-foreground/90 font-semibold"
         >
           <Plus className="h-4 w-4" />
-          {isPickerOpen ? "Opening picker..." : "Add files"}
+          {isPickerOpen ? "Opening picker..." : "Add files or folders"}
         </Button>
       </CardContent>
     </Card>

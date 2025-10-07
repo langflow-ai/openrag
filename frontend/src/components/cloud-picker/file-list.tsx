@@ -26,7 +26,7 @@ export const FileList = ({
   return (
     <div className="space-y-2 relative">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">Added files ({files.length})</p>
+        <p className="text-sm font-medium">Selected items ({files.length})</p>
         <Button
           ignoreTitleCase={true}
           onClick={onClearAll}
