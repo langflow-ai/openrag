@@ -5,14 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 // import { Label } from "@/components/ui/label";
 // import { Checkbox } from "@/components/ui/checkbox";
-import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { useTask } from "@/contexts/task-context";
 import {
   type ChunkResult,
   type File,
@@ -35,9 +30,9 @@ function ChunksPageContent() {
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const filename = searchParams.get("filename");
   const [chunks, setChunks] = useState<ChunkResult[]>([]);
-  const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
-    ChunkResult[]
-  >([]);
+  // const [chunksFilteredByQuery, setChunksFilteredByQuery] = useState<
+  //   ChunkResult[]
+  // >([]);
   // const [selectedChunks, setSelectedChunks] = useState<Set<number>>(new Set());
   const [activeCopiedChunkIndex, setActiveCopiedChunkIndex] = useState<
     number | null
@@ -126,26 +121,25 @@ function ChunksPageContent() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex flex-col mb-6">
-          <div className="flex items-center gap-3 mb-6">
-            <Button
-              variant="ghost"
-              onClick={handleBack}
-              size="sm"
-              className="max-w-8 max-h-8 -m-2"
-            >
-              <ArrowLeft size={24} />
-            </Button>
-            <h1 className="text-lg font-semibold">
-              {/* Removes file extension from filename */}
-              {filename.replace(/\.[^/.]+$/, "")}
-            </h1>
-          </div>
-          <div className="flex flex-1">
-            <KnowledgeSearchInput />
-            {/* <div className="flex items-center pl-4 gap-2">
+      {/* Header */}
+      <div className="flex flex-col mb-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Button
+            variant="ghost"
+            onClick={handleBack}
+            size="sm"
+            className="max-w-8 max-h-8 -m-2"
+          >
+            <ArrowLeft size={24} />
+          </Button>
+          <h1 className="text-lg font-semibold">
+            {/* Removes file extension from filename */}
+            {filename.replace(/\.[^/.]+$/, "")}
+          </h1>
+        </div>
+        <div className="flex flex-1">
+          <KnowledgeSearchInput />
+          {/* <div className="flex items-center pl-4 gap-2">
               <Checkbox
                 id="selectAllChunks"
                 checked={selectAll}
@@ -160,11 +154,12 @@ function ChunksPageContent() {
                 Select all
               </Label>
             </div> */}
-          </div>
         </div>
+      </div>
 
-        {/* Content Area - matches knowledge page structure */}
-        <div className="flex-1 overflow-auto pr-6">
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-[3fr_1fr]">
+        {/* Content Area */}
+        <div className="row-start-2 lg:row-start-1">
           {isFetching ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
@@ -185,7 +180,7 @@ function ChunksPageContent() {
             </div>
           ) : (
             <div className="space-y-4 pb-6">
-              {chunksFilteredByQuery.map((chunk, index) => (
+              {chunks.map((chunk, index) => (
                 <div
                   key={chunk.filename + index}
                   className="bg-muted rounded-lg p-4 border border-border/50"
@@ -242,31 +237,32 @@ function ChunksPageContent() {
             </div>
           )}
         </div>
-      </div>
-      {/* Right panel - Summary (TODO), Technical details,  */}
-      {chunks.length > 0 && (
-        <div className="w-[320px] py-20 px-2">
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold mt-3 mb-4">
-              Technical details
-            </h2>
-            <dl>
-              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-                <dt className="text-sm/6 text-muted-foreground">
-                  Total chunks
-                </dt>
-                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                  {chunks.length}
-                </dd>
-              </div>
-              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-                <dt className="text-sm/6 text-muted-foreground">Avg length</dt>
-                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                  {averageChunkLength.toFixed(0)} chars
-                </dd>
-              </div>
-              {/* TODO: Uncomment after data is available */}
-              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+        {/* Right panel - Summary (TODO), Technical details,  */}
+        {chunks.length > 0 && (
+          <div className="min-w-[200px]">
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mt-3 mb-4">
+                Technical details
+              </h2>
+              <dl>
+                <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                  <dt className="text-sm/6 text-muted-foreground">
+                    Total chunks
+                  </dt>
+                  <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                    {chunks.length}
+                  </dd>
+                </div>
+                <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                  <dt className="text-sm/6 text-muted-foreground">
+                    Avg length
+                  </dt>
+                  <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                    {averageChunkLength.toFixed(0)} chars
+                  </dd>
+                </div>
+                {/* TODO: Uncomment after data is available */}
+                {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Process time</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
               </dd>
@@ -276,54 +272,55 @@ function ChunksPageContent() {
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
               </dd>
             </div> */}
-            </dl>
-          </div>
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold mt-2 mb-3">
-              Original document
-            </h2>
-            <dl>
-              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+              </dl>
+            </div>
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mt-2 mb-3">
+                Original document
+              </h2>
+              <dl>
+                {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Name</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 {fileData?.filename}
               </dd>
             </div> */}
-              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-                <dt className="text-sm/6 text-muted-foreground">Type</dt>
-                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                  {fileData ? getFileTypeLabel(fileData.mimetype) : "Unknown"}
-                </dd>
-              </div>
-              <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
-                <dt className="text-sm/6 text-muted-foreground">Size</dt>
-                <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
-                  {fileData?.size
-                    ? `${Math.round(fileData.size / 1024)} KB`
-                    : "Unknown"}
-                </dd>
-              </div>
-              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                  <dt className="text-sm/6 text-muted-foreground">Type</dt>
+                  <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                    {fileData ? getFileTypeLabel(fileData.mimetype) : "Unknown"}
+                  </dd>
+                </div>
+                <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                  <dt className="text-sm/6 text-muted-foreground">Size</dt>
+                  <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                    {fileData?.size
+                      ? `${Math.round(fileData.size / 1024)} KB`
+                      : "Unknown"}
+                  </dd>
+                </div>
+                {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Uploaded</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 N/A
               </dd>
             </div> */}
-              {/* TODO: Uncomment after data is available */}
-              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                {/* TODO: Uncomment after data is available */}
+                {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Source</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0"></dd>
             </div> */}
-              {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Updated</dt>
               <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
                 N/A
               </dd>
             </div> */}
-            </dl>
+              </dl>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
