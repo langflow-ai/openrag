@@ -1,7 +1,7 @@
 # OpenRAG Development Makefile
 # Provides easy commands for development workflow
 
-.PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install test backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup
+.PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install test test-unit test-integration test-api test-service test-connector test-coverage test-verbose test-failed test-watch test-quick test-specific backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup
 
 # Default target
 help:
@@ -32,8 +32,18 @@ help:
 	@echo "  shell-lf     - Shell into langflow container"
 	@echo ""
 	@echo "Testing:"
-	@echo "  test         - Run backend tests"
-	@echo "  lint         - Run linting checks"
+	@echo "  test              - Run all backend tests"
+	@echo "  test-unit         - Run unit tests only"
+	@echo "  test-integration  - Run integration tests only"
+	@echo "  test-api          - Run API endpoint tests"
+	@echo "  test-service      - Run service layer tests"
+	@echo "  test-connector    - Run connector tests"
+	@echo "  test-coverage     - Run tests with coverage report"
+	@echo "  test-verbose      - Run tests with verbose output"
+	@echo "  test-failed       - Re-run only failed tests"
+	@echo "  test-quick        - Run quick tests (unit only, no coverage)"
+	@echo "  test-specific     - Run specific test (TEST=path/to/test.py)"
+	@echo "  lint              - Run linting checks"
 	@echo ""
 
 # Development environments
@@ -169,8 +179,53 @@ shell-os:
 
 # Testing and quality
 test:
-	@echo "🧪 Running backend tests..."
+	@echo "🧪 Running all backend tests..."
 	uv run pytest
+
+test-unit:
+	@echo "🧪 Running unit tests only..."
+	uv run pytest -m unit
+
+test-integration:
+	@echo "🧪 Running integration tests only..."
+	uv run pytest -m integration
+
+test-api:
+	@echo "🧪 Running API tests..."
+	uv run pytest -m api
+
+test-service:
+	@echo "🧪 Running service tests..."
+	uv run pytest -m service
+
+test-connector:
+	@echo "🧪 Running connector tests..."
+	uv run pytest -m connector
+
+test-coverage:
+	@echo "🧪 Running tests with detailed coverage report..."
+	uv run pytest --cov=src --cov-report=term-missing --cov-report=html
+
+test-verbose:
+	@echo "🧪 Running tests with verbose output..."
+	uv run pytest -vv
+
+test-failed:
+	@echo "🧪 Re-running only failed tests..."
+	uv run pytest --lf
+
+test-watch:
+	@echo "🧪 Running tests in watch mode..."
+	uv run pytest-watch
+
+test-quick:
+	@echo "🧪 Running quick tests (unit tests only, no coverage)..."
+	uv run pytest -m unit --no-cov
+
+test-specific:
+	@echo "🧪 Running specific test file or function..."
+	@if [ -z "$(TEST)" ]; then echo "Usage: make test-specific TEST=tests/path/to/test.py::test_function"; exit 1; fi
+	uv run pytest $(TEST) -v
 
 lint:
 	@echo "🔍 Running linting checks..."

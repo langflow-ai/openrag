@@ -1,0 +1,1 @@
+"""Model tests for OpenRAG."""
