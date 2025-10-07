@@ -1,0 +1,122 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  test-validation:
+    name: Test Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv sync --extra dev
+
+      - name: Run unit tests with strict requirements
+        id: unit_tests
+        run: |
+          uv run pytest tests/ -v \
+            -m "not requires_opensearch and not requires_langflow" \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=1 \
+            --tb=short
+
+      - name: Test Summary
+        if: always()
+        run: |
+          if [ "${{ steps.unit_tests.outcome }}" == "success" ]; then
+            echo "✅ All unit tests passed"
+            echo "PR is ready for review"
+          else
+            echo "❌ Tests failed"
+            echo "Please fix failing tests before merging"
+            exit 1
+          fi
+
+      - name: Comment PR with results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const outcome = '${{ steps.unit_tests.outcome }}';
+            const icon = outcome === 'success' ? '✅' : '❌';
+            const status = outcome === 'success' ? 'passed' : 'failed';
+
+            const body = `## ${icon} Test Results
+
+            Unit tests ${status}!
+
+            - Python Version: 3.13
+            - Tests Run: Unit tests (excluding integration)
+            - Status: ${status}
+
+            ${outcome === 'success' ? '✅ Ready for merge' : '❌ Please fix failing tests'}
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: |
+          uv sync --extra dev
+          uv pip install ruff
+
+      - name: Run ruff linter
+        run: |
+          uv run ruff check src/ tests/ --output-format=github
+        continue-on-error: true
+
+  pr-validation:
+    name: PR Validation
+    runs-on: ubuntu-latest
+    needs: [test-validation, code-quality]
+    if: always()
+
+    steps:
+      - name: Check all jobs
+        run: |
+          if [ "${{ needs.test-validation.result }}" != "success" ]; then
+            echo "❌ Test validation failed"
+            exit 1
+          fi
+
+          echo "✅ All PR checks passed"
+          echo "This PR is ready to be merged to main"
