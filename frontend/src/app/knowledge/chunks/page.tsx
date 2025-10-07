@@ -83,13 +83,13 @@ function ChunksPageContent() {
   }, [data, filename]);
 
   // Set selected state for all checkboxes when selectAll changes
-  useEffect(() => {
-    if (selectAll) {
-      setSelectedChunks(new Set(chunks.map((_, index) => index)));
-    } else {
-      setSelectedChunks(new Set());
-    }
-  }, [selectAll, setSelectedChunks, chunks]);
+  // useEffect(() => {
+  //   if (selectAll) {
+  //     setSelectedChunks(new Set(chunks.map((_, index) => index)));
+  //   } else {
+  //     setSelectedChunks(new Set());
+  //   }
+  // }, [selectAll, setSelectedChunks, chunks]);
 
   const handleBack = useCallback(() => {
     router.push("/knowledge");
