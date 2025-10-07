@@ -211,10 +211,14 @@ test-ci:
 	for i in $$(seq 1 60); do \
 		docker exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
-	echo "Checking if OpenSearch security config was applied..."; \
-	docker exec os ls -la /usr/share/opensearch/setup-security.sh 2>/dev/null || echo "setup-security.sh not found in container"; \
-	echo "Checking OpenSearch security config:"; \
-	docker exec os curl -k -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null | head -50; \
+	echo "Waiting for OpenSearch security config to be fully applied..."; \
+	for i in $$(seq 1 60); do \
+		if docker logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
+			echo "✓ Security configuration applied"; \
+			break; \
+		fi; \
+		sleep 2; \
+	done; \
 	echo "Checking key files..."; \
 	ls -la keys/; \
 	echo "Public key hash (host):"; \
@@ -231,11 +235,12 @@ test-ci:
 	JWT_AUTH_READY=false; \
 	for i in $$(seq 1 60); do \
 		if curl -k -s https://localhost:9200 -u admin:$${OPENSEARCH_PASSWORD} >/dev/null 2>&1; then \
-			RESPONSE=$$(curl -k -s -H "Authorization: Bearer $$TEST_TOKEN" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
-			echo "Attempt $$i response: $$RESPONSE"; \
-			if echo "$$RESPONSE" | grep -v "Unauthorized" >/dev/null; then \
-				echo "✓ OpenSearch JWT check passed after $$((i*2)) seconds"; \
-				echo "Full response: $$RESPONSE"; \
+			HTTP_CODE=$$(curl -k -s -w "%{http_code}" -o /tmp/os_response.txt -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
+			RESPONSE=$$(cat /tmp/os_response.txt); \
+			echo "Attempt $$i: HTTP $$HTTP_CODE"; \
+			echo "Response: $$RESPONSE"; \
+			if [ "$$HTTP_CODE" = "200" ]; then \
+				echo "✓ OpenSearch JWT auth working after $$((i*2)) seconds"; \
 				JWT_AUTH_READY=true; \
 				break; \
 			fi; \
