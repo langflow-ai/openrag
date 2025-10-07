@@ -6,8 +6,7 @@ import {
 
 type Nudge = string;
 
-const DEFAULT_NUDGES = [
-];
+const DEFAULT_NUDGES: Nudge[] = [];
 
 export const useGetNudgesQuery = (
   chatId?: string | null,

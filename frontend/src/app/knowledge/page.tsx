@@ -69,7 +69,7 @@ function SearchPage() {
     parsedFilterData
   );
   // Convert TaskFiles to File format and merge with backend results
-  const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
+  const taskFilesAsFiles: File[] = taskFiles.map(taskFile => {
     return {
       filename: taskFile.filename,
       mimetype: taskFile.mimetype,
@@ -82,12 +82,12 @@ function SearchPage() {
 
   // Create a map of task files by filename for quick lookup
   const taskFileMap = new Map(
-    taskFilesAsFiles.map((file) => [file.filename, file])
+    taskFilesAsFiles.map(file => [file.filename, file])
   );
 
   // Override backend files with task file status if they exist
   const backendFiles = (searchData as File[])
-    .map((file) => {
+    .map(file => {
       const taskFile = taskFileMap.get(file.filename);
       if (taskFile) {
         // Override backend file with task file data (includes status)
@@ -95,17 +95,17 @@ function SearchPage() {
       }
       return file;
     })
-    .filter((file) => {
+    .filter(file => {
       // Only filter out files that are currently processing AND in taskFiles
       const taskFile = taskFileMap.get(file.filename);
       return !taskFile || taskFile.status !== "processing";
     });
 
-  const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
+  const filteredTaskFiles = taskFilesAsFiles.filter(taskFile => {
     return (
       taskFile.status !== "active" &&
       !backendFiles.some(
-        (backendFile) => backendFile.filename === taskFile.filename
+        backendFile => backendFile.filename === taskFile.filename
       )
     );
   });
@@ -184,7 +184,6 @@ function SearchPage() {
     {
       field: "avgScore",
       headerName: "Avg score",
-      initialFlex: 0.5,
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
           <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
@@ -246,7 +245,7 @@ function SearchPage() {
 
     try {
       // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map((row) =>
+      const deletePromises = selectedRows.map(row =>
         deleteDocumentMutation.mutateAsync({ filename: row.filename })
       );
 
@@ -345,7 +344,7 @@ function SearchPage() {
         }? This will remove all chunks and data associated with these documents. This action cannot be undone.
 
 Documents to be deleted:
-${selectedRows.map((row) => `• ${row.filename}`).join("\n")}`}
+${selectedRows.map(row => `• ${row.filename}`).join("\n")}`}
         confirmText="Delete All"
         onConfirm={handleBulkDelete}
         isLoading={deleteDocumentMutation.isPending}
