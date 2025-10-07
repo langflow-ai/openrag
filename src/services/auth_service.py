@@ -296,11 +296,16 @@ class AuthService:
             try:
                 if self.langflow_mcp_service and isinstance(jwt_token, str) and jwt_token.strip():
                     global_vars = {"JWT": jwt_token}
+                    global_vars["CONNECTOR_TYPE_URL"] = "url"
                     if user_info:
                         if user_info.get("id"):
                             global_vars["OWNER"] = user_info.get("id")
                         if user_info.get("name"):
-                            global_vars["OWNER_NAME"] = user_info.get("name")
+                            # OWNER_NAME may contain spaces, which can cause issues in headers.
+                            # Alternative: URL-encode the owner name to preserve spaces and special characters.
+                            owner_name = user_info.get("name")
+                            if owner_name:
+                                global_vars["OWNER_NAME"] = str(f"\"{owner_name}\"")
                         if user_info.get("email"):
                             global_vars["OWNER_EMAIL"] = user_info.get("email")
 
