@@ -116,10 +116,10 @@ To deploy OpenRAG with Docker:
    | OpenSearch | http://localhost:9200 | Vector database for document storage. |
    | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
 
-    You can now access the OpenRAG application at `http://localhost:3000`.
+6. Access the OpenRAG application at `http://localhost:3000` and continue with the [Quickstart](docs/docs/get-started/quickstart.mdx).
 
-To stop `docling serve`, run:
-
+    To stop `docling serve`, run:
+    
     ```bash
     uv run python scripts/docling_ctl.py stop
     ```
