@@ -52,7 +52,7 @@ For the full TUI guide, see [TUI](docs/docs/get-started/tui.mdx).
 
 ## Docker Deployment
 
-The repository includes two Docker Compose `.yml` files.
+If you prefer to use Docker to run OpenRAG, the repository includes two Docker Compose `.yml` files.
 They deploy the same applications and containers, but to different environments.
 
 - [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment for environments with GPU support. GPU support requires an NVIDIA GPU with CUDA support and compatible NVIDIA drivers installed on the OpenRAG host machine. 
@@ -67,16 +67,16 @@ cd openrag
 
 2. Build and start all services.
 
-For the GPU-accelerated deployment, run:
-```bash
-docker compose build
-docker compose up -d
-```
+    For the GPU-accelerated deployment, run:
+    ```bash
+    docker compose build
+    docker compose up -d
+    ```
 
-For environments without GPU support, run: 
-```bash
-docker compose -f docker-compose-cpu.yml up -d
-```
+    For environments without GPU support, run: 
+    ```bash
+    docker compose -f docker-compose-cpu.yml up -d
+    ```
 
 For more information, see [Deploy with Docker](docs/docs/get-started/docker.mdx).
 
