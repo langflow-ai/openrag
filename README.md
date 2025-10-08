@@ -17,21 +17,24 @@
 OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with Starlette, Next.js, OpenSearch, and Langflow integration. 
 </div>
 <div align="center">
-  <a href="#quick-start" style="color: #0366d6;">Quick Start</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#quickstart" style="color: #0366d6;">Quickstart</a> &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#tui-interface" style="color: #0366d6;">TUI Interface</a> &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#docker-deployment" style="color: #0366d6;">Docker Deployment</a> &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#development" style="color: #0366d6;">Development</a> &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#troubleshooting" style="color: #0366d6;">Troubleshooting</a>
 </div>
 
-## Quick Start
+## Quickstart
+
 
 ### Prerequisites
 
 - Docker or Podman with Compose installed
 - Make (for development commands)
 
-### 1. Environment Setup
+### Install and start OpenRAG
+
+1. Set up development environment.
 
 ```bash
 # Clone and setup environment
@@ -40,9 +43,7 @@ cd openrag
 make setup  # Creates .env and installs dependencies
 ```
 
-### 2. Configure Environment
-
-Edit `.env` with your API keys and credentials:
+2. Configure the `.env` file with your API keys and credentials.
 
 ```bash
 # Required
@@ -54,9 +55,10 @@ LANGFLOW_CHAT_FLOW_ID=your_chat_flow_id
 LANGFLOW_INGEST_FLOW_ID=your_ingest_flow_id
 NUDGES_FLOW_ID=your_nudges_flow_id
 ```
-See extended configuration, including ingestion and optional variables: [docs/reference/configuration.mdx](docs/docs/reference/configuration.mdx)
 
-### 3. Start OpenRAG
+For extended configuration, including ingestion and optional variables, see [docs/reference/configuration.mdx](docs/docs/reference/configuration.mdx)
+
+3. Start OpenRAG.
 
 ```bash
 # Full stack with GPU support
@@ -73,7 +75,7 @@ Access the services:
 - **OpenSearch**: http://localhost:9200
 - **OpenSearch Dashboards**: http://localhost:5601
 
-With OpenRAG started, ingest and retrieve documents with the [OpenRAG Quickstart](/docs/get-started/quickstart.mdx).
+With OpenRAG started, ingest and retrieve documents with the [OpenRAG Quickstart](docs/docs/get-started/quickstart.mdx).
 
 ## TUI interface
 
@@ -93,14 +95,14 @@ uv sync
 uv run openrag
 ```
 
-For the full TUI guide, see [docs/get-started/tui.mdx](docs/docs/get-started/tui.mdx)
+For the full TUI guide, see [TUI](docs/docs/get-started/tui.mdx).
 
 ## Docker Deployment
 
-The repository includes two Docker Compose files.
+The repository includes two Docker Compose `.yml` files.
 They deploy the same applications and containers, but to different environments.
 
-- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing.
+- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment for environments with GPU support. GPU support requires an NVIDIA GPU with CUDA support and compatible NVIDIA drivers installed on the OpenRAG host machine. 
 
 - [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
 
@@ -123,11 +125,11 @@ For environments without GPU support, run:
 docker compose -f docker-compose-cpu.yml up -d
 ```
 
-For more information, see [docs/get-started/docker.mdx](docs/docs/get-started/docker.mdx)
+For more information, see [Deploy with Docker](docs/docs/get-started/docker.mdx).
 
 ## Troubleshooting
 
-For common issues and fixes, see [docs/support/troubleshoot.mdx](docs/docs/support/troubleshoot.mdx).
+For common issues and fixes, see [Troubleshoot](docs/docs/support/troubleshoot.mdx).
 
 ## Development
 
