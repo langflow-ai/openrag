@@ -61,8 +61,6 @@ They deploy the same applications and containers, but to different environments.
 
 Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing. Installing OpenRAG with the TUI starts `docling serve` automatically, but for a Docker deployment you must manually start the `docling serve` process.
 
-Alternatively, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your `.env` to use OpenRAG's built-in pipeline, which uses docling directly without requiring `docling serve`.
-
 To deploy OpenRAG with Docker:
 
 1. Clone the OpenRAG repository.
