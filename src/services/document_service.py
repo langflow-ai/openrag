@@ -126,7 +126,11 @@ class DocumentService:
         from utils.file_utils import auto_cleanup_tempfile
         import os
 
-        with auto_cleanup_tempfile() as tmp_path:
+        # Preserve file extension for docling format detection
+        filename = upload_file.filename or "uploaded"
+        suffix = os.path.splitext(filename)[1] or ""
+
+        with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
             # Stream upload file to temporary file
             file_size = 0
             with open(tmp_path, 'wb') as tmp_file:
