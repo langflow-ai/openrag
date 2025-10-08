@@ -27,7 +27,7 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 
 ## Quickstart
 
-To get started quickly, use the OpenRAG Terminal User Interface (TUI) to manage your OpenRAG installation without complex command-line operations.
+Use the OpenRAG Terminal User Interface (TUI) to manage your OpenRAG installation without complex command-line operations.
 
 To launch OpenRAG with the TUI, do the following:
 
