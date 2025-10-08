@@ -59,13 +59,42 @@ They deploy the same applications and containers, but to different environments.
 
 - [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
 
+Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This is required to take advantage of[Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing. Installing OpenRAG with the TUI starts `docling serve` automatically, but for a Docker deployment you must manually start the `docling serve` process.
+
+Alternatively, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your `.env` to use OpenRAG's built-in pipeline, which uses docling directly without requiring `docling serve`.
+
+To deploy OpenRAG with Docker:
+
 1. Clone the OpenRAG repository.
     ```bash
     git clone https://github.com/langflow-ai/openrag.git
     cd openrag
     ```
 
-2. Build and start all services.
+2. Install dependencies.
+    ```bash
+    uv sync
+    ```
+
+3. Start `docling serve` on the host machine.
+    ```bash
+    uv run python scripts/docling_ctl.py start --port 5001
+    ```
+    
+4. Confirm `docling serve` is running.
+    ```
+    uv run python scripts/docling_ctl.py status
+    ```
+
+    Successful result:
+    ```bash
+    Status: running
+    Endpoint: http://127.0.0.1:5001
+    Docs: http://127.0.0.1:5001/docs
+    PID: 27746
+    ```
+
+5. Build and start all services.
 
     For the GPU-accelerated deployment, run:
     ```bash
@@ -76,6 +105,23 @@ They deploy the same applications and containers, but to different environments.
     For environments without GPU support, run: 
     ```bash
     docker compose -f docker-compose-cpu.yml up -d
+    ```
+
+   The OpenRAG Docker Compose file starts five containers:
+   | Container Name | Default Address | Purpose |
+   |---|---|---|
+   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
+   | OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
+   | Langflow | http://localhost:7860 | AI workflow engine and flow management. |
+   | OpenSearch | http://localhost:9200 | Vector database for document storage. |
+   | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
+
+    You can now access the OpenRAG application at `http://localhost:3000`.
+
+    To stop `docling serve`, run:
+
+    ```bash
+    uv run python scripts/docling_ctl.py stop
     ```
 
 For more information, see [Deploy with Docker](docs/docs/get-started/docker.mdx).
