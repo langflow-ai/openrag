@@ -10,6 +10,7 @@ from rich.text import Text
 from rich.align import Align
 from dotenv import load_dotenv
 
+from .. import __version__
 from ..managers.container_manager import ContainerManager, ServiceStatus
 from ..managers.env_manager import EnvManager
 from ..managers.docling_manager import DoclingManager
@@ -116,7 +117,8 @@ class WelcomeScreen(Screen):
 ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝
 """
         welcome_text.append(ascii_art, style="bold white")
-        welcome_text.append("Terminal User Interface for OpenRAG\n\n", style="dim")
+        welcome_text.append("Terminal User Interface for OpenRAG\n", style="dim")
+        welcome_text.append(f"v{__version__}\n\n", style="dim cyan")
 
         # Check if all services are running
         all_services_running = self.services_running and self.docling_running
