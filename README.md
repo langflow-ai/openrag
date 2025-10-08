@@ -32,21 +32,21 @@ Use the OpenRAG Terminal User Interface (TUI) to manage your OpenRAG installatio
 To launch OpenRAG with the TUI, do the following:
 
 1. Clone the OpenRAG repository.
-```bash
-git clone https://github.com/langflow-ai/openrag.git
-cd openrag
-```
+    ```bash
+    git clone https://github.com/langflow-ai/openrag.git
+    cd openrag
+    ```
 
 2. To start the TUI, from the repository root, run:
-```bash
-# Install dependencies first
-uv sync
+    ```bash
+    # Install dependencies first
+    uv sync
+    
+    # Launch the TUI
+    uv run openrag
+    ```
 
-# Launch the TUI
-uv run openrag
-```
-
-The TUI opens and guides you through OpenRAG setup.
+    The TUI opens and guides you through OpenRAG setup.
 
 For the full TUI guide, see [TUI](docs/docs/get-started/tui.mdx).
 
@@ -60,10 +60,10 @@ They deploy the same applications and containers, but to different environments.
 - [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
 
 1. Clone the OpenRAG repository.
-```bash
-git clone https://github.com/langflow-ai/openrag.git
-cd openrag
-```
+    ```bash
+    git clone https://github.com/langflow-ai/openrag.git
+    cd openrag
+    ```
 
 2. Build and start all services.
 
