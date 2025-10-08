@@ -7,9 +7,6 @@ import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialModifyFlows from '@site/docs/_partial-modify-flows.mdx';
-import PartialExternalPreview from '@site/docs/_partial-external-preview.mdx';
-
-<PartialExternalPreview />
 
 OpenRAG uses [OpenSearch](https://docs.opensearch.org/latest/) for its vector-backed knowledge store.
 This is a specialized database for storing and retrieving embeddings, which helps your Agent efficiently find relevant information.
@@ -26,6 +23,7 @@ OpenRAG supports two authentication modes based on how you [install OpenRAG](/in
 ## Ingest knowledge
 
 OpenRAG supports knowledge ingestion through direct file uploads and OAuth connectors.
+To configure the knowledge ingestion pipeline parameters, see [Docling Ingestion](/ingestion).
 
 ### Direct file ingestion
 
@@ -86,18 +84,6 @@ You can select multiples.
 The ingestion process may take some time, depending on the size of your documents.
 4. When ingestion is complete, your documents are available in the Knowledge screen.
 
-### Sync cloud connectors
-
-Your connected data sources are found in the <Icon name="Settings2" aria-hidden="true"/> **Settings** page.
-
-When you click **Sync Now** for a connected cloud service like Google Drive, OpenRAG scans your connected Google Drive account to find files that match your sync criteria. Sync criteria are controlled in **Sync Settings** on the same page. You can sync all files, or select a maximum number of files to sync.
-
-For each file found, OpenRAG downloads, converts, and embeds the processed content into OpenSearch.
-
-You can monitor the sync progress in the <Icon name="Bell" aria-hidden="true"/> **Tasks** sidebar.
-
-Once processing is complete, the synced documents become available in your knowledge base and can be searched through the chat interface or Knowledge page.
-
 ## Explore knowledge
 
 The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database's `documents` index.
@@ -108,10 +94,6 @@ Click on a document to display the chunks derived from splitting the default doc
 Documents are processed with the default **Knowledge Ingest** flow, so if you want to split your documents differently, edit the **Knowledge Ingest** flow.
 
 <PartialModifyFlows />
-
-### Knowledge ingestion settings
-
-To configure the knowledge ingestion pipeline parameters, see [Docling Ingestion](/ingestion).
 
 ## Create knowledge filters
 
