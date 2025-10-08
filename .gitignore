@@ -18,6 +18,8 @@ wheels/
 1001*.pdf
 *.json
 !flows/*.json
+!src/tui/_assets/flows/*.json
+!src/tui/_assets/flows/components/*.json
 .DS_Store
 
 config/

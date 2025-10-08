@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+from typing import Iterable, Optional
 from textual.app import App, ComposeResult
 from utils.logging_config import get_logger
 try:
@@ -305,41 +306,103 @@ class OpenRAGTUI(App):
         return True, "Runtime requirements satisfied"
 
 
-def copy_sample_documents():
+def _copy_assets(resource_tree, destination: Path, allowed_suffixes: Optional[Iterable[str]] = None, *, force: bool = False) -> None:
+    """Copy packaged assets into destination and optionally overwrite existing files.
+
+    When ``force`` is True, files are refreshed if the packaged bytes differ.
+    """
+    destination.mkdir(parents=True, exist_ok=True)
+
+    for resource in resource_tree.iterdir():
+        target_path = destination / resource.name
+
+        if resource.is_dir():
+            _copy_assets(resource, target_path, allowed_suffixes, force=force)
+            continue
+
+        if allowed_suffixes and not any(resource.name.endswith(suffix) for suffix in allowed_suffixes):
+            continue
+        resource_bytes = resource.read_bytes()
+
+        if target_path.exists():
+            if not force:
+                continue
+
+            try:
+                if target_path.read_bytes() == resource_bytes:
+                    continue
+            except Exception as read_error:
+                logger.debug(f"Failed to read existing asset {target_path}: {read_error}")
+
+        target_path.write_bytes(resource_bytes)
+        logger.info(f"Copied bundled asset: {target_path}")
+
+
+def copy_sample_documents(*, force: bool = False) -> None:
     """Copy sample documents from package to current directory if they don't exist."""
     documents_dir = Path("documents")
 
-    # Check if documents directory already exists and has files
-    if documents_dir.exists() and any(documents_dir.glob("*.pdf")):
-        return  # Documents already exist, don't overwrite
-
     try:
-        # Get sample documents from package assets
         assets_files = files("tui._assets.documents")
-
-        # Create documents directory if it doesn't exist
-        documents_dir.mkdir(exist_ok=True)
-
-        # Copy each sample document
-        for resource in assets_files.iterdir():
-            if resource.is_file() and resource.name.endswith('.pdf'):
-                dest_path = documents_dir / resource.name
-                if not dest_path.exists():
-                    content = resource.read_bytes()
-                    dest_path.write_bytes(content)
-                    logger.info(f"Copied sample document: {resource.name}")
-
+        _copy_assets(assets_files, documents_dir, allowed_suffixes=(".pdf",), force=force)
     except Exception as e:
         logger.debug(f"Could not copy sample documents: {e}")
         # This is not a critical error - the app can work without sample documents
+
+
+def copy_sample_flows(*, force: bool = False) -> None:
+    """Copy sample flows from package to current directory if they don't exist."""
+    flows_dir = Path("flows")
+
+    try:
+        assets_files = files("tui._assets.flows")
+        _copy_assets(assets_files, flows_dir, allowed_suffixes=(".json",), force=force)
+    except Exception as e:
+        logger.debug(f"Could not copy sample flows: {e}")
+        # The app can proceed without bundled flows
+
+
+def copy_compose_files(*, force: bool = False) -> None:
+    """Copy docker-compose templates into the workspace if they are missing."""
+    try:
+        assets_root = files("tui._assets")
+    except Exception as e:
+        logger.debug(f"Could not access compose assets: {e}")
+        return
+
+    for filename in ("docker-compose.yml", "docker-compose-cpu.yml"):
+        destination = Path(filename)
+        if destination.exists() and not force:
+            continue
+
+        try:
+            resource = assets_root.joinpath(filename)
+            if not resource.is_file():
+                logger.debug(f"Compose template not found in assets: {filename}")
+                continue
+
+            resource_bytes = resource.read_bytes()
+            if destination.exists():
+                try:
+                    if destination.read_bytes() == resource_bytes:
+                        continue
+                except Exception as read_error:
+                    logger.debug(f"Failed to read existing compose file {destination}: {read_error}")
+
+            destination.write_bytes(resource_bytes)
+            logger.info(f"Copied docker-compose template: {filename}")
+        except Exception as error:
+            logger.debug(f"Could not copy compose file {filename}: {error}")
 
 
 def run_tui():
     """Run the OpenRAG TUI application."""
     app = None
     try:
-        # Copy sample documents on first run
-        copy_sample_documents()
+        # Keep bundled assets aligned with the packaged versions
+        copy_sample_documents(force=True)
+        copy_sample_flows(force=True)
+        copy_compose_files(force=True)
 
         app = OpenRAGTUI()
         app.run()
