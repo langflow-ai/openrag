@@ -1,16 +1,95 @@
-name: Build Multi-Architecture Docker Images
+name: Release + Docker Images (multi-arch)
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'pyproject.toml'
   workflow_dispatch:
-    inputs:
-      update_latest:
-        description: 'Update latest tags (production release)'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
+  build-python-packages:
+    runs-on: ubuntu-latest
+    outputs:
+      skip_release: ${{ steps.version.outputs.skip_release }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | cut -d '"' -f 2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+          # Check if tag already exists
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists, skipping release"
+            echo "skip_release=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "skip_release=false" >> $GITHUB_OUTPUT
+
+          # Check if version is numeric (e.g., 0.1.16) vs prerelease (e.g., 0.1.16-rc1)
+          if [[ "$VERSION" =~ ^[0-9.-]+$ ]]; then
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "Release type: Production"
+          else
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "Release type: Prerelease"
+          fi
+
+      - name: Build wheel and source distribution
+        if: steps.version.outputs.skip_release != 'true'
+        run: |
+          uv build
+
+      - name: List built artifacts
+        if: steps.version.outputs.skip_release != 'true'
+        run: |
+          ls -la dist/
+          echo "Built artifacts:"
+          for file in dist/*; do
+            echo "  - $(basename $file) ($(stat -c%s $file | numfmt --to=iec-i)B)"
+          done
+
+      - name: Upload build artifacts
+        if: steps.version.outputs.skip_release != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-packages
+          path: dist/
+          retention-days: 30
+
+      - name: Create Release
+        if: steps.version.outputs.skip_release != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: ${{ steps.version.outputs.is_prerelease }}
+          generate_release_notes: true
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: build-python-packages
+    if: needs.build-python-packages.outputs.skip_release != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -106,9 +185,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
 
   manifest:
-    needs: build
+    needs: [build, build-python-packages]
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && needs.build-python-packages.outputs.skip_release != 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -146,8 +225,8 @@ jobs:
             phact/openrag-opensearch:$VERSION-amd64 \
             phact/openrag-opensearch:$VERSION-arm64
 
-          # Only update latest tags if version is numeric AND checkbox is checked
-          if [[ "$VERSION" =~ ^[0-9.-]+$ ]] && [[ "${{ github.event.inputs.update_latest }}" == "true" ]]; then
+          # Only update latest tags if version is numeric
+          if [[ "$VERSION" =~ ^[0-9.-]+$ ]]; then
             echo "Updating latest tags for production release: $VERSION"
             docker buildx imagetools create -t phact/openrag-backend:latest \
               phact/openrag-backend:$VERSION-amd64 \
@@ -165,5 +244,5 @@ jobs:
               phact/openrag-opensearch:$VERSION-amd64 \
               phact/openrag-opensearch:$VERSION-arm64
           else
-            echo "Skipping latest tags - version: $VERSION, update_latest: ${{ github.event.inputs.update_latest }}"
+            echo "Skipping latest tags - version: $VERSION (not numeric)"
           fi
