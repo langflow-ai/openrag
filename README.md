@@ -14,7 +14,8 @@
   <a href="https://deepwiki.com/phact/openrag"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </div>
 
-OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with Starlette, Next.js, OpenSearch, and Langflow integration. 
+OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with Starlette, Next.js, OpenSearch, and Langflow integration.
+
 </div>
 <div align="center">
   <a href="#quickstart" style="color: #0366d6;">Quickstart</a> &nbsp;&nbsp;|&nbsp;&nbsp;
@@ -26,67 +27,17 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 
 ## Quickstart
 
+To get started quickly, use the OpenRAG Terminal User Interface (TUI) to manage your OpenRAG installation without complex command-line operations.
 
-### Prerequisites
+To launch OpenRAG with the TUI, do the following:
 
-- Docker or Podman with Compose installed
-- Make (for development commands)
-
-### Install and start OpenRAG
-
-1. Set up development environment.
-
+1. Clone the OpenRAG repository.
 ```bash
-# Clone and setup environment
 git clone https://github.com/langflow-ai/openrag.git
 cd openrag
-make setup  # Creates .env and installs dependencies
 ```
 
-2. Configure the `.env` file with your API keys and credentials.
-
-```bash
-# Required
-OPENAI_API_KEY=your_openai_api_key
-OPENSEARCH_PASSWORD=your_secure_password
-LANGFLOW_SUPERUSER=admin
-LANGFLOW_SUPERUSER_PASSWORD=your_secure_password
-LANGFLOW_CHAT_FLOW_ID=your_chat_flow_id
-LANGFLOW_INGEST_FLOW_ID=your_ingest_flow_id
-NUDGES_FLOW_ID=your_nudges_flow_id
-```
-
-For extended configuration, including ingestion and optional variables, see [docs/reference/configuration.mdx](docs/docs/reference/configuration.mdx)
-
-3. Start OpenRAG.
-
-```bash
-# Full stack with GPU support
-make dev
-
-# Or CPU only
-make dev-cpu
-```
-
-Access the services:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **Langflow**: http://localhost:7860
-- **OpenSearch**: http://localhost:9200
-- **OpenSearch Dashboards**: http://localhost:5601
-
-With OpenRAG started, ingest and retrieve documents with the [OpenRAG Quickstart](docs/docs/get-started/quickstart.mdx).
-
-## TUI interface
-
-OpenRAG includes a powerful Terminal User Interface (TUI) for easy setup, configuration, and monitoring. The TUI provides a user-friendly way to manage your OpenRAG installation without complex command-line operations.
-
-![OpenRAG TUI Interface](assets/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
-
-### Launch OpenRAG with the TUI
-
-From the repository root, run:
-
+2. To start the TUI, from the repository root, run:
 ```bash
 # Install dependencies first
 uv sync
@@ -94,6 +45,8 @@ uv sync
 # Launch the TUI
 uv run openrag
 ```
+
+The TUI opens and guides you through OpenRAG setup.
 
 For the full TUI guide, see [TUI](docs/docs/get-started/tui.mdx).
 
@@ -133,16 +86,4 @@ For common issues and fixes, see [Troubleshoot](docs/docs/support/troubleshoot.m
 
 ## Development
 
-For developers wanting to contribute to OpenRAG or set up a development environment, please see our comprehensive development guide:
-
-**[📚 See CONTRIBUTING.md for detailed development instructions](CONTRIBUTING.md)**
-
-### Quick Development Commands
-
-```bash
-make help                    # See all available commands
-make setup                   # Initial development setup
-make infra                   # Start infrastructure services
-make backend                 # Run backend locally
-make frontend                # Run frontend locally
-```
+For developers wanting to contribute to OpenRAG or set up a development environment, see [CONTRIBUTING.md](CONTRIBUTING.md).
