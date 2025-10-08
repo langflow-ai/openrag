@@ -4,13 +4,12 @@
 
 </div>
 <div align="center">
-  <a href="#quick-start" style="color: #0366d6;">🚀 Quick Start</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#tui-interface" style="color: #0366d6;">💻 TUI Interface</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#docker-deployment" style="color: #0366d6;">🐳 Docker Deployment</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#development" style="color: #0366d6;">⚙️ Development</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#troubleshooting" style="color: #0366d6;">🔧 Troubleshooting</a>
+  <a href="#quick-start" style="color: #0366d6;">Quick Start</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#tui-interface" style="color: #0366d6;">TUI Interface</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#docker-deployment" style="color: #0366d6;">Docker Deployment</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#development" style="color: #0366d6;">Development</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#troubleshooting" style="color: #0366d6;">Troubleshooting</a>
 </div>
-
 
 
 OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with Starlette, Next.js, OpenSearch, and Langflow integration. [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/phact/openrag)
@@ -27,12 +26,7 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 
 </div>
 
-
-
-
-
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -62,7 +56,8 @@ LANGFLOW_CHAT_FLOW_ID=your_chat_flow_id
 LANGFLOW_INGEST_FLOW_ID=your_ingest_flow_id
 NUDGES_FLOW_ID=your_nudges_flow_id
 ```
-See extended configuration, including ingestion and optional variables: [docs/reference/configuration.md](docs/docs/reference/configuration.md)
+See extended configuration, including ingestion and optional variables: [docs/reference/configuration.mdx](docs/docs/reference/configuration.mdx)
+
 ### 3. Start OpenRAG
 
 ```bash
@@ -80,13 +75,17 @@ Access the services:
 - **OpenSearch**: http://localhost:9200
 - **OpenSearch Dashboards**: http://localhost:5601
 
-## 🖥️ TUI Interface
+With OpenRAG started, ingest and retrieve documents with the [OpenRAG Quickstart](/docs/get-started/quickstart.mdx).
+
+## TUI interface
 
 OpenRAG includes a powerful Terminal User Interface (TUI) for easy setup, configuration, and monitoring. The TUI provides a user-friendly way to manage your OpenRAG installation without complex command-line operations.
 
 ![OpenRAG TUI Interface](assets/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
-### Launching the TUI
+### Launch OpenRAG with the TUI
+
+From the repository root, run:
 
 ```bash
 # Install dependencies first
@@ -96,65 +95,47 @@ uv sync
 uv run openrag
 ```
 
-### TUI Features
+For the full TUI guide, see [docs/get-started/tui.mdx](docs/docs/get-started/tui.mdx)
 
-See the full TUI guide for features, navigation, and benefits: [docs/get-started/tui.mdx](docs/docs/get-started/tui.mdx)
+## Docker Deployment
 
+The repository includes two Docker Compose files.
+They deploy the same applications and containers, but to different environments.
 
+- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing.
 
+- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
 
-## 🐳 Docker Deployment
-
-### Standard Deployment
-
+1. Clone the OpenRAG repository.
 ```bash
-# Build and start all services
+git clone https://github.com/langflow-ai/openrag.git
+cd openrag
+```
+
+2. Build and start all services.
+
+For the GPU-accelerated deployment, run:
+```bash
 docker compose build
 docker compose up -d
 ```
 
-### CPU-Only Deployment
-
-For environments without GPU support:
-
+For environments without GPU support, run: 
 ```bash
 docker compose -f docker-compose-cpu.yml up -d
 ```
 
-More deployment commands and tips: [docs/get-started/docker.mdx](docs/docs/get-started/docker.mdx)
+For more information, see [docs/get-started/docker.mdx](docs/docs/get-started/docker.mdx)
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
-### Podman on macOS
+For common issues and fixes, see [docs/support/troubleshoot.mdx](docs/docs/support/troubleshoot.mdx).
 
-If using Podman on macOS, you may need to increase VM memory:
-
-```bash
-podman machine stop
-podman machine rm
-podman machine init --memory 8192   # 8 GB example
-podman machine start
-```
-
-### Common Issues
-
-See common issues and fixes: [docs/support/troubleshoot.mdx](docs/docs/reference/troubleshoot.mdx)
-
-
-
-## 🛠️ Development
+## Development
 
 For developers wanting to contribute to OpenRAG or set up a development environment, please see our comprehensive development guide:
 
 **[📚 See CONTRIBUTING.md for detailed development instructions](CONTRIBUTING.md)**
-
-The contributing guide includes:
-- Complete development environment setup
-- Local development workflows  
-- Testing and debugging procedures
-- Code style guidelines
-- Architecture overview
-- Pull request guidelines
 
 ### Quick Development Commands
 
