@@ -1,5 +1,6 @@
 """Configuration screen for OpenRAG TUI."""
 
+import re
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.screen import Screen
@@ -48,6 +49,40 @@ class DocumentsPathValidator(Validator):
             return self.success()
         else:
             return self.failure(error_msg)
+
+
+class PasswordValidator(Validator):
+    """Validator for OpenSearch admin password."""
+
+    def validate(self, value: str) -> ValidationResult:
+        # Allow empty value (will be auto-generated)
+        if not value:
+            return self.success()
+
+        # Minimum length: 8 characters
+        if len(value) < 8:
+            return self.failure("Password must be at least 8 characters long")
+
+        # Check for required character types
+        has_uppercase = bool(re.search(r"[A-Z]", value))
+        has_lowercase = bool(re.search(r"[a-z]", value))
+        has_digit = bool(re.search(r"[0-9]", value))
+        has_special = bool(re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?]", value))
+
+        missing = []
+        if not has_uppercase:
+            missing.append("uppercase letter")
+        if not has_lowercase:
+            missing.append("lowercase letter")
+        if not has_digit:
+            missing.append("digit")
+        if not has_special:
+            missing.append("special character")
+
+        if missing:
+            return self.failure(f"Password must contain: {', '.join(missing)}")
+
+        return self.success()
 
 
 class ConfigScreen(Screen):
@@ -118,9 +153,14 @@ class ConfigScreen(Screen):
             value=current_value,
             password=True,
             id="input-opensearch_password",
+            validators=[PasswordValidator()],
         )
         yield input_widget
         self.inputs["opensearch_password"] = input_widget
+        yield Static(
+            "Min 8 chars with uppercase, lowercase, digit, and special character",
+            classes="helper-text",
+        )
         yield Static(" ")
 
         # Langflow Admin Username
@@ -488,6 +528,22 @@ class ConfigScreen(Screen):
 
     def action_save(self) -> None:
         """Save the configuration."""
+        # First, check Textual input validators
+        validation_errors = []
+        for field_name, input_widget in self.inputs.items():
+            if hasattr(input_widget, "validate") and input_widget.value:
+                result = input_widget.validate(input_widget.value)
+                if result and not result.is_valid:
+                    for failure in result.failures:
+                        validation_errors.append(f"{field_name}: {failure.description}")
+
+        if validation_errors:
+            self.notify(
+                f"Validation failed:\n" + "\n".join(validation_errors[:3]),
+                severity="error",
+            )
+            return
+
         # Update config from input fields
         for field_name, input_widget in self.inputs.items():
             setattr(self.env_manager.config, field_name, input_widget.value)
