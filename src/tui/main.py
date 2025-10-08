@@ -32,34 +32,35 @@ class OpenRAGTUI(App):
 
     CSS = """
     Screen {
-        background: #0f172a;
+        background: #27272a;
     }
-    
+
     #main-container {
         height: 100%;
         padding: 1;
     }
-    
+
     #welcome-container {
         align: center middle;
         width: 100%;
         height: 100%;
     }
-    
+
     #welcome-text {
         text-align: center;
         margin-bottom: 2;
     }
-    
+
     .button-row {
         align: center middle;
         height: auto;
         margin: 1 0;
     }
-    
+
     .button-row Button {
         margin: 0 1;
         min-width: 20;
+        border: solid #3f3f46;
     }
     
     #config-header {
@@ -182,80 +183,131 @@ class OpenRAGTUI(App):
         padding: 1;
     }
 
-    /* Frontend-inspired color scheme */
+    /* Modern dark theme with pink accents */
     Static {
-        color: #f1f5f9;
+        color: #fafafa;
     }
 
-    Button.success {
-        background: #4ade80;
-        color: #000;
+    Button,
+    Button.-default,
+    Button.-primary,
+    Button.-success,
+    Button.-warning,
+    Button.-error {
+        background: #27272a !important;
+        color: #fafafa !important;
+        border: round #52525b !important;
+        text-style: none !important;
+        tint: transparent 0% !important;
     }
 
-    Button.error {
-        background: #ef4444;
-        color: #fff;
+    Button > *,
+    Button.-default > *,
+    Button.-primary > *,
+    Button.-success > *,
+    Button.-warning > *,
+    Button.-error > * {
+        background: transparent !important;
+        color: #fafafa !important;
+        text-style: none !important;
     }
 
-    Button.warning {
-        background: #eab308;
-        color: #000;
+    Button:hover,
+    Button.-default:hover,
+    Button.-primary:hover,
+    Button.-success:hover,
+    Button.-warning:hover,
+    Button.-error:hover {
+        background: #27272a !important;
+        color: #fafafa !important;
+        border: round #52525b !important;
     }
 
-    Button.primary {
-        background: #2563eb;
-        color: #fff;
-    }
-
-    Button.default {
-        background: #475569;
-        color: #f1f5f9;
-        border: solid #64748b;
+    Button:focus,
+    Button:focus-within,
+    Button.-active,
+    Button.-default:focus,
+    Button.-default:focus-within,
+    Button.-default.-active,
+    Button.-primary:focus,
+    Button.-primary:focus-within,
+    Button.-primary.-active,
+    Button.-success:focus,
+    Button.-success:focus-within,
+    Button.-success.-active,
+    Button.-warning:focus,
+    Button.-warning:focus-within,
+    Button.-warning.-active,
+    Button.-error:focus,
+    Button.-error:focus-within,
+    Button.-error.-active {
+        background: #27272a !important;
+        color: #fafafa !important;
+        border: round #ec4899 !important;
     }
 
     DataTable {
-        background: #1e293b;
-        color: #f1f5f9;
+        background: #27272a;
+        color: #fafafa;
     }
 
     DataTable > .datatable--header {
-        background: #334155;
-        color: #f1f5f9;
+        background: #3f3f46;
+        color: #fafafa;
     }
 
     DataTable > .datatable--cursor {
-        background: #475569;
+        background: #52525b;
     }
 
     Input {
-        background: #334155;
-        color: #f1f5f9;
-        border: solid #64748b;
+        background: #18181b;
+        color: #fafafa;
+        border: solid #3f3f46;
+    }
+
+    Input:focus {
+        border: solid #ec4899;
     }
 
     Label {
-        color: #f1f5f9;
+        color: #fafafa;
+    }
+
+    Header {
+        background: #27272a;
+        color: #fafafa;
     }
 
     Footer {
-        background: #334155;
-        color: #f1f5f9;
+        background: #27272a;
+        color: #a1a1aa;
     }
 
     #runtime-status {
-        background: #1e293b;
-        border: solid #64748b;
-        color: #f1f5f9;
+        background: #27272a;
+        border: solid #3f3f46;
+        color: #fafafa;
     }
 
     #system-info {
-        background: #1e293b;
-        border: solid #64748b;
-        color: #f1f5f9;
+        background: #27272a;
+        border: solid #3f3f46;
+        color: #fafafa;
     }
 
     #services-table, #images-table {
-        background: #1e293b;
+        background: #27272a;
+    }
+
+    * {
+        scrollbar-background: #27272a;
+        scrollbar-background-hover: #3f3f46;
+        scrollbar-background-active: #3f3f46;
+        scrollbar-color: #52525b;
+        scrollbar-color-hover: #71717a;
+        scrollbar-color-active: #71717a;
+        scrollbar-corner-color: #27272a;
     }
     """
 
