@@ -24,14 +24,14 @@ class CommandOutputModal(ModalScreen):
     #dialog {
         width: 90%;
         height: 90%;
-        border: thick $primary;
-        background: $surface;
+        border: solid #3f3f46;
+        background: #27272a;
         padding: 0;
     }
 
     #title {
-        background: $primary;
-        color: $text;
+        background: #3f3f46;
+        color: #fafafa;
         padding: 1 2;
         text-align: center;
         width: 100%;
@@ -40,9 +40,10 @@ class CommandOutputModal(ModalScreen):
 
     #command-output {
         height: 1fr;
-        border: solid $accent;
+        border: solid #3f3f46;
         margin: 1;
-        background: $surface-darken-1;
+        background: #18181b;
+        color: #fafafa;
     }
 
     #button-row {
@@ -56,11 +57,96 @@ class CommandOutputModal(ModalScreen):
     #button-row Button {
         margin: 0 1;
         min-width: 16;
+        background: #27272a;
+        color: #fafafa;
+        border: round #52525b;
+        text-style: none;
+        tint: transparent 0%;
+    }
+
+    #button-row Button > Static {
+        background: transparent !important;
+        color: #fafafa !important;
+        text-style: none;
+    }
+
+    #button-row Button > * {
+        background: transparent !important;
+        color: #fafafa !important;
+    }
+
+    #button-row Button:hover {
+        background: #27272a !important;
+        color: #fafafa !important;
+        border: round #52525b;
+        tint: transparent 0%;
+        text-style: none;
+    }
+
+    #button-row Button:hover > Static {
+        background: transparent !important;
+        color: #fafafa !important;
+        text-style: none;
+    }
+
+    #button-row Button:hover > * {
+        background: transparent !important;
+        color: #fafafa !important;
+    }
+
+    #button-row Button:focus {
+        background: #27272a !important;
+        color: #fafafa !important;
+        border: round #ec4899;
+        tint: transparent 0%;
+        text-style: none;
+    }
+
+    #button-row Button:focus > Static {
+        background: transparent !important;
+        color: #fafafa !important;
+        text-style: none;
+    }
+
+    #button-row Button:focus > * {
+        background: transparent !important;
+        color: #fafafa !important;
+    }
+
+    #button-row Button.-active {
+        background: #27272a !important;
+        color: #fafafa !important;
+        border: round #ec4899;
+        tint: transparent 0%;
+        text-style: none;
+    }
+
+    #button-row Button.-active > Static {
+        background: transparent !important;
+        color: #fafafa !important;
+        text-style: none;
+    }
+
+    #button-row Button.-active > * {
+        background: transparent !important;
+        color: #fafafa !important;
+    }
+
+    #button-row Button:disabled {
+        background: #27272a;
+        color: #52525b;
+        border: round #3f3f46;
+    }
+
+    #button-row Button:disabled > Static {
+        background: transparent;
+        color: #52525b;
     }
 
     #copy-status {
         text-align: center;
         margin-bottom: 1;
+        color: #a1a1aa;
     }
     """
 

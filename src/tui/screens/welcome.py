@@ -118,7 +118,7 @@ class WelcomeScreen(Screen):
 """
         welcome_text.append(ascii_art, style="bold white")
         welcome_text.append("Terminal User Interface for OpenRAG\n", style="dim")
-        welcome_text.append(f"v{__version__}\n\n", style="dim cyan")
+        welcome_text.append(f"v{__version__}\n\n", style="white")
 
         # Check if all services are running
         all_services_running = self.services_running and self.docling_running
