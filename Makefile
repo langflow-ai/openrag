@@ -234,58 +234,6 @@ test-ci:
 		echo "$$AUTHC_CONFIG" | head -50; \
 		exit 1; \
 	fi; \
-	echo "Checking if OpenSearch can reach backend OIDC endpoint..."; \
-	docker exec os curl -s http://openrag-backend:8000/.well-known/openid-configuration | head -c 200; \
-	echo ""; \
-	echo "Checking key files..."; \
-	ls -la keys/; \
-	echo "Public key hash (host):"; \
-	sha256sum keys/public_key.pem | cut -d' ' -f1 | cut -c1-16; \
-	echo "Public key hash (container):"; \
-	docker exec openrag-backend sha256sum /app/keys/public_key.pem | cut -d' ' -f1 | cut -c1-16; \
-	echo "Generating test JWT token..."; \
-	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))"); \
-	echo "Token hash (host):"; \
-	echo "$$TEST_TOKEN" | sha256sum | cut -d' ' -f1 | cut -c1-16; \
-	echo "Decoding JWT claims (host):"; \
-	echo "$$TEST_TOKEN" | uv run python -c "import jwt, sys; tok=sys.stdin.read().strip(); claims=jwt.decode(tok, options={'verify_signature': False}); print('iss:', claims.get('iss'), 'aud:', claims.get('aud'), 'roles:', claims.get('roles'))"; \
-	echo "Waiting for OpenSearch with JWT auth to work..."; \
-	JWT_AUTH_READY=false; \
-	for i in $$(seq 1 60); do \
-		if curl -k -s https://localhost:9200 -u admin:$${OPENSEARCH_PASSWORD} >/dev/null 2>&1; then \
-			HTTP_CODE=$$(curl -k -s -w "%{http_code}" -o /tmp/os_response.txt -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
-			RESPONSE=$$(cat /tmp/os_response.txt); \
-			echo "Attempt $$i: HTTP $$HTTP_CODE"; \
-			echo "Response: $$RESPONSE"; \
-			if [ "$$HTTP_CODE" = "200" ]; then \
-				echo "✓ OpenSearch JWT auth working after $$((i*2)) seconds"; \
-				JWT_AUTH_READY=true; \
-				break; \
-			fi; \
-		fi; \
-		sleep 2; \
-	done; \
-	if [ "$$JWT_AUTH_READY" = "false" ]; then \
-		echo ""; \
-		echo "========================================================================"; \
-		echo "✗ ERROR: OpenSearch JWT authentication failed to work after 120 seconds!"; \
-		echo "========================================================================"; \
-		echo ""; \
-		echo "Dumping OpenSearch container logs:"; \
-		echo "------------------------------------------------------------------------"; \
-		docker logs os --tail 100; \
-		echo "------------------------------------------------------------------------"; \
-		echo ""; \
-		echo "Dumping backend container logs:"; \
-		echo "------------------------------------------------------------------------"; \
-		docker logs openrag-backend --tail 50; \
-		echo "------------------------------------------------------------------------"; \
-		echo ""; \
-		exit 1; \
-	else \
-		echo "Dumping OpenSearch logs to verify OIDC is working:"; \
-		docker logs os 2>&1 | grep -E "OIDC|openid|JWT|authenticat" | tail -20; \
-	fi; \
 	echo "Waiting for Langflow..."; \
 	for i in $$(seq 1 60); do \
 		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
@@ -302,9 +250,22 @@ test-ci:
 	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
 	uv run pytest tests/integration -vv -s -o log_cli=true --log-cli-level=DEBUG; \
+	TEST_RESULT=$$?; \
+	echo ""; \
+	echo "=== Post-test JWT diagnostics ==="; \
+	echo "Generating test JWT token..."; \
+	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))" 2>/dev/null || echo ""); \
+	if [ -n "$$TEST_TOKEN" ]; then \
+		echo "Testing JWT against OpenSearch..."; \
+		HTTP_CODE=$$(curl -k -s -w "%{http_code}" -o /tmp/os_diag.txt -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
+		echo "HTTP $$HTTP_CODE: $$(cat /tmp/os_diag.txt | head -c 150)"; \
+	fi; \
+	echo "================================="; \
+	echo ""; \
 	echo "Tearing down infra"; \
 	uv run python scripts/docling_ctl.py stop || true; \
-	docker compose down -v || true
+	docker compose down -v || true; \
+	exit $$TEST_RESULT
 
 lint:
 	@echo "🔍 Running linting checks..."
