@@ -59,7 +59,7 @@ They deploy the same applications and containers, but to different environments.
 
 - [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
 
-Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This is required to take advantage of[Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing. Installing OpenRAG with the TUI starts `docling serve` automatically, but for a Docker deployment you must manually start the `docling serve` process.
+Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing. Installing OpenRAG with the TUI starts `docling serve` automatically, but for a Docker deployment you must manually start the `docling serve` process.
 
 Alternatively, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your `.env` to use OpenRAG's built-in pipeline, which uses docling directly without requiring `docling serve`.
 
@@ -118,7 +118,7 @@ To deploy OpenRAG with Docker:
 
     You can now access the OpenRAG application at `http://localhost:3000`.
 
-    To stop `docling serve`, run:
+To stop `docling serve`, run:
 
     ```bash
     uv run python scripts/docling_ctl.py stop
