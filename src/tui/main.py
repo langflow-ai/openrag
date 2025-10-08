@@ -107,6 +107,41 @@ class OpenRAGTUI(App):
         margin: 0 0 1 1;
     }
 
+    /* Password field label rows */
+    #config-form Horizontal {
+        height: auto;
+        align: left middle;
+        margin-bottom: 0;
+    }
+
+    #config-form Horizontal Label {
+        width: auto;
+        margin-right: 1;
+    }
+
+    /* Password input rows */
+    #opensearch-password-row,
+    #langflow-password-row {
+        width: 100%;
+        height: auto;
+        align: left middle;
+    }
+
+    #opensearch-password-row Input,
+    #langflow-password-row Input {
+        width: 1fr;
+    }
+
+    /* Password toggle buttons */
+    #toggle-opensearch-password,
+    #toggle-langflow-password {
+        min-width: 8;
+        width: 8;
+        height: 3;
+        padding: 0 1;
+        margin-left: 1;
+    }
+
     /* Docs path actions row */
     
     #services-content {
@@ -271,6 +306,19 @@ class OpenRAGTUI(App):
     }
 
     Label {
+        color: #fafafa;
+    }
+
+    Checkbox {
+        background: transparent;
+        color: #fafafa;
+        border: none;
+        padding: 0;
+        margin-left: 2;
+    }
+
+    Checkbox > Static {
+        background: transparent;
         color: #fafafa;
     }
 
