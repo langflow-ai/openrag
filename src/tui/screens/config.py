@@ -13,6 +13,7 @@ from textual.widgets import (
     Label,
     TabbedContent,
     TabPane,
+    Checkbox,
 )
 from textual.validation import ValidationResult, Validator
 from rich.text import Text
@@ -147,20 +148,22 @@ class ConfigScreen(Screen):
 
         # OpenSearch Admin Password
         yield Label("OpenSearch Admin Password *")
-        current_value = getattr(self.env_manager.config, "opensearch_password", "")
-        input_widget = Input(
-            placeholder="Auto-generated secure password",
-            value=current_value,
-            password=True,
-            id="input-opensearch_password",
-            validators=[PasswordValidator()],
-        )
-        yield input_widget
-        self.inputs["opensearch_password"] = input_widget
         yield Static(
             "Min 8 chars with uppercase, lowercase, digit, and special character",
             classes="helper-text",
         )
+        current_value = getattr(self.env_manager.config, "opensearch_password", "")
+        with Horizontal(id="opensearch-password-row"):
+            input_widget = Input(
+                placeholder="Auto-generated secure password",
+                value=current_value,
+                password=True,
+                id="input-opensearch_password",
+                validators=[PasswordValidator()],
+            )
+            yield input_widget
+            self.inputs["opensearch_password"] = input_widget
+            yield Button("👁", id="toggle-opensearch-password", variant="default")
         yield Static(" ")
 
         # Langflow Admin Username
@@ -174,18 +177,22 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
         # Langflow Admin Password
-        yield Label("Langflow Admin Password *")
+        with Horizontal():
+            yield Label("Langflow Admin Password (optional)")
+            yield Checkbox("Generate password", id="generate-langflow-password")
         current_value = getattr(
             self.env_manager.config, "langflow_superuser_password", ""
         )
-        input_widget = Input(
-            placeholder="Auto-generated secure password",
-            value=current_value,
-            password=True,
-            id="input-langflow_superuser_password",
-        )
-        yield input_widget
-        self.inputs["langflow_superuser_password"] = input_widget
+        with Horizontal(id="langflow-password-row"):
+            input_widget = Input(
+                placeholder="Langflow password",
+                value=current_value,
+                password=True,
+                id="input-langflow_superuser_password",
+            )
+            yield input_widget
+            self.inputs["langflow_superuser_password"] = input_widget
+            yield Button("👁", id="toggle-langflow-password", variant="default")
         yield Static(" ")
         yield Static(" ")
 
@@ -201,15 +208,17 @@ class ConfigScreen(Screen):
             classes="helper-text",
         )
         current_value = getattr(self.env_manager.config, "openai_api_key", "")
-        input_widget = Input(
-            placeholder="sk-...",
-            value=current_value,
-            password=True,
-            validators=[OpenAIKeyValidator()],
-            id="input-openai_api_key",
-        )
-        yield input_widget
-        self.inputs["openai_api_key"] = input_widget
+        with Horizontal(id="openai-key-row"):
+            input_widget = Input(
+                placeholder="sk-...",
+                value=current_value,
+                password=True,
+                validators=[OpenAIKeyValidator()],
+                id="input-openai_api_key",
+            )
+            yield input_widget
+            self.inputs["openai_api_key"] = input_widget
+            yield Button("Show", id="toggle-openai-key", variant="default")
         yield Static(" ")
 
         # Add OAuth fields only in full mode
@@ -252,14 +261,16 @@ class ConfigScreen(Screen):
             current_value = getattr(
                 self.env_manager.config, "google_oauth_client_secret", ""
             )
-            input_widget = Input(
-                placeholder="",
-                value=current_value,
-                password=True,
-                id="input-google_oauth_client_secret",
-            )
-            yield input_widget
-            self.inputs["google_oauth_client_secret"] = input_widget
+            with Horizontal(id="google-secret-row"):
+                input_widget = Input(
+                    placeholder="",
+                    value=current_value,
+                    password=True,
+                    id="input-google_oauth_client_secret",
+                )
+                yield input_widget
+                self.inputs["google_oauth_client_secret"] = input_widget
+                yield Button("Show", id="toggle-google-secret", variant="default")
             yield Static(" ")
 
             # Microsoft Graph Client ID
@@ -300,14 +311,16 @@ class ConfigScreen(Screen):
             current_value = getattr(
                 self.env_manager.config, "microsoft_graph_oauth_client_secret", ""
             )
-            input_widget = Input(
-                placeholder="",
-                value=current_value,
-                password=True,
-                id="input-microsoft_graph_oauth_client_secret",
-            )
-            yield input_widget
-            self.inputs["microsoft_graph_oauth_client_secret"] = input_widget
+            with Horizontal(id="microsoft-secret-row"):
+                input_widget = Input(
+                    placeholder="",
+                    value=current_value,
+                    password=True,
+                    id="input-microsoft_graph_oauth_client_secret",
+                )
+                yield input_widget
+                self.inputs["microsoft_graph_oauth_client_secret"] = input_widget
+                yield Button("Show", id="toggle-microsoft-secret", variant="default")
             yield Static(" ")
 
             # AWS Access Key ID
@@ -503,6 +516,22 @@ class ConfigScreen(Screen):
         except Exception:
             pass
 
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Handle checkbox changes."""
+        if event.checkbox.id == "generate-langflow-password":
+            langflow_password_input = self.inputs.get("langflow_superuser_password")
+            if event.value:
+                # Generate password when checked
+                password = self.env_manager.generate_secure_password()
+                if langflow_password_input:
+                    langflow_password_input.value = password
+                self.notify("Generated Langflow password", severity="information")
+            else:
+                # Clear password when unchecked (enable autologin)
+                if langflow_password_input:
+                    langflow_password_input.value = ""
+                self.notify("Cleared Langflow password - autologin enabled", severity="information")
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "generate-btn":
@@ -513,18 +542,39 @@ class ConfigScreen(Screen):
             self.action_back()
         elif event.button.id == "pick-docs-btn":
             self.action_pick_documents_path()
+        elif event.button.id == "toggle-opensearch-password":
+            # Toggle OpenSearch password visibility
+            input_widget = self.inputs.get("opensearch_password")
+            if input_widget:
+                input_widget.password = not input_widget.password
+                event.button.label = "🙈" if not input_widget.password else "👁"
+        elif event.button.id == "toggle-langflow-password":
+            # Toggle Langflow password visibility
+            input_widget = self.inputs.get("langflow_superuser_password")
+            if input_widget:
+                input_widget.password = not input_widget.password
+                event.button.label = "🙈" if not input_widget.password else "👁"
 
     def action_generate(self) -> None:
         """Generate secure passwords for admin accounts."""
-        self.env_manager.setup_secure_defaults()
+        # Only generate OpenSearch password - leave Langflow empty for autologin mode
+        if not self.env_manager.config.opensearch_password:
+            self.env_manager.config.opensearch_password = self.env_manager.generate_secure_password()
+
+        # Update secret keys
+        if not self.env_manager.config.langflow_secret_key:
+            self.env_manager.config.langflow_secret_key = self.env_manager.generate_langflow_secret_key()
+
+        if not self.env_manager.config.session_secret:
+            self.env_manager.config.session_secret = self.env_manager.generate_session_secret()
 
         # Update input fields with generated values
         for field_name, input_widget in self.inputs.items():
-            if field_name in ["opensearch_password", "langflow_superuser_password"]:
+            if field_name == "opensearch_password":
                 new_value = getattr(self.env_manager.config, field_name)
                 input_widget.value = new_value
 
-        self.notify("Generated secure passwords", severity="information")
+        self.notify("Generated secure password for OpenSearch", severity="information")
 
     def action_save(self) -> None:
         """Save the configuration."""

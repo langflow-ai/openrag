@@ -28,12 +28,14 @@ class CommandOutputModal(ModalScreen):
     DEFAULT_CSS = """
     CommandOutputModal {
         align: center middle;
+        overflow: hidden;
     }
 
     #waves-background {
         width: 100%;
         height: 100%;
         layer: background;
+        overflow: hidden;
     }
 
     #dialog {
@@ -42,6 +44,7 @@ class CommandOutputModal(ModalScreen):
         border: solid #3f3f46;
         background: #27272a;
         padding: 0;
+        overflow: hidden;
     }
 
     #title {

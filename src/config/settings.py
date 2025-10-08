@@ -43,6 +43,7 @@ if _legacy_flow_id and not os.getenv("LANGFLOW_CHAT_FLOW_ID"):
 
 
 # Langflow superuser credentials for API key generation
+LANGFLOW_AUTO_LOGIN = os.getenv("LANGFLOW_AUTO_LOGIN", "False").lower() in ("true", "1", "yes")
 LANGFLOW_SUPERUSER = os.getenv("LANGFLOW_SUPERUSER")
 LANGFLOW_SUPERUSER_PASSWORD = os.getenv("LANGFLOW_SUPERUSER_PASSWORD")
 # Allow explicit key via environment; generation will be skipped if set
@@ -179,7 +180,16 @@ async def generate_langflow_api_key(modify: bool = False):
                 )
                 LANGFLOW_KEY = None  # Clear invalid key
 
-    if not LANGFLOW_SUPERUSER or not LANGFLOW_SUPERUSER_PASSWORD:
+    # Use default langflow/langflow credentials if auto-login is enabled and credentials not set
+    username = LANGFLOW_SUPERUSER
+    password = LANGFLOW_SUPERUSER_PASSWORD
+
+    if LANGFLOW_AUTO_LOGIN and (not username or not password):
+        logger.info("LANGFLOW_AUTO_LOGIN is enabled, using default langflow/langflow credentials")
+        username = username or "langflow"
+        password = password or "langflow"
+
+    if not username or not password:
         logger.warning(
             "LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
         )
@@ -197,8 +207,8 @@ async def generate_langflow_api_key(modify: bool = False):
                     f"{LANGFLOW_URL}/api/v1/login",
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                     data={
-                        "username": LANGFLOW_SUPERUSER,
-                        "password": LANGFLOW_SUPERUSER_PASSWORD,
+                        "username": username,
+                        "password": password,
                     },
                     timeout=10,
                 )
