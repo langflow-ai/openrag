@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "openrag"
-version = "0.1.15"
+version = "0.1.18"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
