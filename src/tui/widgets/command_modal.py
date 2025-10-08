@@ -6,19 +6,34 @@ from typing import Callable, Optional, AsyncIterator
 
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Container
+from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label, TextArea
+from textual.widgets import Button, Static, Label, TextArea, Footer
 
 from ..utils.clipboard import copy_text_to_clipboard
+from .waves import Waves
 
 
 class CommandOutputModal(ModalScreen):
     """Modal dialog for displaying command output in real-time."""
 
+    BINDINGS = [
+        ("w,+", "add_wave", "Add"),
+        ("r,-", "remove_wave", "Remove"),
+        ("p", "pause_waves", "Pause"),
+        ("up", "speed_up", "Faster"),
+        ("down", "speed_down", "Slower"),
+    ]
+
     DEFAULT_CSS = """
     CommandOutputModal {
         align: center middle;
+    }
+
+    #waves-background {
+        width: 100%;
+        height: 100%;
+        layer: background;
     }
 
     #dialog {
@@ -173,6 +188,7 @@ class CommandOutputModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         """Create the modal dialog layout."""
+        yield Waves(id="waves-background")
         with Container(id="dialog"):
             yield Label(self.title_text, id="title")
             yield TextArea(
@@ -187,6 +203,7 @@ class CommandOutputModal(ModalScreen):
                     "Close", variant="primary", id="close-btn", disabled=True
                 )
             yield Static("", id="copy-status")
+        yield Footer()
 
     def on_mount(self) -> None:
         """Start the command when the modal is mounted."""
@@ -205,6 +222,34 @@ class CommandOutputModal(ModalScreen):
             self.dismiss()
         elif event.button.id == "copy-btn":
             self.copy_to_clipboard()
+
+    def action_add_wave(self) -> None:
+        """Add a wave to the animation."""
+        waves = self.query_one("#waves-background", Waves)
+        waves._add_wavelet()
+
+    def action_remove_wave(self) -> None:
+        """Remove a wave from the animation."""
+        waves = self.query_one("#waves-background", Waves)
+        if waves.wavelets:
+            waves.wavelets.pop()
+
+    def action_pause_waves(self) -> None:
+        """Pause/unpause the wave animation."""
+        waves = self.query_one("#waves-background", Waves)
+        waves.paused = not waves.paused
+
+    def action_speed_up(self) -> None:
+        """Increase wave speed."""
+        waves = self.query_one("#waves-background", Waves)
+        for w in waves.wavelets:
+            w.speed = min(2.0, w.speed * 1.2)
+
+    def action_speed_down(self) -> None:
+        """Decrease wave speed."""
+        waves = self.query_one("#waves-background", Waves)
+        for w in waves.wavelets:
+            w.speed = max(0.1, w.speed * 0.8)
 
     async def _run_command(self) -> None:
         """Run the command and update the output in real-time."""
