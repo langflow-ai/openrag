@@ -507,10 +507,8 @@ class ConfigScreen(Screen):
         # Save to file
         if self.env_manager.save_env_file():
             self.notify("Configuration saved successfully!", severity="information")
-            # Switch to monitor screen
-            from .monitor import MonitorScreen
-
-            self.app.push_screen(MonitorScreen())
+            # Go back to welcome screen
+            self.dismiss()
         else:
             self.notify("Failed to save configuration", severity="error")
 
