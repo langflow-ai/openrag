@@ -237,6 +237,22 @@ class WelcomeScreen(Screen):
         except:
             pass  # Button might not exist
 
+    async def on_resume(self) -> None:
+        """Called when returning from another screen (e.g., config screen)."""
+        # Reload environment variables
+        load_dotenv(override=True)
+
+        # Update OAuth config state
+        self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
+            os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
+        )
+
+        # Re-detect service state
+        self._detect_services_sync()
+
+        # Refresh the welcome content and buttons
+        await self._refresh_welcome_content()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "basic-setup-btn":
