@@ -21,8 +21,8 @@ class CommandOutputModal(ModalScreen):
         ("w,+", "add_wave", "Add"),
         ("r,-", "remove_wave", "Remove"),
         ("p", "pause_waves", "Pause"),
-        ("up", "speed_up", "Faster"),
-        ("down", "speed_down", "Slower"),
+        ("f", "speed_up", "Faster"),
+        ("s", "speed_down", "Slower"),
     ]
 
     DEFAULT_CSS = """
