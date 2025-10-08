@@ -603,7 +603,7 @@ class ContainerManager:
         """Stop all services and yield progress updates."""
         yield False, "Stopping OpenRAG services..."
 
-        success, stdout, stderr = await self._run_compose_command(["down"])
+        success, stdout, stderr = await self._run_compose_command(["stop"])
 
         if success:
             yield True, "Services stopped successfully"
