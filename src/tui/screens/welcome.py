@@ -237,7 +237,7 @@ class WelcomeScreen(Screen):
         except:
             pass  # Button might not exist
 
-    async def on_resume(self) -> None:
+    async def on_screen_resume(self) -> None:
         """Called when returning from another screen (e.g., config screen)."""
         # Reload environment variables
         load_dotenv(override=True)
