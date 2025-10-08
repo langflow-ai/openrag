@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.8.1">
 <title data-rh="true">Install OpenRAG | OpenRAG</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://docs.openr.ag/install"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Install OpenRAG | OpenRAG"><meta data-rh="true" name="description" content="Install the OpenRAG Python wheel, and then run the OpenRAG Terminal User Interface(TUI) to start your OpenRAG deployment with a guided setup process."><meta data-rh="true" property="og:description" content="Install the OpenRAG Python wheel, and then run the OpenRAG Terminal User Interface(TUI) to start your OpenRAG deployment with a guided setup process."><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://docs.openr.ag/install"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/install" hreflang="en"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/install" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Install OpenRAG","item":"https://docs.openr.ag/install"}]}</script><link rel="stylesheet" href="/assets/css/styles.1847d619.css">
-<script src="/assets/js/runtime~main.a9859600.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.8597cd48.js" defer="defer"></script>
 <script src="/assets/js/main.692561be.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -51,12 +51,13 @@ For more information on virtual environments, see the <a href="https://docs.astr
 </li>
 </ol>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="setup">Set up OpenRAG with the TUI<a href="#setup" class="hash-link" aria-label="Direct link to Set up OpenRAG with the TUI" title="Direct link to Set up OpenRAG with the TUI">​</a></h2>
-<p>The TUI creates a <code>.env</code> file in your OpenRAG directory root and starts OpenRAG.</p>
-<p><strong>Basic Setup</strong> generates all of the required values except the OpenAI API key.
-<strong>Basic Setup</strong> does not set up OAuth connections for ingestion from Google Drive, OneDrive, or AWS.
+<p>The TUI creates a <code>.env</code> file in your OpenRAG directory root and starts OpenRAG.
+If the TUI detects a <code>.env</code> file in the OpenRAG root directory, it sources any variables from the <code>.env</code> file.
+If the TUI detects OAuth credentials, it enforces the <strong>Advanced Setup</strong> path.</p>
+<p><strong>Basic Setup</strong> generates all of the required values for OpenRAG except the OpenAI API key.
+<strong>Basic Setup</strong> does not set up OAuth connections for ingestion from cloud providers.
 For OAuth setup, use <strong>Advanced Setup</strong>.</p>
-<p>If the TUI detects OAuth credentials, it enforces the <strong>Advanced Setup</strong> path.
-If the TUI detects a <code>.env</code> file in the OpenRAG root directory, it will source any variables from the <code>.env</code> file.</p>
+<p><strong>Basic Setup</strong> and <strong>Advanced Setup</strong> enforce the same authentication settings for the Langflow server, but manage document access differently. For more information, see <a href="/knowledge#auth">Authentication and document access</a>.</p>
 <div class="tabs-container tabList__CuJ"><ul role="tablist" aria-orientation="horizontal" class="tabs"><li role="tab" tabindex="0" aria-selected="true" class="tabs__item tabItem_LNqP tabs__item--active">Basic setup</li><li role="tab" tabindex="-1" aria-selected="false" class="tabs__item tabItem_LNqP">Advanced setup</li></ul><div class="margin-top--md"><div role="tabpanel" class="tabItem_Ymn6"><ol>
 <li>To install OpenRAG with <strong>Basic Setup</strong>, click <strong>Basic Setup</strong> or press <kbd>1</kbd>.</li>
 <li>Click <strong>Generate Passwords</strong> to generate passwords for OpenSearch and Langflow.</li>
