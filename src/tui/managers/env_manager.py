@@ -149,8 +149,17 @@ class EnvManager:
         if not self.config.langflow_secret_key:
             self.config.langflow_secret_key = self.generate_langflow_secret_key()
 
+        # Configure autologin based on whether password is set
         if not self.config.langflow_superuser_password:
-            self.config.langflow_superuser_password = self.generate_secure_password()
+            # If no password is set, enable autologin mode
+            self.config.langflow_auto_login = "True"
+            self.config.langflow_new_user_is_active = "True"
+            self.config.langflow_enable_superuser_cli = "True"
+        else:
+            # If password is set, disable autologin mode
+            self.config.langflow_auto_login = "False"
+            self.config.langflow_new_user_is_active = "False"
+            self.config.langflow_enable_superuser_cli = "False"
 
     def validate_config(self, mode: str = "full") -> bool:
         """
@@ -183,10 +192,7 @@ class EnvManager:
 
         # Langflow secret key is auto-generated; no user input required
 
-        if not validate_non_empty(self.config.langflow_superuser_password):
-            self.config.validation_errors["langflow_superuser_password"] = (
-                "Langflow superuser password is required"
-            )
+        # Langflow password is now optional - if not provided, autologin mode will be enabled
 
         if mode == "full":
             # Validate OAuth settings if provided
@@ -249,10 +255,12 @@ class EnvManager:
                 # Core settings
                 f.write("# Core settings\n")
                 f.write(f"LANGFLOW_SECRET_KEY={self._quote_env_value(self.config.langflow_secret_key)}\n")
-                f.write(f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser)}\n")
-                f.write(
-                    f"LANGFLOW_SUPERUSER_PASSWORD={self._quote_env_value(self.config.langflow_superuser_password)}\n"
-                )
+                # Only write LANGFLOW_SUPERUSER and password if password is set
+                if self.config.langflow_superuser_password:
+                    f.write(f"LANGFLOW_SUPERUSER={self._quote_env_value(self.config.langflow_superuser)}\n")
+                    f.write(
+                        f"LANGFLOW_SUPERUSER_PASSWORD={self._quote_env_value(self.config.langflow_superuser_password)}\n"
+                    )
                 f.write(f"LANGFLOW_CHAT_FLOW_ID={self._quote_env_value(self.config.langflow_chat_flow_id)}\n")
                 f.write(
                     f"LANGFLOW_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_ingest_flow_id)}\n"

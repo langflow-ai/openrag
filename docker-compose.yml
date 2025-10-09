@@ -50,6 +50,7 @@ services:
       - OPENSEARCH_HOST=opensearch
       - LANGFLOW_URL=http://langflow:7860
       - LANGFLOW_PUBLIC_URL=${LANGFLOW_PUBLIC_URL}
+      - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - LANGFLOW_CHAT_FLOW_ID=${LANGFLOW_CHAT_FLOW_ID}
@@ -73,7 +74,7 @@ services:
     volumes:
       - ./documents:/app/documents:Z
       - ./keys:/app/keys:Z
-      - ./flows:/app/flows:z
+      - ./flows:/app/flows:U,z
     gpus: all
 
   openrag-frontend:
@@ -91,7 +92,7 @@ services:
 
   langflow:
     volumes:
-      - ./flows:/app/flows:z
+      - ./flows:/app/flows:U,z
     image: phact/openrag-langflow:${LANGFLOW_VERSION:-latest}
     # build:
     #   context: .

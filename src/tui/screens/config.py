@@ -1,5 +1,6 @@
 """Configuration screen for OpenRAG TUI."""
 
+import re
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.screen import Screen
@@ -12,6 +13,7 @@ from textual.widgets import (
     Label,
     TabbedContent,
     TabPane,
+    Checkbox,
 )
 from textual.validation import ValidationResult, Validator
 from rich.text import Text
@@ -48,6 +50,40 @@ class DocumentsPathValidator(Validator):
             return self.success()
         else:
             return self.failure(error_msg)
+
+
+class PasswordValidator(Validator):
+    """Validator for OpenSearch admin password."""
+
+    def validate(self, value: str) -> ValidationResult:
+        # Allow empty value (will be auto-generated)
+        if not value:
+            return self.success()
+
+        # Minimum length: 8 characters
+        if len(value) < 8:
+            return self.failure("Password must be at least 8 characters long")
+
+        # Check for required character types
+        has_uppercase = bool(re.search(r"[A-Z]", value))
+        has_lowercase = bool(re.search(r"[a-z]", value))
+        has_digit = bool(re.search(r"[0-9]", value))
+        has_special = bool(re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?]", value))
+
+        missing = []
+        if not has_uppercase:
+            missing.append("uppercase letter")
+        if not has_lowercase:
+            missing.append("lowercase letter")
+        if not has_digit:
+            missing.append("digit")
+        if not has_special:
+            missing.append("special character")
+
+        if missing:
+            return self.failure(f"Password must contain: {', '.join(missing)}")
+
+        return self.success()
 
 
 class ConfigScreen(Screen):
@@ -112,41 +148,54 @@ class ConfigScreen(Screen):
 
         # OpenSearch Admin Password
         yield Label("OpenSearch Admin Password *")
-        current_value = getattr(self.env_manager.config, "opensearch_password", "")
-        input_widget = Input(
-            placeholder="Auto-generated secure password",
-            value=current_value,
-            password=True,
-            id="input-opensearch_password",
+        yield Static(
+            "Min 8 chars with uppercase, lowercase, digit, and special character",
+            classes="helper-text",
         )
-        yield input_widget
-        self.inputs["opensearch_password"] = input_widget
+        current_value = getattr(self.env_manager.config, "opensearch_password", "")
+        with Horizontal(id="opensearch-password-row"):
+            input_widget = Input(
+                placeholder="Auto-generated secure password",
+                value=current_value,
+                password=True,
+                id="input-opensearch_password",
+                validators=[PasswordValidator()],
+            )
+            yield input_widget
+            self.inputs["opensearch_password"] = input_widget
+            yield Button("👁", id="toggle-opensearch-password", variant="default")
         yield Static(" ")
 
-        # Langflow Admin Username
-        yield Label("Langflow Admin Username *")
+        # Langflow Admin Password
+        with Horizontal():
+            yield Label("Langflow Admin Password (optional)")
+            yield Checkbox("Generate password", id="generate-langflow-password")
+        current_value = getattr(
+            self.env_manager.config, "langflow_superuser_password", ""
+        )
+        with Horizontal(id="langflow-password-row"):
+            input_widget = Input(
+                placeholder="Langflow password",
+                value=current_value,
+                password=True,
+                id="input-langflow_superuser_password",
+            )
+            yield input_widget
+            self.inputs["langflow_superuser_password"] = input_widget
+            yield Button("👁", id="toggle-langflow-password", variant="default")
+        yield Static(" ")
+
+        # Langflow Admin Username - conditionally displayed based on password
+        current_password = getattr(self.env_manager.config, "langflow_superuser_password", "")
+        yield Label("Langflow Admin Username *", id="langflow-username-label")
         current_value = getattr(self.env_manager.config, "langflow_superuser", "")
         input_widget = Input(
             placeholder="admin", value=current_value, id="input-langflow_superuser"
         )
         yield input_widget
         self.inputs["langflow_superuser"] = input_widget
-        yield Static(" ")
+        yield Static(" ", id="langflow-username-spacer")
 
-        # Langflow Admin Password
-        yield Label("Langflow Admin Password *")
-        current_value = getattr(
-            self.env_manager.config, "langflow_superuser_password", ""
-        )
-        input_widget = Input(
-            placeholder="Auto-generated secure password",
-            value=current_value,
-            password=True,
-            id="input-langflow_superuser_password",
-        )
-        yield input_widget
-        self.inputs["langflow_superuser_password"] = input_widget
-        yield Static(" ")
         yield Static(" ")
 
         # API Keys Section
@@ -161,15 +210,17 @@ class ConfigScreen(Screen):
             classes="helper-text",
         )
         current_value = getattr(self.env_manager.config, "openai_api_key", "")
-        input_widget = Input(
-            placeholder="sk-...",
-            value=current_value,
-            password=True,
-            validators=[OpenAIKeyValidator()],
-            id="input-openai_api_key",
-        )
-        yield input_widget
-        self.inputs["openai_api_key"] = input_widget
+        with Horizontal(id="openai-key-row"):
+            input_widget = Input(
+                placeholder="sk-...",
+                value=current_value,
+                password=True,
+                validators=[OpenAIKeyValidator()],
+                id="input-openai_api_key",
+            )
+            yield input_widget
+            self.inputs["openai_api_key"] = input_widget
+            yield Button("Show", id="toggle-openai-key", variant="default")
         yield Static(" ")
 
         # Add OAuth fields only in full mode
@@ -212,14 +263,16 @@ class ConfigScreen(Screen):
             current_value = getattr(
                 self.env_manager.config, "google_oauth_client_secret", ""
             )
-            input_widget = Input(
-                placeholder="",
-                value=current_value,
-                password=True,
-                id="input-google_oauth_client_secret",
-            )
-            yield input_widget
-            self.inputs["google_oauth_client_secret"] = input_widget
+            with Horizontal(id="google-secret-row"):
+                input_widget = Input(
+                    placeholder="",
+                    value=current_value,
+                    password=True,
+                    id="input-google_oauth_client_secret",
+                )
+                yield input_widget
+                self.inputs["google_oauth_client_secret"] = input_widget
+                yield Button("Show", id="toggle-google-secret", variant="default")
             yield Static(" ")
 
             # Microsoft Graph Client ID
@@ -260,14 +313,16 @@ class ConfigScreen(Screen):
             current_value = getattr(
                 self.env_manager.config, "microsoft_graph_oauth_client_secret", ""
             )
-            input_widget = Input(
-                placeholder="",
-                value=current_value,
-                password=True,
-                id="input-microsoft_graph_oauth_client_secret",
-            )
-            yield input_widget
-            self.inputs["microsoft_graph_oauth_client_secret"] = input_widget
+            with Horizontal(id="microsoft-secret-row"):
+                input_widget = Input(
+                    placeholder="",
+                    value=current_value,
+                    password=True,
+                    id="input-microsoft_graph_oauth_client_secret",
+                )
+                yield input_widget
+                self.inputs["microsoft_graph_oauth_client_secret"] = input_widget
+                yield Button("Show", id="toggle-microsoft-secret", variant="default")
             yield Static(" ")
 
             # AWS Access Key ID
@@ -328,50 +383,8 @@ class ConfigScreen(Screen):
         self.inputs["openrag_documents_paths"] = input_widget
         yield Static(" ")
 
-        # Langflow Auth Settings
-        yield Static("Langflow Auth Settings", classes="tab-header")
-        yield Static(" ")
-
-        # Langflow Auto Login
-        yield Label("Langflow Auto Login")
-        current_value = getattr(self.env_manager.config, "langflow_auto_login", "False")
-        input_widget = Input(
-            placeholder="False", value=current_value, id="input-langflow_auto_login"
-        )
-        yield input_widget
-        self.inputs["langflow_auto_login"] = input_widget
-        yield Static(" ")
-
-        # Langflow New User Is Active
-        yield Label("Langflow New User Is Active")
-        current_value = getattr(
-            self.env_manager.config, "langflow_new_user_is_active", "False"
-        )
-        input_widget = Input(
-            placeholder="False",
-            value=current_value,
-            id="input-langflow_new_user_is_active",
-        )
-        yield input_widget
-        self.inputs["langflow_new_user_is_active"] = input_widget
-        yield Static(" ")
-
-        # Langflow Enable Superuser CLI
-        yield Label("Langflow Enable Superuser CLI")
-        current_value = getattr(
-            self.env_manager.config, "langflow_enable_superuser_cli", "False"
-        )
-        input_widget = Input(
-            placeholder="False",
-            value=current_value,
-            id="input-langflow_enable_superuser_cli",
-        )
-        yield input_widget
-        self.inputs["langflow_enable_superuser_cli"] = input_widget
-        yield Static(" ")
-        yield Static(" ")
-
-        # Langflow Secret Key removed from UI; generated automatically on save
+        # Langflow Auth Settings - These are automatically configured based on password presence
+        # Not shown in UI; set in env_manager.setup_secure_defaults()
 
         # Add optional fields only in full mode
         if self.mode == "full":
@@ -454,6 +467,10 @@ class ConfigScreen(Screen):
 
     def on_mount(self) -> None:
         """Initialize the screen when mounted."""
+        # Set initial visibility of username field based on password
+        current_password = getattr(self.env_manager.config, "langflow_superuser_password", "")
+        self._update_langflow_username_visibility(current_password)
+
         # Focus the first input field
         try:
             # Find the first input field and focus it
@@ -462,6 +479,26 @@ class ConfigScreen(Screen):
                 inputs[0].focus()
         except Exception:
             pass
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Handle checkbox changes."""
+        if event.checkbox.id == "generate-langflow-password":
+            langflow_password_input = self.inputs.get("langflow_superuser_password")
+            if event.value:
+                # Generate password when checked
+                password = self.env_manager.generate_secure_password()
+                if langflow_password_input:
+                    langflow_password_input.value = password
+                    # Show username field
+                    self._update_langflow_username_visibility(password)
+                self.notify("Generated Langflow password", severity="information")
+            else:
+                # Clear password when unchecked (enable autologin)
+                if langflow_password_input:
+                    langflow_password_input.value = ""
+                    # Hide username field
+                    self._update_langflow_username_visibility("")
+                self.notify("Cleared Langflow password - autologin enabled", severity="information")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -473,21 +510,58 @@ class ConfigScreen(Screen):
             self.action_back()
         elif event.button.id == "pick-docs-btn":
             self.action_pick_documents_path()
+        elif event.button.id == "toggle-opensearch-password":
+            # Toggle OpenSearch password visibility
+            input_widget = self.inputs.get("opensearch_password")
+            if input_widget:
+                input_widget.password = not input_widget.password
+                event.button.label = "🙈" if not input_widget.password else "👁"
+        elif event.button.id == "toggle-langflow-password":
+            # Toggle Langflow password visibility
+            input_widget = self.inputs.get("langflow_superuser_password")
+            if input_widget:
+                input_widget.password = not input_widget.password
+                event.button.label = "🙈" if not input_widget.password else "👁"
 
     def action_generate(self) -> None:
         """Generate secure passwords for admin accounts."""
-        self.env_manager.setup_secure_defaults()
+        # First sync input values to config to get current state
+        opensearch_input = self.inputs.get("opensearch_password")
+        if opensearch_input:
+            self.env_manager.config.opensearch_password = opensearch_input.value
+
+        # Only generate OpenSearch password if empty
+        if not self.env_manager.config.opensearch_password:
+            self.env_manager.config.opensearch_password = self.env_manager.generate_secure_password()
+
+        # Update secret keys
+        if not self.env_manager.config.langflow_secret_key:
+            self.env_manager.config.langflow_secret_key = self.env_manager.generate_langflow_secret_key()
 
         # Update input fields with generated values
-        for field_name, input_widget in self.inputs.items():
-            if field_name in ["opensearch_password", "langflow_superuser_password"]:
-                new_value = getattr(self.env_manager.config, field_name)
-                input_widget.value = new_value
+        if opensearch_input:
+            opensearch_input.value = self.env_manager.config.opensearch_password
 
-        self.notify("Generated secure passwords", severity="information")
+        self.notify("Generated secure password for OpenSearch", severity="information")
 
     def action_save(self) -> None:
         """Save the configuration."""
+        # First, check Textual input validators
+        validation_errors = []
+        for field_name, input_widget in self.inputs.items():
+            if hasattr(input_widget, "validate") and input_widget.value:
+                result = input_widget.validate(input_widget.value)
+                if result and not result.is_valid:
+                    for failure in result.failures:
+                        validation_errors.append(f"{field_name}: {failure.description}")
+
+        if validation_errors:
+            self.notify(
+                f"Validation failed:\n" + "\n".join(validation_errors[:3]),
+                severity="error",
+            )
+            return
+
         # Update config from input fields
         for field_name, input_widget in self.inputs.items():
             setattr(self.env_manager.config, field_name, input_widget.value)
@@ -507,10 +581,8 @@ class ConfigScreen(Screen):
         # Save to file
         if self.env_manager.save_env_file():
             self.notify("Configuration saved successfully!", severity="information")
-            # Switch to monitor screen
-            from .monitor import MonitorScreen
-
-            self.app.push_screen(MonitorScreen())
+            # Go back to welcome screen
+            self.dismiss()
         else:
             self.notify("Failed to save configuration", severity="error")
 
@@ -588,5 +660,31 @@ class ConfigScreen(Screen):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle input changes for real-time validation feedback."""
+        # Handle Langflow password changes - show/hide username field
+        if event.input.id == "input-langflow_superuser_password":
+            self._update_langflow_username_visibility(event.value)
         # This will trigger validation display in real-time
         pass
+
+    def _update_langflow_username_visibility(self, password_value: str) -> None:
+        """Show or hide the Langflow username field based on password presence."""
+        has_password = bool(password_value and password_value.strip())
+
+        # Get the widgets
+        try:
+            username_label = self.query_one("#langflow-username-label")
+            username_input = self.query_one("#input-langflow_superuser")
+            username_spacer = self.query_one("#langflow-username-spacer")
+
+            # Show or hide based on password presence
+            if has_password:
+                username_label.display = True
+                username_input.display = True
+                username_spacer.display = True
+            else:
+                username_label.display = False
+                username_input.display = False
+                username_spacer.display = False
+        except Exception:
+            # Widgets don't exist yet, ignore
+            pass
