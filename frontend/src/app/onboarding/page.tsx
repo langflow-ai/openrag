@@ -7,6 +7,7 @@ import {
   type OnboardingVariables,
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
+import { DoclingHealthBanner } from "@/components/docling-health-banner";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
 import OpenAILogo from "@/components/logo/openai-logo";
@@ -129,6 +130,8 @@ function OnboardingPage() {
           "text-input/70",
         )}
       />
+
+      <DoclingHealthBanner className="absolute top-0 left-0 right-0 w-full z-20" />
 
       <div className="flex flex-col items-center gap-5 min-h-[550px] w-full z-10">
         <div className="flex flex-col items-center justify-center gap-4">
