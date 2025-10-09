@@ -185,17 +185,16 @@ class ConfigScreen(Screen):
             yield Button("👁", id="toggle-langflow-password", variant="default")
         yield Static(" ")
 
-        # Langflow Admin Username - only show if password is set
+        # Langflow Admin Username - conditionally displayed based on password
         current_password = getattr(self.env_manager.config, "langflow_superuser_password", "")
-        if current_password:
-            yield Label("Langflow Admin Username *", id="langflow-username-label")
-            current_value = getattr(self.env_manager.config, "langflow_superuser", "")
-            input_widget = Input(
-                placeholder="admin", value=current_value, id="input-langflow_superuser"
-            )
-            yield input_widget
-            self.inputs["langflow_superuser"] = input_widget
-            yield Static(" ", id="langflow-username-spacer")
+        yield Label("Langflow Admin Username *", id="langflow-username-label")
+        current_value = getattr(self.env_manager.config, "langflow_superuser", "")
+        input_widget = Input(
+            placeholder="admin", value=current_value, id="input-langflow_superuser"
+        )
+        yield input_widget
+        self.inputs["langflow_superuser"] = input_widget
+        yield Static(" ", id="langflow-username-spacer")
 
         yield Static(" ")
 
@@ -510,6 +509,10 @@ class ConfigScreen(Screen):
 
     def on_mount(self) -> None:
         """Initialize the screen when mounted."""
+        # Set initial visibility of username field based on password
+        current_password = getattr(self.env_manager.config, "langflow_superuser_password", "")
+        self._update_langflow_username_visibility(current_password)
+
         # Focus the first input field
         try:
             # Find the first input field and focus it
@@ -707,46 +710,23 @@ class ConfigScreen(Screen):
 
     def _update_langflow_username_visibility(self, password_value: str) -> None:
         """Show or hide the Langflow username field based on password presence."""
-        config_form = self.query_one("#config-form")
-
-        # Check if username field already exists
-        username_input = self.query("#input-langflow_superuser")
-        username_label = self.query("#langflow-username-label")
-        username_spacer = self.query("#langflow-username-spacer")
-
         has_password = bool(password_value and password_value.strip())
-        username_exists = len(username_input) > 0
 
-        if has_password and not username_exists:
-            # Show username field - mount it after the password field
-            password_spacer = self.query_one("#langflow-password-row").parent.query(Static)[0]
+        # Get the widgets
+        try:
+            username_label = self.query_one("#langflow-username-label")
+            username_input = self.query_one("#input-langflow_superuser")
+            username_spacer = self.query_one("#langflow-username-spacer")
 
-            # Create new widgets
-            from textual.widgets import Label, Input, Static
-            label = Label("Langflow Admin Username *", id="langflow-username-label")
-            input_widget = Input(
-                placeholder="admin",
-                value=getattr(self.env_manager.config, "langflow_superuser", "admin"),
-                id="input-langflow_superuser"
-            )
-            spacer = Static(" ", id="langflow-username-spacer")
-
-            # Mount them after the password row's spacer
-            password_spacer.mount_after(label)
-            label.mount_after(input_widget)
-            input_widget.mount_after(spacer)
-
-            self.inputs["langflow_superuser"] = input_widget
-
-        elif not has_password and username_exists:
-            # Hide username field
-            for widget in username_input:
-                widget.remove()
-            for widget in username_label:
-                widget.remove()
-            for widget in username_spacer:
-                widget.remove()
-
-            # Remove from inputs dict
-            if "langflow_superuser" in self.inputs:
-                del self.inputs["langflow_superuser"]
+            # Show or hide based on password presence
+            if has_password:
+                username_label.display = True
+                username_input.display = True
+                username_spacer.display = True
+            else:
+                username_label.display = False
+                username_input.display = False
+                username_spacer.display = False
+        except Exception:
+            # Widgets don't exist yet, ignore
+            pass
