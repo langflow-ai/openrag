@@ -69,7 +69,7 @@ function DoclingSetupDialog({
           </div>
 
           <DialogDescription>
-            Then, select <span className="font-semibold text-foreground">Start Native Services</span> in the TUI. Once docling-serve is running, refresh OpenRAG.
+            Then, select <span className="font-semibold text-foreground">Start All Services</span> in the TUI. Once docling-serve is running, refresh OpenRAG.
           </DialogDescription>
         </div>
 
