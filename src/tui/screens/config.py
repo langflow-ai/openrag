@@ -525,7 +525,12 @@ class ConfigScreen(Screen):
 
     def action_generate(self) -> None:
         """Generate secure passwords for admin accounts."""
-        # Only generate OpenSearch password - leave Langflow empty for autologin mode
+        # First sync input values to config to get current state
+        opensearch_input = self.inputs.get("opensearch_password")
+        if opensearch_input:
+            self.env_manager.config.opensearch_password = opensearch_input.value
+
+        # Only generate OpenSearch password if empty
         if not self.env_manager.config.opensearch_password:
             self.env_manager.config.opensearch_password = self.env_manager.generate_secure_password()
 
@@ -533,14 +538,9 @@ class ConfigScreen(Screen):
         if not self.env_manager.config.langflow_secret_key:
             self.env_manager.config.langflow_secret_key = self.env_manager.generate_langflow_secret_key()
 
-        if not self.env_manager.config.session_secret:
-            self.env_manager.config.session_secret = self.env_manager.generate_session_secret()
-
         # Update input fields with generated values
-        for field_name, input_widget in self.inputs.items():
-            if field_name == "opensearch_password":
-                new_value = getattr(self.env_manager.config, field_name)
-                input_widget.value = new_value
+        if opensearch_input:
+            opensearch_input.value = self.env_manager.config.opensearch_password
 
         self.notify("Generated secure password for OpenSearch", severity="information")
 
