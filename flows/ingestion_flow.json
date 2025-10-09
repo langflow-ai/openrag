@@ -1245,7 +1245,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-10-09T17:53:28.032Z",
+            "last_updated": "2025-10-09T18:49:29.648Z",
             "legacy": false,
             "lf_version": "1.6.3.dev0",
             "metadata": {
@@ -1550,7 +1550,7 @@
             ],
             "frozen": false,
             "icon": "braces",
-            "last_updated": "2025-10-09T17:53:28.034Z",
+            "last_updated": "2025-10-09T18:49:29.649Z",
             "legacy": false,
             "lf_version": "1.6.3.dev0",
             "metadata": {},
@@ -2912,7 +2912,7 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-10-09T17:53:28.116Z",
+            "last_updated": "2025-10-09T18:49:29.738Z",
             "legacy": false,
             "lf_version": "1.6.3.dev0",
             "metadata": {
@@ -3328,7 +3328,7 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-10-09T17:53:28.117Z",
+            "last_updated": "2025-10-09T18:49:29.739Z",
             "legacy": false,
             "lf_version": "1.6.3.dev0",
             "metadata": {
@@ -3744,7 +3744,7 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-10-09T17:53:28.117Z",
+            "last_updated": "2025-10-09T18:49:29.740Z",
             "legacy": false,
             "lf_version": "1.6.3.dev0",
             "metadata": {
@@ -4153,15 +4153,15 @@
           "y": 1984.9915833571447
         },
         "resizing": true,
-        "selected": true,
+        "selected": false,
         "type": "noteNode",
         "width": 1000
       }
     ],
     "viewport": {
-      "x": 439.0828210185154,
-      "y": -485.0911154471861,
-      "zoom": 0.5133513373758299
+      "x": 502.99612621025017,
+      "y": -497.01724621189965,
+      "zoom": 0.5248650535598084
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
