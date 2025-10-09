@@ -7,13 +7,18 @@ import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialModifyFlows from '@site/docs/_partial-modify-flows.mdx';
-import PartialExternalPreview from '@site/docs/_partial-external-preview.mdx';
-
-<PartialExternalPreview />
 
 OpenRAG uses [OpenSearch](https://docs.opensearch.org/latest/) for its vector-backed knowledge store.
 This is a specialized database for storing and retrieving embeddings, which helps your Agent efficiently find relevant information.
 OpenSearch provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
+
+## Authentication and document access {#auth}
+
+OpenRAG supports two authentication modes based on how you [install OpenRAG](/install), and which mode you choose affects document access.
+
+**No-auth mode (Basic Setup)**: This mode uses a single anonymous JWT token for OpenSearch authentication, so documents uploaded to the `documents` index by one user are visible to all other users on the OpenRAG server.
+
+**OAuth mode (Advanced Setup)**: Each OpenRAG user is granted a JWT token, and each document is tagged with user ownership. Documents are filtered by user ownership, ensuring users only see documents they uploaded or have access to. 
 
 ## Ingest knowledge
 
@@ -78,18 +83,6 @@ You can select multiples.
 3. When your files are selected, click **Ingest Files**.
 The ingestion process may take some time, depending on the size of your documents.
 4. When ingestion is complete, your documents are available in the Knowledge screen.
-
-### Sync cloud connectors
-
-Your connected data sources are found in the <Icon name="Settings2" aria-hidden="true"/> **Settings** page.
-
-When you click **Sync Now** for a connected cloud service like Google Drive, OpenRAG scans your connected Google Drive account to find files that match your sync criteria. Sync criteria are controlled in **Sync Settings** on the same page. You can sync all files, or select a maximum number of files to sync.
-
-For each file found, OpenRAG downloads, converts, and embeds the processed content into OpenSearch.
-
-You can monitor the sync progress in the <Icon name="Bell" aria-hidden="true"/> **Tasks** sidebar.
-
-Once processing is complete, the synced documents become available in your knowledge base and can be searched through the chat interface or Knowledge page.
 
 ## Explore knowledge
 
