@@ -100,11 +100,14 @@ async def _probe_ollama_embedding_dimension(endpoint: str, model_name: str) -> i
                 error=str(legacy_error),
             )
             errors.append(str(legacy_error))
+    
+    # remove the first instance of this error to show either it or the actual error from any of the two methods
+    errors.remove("All connection attempts failed") 
 
     raise ValueError(
         f"Failed to determine embedding dimensions for Ollama model '{model_name}'. "
         f"Verify the Ollama server at '{endpoint}' is reachable and the model is available. "
-        f"Last errors: {', '.join(errors)}"
+        f"Error: {errors[0]}"
     )
 
 
