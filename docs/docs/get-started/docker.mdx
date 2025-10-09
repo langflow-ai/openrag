@@ -90,9 +90,8 @@ The following values are **required** to be set:
    docker compose up -d
    ```
 
-   For CPU-only systems, run the following commands:
+   For environments without GPU support, run: 
    ```bash
-   docker compose -f docker-compose-cpu.yml build
    docker compose -f docker-compose-cpu.yml up -d
    ```
 
