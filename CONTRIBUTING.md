@@ -11,20 +11,48 @@ Thank you for your interest in contributing to OpenRAG! This guide will help you
 - Python 3.13+ with uv package manager
 - Node.js 18+ and npm
 
-### Environment Setup
+### Set up OpenRAG for development
+
+1. Set up your development environment.
 
 ```bash
-# Clone the repository
-git clone <repository-url>
+# Clone and setup environment
+git clone https://github.com/langflow-ai/openrag.git
 cd openrag
-
-# Setup development environment
 make setup  # Creates .env and installs dependencies
 ```
 
-### Configuration
+2. Configure the `.env` file with your API keys and credentials.
 
-Edit `.env` with your API keys and credentials. See the main README for required environment variables.
+```bash
+# Required
+OPENAI_API_KEY=your_openai_api_key
+OPENSEARCH_PASSWORD=your_secure_password
+LANGFLOW_SUPERUSER=admin
+LANGFLOW_SUPERUSER_PASSWORD=your_secure_password
+LANGFLOW_CHAT_FLOW_ID=your_chat_flow_id
+LANGFLOW_INGEST_FLOW_ID=your_ingest_flow_id
+NUDGES_FLOW_ID=your_nudges_flow_id
+```
+
+For extended configuration, including ingestion and optional variables, see [docs/reference/configuration.mdx](docs/docs/reference/configuration.mdx).
+
+3. Start OpenRAG.
+
+```bash
+# Full stack with GPU support
+make dev
+
+# Or CPU only
+make dev-cpu
+```
+
+Access the services:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **Langflow**: http://localhost:7860
+- **OpenSearch**: http://localhost:9200
+- **OpenSearch Dashboards**: http://localhost:5601
 
 ## 🔧 Development Commands
 
