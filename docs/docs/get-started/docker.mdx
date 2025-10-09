@@ -12,6 +12,8 @@ They deploy the same applications and containers, but to different environments.
 
 - [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
 
+Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing. Installing OpenRAG with the TUI starts `docling serve` automatically, but for a Docker deployment you must manually start the `docling serve` process.
+
 ## Prerequisites
 
 - [Python Version 3.10 to 3.13](https://www.python.org/downloads/release/python-3100/)
@@ -31,7 +33,12 @@ To install OpenRAG with Docker Compose, do the following:
    cd openrag
    ```
 
-2. Copy the example `.env` file included in the repository root.
+2. Install dependencies.
+   ```bash
+   uv sync
+   ```
+
+3. Copy the example `.env` file included in the repository root.
   The example file includes all environment variables with comments to guide you in finding and setting their values.
    ```bash
    cp .env.example .env
@@ -42,7 +49,7 @@ To install OpenRAG with Docker Compose, do the following:
    touch .env
    ```
 
-3. Set environment variables. The Docker Compose files will be populated with values from your `.env`.
+4. Set environment variables. The Docker Compose files will be populated with values from your `.env`.
 The following values are **required** to be set:
 
    ```bash
@@ -55,15 +62,37 @@ The following values are **required** to be set:
    
    For more information on configuring OpenRAG with environment variables, see [Environment variables](/reference/configuration).
 
-4. Deploy OpenRAG with Docker Compose based on your deployment type.
-
-   For GPU-enabled systems, run the following command:
+5. Start `docling serve` on the host machine.
+   Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing.
+   
    ```bash
+   uv run python scripts/docling_ctl.py start --port 5001
+   ```
+   
+6. Confirm `docling serve` is running.
+   ```
+   uv run python scripts/docling_ctl.py status
+   ```
+
+   Successful result:
+   ```bash
+   Status: running
+   Endpoint: http://127.0.0.1:5001
+   Docs: http://127.0.0.1:5001/docs
+   PID: 27746
+   ```
+
+7. Deploy OpenRAG with Docker Compose based on your deployment type.
+
+   For GPU-enabled systems, run the following commands:
+   ```bash
+   docker compose build
    docker compose up -d
    ```
 
-   For CPU-only systems, run the following command:
+   For CPU-only systems, run the following commands:
    ```bash
+   docker compose -f docker-compose-cpu.yml build
    docker compose -f docker-compose-cpu.yml up -d
    ```
 
@@ -76,7 +105,7 @@ The following values are **required** to be set:
    | OpenSearch | http://localhost:9200 | Vector database for document storage. |
    | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
 
-5. Verify installation by confirming all services are running.
+8. Verify installation by confirming all services are running.
 
    ```bash
    docker compose ps
@@ -88,7 +117,13 @@ The following values are **required** to be set:
    - **Backend API**: http://localhost:8000
    - **Langflow**: http://localhost:7860
 
-6. Continue with [Application Onboarding](#application-onboarding).
+9. Continue with [Application Onboarding](#application-onboarding).
+
+To stop `docling serve` when you're done with your OpenRAG deployment, run:
+
+```bash
+uv run python scripts/docling_ctl.py stop
+```
 
 <PartialOnboarding />
 
