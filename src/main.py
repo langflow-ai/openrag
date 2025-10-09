@@ -168,7 +168,12 @@ async def init_index():
     embedding_model = config.knowledge.embedding_model
 
     # Create dynamic index body based on the configured embedding model
-    dynamic_index_body = create_dynamic_index_body(embedding_model)
+    # Pass provider and endpoint for dynamic dimension resolution (Ollama probing)
+    dynamic_index_body = await create_dynamic_index_body(
+        embedding_model,
+        provider=config.provider.model_provider,
+        endpoint=config.provider.endpoint
+    )
 
     # Create documents index
     if not await clients.opensearch.indices.exists(index=INDEX_NAME):
