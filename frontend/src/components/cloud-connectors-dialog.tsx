@@ -201,7 +201,7 @@ export function CloudConnectorsDialog({
         <DialogHeader>
           <DialogTitle>Cloud File Connectors</DialogTitle>
           <DialogDescription>
-            Select files from your connected cloud storage providers
+            Select files or folders from your connected cloud storage providers
           </DialogDescription>
         </DialogHeader>
 
@@ -232,7 +232,7 @@ export function CloudConnectorsDialog({
                         !connector.hasAccessToken
                           ? connector.accessTokenError ||
                             "Access token required - try reconnecting your account"
-                          : `Select files from ${connector.name}`
+                          : `Select files or folders from ${connector.name}`
                       }
                       onClick={e => {
                         e.preventDefault();
@@ -283,6 +283,7 @@ export function CloudConnectorsDialog({
                         accessToken={connectorAccessTokens[connector.type]}
                         onPickerStateChange={() => {}}
                         clientId={connector.clientId}
+                        isIngesting={false}
                       />
                     </div>
                   );

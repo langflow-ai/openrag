@@ -232,6 +232,7 @@
       },
       {
         "animated": false,
+        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "EmbeddingModel",
@@ -733,6 +734,10 @@
                   {
                     "key": "owner_email",
                     "value": "OWNER_EMAIL"
+                  },
+                  {
+                    "key": "connector_type",
+                    "value": "CONNECTOR_TYPE_URL"
                   }
                 ]
               },
@@ -1808,7 +1813,7 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-10-03T20:31:36.023Z",
+            "last_updated": "2025-10-06T17:46:55.068Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2224,7 +2229,7 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-10-03T20:31:36.025Z",
+            "last_updated": "2025-10-06T17:46:55.069Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2897,7 +2902,7 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-10-03T20:31:36.026Z",
+            "last_updated": "2025-10-06T17:46:55.069Z",
             "legacy": false,
             "metadata": {
               "code_hash": "b4d6b19b6eef",
@@ -3310,7 +3315,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-10-03T20:31:47.177Z",
+            "last_updated": "2025-10-06T17:46:54.996Z",
             "legacy": false,
             "metadata": {
               "code_hash": "8607e963fdef",
@@ -3595,17 +3600,17 @@
       }
     ],
     "viewport": {
-      "x": -407.1633937626607,
-      "y": -577.5291936220412,
-      "zoom": 0.5347553210574026
+      "x": -538.2311610019549,
+      "y": -337.3313239657308,
+      "zoom": 0.45546556043892106
     }
   },
   "description": "This flow is to ingest the URL to open search.",
   "endpoint_name": null,
-  "mcp_enabled": true,
   "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
+  "mcp_enabled": true,
   "is_component": false,
-  "last_tested_version": "1.6.0",
+  "last_tested_version": "1.6.3.dev1",
   "name": "OpenSearch URL Ingestion Flow",
   "tags": [
     "openai",

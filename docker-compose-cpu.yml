@@ -74,7 +74,7 @@ services:
     volumes:
       - ./documents:/app/documents:Z
       - ./keys:/app/keys:Z
-      - ./flows:/app/flows:Z
+      - ./flows:/app/flows:U,z
 
   openrag-frontend:
     image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
@@ -91,7 +91,7 @@ services:
 
   langflow:
     volumes:
-      - ./flows:/app/flows:Z
+      - ./flows:/app/flows:U,z
     image: phact/openrag-langflow:${LANGFLOW_VERSION:-latest}
     # build:
     #   context: .
@@ -108,6 +108,7 @@ services:
       - OWNER_NAME=None
       - OWNER_EMAIL=None
       - CONNECTOR_TYPE=system
+      - CONNECTOR_TYPE_URL=url
       - OPENRAG-QUERY-FILTER="{}"
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - FILENAME=None
