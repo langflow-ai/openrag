@@ -166,16 +166,6 @@ class ConfigScreen(Screen):
             yield Button("👁", id="toggle-opensearch-password", variant="default")
         yield Static(" ")
 
-        # Langflow Admin Username
-        yield Label("Langflow Admin Username *")
-        current_value = getattr(self.env_manager.config, "langflow_superuser", "")
-        input_widget = Input(
-            placeholder="admin", value=current_value, id="input-langflow_superuser"
-        )
-        yield input_widget
-        self.inputs["langflow_superuser"] = input_widget
-        yield Static(" ")
-
         # Langflow Admin Password
         with Horizontal():
             yield Label("Langflow Admin Password (optional)")
@@ -194,6 +184,19 @@ class ConfigScreen(Screen):
             self.inputs["langflow_superuser_password"] = input_widget
             yield Button("👁", id="toggle-langflow-password", variant="default")
         yield Static(" ")
+
+        # Langflow Admin Username - only show if password is set
+        current_password = getattr(self.env_manager.config, "langflow_superuser_password", "")
+        if current_password:
+            yield Label("Langflow Admin Username *", id="langflow-username-label")
+            current_value = getattr(self.env_manager.config, "langflow_superuser", "")
+            input_widget = Input(
+                placeholder="admin", value=current_value, id="input-langflow_superuser"
+            )
+            yield input_widget
+            self.inputs["langflow_superuser"] = input_widget
+            yield Static(" ", id="langflow-username-spacer")
+
         yield Static(" ")
 
         # API Keys Section
@@ -525,11 +528,15 @@ class ConfigScreen(Screen):
                 password = self.env_manager.generate_secure_password()
                 if langflow_password_input:
                     langflow_password_input.value = password
+                    # Show username field
+                    self._update_langflow_username_visibility(password)
                 self.notify("Generated Langflow password", severity="information")
             else:
                 # Clear password when unchecked (enable autologin)
                 if langflow_password_input:
                     langflow_password_input.value = ""
+                    # Hide username field
+                    self._update_langflow_username_visibility("")
                 self.notify("Cleared Langflow password - autologin enabled", severity="information")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -692,5 +699,54 @@ class ConfigScreen(Screen):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle input changes for real-time validation feedback."""
+        # Handle Langflow password changes - show/hide username field
+        if event.input.id == "input-langflow_superuser_password":
+            self._update_langflow_username_visibility(event.value)
         # This will trigger validation display in real-time
         pass
+
+    def _update_langflow_username_visibility(self, password_value: str) -> None:
+        """Show or hide the Langflow username field based on password presence."""
+        config_form = self.query_one("#config-form")
+
+        # Check if username field already exists
+        username_input = self.query("#input-langflow_superuser")
+        username_label = self.query("#langflow-username-label")
+        username_spacer = self.query("#langflow-username-spacer")
+
+        has_password = bool(password_value and password_value.strip())
+        username_exists = len(username_input) > 0
+
+        if has_password and not username_exists:
+            # Show username field - mount it after the password field
+            password_spacer = self.query_one("#langflow-password-row").parent.query(Static)[0]
+
+            # Create new widgets
+            from textual.widgets import Label, Input, Static
+            label = Label("Langflow Admin Username *", id="langflow-username-label")
+            input_widget = Input(
+                placeholder="admin",
+                value=getattr(self.env_manager.config, "langflow_superuser", "admin"),
+                id="input-langflow_superuser"
+            )
+            spacer = Static(" ", id="langflow-username-spacer")
+
+            # Mount them after the password row's spacer
+            password_spacer.mount_after(label)
+            label.mount_after(input_widget)
+            input_widget.mount_after(spacer)
+
+            self.inputs["langflow_superuser"] = input_widget
+
+        elif not has_password and username_exists:
+            # Hide username field
+            for widget in username_input:
+                widget.remove()
+            for widget in username_label:
+                widget.remove()
+            for widget in username_spacer:
+                widget.remove()
+
+            # Remove from inputs dict
+            if "langflow_superuser" in self.inputs:
+                del self.inputs["langflow_superuser"]
