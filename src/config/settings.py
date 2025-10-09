@@ -81,12 +81,6 @@ OPENAI_EMBEDDING_DIMENSIONS = {
         "text-embedding-ada-002": 1536,
     }
 
-OLLAMA_EMBEDDING_DIMENSIONS = {
-    "nomic-embed-text": 768,
-    "all-minilm": 384,
-    "mxbai-embed-large": 1024,
-}
-
 WATSONX_EMBEDDING_DIMENSIONS = {
 # IBM Models
 "ibm/granite-embedding-107m-multilingual": 384,  
