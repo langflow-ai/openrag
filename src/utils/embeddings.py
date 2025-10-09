@@ -1,5 +1,6 @@
 import httpx
-from config.settings import OLLAMA_EMBEDDING_DIMENSIONS, OPENAI_EMBEDDING_DIMENSIONS, VECTOR_DIM, WATSONX_EMBEDDING_DIMENSIONS
+from config.settings import OPENAI_EMBEDDING_DIMENSIONS, VECTOR_DIM, WATSONX_EMBEDDING_DIMENSIONS
+from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 
@@ -17,13 +18,14 @@ async def _probe_ollama_embedding_dimension(endpoint: str, model_name: str) -> i
         The embedding dimension, or 0 if the probe fails
     """
     try:
-        url = f"{endpoint}/api/embeddings"
+        url = f"{transform_localhost_url(endpoint)}/api/embeddings"
         test_input = "test"
         
         # Try modern API format first (input parameter)
         payload = {
             "model": model_name,
-            "input": test_input
+            "input": test_input,
+            "prompt": test_input
         }
         
         async with httpx.AsyncClient() as client:
@@ -78,38 +80,14 @@ async def _probe_ollama_embedding_dimension(endpoint: str, model_name: str) -> i
         return 0
 
 
-async def resolve_embedding_dimension(
-    embedding_model: str,
-    provider: str = None,
-    endpoint: str = None
-) -> int:
-    """Resolve embedding dimension for a model, with dynamic probing for Ollama.
-    
-    Args:
-        embedding_model: Name of the embedding model
-        provider: Provider name (e.g., "ollama", "openai", "watsonx")
-        endpoint: Endpoint URL for the provider (required for Ollama probing)
-        
-    Returns:
-        The embedding dimension
-    """
-    # Try dynamic probing for Ollama
-    if provider and provider.lower() == "ollama" and endpoint:
-        logger.info(f"Attempting to probe Ollama server for model '{embedding_model}'")
-        dimension = await _probe_ollama_embedding_dimension(endpoint, embedding_model)
-        if dimension > 0:
-            return dimension
-        logger.info(f"Probe failed, falling back to static maps for '{embedding_model}'")
-    
-    # Fall back to static maps
-    return get_embedding_dimensions(embedding_model)
-
-
-def get_embedding_dimensions(model_name: str) -> int:
+async def get_embedding_dimensions(model_name: str, provider: str = None, endpoint: str = None) -> int:
     """Get the embedding dimensions for a given model name."""
 
+    if provider and provider.lower() == "ollama" and endpoint:
+        return await _probe_ollama_embedding_dimension(endpoint, model_name)
+
     # Check all model dictionaries
-    all_models = {**OPENAI_EMBEDDING_DIMENSIONS, **OLLAMA_EMBEDDING_DIMENSIONS, **WATSONX_EMBEDDING_DIMENSIONS}
+    all_models = {**OPENAI_EMBEDDING_DIMENSIONS, **WATSONX_EMBEDDING_DIMENSIONS}
 
     model_name = model_name.lower().strip().split(":")[0]
 
@@ -139,7 +117,7 @@ async def create_dynamic_index_body(
     Returns:
         OpenSearch index body configuration
     """
-    dimensions = await resolve_embedding_dimension(embedding_model, provider, endpoint)
+    dimensions = await get_embedding_dimensions(embedding_model, provider, endpoint)
 
     return {
         "settings": {
