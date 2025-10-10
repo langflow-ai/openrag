@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
 import {
   type Task,
+  type TaskFileEntry,
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
 import { useAuth } from "@/contexts/auth-context";
@@ -31,6 +32,7 @@ export interface TaskFile {
   task_id: string;
   created_at: string;
   updated_at: string;
+  error?: string;
 }
 interface TaskContextType {
   tasks: Task[];
@@ -105,6 +107,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         task_id: taskId,
         created_at: now,
         updated_at: now,
+        error: file.error,
       }));
 
       setFiles((prevFiles) => [...prevFiles, ...filesToAdd]);
@@ -138,12 +141,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
           taskFileEntries.forEach(([filePath, fileInfo]) => {
             if (typeof fileInfo === "object" && fileInfo) {
+              const fileInfoEntry = fileInfo as TaskFileEntry;
               // Use the filename from backend if available, otherwise extract from path
               const fileName =
-                (fileInfo as any).filename ||
+                fileInfoEntry.filename ||
                 filePath.split("/").pop() ||
                 filePath;
-              const fileStatus = fileInfo.status as string;
+              const fileStatus = fileInfoEntry.status ?? "processing";
 
               // Map backend file status to our TaskFile status
               let mappedStatus: TaskFile["status"];
@@ -161,6 +165,23 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 default:
                   mappedStatus = "processing";
               }
+
+              const fileError = (() => {
+                if (
+                  typeof fileInfoEntry.error === "string" &&
+                  fileInfoEntry.error.trim().length > 0
+                ) {
+                  return fileInfoEntry.error.trim();
+                }
+                if (
+                  mappedStatus === "failed" &&
+                  typeof currentTask.error === "string" &&
+                  currentTask.error.trim().length > 0
+                ) {
+                  return currentTask.error.trim();
+                }
+                return undefined;
+              })();
 
               setFiles((prevFiles) => {
                 const existingFileIndex = prevFiles.findIndex(
@@ -185,13 +206,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                   status: mappedStatus,
                   task_id: currentTask.task_id,
                   created_at:
-                    typeof fileInfo.created_at === "string"
-                      ? fileInfo.created_at
+                    typeof fileInfoEntry.created_at === "string"
+                      ? fileInfoEntry.created_at
                       : now,
                   updated_at:
-                    typeof fileInfo.updated_at === "string"
-                      ? fileInfo.updated_at
+                    typeof fileInfoEntry.updated_at === "string"
+                      ? fileInfoEntry.updated_at
                       : now,
+                  error: fileError,
                 };
 
                 if (existingFileIndex >= 0) {

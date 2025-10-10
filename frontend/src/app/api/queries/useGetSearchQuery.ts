@@ -50,6 +50,7 @@ export interface File {
     | "failed"
     | "hidden"
     | "sync";
+  error?: string;
   chunks?: ChunkResult[];
 }
 

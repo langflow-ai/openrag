@@ -26,6 +26,14 @@ import GoogleDriveIcon from "../settings/icons/google-drive-icon";
 import OneDriveIcon from "../settings/icons/one-drive-icon";
 import SharePointIcon from "../settings/icons/share-point-icon";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -77,6 +85,7 @@ function SearchPage() {
       size: taskFile.size,
       connector_type: taskFile.connector_type,
       status: taskFile.status,
+      error: taskFile.error,
     };
   });
 
@@ -128,7 +137,6 @@ function SearchPage() {
         // Read status directly from data on each render
         const status = data?.status || "active";
         const isActive = status === "active";
-        console.log(data?.filename, status, "a");
         return (
           <div className="flex items-center overflow-hidden w-full">
             <div
@@ -196,9 +204,37 @@ function SearchPage() {
       field: "status",
       headerName: "Status",
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
-        console.log(data?.filename, data?.status, "b");
-        // Default to 'active' status if no status is provided
         const status = data?.status || "active";
+        const error =
+          typeof data?.error === "string" && data.error.trim().length > 0
+            ? data.error.trim()
+            : undefined;
+        if (status === "failed" && error) {
+          return (
+            <Dialog>
+              <DialogTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
+                  aria-label="View ingestion error"
+                >
+                  <StatusBadge status={status} className="pointer-events-none" />
+                </button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Ingestion failed</DialogTitle>
+                  <DialogDescription className="text-sm text-muted-foreground">
+                    {data?.filename || "Unknown file"}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+                  {error}
+                </div>
+              </DialogContent>
+            </Dialog>
+          );
+        }
         return <StatusBadge status={status} />;
       },
     },
