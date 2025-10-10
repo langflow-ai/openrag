@@ -100,7 +100,7 @@ async def ensure_embedding_field_exists(
         dimensions=dimensions,
     )
 
-    # Define the field mapping
+    # Define the field mapping for both the vector field and the tracking field
     mapping = {
         "properties": {
             field_name: {
@@ -112,6 +112,10 @@ async def ensure_embedding_field_exists(
                     "space_type": "l2",
                     "parameters": {"ef_construction": 100, "m": 16},
                 },
+            },
+            # Also ensure the embedding_model tracking field exists as keyword
+            "embedding_model": {
+                "type": "keyword"
             }
         }
     }
