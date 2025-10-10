@@ -355,8 +355,9 @@ class ConnectorFileProcessor(TaskProcessor):
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
+        document_service=None,
     ):
-        super().__init__()
+        super().__init__(document_service=document_service)
         self.connector_service = connector_service
         self.connection_id = connection_id
         self.files_to_process = files_to_process
