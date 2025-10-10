@@ -19,6 +19,8 @@ export interface TaskFileEntry {
   updated_at?: string;
   duration_seconds?: number;
   filename?: string;
+  embedding_model?: string;
+  embedding_dimensions?: number;
   [key: string]: unknown;
 }
 

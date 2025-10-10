@@ -282,6 +282,7 @@ class SearchService:
                 "file_size",
                 "connector_type",
                 "embedding_model",  # Include embedding model in results
+                "embedding_dimensions",
                 "allowed_users",
                 "allowed_groups",
             ],
@@ -333,6 +334,7 @@ class SearchService:
                     "file_size": hit["_source"].get("file_size"),
                     "connector_type": hit["_source"].get("connector_type"),
                     "embedding_model": hit["_source"].get("embedding_model"),  # Include in results
+                    "embedding_dimensions": hit["_source"].get("embedding_dimensions"),
                 }
             )
 

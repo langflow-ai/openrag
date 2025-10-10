@@ -116,7 +116,10 @@ async def ensure_embedding_field_exists(
             # Also ensure the embedding_model tracking field exists as keyword
             "embedding_model": {
                 "type": "keyword"
-            }
+            },
+            "embedding_dimensions": {
+                "type": "integer"
+            },
         }
     }
 

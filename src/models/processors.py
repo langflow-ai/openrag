@@ -226,6 +226,7 @@ class TaskProcessor:
                 embedding_field_name: vect,
                 # Track which model was used
                 "embedding_model": embedding_model,
+                "embedding_dimensions": len(vect),
                 "file_size": file_size,
                 "connector_type": connector_type,
                 "indexed_time": datetime.datetime.now().isoformat(),
