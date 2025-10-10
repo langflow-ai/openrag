@@ -113,6 +113,8 @@ INDEX_BODY = {
             "mimetype": {"type": "keyword"},
             "page": {"type": "integer"},
             "text": {"type": "text"},
+            # Legacy field - kept for backward compatibility
+            # New documents will use chunk_embedding_{model_name} fields
             "chunk_embedding": {
                 "type": "knn_vector",
                 "dimension": VECTOR_DIM,
@@ -123,6 +125,8 @@ INDEX_BODY = {
                     "parameters": {"ef_construction": 100, "m": 16},
                 },
             },
+            # Track which embedding model was used for this chunk
+            "embedding_model": {"type": "keyword"},
             "source_url": {"type": "keyword"},
             "connector_type": {"type": "keyword"},
             "owner": {"type": "keyword"},

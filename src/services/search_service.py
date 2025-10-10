@@ -12,16 +12,33 @@ class SearchService:
         self.session_manager = session_manager
 
     @tool
-    async def search_tool(self, query: str) -> Dict[str, Any]:
+    async def search_tool(self, query: str, embedding_model: str = None) -> Dict[str, Any]:
         """
         Use this tool to search for documents relevant to the query.
 
         Args:
             query (str): query string to search the corpus
+            embedding_model (str): Optional override for embedding model.
+                                  If not provided, uses EMBED_MODEL from config.
 
         Returns:
             dict (str, Any): {"results": [chunks]} on success
         """
+        from utils.embedding_fields import get_embedding_field_name
+
+        # Strategy: Use provided model, or default to EMBED_MODEL
+        # This assumes documents are embedded with EMBED_MODEL by default
+        # Future enhancement: Could auto-detect available models in corpus
+        embedding_model = embedding_model or EMBED_MODEL
+        embedding_field_name = get_embedding_field_name(embedding_model)
+
+        logger.info(
+            "Search with embedding model",
+            embedding_model=embedding_model,
+            embedding_field=embedding_field_name,
+            query_preview=query[:50] if query else None,
+        )
+
         # Get authentication context from the current async context
         user_id, jwt_token = get_auth_context()
         # Get search filters, limit, and score threshold from context
@@ -37,12 +54,75 @@ class SearchService:
         # Detect wildcard request ("*") to return global facets/stats without semantic search
         is_wildcard_match_all = isinstance(query, str) and query.strip() == "*"
 
-        # Only embed when not doing match_all
+        # Get available embedding models from corpus
+        query_embeddings = {}
+        available_models = []
+
         if not is_wildcard_match_all:
-            resp = await clients.patched_async_client.embeddings.create(
-                model=EMBED_MODEL, input=[query]
+            # First, detect which embedding models exist in the corpus
+            opensearch_client = self.session_manager.get_user_opensearch_client(
+                user_id, jwt_token
             )
-            query_embedding = resp.data[0].embedding
+
+            try:
+                agg_query = {
+                    "size": 0,
+                    "aggs": {
+                        "embedding_models": {
+                            "terms": {
+                                "field": "embedding_model",
+                                "size": 10
+                            }
+                        }
+                    }
+                }
+                agg_result = await opensearch_client.search(index=INDEX_NAME, body=agg_query)
+                buckets = agg_result.get("aggregations", {}).get("embedding_models", {}).get("buckets", [])
+                available_models = [b["key"] for b in buckets if b["key"]]
+
+                if not available_models:
+                    # Fallback to configured model if no documents indexed yet
+                    available_models = [embedding_model]
+
+                logger.info(
+                    "Detected embedding models in corpus",
+                    available_models=available_models,
+                    model_counts={b["key"]: b["doc_count"] for b in buckets}
+                )
+            except Exception as e:
+                logger.warning("Failed to detect embedding models, using configured model", error=str(e))
+                available_models = [embedding_model]
+
+            # Parallelize embedding generation for all models
+            import asyncio
+
+            async def embed_with_model(model_name):
+                try:
+                    resp = await clients.patched_async_client.embeddings.create(
+                        model=model_name, input=[query]
+                    )
+                    return model_name, resp.data[0].embedding
+                except Exception as e:
+                    logger.error(f"Failed to embed with model {model_name}", error=str(e))
+                    return model_name, None
+
+            # Run all embeddings in parallel
+            embedding_results = await asyncio.gather(
+                *[embed_with_model(model) for model in available_models],
+                return_exceptions=True
+            )
+
+            # Collect successful embeddings
+            for result in embedding_results:
+                if isinstance(result, tuple) and result[1] is not None:
+                    model_name, embedding = result
+                    query_embeddings[model_name] = embedding
+
+            logger.info(
+                "Generated query embeddings",
+                models=list(query_embeddings.keys()),
+                query_preview=query[:50]
+            )
 
         # Build filter clauses
         filter_clauses = []
@@ -80,17 +160,51 @@ class SearchService:
             else:
                 query_block = {"match_all": {}}
         else:
+            # Build multi-model KNN queries
+            knn_queries = []
+            embedding_fields_to_check = []
+
+            for model_name, embedding_vector in query_embeddings.items():
+                field_name = get_embedding_field_name(model_name)
+                embedding_fields_to_check.append(field_name)
+                knn_queries.append({
+                    "knn": {
+                        field_name: {
+                            "vector": embedding_vector,
+                            "k": 50,
+                            "num_candidates": 1000,
+                        }
+                    }
+                })
+
+            # Build exists filter - doc must have at least one embedding field
+            exists_any_embedding = {
+                "bool": {
+                    "should": [{"exists": {"field": f}} for f in embedding_fields_to_check],
+                    "minimum_should_match": 1
+                }
+            }
+
+            # Add exists filter to existing filters
+            all_filters = [*filter_clauses, exists_any_embedding]
+
+            logger.debug(
+                "Building hybrid query with filters",
+                user_filters_count=len(filter_clauses),
+                total_filters_count=len(all_filters),
+                filter_types=[type(f).__name__ for f in all_filters]
+            )
+
             # Hybrid search query structure (semantic + keyword)
+            # Use dis_max to pick best score across multiple embedding fields
             query_block = {
                 "bool": {
                     "should": [
                         {
-                            "knn": {
-                                "chunk_embedding": {
-                                    "vector": query_embedding,
-                                    "k": 10,
-                                    "boost": 0.7,
-                                }
+                            "dis_max": {
+                                "tie_breaker": 0.0,  # Take only the best match, no blending
+                                "boost": 0.7,         # 70% weight for semantic search
+                                "queries": knn_queries
                             }
                         },
                         {
@@ -99,12 +213,12 @@ class SearchService:
                                 "fields": ["text^2", "filename^1.5"],
                                 "type": "best_fields",
                                 "fuzziness": "AUTO",
-                                "boost": 0.3,
+                                "boost": 0.3,  # 30% weight for keyword search
                             }
                         },
                     ],
                     "minimum_should_match": 1,
-                    **({"filter": filter_clauses} if filter_clauses else {}),
+                    "filter": all_filters,
                 }
             }
 
@@ -115,6 +229,7 @@ class SearchService:
                 "document_types": {"terms": {"field": "mimetype", "size": 10}},
                 "owners": {"terms": {"field": "owner_name.keyword", "size": 10}},
                 "connector_types": {"terms": {"field": "connector_type", "size": 10}},
+                "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
             },
             "_source": [
                 "filename",
@@ -127,6 +242,7 @@ class SearchService:
                 "owner_email",
                 "file_size",
                 "connector_type",
+                "embedding_model",  # Include embedding model in results
                 "allowed_users",
                 "allowed_groups",
             ],
@@ -177,6 +293,7 @@ class SearchService:
                     "owner_email": hit["_source"].get("owner_email"),
                     "file_size": hit["_source"].get("file_size"),
                     "connector_type": hit["_source"].get("connector_type"),
+                    "embedding_model": hit["_source"].get("embedding_model"),  # Include in results
                 }
             )
 
@@ -199,8 +316,13 @@ class SearchService:
         filters: Dict[str, Any] = None,
         limit: int = 10,
         score_threshold: float = 0,
+        embedding_model: str = None,
     ) -> Dict[str, Any]:
-        """Public search method for API endpoints"""
+        """Public search method for API endpoints
+
+        Args:
+            embedding_model: Embedding model to use for search (defaults to EMBED_MODEL)
+        """
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode
 
@@ -220,4 +342,4 @@ class SearchService:
         set_search_limit(limit)
         set_score_threshold(score_threshold)
 
-        return await self.search_tool(query)
+        return await self.search_tool(query, embedding_model=embedding_model)
