@@ -64,7 +64,36 @@ class SearchService:
                 user_id, jwt_token
             )
 
+            # Build filter clauses first so we can use them in model detection
+            filter_clauses = []
+            if filters:
+                # Map frontend filter names to backend field names
+                field_mapping = {
+                    "data_sources": "filename",
+                    "document_types": "mimetype",
+                    "owners": "owner_name.keyword",
+                    "connector_types": "connector_type",
+                }
+
+                for filter_key, values in filters.items():
+                    if values is not None and isinstance(values, list):
+                        # Map frontend key to backend field name
+                        field_name = field_mapping.get(filter_key, filter_key)
+
+                        if len(values) == 0:
+                            # Empty array means "match nothing" - use impossible filter
+                            filter_clauses.append(
+                                {"term": {field_name: "__IMPOSSIBLE_VALUE__"}}
+                            )
+                        elif len(values) == 1:
+                            # Single value filter
+                            filter_clauses.append({"term": {field_name: values[0]}})
+                        else:
+                            # Multiple values filter
+                            filter_clauses.append({"terms": {field_name: values}})
+
             try:
+                # Build aggregation query with filters applied
                 agg_query = {
                     "size": 0,
                     "aggs": {
@@ -76,6 +105,15 @@ class SearchService:
                         }
                     }
                 }
+
+                # Apply filters to model detection if any exist
+                if filter_clauses:
+                    agg_query["query"] = {
+                        "bool": {
+                            "filter": filter_clauses
+                        }
+                    }
+
                 agg_result = await opensearch_client.search(index=INDEX_NAME, body=agg_query)
                 buckets = agg_result.get("aggregations", {}).get("embedding_models", {}).get("buckets", [])
                 available_models = [b["key"] for b in buckets if b["key"]]
@@ -87,7 +125,8 @@ class SearchService:
                 logger.info(
                     "Detected embedding models in corpus",
                     available_models=available_models,
-                    model_counts={b["key"]: b["doc_count"] for b in buckets}
+                    model_counts={b["key"]: b["doc_count"] for b in buckets},
+                    with_filters=len(filter_clauses) > 0
                 )
             except Exception as e:
                 logger.warning("Failed to detect embedding models, using configured model", error=str(e))
@@ -123,34 +162,34 @@ class SearchService:
                 models=list(query_embeddings.keys()),
                 query_preview=query[:50]
             )
+        else:
+            # Wildcard query - no embedding needed
+            filter_clauses = []
+            if filters:
+                # Map frontend filter names to backend field names
+                field_mapping = {
+                    "data_sources": "filename",
+                    "document_types": "mimetype",
+                    "owners": "owner_name.keyword",
+                    "connector_types": "connector_type",
+                }
 
-        # Build filter clauses
-        filter_clauses = []
-        if filters:
-            # Map frontend filter names to backend field names
-            field_mapping = {
-                "data_sources": "filename",
-                "document_types": "mimetype",
-                "owners": "owner_name.keyword",
-                "connector_types": "connector_type",
-            }
+                for filter_key, values in filters.items():
+                    if values is not None and isinstance(values, list):
+                        # Map frontend key to backend field name
+                        field_name = field_mapping.get(filter_key, filter_key)
 
-            for filter_key, values in filters.items():
-                if values is not None and isinstance(values, list):
-                    # Map frontend key to backend field name
-                    field_name = field_mapping.get(filter_key, filter_key)
-
-                    if len(values) == 0:
-                        # Empty array means "match nothing" - use impossible filter
-                        filter_clauses.append(
-                            {"term": {field_name: "__IMPOSSIBLE_VALUE__"}}
-                        )
-                    elif len(values) == 1:
-                        # Single value filter
-                        filter_clauses.append({"term": {field_name: values[0]}})
-                    else:
-                        # Multiple values filter
-                        filter_clauses.append({"terms": {field_name: values}})
+                        if len(values) == 0:
+                            # Empty array means "match nothing" - use impossible filter
+                            filter_clauses.append(
+                                {"term": {field_name: "__IMPOSSIBLE_VALUE__"}}
+                            )
+                        elif len(values) == 1:
+                            # Single value filter
+                            filter_clauses.append({"term": {field_name: values[0]}})
+                        else:
+                            # Multiple values filter
+                            filter_clauses.append({"terms": {field_name: values}})
 
         # Build query body
         if is_wildcard_match_all:
