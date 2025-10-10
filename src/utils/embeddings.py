@@ -54,6 +54,7 @@ def create_dynamic_index_body(embedding_model: str) -> dict:
                 },
                 # Track which embedding model was used for this chunk
                 "embedding_model": {"type": "keyword"},
+                "embedding_dimensions": {"type": "integer"},
                 "source_url": {"type": "keyword"},
                 "connector_type": {"type": "keyword"},
                 "owner": {"type": "keyword"},

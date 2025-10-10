@@ -33,6 +33,8 @@ export interface TaskFile {
   created_at: string;
   updated_at: string;
   error?: string;
+  embedding_model?: string;
+  embedding_dimensions?: number;
 }
 interface TaskContextType {
   tasks: Task[];
@@ -108,6 +110,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         created_at: now,
         updated_at: now,
         error: file.error,
+        embedding_model: file.embedding_model,
+        embedding_dimensions: file.embedding_dimensions,
       }));
 
       setFiles((prevFiles) => [...prevFiles, ...filesToAdd]);
@@ -214,6 +218,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                       ? fileInfoEntry.updated_at
                       : now,
                   error: fileError,
+                  embedding_model:
+                    typeof fileInfoEntry.embedding_model === "string"
+                      ? fileInfoEntry.embedding_model
+                      : undefined,
+                  embedding_dimensions:
+                    typeof fileInfoEntry.embedding_dimensions === "number"
+                      ? fileInfoEntry.embedding_dimensions
+                      : undefined,
                 };
 
                 if (existingFileIndex >= 0) {

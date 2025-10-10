@@ -86,6 +86,8 @@ function SearchPage() {
       connector_type: taskFile.connector_type,
       status: taskFile.status,
       error: taskFile.error,
+      embedding_model: taskFile.embedding_model,
+      embedding_dimensions: taskFile.embedding_dimensions,
     };
   });
 
@@ -124,7 +126,7 @@ function SearchPage() {
 
   const gridRef = useRef<AgGridReact>(null);
 
-  const columnDefs = [
+  const columnDefs: ColDef<File>[] = [
     {
       field: "filename",
       headerName: "Source",
@@ -199,6 +201,28 @@ function SearchPage() {
           </span>
         );
       },
+    },
+    {
+      field: "embedding_model",
+      headerName: "Embedding model",
+      minWidth: 200,
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
+        <span className="text-xs text-muted-foreground">
+          {data?.embedding_model || "—"}
+        </span>
+      ),
+    },
+    {
+      field: "embedding_dimensions",
+      headerName: "Dimensions",
+      width: 110,
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
+        <span className="text-xs text-muted-foreground">
+          {typeof data?.embedding_dimensions === "number"
+            ? data.embedding_dimensions.toString()
+            : "—"}
+        </span>
+      ),
     },
     {
       field: "status",
