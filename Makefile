@@ -206,6 +206,8 @@ test-ci:
 	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
 	echo "Pulling latest images..."; \
 	docker compose -f docker-compose-cpu.yml pull; \
+	echo "Building OpenSearch image override..."; \
+	docker build -t phact/openrag-opensearch:latest -f Dockerfile .; \
 	echo "Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
 	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow; \
 	echo "Starting docling-serve..."; \
