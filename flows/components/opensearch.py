@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import copy
 import json
+import time
 import uuid
-from typing import Any
+from typing import Any, List, Optional
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -445,6 +446,13 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
             logger.info(f"Added/updated embedding field mapping: {field_name}")
         except Exception as e:
             logger.warning(f"Could not add embedding field mapping for {field_name}: {e}")
+            raise
+
+        properties = self._get_index_properties(client)
+        if not self._is_knn_vector_field(properties, field_name):
+            raise ValueError(
+                f"Field '{field_name}' is not mapped as knn_vector. Current mapping: {properties.get(field_name)}"
+            )
 
     def _validate_aoss_with_engines(self, *, is_aoss: bool, engine: str) -> None:
         """Validate engine compatibility with Amazon OpenSearch Serverless (AOSS).
@@ -664,8 +672,8 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         def embed_chunk(chunk_text: str) -> list[float]:
             return self.embedding.embed_documents([chunk_text])[0]
 
-        vectors: list[list[float]] | None = None
-        last_exception: Exception | None = None
+        vectors: Optional[List[List[float]]] = None
+        last_exception: Optional[Exception] = None
         delay = 1.0
         attempts = 0
 
@@ -864,7 +872,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                 "aggs": {
                     "embedding_models": {
                         "terms": {
-                            "field": "embedding_model.keyword",
+                            "field": "embedding_model",
                             "size": 10
                         }
                     }
@@ -879,7 +887,11 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                     }
                 }
 
-            result = client.search(index=self.index_name, body=agg_query)
+            result = client.search(
+                index=self.index_name,
+                body=agg_query,
+                params={"terminate_after": 0},
+            )
             buckets = result.get("aggregations", {}).get("embedding_models", {}).get("buckets", [])
             models = [b["key"] for b in buckets if b["key"]]
 
@@ -1109,7 +1121,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                 "data_sources": {"terms": {"field": "filename", "size": 20}},
                 "document_types": {"terms": {"field": "mimetype", "size": 10}},
                 "owners": {"terms": {"field": "owner", "size": 10}},
-                "embedding_models": {"terms": {"field": "embedding_model.keyword", "size": 10}},
+                "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
             },
             "_source": [
                 "filename",
@@ -1133,7 +1145,9 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         )
 
         try:
-            resp = client.search(index=self.index_name, body=body)
+            resp = client.search(
+                index=self.index_name, body=body, params={"terminate_after": 0}
+            )
         except RequestError as e:
             error_message = str(e)
             lowered = error_message.lower()
@@ -1147,7 +1161,11 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                     fallback_body["query"]["bool"]["should"][0]["dis_max"]["queries"] = knn_queries_without_candidates
                 except (KeyError, IndexError, TypeError) as inner_err:
                     raise e from inner_err
-                resp = client.search(index=self.index_name, body=fallback_body)
+                resp = client.search(
+                    index=self.index_name,
+                    body=fallback_body,
+                    params={"terminate_after": 0},
+                )
             elif "knn_vector" in lowered or ("field" in lowered and "knn" in lowered):
                 fallback_vector = next(iter(query_embeddings.values()), None)
                 if fallback_vector is None:
@@ -1170,7 +1188,11 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                 if use_num_candidates:
                     knn_fallback["knn"][fallback_field]["num_candidates"] = num_candidates
                 fallback_body["query"]["bool"]["should"][0]["dis_max"]["queries"] = [knn_fallback]
-                resp = client.search(index=self.index_name, body=fallback_body)
+                resp = client.search(
+                    index=self.index_name,
+                    body=fallback_body,
+                    params={"terminate_after": 0},
+                )
             else:
                 raise
         hits = resp.get("hits", {}).get("hits", [])
