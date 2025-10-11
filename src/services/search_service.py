@@ -63,12 +63,11 @@ class SearchService:
         query_embeddings = {}
         available_models = []
 
-        if not is_wildcard_match_all:
-            # First, detect which embedding models exist in the corpus
-            opensearch_client = self.session_manager.get_user_opensearch_client(
-                user_id, jwt_token
-            )
+        opensearch_client = self.session_manager.get_user_opensearch_client(
+            user_id, jwt_token
+        )
 
+        if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
             filter_clauses = []
             if filters:
@@ -104,7 +103,7 @@ class SearchService:
                     "aggs": {
                         "embedding_models": {
                             "terms": {
-                                "field": "embedding_model.keyword",
+                                "field": "embedding_model",
                                 "size": 10
                             }
                         }
@@ -119,7 +118,9 @@ class SearchService:
                         }
                     }
 
-                agg_result = await opensearch_client.search(index=INDEX_NAME, body=agg_query)
+                agg_result = await opensearch_client.search(
+                    index=INDEX_NAME, body=agg_query, params={"terminate_after": 0}
+                )
                 buckets = agg_result.get("aggregations", {}).get("embedding_models", {}).get("buckets", [])
                 available_models = [b["key"] for b in buckets if b["key"]]
 
@@ -306,7 +307,7 @@ class SearchService:
                 "document_types": {"terms": {"field": "mimetype", "size": 10}},
                 "owners": {"terms": {"field": "owner_name.keyword", "size": 10}},
                 "connector_types": {"terms": {"field": "connector_type", "size": 10}},
-                "embedding_models": {"terms": {"field": "embedding_model.keyword", "size": 10}},
+                "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
             },
             "_source": [
                 "filename",
@@ -365,8 +366,12 @@ class SearchService:
 
         from opensearchpy.exceptions import RequestError
 
+        search_params = {"terminate_after": 0}
+
         try:
-            results = await opensearch_client.search(index=INDEX_NAME, body=search_body)
+            results = await opensearch_client.search(
+                index=INDEX_NAME, body=search_body, params=search_params
+            )
         except RequestError as e:
             error_message = str(e)
             if (
@@ -378,7 +383,9 @@ class SearchService:
                 )
                 try:
                     results = await opensearch_client.search(
-                        index=INDEX_NAME, body=fallback_search_body
+                        index=INDEX_NAME,
+                        body=fallback_search_body,
+                        params=search_params,
                     )
                 except RequestError as retry_error:
                     logger.error(

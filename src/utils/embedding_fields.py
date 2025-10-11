@@ -7,6 +7,8 @@ This module provides helpers for:
 - Ensuring embedding fields exist in the OpenSearch index
 """
 
+from typing import Dict, Any
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -100,6 +102,28 @@ async def ensure_embedding_field_exists(
         dimensions=dimensions,
     )
 
+    async def _get_field_definition() -> Dict[str, Any]:
+        try:
+            mapping = await opensearch_client.indices.get_mapping(index=index_name)
+        except Exception as e:
+            logger.debug(
+                "Failed to fetch mapping before ensuring embedding field",
+                index=index_name,
+                error=str(e),
+            )
+            return {}
+
+        properties = mapping.get(index_name, {}).get("mappings", {}).get("properties", {})
+        return properties.get(field_name, {}) if isinstance(properties, dict) else {}
+
+    existing_definition = await _get_field_definition()
+    if existing_definition:
+        if existing_definition.get("type") != "knn_vector":
+            raise RuntimeError(
+                f"Field '{field_name}' already exists with incompatible type '{existing_definition.get('type')}'"
+            )
+        return field_name
+
     # Define the field mapping for both the vector field and the tracking field
     mapping = {
         "properties": {
@@ -136,22 +160,19 @@ async def ensure_embedding_field_exists(
             model_name=model_name,
         )
     except Exception as e:
-        error_msg = str(e).lower()
-        # These are expected/safe errors when field already exists
-        if "already" in error_msg or "exists" in error_msg or "mapper_parsing_exception" in error_msg:
-            logger.debug(
-                "Embedding field already exists (expected)",
-                field_name=field_name,
-                model_name=model_name,
-            )
-        else:
-            logger.error(
-                "Failed to ensure embedding field exists",
-                field_name=field_name,
-                model_name=model_name,
-                error=str(e),
-            )
-            # Don't raise - field might already exist with different params
-            # Better to proceed and let indexing fail if there's a real issue
+        logger.error(
+            "Failed to add embedding field mapping",
+            field_name=field_name,
+            model_name=model_name,
+            error=str(e),
+        )
+        raise
+
+    # Verify mapping was applied correctly
+    new_definition = await _get_field_definition()
+    if new_definition.get("type") != "knn_vector":
+        raise RuntimeError(
+            f"Failed to ensure '{field_name}' is mapped as knn_vector. Current definition: {new_definition}"
+        )
 
     return field_name
