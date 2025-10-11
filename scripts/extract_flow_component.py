@@ -167,7 +167,7 @@ def main() -> None:
     if args.output:
         args.output.write_text(code, encoding="utf-8")
     else:
-        print(code)
+        print(code, end="")
 
 
 if __name__ == "__main__":
