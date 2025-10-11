@@ -21,10 +21,13 @@ openrag_user_role:
       allowed_actions:
         - crud
         - create_index
+        - indices:admin/mappings/get
+        - indices:admin/mappings/put
+        - indices:admin/exists
+        - indices:admin/get
       dls: >
         {"bool":{"should":[
           {"term":{"owner":"${user.name}"}},
           {"term":{"allowed_users":"${user.name}"}},
           {"bool":{"must_not":{"exists":{"field":"owner"}}}}
         ],"minimum_should_match":1}}
-
