@@ -34,20 +34,25 @@ export const EmbeddingModelInput = ({
   modelsData,
   currentProvider = "openai",
 }: EmbeddingModelInputProps) => {
+  const isDisabled = Boolean(disabled);
+  const tooltipMessage = isDisabled
+    ? "Locked to keep embeddings consistent"
+    : "Choose the embedding model for ingest and retrieval";
+
   return (
     <LabelWrapper
       helperText="Model used for knowledge ingest and retrieval"
       id="embedding-model-select"
       label="Embedding model"
     >
-      <Select disabled={disabled} value={value} onValueChange={onChange}>
+      <Select disabled={isDisabled} value={value} onValueChange={onChange}>
         <Tooltip delayDuration={0}>
           <TooltipTrigger asChild>
-            <SelectTrigger disabled id="embedding-model-select">
+            <SelectTrigger disabled={isDisabled} id="embedding-model-select">
               <SelectValue placeholder="Select an embedding model" />
             </SelectTrigger>
           </TooltipTrigger>
-          <TooltipContent>Locked to keep embeddings consistent</TooltipContent>
+          <TooltipContent>{tooltipMessage}</TooltipContent>
         </Tooltip>
         <SelectContent>
           <ModelSelectItems
