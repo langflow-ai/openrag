@@ -93,7 +93,7 @@ async def ensure_embedding_field_exists(
         index_name = INDEX_NAME
 
     field_name = get_embedding_field_name(model_name)
-    dimensions = get_embedding_dimensions(model_name)
+    dimensions = await get_embedding_dimensions(model_name)
 
     logger.info(
         "Ensuring embedding field exists",
