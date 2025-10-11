@@ -1,3 +1,4 @@
+import copy
 from typing import Any, Dict
 from agentd.tool_decorator import tool
 from config.settings import clients, INDEX_NAME, EMBED_MODEL
@@ -293,6 +294,23 @@ class SearchService:
         if not is_wildcard_match_all and score_threshold > 0:
             search_body["min_score"] = score_threshold
 
+        # Prepare fallback search body without num_candidates for clusters that don't support it
+        fallback_search_body = None
+        if not is_wildcard_match_all:
+            try:
+                fallback_search_body = copy.deepcopy(search_body)
+                knn_query_blocks = (
+                    fallback_search_body["query"]["bool"]["should"][0]["dis_max"]["queries"]
+                )
+                for query_candidate in knn_query_blocks:
+                    knn_section = query_candidate.get("knn")
+                    if isinstance(knn_section, dict):
+                        for params in knn_section.values():
+                            if isinstance(params, dict):
+                                params.pop("num_candidates", None)
+            except (KeyError, IndexError, AttributeError, TypeError):
+                fallback_search_body = None
+
         # Authentication required - DLS will handle document filtering automatically
         logger.debug(
             "search_service authentication info",
@@ -308,8 +326,35 @@ class SearchService:
             user_id, jwt_token
         )
 
+        from opensearchpy.exceptions import RequestError
+
         try:
             results = await opensearch_client.search(index=INDEX_NAME, body=search_body)
+        except RequestError as e:
+            error_message = str(e)
+            if (
+                fallback_search_body is not None
+                and "unknown field [num_candidates]" in error_message.lower()
+            ):
+                logger.warning(
+                    "OpenSearch cluster does not support num_candidates; retrying without it"
+                )
+                try:
+                    results = await opensearch_client.search(
+                        index=INDEX_NAME, body=fallback_search_body
+                    )
+                except RequestError as retry_error:
+                    logger.error(
+                        "OpenSearch retry without num_candidates failed",
+                        error=str(retry_error),
+                        search_body=fallback_search_body,
+                    )
+                    raise
+            else:
+                logger.error(
+                    "OpenSearch query failed", error=error_message, search_body=search_body
+                )
+                raise
         except Exception as e:
             logger.error(
                 "OpenSearch query failed", error=str(e), search_body=search_body
