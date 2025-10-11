@@ -243,6 +243,8 @@ function KnowledgeSourcesPage() {
     updateFlowSettingMutation.mutate({ embedding_model: newModel });
   };
 
+  const isEmbeddingModelSelectDisabled = updateFlowSettingMutation.isPending;
+
   // Update chunk size setting with debounce
   const handleChunkSizeChange = (value: string) => {
     const numValue = Math.max(0, parseInt(value) || 0);
@@ -1029,8 +1031,7 @@ function KnowledgeSourcesPage() {
                 label="Embedding model"
               >
                 <Select
-                  // Disabled until API supports multiple embedding models
-                  disabled={true}
+                  disabled={isEmbeddingModelSelectDisabled}
                   value={
                     settings.knowledge?.embedding_model ||
                     modelsData?.embedding_models?.find((m) => m.default)
@@ -1041,12 +1042,17 @@ function KnowledgeSourcesPage() {
                 >
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <SelectTrigger disabled id="embedding-model-select">
+                      <SelectTrigger
+                        disabled={isEmbeddingModelSelectDisabled}
+                        id="embedding-model-select"
+                      >
                         <SelectValue placeholder="Select an embedding model" />
                       </SelectTrigger>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Locked to keep embeddings consistent
+                      {isEmbeddingModelSelectDisabled
+                        ? "Please wait while we update your settings"
+                        : "Choose the embedding model used for new ingests"}
                     </TooltipContent>
                   </Tooltip>
                   <SelectContent>
