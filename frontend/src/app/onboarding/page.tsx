@@ -7,6 +7,7 @@ import {
   type OnboardingVariables,
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
+import { DoclingHealthBanner, useDoclingHealth } from "@/components/docling-health-banner";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
 import OpenAILogo from "@/components/logo/openai-logo";
@@ -34,6 +35,7 @@ import { OpenAIOnboarding } from "./components/openai-onboarding";
 function OnboardingPage() {
   const { data: settingsDb, isLoading: isSettingsLoading } =
     useGetSettingsQuery();
+  const { isHealthy: isDoclingHealthy } = useDoclingHealth();
 
   const redirect = "/";
 
@@ -114,7 +116,7 @@ function OnboardingPage() {
     onboardingMutation.mutate(onboardingData);
   };
 
-  const isComplete = !!settings.llm_model && !!settings.embedding_model;
+  const isComplete = !!settings.llm_model && !!settings.embedding_model && isDoclingHealthy;
 
   return (
     <div className="min-h-dvh w-full flex gap-5 flex-col items-center justify-center bg-background relative p-4">
@@ -129,6 +131,8 @@ function OnboardingPage() {
           "text-input/70",
         )}
       />
+
+      <DoclingHealthBanner className="absolute top-0 left-0 right-0 w-full z-20" />
 
       <div className="flex flex-col items-center gap-5 min-h-[550px] w-full z-10">
         <div className="flex flex-col items-center justify-center gap-4">
@@ -197,7 +201,9 @@ function OnboardingPage() {
               </TooltipTrigger>
               {!isComplete && (
                 <TooltipContent>
-                  Please fill in all required fields
+                  {!!settings.llm_model && !!settings.embedding_model && !isDoclingHealthy
+                    ? "docling-serve must be running to continue"
+                    : "Please fill in all required fields"}
                 </TooltipContent>
               )}
             </Tooltip>
