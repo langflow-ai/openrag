@@ -660,24 +660,47 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
             msg = "Embedding handle is required to embed documents."
             raise ValueError(msg)
 
-        # Generate embeddings (threaded for concurrency)
+        # Generate embeddings (threaded for concurrency) with retries
         def embed_chunk(chunk_text: str) -> list[float]:
             return self.embedding.embed_documents([chunk_text])[0]
 
-        try:
-            max_workers = min(max(len(texts), 1), 8)
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(embed_chunk, chunk): idx for idx, chunk in enumerate(texts)}
-                vectors = [None] * len(texts)
-                for future in as_completed(futures):
-                    idx = futures[future]
-                    vectors[idx] = future.result()
-        except Exception as exc:
-            logger.warning(
-                "Threaded embedding generation failed, falling back to synchronous mode: %s",
-                exc,
+        vectors: list[list[float]] | None = None
+        last_exception: Exception | None = None
+        delay = 1.0
+        attempts = 0
+
+        while attempts < 3:
+            attempts += 1
+            try:
+                max_workers = min(max(len(texts), 1), 8)
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = {executor.submit(embed_chunk, chunk): idx for idx, chunk in enumerate(texts)}
+                    vectors = [None] * len(texts)
+                    for future in as_completed(futures):
+                        idx = futures[future]
+                        vectors[idx] = future.result()
+                break
+            except Exception as exc:
+                last_exception = exc
+                if attempts >= 3:
+                    logger.error(
+                        "Embedding generation failed after retries",
+                        error=str(exc),
+                    )
+                    raise
+                logger.warning(
+                    "Threaded embedding generation failed (attempt %s/%s), retrying in %.1fs",
+                    attempts,
+                    3,
+                    delay,
+                )
+                time.sleep(delay)
+                delay = min(delay * 2, 8.0)
+
+        if vectors is None:
+            raise RuntimeError(
+                f"Embedding generation failed: {last_exception}" if last_exception else "Embedding generation failed"
             )
-            vectors = self.embedding.embed_documents(texts)
 
         if not vectors:
             self.log("No vectors generated from documents.")

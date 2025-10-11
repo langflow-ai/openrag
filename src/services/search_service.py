@@ -7,6 +7,10 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+MAX_EMBED_RETRIES = 3
+EMBED_RETRY_INITIAL_DELAY = 1.0
+EMBED_RETRY_MAX_DELAY = 8.0
+
 
 class SearchService:
     def __init__(self, session_manager=None):
@@ -137,20 +141,53 @@ class SearchService:
             import asyncio
 
             async def embed_with_model(model_name):
-                try:
-                    resp = await clients.patched_async_client.embeddings.create(
-                        model=model_name, input=[query]
-                    )
-                    return model_name, resp.data[0].embedding
-                except Exception as e:
-                    logger.error(f"Failed to embed with model {model_name}", error=str(e))
-                    return model_name, None
+                delay = EMBED_RETRY_INITIAL_DELAY
+                attempts = 0
+                last_exception = None
+
+                while attempts < MAX_EMBED_RETRIES:
+                    attempts += 1
+                    try:
+                        resp = await clients.patched_async_client.embeddings.create(
+                            model=model_name, input=[query]
+                        )
+                        return model_name, resp.data[0].embedding
+                    except Exception as e:
+                        last_exception = e
+                        if attempts >= MAX_EMBED_RETRIES:
+                            logger.error(
+                                "Failed to embed with model after retries",
+                                model=model_name,
+                                attempts=attempts,
+                                error=str(e),
+                            )
+                            raise RuntimeError(
+                                f"Failed to embed with model {model_name}"
+                            ) from e
+
+                        logger.warning(
+                            "Retrying embedding generation",
+                            model=model_name,
+                            attempt=attempts,
+                            max_attempts=MAX_EMBED_RETRIES,
+                            error=str(e),
+                        )
+                        await asyncio.sleep(delay)
+                        delay = min(delay * 2, EMBED_RETRY_MAX_DELAY)
+
+                # Should not reach here, but guard in case
+                raise RuntimeError(
+                    f"Failed to embed with model {model_name}"
+                ) from last_exception
 
             # Run all embeddings in parallel
-            embedding_results = await asyncio.gather(
-                *[embed_with_model(model) for model in available_models],
-                return_exceptions=True
-            )
+            try:
+                embedding_results = await asyncio.gather(
+                    *[embed_with_model(model) for model in available_models]
+                )
+            except Exception as e:
+                logger.error("Embedding generation failed", error=str(e))
+                raise
 
             # Collect successful embeddings
             for result in embedding_results:
