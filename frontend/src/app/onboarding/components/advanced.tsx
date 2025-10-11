@@ -77,7 +77,7 @@ export function AdvancedOnboarding({
           {(hasLanguageModels || hasEmbeddingModels) && <Separator />}
           <LabelWrapper
             label="Sample dataset"
-            description="Load 2 sample PDFs to chat with data immediately."
+            description="Load sample data to chat with immediately."
             id="sample-dataset"
             flex
           >
