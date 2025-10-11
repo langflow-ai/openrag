@@ -99,7 +99,7 @@ class SearchService:
                     "aggs": {
                         "embedding_models": {
                             "terms": {
-                                "field": "embedding_model",
+                                "field": "embedding_model.keyword",
                                 "size": 10
                             }
                         }

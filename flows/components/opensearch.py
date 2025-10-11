@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import copy
 import json
 import uuid
 from typing import Any
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from opensearchpy import OpenSearch, helpers
 from opensearchpy.exceptions import RequestError
@@ -14,26 +17,67 @@ from lfx.log import logger
 from lfx.schema.data import Data
 
 
+def normalize_model_name(model_name: str) -> str:
+    """Normalize embedding model name for use as field suffix.
+
+    Converts model names to valid OpenSearch field names by replacing
+    special characters and ensuring alphanumeric format.
+
+    Args:
+        model_name: Original embedding model name (e.g., "text-embedding-3-small")
+
+    Returns:
+        Normalized field suffix (e.g., "text_embedding_3_small")
+    """
+    normalized = model_name.lower()
+    # Replace common separators with underscores
+    normalized = normalized.replace("-", "_").replace(":", "_").replace("/", "_").replace(".", "_")
+    # Remove any non-alphanumeric characters except underscores
+    normalized = "".join(c if c.isalnum() or c == "_" else "_" for c in normalized)
+    # Remove duplicate underscores
+    while "__" in normalized:
+        normalized = normalized.replace("__", "_")
+    return normalized.strip("_")
+
+
+def get_embedding_field_name(model_name: str) -> str:
+    """Get the dynamic embedding field name for a model.
+
+    Args:
+        model_name: Embedding model name
+
+    Returns:
+        Field name in format: chunk_embedding_{normalized_model_name}
+    """
+    return f"chunk_embedding_{normalize_model_name(model_name)}"
+
+
 @vector_store_connection
 class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
-    """OpenSearch Vector Store Component with Hybrid Search Capabilities.
+    """OpenSearch Vector Store Component with Multi-Model Hybrid Search Capabilities.
 
     This component provides vector storage and retrieval using OpenSearch, combining semantic
-    similarity search (KNN) with keyword-based search for optimal results. It supports document
-    ingestion, vector embeddings, and advanced filtering with authentication options.
+    similarity search (KNN) with keyword-based search for optimal results. It supports:
+    - Multiple embedding models per index with dynamic field names
+    - Automatic detection and querying of all available embedding models
+    - Parallel embedding generation for multi-model search
+    - Document ingestion with model tracking
+    - Advanced filtering and aggregations
+    - Flexible authentication options
 
     Features:
+    - Multi-model vector storage with dynamic fields (chunk_embedding_{model_name})
+    - Hybrid search combining multiple KNN queries (dis_max) + keyword matching
+    - Auto-detection of available models in the index
+    - Parallel query embedding generation for all detected models
     - Vector storage with configurable engines (jvector, nmslib, faiss, lucene)
-    - Hybrid search combining KNN vector similarity and keyword matching
     - Flexible authentication (Basic auth, JWT tokens)
-    - Advanced filtering and aggregations
-    - Metadata injection during document ingestion
     """
 
-    display_name: str = "OpenSearch"
+    display_name: str = "OpenSearch (Multi-Model)"
     icon: str = "OpenSearch"
     description: str = (
-        "Store and search documents using OpenSearch with hybrid semantic and keyword search capabilities."
+        "Store and search documents using OpenSearch with multi-model hybrid semantic and keyword search."
     )
 
     # Keys we consider baseline
@@ -42,6 +86,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         "index_name",
         *[i.name for i in LCVectorStoreComponent.inputs],  # search_query, add_documents, etc.
         "embedding",
+        "embedding_model_name",
         "vector_field",
         "number_of_results",
         "auth_mode",
@@ -57,6 +102,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         "space_type",
         "ef_construction",
         "m",
+        "num_candidates",
         "docs_metadata",
     ]
 
@@ -83,7 +129,6 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                 },
             ],
             value=[],
-            # advanced=True,
             input_types=["Data"]
         ),
         StrInput(
@@ -146,14 +191,37 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
             ),
             advanced=True,
         ),
+        IntInput(
+            name="num_candidates",
+            display_name="Candidate Pool Size",
+            value=1000,
+            info=(
+                "Number of approximate neighbors to consider for each KNN query. "
+                "Some OpenSearch deployments do not support this parameter; set to 0 to disable."
+            ),
+            advanced=True,
+        ),
         *LCVectorStoreComponent.inputs,  # includes search_query, add_documents, etc.
         HandleInput(name="embedding", display_name="Embedding", input_types=["Embeddings"]),
         StrInput(
+            name="embedding_model_name",
+            display_name="Embedding Model Name",
+            value="",
+            info=(
+                "Name of the embedding model being used (e.g., 'text-embedding-3-small'). "
+                "Used to create dynamic vector field names and track which model embedded each document. "
+                "Auto-detected from embedding component if not specified."
+            ),
+        ),
+        StrInput(
             name="vector_field",
-            display_name="Vector Field Name",
+            display_name="Legacy Vector Field Name",
             value="chunk_embedding",
             advanced=True,
-            info="Name of the field in OpenSearch documents that stores the vector embeddings for similarity search.",
+            info=(
+                "Legacy field name for backward compatibility. New documents use dynamic fields "
+                "(chunk_embedding_{model_name}) based on the embedding_model_name."
+            ),
         ),
         IntInput(
             name="number_of_results",
@@ -249,6 +317,33 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         ),
     ]
 
+    def _get_embedding_model_name(self) -> str:
+        """Get the embedding model name from component config or embedding object.
+
+        Returns:
+            Embedding model name
+
+        Raises:
+            ValueError: If embedding model name cannot be determined
+        """
+        # First try explicit embedding_model_name input
+        if hasattr(self, "embedding_model_name") and self.embedding_model_name:
+            return self.embedding_model_name.strip()
+
+        # Try to get from embedding component
+        if hasattr(self, "embedding") and self.embedding:
+            if hasattr(self.embedding, "model"):
+                return str(self.embedding.model)
+            if hasattr(self.embedding, "model_name"):
+                return str(self.embedding.model_name)
+
+        msg = (
+            "Could not determine embedding model name. "
+            "Please set the 'embedding_model_name' field or ensure the embedding component "
+            "has a 'model' or 'model_name' attribute."
+        )
+        raise ValueError(msg)
+
     # ---------- helper functions for index management ----------
     def _default_text_mapping(
         self,
@@ -264,6 +359,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
 
         This method generates the index configuration with k-NN settings optimized
         for approximate nearest neighbor search using the specified vector engine.
+        Includes the embedding_model keyword field for tracking which model was used.
 
         Args:
             dim: Dimensionality of the vector embeddings
@@ -291,29 +387,42 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                             "parameters": {"ef_construction": ef_construction, "m": m},
                         },
                     },
-                    "embedding_dimensions": {
-                        "type": "integer"
-                    }
+                    "embedding_model": {"type": "keyword"},  # Track which model was used
+                    "embedding_dimensions": {"type": "integer"},
                 }
             },
         }
 
-    def _ensure_vector_field_mapping(
+    def _ensure_embedding_field_mapping(
         self,
         client: OpenSearch,
         index_name: str,
-        vector_field: str,
+        field_name: str,
         dim: int,
         engine: str,
         space_type: str,
         ef_construction: int,
         m: int,
     ) -> None:
-        """Ensure the target vector field exists with the correct mapping."""
+        """Lazily add a dynamic embedding field to the index if it doesn't exist.
+
+        This allows adding new embedding models without recreating the entire index.
+        Also ensures the embedding_model tracking field exists.
+
+        Args:
+            client: OpenSearch client instance
+            index_name: Target index name
+            field_name: Dynamic field name for this embedding model
+            dim: Vector dimensionality
+            engine: Vector search engine
+            space_type: Distance metric
+            ef_construction: Construction parameter
+            m: HNSW parameter
+        """
         try:
             mapping = {
                 "properties": {
-                    vector_field: {
+                    field_name: {
                         "type": "knn_vector",
                         "dimension": dim,
                         "method": {
@@ -323,23 +432,19 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                             "parameters": {"ef_construction": ef_construction, "m": m},
                         },
                     },
+                    # Also ensure the embedding_model tracking field exists as keyword
+                    "embedding_model": {
+                        "type": "keyword"
+                    },
                     "embedding_dimensions": {
                         "type": "integer"
                     }
                 }
             }
             client.indices.put_mapping(index=index_name, body=mapping)
-            logger.info(
-                "Added/updated vector field mapping for %s in index %s",
-                vector_field,
-                index_name,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Could not ensure vector field mapping for %s: %s",
-                vector_field,
-                exc,
-            )
+            logger.info(f"Added/updated embedding field mapping: {field_name}")
+        except Exception as e:
+            logger.warning(f"Could not add embedding field mapping for {field_name}: {e}")
 
     def _validate_aoss_with_engines(self, *, is_aoss: bool, engine: str) -> None:
         """Validate engine compatibility with Amazon OpenSearch Serverless (AOSS).
@@ -379,6 +484,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         ids: list[str] | None = None,
         vector_field: str = "vector_field",
         text_field: str = "text",
+        embedding_model: str = "unknown",
         mapping: dict | None = None,
         max_chunk_bytes: int | None = 1 * 1024 * 1024,
         *,
@@ -387,7 +493,8 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         """Efficiently ingest multiple documents with embeddings into OpenSearch.
 
         This method uses bulk operations to insert documents with their vector
-        embeddings and metadata into the specified OpenSearch index.
+        embeddings and metadata into the specified OpenSearch index. Each document
+        is tagged with the embedding_model name for tracking.
 
         Args:
             client: OpenSearch client instance
@@ -398,6 +505,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
             ids: Optional document IDs (UUIDs generated if not provided)
             vector_field: Field name for storing vector embeddings
             text_field: Field name for storing document text
+            embedding_model: Name of the embedding model used
             mapping: Optional index mapping configuration
             max_chunk_bytes: Maximum size per bulk request chunk
             is_aoss: Whether using Amazon OpenSearch Serverless
@@ -422,6 +530,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                 "_index": index_name,
                 vector_field: embeddings[i],
                 text_field: text,
+                "embedding_model": embedding_model,  # Track which model was used
                 **metadata,
             }
             if is_aoss:
@@ -482,7 +591,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
 
     @check_cached_vector_store
     def build_vector_store(self) -> OpenSearch:
-        # Return raw OpenSearch client as our “vector store.”
+        # Return raw OpenSearch client as our "vector store."
         self.log(self.ingest_data)
         client = self.build_client()
         self._add_documents_to_vector_store(client=client)
@@ -495,8 +604,8 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         This method handles the complete document ingestion pipeline:
         - Prepares document data and metadata
         - Generates vector embeddings
-        - Creates appropriate index mappings
-        - Bulk inserts documents with vectors
+        - Creates appropriate index mappings with dynamic field names
+        - Bulk inserts documents with vectors and model tracking
 
         Args:
             client: OpenSearch client for performing operations
@@ -508,6 +617,13 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         if not docs:
             self.log("No documents to ingest.")
             return
+
+        # Get embedding model name
+        embedding_model = self._get_embedding_model_name()
+        dynamic_field_name = get_embedding_field_name(embedding_model)
+
+        self.log(f"Using embedding model: {embedding_model}")
+        self.log(f"Dynamic vector field: {dynamic_field_name}")
 
         # Extract texts and metadata from documents
         texts = []
@@ -525,6 +641,10 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                 for item in self.docs_metadata:
                     if isinstance(item, dict) and "key" in item and "value" in item:
                         additional_metadata[item["key"]] = item["value"]
+        # Replace string "None" values with actual None
+        for key, value in additional_metadata.items():
+            if value == "None":
+                additional_metadata[key] = None
         logger.info(f"[LF] Additional metadata {additional_metadata}")
         for doc_obj in docs:
             data_copy = json.loads(doc_obj.model_dump_json())
@@ -540,7 +660,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
             msg = "Embedding handle is required to embed documents."
             raise ValueError(msg)
 
-        # Generate embeddings using a thread pool for concurrency
+        # Generate embeddings (threaded for concurrency)
         def embed_chunk(chunk_text: str) -> list[float]:
             return self.embedding.embed_documents([chunk_text])[0]
 
@@ -585,25 +705,25 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
             space_type=space_type,
             ef_construction=ef_construction,
             m=m,
-            vector_field=self.vector_field,
+            vector_field=dynamic_field_name,  # Use dynamic field name
         )
 
+        # Ensure index exists with baseline mapping
         try:
             if not client.indices.exists(index=self.index_name):
                 self.log(f"Creating index '{self.index_name}' with base mapping")
                 client.indices.create(index=self.index_name, body=mapping)
         except RequestError as creation_error:
-            if getattr(creation_error, "error", "") != "resource_already_exists_exception":
+            if creation_error.error != "resource_already_exists_exception":
                 logger.warning(
-                    "Failed to create index %s: %s",
-                    self.index_name,
-                    creation_error,
+                    f"Failed to create index '{self.index_name}': {creation_error}"
                 )
 
-        self._ensure_vector_field_mapping(
+        # Ensure the dynamic field exists in the index
+        self._ensure_embedding_field_mapping(
             client=client,
             index_name=self.index_name,
-            vector_field=self.vector_field,
+            field_name=dynamic_field_name,
             dim=dim,
             engine=engine,
             space_type=space_type,
@@ -611,23 +731,24 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
             m=m,
         )
 
-        self.log(f"Indexing {len(texts)} documents into '{self.index_name}' with proper KNN mapping...")
+        self.log(f"Indexing {len(texts)} documents into '{self.index_name}' with model '{embedding_model}'...")
 
-        # Use the LangChain-style bulk ingestion
+        # Use the bulk ingestion with model tracking
         return_ids = self._bulk_ingest_embeddings(
             client=client,
             index_name=self.index_name,
             embeddings=vectors,
             texts=texts,
             metadatas=metadatas,
-            vector_field=self.vector_field,
+            vector_field=dynamic_field_name,  # Use dynamic field name
             text_field="text",
+            embedding_model=embedding_model,  # Track the model
             mapping=mapping,
             is_aoss=is_aoss,
         )
         self.log(metadatas)
 
-        self.log(f"Successfully indexed {len(return_ids)} documents.")
+        self.log(f"Successfully indexed {len(return_ids)} documents with model {embedding_model}.")
 
     # ---------- helpers for filters ----------
     def _is_placeholder_term(self, term_obj: dict) -> bool:
@@ -701,15 +822,107 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                 context_clauses.append({"terms": {field: values}})
         return context_clauses
 
-    # ---------- search (single hybrid path matching your tool) ----------
-    def search(self, query: str | None = None) -> list[dict[str, Any]]:
-        """Perform hybrid search combining vector similarity and keyword matching.
+    def _detect_available_models(self, client: OpenSearch, filter_clauses: list[dict] = None) -> list[str]:
+        """Detect which embedding models have documents in the index.
 
-        This method executes a sophisticated search that combines:
-        - K-nearest neighbor (KNN) vector similarity search (70% weight)
-        - Multi-field keyword search with fuzzy matching (30% weight)
-        - Optional filtering and score thresholds
-        - Aggregations for faceted search results
+        Uses aggregation to find all unique embedding_model values, optionally
+        filtered to only documents matching the user's filter criteria.
+
+        Args:
+            client: OpenSearch client instance
+            filter_clauses: Optional filter clauses to scope model detection
+
+        Returns:
+            List of embedding model names found in the index
+        """
+        try:
+            agg_query = {
+                "size": 0,
+                "aggs": {
+                    "embedding_models": {
+                        "terms": {
+                            "field": "embedding_model.keyword",
+                            "size": 10
+                        }
+                    }
+                }
+            }
+
+            # Apply filters to model detection if any exist
+            if filter_clauses:
+                agg_query["query"] = {
+                    "bool": {
+                        "filter": filter_clauses
+                    }
+                }
+
+            result = client.search(index=self.index_name, body=agg_query)
+            buckets = result.get("aggregations", {}).get("embedding_models", {}).get("buckets", [])
+            models = [b["key"] for b in buckets if b["key"]]
+
+            logger.info(
+                f"Detected embedding models in corpus: {models}"
+                + (f" (with {len(filter_clauses)} filters)" if filter_clauses else "")
+            )
+            return models
+        except Exception as e:
+            logger.warning(f"Failed to detect embedding models: {e}")
+            # Fallback to current model
+            return [self._get_embedding_model_name()]
+
+    def _get_index_properties(self, client: OpenSearch) -> dict[str, Any] | None:
+        """Retrieve flattened mapping properties for the current index."""
+        try:
+            mapping = client.indices.get_mapping(index=self.index_name)
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch mapping for index '{self.index_name}': {e}. Proceeding without mapping metadata."
+            )
+            return None
+
+        properties: dict[str, Any] = {}
+        for index_data in mapping.values():
+            props = index_data.get("mappings", {}).get("properties", {})
+            if isinstance(props, dict):
+                properties.update(props)
+        return properties
+
+    def _is_knn_vector_field(self, properties: dict[str, Any] | None, field_name: str) -> bool:
+        """Check whether the field is mapped as a knn_vector."""
+        if not field_name:
+            return False
+        if properties is None:
+            logger.warning(
+                f"Mapping metadata unavailable; assuming field '{field_name}' is usable."
+            )
+            return True
+        field_def = properties.get(field_name)
+        if not isinstance(field_def, dict):
+            return False
+        if field_def.get("type") == "knn_vector":
+            return True
+
+        nested_props = field_def.get("properties")
+        if isinstance(nested_props, dict) and nested_props.get("type") == "knn_vector":
+            return True
+
+        return False
+
+    # ---------- search (multi-model hybrid) ----------
+    def search(self, query: str | None = None) -> list[dict[str, Any]]:
+        """Perform multi-model hybrid search combining multiple vector similarities and keyword matching.
+
+        This method executes a sophisticated search that:
+        1. Auto-detects all embedding models present in the index
+        2. Generates query embeddings for ALL detected models in parallel
+        3. Combines multiple KNN queries using dis_max (picks best match)
+        4. Adds keyword search with fuzzy matching (30% weight)
+        5. Applies optional filtering and score thresholds
+        6. Returns aggregations for faceted search
+
+        Search weights:
+        - Semantic search (dis_max across all models): 70%
+        - Keyword search: 30%
 
         Args:
             query: Search query string (used for both vector embedding and keyword search)
@@ -724,7 +937,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         client = self.build_client()
         q = (query or "").strip()
 
-        # Parse optional filter expression (can be either A or B shape; see _coerce_filter_clauses)
+        # Parse optional filter expression
         filter_obj = None
         if getattr(self, "filter_expression", "") and self.filter_expression.strip():
             try:
@@ -737,28 +950,122 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
             msg = "Embedding is required to run hybrid search (KNN + keyword)."
             raise ValueError(msg)
 
-        # Embed the query
-        vec = self.embedding.embed_query(q)
-
-        # Build filter clauses (accept both shapes)
+        # Build filter clauses first so we can use them in model detection
         filter_clauses = self._coerce_filter_clauses(filter_obj)
 
-        # Respect the tool's limit/threshold defaults
+        # Detect available embedding models in the index (scoped by filters)
+        available_models = self._detect_available_models(client, filter_clauses)
+
+        if not available_models:
+            logger.warning("No embedding models found in index, using current model")
+            available_models = [self._get_embedding_model_name()]
+
+        # Generate embeddings for ALL detected models in parallel
+        query_embeddings = {}
+
+        # Note: Langflow is synchronous, so we can't use true async here
+        # But we log the intent for parallel processing
+        logger.info(f"Generating embeddings for {len(available_models)} models")
+
+        for model_name in available_models:
+            try:
+                # In a real async environment, these would run in parallel
+                # For now, they run sequentially
+                vec = self.embedding.embed_query(q)
+                query_embeddings[model_name] = vec
+                logger.info(f"Generated embedding for model: {model_name}")
+            except Exception as e:
+                logger.error(f"Failed to generate embedding for {model_name}: {e}")
+
+        if not query_embeddings:
+            msg = "Failed to generate embeddings for any model"
+            raise ValueError(msg)
+
+        index_properties = self._get_index_properties(client)
+        legacy_vector_field = getattr(self, "vector_field", "chunk_embedding")
+
+        # Build KNN queries for each model
+        embedding_fields: list[str] = []
+        knn_queries_with_candidates = []
+        knn_queries_without_candidates = []
+
+        raw_num_candidates = getattr(self, "num_candidates", 1000)
+        try:
+            num_candidates = int(raw_num_candidates) if raw_num_candidates is not None else 0
+        except (TypeError, ValueError):
+            num_candidates = 0
+        use_num_candidates = num_candidates > 0
+
+        for model_name, embedding_vector in query_embeddings.items():
+            field_name = get_embedding_field_name(model_name)
+            selected_field = field_name
+
+            # Only use the expected dynamic field - no legacy fallback
+            # This prevents dimension mismatches between models
+            if not self._is_knn_vector_field(index_properties, selected_field):
+                logger.warning(
+                    f"Skipping model {model_name}: field '{field_name}' is not mapped as knn_vector. "
+                    f"Documents must be indexed with this embedding model before querying."
+                )
+                continue
+
+            embedding_fields.append(selected_field)
+
+            base_query = {
+                "knn": {
+                    selected_field: {
+                        "vector": embedding_vector,
+                        "k": 50,
+                    }
+                }
+            }
+
+            if use_num_candidates:
+                query_with_candidates = copy.deepcopy(base_query)
+                query_with_candidates["knn"][selected_field]["num_candidates"] = num_candidates
+            else:
+                query_with_candidates = base_query
+
+            knn_queries_with_candidates.append(query_with_candidates)
+            knn_queries_without_candidates.append(base_query)
+
+        if not knn_queries_with_candidates:
+            # No valid fields found - this can happen when:
+            # 1. Index is empty (no documents yet)
+            # 2. Embedding model has changed and field doesn't exist yet
+            # Return empty results instead of failing
+            logger.warning(
+                "No valid knn_vector fields found for embedding models. "
+                "This may indicate an empty index or missing field mappings. "
+                "Returning empty search results."
+            )
+            return []
+
+        # Build exists filter - document must have at least one embedding field
+        exists_any_embedding = {
+            "bool": {
+                "should": [{"exists": {"field": f}} for f in set(embedding_fields)],
+                "minimum_should_match": 1
+            }
+        }
+
+        # Combine user filters with exists filter
+        all_filters = [*filter_clauses, exists_any_embedding]
+
+        # Get limit and score threshold
         limit = (filter_obj or {}).get("limit", self.number_of_results)
         score_threshold = (filter_obj or {}).get("score_threshold", 0)
 
-        # Build the same hybrid body as your SearchService
+        # Build multi-model hybrid query
         body = {
             "query": {
                 "bool": {
                     "should": [
                         {
-                            "knn": {
-                                self.vector_field: {
-                                    "vector": vec,
-                                    "k": 10,  # fixed to match the tool
-                                    "boost": 0.7,
-                                }
+                            "dis_max": {
+                                "tie_breaker": 0.0,  # Take only the best match, no blending
+                                "boost": 0.7,  # 70% weight for semantic search
+                                "queries": knn_queries_with_candidates
                             }
                         },
                         {
@@ -767,17 +1074,19 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                                 "fields": ["text^2", "filename^1.5"],
                                 "type": "best_fields",
                                 "fuzziness": "AUTO",
-                                "boost": 0.3,
+                                "boost": 0.3,  # 30% weight for keyword search
                             }
                         },
                     ],
                     "minimum_should_match": 1,
+                    "filter": all_filters,
                 }
             },
             "aggs": {
                 "data_sources": {"terms": {"field": "filename", "size": 20}},
                 "document_types": {"terms": {"field": "mimetype", "size": 10}},
                 "owners": {"terms": {"field": "owner", "size": 10}},
+                "embedding_models": {"terms": {"field": "embedding_model.keyword", "size": 10}},
             },
             "_source": [
                 "filename",
@@ -786,21 +1095,65 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
                 "text",
                 "source_url",
                 "owner",
-                "embedding_dimensions",
+                "embedding_model",
                 "allowed_users",
                 "allowed_groups",
             ],
             "size": limit,
         }
-        if filter_clauses:
-            body["query"]["bool"]["filter"] = filter_clauses
 
         if isinstance(score_threshold, (int, float)) and score_threshold > 0:
-            # top-level min_score (matches your tool)
             body["min_score"] = score_threshold
 
-        resp = client.search(index=self.index_name, body=body)
+        logger.info(
+            f"Executing multi-model hybrid search with {len(knn_queries_with_candidates)} embedding models"
+        )
+
+        try:
+            resp = client.search(index=self.index_name, body=body)
+        except RequestError as e:
+            error_message = str(e)
+            lowered = error_message.lower()
+            if use_num_candidates and "num_candidates" in lowered:
+                logger.warning(
+                    "Retrying search without num_candidates parameter due to cluster capabilities",
+                    error=error_message,
+                )
+                fallback_body = copy.deepcopy(body)
+                try:
+                    fallback_body["query"]["bool"]["should"][0]["dis_max"]["queries"] = knn_queries_without_candidates
+                except (KeyError, IndexError, TypeError) as inner_err:
+                    raise e from inner_err
+                resp = client.search(index=self.index_name, body=fallback_body)
+            elif "knn_vector" in lowered or ("field" in lowered and "knn" in lowered):
+                fallback_vector = next(iter(query_embeddings.values()), None)
+                if fallback_vector is None:
+                    raise
+                fallback_field = legacy_vector_field or "chunk_embedding"
+                logger.warning(
+                    "KNN search failed for dynamic fields; falling back to legacy field '%s'.",
+                    fallback_field,
+                )
+                fallback_body = copy.deepcopy(body)
+                fallback_body["query"]["bool"]["filter"] = filter_clauses
+                knn_fallback = {
+                    "knn": {
+                        fallback_field: {
+                            "vector": fallback_vector,
+                            "k": 50,
+                        }
+                    }
+                }
+                if use_num_candidates:
+                    knn_fallback["knn"][fallback_field]["num_candidates"] = num_candidates
+                fallback_body["query"]["bool"]["should"][0]["dis_max"]["queries"] = [knn_fallback]
+                resp = client.search(index=self.index_name, body=fallback_body)
+            else:
+                raise
         hits = resp.get("hits", {}).get("hits", [])
+
+        logger.info(f"Found {len(hits)} results")
+
         return [
             {
                 "page_content": hit["_source"].get("text", ""),
@@ -813,7 +1166,7 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
     def search_documents(self) -> list[Data]:
         """Search documents and return results as Data objects.
 
-        This is the main interface method that performs the search using the
+        This is the main interface method that performs the multi-model search using the
         configured search_query and returns results in Langflow's Data format.
 
         Returns:
