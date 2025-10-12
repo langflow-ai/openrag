@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.8.1">
 <title data-rh="true">Deploy with Docker | OpenRAG</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://docs.openr.ag/get-started/docker"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Deploy with Docker | OpenRAG"><meta data-rh="true" name="description" content="There are two different Docker Compose files."><meta data-rh="true" property="og:description" content="There are two different Docker Compose files."><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://docs.openr.ag/get-started/docker"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/get-started/docker" hreflang="en"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/get-started/docker" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Deploy with Docker","item":"https://docs.openr.ag/get-started/docker"}]}</script><link rel="stylesheet" href="/assets/css/styles.1847d619.css">
-<script src="/assets/js/runtime~main.51333837.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.c8893f6b.js" defer="defer"></script>
 <script src="/assets/js/main.692561be.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -21,6 +21,7 @@ They deploy the same applications and containers, but to different environments.
 <p><a href="https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml" target="_blank" rel="noopener noreferrer"><code>docker-compose-cpu.yml</code></a> is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren&#x27;t available.</p>
 </li>
 </ul>
+<p>Both Docker deployments depend on <code>docling serve</code> to be running on port <code>5001</code> on the host machine. This enables <a href="https://opensource.apple.com/projects/mlx/" target="_blank" rel="noopener noreferrer">Mac MLX</a> support for document processing. Installing OpenRAG with the TUI starts <code>docling serve</code> automatically, but for a Docker deployment you must manually start the <code>docling serve</code> process.</p>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="prerequisites">Prerequisites<a href="#prerequisites" class="hash-link" aria-label="Direct link to Prerequisites" title="Direct link to Prerequisites">​</a></h2>
 <ul>
 <li><a href="https://www.python.org/downloads/release/python-3100/" target="_blank" rel="noopener noreferrer">Python Version 3.10 to 3.13</a></li>
@@ -38,6 +39,10 @@ They deploy the same applications and containers, but to different environments.
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">git clone https://github.com/langflow-ai/openrag.git</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">cd openrag</span><br></span></code></pre></div></div>
 </li>
 <li>
+<p>Install dependencies.</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uv sync</span><br></span></code></pre></div></div>
+</li>
+<li>
 <p>Copy the example <code>.env</code> file included in the repository root.
 The example file includes all environment variables with comments to guide you in finding and setting their values.</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">cp .env.example .env</span><br></span></code></pre></div></div>
@@ -51,10 +56,21 @@ The following values are <strong>required</strong> to be set:</p>
 <p>For more information on configuring OpenRAG with environment variables, see <a href="/reference/configuration">Environment variables</a>.</p>
 </li>
 <li>
+<p>Start <code>docling serve</code> on the host machine.
+Both Docker deployments depend on <code>docling serve</code> to be running on port <code>5001</code> on the host machine. This enables <a href="https://opensource.apple.com/projects/mlx/" target="_blank" rel="noopener noreferrer">Mac MLX</a> support for document processing.</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uv run python scripts/docling_ctl.py start --port 5001</span><br></span></code></pre></div></div>
+</li>
+<li>
+<p>Confirm <code>docling serve</code> is running.</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uv run python scripts/docling_ctl.py status</span><br></span></code></pre></div></div>
+<p>Successful result:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">Status: running</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">Endpoint: http://127.0.0.1:5001</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">Docs: http://127.0.0.1:5001/docs</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">PID: 27746</span><br></span></code></pre></div></div>
+</li>
+<li>
 <p>Deploy OpenRAG with Docker Compose based on your deployment type.</p>
-<p>For GPU-enabled systems, run the following command:</p>
-<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">docker compose up -d</span><br></span></code></pre></div></div>
-<p>For CPU-only systems, run the following command:</p>
+<p>For GPU-enabled systems, run the following commands:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">docker compose build</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">docker compose up -d</span><br></span></code></pre></div></div>
+<p>For environments without GPU support, run:</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">docker compose -f docker-compose-cpu.yml up -d</span><br></span></code></pre></div></div>
 <p>The OpenRAG Docker Compose file starts five containers:</p>
 <table><thead><tr><th>Container Name</th><th>Default Address</th><th>Purpose</th></tr></thead><tbody><tr><td>OpenRAG Backend</td><td><a href="http://localhost:8000" target="_blank" rel="noopener noreferrer">http://localhost:8000</a></td><td>FastAPI server and core functionality.</td></tr><tr><td>OpenRAG Frontend</td><td><a href="http://localhost:3000" target="_blank" rel="noopener noreferrer">http://localhost:3000</a></td><td>React web interface for users.</td></tr><tr><td>Langflow</td><td><a href="http://localhost:7860" target="_blank" rel="noopener noreferrer">http://localhost:7860</a></td><td>AI workflow engine and flow management.</td></tr><tr><td>OpenSearch</td><td><a href="http://localhost:9200" target="_blank" rel="noopener noreferrer">http://localhost:9200</a></td><td>Vector database for document storage.</td></tr><tr><td>OpenSearch Dashboards</td><td><a href="http://localhost:5601" target="_blank" rel="noopener noreferrer">http://localhost:5601</a></td><td>Database administration interface.</td></tr></tbody></table>
@@ -73,6 +89,8 @@ The following values are <strong>required</strong> to be set:</p>
 <p>Continue with <a href="#application-onboarding">Application Onboarding</a>.</p>
 </li>
 </ol>
+<p>To stop <code>docling serve</code> when you&#x27;re done with your OpenRAG deployment, run:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uv run python scripts/docling_ctl.py stop</span><br></span></code></pre></div></div>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="application-onboarding">Application onboarding<a href="#application-onboarding" class="hash-link" aria-label="Direct link to Application onboarding" title="Direct link to Application onboarding">​</a></h2>
 <p>The first time you start OpenRAG, whether using the TUI or a <code>.env</code> file, you must complete application onboarding.</p>
 <p>Most values from onboarding can be changed later in the OpenRAG <strong>Settings</strong> page, but there are important restrictions.</p>
