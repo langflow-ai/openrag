@@ -390,10 +390,16 @@ async def test_search_multi_embedding_models(
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
 
-            mark_resp = await client.patch("/settings", json={"edited": True})
-            if mark_resp.status_code not in (200, 204):
+            warmup_resp = await client.post(
+                "/settings",
+                json={
+                    "embedding_model": "text-embedding-3-small",
+                    "llm_model": "gpt-4o-mini",
+                },
+            )
+            if warmup_resp.status_code not in (200, 204):
                 raise AssertionError(
-                    f"Failed to mark config edited: {mark_resp.status_code} {mark_resp.text}"
+                    f"Initial settings update failed: {warmup_resp.status_code} {warmup_resp.text}"
                 )
 
             async def _upload_doc(name: str, text: str) -> None:
