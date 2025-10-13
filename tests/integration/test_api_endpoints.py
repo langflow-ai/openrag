@@ -1,9 +1,54 @@
 import asyncio
 import os
+import json
 from pathlib import Path
 
 import httpx
 import pytest
+from dotenv import dotenv_values, find_dotenv, load_dotenv
+
+
+def _extract_flow_id(flow_file: str) -> str | None:
+    path = Path(flow_file)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        if isinstance(data, dict):
+            return data.get("id") or data.get("flow_id")
+    except Exception:
+        return None
+    return None
+
+
+def _prime_langflow_env(required_keys: list[str]) -> None:
+    """Populate required Langflow env vars from .env or fallback assets when absent."""
+    loaded_env_path = find_dotenv(usecwd=True)
+    if loaded_env_path:
+        load_dotenv(loaded_env_path, override=False)
+
+    env_sources = {}
+    candidate_paths = []
+    if loaded_env_path:
+        candidate_paths.append(Path(loaded_env_path))
+    candidate_paths.append(Path(".env"))
+    candidate_paths.append(Path(".env.example"))
+
+    for candidate in candidate_paths:
+        if candidate.is_file():
+            env_sources.update(dotenv_values(candidate))
+
+    for key in required_keys:
+        if os.getenv(key):
+            continue
+        value = env_sources.get(key)
+        if not value:
+            if key == "LANGFLOW_CHAT_FLOW_ID":
+                value = _extract_flow_id("flows/openrag_agent.json")
+            elif key == "NUDGES_FLOW_ID":
+                value = _extract_flow_id("flows/openrag_nudges.json")
+        if value:
+            os.environ[key] = value
 
 
 async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 30.0):
@@ -255,6 +300,7 @@ async def _wait_for_nudges(
 async def test_langflow_chat_and_nudges_endpoints():
     """Exercise /langflow and /nudges endpoints against a live Langflow backend."""
     required_env = ["LANGFLOW_CHAT_FLOW_ID", "NUDGES_FLOW_ID"]
+    _prime_langflow_env(required_env)
     missing = [var for var in required_env if not os.getenv(var)]
     assert not missing, f"Missing required Langflow configuration: {missing}"
 
@@ -370,6 +416,7 @@ async def test_search_multi_embedding_models(
     from src.main import create_app, startup_tasks
     from src.config.settings import clients, INDEX_NAME
     from src.config.config_manager import config_manager
+    from src.config import settings as settings_module
 
     await clients.initialize()
     try:
@@ -384,6 +431,8 @@ async def test_search_multi_embedding_models(
     # Mark configuration as edited so /settings accepts updates
     config = config_manager.get_config()
     config.edited = True
+    # Ensure the settings module shares the edited flag
+    settings_module.config_manager._config = config
 
     from src.main import _ensure_opensearch_index
 
