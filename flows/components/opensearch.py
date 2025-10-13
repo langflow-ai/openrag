@@ -1002,15 +1002,32 @@ class OpenSearchVectorStoreComponent(LCVectorStoreComponent):
         # But we log the intent for parallel processing
         logger.info(f"Generating embeddings for {len(available_models)} models")
 
+        original_model_attr = getattr(self.embedding, "model", None)
+        original_deployment_attr = getattr(self.embedding, "deployment", None)
+        original_dimensions_attr = getattr(self.embedding, "dimensions", None)
+
         for model_name in available_models:
             try:
                 # In a real async environment, these would run in parallel
                 # For now, they run sequentially
+                if hasattr(self.embedding, "model"):
+                    setattr(self.embedding, "model", model_name)
+                if hasattr(self.embedding, "deployment"):
+                    setattr(self.embedding, "deployment", model_name)
+                if hasattr(self.embedding, "dimensions"):
+                    setattr(self.embedding, "dimensions", None)
                 vec = self.embedding.embed_query(q)
                 query_embeddings[model_name] = vec
                 logger.info(f"Generated embedding for model: {model_name}")
             except Exception as e:
                 logger.error(f"Failed to generate embedding for {model_name}: {e}")
+
+        if hasattr(self.embedding, "model"):
+            setattr(self.embedding, "model", original_model_attr)
+        if hasattr(self.embedding, "deployment"):
+            setattr(self.embedding, "deployment", original_deployment_attr)
+        if hasattr(self.embedding, "dimensions"):
+            setattr(self.embedding, "dimensions", original_dimensions_attr)
 
         if not query_embeddings:
             msg = "Failed to generate embeddings for any model"
