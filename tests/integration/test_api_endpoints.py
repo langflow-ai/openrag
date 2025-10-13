@@ -390,16 +390,15 @@ async def test_search_multi_embedding_models(
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
 
-            warmup_resp = await client.post(
-                "/settings",
-                json={
-                    "embedding_model": "text-embedding-3-small",
-                    "llm_model": "gpt-4o-mini",
-                },
-            )
-            if warmup_resp.status_code not in (200, 204):
+            onboarding_payload = {
+                "model_provider": "openai",
+                "llm_model": "gpt-4o-mini",
+                "sample_data": False,
+            }
+            onboarding_resp = await client.post("/onboarding", json=onboarding_payload)
+            if onboarding_resp.status_code not in (200, 204):
                 raise AssertionError(
-                    f"Initial settings update failed: {warmup_resp.status_code} {warmup_resp.text}"
+                    f"Onboarding failed: {onboarding_resp.status_code} {onboarding_resp.text}"
                 )
 
             async def _upload_doc(name: str, text: str) -> None:
@@ -445,7 +444,10 @@ async def test_search_multi_embedding_models(
             # Start with explicit small embedding model
             resp = await client.post(
                 "/settings",
-                json={"embedding_model": "text-embedding-3-small"},
+                json={
+                    "embedding_model": "text-embedding-3-small",
+                    "llm_model": "gpt-4o-mini",
+                },
             )
             assert resp.status_code == 200, resp.text
 
