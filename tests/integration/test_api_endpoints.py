@@ -314,6 +314,18 @@ async def test_langflow_chat_and_nudges_endpoints():
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
 
+            warmup_file = tmp_path / "nudges_seed.txt"
+            warmup_file.write_text("The user may care about different fruits including apples, hardy kiwi, and bananas")
+            files = {
+                "file": (
+                    warmup_file.name,
+                    warmup_file.read_bytes(),
+                    "text/plain",
+                )
+            }
+            upload_resp = await client.post("/upload", files=files)
+            assert upload_resp.status_code == 201, upload_resp.text
+
             prompt = "Respond with a brief acknowledgement for the OpenRAG integration test."
             langflow_payload = {"prompt": prompt, "limit": 5, "scoreThreshold": 0}
             langflow_data = await _wait_for_langflow_chat(client, langflow_payload)
