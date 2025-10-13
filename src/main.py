@@ -53,11 +53,11 @@ from auth_middleware import optional_auth, require_auth
 # Configuration and setup
 from config.settings import (
     DISABLE_INGEST_WITH_LANGFLOW,
-    EMBED_MODEL,
     INDEX_BODY,
     INDEX_NAME,
     SESSION_SECRET,
     clients,
+    get_embedding_model,
     is_no_auth_mode,
     get_openrag_config,
 )
@@ -505,7 +505,7 @@ async def initialize_services():
     openrag_connector_service = ConnectorService(
         patched_async_client=clients.patched_async_client,
         process_pool=process_pool,
-        embed_model=EMBED_MODEL,
+        embed_model=get_embedding_model(),
         index_name=INDEX_NAME,
         task_service=task_service,
         session_manager=session_manager,

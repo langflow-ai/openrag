@@ -163,16 +163,17 @@ class TaskProcessor:
         docling conversion + embeddings + OpenSearch indexing.
 
         Args:
-            embedding_model: Embedding model to use (defaults to EMBED_MODEL from settings)
+            embedding_model: Embedding model to use (defaults to the current
+                embedding model from settings)
         """
         import datetime
-        from config.settings import INDEX_NAME, EMBED_MODEL, clients
+        from config.settings import INDEX_NAME, clients, get_embedding_model
         from services.document_service import chunk_texts_for_embeddings
         from utils.document_processing import extract_relevant
         from utils.embedding_fields import get_embedding_field_name, ensure_embedding_field_exists
 
         # Use provided embedding model or fall back to default
-        embedding_model = embedding_model or EMBED_MODEL
+        embedding_model = embedding_model or get_embedding_model()
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
@@ -575,7 +576,7 @@ class S3FileProcessor(TaskProcessor):
         import time
         import asyncio
         import datetime
-        from config.settings import INDEX_NAME, EMBED_MODEL, clients
+        from config.settings import INDEX_NAME, clients, get_embedding_model
         from services.document_service import chunk_texts_for_embeddings
         from utils.document_processing import process_document_sync
 
