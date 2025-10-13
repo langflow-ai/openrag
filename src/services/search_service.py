@@ -1,7 +1,7 @@
 import copy
 from typing import Any, Dict
 from agentd.tool_decorator import tool
-from config.settings import clients, INDEX_NAME, EMBED_MODEL
+from config.settings import clients, INDEX_NAME, get_embedding_model
 from auth_context import get_auth_context
 from utils.logging_config import get_logger
 
@@ -24,17 +24,18 @@ class SearchService:
         Args:
             query (str): query string to search the corpus
             embedding_model (str): Optional override for embedding model.
-                                  If not provided, uses EMBED_MODEL from config.
+                                  If not provided, uses the current embedding
+                                  model from configuration.
 
         Returns:
             dict (str, Any): {"results": [chunks]} on success
         """
         from utils.embedding_fields import get_embedding_field_name
 
-        # Strategy: Use provided model, or default to EMBED_MODEL
-        # This assumes documents are embedded with EMBED_MODEL by default
+        # Strategy: Use provided model, or default to the configured embedding
+        # model. This assumes documents are embedded with that model by default.
         # Future enhancement: Could auto-detect available models in corpus
-        embedding_model = embedding_model or EMBED_MODEL
+        embedding_model = embedding_model or get_embedding_model()
         embedding_field_name = get_embedding_field_name(embedding_model)
 
         logger.info(
@@ -451,7 +452,8 @@ class SearchService:
         """Public search method for API endpoints
 
         Args:
-            embedding_model: Embedding model to use for search (defaults to EMBED_MODEL)
+            embedding_model: Embedding model to use for search (defaults to the
+                currently configured embedding model)
         """
         # Set auth context if provided (for direct API calls)
         from config.settings import is_no_auth_mode

@@ -595,3 +595,8 @@ def get_knowledge_config():
 def get_agent_config():
     """Get agent configuration."""
     return get_openrag_config().agent
+
+
+def get_embedding_model() -> str:
+    """Return the currently configured embedding model."""
+    return get_openrag_config().knowledge.embedding_model
