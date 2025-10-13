@@ -369,8 +369,6 @@ async def test_search_multi_embedding_models(
 
     from src.main import create_app, startup_tasks
     from src.config.settings import clients, INDEX_NAME
-    from src.config.config_manager import config_manager
-    from src.config import settings as settings_module
 
     await clients.initialize()
     try:
@@ -382,12 +380,6 @@ async def test_search_multi_embedding_models(
     app = await create_app()
     await startup_tasks(app.state.services)
 
-    # Mark configuration as edited so /settings accepts updates
-    config = config_manager.get_config()
-    config.edited = True
-    # Ensure the settings module shares the edited flag
-    settings_module.config_manager._config = config
-
     from src.main import _ensure_opensearch_index
 
     await _ensure_opensearch_index()
@@ -397,6 +389,12 @@ async def test_search_multi_embedding_models(
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
+
+            mark_resp = await client.patch("/settings", json={"edited": True})
+            if mark_resp.status_code not in (200, 204):
+                raise AssertionError(
+                    f"Failed to mark config edited: {mark_resp.status_code} {mark_resp.text}"
+                )
 
             async def _upload_doc(name: str, text: str) -> None:
                 file_path = tmp_path / name
