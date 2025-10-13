@@ -404,6 +404,7 @@ async def test_search_multi_embedding_models(
 
             onboarding_payload = {
                 "model_provider": "openai",
+                "embedding_model": "text-embedding-3-small",
                 "llm_model": "gpt-4o-mini",
                 "sample_data": False,
             }
