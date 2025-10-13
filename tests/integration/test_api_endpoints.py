@@ -314,7 +314,7 @@ async def test_langflow_chat_and_nudges_endpoints():
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
 
-            warmup_file = tmp_path / "nudges_seed.txt"
+            warmup_file = "./nudges_seed.txt"
             warmup_file.write_text("The user may care about different fruits including apples, hardy kiwi, and bananas")
             files = {
                 "file": (
@@ -406,6 +406,7 @@ async def test_search_multi_embedding_models(
                 "model_provider": "openai",
                 "embedding_model": "text-embedding-3-small",
                 "llm_model": "gpt-4o-mini",
+                "endpoint": "https://api.openai.com/v1",
                 "sample_data": False,
             }
             onboarding_resp = await client.post("/onboarding", json=onboarding_payload)
