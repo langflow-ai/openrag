@@ -16,6 +16,9 @@ jobs:
       # Prefer repository/environment variable first, then secret, then a sane fallback
       OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      LANGFLOW_AUTO_LOGIN: "True"
+      LANGFLOW_NEW_USER_IS_ACTIVE: "True"
+      LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
       LANGFLOW_CHAT_FLOW_ID: ${{ vars.LANGFLOW_CHAT_FLOW_ID || '1098eea1-6649-4e1d-aed1-b77249fb8dd0' }}
       NUDGES_FLOW_ID: ${{ vars.NUDGES_FLOW_ID || 'ebc01d31-1976-46ce-a385-b0240327226c' }}
 
