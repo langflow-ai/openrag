@@ -314,7 +314,7 @@ async def test_langflow_chat_and_nudges_endpoints():
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
 
-            warmup_file = "./nudges_seed.txt"
+            warmup_file = Path("./nudges_seed.txt")
             warmup_file.write_text("The user may care about different fruits including apples, hardy kiwi, and bananas")
             files = {
                 "file": (
