@@ -9,37 +9,28 @@ import { Button } from "@/components/ui/button";
 import { DotPattern } from "@/components/ui/dot-pattern";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
-import { useGetSettingsQuery } from "../api/queries/useGetSettingsQuery";
 
 function LoginPageContent() {
   const { isLoading, isAuthenticated, isNoAuthMode, login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const { data: settings, isLoading: isSettingsLoading } = useGetSettingsQuery({
-    enabled: isAuthenticated || isNoAuthMode,
-  });
-
-  const redirect =
-    settings && !settings.edited
-      ? "/onboarding"
-      : searchParams.get("redirect") || "/chat";
+  const redirect =  searchParams.get("redirect") || "/chat";
 
   // Redirect if already authenticated or in no-auth mode
   useEffect(() => {
-    if (!isLoading && !isSettingsLoading && (isAuthenticated || isNoAuthMode)) {
+    if (!isLoading && (isAuthenticated || isNoAuthMode)) {
       router.push(redirect);
     }
   }, [
     isLoading,
-    isSettingsLoading,
     isAuthenticated,
     isNoAuthMode,
     router,
     redirect,
   ]);
 
-  if (isLoading || isSettingsLoading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
