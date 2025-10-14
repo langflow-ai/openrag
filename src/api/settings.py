@@ -635,7 +635,7 @@ async def onboarding(request, flows_service):
                     provider,
                     body["embedding_model"],
                     body["llm_model"],
-                    body["endpoint"],
+                    body.get("endpoint"),
                 )
 
             except Exception as e:
