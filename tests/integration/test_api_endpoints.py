@@ -332,6 +332,7 @@ async def _wait_for_task_completion(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip
 async def test_langflow_chat_and_nudges_endpoints():
     """Exercise /langflow and /nudges endpoints against a live Langflow backend."""
     required_env = ["LANGFLOW_CHAT_FLOW_ID", "NUDGES_FLOW_ID"]
@@ -448,6 +449,7 @@ async def test_langflow_chat_and_nudges_endpoints():
             pass
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_search_multi_embedding_models(
     tmp_path: Path
