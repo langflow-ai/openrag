@@ -33,6 +33,7 @@ dependencies = [
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
     "docling-serve>=1.4.1",
+    "easyocr>=1.7.1"
 ]
 
 [dependency-groups]
