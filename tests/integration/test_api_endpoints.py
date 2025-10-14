@@ -160,7 +160,7 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
                     "text/markdown",
                 )
             }
-            upload_resp = await client.post("/upload", files=files)
+            upload_resp = await client.post("/router/upload_ingest", files=files)
             body = upload_resp.json()
             assert upload_resp.status_code == 201, upload_resp.text
             assert body.get("status") in {"indexed", "unchanged"}
@@ -251,6 +251,35 @@ async def _wait_for_nudges(
     raise AssertionError(f"{endpoint} never returned a usable response. Last payload: {last_payload}")
 
 
+async def _wait_for_task_completion(
+    client: httpx.AsyncClient, task_id: str, timeout_s: float = 180.0
+) -> dict:
+    deadline = asyncio.get_event_loop().time() + timeout_s
+    last_payload = None
+    while asyncio.get_event_loop().time() < deadline:
+        resp = await client.get(f"/tasks/{task_id}")
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+            except Exception:
+                last_payload = resp.text
+            else:
+                status = (data.get("status") or "").lower()
+                if status == "completed":
+                    return data
+                if status == "failed":
+                    raise AssertionError(f"Task {task_id} failed: {data}")
+                last_payload = data
+        elif resp.status_code == 404:
+            last_payload = resp.text
+        else:
+            last_payload = resp.text
+        await asyncio.sleep(1.0)
+    raise AssertionError(
+        f"Task {task_id} did not complete in time. Last payload: {last_payload}"
+    )
+
+
 @pytest.mark.asyncio
 async def test_langflow_chat_and_nudges_endpoints():
     """Exercise /langflow and /nudges endpoints against a live Langflow backend."""
@@ -314,8 +343,10 @@ async def test_langflow_chat_and_nudges_endpoints():
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
 
-            warmup_file = Path("./nudges_seed.md")
-            warmup_file.write_text("The user may care about different fruits including apples, hardy kiwi, and bananas")
+            warmup_file = tmp_path / "nudges_seed.md"
+            warmup_file.write_text(
+                "The user may care about different fruits including apples, hardy kiwi, and bananas"
+            )
             files = {
                 "file": (
                     warmup_file.name,
@@ -323,8 +354,12 @@ async def test_langflow_chat_and_nudges_endpoints():
                     "text/plain",
                 )
             }
-            upload_resp = await client.post("/upload", files=files)
-            assert upload_resp.status_code == 201, upload_resp.text
+            upload_resp = await client.post("/router/upload_ingest", files=files)
+            assert upload_resp.status_code in (201, 202), upload_resp.text
+            payload = upload_resp.json()
+            task_id = payload.get("task_id")
+            if task_id:
+                await _wait_for_task_completion(client, task_id)
 
             prompt = "Respond with a brief acknowledgement for the OpenRAG integration test."
             langflow_payload = {"prompt": prompt, "limit": 5, "scoreThreshold": 0}
@@ -425,8 +460,12 @@ async def test_search_multi_embedding_models(
                         "text/markdown",
                     )
                 }
-                resp = await client.post("/upload", files=files)
-                assert resp.status_code == 201, resp.text
+                resp = await client.post("/router/upload_ingest", files=files)
+                assert resp.status_code in (201, 202), resp.text
+                payload = resp.json()
+                task_id = payload.get("task_id")
+                if task_id:
+                    await _wait_for_task_completion(client, task_id)
 
             async def _wait_for_models(expected_models: set[str], query: str = "physics"):
                 deadline = asyncio.get_event_loop().time() + 30.0
