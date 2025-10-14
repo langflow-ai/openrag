@@ -567,18 +567,6 @@ async def create_app():
 
     # Create route handlers with service dependencies injected
     routes = [
-        # Upload endpoints
-        Route(
-            "/upload",
-            require_auth(services["session_manager"])(
-                partial(
-                    upload.upload,
-                    document_service=services["document_service"],
-                    session_manager=services["session_manager"],
-                )
-            ),
-            methods=["POST"],
-        ),
         # Langflow Files endpoints
         Route(
             "/langflow/files/upload",
