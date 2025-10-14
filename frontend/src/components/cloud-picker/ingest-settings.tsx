@@ -21,8 +21,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ModelSelectItems } from "@/app/settings/helpers/model-select-item";
-import { getFallbackModels } from "@/app/settings/helpers/model-helpers";
+import { getFallbackModels, type ModelProvider } from "@/app/settings/helpers/model-helpers";
 import { NumberInput } from "@/components/ui/inputs/number-input";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import {
+  useGetOpenAIModelsQuery,
+  useGetOllamaModelsQuery,
+  useGetIBMModelsQuery,
+} from "@/app/api/queries/useGetModelsQuery";
+import { useAuth } from "@/contexts/auth-context";
+import { useEffect } from "react";
 
 interface IngestSettingsProps {
   isOpen: boolean;
@@ -37,17 +45,64 @@ export const IngestSettings = ({
   settings,
   onSettingsChange,
 }: IngestSettingsProps) => {
-  // Default settings
+  const { isAuthenticated, isNoAuthMode } = useAuth();
+
+  // Fetch settings from API to get current embedding model
+  const { data: apiSettings = {} } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+
+  // Get the current provider from API settings
+  const currentProvider = (apiSettings.provider?.model_provider ||
+    "openai") as ModelProvider;
+
+  // Fetch available models based on provider
+  const { data: openaiModelsData } = useGetOpenAIModelsQuery(undefined, {
+    enabled: (isAuthenticated || isNoAuthMode) && currentProvider === "openai",
+  });
+
+  const { data: ollamaModelsData } = useGetOllamaModelsQuery(undefined, {
+    enabled: (isAuthenticated || isNoAuthMode) && currentProvider === "ollama",
+  });
+
+  const { data: ibmModelsData } = useGetIBMModelsQuery(undefined, {
+    enabled: (isAuthenticated || isNoAuthMode) && currentProvider === "watsonx",
+  });
+
+  // Select the appropriate models data based on provider
+  const modelsData =
+    currentProvider === "openai"
+      ? openaiModelsData
+      : currentProvider === "ollama"
+      ? ollamaModelsData
+      : currentProvider === "watsonx"
+      ? ibmModelsData
+      : openaiModelsData;
+
+  // Get embedding model from API settings
+  const apiEmbeddingModel =
+    apiSettings.knowledge?.embedding_model ||
+    modelsData?.embedding_models?.find((m) => m.default)?.value ||
+    "text-embedding-3-small";
+
+  // Default settings - use API embedding model
   const defaultSettings: IngestSettingsType = {
     chunkSize: 1000,
     chunkOverlap: 200,
     ocr: false,
     pictureDescriptions: false,
-    embeddingModel: "text-embedding-3-small",
+    embeddingModel: apiEmbeddingModel,
   };
 
   // Use provided settings or defaults
   const currentSettings = settings || defaultSettings;
+
+  // Update settings when API embedding model changes
+  useEffect(() => {
+    if (apiEmbeddingModel && (!settings || settings.embeddingModel !== apiEmbeddingModel)) {
+      onSettingsChange?.({ ...currentSettings, embeddingModel: apiEmbeddingModel });
+    }
+  }, [apiEmbeddingModel]);
 
   const handleSettingsChange = (newSettings: Partial<IngestSettingsType>) => {
     const updatedSettings = { ...currentSettings, ...newSettings };
@@ -73,38 +128,32 @@ export const IngestSettings = ({
 
       <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-up-2 data-[state=open]:slide-down-2">
         <div className="mt-6">
-          {/* Embedding model selection - currently disabled */}
+          {/* Embedding model selection */}
           <LabelWrapper
             helperText="Model used for knowledge ingest and retrieval"
             id="embedding-model-select"
             label="Embedding model"
           >
             <Select
-              // Disabled until API supports multiple embedding models
-              disabled={true}
+              disabled={false}
               value={currentSettings.embeddingModel}
-              onValueChange={() => {}}
+              onValueChange={(value) => handleSettingsChange({ embeddingModel: value })}
             >
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <SelectTrigger disabled id="embedding-model-select">
+                  <SelectTrigger id="embedding-model-select">
                     <SelectValue placeholder="Select an embedding model" />
                   </SelectTrigger>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Locked to keep embeddings consistent
+                  Choose the embedding model for this upload
                 </TooltipContent>
               </Tooltip>
               <SelectContent>
                 <ModelSelectItems
-                  models={[
-                    {
-                      value: "text-embedding-3-small",
-                      label: "text-embedding-3-small",
-                    },
-                  ]}
-                  fallbackModels={getFallbackModels("openai").embedding}
-                  provider={"openai"}
+                  models={modelsData?.embedding_models}
+                  fallbackModels={getFallbackModels(currentProvider).embedding}
+                  provider={currentProvider}
                 />
               </SelectContent>
             </Select>

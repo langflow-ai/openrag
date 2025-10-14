@@ -505,36 +505,116 @@ class ContainerManager:
                 digests[image] = stdout.strip().splitlines()[0]
         return digests
 
-    def _parse_compose_images(self) -> list[str]:
-        """Best-effort parse of image names from compose files without YAML dependency."""
+    def _extract_images_from_compose_config(self, text: str, tried_json: bool) -> set[str]:
+        """
+        Try JSON first (if we asked for it or it looks like JSON), then YAML if available.
+        Returns a set of image names.
+        """
         images: set[str] = set()
-        for compose in [self.compose_file, self.cpu_compose_file]:
+
+        # Try JSON parse
+        if tried_json or (text.lstrip().startswith("{") and text.rstrip().endswith("}")):
             try:
-                if not compose.exists():
+                cfg = json.loads(text)
+                services = cfg.get("services", {})
+                for _, svc in services.items():
+                    image = svc.get("image")
+                    if image:
+                        images.add(str(image))
+                if images:
+                    return images
+            except json.JSONDecodeError:
+                pass
+
+        # Try YAML (if available) - import here to avoid hard dependency
+        try:
+            import yaml
+            cfg = yaml.safe_load(text) or {}
+            services = cfg.get("services", {})
+            if isinstance(services, dict):
+                for _, svc in services.items():
+                    if isinstance(svc, dict):
+                        image = svc.get("image")
+                        if image:
+                            images.add(str(image))
+            if images:
+                return images
+        except Exception:
+            pass
+
+        return images
+
+    async def _parse_compose_images(self) -> list[str]:
+        """Get resolved image names from compose files using docker/podman compose, with robust fallbacks."""
+        images: set[str] = set()
+
+        compose_files = [self.compose_file, self.cpu_compose_file]
+        for compose_file in compose_files:
+            try:
+                if not compose_file or not compose_file.exists():
                     continue
-                for line in compose.read_text().splitlines():
-                    line = line.strip()
-                    if not line or line.startswith("#"):
+
+                cpu_mode = (compose_file == self.cpu_compose_file)
+
+                # Try JSON format first
+                success, stdout, _ = await self._run_compose_command(
+                    ["config", "--format", "json"],
+                    cpu_mode=cpu_mode
+                )
+
+                if success and stdout.strip():
+                    from_cfg = self._extract_images_from_compose_config(stdout, tried_json=True)
+                    if from_cfg:
+                        images.update(from_cfg)
+                        continue  # this compose file succeeded; move to next file
+
+                # Fallback to YAML output (for older compose versions)
+                success, stdout, _ = await self._run_compose_command(
+                    ["config"],
+                    cpu_mode=cpu_mode
+                )
+
+                if success and stdout.strip():
+                    from_cfg = self._extract_images_from_compose_config(stdout, tried_json=False)
+                    if from_cfg:
+                        images.update(from_cfg)
                         continue
-                    if line.startswith("image:"):
-                        # image: repo/name:tag
-                        val = line.split(":", 1)[1].strip()
-                        # Remove quotes if present
-                        if (val.startswith('"') and val.endswith('"')) or (
-                            val.startswith("'") and val.endswith("'")
-                        ):
-                            val = val[1:-1]
-                        images.add(val)
+
             except Exception:
+                # Keep behavior resilient—just continue to next file
                 continue
-        return list(images)
+
+        # Fallback: manual parsing if compose config didn't work
+        if not images:
+            for compose in compose_files:
+                try:
+                    if not compose.exists():
+                        continue
+                    for line in compose.read_text().splitlines():
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        if line.startswith("image:"):
+                            # image: repo/name:tag
+                            val = line.split(":", 1)[1].strip()
+                            # Remove quotes if present
+                            if (val.startswith('"') and val.endswith('"')) or (
+                                val.startswith("'") and val.endswith("'")
+                            ):
+                                val = val[1:-1]
+                            if val:
+                                images.add(val)
+                except Exception:
+                    continue
+
+        return sorted(images)
 
     async def get_project_images_info(self) -> list[tuple[str, str]]:
         """
         Return list of (image, digest_or_id) for images referenced by compose files.
         If an image isn't present locally, returns '-' for its digest.
         """
-        expected = self._parse_compose_images()
+        expected = await self._parse_compose_images()
         results: list[tuple[str, str]] = []
         for image in expected:
             digest = "-"

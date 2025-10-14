@@ -20,6 +20,55 @@ from src.session_manager import SessionManager
 from src.main import generate_jwt_keys
 
 
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def onboard_system():
+    """Perform initial onboarding once for all tests in the session.
+
+    This ensures the OpenRAG config is marked as edited and properly initialized
+    so that tests can use the /settings endpoint.
+    """
+    from pathlib import Path
+
+    # Delete any existing config to ensure clean onboarding
+    config_file = Path("config/config.yaml")
+    if config_file.exists():
+        config_file.unlink()
+
+    # Initialize clients
+    await clients.initialize()
+
+    # Create app and perform onboarding via API
+    from src.main import create_app, startup_tasks
+    import httpx
+
+    app = await create_app()
+    await startup_tasks(app.state.services)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        onboarding_payload = {
+            "model_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "llm_model": "gpt-4o-mini",
+            "endpoint": "https://api.openai.com/v1",
+            "sample_data": False,
+        }
+        resp = await client.post("/onboarding", json=onboarding_payload)
+        if resp.status_code not in (200, 204):
+            # If it fails, it might already be onboarded, which is fine
+            print(f"[DEBUG] Onboarding returned {resp.status_code}: {resp.text}")
+        else:
+            print(f"[DEBUG] Session onboarding completed successfully")
+
+    yield
+
+    # Cleanup after all tests
+    try:
+        await clients.close()
+    except Exception:
+        pass
+
+
 @pytest.fixture(scope="session")
 def event_loop():
     """Create an instance of the default event loop for the test session."""
