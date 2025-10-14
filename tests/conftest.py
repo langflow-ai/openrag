@@ -50,7 +50,6 @@ async def onboard_system():
             "model_provider": "openai",
             "embedding_model": "text-embedding-3-small",
             "llm_model": "gpt-4o-mini",
-            "endpoint": "https://api.openai.com/v1",
             "sample_data": False,
         }
         resp = await client.post("/onboarding", json=onboarding_payload)
