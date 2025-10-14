@@ -1,9 +1,41 @@
 import asyncio
 import os
+import subprocess
 from pathlib import Path
 
 import httpx
 import pytest
+
+
+def dump_docker_logs(container_name_pattern: str = "langflow", tail: int = 100):
+    """Dump Docker container logs for debugging."""
+    try:
+        # Find container ID by name pattern
+        find_cmd = ["docker", "ps", "-a", "--filter", f"name={container_name_pattern}", "--format", "{{.ID}}"]
+        result = subprocess.run(find_cmd, capture_output=True, text=True, timeout=5)
+        container_ids = result.stdout.strip().split('\n')
+
+        if not container_ids or not container_ids[0]:
+            print(f"[DEBUG] No Docker containers found matching pattern: {container_name_pattern}")
+            return
+
+        for container_id in container_ids:
+            if not container_id:
+                continue
+            print(f"\n{'='*80}")
+            print(f"[DEBUG] Docker logs for container {container_id} (last {tail} lines):")
+            print(f"{'='*80}")
+
+            logs_cmd = ["docker", "logs", "--tail", str(tail), container_id]
+            logs_result = subprocess.run(logs_cmd, capture_output=True, text=True, timeout=10)
+            print(logs_result.stdout)
+            if logs_result.stderr:
+                print("[STDERR]:", logs_result.stderr)
+            print(f"{'='*80}\n")
+    except subprocess.TimeoutExpired:
+        print(f"[DEBUG] Timeout while fetching docker logs for {container_name_pattern}")
+    except Exception as e:
+        print(f"[DEBUG] Failed to fetch docker logs for {container_name_pattern}: {e}")
 
 
 async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 30.0):
@@ -162,9 +194,20 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
             }
             upload_resp = await client.post("/router/upload_ingest", files=files)
             body = upload_resp.json()
-            assert upload_resp.status_code == 202, upload_resp.text
-            assert body.get("status") in {"indexed", "unchanged"}
-            assert isinstance(body.get("id"), str)
+            assert upload_resp.status_code in (201, 202), upload_resp.text
+
+            # Handle different response formats based on whether Langflow is used
+            if disable_langflow_ingest:
+                # Traditional OpenRAG response (201)
+                assert body.get("status") in {"indexed", "unchanged"}
+                assert isinstance(body.get("id"), str)
+            else:
+                # Langflow task response (202)
+                task_id = body.get("task_id")
+                assert isinstance(task_id, str)
+                assert body.get("file_count") == 1
+                # Wait for task completion before searching
+                await _wait_for_task_completion(client, task_id)
 
             # Poll search for the specific content until it's indexed
             async def _wait_for_indexed(timeout_s: float = 30.0):
@@ -224,6 +267,10 @@ async def _wait_for_langflow_chat(
         else:
             last_payload = resp.text
         await asyncio.sleep(1.0)
+
+    # Dump Langflow logs before raising error
+    print(f"\n[DEBUG] /langflow timed out. Dumping Langflow container logs...")
+    dump_docker_logs(container_name_pattern="langflow", tail=200)
     raise AssertionError(f"/langflow never returned a usable response. Last payload: {last_payload}")
 
 
@@ -248,6 +295,10 @@ async def _wait_for_nudges(
         else:
             last_payload = resp.text
         await asyncio.sleep(1.0)
+
+    # Dump Langflow logs before raising error
+    print(f"\n[DEBUG] {endpoint} timed out. Dumping Langflow container logs...")
+    dump_docker_logs(container_name_pattern="langflow", tail=200)
     raise AssertionError(f"{endpoint} never returned a usable response. Last payload: {last_payload}")
 
 
