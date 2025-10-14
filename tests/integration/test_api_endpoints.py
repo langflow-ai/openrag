@@ -408,6 +408,7 @@ async def test_langflow_chat_and_nudges_endpoints():
             upload_resp = await client.post("/router/upload_ingest", files=files)
             assert upload_resp.status_code in (201, 202), upload_resp.text
             payload = upload_resp.json()
+            print(f"[DEBUG] Upload response: {payload}")
             task_id = payload.get("task_id")
             if task_id:
                 await _wait_for_task_completion(client, task_id)
