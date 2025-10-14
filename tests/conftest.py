@@ -20,7 +20,7 @@ from src.session_manager import SessionManager
 from src.main import generate_jwt_keys
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", autouse=True)
 async def onboard_system():
     """Perform initial onboarding once for all tests in the session.
 
