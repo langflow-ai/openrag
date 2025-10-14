@@ -2,6 +2,7 @@ import { Bot, GitBranch } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { FunctionCalls } from "./function-calls";
 import type { FunctionCall } from "../types";
+import DogIcon from "@/components/logo/dog-icon";
 
 interface AssistantMessageProps {
   content: string;
@@ -24,10 +25,13 @@ export function AssistantMessage({
   showForkButton = false,
   onFork,
 }: AssistantMessageProps) {
+  const updatedOnboarding = process.env.UPDATED_ONBOARDING === "true";
+  const IconComponent = updatedOnboarding ? DogIcon : Bot;
+
   return (
     <div className="flex gap-3">
       <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
-        <Bot className="h-4 w-4 text-accent-foreground" />
+        <IconComponent className="h-4 w-4 text-accent-foreground" />
       </div>
       <div className="flex-1 min-w-0">
         <FunctionCalls

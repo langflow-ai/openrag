@@ -30,11 +30,10 @@ import { OpenAIOnboarding } from "./openai-onboarding";
 
 const OnboardingCard = ({
   isDoclingHealthy,
-  boarderless = false,
 }: {
   isDoclingHealthy: boolean;
-  boarderless?: boolean;
 }) => {
+  const updatedOnboarding = process.env.UPDATED_ONBOARDING === "true";
   const { data: settingsDb, isLoading: isSettingsLoading } =
   useGetSettingsQuery();
 
@@ -120,7 +119,7 @@ const OnboardingCard = ({
   const isComplete = !!settings.llm_model && !!settings.embedding_model && isDoclingHealthy;
 
   return (
-    <Card className={`w-full max-w-[600px] ${boarderless ? "border-none" : ""}`}>
+    <Card className={`w-full max-w-[600px] ${updatedOnboarding ? "border-none" : ""}`}>
       <Tabs
         defaultValue={modelProvider}
         onValueChange={handleSetModelProvider}
@@ -165,7 +164,7 @@ const OnboardingCard = ({
           </TabsContent>
         </CardContent>
       </Tabs>
-      <CardFooter className="flex justify-end">
+      <CardFooter className={`flex  ${updatedOnboarding ? "" : "justify-end"}`}>
         <Tooltip>
           <TooltipTrigger asChild>
             <div>
