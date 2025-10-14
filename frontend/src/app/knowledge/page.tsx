@@ -2,8 +2,10 @@
 
 import {
   themeQuartz,
+  type CheckboxSelectionCallbackParams,
   type ColDef,
   type GetRowIdParams,
+  type ValueFormatterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import { Cloud, FileIcon, Globe } from "lucide-react";
@@ -130,7 +132,7 @@ function SearchPage() {
     {
       field: "filename",
       headerName: "Source",
-      checkboxSelection: (params: CustomCellRendererProps<File>) =>
+      checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
         (params?.data?.status || "active") === "active",
       headerCheckboxSelection: true,
       initialFlex: 2,
@@ -172,7 +174,7 @@ function SearchPage() {
     {
       field: "size",
       headerName: "Size",
-      valueFormatter: (params: CustomCellRendererProps<File>) =>
+      valueFormatter: (params: ValueFormatterParams<File>) =>
         params.value ? `${Math.round(params.value / 1024)} KB` : "-",
     },
     {
@@ -182,13 +184,13 @@ function SearchPage() {
     {
       field: "owner",
       headerName: "Owner",
-      valueFormatter: (params: CustomCellRendererProps<File>) =>
+      valueFormatter: (params: ValueFormatterParams<File>) =>
         params.data?.owner_name || params.data?.owner_email || "—",
     },
     {
       field: "chunkCount",
       headerName: "Chunks",
-      valueFormatter: (params: CustomCellRendererProps<File>) =>
+      valueFormatter: (params: ValueFormatterParams<File>) =>
         params.data?.chunkCount?.toString() || "-",
     },
     {
