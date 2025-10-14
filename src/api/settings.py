@@ -633,8 +633,8 @@ async def onboarding(request, flows_service):
 
                 await flows_service.change_langflow_model_value(
                     provider,
-                    body["embedding_model"],
-                    body["llm_model"],
+                    body.get("embedding_model"),
+                    body.get("llm_model"),
                     body.get("endpoint"),
                 )
 
