@@ -241,19 +241,49 @@ async def update_settings(request, session_manager):
                     {"error": "embedding_model must be a non-empty string"},
                     status_code=400,
                 )
-            current_config.knowledge.embedding_model = body["embedding_model"].strip()
+            new_embedding_model = body["embedding_model"].strip()
+            current_config.knowledge.embedding_model = new_embedding_model
             config_updated = True
 
             # Also update the ingest flow with the new embedding model
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_ingest_flow_embedding_model(
-                    body["embedding_model"].strip(),
+                    new_embedding_model,
                     current_config.provider.model_provider.lower()
                 )
                 logger.info(
                     f"Successfully updated ingest flow embedding model to '{body['embedding_model'].strip()}'"
                 )
+
+                provider = (
+                    current_config.provider.model_provider.lower()
+                    if current_config.provider.model_provider
+                    else "openai"
+                )
+                endpoint = current_config.provider.endpoint or None
+                llm_model = current_config.agent.llm_model
+
+                change_result = await flows_service.change_langflow_model_value(
+                    provider=provider,
+                    embedding_model=new_embedding_model,
+                    llm_model=llm_model,
+                    endpoint=endpoint,
+                )
+
+                if not change_result.get("success", False):
+                    logger.warning(
+                        "Change embedding model across flows completed with issues",
+                        provider=provider,
+                        embedding_model=new_embedding_model,
+                        change_result=change_result,
+                    )
+                else:
+                    logger.info(
+                        "Successfully updated embedding model across Langflow flows",
+                        provider=provider,
+                        embedding_model=new_embedding_model,
+                    )
             except Exception as e:
                 logger.error(f"Failed to update ingest flow embedding model: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
