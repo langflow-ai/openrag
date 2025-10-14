@@ -1,98 +1,31 @@
 "use client";
 
-import {
-  Bot,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Funnel,
-  GitBranch,
-  Loader2,
-  Plus,
-  Settings,
-  User,
-  X,
-  Zap,
-} from "lucide-react";
+import { Bot, Loader2, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import TextareaAutosize from "react-textarea-autosize";
-import { filterAccentClasses } from "@/components/knowledge-filter-panel";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { ProtectedRoute } from "@/components/protected-route";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-} from "@/components/ui/popover";
-import { useAuth } from "@/contexts/auth-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import Nudges from "./nudges";
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-  functionCalls?: FunctionCall[];
-  isStreaming?: boolean;
-}
-
-interface FunctionCall {
-  name: string;
-  arguments?: Record<string, unknown>;
-  result?: Record<string, unknown> | ToolCallResult[];
-  status: "pending" | "completed" | "error";
-  argumentsString?: string;
-  id?: string;
-  type?: string;
-}
-
-interface ToolCallResult {
-  text_key?: string;
-  data?: {
-    file_path?: string;
-    text?: string;
-    [key: string]: unknown;
-  };
-  default_value?: string;
-  [key: string]: unknown;
-}
-
-interface SelectedFilters {
-  data_sources: string[];
-  document_types: string[];
-  owners: string[];
-}
-
-interface KnowledgeFilterData {
-  id: string;
-  name: string;
-  description: string;
-  query_data: string;
-  owner: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface RequestBody {
-  prompt: string;
-  stream?: boolean;
-  previous_response_id?: string;
-  filters?: SelectedFilters;
-  limit?: number;
-  scoreThreshold?: number;
-}
+import { UserMessage } from "./components/user-message";
+import { AssistantMessage } from "./components/assistant-message";
+import { ChatInput, type ChatInputHandle } from "./components/chat-input";
+import { Button } from "@/components/ui/button";
+import type {
+  Message,
+  FunctionCall,
+  ToolCallResult,
+  SelectedFilters,
+  KnowledgeFilterData,
+  RequestBody,
+} from "./types";
 
 function ChatPage() {
   const isDebugMode =
     process.env.NODE_ENV === "development" ||
     process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
-  const { user } = useAuth();
   const {
     endpoint,
     setEndpoint,
@@ -143,8 +76,7 @@ function ChatPage() {
     y: number;
   } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef<ChatInputHandle>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef(0);
   const lastLoadedConversationRef = useRef<string | null>(null);
@@ -337,17 +269,13 @@ function ChatPage() {
   };
 
   const handleFilePickerClick = () => {
-    fileInputRef.current?.click();
+    chatInputRef.current?.clickFileInput();
   };
 
   const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
       handleFileUpload(files[0]);
-    }
-    // Reset the input so the same file can be selected again
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
     }
   };
 
@@ -412,7 +340,7 @@ function ChatPage() {
 
   // Auto-focus the input on component mount
   useEffect(() => {
-    inputRef.current?.focus();
+    chatInputRef.current?.focusInput();
   }, []);
 
   // Explicitly handle external new conversation trigger
@@ -439,7 +367,7 @@ function ChatPage() {
     };
 
     const handleFocusInput = () => {
-      inputRef.current?.focus();
+      chatInputRef.current?.focusInput();
     };
 
     window.addEventListener("newConversation", handleNewConversation);
@@ -1651,236 +1579,6 @@ function ChatPage() {
     // This new forked conversation will get its own response_id when the user sends the next message
   };
 
-  const renderFunctionCalls = (
-    functionCalls: FunctionCall[],
-    messageIndex?: number
-  ) => {
-    if (!functionCalls || functionCalls.length === 0) return null;
-
-    return (
-      <div className="mb-3 space-y-2">
-        {functionCalls.map((fc, index) => {
-          const functionCallId = `${messageIndex || "streaming"}-${index}`;
-          const isExpanded = expandedFunctionCalls.has(functionCallId);
-
-          // Determine display name - show both name and type if available
-          const displayName =
-            fc.type && fc.type !== fc.name
-              ? `${fc.name} (${fc.type})`
-              : fc.name;
-
-          return (
-            <div
-              key={index}
-              className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-3"
-            >
-              <div
-                className="flex items-center gap-2 cursor-pointer hover:bg-blue-500/5 -m-3 p-3 rounded-lg transition-colors"
-                onClick={() => toggleFunctionCall(functionCallId)}
-              >
-                <Settings className="h-4 w-4 text-blue-400" />
-                <span className="text-sm font-medium text-blue-400 flex-1">
-                  Function Call: {displayName}
-                </span>
-                {fc.id && (
-                  <span className="text-xs text-blue-300/70 font-mono">
-                    {fc.id.substring(0, 8)}...
-                  </span>
-                )}
-                <div
-                  className={`px-2 py-1 rounded text-xs font-medium ${
-                    fc.status === "completed"
-                      ? "bg-green-500/20 text-green-400"
-                      : fc.status === "error"
-                      ? "bg-red-500/20 text-red-400"
-                      : "bg-yellow-500/20 text-yellow-400"
-                  }`}
-                >
-                  {fc.status}
-                </div>
-                {isExpanded ? (
-                  <ChevronDown className="h-4 w-4 text-blue-400" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 text-blue-400" />
-                )}
-              </div>
-
-              {isExpanded && (
-                <div className="mt-3 pt-3 border-t border-blue-500/20">
-                  {/* Show type information if available */}
-                  {fc.type && (
-                    <div className="text-xs text-muted-foreground mb-3">
-                      <span className="font-medium">Type:</span>
-                      <span className="ml-2 px-2 py-1 bg-muted/30 rounded font-mono">
-                        {fc.type}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Show ID if available */}
-                  {fc.id && (
-                    <div className="text-xs text-muted-foreground mb-3">
-                      <span className="font-medium">ID:</span>
-                      <span className="ml-2 px-2 py-1 bg-muted/30 rounded font-mono">
-                        {fc.id}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Show arguments - either completed or streaming */}
-                  {(fc.arguments || fc.argumentsString) && (
-                    <div className="text-xs text-muted-foreground mb-3">
-                      <span className="font-medium">Arguments:</span>
-                      <pre className="mt-1 p-2 bg-muted/30 rounded text-xs overflow-x-auto">
-                        {fc.arguments
-                          ? JSON.stringify(fc.arguments, null, 2)
-                          : fc.argumentsString || "..."}
-                      </pre>
-                    </div>
-                  )}
-
-                  {fc.result && (
-                    <div className="text-xs text-muted-foreground">
-                      <span className="font-medium">Result:</span>
-                      {Array.isArray(fc.result) ? (
-                        <div className="mt-1 space-y-2">
-                          {(() => {
-                            // Handle different result formats
-                            let resultsToRender = fc.result;
-
-                            // Check if this is function_call format with nested results
-                            // Function call format: results = [{ results: [...] }]
-                            // Tool call format: results = [{ text_key: ..., data: {...} }]
-                            if (
-                              fc.result.length > 0 &&
-                              fc.result[0]?.results &&
-                              Array.isArray(fc.result[0].results) &&
-                              !fc.result[0].text_key
-                            ) {
-                              resultsToRender = fc.result[0].results;
-                            }
-
-                            type ToolResultItem = {
-                              text_key?: string;
-                              data?: { file_path?: string; text?: string };
-                              filename?: string;
-                              page?: number;
-                              score?: number;
-                              source_url?: string | null;
-                              text?: string;
-                            };
-                            const items =
-                              resultsToRender as unknown as ToolResultItem[];
-                            return items.map((result, idx: number) => (
-                              <div
-                                key={idx}
-                                className="p-2 bg-muted/30 rounded border border-muted/50"
-                              >
-                                {/* Handle tool_call format (file_path in data) */}
-                                {result.data?.file_path && (
-                                  <div className="font-medium text-blue-400 mb-1 text-xs">
-                                    📄 {result.data.file_path || "Unknown file"}
-                                  </div>
-                                )}
-
-                                {/* Handle function_call format (filename directly) */}
-                                {result.filename && !result.data?.file_path && (
-                                  <div className="font-medium text-blue-400 mb-1 text-xs">
-                                    📄 {result.filename}
-                                    {result.page && ` (page ${result.page})`}
-                                    {result.score && (
-                                      <span className="ml-2 text-xs text-muted-foreground">
-                                        Score: {result.score.toFixed(3)}
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Handle tool_call text format */}
-                                {result.data?.text && (
-                                  <div className="text-xs text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
-                                    {result.data.text.length > 300
-                                      ? result.data.text.substring(0, 300) +
-                                        "..."
-                                      : result.data.text}
-                                  </div>
-                                )}
-
-                                {/* Handle function_call text format */}
-                                {result.text && !result.data?.text && (
-                                  <div className="text-xs text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
-                                    {result.text.length > 300
-                                      ? result.text.substring(0, 300) + "..."
-                                      : result.text}
-                                  </div>
-                                )}
-
-                                {/* Show additional metadata for function_call format */}
-                                {result.source_url && (
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    <a
-                                      href={result.source_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-400 hover:underline"
-                                    >
-                                      Source URL
-                                    </a>
-                                  </div>
-                                )}
-
-                                {result.text_key && (
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    Key: {result.text_key}
-                                  </div>
-                                )}
-                              </div>
-                            ));
-                          })()}
-                          <div className="text-xs text-muted-foreground">
-                            Found{" "}
-                            {(() => {
-                              let resultsToCount = fc.result;
-                              if (
-                                fc.result.length > 0 &&
-                                fc.result[0]?.results &&
-                                Array.isArray(fc.result[0].results) &&
-                                !fc.result[0].text_key
-                              ) {
-                                resultsToCount = fc.result[0].results;
-                              }
-                              return resultsToCount.length;
-                            })()}{" "}
-                            result
-                            {(() => {
-                              let resultsToCount = fc.result;
-                              if (
-                                fc.result.length > 0 &&
-                                fc.result[0]?.results &&
-                                Array.isArray(fc.result[0].results) &&
-                                !fc.result[0].text_key
-                              ) {
-                                resultsToCount = fc.result[0].results;
-                              }
-                              return resultsToCount.length !== 1 ? "s" : "";
-                            })()}
-                          </div>
-                        </div>
-                      ) : (
-                        <pre className="mt-1 p-2 bg-muted/30 rounded text-xs overflow-x-auto">
-                          {JSON.stringify(fc.result, null, 2)}
-                        </pre>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
 
   const handleSuggestionClick = (suggestion: string) => {
     handleSendMessage(suggestion);
@@ -1915,7 +1613,7 @@ function ChatPage() {
         setDropdownDismissed(true);
 
         // Keep focus on the textarea so user can continue typing normally
-        inputRef.current?.focus();
+        chatInputRef.current?.focusInput();
         return;
       }
 
@@ -2121,74 +1819,33 @@ function ChatPage() {
                 {messages.map((message, index) => (
                   <div key={index} className="space-y-6 group">
                     {message.role === "user" && (
-                      <div className="flex gap-3">
-                        <Avatar className="w-8 h-8 flex-shrink-0 select-none">
-                          <AvatarImage
-                            draggable={false}
-                            src={user?.picture}
-                            alt={user?.name}
-                          />
-                          <AvatarFallback className="text-sm bg-primary/20 text-primary">
-                            {user?.name ? (
-                              user.name.charAt(0).toUpperCase()
-                            ) : (
-                              <User className="h-4 w-4" />
-                            )}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">
-                            {message.content}
-                          </p>
-                        </div>
-                      </div>
+                      <UserMessage content={message.content} />
                     )}
 
                     {message.role === "assistant" && (
-                      <div className="flex gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
-                          <Bot className="h-4 w-4 text-accent-foreground" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          {renderFunctionCalls(
-                            message.functionCalls || [],
-                            index
-                          )}
-                          <MarkdownRenderer chatMessage={message.content} />
-                        </div>
-                        {endpoint === "chat" && (
-                          <div className="flex-shrink-0 ml-2">
-                            <button
-                              onClick={e => handleForkConversation(index, e)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
-                              title="Fork conversation from here"
-                            >
-                              <GitBranch className="h-3 w-3" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                      <AssistantMessage
+                        content={message.content}
+                        functionCalls={message.functionCalls}
+                        messageIndex={index}
+                        expandedFunctionCalls={expandedFunctionCalls}
+                        onToggle={toggleFunctionCall}
+                        showForkButton={endpoint === "chat"}
+                        onFork={e => handleForkConversation(index, e)}
+                      />
                     )}
                   </div>
                 ))}
 
                 {/* Streaming Message Display */}
                 {streamingMessage && (
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
-                      <Bot className="h-4 w-4 text-accent-foreground" />
-                    </div>
-                    <div className="flex-1">
-                      {renderFunctionCalls(
-                        streamingMessage.functionCalls,
-                        messages.length
-                      )}
-                      <MarkdownRenderer
-                        chatMessage={streamingMessage.content}
-                      />
-                      <span className="inline-block w-2 h-4 bg-blue-400 ml-1 animate-pulse"></span>
-                    </div>
-                  </div>
+                  <AssistantMessage
+                    content={streamingMessage.content}
+                    functionCalls={streamingMessage.functionCalls}
+                    messageIndex={messages.length}
+                    expandedFunctionCalls={expandedFunctionCalls}
+                    onToggle={toggleFunctionCall}
+                    isStreaming
+                  />
                 )}
 
                 {/* Loading animation - shows immediately after user submits */}
@@ -2223,201 +1880,32 @@ function ChatPage() {
       )}
 
       {/* Input Area - Fixed at bottom */}
-      <div className="pb-8 pt-4 flex px-6">
-        <div className="w-full">
-          <form onSubmit={handleSubmit} className="relative">
-            <div className="relative w-full bg-muted/20 rounded-lg border border-border/50 focus-within:ring-1 focus-within:ring-ring">
-              {selectedFilter && (
-                <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-                  <span
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
-                      filterAccentClasses[parsedFilterData?.color || "zinc"]
-                    }`}
-                  >
-                    @filter:{selectedFilter.name}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFilter(null);
-                        setIsFilterHighlighted(false);
-                      }}
-                      className="ml-1 rounded-full p-0.5"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                </div>
-              )}
-              <div
-                className="relative"
-                style={{ height: `${textareaHeight + 60}px` }}
-              >
-                <TextareaAutosize
-                  ref={inputRef}
-                  value={input}
-                  onChange={onChange}
-                  onKeyDown={handleKeyDown}
-                  onHeightChange={height => setTextareaHeight(height)}
-                  maxRows={7}
-                  minRows={2}
-                  placeholder="Type to ask a question..."
-                  disabled={loading}
-                  className={`w-full bg-transparent px-4 ${
-                    selectedFilter ? "pt-2" : "pt-4"
-                  } focus-visible:outline-none resize-none`}
-                  rows={2}
-                />
-                {/* Safe area at bottom for buttons */}
-                <div
-                  className="absolute bottom-0 left-0 right-0 bg-transparent pointer-events-none"
-                  style={{ height: "60px" }}
-                />
-              </div>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              onChange={handleFilePickerChange}
-              className="hidden"
-              accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="iconSm"
-              className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
-              onMouseDown={e => {
-                e.preventDefault();
-              }}
-              onClick={onAtClick}
-              data-filter-button
-            >
-              <Funnel className="h-4 w-4" />
-            </Button>
-            <Popover
-              open={isFilterDropdownOpen}
-              onOpenChange={open => {
-                setIsFilterDropdownOpen(open);
-              }}
-            >
-              {anchorPosition && (
-                <PopoverAnchor
-                  asChild
-                  style={{
-                    position: "fixed",
-                    left: anchorPosition.x,
-                    top: anchorPosition.y,
-                    width: 1,
-                    height: 1,
-                    pointerEvents: "none",
-                  }}
-                >
-                  <div />
-                </PopoverAnchor>
-              )}
-              <PopoverContent
-                className="w-64 p-2"
-                side="top"
-                align="start"
-                sideOffset={6}
-                alignOffset={-18}
-                onOpenAutoFocus={e => {
-                  // Prevent auto focus on the popover content
-                  e.preventDefault();
-                  // Keep focus on the input
-                }}
-              >
-                <div className="space-y-1">
-                  {filterSearchTerm && (
-                    <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                      Searching: @{filterSearchTerm}
-                    </div>
-                  )}
-                  {availableFilters.length === 0 ? (
-                    <div className="px-2 py-3 text-sm text-muted-foreground">
-                      No knowledge filters available
-                    </div>
-                  ) : (
-                    <>
-                      {!filterSearchTerm && (
-                        <button
-                          type="button"
-                          onClick={() => handleFilterSelect(null)}
-                          className={`w-full text-left px-2 py-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
-                            selectedFilterIndex === -1 ? "bg-muted/50" : ""
-                          }`}
-                        >
-                          <span>No knowledge filter</span>
-                          {!selectedFilter && (
-                            <Check className="h-4 w-4 shrink-0" />
-                          )}
-                        </button>
-                      )}
-                      {availableFilters
-                        .filter(filter =>
-                          filter.name
-                            .toLowerCase()
-                            .includes(filterSearchTerm.toLowerCase())
-                        )
-                        .map((filter, index) => (
-                          <button
-                            key={filter.id}
-                            type="button"
-                            onClick={() => handleFilterSelect(filter)}
-                            className={`w-full overflow-hidden text-left px-2 py-2 gap-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between ${
-                              index === selectedFilterIndex ? "bg-muted/50" : ""
-                            }`}
-                          >
-                            <div className="overflow-hidden">
-                              <div className="font-medium truncate">
-                                {filter.name}
-                              </div>
-                              {filter.description && (
-                                <div className="text-xs text-muted-foreground truncate">
-                                  {filter.description}
-                                </div>
-                              )}
-                            </div>
-                            {selectedFilter?.id === filter.id && (
-                              <Check className="h-4 w-4 shrink-0" />
-                            )}
-                          </button>
-                        ))}
-                      {availableFilters.filter(filter =>
-                        filter.name
-                          .toLowerCase()
-                          .includes(filterSearchTerm.toLowerCase())
-                      ).length === 0 &&
-                        filterSearchTerm && (
-                          <div className="px-2 py-3 text-sm text-muted-foreground">
-                            No filters match &quot;{filterSearchTerm}&quot;
-                          </div>
-                        )}
-                    </>
-                  )}
-                </div>
-              </PopoverContent>
-            </Popover>
-            <Button
-              type="button"
-              variant="outline"
-              size="iconSm"
-              onClick={handleFilePickerClick}
-              disabled={isUploading}
-              className="absolute bottom-3 left-12 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
-              type="submit"
-              disabled={!input.trim() || loading}
-              className="absolute bottom-3 right-3 rounded-lg h-10 px-4"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
-            </Button>
-          </form>
-        </div>
-      </div>
+      <ChatInput
+        ref={chatInputRef}
+        input={input}
+        loading={loading}
+        isUploading={isUploading}
+        selectedFilter={selectedFilter}
+        isFilterHighlighted={isFilterHighlighted}
+        isFilterDropdownOpen={isFilterDropdownOpen}
+        availableFilters={availableFilters}
+        filterSearchTerm={filterSearchTerm}
+        selectedFilterIndex={selectedFilterIndex}
+        anchorPosition={anchorPosition}
+        textareaHeight={textareaHeight}
+        parsedFilterData={parsedFilterData}
+        onSubmit={handleSubmit}
+        onChange={onChange}
+        onKeyDown={handleKeyDown}
+        onHeightChange={height => setTextareaHeight(height)}
+        onFilterSelect={handleFilterSelect}
+        onAtClick={onAtClick}
+        onFilePickerChange={handleFilePickerChange}
+        onFilePickerClick={handleFilePickerClick}
+        setSelectedFilter={setSelectedFilter}
+        setIsFilterHighlighted={setIsFilterHighlighted}
+        setIsFilterDropdownOpen={setIsFilterDropdownOpen}
+      />
     </div>
   );
 }
