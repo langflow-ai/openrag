@@ -162,7 +162,7 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
             }
             upload_resp = await client.post("/router/upload_ingest", files=files)
             body = upload_resp.json()
-            assert upload_resp.status_code == 201, upload_resp.text
+            assert upload_resp.status_code == 202, upload_resp.text
             assert body.get("status") in {"indexed", "unchanged"}
             assert isinstance(body.get("id"), str)
 
