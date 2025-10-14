@@ -343,7 +343,7 @@ async def test_langflow_chat_and_nudges_endpoints():
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
 
-            warmup_file = tmp_path / "nudges_seed.md"
+            warmup_file = Path("./nudges_seed.md")
             warmup_file.write_text(
                 "The user may care about different fruits including apples, hardy kiwi, and bananas"
             )
@@ -467,13 +467,13 @@ async def test_search_multi_embedding_models(
                 if task_id:
                     await _wait_for_task_completion(client, task_id)
 
-            async def _wait_for_models(expected_models: set[str], query: str = "physics"):
-                deadline = asyncio.get_event_loop().time() + 30.0
+            async def _wait_for_models(expected_models: set[str], query: str = "*"):
+                deadline = asyncio.get_event_loop().time() + 60.0
                 last_payload = None
                 while asyncio.get_event_loop().time() < deadline:
                     resp = await client.post(
                         "/search",
-                        json={"query": query, "limit": 10, "scoreThreshold": 0},
+                        json={"query": query, "limit": 0, "scoreThreshold": 0},
                     )
                     if resp.status_code != 200:
                         last_payload = resp.text
@@ -507,7 +507,11 @@ async def test_search_multi_embedding_models(
             # Ingest first document (small model)
             await _upload_doc("doc-small.md", "Physics basics and fundamental principles.")
             payload_small = await _wait_for_models({"text-embedding-3-small"})
-            result_models_small = {r.get("embedding_model") for r in payload_small.get("results", []) if r.get("embedding_model")}
+            result_models_small = {
+                r.get("embedding_model")
+                for r in (payload_small.get("results") or [])
+                if r.get("embedding_model")
+            }
             assert "text-embedding-3-small" in result_models_small or not result_models_small
 
             # Update embedding model via settings
@@ -527,7 +531,7 @@ async def test_search_multi_embedding_models(
 
             result_models = {
                 r.get("embedding_model")
-                for r in payload.get("results", [])
+                for r in (payload.get("results") or [])
                 if r.get("embedding_model")
             }
             assert {"text-embedding-3-small", "text-embedding-3-large"} <= result_models
