@@ -38,6 +38,27 @@ def dump_docker_logs(container_name_pattern: str = "langflow", tail: int = 100):
         print(f"[DEBUG] Failed to fetch docker logs for {container_name_pattern}: {e}")
 
 
+async def perform_onboarding(client: httpx.AsyncClient, embedding_model: str = "text-embedding-3-small", llm_model: str = "gpt-4o-mini"):
+    """Perform onboarding configuration to properly initialize the system.
+
+    This should be called after wait_for_service_ready() and before uploading documents.
+    It configures the embedding model, LLM model, and initializes the OpenSearch index.
+    """
+    onboarding_payload = {
+        "model_provider": "openai",
+        "embedding_model": embedding_model,
+        "llm_model": llm_model,
+        "endpoint": "https://api.openai.com/v1",
+        "sample_data": False,
+    }
+    onboarding_resp = await client.post("/onboarding", json=onboarding_payload)
+    if onboarding_resp.status_code not in (200, 204):
+        raise AssertionError(
+            f"Onboarding failed: {onboarding_resp.status_code} {onboarding_resp.text}"
+        )
+    print(f"[DEBUG] Onboarding completed: embedding_model={embedding_model}, llm_model={llm_model}")
+
+
 async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 30.0):
     """Poll existing endpoints until the app and OpenSearch are ready.
 
@@ -393,6 +414,7 @@ async def test_langflow_chat_and_nudges_endpoints():
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
+            await perform_onboarding(client)
 
             warmup_file = Path("./nudges_seed.md")
             warmup_file.write_text(
@@ -408,23 +430,9 @@ async def test_langflow_chat_and_nudges_endpoints():
             upload_resp = await client.post("/router/upload_ingest", files=files)
             assert upload_resp.status_code in (201, 202), upload_resp.text
             payload = upload_resp.json()
-            print(f"[DEBUG] Upload response: {payload}")
             task_id = payload.get("task_id")
             if task_id:
                 await _wait_for_task_completion(client, task_id)
-
-            # Debug: Check if documents are searchable before calling nudges
-            search_resp = await client.post("/search", json={"query": "*", "limit": 10})
-            print(f"[DEBUG] Search status: {search_resp.status_code}")
-            if search_resp.status_code == 200:
-                search_data = search_resp.json()
-                results = search_data.get("results", [])
-                print(f"[DEBUG] Search found {len(results)} documents")
-                if results:
-                    for r in results[:3]:
-                        print(f"[DEBUG]   - {r.get('filename', 'unknown')}: {r.get('text', '')[:100]}")
-            else:
-                print(f"[DEBUG] Search failed: {search_resp.text}")
 
             prompt = "Respond with a brief acknowledgement for the OpenRAG integration test."
             langflow_payload = {"prompt": prompt, "limit": 5, "scoreThreshold": 0}
@@ -501,19 +509,7 @@ async def test_search_multi_embedding_models(
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
-
-            onboarding_payload = {
-                "model_provider": "openai",
-                "embedding_model": "text-embedding-3-small",
-                "llm_model": "gpt-4o-mini",
-                "endpoint": "https://api.openai.com/v1",
-                "sample_data": False,
-            }
-            onboarding_resp = await client.post("/onboarding", json=onboarding_payload)
-            if onboarding_resp.status_code not in (200, 204):
-                raise AssertionError(
-                    f"Onboarding failed: {onboarding_resp.status_code} {onboarding_resp.text}"
-                )
+            await perform_onboarding(client)
 
             async def _upload_doc(name: str, text: str) -> None:
                 file_path = tmp_path / name
