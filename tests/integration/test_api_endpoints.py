@@ -412,6 +412,19 @@ async def test_langflow_chat_and_nudges_endpoints():
             if task_id:
                 await _wait_for_task_completion(client, task_id)
 
+            # Debug: Check if documents are searchable before calling nudges
+            search_resp = await client.post("/search", json={"query": "*", "limit": 10})
+            print(f"[DEBUG] Search status: {search_resp.status_code}")
+            if search_resp.status_code == 200:
+                search_data = search_resp.json()
+                results = search_data.get("results", [])
+                print(f"[DEBUG] Search found {len(results)} documents")
+                if results:
+                    for r in results[:3]:
+                        print(f"[DEBUG]   - {r.get('filename', 'unknown')}: {r.get('text', '')[:100]}")
+            else:
+                print(f"[DEBUG] Search failed: {search_resp.text}")
+
             prompt = "Respond with a brief acknowledgement for the OpenRAG integration test."
             langflow_payload = {"prompt": prompt, "limit": 5, "scoreThreshold": 0}
             langflow_data = await _wait_for_langflow_chat(client, langflow_payload)
