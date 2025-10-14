@@ -38,45 +38,6 @@ def dump_docker_logs(container_name_pattern: str = "langflow", tail: int = 100):
         print(f"[DEBUG] Failed to fetch docker logs for {container_name_pattern}: {e}")
 
 
-async def perform_onboarding(client: httpx.AsyncClient, embedding_model: str = "text-embedding-3-small", llm_model: str = "gpt-4o-mini"):
-    """Perform onboarding configuration to properly initialize the system.
-
-    This should be called once at the beginning of test session, or per-test if config is reset.
-    It configures the embedding model, LLM model, and initializes the OpenSearch index.
-
-    If onboarding has already been performed (config.edited=True), this will use the /settings
-    endpoint instead to update the configuration.
-    """
-    onboarding_payload = {
-        "model_provider": "openai",
-        "embedding_model": embedding_model,
-        "llm_model": llm_model,
-        "endpoint": "https://api.openai.com/v1",
-        "sample_data": False,
-    }
-    onboarding_resp = await client.post("/onboarding", json=onboarding_payload)
-
-    # If onboarding fails because config is already edited, use /settings endpoint instead
-    if onboarding_resp.status_code == 403:
-        print(f"[DEBUG] Config already onboarded, using /settings endpoint instead")
-        settings_payload = {
-            "embedding_model": embedding_model,
-            "llm_model": llm_model,
-        }
-        settings_resp = await client.post("/settings", json=settings_payload)
-        if settings_resp.status_code not in (200, 204):
-            raise AssertionError(
-                f"Settings update failed: {settings_resp.status_code} {settings_resp.text}"
-            )
-        print(f"[DEBUG] Settings updated: embedding_model={embedding_model}, llm_model={llm_model}")
-    elif onboarding_resp.status_code not in (200, 204):
-        raise AssertionError(
-            f"Onboarding failed: {onboarding_resp.status_code} {onboarding_resp.text}"
-        )
-    else:
-        print(f"[DEBUG] Onboarding completed: embedding_model={embedding_model}, llm_model={llm_model}")
-
-
 async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 30.0):
     """Poll existing endpoints until the app and OpenSearch are ready.
 
@@ -432,6 +393,16 @@ async def test_langflow_chat_and_nudges_endpoints():
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             await wait_for_service_ready(client)
+
+            # Ensure embedding model is configured via settings
+            resp = await client.post(
+                "/settings",
+                json={
+                    "embedding_model": "text-embedding-3-small",
+                    "llm_model": "gpt-4o-mini",
+                },
+            )
+            assert resp.status_code == 200, resp.text
 
             warmup_file = Path("./nudges_seed.md")
             warmup_file.write_text(
