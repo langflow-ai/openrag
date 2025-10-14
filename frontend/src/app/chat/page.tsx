@@ -1886,7 +1886,6 @@ function ChatPage() {
         loading={loading}
         isUploading={isUploading}
         selectedFilter={selectedFilter}
-        isFilterHighlighted={isFilterHighlighted}
         isFilterDropdownOpen={isFilterDropdownOpen}
         availableFilters={availableFilters}
         filterSearchTerm={filterSearchTerm}

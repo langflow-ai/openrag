@@ -21,7 +21,6 @@ interface ChatInputProps {
   loading: boolean;
   isUploading: boolean;
   selectedFilter: KnowledgeFilterData | null;
-  isFilterHighlighted: boolean;
   isFilterDropdownOpen: boolean;
   availableFilters: KnowledgeFilterData[];
   filterSearchTerm: string;
@@ -48,7 +47,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>((
     loading,
     isUploading,
     selectedFilter,
-    isFilterHighlighted,
     isFilterDropdownOpen,
     availableFilters,
     filterSearchTerm,
