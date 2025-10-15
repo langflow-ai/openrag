@@ -1,14 +1,30 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Loader2, Plus, Database, Cloud, Globe } from "lucide-react";
 import { toast } from "sonner";
+import TextareaAutosize from "react-textarea-autosize";
 import { useWidget } from "@/contexts/widget-context";
+import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 export default function WidgetsPage() {
   const { selectedWidget, setSelectedWidget, loadWidgets } = useWidget();
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isConnectorPopoverOpen, setIsConnectorPopoverOpen] = useState(false);
+  const [textareaHeight, setTextareaHeight] = useState(40);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const connectors = [
+    { id: "database", name: "Database", icon: Database },
+    { id: "api", name: "API", icon: Cloud },
+    { id: "web", name: "Web", icon: Globe },
+  ];
 
   // Load selected widget when changed
   useEffect(() => {
@@ -17,13 +33,15 @@ export default function WidgetsPage() {
     }
   }, [selectedWidget]);
 
-  // Listen for focus input event
+  // Auto-focus the input on component mount
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // Listen for focus input event (when new widget button is clicked)
   useEffect(() => {
     const handleFocusInput = () => {
-      const textarea = document.querySelector('textarea[placeholder*="Describe"]') as HTMLTextAreaElement;
-      if (textarea) {
-        textarea.focus();
-      }
+      inputRef.current?.focus();
     };
 
     window.addEventListener("focusWidgetInput", handleFocusInput);
@@ -137,60 +155,85 @@ export default function WidgetsPage() {
       </div>
 
       {/* Chat Input Area */}
-      <div className="border-t p-6 bg-background mt-6">
-        <h2 className="text-sm font-medium mb-3">
-          {selectedWidget ? "Create or Edit Widget" : "Create Widget"}
-        </h2>
-        <div className="space-y-3">
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={
-              selectedWidget
-                ? "Describe changes to make to the selected widget..."
-                : "Describe the widget you want to build..."
-            }
-            className="w-full h-32 px-3 py-2 text-sm border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary bg-background"
-            disabled={isGenerating}
-          />
-          <div className="flex gap-2">
-            {selectedWidget && (
-              <button
-                onClick={() => generateWidget(true)}
-                disabled={isGenerating || !prompt.trim()}
-                className="flex-1 py-2 px-4 bg-secondary text-secondary-foreground border rounded-lg hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Updating...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-4 w-4" />
-                    Update Selected
-                  </>
-                )}
-              </button>
-            )}
-            <button
-              onClick={() => generateWidget(false)}
-              disabled={isGenerating || !prompt.trim()}
-              className={`${selectedWidget ? 'flex-1' : 'w-full'} py-2 px-4 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2`}
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
+      <div className="pb-8 pt-4 flex px-6">
+        <div className="w-full">
+          <form onSubmit={(e) => { e.preventDefault(); generateWidget(!!selectedWidget); }} className="relative">
+            <div className="relative w-full bg-muted/20 rounded-lg border border-border/50 focus-within:ring-1 focus-within:ring-ring">
+              <div className="relative" style={{ height: `${textareaHeight + 60}px` }}>
+                <TextareaAutosize
+                  ref={inputRef}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onHeightChange={(height) => setTextareaHeight(height)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (prompt.trim() && !isGenerating) {
+                        generateWidget(!!selectedWidget);
+                      }
+                    }
+                  }}
+                  maxRows={7}
+                  minRows={2}
+                  placeholder={
+                    selectedWidget
+                      ? "Describe changes to make to the selected widget..."
+                      : "Describe the widget you want to build..."
+                  }
+                  disabled={isGenerating}
+                  className="w-full bg-transparent px-4 pt-4 focus-visible:outline-none resize-none"
+                  rows={2}
+                />
+                <div
+                  className="absolute bottom-0 left-0 right-0 bg-transparent pointer-events-none"
+                  style={{ height: "60px" }}
+                />
+              </div>
+            </div>
+
+            <Popover open={isConnectorPopoverOpen} onOpenChange={setIsConnectorPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="iconSm"
+                  className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
+                  disabled={isGenerating}
+                >
                   <Plus className="h-4 w-4" />
-                  Create New
-                </>
-              )}
-            </button>
-          </div>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-2" side="top" align="start" sideOffset={6}>
+                <div className="space-y-1">
+                  {connectors.map((connector) => {
+                    const Icon = connector.icon;
+                    return (
+                      <button
+                        key={connector.id}
+                        type="button"
+                        onClick={() => {
+                          // Placeholder - doesn't do anything yet
+                          setIsConnectorPopoverOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm rounded hover:bg-muted/50 flex items-center gap-2"
+                      >
+                        <Icon className="h-4 w-4 text-muted-foreground" />
+                        <span>{connector.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <Button
+              type="submit"
+              disabled={!prompt.trim() || isGenerating}
+              className="absolute bottom-3 right-3 rounded-lg h-10 px-4"
+            >
+              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
+            </Button>
+          </form>
         </div>
       </div>
     </div>
