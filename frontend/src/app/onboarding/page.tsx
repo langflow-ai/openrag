@@ -1,14 +1,28 @@
 "use client";
 
-import { Suspense } from "react";
-import { DoclingHealthBanner, useDoclingHealth } from "@/components/docling-health-banner";
+import { Suspense, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { DoclingHealthBanner } from "@/components/docling-health-banner";
 import { ProtectedRoute } from "@/components/protected-route";
 import { DotPattern } from "@/components/ui/dot-pattern";
 import { cn } from "@/lib/utils";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import OnboardingCard from "./components/onboarding-card";
 
-function OnboardingPage() {
-  const { isHealthy: isDoclingHealthy } = useDoclingHealth();
+function LegacyOnboardingPage() {
+  const router = useRouter();
+  const { data: settingsDb, isLoading: isSettingsLoading } = useGetSettingsQuery();
+
+  // Redirect if already completed onboarding
+  useEffect(() => {
+    if (!isSettingsLoading && settingsDb && settingsDb.edited) {
+      router.push("/");
+    }
+  }, [isSettingsLoading, settingsDb, router]);
+
+  const handleComplete = () => {
+    router.push("/");
+  };
 
   return (
     <div className="min-h-dvh w-full flex gap-5 flex-col items-center justify-center bg-background relative p-4">
@@ -32,17 +46,34 @@ function OnboardingPage() {
             Connect a model provider
           </h1>
         </div>
-        <OnboardingCard isDoclingHealthy={isDoclingHealthy} />
+        <OnboardingCard onComplete={handleComplete} />
       </div>
     </div>
   );
+}
+
+function OnboardingRouter() {
+  const updatedOnboarding = process.env.UPDATED_ONBOARDING === "true";
+  const router = useRouter();
+
+  useEffect(() => {
+    if (updatedOnboarding) {
+      router.push("/new-onboarding");
+    }
+  }, [updatedOnboarding, router]);
+
+  if (updatedOnboarding) {
+    return null;
+  }
+
+  return <LegacyOnboardingPage />;
 }
 
 export default function ProtectedOnboardingPage() {
   return (
     <ProtectedRoute>
       <Suspense fallback={<div>Loading onboarding...</div>}>
-        <OnboardingPage />
+        <OnboardingRouter />
       </Suspense>
     </ProtectedRoute>
   );

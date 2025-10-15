@@ -1,13 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   type OnboardingVariables,
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useDoclingHealth } from "@/components/docling-health-banner";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
 import OpenAILogo from "@/components/logo/openai-logo";
@@ -28,24 +27,13 @@ import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
 import { OpenAIOnboarding } from "./openai-onboarding";
 
-const OnboardingCard = ({
-  isDoclingHealthy,
-}: {
-  isDoclingHealthy: boolean;
-}) => {
+interface OnboardingCardProps {
+  onComplete: () => void;
+}
+
+const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
   const updatedOnboarding = process.env.UPDATED_ONBOARDING === "true";
-  const { data: settingsDb, isLoading: isSettingsLoading } =
-  useGetSettingsQuery();
-
-  const redirect = "/";
-  const router = useRouter();
-
-  // Redirect if already authenticated or in no-auth mode
-  useEffect(() => {
-    if (!isSettingsLoading && settingsDb && settingsDb.edited) {
-      router.push(redirect);
-    }
-  }, [isSettingsLoading, settingsDb, router]);
+  const { isHealthy: isDoclingHealthy } = useDoclingHealth();
 
 
   const [modelProvider, setModelProvider] = useState<string>("openai");
@@ -71,7 +59,7 @@ const OnboardingCard = ({
   const onboardingMutation = useOnboardingMutation({
     onSuccess: (data) => {
       console.log("Onboarding completed successfully", data);
-      router.push(redirect);
+      onComplete();
     },
     onError: (error) => {
       toast.error("Failed to complete onboarding", {
@@ -124,7 +112,7 @@ const OnboardingCard = ({
         defaultValue={modelProvider}
         onValueChange={handleSetModelProvider}
       >
-        <CardHeader>
+        <CardHeader className={`${updatedOnboarding ? "px-0" : ""}`}>
           <TabsList>
             <TabsTrigger value="openai">
               <OpenAILogo className="w-4 h-4" />
@@ -140,7 +128,7 @@ const OnboardingCard = ({
             </TabsTrigger>
           </TabsList>
         </CardHeader>
-        <CardContent>
+        <CardContent className={`${updatedOnboarding ? "px-0" : ""}`}>
           <TabsContent value="openai">
             <OpenAIOnboarding
               setSettings={setSettings}
@@ -164,7 +152,7 @@ const OnboardingCard = ({
           </TabsContent>
         </CardContent>
       </Tabs>
-      <CardFooter className={`flex  ${updatedOnboarding ? "" : "justify-end"}`}>
+      <CardFooter className={`flex  ${updatedOnboarding ? "px-0" : "justify-end"}`}>
         <Tooltip>
           <TooltipTrigger asChild>
             <div>
