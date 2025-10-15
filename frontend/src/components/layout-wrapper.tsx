@@ -2,6 +2,7 @@
 
 import { Bell, Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import {
   useGetConversationsQuery,
   type ChatConversation,
@@ -16,6 +17,7 @@ import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/contexts/auth-context";
 import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useWidget } from "@/contexts/widget-context";
 // import { GitHubStarButton } from "@/components/github-star-button"
 // import { DiscordLink } from "@/components/discord-link"
 import { useTask } from "@/contexts/task-context";
@@ -33,6 +35,13 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     refreshConversations,
     startNewConversation,
   } = useChat();
+  const {
+    widgets,
+    selectedWidget,
+    setSelectedWidget,
+    loadWidgets,
+    isLoading: isWidgetsLoading,
+  } = useWidget();
   const { isLoading: isSettingsLoading } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
@@ -52,6 +61,47 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const handleNewConversation = () => {
     refreshConversations();
     startNewConversation();
+  };
+
+  const isOnWidgetsPage = pathname.startsWith("/widgets");
+
+  // Load widgets when on widgets page
+  useEffect(() => {
+    if (isOnWidgetsPage && (isAuthenticated || isNoAuthMode)) {
+      loadWidgets();
+    }
+  }, [isOnWidgetsPage, isAuthenticated, isNoAuthMode, loadWidgets]);
+
+  const handleDeleteWidget = async (widgetId: string) => {
+    if (!confirm("Are you sure you want to delete this widget?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/widgets/${widgetId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) throw new Error("Failed to delete widget");
+
+      // Reload widgets
+      await loadWidgets();
+
+      // Clear selection if deleted widget was selected
+      if (selectedWidget === widgetId) {
+        setSelectedWidget(null);
+      }
+    } catch (error) {
+      console.error("Failed to delete widget:", error);
+    }
+  };
+
+  const handleNewWidget = () => {
+    setSelectedWidget(null);
+    // Dispatch event to focus the input
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("focusWidgetInput"));
+    }
   };
 
   // List of paths that should not show navigation
@@ -151,6 +201,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           conversations={conversations}
           isConversationsLoading={isConversationsLoading}
           onNewConversation={handleNewConversation}
+          widgets={widgets}
+          selectedWidget={selectedWidget}
+          onWidgetSelect={setSelectedWidget}
+          onDeleteWidget={handleDeleteWidget}
+          onNewWidget={handleNewWidget}
         />
       </aside>
 

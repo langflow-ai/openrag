@@ -9,6 +9,7 @@ import { AuthProvider } from "@/contexts/auth-context";
 import { ChatProvider } from "@/contexts/chat-context";
 import { KnowledgeFilterProvider } from "@/contexts/knowledge-filter-context";
 import { TaskProvider } from "@/contexts/task-context";
+import { WidgetProvider } from "@/contexts/widget-context";
 import Providers from "./providers";
 
 const inter = Inter({
@@ -52,7 +53,9 @@ export default function RootLayout({
                 <TaskProvider>
                   <KnowledgeFilterProvider>
                     <ChatProvider>
-                      <LayoutWrapper>{children}</LayoutWrapper>
+                      <WidgetProvider>
+                        <LayoutWrapper>{children}</LayoutWrapper>
+                      </WidgetProvider>
                     </ChatProvider>
                   </KnowledgeFilterProvider>
                 </TaskProvider>

@@ -17,7 +17,8 @@ import subprocess
 from functools import partial
 
 from starlette.applications import Starlette
-from starlette.routing import Route
+from starlette.routing import Route, Mount
+from starlette.staticfiles import StaticFiles
 
 # Set multiprocessing start method to 'spawn' for CUDA compatibility
 multiprocessing.set_start_method("spawn", force=True)
@@ -44,6 +45,7 @@ from api import (
     settings,
     tasks,
     upload,
+    widgets,
 )
 
 # Existing services
@@ -76,6 +78,7 @@ from services.models_service import ModelsService
 from services.monitor_service import MonitorService
 from services.search_service import SearchService
 from services.task_service import TaskService
+from services.widget_service import WidgetService
 from session_manager import SessionManager
 
 logger.info(
@@ -491,6 +494,7 @@ async def initialize_services():
     knowledge_filter_service = KnowledgeFilterService(session_manager)
     models_service = ModelsService()
     monitor_service = MonitorService(session_manager)
+    widget_service = WidgetService()
 
     # Set process pool for document service
     document_service.process_pool = process_pool
@@ -557,6 +561,7 @@ async def initialize_services():
         "knowledge_filter_service": knowledge_filter_service,
         "models_service": models_service,
         "monitor_service": monitor_service,
+        "widget_service": widget_service,
         "session_manager": session_manager,
     }
 
@@ -1123,7 +1128,71 @@ async def create_app():
             partial(docling.health),
             methods=["GET"],
         ),
+        # Widget endpoints
+        Route(
+            "/widgets/generate",
+            require_auth(services["session_manager"])(
+                partial(
+                    widgets.generate_widget,
+                    widget_service=services["widget_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/widgets",
+            require_auth(services["session_manager"])(
+                partial(
+                    widgets.list_widgets,
+                    widget_service=services["widget_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/widgets/{widget_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    widgets.get_widget,
+                    widget_service=services["widget_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/widgets/{widget_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    widgets.delete_widget,
+                    widget_service=services["widget_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
+        ),
+        Route(
+            "/widgets/{widget_id}/build",
+            require_auth(services["session_manager"])(
+                partial(
+                    widgets.build_widget,
+                    widget_service=services["widget_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
     ]
+
+    # Add static file serving for widget assets
+    widgets_assets_path = os.path.abspath("widgets/assets")
+    os.makedirs(widgets_assets_path, exist_ok=True)
+
+    routes.append(
+        Mount("/widgets/assets", StaticFiles(directory=widgets_assets_path), name="widget-assets")
+    )
 
     app = Starlette(debug=True, routes=routes)
     app.state.services = services  # Store services for cleanup

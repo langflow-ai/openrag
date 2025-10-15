@@ -8,6 +8,7 @@ import {
   Plus,
   Settings2,
   Trash2,
+  Box,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -62,16 +63,34 @@ export interface ChatConversation {
   [key: string]: unknown;
 }
 
+interface Widget {
+  widget_id: string;
+  prompt: string;
+  user_id: string;
+  created_at: string;
+  has_css: boolean;
+}
+
 interface NavigationProps {
   conversations?: ChatConversation[];
   isConversationsLoading?: boolean;
   onNewConversation?: () => void;
+  widgets?: Widget[];
+  selectedWidget?: string | null;
+  onWidgetSelect?: (widgetId: string) => void;
+  onDeleteWidget?: (widgetId: string) => void;
+  onNewWidget?: () => void;
 }
 
 export function Navigation({
   conversations = [],
   isConversationsLoading = false,
   onNewConversation,
+  widgets = [],
+  selectedWidget = null,
+  onWidgetSelect,
+  onDeleteWidget,
+  onNewWidget,
 }: NavigationProps = {}) {
   const pathname = usePathname();
   const {
@@ -290,6 +309,12 @@ export function Navigation({
       active: pathname === "/knowledge",
     },
     {
+      label: "Widgets",
+      icon: Box,
+      href: "/widgets",
+      active: pathname === "/widgets",
+    },
+    {
       label: "Settings",
       icon: Settings2,
       href: "/settings",
@@ -299,6 +324,7 @@ export function Navigation({
 
   const isOnChatPage = pathname === "/" || pathname === "/chat";
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
+  const isOnWidgetsPage = pathname.startsWith("/widgets");
 
   // Clear placeholder when conversation count increases (new conversation was created)
   useEffect(() => {
@@ -369,6 +395,95 @@ export function Navigation({
           selectedFilter={selectedFilter}
           onFilterSelect={setSelectedFilter}
         />
+      )}
+
+      {/* Widgets Page Specific Sections */}
+      {isOnWidgetsPage && (
+        <div className="flex-1 min-h-0 flex flex-col px-4">
+          <div className="flex-shrink-0">
+            <div className="flex items-center justify-between mb-3 mx-3">
+              <h3 className="text-xs font-medium text-muted-foreground">
+                Widgets
+              </h3>
+              <button
+                type="button"
+                className="p-1 hover:bg-accent rounded"
+                onClick={onNewWidget}
+                title="Create new widget"
+              >
+                <Plus className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-shrink-0 overflow-y-auto scrollbar-hide space-y-1 max-h-full">
+              {widgets.length === 0 ? (
+                <div className="text-[13px] text-muted-foreground py-2 pl-3">
+                  No widgets yet
+                </div>
+              ) : (
+                widgets.map(widget => (
+                  <button
+                    key={widget.widget_id}
+                    type="button"
+                    className={`w-full px-3 h-11 rounded-lg group relative text-left hover:bg-accent cursor-pointer ${
+                      selectedWidget === widget.widget_id ? "bg-accent" : ""
+                    }`}
+                    onClick={() => onWidgetSelect?.(widget.widget_id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-foreground truncate">
+                          {widget.prompt.substring(0, 50)}
+                          {widget.prompt.length > 50 ? "..." : ""}
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <div
+                            className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
+                            title="More options"
+                            role="button"
+                            tabIndex={0}
+                            onClick={e => {
+                              e.stopPropagation();
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }
+                            }}
+                          >
+                            <EllipsisVertical className="h-4 w-4" />
+                          </div>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          side="bottom"
+                          align="end"
+                          className="w-48"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <DropdownMenuItem
+                            onClick={e => {
+                              e.stopPropagation();
+                              onDeleteWidget?.(widget.widget_id);
+                            }}
+                            className="cursor-pointer text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete widget
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Chat Page Specific Sections */}

@@ -127,6 +127,25 @@ wheels = [
 ]
 
 [[package]]
+name = "anthropic"
+version = "0.69.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "docstring-parser" },
+    { name = "httpx" },
+    { name = "jiter" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c8/9d/9ad1778b95f15c5b04e7d328c1b5f558f1e893857b7c33cd288c19c0057a/anthropic-0.69.0.tar.gz", hash = "sha256:c604d287f4d73640f40bd2c0f3265a2eb6ce034217ead0608f6b07a8bc5ae5f2", size = 480622, upload-time = "2025-09-29T16:53:45.282Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9b/38/75129688de5637eb5b383e5f2b1570a5cc3aecafa4de422da8eea4b90a6c/anthropic-0.69.0-py3-none-any.whl", hash = "sha256:1f73193040f33f11e27c2cd6ec25f24fe7c3f193dc1c5cde6b7a08b18a16bcc5", size = 337265, upload-time = "2025-09-29T16:53:43.686Z" },
+]
+
+[[package]]
 name = "anyio"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -272,6 +291,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/44/96/392abd49b094d30b91d9fbda6a69519e95802250b777841cf3bda8fe136c/charset_normalizer-3.4.2-cp313-cp313-win32.whl", hash = "sha256:aaeeb6a479c7667fbe1099af9617c83aaca22182d6cf8c53966491a0f1b7ffb7", size = 98064, upload-time = "2025-05-02T08:33:17.06Z" },
     { url = "https://files.pythonhosted.org/packages/e9/b0/0200da600134e001d91851ddc797809e2fe0ea72de90e09bec5a2fbdaccb/charset_normalizer-3.4.2-cp313-cp313-win_amd64.whl", hash = "sha256:aa6af9e7d59f9c12b33ae4e9450619cf2488e2bbe9b44030905877f0b2324980", size = 105641, upload-time = "2025-05-02T08:33:18.753Z" },
     { url = "https://files.pythonhosted.org/packages/20/94/c5790835a017658cbfabd07f3bfb549140c3ac458cfc196323996b10095a/charset_normalizer-3.4.2-py3-none-any.whl", hash = "sha256:7f56930ab0abd1c45cd15be65cc741c28b1c9a34876ce8c17a2fa107810c0af0", size = 52626, upload-time = "2025-05-02T08:34:40.053Z" },
+]
+
+[[package]]
+name = "claude-agent-sdk"
+version = "0.1.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "mcp" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5b/05/f9879d53c4b17dd546219d1161c25f5959f02e25e088f90edca98296cc3d/claude_agent_sdk-0.1.3.tar.gz", hash = "sha256:0b8028ea64068f71e5e3310bb6e188546a0bef8313afeade7ff347bc66a82ebc", size = 47161, upload-time = "2025-10-11T00:15:34.969Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/43/6d/961592ec35c25e8a8170849229bdaf91a8de80eb2ca014b7fc6d5883ac27/claude_agent_sdk-0.1.3-py3-none-any.whl", hash = "sha256:62f0f472de653404196a28aa5e01f0c24c6d31d5512dba01f7e5459cc1ca86d8", size = 35208, upload-time = "2025-10-11T00:15:33.609Z" },
 ]
 
 [[package]]
@@ -2352,12 +2384,14 @@ wheels = [
 
 [[package]]
 name = "openrag"
-version = "0.1.21"
+version = "0.1.23"
 source = { editable = "." }
 dependencies = [
     { name = "agentd" },
     { name = "aiofiles" },
+    { name = "anthropic" },
     { name = "boto3" },
+    { name = "claude-agent-sdk" },
     { name = "cryptography" },
     { name = "docling", extra = ["ocrmac"], marker = "sys_platform == 'darwin'" },
     { name = "docling", extra = ["vlm"] },
@@ -2394,7 +2428,9 @@ dev = [
 requires-dist = [
     { name = "agentd", specifier = ">=0.2.2" },
     { name = "aiofiles", specifier = ">=24.1.0" },
+    { name = "anthropic", specifier = ">=0.39.0" },
     { name = "boto3", specifier = ">=1.35.0" },
+    { name = "claude-agent-sdk", specifier = ">=0.1.3" },
     { name = "cryptography", specifier = ">=45.0.6" },
     { name = "docling", extras = ["ocrmac", "vlm"], marker = "sys_platform == 'darwin'", specifier = ">=2.41.0" },
     { name = "docling", extras = ["vlm"], marker = "sys_platform != 'darwin'", specifier = ">=2.41.0" },

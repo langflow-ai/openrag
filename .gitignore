@@ -25,3 +25,5 @@ wheels/
 config/
 
 .docling.pid
+
+widgets/

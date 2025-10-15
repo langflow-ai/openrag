@@ -40,13 +40,13 @@ async function proxyRequest(
   params: { path: string[] }
 ) {
   const backendHost = process.env.OPENRAG_BACKEND_HOST || 'localhost';
-  const backendSSL= process.env.OPENRAG_BACKEND_SSL || false;
+  const backendPort = process.env.OPENRAG_BACKEND_PORT || '8000';
+  const backendSSL = parseBoolean(process.env.OPENRAG_BACKEND_SSL);
+  const protocol = backendSSL ? 'https' : 'http';
+  const backendBaseUrl = `${protocol}://${backendHost}:${backendPort}`;
   const path = params.path.join('/');
   const searchParams = request.nextUrl.searchParams.toString();
-  let backendUrl = `http://${backendHost}:8000/${path}${searchParams ? `?${searchParams}` : ''}`;
-  if (backendSSL) {
-    backendUrl = `https://${backendHost}:8000/${path}${searchParams ? `?${searchParams}` : ''}`;
-  }
+  const backendUrl = `${backendBaseUrl}/${path}${searchParams ? `?${searchParams}` : ''}`;
 
   try {
     let body: string | ArrayBuffer | undefined = undefined;
@@ -129,4 +129,12 @@ async function proxyRequest(
       { status: 500 }
     );
   }
+}
+
+function parseBoolean(value?: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
 }
