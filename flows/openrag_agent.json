@@ -2837,7 +2837,7 @@
   "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
   "last_tested_version": "1.6.0",
-  "name": "OpenRAG Open Search Agent",
+  "name": "OpenRAG OpenSearch Agent",
   "tags": [
     "assistants",
     "agents"
