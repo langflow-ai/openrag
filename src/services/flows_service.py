@@ -588,13 +588,30 @@ class FlowsService:
 
         # Update the field value directly in the existing node
         template = target_node.get("data", {}).get("node", {}).get("template", {})
-        if template.get(field_name):
-            flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["value"] = field_value
-            if "options" in flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name] and field_value not in flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["options"]:
-                flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["options"].append(field_value)
-        else:
-            identifier = node_display_name
-            raise Exception(f"{field_name} field not found in {identifier} component")
+        if field_name not in template:
+            # Fallback: search the entire flow for a template that has this field
+            fallback_node, fallback_index = None, None
+            for idx, node in enumerate(flow_data.get("data", {}).get("nodes", [])):
+                tmpl = node.get("data", {}).get("node", {}).get("template", {})
+                if field_name in tmpl:
+                    fallback_node, fallback_index = node, idx
+                    break
+
+            if fallback_node is None:
+                identifier = node_display_name or "flow"
+                raise Exception(f"{field_name} field not found in {identifier} component")
+
+            target_node, target_node_index = fallback_node, fallback_index
+            template = target_node.get("data", {}).get("node", {}).get("template", {})
+
+        field_entry = template.get(field_name)
+        if not isinstance(field_entry, dict):
+            raise Exception(f"Invalid template entry for field '{field_name}'")
+
+        flow_data["data"]["nodes"][target_node_index]["data"]["node"]["template"][field_name]["value"] = field_value
+        options = field_entry.get("options")
+        if isinstance(options, list) and field_value not in options:
+            options.append(field_value)
 
         # Update the flow via PATCH request
         patch_response = await clients.langflow_request(
@@ -622,11 +639,9 @@ class FlowsService:
         if not LANGFLOW_CHAT_FLOW_ID:
             raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
 
-        # Determine target component IDs based on provider
-        target_agent_id = self._get_provider_component_ids(provider)[1]
-
+        # Update the Agent component's system_prompt field
         await self._update_flow_field(LANGFLOW_CHAT_FLOW_ID, "system_prompt", system_prompt,
-                                node_display_name=target_agent_id)
+                                node_display_name="Agent")
 
     async def update_flow_docling_preset(self, preset: str, preset_config: dict):
         """Helper function to update docling preset in the ingest flow"""

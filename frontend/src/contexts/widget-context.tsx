@@ -2,12 +2,27 @@
 
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 
+interface WidgetMcpMetadata {
+  widget_id: string;
+  identifier: string;
+  title: string;
+  template_uri: string;
+  invoking: string;
+  invoked: string;
+  response_text: string;
+  has_css: boolean;
+  description?: string | null;
+}
+
 interface Widget {
   widget_id: string;
   prompt: string;
   user_id: string;
   created_at: string;
   has_css: boolean;
+  title?: string;
+  description?: string | null;
+  mcp?: WidgetMcpMetadata;
 }
 
 interface WidgetContextType {
@@ -31,7 +46,12 @@ export function WidgetProvider({ children }: { children: React.ReactNode }) {
       const response = await fetch("/api/widgets");
       if (!response.ok) throw new Error("Failed to load widgets");
       const data = await response.json();
-      setWidgets(data.widgets || []);
+      const normalized = (data.widgets || []).map((widget: Widget) => ({
+        ...widget,
+        title: widget.title || widget.mcp?.title,
+        description: widget.description || widget.mcp?.description,
+      }));
+      setWidgets(normalized);
     } catch (error) {
       console.error("Failed to load widgets:", error);
     } finally {

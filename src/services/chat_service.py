@@ -1,6 +1,7 @@
 import json
 from config.settings import NUDGES_FLOW_ID, clients, LANGFLOW_URL, LANGFLOW_CHAT_FLOW_ID
 from agent import async_chat, async_langflow, async_chat_stream
+from services.widget_instruction_service import get_widget_instruction_block
 from auth_context import set_auth_context
 from utils.logging_config import get_logger
 
@@ -24,12 +25,17 @@ class ChatService:
         if user_id and jwt_token:
             set_auth_context(user_id, jwt_token)
 
+        instruction_block = ""
+        if previous_response_id is None:
+            instruction_block = await get_widget_instruction_block()
+
         if stream:
             return async_chat_stream(
                 clients.patched_async_client,
                 prompt,
                 user_id,
                 previous_response_id=previous_response_id,
+                system_prompt_addition=instruction_block or None,
             )
         else:
             response_text, response_id = await async_chat(
@@ -37,6 +43,7 @@ class ChatService:
                 prompt,
                 user_id,
                 previous_response_id=previous_response_id,
+                system_prompt_addition=instruction_block or None,
             )
             response_data = {"response": response_text}
             if response_id:
@@ -126,6 +133,10 @@ class ChatService:
             )
 
 
+        instruction_block = ""
+        if previous_response_id is None:
+            instruction_block = await get_widget_instruction_block()
+
         if stream:
             from agent import async_langflow_chat_stream
 
@@ -136,6 +147,7 @@ class ChatService:
                 user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
+                system_prompt_addition=instruction_block or None,
             )
         else:
             from agent import async_langflow_chat
@@ -147,6 +159,7 @@ class ChatService:
                 user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
+                system_prompt_addition=instruction_block or None,
             )
             response_data = {"response": response_text}
             if response_id:
@@ -222,6 +235,10 @@ class ChatService:
         """Send document content as user message to get proper response_id"""
         document_prompt = f"I'm uploading a document called '{filename}'. Here is its content:\n\n{document_content}\n\nPlease confirm you've received this document and are ready to answer questions about it."
 
+        instruction_block = ""
+        if previous_response_id is None:
+            instruction_block = await get_widget_instruction_block()
+
         if endpoint == "langflow":
             # Prepare extra headers for JWT authentication
             extra_headers = {}
@@ -240,6 +257,7 @@ class ChatService:
                 prompt=document_prompt,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
+                system_prompt_addition=instruction_block or None,
             )
         else:  # chat
             # Set auth context for chat tools and provide user_id
@@ -250,6 +268,7 @@ class ChatService:
                 document_prompt,
                 user_id,
                 previous_response_id=previous_response_id,
+                system_prompt_addition=instruction_block or None,
             )
 
         return response_text, response_id
@@ -534,4 +553,3 @@ class ChatService:
         except Exception as e:
             logger.error(f"Error deleting session {session_id} from Langflow: {e}")
             return False
-

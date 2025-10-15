@@ -14,6 +14,7 @@ from config.settings import (
     get_openrag_config,
     config_manager,
 )
+from services.widget_instruction_service import get_widget_instruction_block
 
 logger = get_logger(__name__)
 
@@ -53,6 +54,17 @@ async def get_settings(request, session_manager):
         knowledge_config = openrag_config.knowledge
         agent_config = openrag_config.agent
         # Return public settings that are safe to expose to frontend
+        widget_block = await get_widget_instruction_block()
+        system_prompt = agent_config.system_prompt or ""
+        if widget_block and widget_block.strip() not in system_prompt:
+            system_prompt_with_widgets = (
+                f"{system_prompt}\n\n{widget_block}"
+                if system_prompt
+                else widget_block
+            )
+        else:
+            system_prompt_with_widgets = system_prompt
+
         settings = {
             "langflow_url": LANGFLOW_URL,
             "flow_id": LANGFLOW_CHAT_FLOW_ID,
@@ -74,7 +86,7 @@ async def get_settings(request, session_manager):
             },
             "agent": {
                 "llm_model": agent_config.llm_model,
-                "system_prompt": agent_config.system_prompt,
+                "system_prompt": system_prompt_with_widgets,
             },
             "localhost_url": LOCALHOST_URL,
         }
@@ -215,21 +227,29 @@ async def update_settings(request, session_manager):
                 # The config will still be saved
 
         if "system_prompt" in body:
-            current_config.agent.system_prompt = body["system_prompt"]
+            base_prompt = body["system_prompt"] or ""
+            widget_block = await get_widget_instruction_block(force_refresh=True)
+            if widget_block and widget_block.strip() not in base_prompt:
+                combined_prompt = (
+                    f"{base_prompt}\n\n{widget_block}"
+                    if base_prompt
+                    else widget_block
+                )
+            else:
+                combined_prompt = base_prompt
+
+            current_config.agent.system_prompt = base_prompt
             config_updated = True
 
-            # Also update the chat flow with the new system prompt
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_chat_flow_system_prompt(
-                    body["system_prompt"],
+                    combined_prompt,
                     current_config.provider.model_provider.lower()
                 )
-                logger.info(f"Successfully updated chat flow system prompt")
+                logger.info("Successfully updated chat flow system prompt")
             except Exception as e:
                 logger.error(f"Failed to update chat flow system prompt: {str(e)}")
-                # Don't fail the entire settings update if flow update fails
-                # The config will still be saved
 
         # Update knowledge settings
         if "embedding_model" in body:

@@ -64,13 +64,27 @@ export interface ChatConversation {
   [key: string]: unknown;
 }
 
+interface WidgetMcpMetadata {
+  widget_id: string;
+  identifier: string;
+  title: string;
+  template_uri: string;
+  invoking: string;
+  invoked: string;
+  response_text: string;
+  has_css: boolean;
+  description?: string | null;
+}
+
 interface Widget {
   widget_id: string;
   prompt: string;
   title?: string;
+  description?: string | null;
   user_id: string;
   created_at: string;
   has_css: boolean;
+  mcp?: WidgetMcpMetadata;
 }
 
 interface NavigationProps {

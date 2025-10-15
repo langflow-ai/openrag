@@ -10,6 +10,7 @@ import {
   Loader2,
   Plus,
   Settings,
+  Box,
   User,
   X,
   Zap,
@@ -26,9 +27,18 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/contexts/auth-context";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
+import { useWidget } from "@/contexts/widget-context";
 import { useTask } from "@/contexts/task-context";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
@@ -151,10 +161,26 @@ function ChatPage() {
   const { addTask } = useTask();
   const { selectedFilter, parsedFilterData, setSelectedFilter } =
     useKnowledgeFilter();
+  const { widgets, loadWidgets, isLoading: isWidgetListLoading } = useWidget();
+  const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
+  const [isWidgetLoading, setIsWidgetLoading] = useState(false);
+  const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null);
+  const [widgetHtml, setWidgetHtml] = useState<string | null>(null);
+  const [widgetError, setWidgetError] = useState<string | null>(null);
+  const [inlineWidgets, setInlineWidgets] = useState<Record<number, string>>({});
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  useEffect(() => {
+    if (isWidgetModalOpen) {
+      loadWidgets().catch(error => {
+        console.error("Failed to load widgets", error);
+        setWidgetError("Failed to load widgets");
+      });
+    }
+  }, [isWidgetModalOpen, loadWidgets]);
 
   const getCursorPosition = (textarea: HTMLTextAreaElement) => {
     // Create a hidden div with the same styles as the textarea
@@ -2042,6 +2068,101 @@ function ChatPage() {
     }
   };
 
+  const handleOpenWidgetModal = () => {
+    setWidgetError(null);
+    setWidgetHtml(null);
+    setSelectedWidgetId(null);
+    setIsWidgetModalOpen(true);
+  };
+
+  const handleLoadWidgetPreview = async (widgetId: string) => {
+    const widget = widgets.find(item => item.widget_id === widgetId);
+    if (!widget) {
+      setWidgetError("Selected widget not found");
+      return;
+    }
+    const templateUri = widget.mcp?.template_uri;
+    if (!templateUri) {
+      setWidgetError("Widget is missing MCP template metadata");
+      return;
+    }
+
+    setWidgetError(null);
+    setSelectedWidgetId(widgetId);
+    setIsWidgetLoading(true);
+
+    try {
+      const response = await fetch("/api/mcp/widgets/mcp/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: `read-${widgetId}`,
+          method: "resources/read",
+          params: { uri: templateUri },
+        }),
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+      const rawBody = await response.text();
+
+      if (!response.ok) {
+        throw new Error(
+          `Server responded with ${response.status}${rawBody ? `: ${rawBody}` : ""}`
+        );
+      }
+
+      let data: any = null;
+      if (contentType.includes("text/event-stream")) {
+        const blocks = rawBody.split(/\n\n/);
+        let lastData: string | null = null;
+        for (const block of blocks) {
+          const dataLines = block
+            .split("\n")
+            .filter(line => line.startsWith("data:"))
+            .map(line => line.slice(5).trim())
+            .filter(Boolean);
+          if (dataLines.length > 0) {
+            lastData = dataLines.join("\n");
+          }
+        }
+       if (!lastData) {
+         throw new Error("No data payload in event stream response");
+       }
+        try {
+          data = JSON.parse(lastData);
+        } catch (error) {
+          throw new Error("Failed to parse event stream data as JSON");
+        }
+      } else if (rawBody) {
+        try {
+          data = JSON.parse(rawBody);
+        } catch (error) {
+          throw new Error("Failed to parse JSON response from widget endpoint");
+        }
+      }
+
+      const contents = data?.result?.contents;
+      const html = contents?.[0]?.text;
+      if (!html) {
+        throw new Error("Widget resource response did not include HTML content");
+      }
+
+      setWidgetHtml(html);
+    } catch (error: any) {
+      console.error("Failed to load widget resource", error);
+      setWidgetError(
+        error?.message || "Failed to load widget resource. Please try again."
+      );
+      setWidgetHtml(null);
+    } finally {
+      setIsWidgetLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Debug header - only show in debug mode */}
@@ -2097,6 +2218,17 @@ function ChatPage() {
           !isDebugMode ? "pt-6" : ""
         }`}
       >
+        <div className="flex justify-end mb-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleOpenWidgetModal}
+            className="gap-2"
+          >
+            <Box className="h-4 w-4" />
+            Load Widget
+          </Button>
+        </div>
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
           {/* Messages Area */}
           <div
@@ -2416,8 +2548,97 @@ function ChatPage() {
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
             </Button>
           </form>
-        </div>
       </div>
+    </div>
+
+      <Dialog open={isWidgetModalOpen} onOpenChange={setIsWidgetModalOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Load Widget</DialogTitle>
+            <DialogDescription>
+              Select a widget to fetch its MCP UI resource and preview it inside chat.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-[260px_1fr]">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Widgets
+                </span>
+              </div>
+              <div className="border rounded-lg">
+                <ScrollArea className="h-64">
+                  <div className="p-2 space-y-2">
+                    {isWidgetListLoading ? (
+                      <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Loading widgets…
+                      </div>
+                    ) : widgets.length === 0 ? (
+                      <div className="py-8 px-2 text-sm text-muted-foreground text-center">
+                        No widgets available yet. Generate one first.
+                      </div>
+                    ) : (
+                      widgets.map(widget => (
+                        <Button
+                          key={widget.widget_id}
+                          type="button"
+                          variant={
+                            selectedWidgetId === widget.widget_id
+                              ? "secondary"
+                              : "ghost"
+                          }
+                          className="w-full justify-start text-left h-auto py-3"
+                          onClick={() => handleLoadWidgetPreview(widget.widget_id)}
+                        >
+                          <div className="flex flex-col items-start">
+                            <span className="font-medium">
+                              {widget.title || widget.prompt.substring(0, 48)}
+                            </span>
+                            {(widget.description || widget.mcp?.description) && (
+                              <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                {widget.description || widget.mcp?.description}
+                              </span>
+                            )}
+                            {widget.mcp?.template_uri && (
+                              <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                {widget.mcp.template_uri}
+                              </span>
+                            )}
+                          </div>
+                        </Button>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
+            <div className="border rounded-lg overflow-hidden min-h-[320px] bg-background flex items-center justify-center">
+              {isWidgetLoading ? (
+                <div className="flex flex-col items-center text-muted-foreground gap-3">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="text-sm">Loading widget…</span>
+                </div>
+              ) : widgetHtml ? (
+                <iframe
+                  key={selectedWidgetId || "widget-preview"}
+                  className="w-full h-[360px] border-0"
+                  sandbox="allow-scripts allow-same-origin allow-forms"
+                  srcDoc={widgetHtml}
+                  title="Widget preview"
+                />
+              ) : (
+                <div className="text-sm text-muted-foreground text-center px-6">
+                  Select a widget to preview its MCP UI bundle.
+                </div>
+              )}
+            </div>
+          </div>
+          {widgetError && (
+            <div className="text-sm text-destructive">{widgetError}</div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import TextareaAutosize from "react-textarea-autosize";
@@ -11,6 +11,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { ProtectedRoute } from "@/components/protected-route";
 
 interface Connector {
   id: string;
@@ -20,7 +21,7 @@ interface Connector {
   available: boolean;
 }
 
-export default function WidgetsPage() {
+function WidgetsPage() {
   const { selectedWidget, setSelectedWidget, loadWidgets } = useWidget();
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -269,5 +270,15 @@ export default function WidgetsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ProtectedWidgetsPage() {
+  return (
+    <ProtectedRoute>
+      <Suspense fallback={<div>Loading widgets...</div>}>
+        <WidgetsPage />
+      </Suspense>
+    </ProtectedRoute>
   );
 }

@@ -39,6 +39,51 @@ class WidgetService:
         self._check_build_dependencies()
         self._refresh_mcp_registry()
 
+    async def _sync_widgets_to_flow_prompt(self) -> None:
+        """Update the Langflow chat flow system prompt with current widget instructions."""
+        try:
+            from config.settings import get_openrag_config
+            from services.widget_instruction_service import get_widget_instruction_block
+            from services.flows_service import FlowsService
+            import re
+
+            config = get_openrag_config()
+
+            # Only update if config has been edited (onboarding completed)
+            if not config.edited:
+                logger.debug("Skipping widget prompt sync - config not yet edited")
+                return
+
+            # Get the base system prompt (without widgets)
+            base_prompt = config.agent.system_prompt or ""
+
+            # Strip out any existing widget instruction block from base prompt
+            # Pattern: "You are able to display the following list of UI widgets:" ... "```\n{uri}\n```"
+            widget_block_pattern = r"You are able to display the following list of UI widgets:.*?```\n[^\n]+\n```"
+            base_prompt_cleaned = re.sub(widget_block_pattern, "", base_prompt, flags=re.DOTALL).strip()
+
+            # Get fresh widget instructions
+            widget_block = await get_widget_instruction_block(force_refresh=True)
+
+            # Combine widget block FIRST, then cleaned base prompt
+            if widget_block:
+                combined_prompt = (
+                    f"{widget_block}\n\n{base_prompt_cleaned}"
+                    if base_prompt_cleaned
+                    else widget_block
+                )
+            else:
+                combined_prompt = base_prompt_cleaned
+
+            # Update the flow
+            flows_service = FlowsService()
+            provider = config.provider.model_provider.lower()
+            await flows_service.update_chat_flow_system_prompt(combined_prompt, provider)
+
+            logger.info("Successfully synced widget instructions to flow system prompt")
+        except Exception as e:
+            logger.error("Failed to sync widgets to flow prompt", error=str(e))
+
     async def generate_widget(
         self, widget_id: str, prompt: str, user_id: str, base_widget_id: str = None
     ) -> Dict[str, Any]:
@@ -63,11 +108,13 @@ class WidgetService:
             # If base_widget_id is provided, load existing widget code
             base_jsx = None
             base_css = None
+            base_metadata: Dict[str, Any] | None = None
             if base_widget_id:
                 base_widget = await self.get_widget(base_widget_id)
                 if base_widget:
                     base_jsx = base_widget.get("jsx_content")
                     base_css = base_widget.get("css_content")
+                    base_metadata = base_widget.get("metadata") or {}
                     logger.info("Loaded base widget for iteration", base_widget_id=base_widget_id)
 
             # System-level instructions for the Claude agent
@@ -155,7 +202,7 @@ root.render(<Widget />);
             # Configure the Claude Agent
             options = ClaudeAgentOptions(
                 system_prompt=system_prompt,
-                model="claude-3-5-sonnet-20241022",
+                model="claude-sonnet-4-5-20250929",
             )
 
             # Create the Claude agent client
@@ -208,6 +255,8 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
             # Extract code blocks
             jsx_code = self._extract_code_block(response_text, "jsx", "javascript", "js")
             css_code = self._extract_code_block(response_text, "css")
+            has_css = css_code is not None
+            jsx_code = self._normalize_widget_css_import(jsx_code, widget_id, has_css)
 
             if not jsx_code:
                 raise Exception("No JSX code block found in response")
@@ -227,13 +276,23 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
                     f.write(css_code)
 
             created_at = datetime.now(timezone.utc).isoformat()
+            base_description = None
+            if base_metadata:
+                base_description = base_metadata.get("description")
+                if not base_description:
+                    mcp_metadata = base_metadata.get("mcp")
+                    if isinstance(mcp_metadata, dict):
+                        base_description = mcp_metadata.get("description")
+
+            description = base_description or self._derive_widget_description(prompt)
             metadata = {
                 "widget_id": widget_id,
                 "prompt": prompt,
                 "user_id": user_id,
-                "model": "claude-3-5-sonnet-20241022",
-                "has_css": css_code is not None,
+                "model": "claude-sonnet-4-5-20250929",
+                "has_css": has_css,
                 "created_at": created_at,
+                "description": description,
             }
             mcp_payload = self._build_mcp_payload(widget_id, metadata)
             if mcp_payload:
@@ -252,6 +311,9 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
 
             # Build the widget
             await self._build_widget(widget_id)
+
+            # Sync widget instructions to Langflow system prompt
+            await self._sync_widgets_to_flow_prompt()
 
             return {
                 "status": "success",
@@ -275,6 +337,36 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
                 if end != -1:
                     return text[start:end].strip()
         return None
+
+    def _normalize_widget_css_import(self, jsx_code: str, widget_id: str, has_css: bool) -> str:
+        """Ensure generated JSX references the correct widget CSS file."""
+        lines = jsx_code.splitlines()
+        css_import_indices: list[int] = []
+
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("import") and ".css" in stripped:
+                css_import_indices.append(idx)
+
+        css_import_statement = f'import "./{widget_id}.css";'
+
+        if has_css:
+            if css_import_indices:
+                first_idx = css_import_indices[0]
+                lines[first_idx] = css_import_statement
+                # Remove any additional css imports to prevent stale references
+                for idx in reversed(css_import_indices[1:]):
+                    lines.pop(idx)
+            else:
+                insert_idx = 0
+                while insert_idx < len(lines) and lines[insert_idx].strip().startswith("import"):
+                    insert_idx += 1
+                lines.insert(insert_idx, css_import_statement)
+        else:
+            for idx in reversed(css_import_indices):
+                lines.pop(idx)
+
+        return "\n".join(lines)
 
     # TODO: Enforce per-user scoping when listing widgets to support multi-tenancy.
     async def list_widgets(self, user_id: str) -> list[Dict[str, Any]]:
@@ -333,6 +425,10 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
             logger.info("Widget deleted", widget_id=widget_id, user_id=user_id)
             if self._mcp_server:
                 self._mcp_server.remove_widget(widget_id)
+
+            # Sync widget instructions to Langflow system prompt
+            await self._sync_widgets_to_flow_prompt()
+
             return True
         except Exception as e:
             logger.error("Failed to delete widget", error=str(e), widget_id=widget_id)
@@ -395,6 +491,20 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
                     error=str(e),
                     widget_path=widget_path,
                 )
+        if "description" not in metadata:
+            description = self._derive_widget_description(metadata.get("prompt"))
+            if description:
+                metadata["description"] = description
+                try:
+                    metadata_path = os.path.join(widget_path, "metadata.json")
+                    with open(metadata_path, "w") as f:
+                        json.dump(metadata, f, indent=2)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to persist widget description",
+                        error=str(e),
+                        widget_path=widget_path,
+                    )
         return metadata
 
     def _derive_widget_title(self, prompt: str | None, widget_id: str) -> str:
@@ -407,6 +517,15 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
                     trimmed = f"{trimmed.rstrip()}..."
                 return trimmed
         return f"Widget {widget_id[:8]}"
+
+    def _derive_widget_description(self, prompt: str | None) -> str | None:
+        """Create a concise description for the widget."""
+        if not prompt:
+            return None
+        first_line = prompt.strip().splitlines()[0]
+        if len(first_line) > 120:
+            return first_line[:117].rstrip() + "..."
+        return first_line
 
     def _build_mcp_payload(
         self,
@@ -437,6 +556,11 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
                 or metadata.get("response_text")
                 or f"Rendered {title}!"
             )
+            description = (
+                existing.get("description")
+                or metadata.get("description")
+                or self._derive_widget_description(prompt)
+            )
 
             payload = {
                 "widget_id": widget_id,
@@ -447,6 +571,7 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
                 "invoked": invoked,
                 "response_text": response_text,
                 "has_css": has_css,
+                "description": description,
             }
 
             if register:

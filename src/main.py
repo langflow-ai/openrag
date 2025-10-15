@@ -474,6 +474,15 @@ async def startup_tasks(services):
     # Configure alerting security
     await configure_alerting_security()
 
+    # Sync widget instructions to Langflow system prompt
+    try:
+        widget_service = services.get("widget_service")
+        if widget_service:
+            await widget_service._sync_widgets_to_flow_prompt()
+            logger.info("Widget instructions synced to flow on startup")
+    except Exception as e:
+        logger.warning("Failed to sync widget instructions on startup", error=str(e))
+
 
 async def initialize_services():
     """Initialize all services and their dependencies"""

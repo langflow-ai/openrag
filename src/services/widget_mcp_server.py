@@ -27,6 +27,7 @@ class MCPWidget:
     invoked: str
     response_text: str
     has_css: bool
+    description: str | None = None
 
     def build_html(self) -> str:
         """Return the HTML shell that loads the built widget bundle."""
@@ -96,6 +97,7 @@ class WidgetMCPServer:
                 invoked=payload["invoked"],
                 response_text=payload["response_text"],
                 has_css=payload.get("has_css", False),
+                description=payload.get("description"),
             )
             self._widgets_by_id[widget.identifier] = widget
             self._widgets_by_uri[widget.template_uri] = widget
@@ -111,6 +113,7 @@ class WidgetMCPServer:
             invoked=payload["invoked"],
             response_text=payload["response_text"],
             has_css=payload.get("has_css", False),
+            description=payload.get("description"),
         )
         logger.info("Upserting MCP widget", widget_id=widget.widget_id)
         self._widgets_by_id[widget.identifier] = widget
@@ -302,6 +305,8 @@ class WidgetMCPServer:
 
     @staticmethod
     def _resource_description(widget: MCPWidget) -> str:
+        if widget.description:
+            return widget.description
         return f"{widget.title} widget markup"
 
     @staticmethod
@@ -317,4 +322,5 @@ class WidgetMCPServer:
                 "openWorldHint": False,
                 "readOnlyHint": True,
             },
+            "openai/widgetDescription": widget.description,
         }

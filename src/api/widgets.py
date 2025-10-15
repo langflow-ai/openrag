@@ -135,6 +135,9 @@ async def build_widget(
         # Trigger the build
         await widget_service._build_widget(widget_id)
 
+        # Sync widget instructions to Langflow system prompt
+        await widget_service._sync_widgets_to_flow_prompt()
+
         logger.info("Widget build requested", widget_id=widget_id)
 
         return JSONResponse({

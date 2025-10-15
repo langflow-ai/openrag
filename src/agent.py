@@ -14,7 +14,11 @@ def get_user_conversations(user_id: str):
     return conversation_persistence.get_user_conversations(user_id)
 
 
-def get_conversation_thread(user_id: str, previous_response_id: str = None):
+def get_conversation_thread(
+    user_id: str,
+    previous_response_id: str = None,
+    system_prompt_addition: str | None = None,
+):
     """Get or create a specific conversation thread with function call preservation"""
     from datetime import datetime
 
@@ -30,11 +34,15 @@ def get_conversation_thread(user_id: str, previous_response_id: str = None):
         return active_conversations[user_id][previous_response_id]
 
     # Create new conversation thread
+    system_content = "You are a helpful assistant. Always use the search_tools to answer questions."
+    if system_prompt_addition:
+        system_content += system_prompt_addition
+
     new_conversation = {
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful assistant. Always use the search_tools to answer questions.",
+                "content": system_content,
             }
         ],
         "previous_response_id": previous_response_id,  # Parent response_id for branching
@@ -263,6 +271,7 @@ async def async_langflow(
     prompt: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    system_prompt_addition: str | None = None,
 ):
     response_text, response_id, response_obj = await async_response(
         langflow_client,
@@ -314,13 +323,19 @@ async def async_chat(
     user_id: str,
     model: str = "gpt-4.1-mini",
     previous_response_id: str = None,
+    system_prompt_addition: str | None = None,
 ):
     logger.debug(
         "async_chat called", user_id=user_id, previous_response_id=previous_response_id
     )
 
     # Get the specific conversation thread (or create new one)
-    conversation_state = get_conversation_thread(user_id, previous_response_id)
+    extra_prompt = system_prompt_addition if previous_response_id is None else None
+    conversation_state = get_conversation_thread(
+        user_id,
+        previous_response_id,
+        system_prompt_addition=extra_prompt,
+    )
     logger.debug(
         "Got conversation state", message_count=len(conversation_state["messages"])
     )
@@ -389,9 +404,15 @@ async def async_chat_stream(
     user_id: str,
     model: str = "gpt-4.1-mini",
     previous_response_id: str = None,
+    system_prompt_addition: str | None = None,
 ):
     # Get the specific conversation thread (or create new one)
-    conversation_state = get_conversation_thread(user_id, previous_response_id)
+    extra_prompt = system_prompt_addition if previous_response_id is None else None
+    conversation_state = get_conversation_thread(
+        user_id,
+        previous_response_id,
+        system_prompt_addition=extra_prompt,
+    )
 
     # Add user message to conversation with timestamp
     from datetime import datetime
@@ -452,6 +473,7 @@ async def async_langflow_chat(
     extra_headers: dict = None,
     previous_response_id: str = None,
     store_conversation: bool = True,
+    system_prompt_addition: str | None = None,
 ):
     logger.debug(
         "async_langflow_chat called",
@@ -461,7 +483,12 @@ async def async_langflow_chat(
 
     if store_conversation:
         # Get the specific conversation thread (or create new one)
-        conversation_state = get_conversation_thread(user_id, previous_response_id)
+        extra_prompt = system_prompt_addition if previous_response_id is None else None
+        conversation_state = get_conversation_thread(
+            user_id,
+            previous_response_id,
+            system_prompt_addition=extra_prompt,
+        )
         logger.debug(
             "Got langflow conversation state",
             message_count=len(conversation_state["messages"]),
@@ -562,6 +589,7 @@ async def async_langflow_chat_stream(
     user_id: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    system_prompt_addition: str | None = None,
 ):
     logger.debug(
         "async_langflow_chat_stream called",
@@ -570,7 +598,12 @@ async def async_langflow_chat_stream(
     )
 
     # Get the specific conversation thread (or create new one)
-    conversation_state = get_conversation_thread(user_id, previous_response_id)
+    extra_prompt = system_prompt_addition if previous_response_id is None else None
+    conversation_state = get_conversation_thread(
+        user_id,
+        previous_response_id,
+        system_prompt_addition=extra_prompt,
+    )
 
     # Add user message to conversation with timestamp
     from datetime import datetime
