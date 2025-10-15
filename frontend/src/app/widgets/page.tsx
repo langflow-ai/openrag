@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Loader2, Plus, Database, Cloud, Globe } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import TextareaAutosize from "react-textarea-autosize";
 import { useWidget } from "@/contexts/widget-context";
@@ -12,19 +12,22 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+interface Connector {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  available: boolean;
+}
+
 export default function WidgetsPage() {
   const { selectedWidget, setSelectedWidget, loadWidgets } = useWidget();
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isConnectorPopoverOpen, setIsConnectorPopoverOpen] = useState(false);
   const [textareaHeight, setTextareaHeight] = useState(40);
+  const [connectors, setConnectors] = useState<Connector[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  const connectors = [
-    { id: "database", name: "Database", icon: Database },
-    { id: "api", name: "API", icon: Cloud },
-    { id: "web", name: "Web", icon: Globe },
-  ];
 
   // Load selected widget when changed
   useEffect(() => {
@@ -32,6 +35,29 @@ export default function WidgetsPage() {
       loadWidgetPreview(selectedWidget);
     }
   }, [selectedWidget]);
+
+  // Load connectors on mount
+  useEffect(() => {
+    const loadConnectors = async () => {
+      try {
+        const response = await fetch("/api/connectors");
+        if (response.ok) {
+          const data = await response.json();
+          const connectorsList = Object.entries(data.connectors).map(([id, info]: [string, any]) => ({
+            id,
+            name: info.name,
+            description: info.description,
+            icon: info.icon,
+            available: info.available,
+          }));
+          setConnectors(connectorsList.filter(c => c.available));
+        }
+      } catch (error) {
+        console.error("Failed to load connectors:", error);
+      }
+    };
+    loadConnectors();
+  }, []);
 
   // Auto-focus the input on component mount
   useEffect(() => {
@@ -205,9 +231,12 @@ export default function WidgetsPage() {
               </PopoverTrigger>
               <PopoverContent className="w-48 p-2" side="top" align="start" sideOffset={6}>
                 <div className="space-y-1">
-                  {connectors.map((connector) => {
-                    const Icon = connector.icon;
-                    return (
+                  {connectors.length === 0 ? (
+                    <div className="px-2 py-3 text-sm text-muted-foreground">
+                      No connectors available
+                    </div>
+                  ) : (
+                    connectors.map((connector) => (
                       <button
                         key={connector.id}
                         type="button"
@@ -215,13 +244,16 @@ export default function WidgetsPage() {
                           // Placeholder - doesn't do anything yet
                           setIsConnectorPopoverOpen(false);
                         }}
-                        className="w-full text-left px-3 py-2 text-sm rounded hover:bg-muted/50 flex items-center gap-2"
+                        className="w-full overflow-hidden text-left px-2 py-2 gap-2 text-sm rounded hover:bg-muted/50 flex items-center justify-between"
                       >
-                        <Icon className="h-4 w-4 text-muted-foreground" />
-                        <span>{connector.name}</span>
+                        <div className="overflow-hidden">
+                          <div className="font-medium truncate">
+                            {connector.name}
+                          </div>
+                        </div>
                       </button>
-                    );
-                  })}
+                    ))
+                  )}
                 </div>
               </PopoverContent>
             </Popover>

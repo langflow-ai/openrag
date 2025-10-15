@@ -78,6 +78,7 @@ from services.models_service import ModelsService
 from services.monitor_service import MonitorService
 from services.search_service import SearchService
 from services.task_service import TaskService
+from services.widget_mcp_server import WidgetMCPServer
 from services.widget_service import WidgetService
 from session_manager import SessionManager
 
@@ -494,7 +495,8 @@ async def initialize_services():
     knowledge_filter_service = KnowledgeFilterService(session_manager)
     models_service = ModelsService()
     monitor_service = MonitorService(session_manager)
-    widget_service = WidgetService()
+    widget_mcp_server = WidgetMCPServer()
+    widget_service = WidgetService(mcp_server=widget_mcp_server)
 
     # Set process pool for document service
     document_service.process_pool = process_pool
@@ -562,6 +564,7 @@ async def initialize_services():
         "models_service": models_service,
         "monitor_service": monitor_service,
         "widget_service": widget_service,
+        "widget_mcp_server": widget_mcp_server,
         "session_manager": session_manager,
     }
 
@@ -1184,7 +1187,23 @@ async def create_app():
             ),
             methods=["POST"],
         ),
+        Route(
+            "/widgets/{widget_id}/rename",
+            require_auth(services["session_manager"])(
+                partial(
+                    widgets.rename_widget,
+                    widget_service=services["widget_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["PATCH"],
+        ),
     ]
+
+    # Mount MCP server for widgets
+    routes.append(
+        Mount("/mcp/widgets", services["widget_mcp_server"].app, name="widget-mcp")
+    )
 
     # Add static file serving for widget assets
     widgets_assets_path = os.path.abspath("widgets/assets")
@@ -1201,6 +1220,7 @@ async def create_app():
     # Add startup event handler
     @app.on_event("startup")
     async def startup_event():
+        await services["widget_mcp_server"].startup()
         # Start index initialization in background to avoid blocking OIDC endpoints
         t1 = asyncio.create_task(startup_tasks(services))
         app.state.background_tasks.add(t1)
@@ -1209,6 +1229,7 @@ async def create_app():
     # Add shutdown event handler
     @app.on_event("shutdown")
     async def shutdown_event():
+        await services["widget_mcp_server"].shutdown()
         await cleanup_subscriptions_proper(services)
 
     return app

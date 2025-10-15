@@ -5,6 +5,7 @@ import {
   FileText,
   Library,
   MessageSquare,
+  Pencil,
   Plus,
   Settings2,
   Trash2,
@@ -66,6 +67,7 @@ export interface ChatConversation {
 interface Widget {
   widget_id: string;
   prompt: string;
+  title?: string;
   user_id: string;
   created_at: string;
   has_css: boolean;
@@ -79,6 +81,7 @@ interface NavigationProps {
   selectedWidget?: string | null;
   onWidgetSelect?: (widgetId: string) => void;
   onDeleteWidget?: (widgetId: string) => void;
+  onRenameWidget?: (widgetId: string, newTitle: string) => void;
   onNewWidget?: () => void;
 }
 
@@ -90,6 +93,7 @@ export function Navigation({
   selectedWidget = null,
   onWidgetSelect,
   onDeleteWidget,
+  onRenameWidget,
   onNewWidget,
 }: NavigationProps = {}) {
   const pathname = usePathname();
@@ -113,7 +117,10 @@ export function Navigation({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [conversationToDelete, setConversationToDelete] =
     useState<ChatConversation | null>(null);
+  const [renamingWidgetId, setRenamingWidgetId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const { selectedFilter, setSelectedFilter } = useKnowledgeFilter();
 
@@ -286,6 +293,34 @@ export function Navigation({
     }
   };
 
+  const handleStartRename = (widget: Widget, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    setRenamingWidgetId(widget.widget_id);
+    // Use custom title if available, otherwise use prompt
+    const currentTitle = widget.title || widget.prompt.substring(0, 50);
+    setRenameValue(currentTitle);
+    // Focus the input after state updates
+    setTimeout(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }, 0);
+  };
+
+  const handleRenameSubmit = (widgetId: string) => {
+    if (renameValue.trim() && onRenameWidget) {
+      onRenameWidget(widgetId, renameValue.trim());
+    }
+    setRenamingWidgetId(null);
+    setRenameValue("");
+  };
+
+  const handleRenameCancel = () => {
+    setRenamingWidgetId(null);
+    setRenameValue("");
+  };
+
   const confirmDeleteConversation = () => {
     if (conversationToDelete) {
       deleteSessionMutation.mutate({
@@ -424,61 +459,95 @@ export function Navigation({
                 </div>
               ) : (
                 widgets.map(widget => (
-                  <button
+                  <div
                     key={widget.widget_id}
-                    type="button"
-                    className={`w-full px-3 h-11 rounded-lg group relative text-left hover:bg-accent cursor-pointer ${
+                    className={`w-full px-3 h-11 rounded-lg group relative ${
                       selectedWidget === widget.widget_id ? "bg-accent" : ""
                     }`}
-                    onClick={() => onWidgetSelect?.(widget.widget_id)}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">
-                          {widget.prompt.substring(0, 50)}
-                          {widget.prompt.length > 50 ? "..." : ""}
-                        </div>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <div
-                            className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
-                            title="More options"
-                            role="button"
-                            tabIndex={0}
-                            onClick={e => {
-                              e.stopPropagation();
-                            }}
-                            onKeyDown={e => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                e.stopPropagation();
-                              }
-                            }}
-                          >
-                            <EllipsisVertical className="h-4 w-4" />
-                          </div>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          side="bottom"
-                          align="end"
-                          className="w-48"
+                    {renamingWidgetId === widget.widget_id ? (
+                      <div className="flex items-center h-full">
+                        <input
+                          ref={renameInputRef}
+                          type="text"
+                          value={renameValue}
+                          onChange={e => setRenameValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") {
+                              handleRenameSubmit(widget.widget_id);
+                            } else if (e.key === "Escape") {
+                              handleRenameCancel();
+                            }
+                          }}
+                          onBlur={() => handleRenameSubmit(widget.widget_id)}
+                          className="flex-1 bg-background border border-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                           onClick={e => e.stopPropagation()}
-                        >
-                          <DropdownMenuItem
-                            onClick={e => {
-                              e.stopPropagation();
-                              onDeleteWidget?.(widget.widget_id);
-                            }}
-                            className="cursor-pointer text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete widget
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </button>
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="w-full h-full text-left hover:bg-accent cursor-pointer rounded-lg"
+                        onClick={() => onWidgetSelect?.(widget.widget_id)}
+                      >
+                        <div className="flex items-center justify-between h-full">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-foreground truncate">
+                              {widget.title || (widget.prompt.substring(0, 50) + (widget.prompt.length > 50 ? "..." : ""))}
+                            </div>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <div
+                                className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
+                                title="More options"
+                                role="button"
+                                tabIndex={0}
+                                onClick={e => {
+                                  e.stopPropagation();
+                                }}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }
+                                }}
+                              >
+                                <EllipsisVertical className="h-4 w-4" />
+                              </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              side="bottom"
+                              align="end"
+                              className="w-48"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <DropdownMenuItem
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  handleStartRename(widget, e);
+                                }}
+                                className="cursor-pointer"
+                              >
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Rename widget
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  onDeleteWidget?.(widget.widget_id);
+                                }}
+                                className="cursor-pointer text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete widget
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </button>
+                    )}
+                  </div>
                 ))
               )}
             </div>

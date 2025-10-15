@@ -146,3 +146,41 @@ async def build_widget(
     except Exception as e:
         logger.error("Failed to trigger widget build", error=str(e))
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def rename_widget(
+    request: Request, widget_service: WidgetService, session_manager: SessionManager
+):
+    """Rename a widget by updating its title."""
+    try:
+        widget_id = request.path_params.get("widget_id")
+
+        if not widget_id:
+            return JSONResponse({"error": "Widget ID is required"}, status_code=400)
+
+        # Get request data
+        data = await request.json()
+        title = data.get("title")
+
+        if not title:
+            return JSONResponse({"error": "Title is required"}, status_code=400)
+
+        # Get user from request context
+        user = request.state.user
+        user_id = user.user_id if user else "anonymous"
+
+        # Rename the widget
+        success = await widget_service.rename_widget(
+            widget_id=widget_id, title=title, user_id=user_id
+        )
+
+        if not success:
+            return JSONResponse({"error": "Widget not found"}, status_code=404)
+
+        logger.info("Widget renamed", widget_id=widget_id, title=title, user_id=user_id)
+
+        return JSONResponse({"status": "success", "widget_id": widget_id, "title": title})
+
+    except Exception as e:
+        logger.error("Failed to rename widget", error=str(e))
+        return JSONResponse({"error": str(e)}, status_code=500)

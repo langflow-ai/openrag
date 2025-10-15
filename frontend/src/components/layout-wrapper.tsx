@@ -96,6 +96,23 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const handleRenameWidget = async (widgetId: string, newTitle: string) => {
+    try {
+      const response = await fetch(`/api/widgets/${widgetId}/rename`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle }),
+      });
+
+      if (!response.ok) throw new Error("Failed to rename widget");
+
+      // Reload widgets to reflect the new name
+      await loadWidgets();
+    } catch (error) {
+      console.error("Failed to rename widget:", error);
+    }
+  };
+
   const handleNewWidget = () => {
     setSelectedWidget(null);
     // Dispatch event to focus the input
@@ -205,6 +222,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           selectedWidget={selectedWidget}
           onWidgetSelect={setSelectedWidget}
           onDeleteWidget={handleDeleteWidget}
+          onRenameWidget={handleRenameWidget}
           onNewWidget={handleNewWidget}
         />
       </aside>

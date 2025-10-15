@@ -5,10 +5,13 @@ import subprocess
 import asyncio
 import threading
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from services.widget_mcp_server import WidgetMCPServer
 
 # Claude Agent SDK imports
 try:
@@ -22,7 +25,7 @@ except ImportError:
 class WidgetService:
     """Service for generating React widget components using Claude Agent SDK."""
 
-    def __init__(self):
+    def __init__(self, mcp_server: "WidgetMCPServer | None" = None):
         self.widgets_dir = os.path.abspath("widgets")
         self.assets_dir = os.path.join(self.widgets_dir, "assets")
         os.makedirs(self.widgets_dir, exist_ok=True)
@@ -30,9 +33,11 @@ class WidgetService:
         logger.info("Widget service initialized", widgets_dir=self.widgets_dir)
         self._dependency_install_lock = threading.Lock()
         self._install_task_started = False
+        self._mcp_server = mcp_server
 
         # Check if npm and vite are available
         self._check_build_dependencies()
+        self._refresh_mcp_registry()
 
     async def generate_widget(
         self, widget_id: str, prompt: str, user_id: str, base_widget_id: str = None
@@ -230,6 +235,10 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
                 "has_css": css_code is not None,
                 "created_at": created_at,
             }
+            mcp_payload = self._build_mcp_payload(widget_id, metadata)
+            if mcp_payload:
+                metadata["mcp"] = mcp_payload
+
             metadata_path = os.path.join(widget_dir, "metadata.json")
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
@@ -276,15 +285,9 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
                 return widgets
 
             for widget_id in os.listdir(self.widgets_dir):
-                widget_path = os.path.join(self.widgets_dir, widget_id)
-                if not os.path.isdir(widget_path):
-                    continue
-                metadata_path = os.path.join(widget_path, "metadata.json")
-                if os.path.exists(metadata_path):
-                    with open(metadata_path, "r") as f:
-                        metadata = json.load(f)
-                        metadata = self._ensure_metadata_defaults(widget_path, metadata)
-                        widgets.append(metadata)
+                metadata = self._load_widget_metadata(widget_id, register=False)
+                if metadata:
+                    widgets.append(metadata)
             return widgets
         except Exception as e:
             logger.error("Failed to list widgets", error=str(e))
@@ -293,16 +296,10 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
     async def get_widget(self, widget_id: str) -> Dict[str, Any] | None:
         """Get widget details by ID."""
         try:
+            metadata = self._load_widget_metadata(widget_id, register=False)
+            if not metadata:
+                return None
             widget_path = os.path.join(self.widgets_dir, widget_id)
-            if not os.path.exists(widget_path):
-                return None
-            metadata_path = os.path.join(widget_path, "metadata.json")
-            if not os.path.exists(metadata_path):
-                return None
-
-            with open(metadata_path, "r") as f:
-                metadata = json.load(f)
-                metadata = self._ensure_metadata_defaults(widget_path, metadata)
             jsx_path = os.path.join(widget_path, f"{widget_id}.jsx")
             with open(jsx_path, "r") as f:
                 jsx_content = f.read()
@@ -334,9 +331,51 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
                 os.remove(css_asset)
 
             logger.info("Widget deleted", widget_id=widget_id, user_id=user_id)
+            if self._mcp_server:
+                self._mcp_server.remove_widget(widget_id)
             return True
         except Exception as e:
             logger.error("Failed to delete widget", error=str(e), widget_id=widget_id)
+            return False
+
+    async def rename_widget(self, widget_id: str, title: str, user_id: str) -> bool:
+        """Rename a widget by updating its title in metadata."""
+        try:
+            widget_path = os.path.join(self.widgets_dir, widget_id)
+            if not os.path.exists(widget_path):
+                return False
+
+            metadata_path = os.path.join(widget_path, "metadata.json")
+            if not os.path.exists(metadata_path):
+                return False
+
+            # Load current metadata
+            with open(metadata_path, "r") as f:
+                metadata = json.load(f)
+
+            # Update title in metadata
+            metadata["title"] = title
+
+            # Update MCP payload with new title
+            if "mcp" in metadata:
+                metadata["mcp"]["title"] = title
+                metadata["mcp"]["invoking"] = f"Rendering {title}"
+                metadata["mcp"]["invoked"] = f"{title} ready"
+                metadata["mcp"]["response_text"] = f"Rendered {title}!"
+
+            # Save updated metadata
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            logger.info("Widget renamed", widget_id=widget_id, title=title, user_id=user_id)
+
+            # Update MCP server if available
+            if self._mcp_server and "mcp" in metadata:
+                self._mcp_server.upsert_widget(metadata["mcp"])
+
+            return True
+        except Exception as e:
+            logger.error("Failed to rename widget", error=str(e), widget_id=widget_id)
             return False
 
     def _ensure_metadata_defaults(self, widget_path: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
@@ -356,6 +395,122 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
                     error=str(e),
                     widget_path=widget_path,
                 )
+        return metadata
+
+    def _derive_widget_title(self, prompt: str | None, widget_id: str) -> str:
+        """Create a human-friendly title from the widget prompt or fallback to the id."""
+        if prompt:
+            first_line = prompt.strip().splitlines()[0]
+            if first_line:
+                trimmed = first_line[:60].rstrip()
+                if len(first_line) > 60:
+                    trimmed = f"{trimmed.rstrip()}..."
+                return trimmed
+        return f"Widget {widget_id[:8]}"
+
+    def _build_mcp_payload(
+        self,
+        widget_id: str,
+        metadata: Dict[str, Any],
+        *,
+        register: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """Create MCP metadata for a widget and optionally sync it with the MCP server."""
+        existing = metadata.get("mcp") or {}
+        try:
+            prompt = metadata.get("prompt")
+            has_css = metadata.get("has_css", False)
+
+            title = existing.get("title") or metadata.get("title") or self._derive_widget_title(
+                prompt, widget_id
+            )
+            identifier = existing.get("identifier") or metadata.get("identifier") or widget_id
+            template_uri = (
+                existing.get("template_uri")
+                or metadata.get("template_uri")
+                or f"ui://widget/openrag-{widget_id}.html"
+            )
+            invoking = existing.get("invoking") or metadata.get("invoking") or f"Rendering {title}"
+            invoked = existing.get("invoked") or metadata.get("invoked") or f"{title} ready"
+            response_text = (
+                existing.get("response_text")
+                or metadata.get("response_text")
+                or f"Rendered {title}!"
+            )
+
+            payload = {
+                "widget_id": widget_id,
+                "identifier": identifier,
+                "title": title,
+                "template_uri": template_uri,
+                "invoking": invoking,
+                "invoked": invoked,
+                "response_text": response_text,
+                "has_css": has_css,
+            }
+
+            if register:
+                self._register_mcp_widget(payload)
+
+            return payload
+        except Exception as e:
+            logger.error("Failed to prepare MCP payload", error=str(e), widget_id=widget_id)
+            return existing if existing else None
+
+    def _register_mcp_widget(self, payload: Dict[str, Any]) -> None:
+        """Register or update a widget on the MCP server."""
+        if self._mcp_server:
+            self._mcp_server.upsert_widget(payload)
+
+    def _refresh_mcp_registry(self) -> None:
+        """Ensure the MCP server reflects the widgets stored on disk."""
+        if not getattr(self, "_mcp_server", None):
+            return
+
+        payloads: List[Dict[str, Any]] = []
+        if os.path.exists(self.widgets_dir):
+            for widget_id in os.listdir(self.widgets_dir):
+                metadata = self._load_widget_metadata(widget_id, register=False)
+                if metadata and metadata.get("mcp"):
+                    payloads.append(metadata["mcp"])
+
+        self._mcp_server.replace_widgets(payloads)
+
+    def attach_mcp_server(self, mcp_server: "WidgetMCPServer") -> None:
+        """Attach an MCP server after initialization and sync widgets."""
+        self._mcp_server = mcp_server
+        self._refresh_mcp_registry()
+
+    def _load_widget_metadata(self, widget_id: str, register: bool = False) -> Optional[Dict[str, Any]]:
+        """Load widget metadata from disk and populate MCP details."""
+        widget_path = os.path.join(self.widgets_dir, widget_id)
+        if not os.path.isdir(widget_path):
+            return None
+
+        metadata_path = os.path.join(widget_path, "metadata.json")
+        if not os.path.exists(metadata_path):
+            return None
+
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+
+        metadata = self._ensure_metadata_defaults(widget_path, metadata)
+        payload = self._build_mcp_payload(widget_id, metadata, register=register)
+        if payload:
+            if metadata.get("mcp") != payload:
+                metadata["mcp"] = payload
+                try:
+                    with open(metadata_path, "w") as f:
+                        json.dump(metadata, f, indent=2)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to persist MCP metadata for widget",
+                        error=str(e),
+                        widget_id=widget_id,
+                    )
+        elif "mcp" in metadata:
+            metadata.pop("mcp", None)
+
         return metadata
 
     def _check_build_dependencies(self):
