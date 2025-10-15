@@ -99,9 +99,7 @@ interface RequestBody {
 }
 
 function ChatPage() {
-  const isDebugMode =
-    process.env.NODE_ENV === "development" ||
-    process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
+  const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
   const { user } = useAuth();
   const {
     endpoint,
@@ -168,9 +166,96 @@ function ChatPage() {
   const [widgetHtml, setWidgetHtml] = useState<string | null>(null);
   const [widgetError, setWidgetError] = useState<string | null>(null);
   const [inlineWidgets, setInlineWidgets] = useState<Record<number, string>>({});
+  const [streamingWidgetHtml, setStreamingWidgetHtml] = useState<string | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // Extract widget URI from message content (handles backquotes)
+  const extractWidgetUri = (content: string): string | null => {
+    // Match ui://widget/xxx.html with or without backquotes
+    const patterns = [
+      /`(ui:\/\/widget\/[^`]+\.html)`/,  // In backquotes
+      /ui:\/\/widget\/\S+\.html/,          // Without backquotes
+    ];
+
+    for (const pattern of patterns) {
+      const match = content.match(pattern);
+      if (match) {
+        return match[1] || match[0];
+      }
+    }
+    return null;
+  };
+
+  // Load widget HTML from URI
+  const loadWidgetFromUri = async (uri: string, messageIndex: number): Promise<string | null> => {
+    try {
+      const response = await fetch("/api/mcp/widgets/mcp/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: `read-${uri}`,
+          method: "resources/read",
+          params: { uri },
+        }),
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+      const rawBody = await response.text();
+
+      if (!response.ok) {
+        throw new Error(
+          `Server responded with ${response.status}${rawBody ? `: ${rawBody}` : ""}`
+        );
+      }
+
+      let data: any = null;
+      if (contentType.includes("text/event-stream")) {
+        const blocks = rawBody.split(/\n\n/);
+        let lastData: string | null = null;
+        for (const block of blocks) {
+          const dataLines = block
+            .split("\n")
+            .filter(line => line.startsWith("data:"))
+            .map(line => line.slice(5).trim())
+            .filter(Boolean);
+          if (dataLines.length > 0) {
+            lastData = dataLines.join("\n");
+          }
+        }
+        if (!lastData) {
+          throw new Error("No data payload in event stream response");
+        }
+        data = JSON.parse(lastData);
+      } else if (rawBody) {
+        data = JSON.parse(rawBody);
+      }
+
+      const contents = data?.result?.contents;
+      const html = contents?.[0]?.text;
+      if (!html) {
+        throw new Error("Widget resource response did not include HTML content");
+      }
+
+      // Store the loaded widget HTML for this message
+      if (messageIndex >= 0) {
+        setInlineWidgets(prev => ({
+          ...prev,
+          [messageIndex]: html,
+        }));
+      }
+
+      return html;
+    } catch (error: any) {
+      console.error("Failed to load widget from URI:", uri, error);
+      return null;
+    }
   };
 
   useEffect(() => {
@@ -181,6 +266,36 @@ function ChatPage() {
       });
     }
   }, [isWidgetModalOpen, loadWidgets]);
+
+  // Auto-detect and load widgets from assistant messages
+  useEffect(() => {
+    messages.forEach((message, index) => {
+      if (message.role === "assistant" && !inlineWidgets[index]) {
+        const widgetUri = extractWidgetUri(message.content);
+        if (widgetUri) {
+          loadWidgetFromUri(widgetUri, index);
+        }
+      }
+    });
+  }, [messages]);
+
+  // Auto-detect and load widgets from streaming message
+  useEffect(() => {
+    if (streamingMessage && streamingMessage.content) {
+      const widgetUri = extractWidgetUri(streamingMessage.content);
+      if (widgetUri && !streamingWidgetHtml) {
+        // Load widget for streaming message
+        loadWidgetFromUri(widgetUri, -1).then((html) => {
+          if (html) {
+            setStreamingWidgetHtml(html);
+          }
+        });
+      }
+    } else {
+      // Clear streaming widget when streaming stops
+      setStreamingWidgetHtml(null);
+    }
+  }, [streamingMessage]);
 
   const getCursorPosition = (textarea: HTMLTextAreaElement) => {
     // Create a hidden div with the same styles as the textarea
@@ -2218,17 +2333,6 @@ function ChatPage() {
           !isDebugMode ? "pt-6" : ""
         }`}
       >
-        <div className="flex justify-end mb-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleOpenWidgetModal}
-            className="gap-2"
-          >
-            <Box className="h-4 w-4" />
-            Load Widget
-          </Button>
-        </div>
         <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
           {/* Messages Area */}
           <div
@@ -2287,6 +2391,18 @@ function ChatPage() {
                             index
                           )}
                           <MarkdownRenderer chatMessage={message.content} />
+                          {/* Inline widget display */}
+                          {inlineWidgets[index] && (
+                            <div className="mt-4 rounded-lg border border-border overflow-hidden bg-background">
+                              <iframe
+                                key={`inline-widget-${index}`}
+                                className="w-full h-[400px] border-0"
+                                sandbox="allow-scripts allow-same-origin allow-forms"
+                                srcDoc={inlineWidgets[index]}
+                                title={`Widget ${index}`}
+                              />
+                            </div>
+                          )}
                         </div>
                         {endpoint === "chat" && (
                           <div className="flex-shrink-0 ml-2">
@@ -2318,6 +2434,18 @@ function ChatPage() {
                       <MarkdownRenderer
                         chatMessage={streamingMessage.content}
                       />
+                      {/* Inline widget display for streaming message */}
+                      {streamingWidgetHtml && (
+                        <div className="mt-4 rounded-lg border border-border overflow-hidden bg-background">
+                          <iframe
+                            key="streaming-widget"
+                            className="w-full h-[400px] border-0"
+                            sandbox="allow-scripts allow-same-origin allow-forms"
+                            srcDoc={streamingWidgetHtml}
+                            title="Streaming Widget"
+                          />
+                        </div>
+                      )}
                       <span className="inline-block w-2 h-4 bg-blue-400 ml-1 animate-pulse"></span>
                     </div>
                   </div>

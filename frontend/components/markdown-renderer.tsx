@@ -15,6 +15,12 @@ const preprocessChatMessage = (text: string): string => {
     .replace(/<think>/g, "`<think>`")
     .replace(/<\/think>/g, "`</think>`");
 
+  // Replace widget URIs with italic "Showing widget" text
+  // Match ui://widget/xxx.html with or without backquotes, and remove the backquotes
+  // Use a comprehensive pattern that captures all variations
+  processed = processed.replace(/`+\s*ui:\/\/widget\/[^\s`]+\.html\s*`+/g, "_Showing widget_");
+  processed = processed.replace(/ui:\/\/widget\/\S+\.html/g, "_Showing widget_");
+
   // Clean up tables if present
   if (isMarkdownTable(processed)) {
     processed = cleanupTableEmptyCells(processed);
