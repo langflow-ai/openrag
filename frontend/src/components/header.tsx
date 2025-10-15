@@ -2,7 +2,6 @@
 
 import { Bell } from "lucide-react";
 import Logo from "@/components/logo/logo";
-import { TaskNotificationMenu } from "@/components/task-notification-menu";
 import { UserNav } from "@/components/user-nav";
 import { useTask } from "@/contexts/task-context";
 
@@ -18,7 +17,7 @@ export function Header() {
   );
 
   return (
-    <header className="header-arrangement bg-background [grid-area:header]">
+    <header className="flex w-full h-[53px] items-center justify-between border-b border-border">
       <div className="header-start-display px-[16px]">
         {/* Logo/Title */}
         <div className="flex items-center">

@@ -109,15 +109,10 @@
 
 @layer components {
   .app-grid-arrangement {
-    --sidebar-width: 0px;
     --notifications-width: 0px;
     --filters-width: 0px;
-    --app-header-height: 53px;
     --top-banner-height: 0px;
 
-    @media (width >= 48rem) {
-      --sidebar-width: 288px;
-    }
     &.notifications-open {
       --notifications-width: 320px;
     }
@@ -131,11 +126,11 @@
     height: 100%;
     width: 100%;
     grid-template-rows:
-      var(--top-banner-height)
-      var(--app-header-height)
+      auto
+      auto
       1fr;
     grid-template-columns:
-      var(--sidebar-width)
+      auto
       1fr
       var(--notifications-width)
       var(--filters-width);
@@ -145,10 +140,6 @@
       "nav main notifications filters";
     transition: grid-template-columns 0.25s ease-in-out,
       grid-template-rows 0.25s ease-in-out;
-  }
-
-  .header-arrangement {
-    @apply flex w-full items-center justify-between border-b border-border;
   }
 
   .header-start-display {
