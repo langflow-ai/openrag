@@ -39,7 +39,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     }
 
     if (!isLoading && !isSettingsLoading && !settings.edited) {
-      router.push("/onboarding");
+      const updatedOnboarding = process.env.UPDATED_ONBOARDING === "true";
+      router.push(updatedOnboarding ? "/new-onboarding" : "/onboarding");
     }
   }, [
     isLoading,

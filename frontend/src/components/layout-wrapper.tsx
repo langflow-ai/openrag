@@ -55,7 +55,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   };
 
   // List of paths that should not show navigation
-  const authPaths = ["/login", "/auth/callback", "/onboarding"];
+  const authPaths = ["/login", "/auth/callback", "/onboarding", "/new-onboarding"];
   const isAuthPage = authPaths.includes(pathname);
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
