@@ -31,21 +31,23 @@ export function AnimatedProviderSteps({
     }
   }, [currentStep, setCurrentStep]);
 
+  const isDone = currentStep >= steps.length;
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <div className={cn("transition-all duration-300", currentStep >= steps.length ? "w-3.5" : "w-2")}>
-        {currentStep >= steps.length ? (
+        <div className={cn("transition-all duration-300", isDone ? "w-3.5" : "w-2")}>
+        {isDone ? (
           <CheckIcon className="text-accent-emerald-foreground shrink-0 w-3.5 h-3.5" />
         ) : (
           <AnimatedProcessingIcon className="text-current shrink-0" />
         )}</div>
 
         <span className="text-mmd font-medium text-muted-foreground">
-          {currentStep < steps.length ? "Thinking" : "Done"}
+          {isDone ? "Done" : "Thinking"}
         </span>
       </div>
-      {currentStep < steps.length && (
+      {!isDone && (
         <div className="flex items-center gap-5">
           <div className="w-px h-6 bg-border" />
           <span className="text-mmd font-medium text-primary">
