@@ -23,3 +23,7 @@ export const DEFAULT_KNOWLEDGE_SETTINGS = {
 export const UI_CONSTANTS = {
   MAX_SYSTEM_PROMPT_CHARS: 2000,
 } as const;
+
+export const ANIMATION_DURATION = 0.4;
+export const SIDEBAR_WIDTH = 280;
+export const HEADER_HEIGHT = 54;
