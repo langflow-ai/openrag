@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	type ChatConversation,
 	useGetConversationsQuery,
@@ -62,9 +62,21 @@ export function ChatRenderer({
 			setShowLayout(true);
 		}
 	};
+
 	// List of paths with smaller max-width
 	const smallWidthPaths = ["/settings/connector/new"];
 	const isSmallWidthPath = smallWidthPaths.includes(pathname);
+
+    const x = showLayout ? "0px" : `calc(-${SIDEBAR_WIDTH/2}px + 50vw)`;
+    const y = showLayout ? "0px" : `calc(-${HEADER_HEIGHT/2}px + 50vh)`;
+    const translateY = showLayout ? "0px" : `-50vh`;
+    const translateX = showLayout ? "0px" : `-50vw`;
+
+    useEffect(() => {
+        setTimeout(() => {
+            setShowLayout(true);
+        }, 4000);
+    }, []);
 
 	// For all other pages, render with Langflow-styled navigation and task menu
 	return (
@@ -97,30 +109,31 @@ export function ChatRenderer({
 				<motion.div
 					initial={
 						{
-									width: !showLayout ? "100vh" : "100%",
-									height: !showLayout ? "100vh" : "100%",
-									y: showLayout
-										? "0px"
-										: `-${HEADER_HEIGHT}px`,
-									x: showLayout
-										? "0px"
-										: `0px`,
-								}
+                            width: showLayout ? "100%" : "100vw",
+                            height: showLayout ? "100%" : "100vh",
+                            x: x,
+                            y: y,
+                            translateX: translateX,
+                            translateY: translateY,
+                        }
 					}
 					animate={{
-						width: showLayout ? "100%" : "60%",
+						width: showLayout ? "100%" : "60vw",
 						borderRadius: showLayout ? "0" : "16px",
 						border: showLayout ? "0" : "1px solid #27272A",
-						height: showLayout ? "100%" : "60%",
-						y: showLayout ? "0px" : `-${HEADER_HEIGHT / 2}px`,
-						x: showLayout ? "0px" : `-${SIDEBAR_WIDTH / 2}px`,
+						height: showLayout ? "100%" : "60vh",
+						x: x,
+                        y: y,
+                        translateX: translateX,
+                        translateY: translateY,
 					}}
 					transition={{
 						duration: ANIMATION_DURATION,
 						ease: "easeOut",
 					}}
 					className={cn(
-						"flex h-full w-full items-center justify-center overflow-hidden ",
+						"flex h-full w-full items-center justify-center overflow-hidden",
+                        !showLayout && "absolute",
 					)}
 				>
 					<div
@@ -164,7 +177,6 @@ export function ChatRenderer({
 					transition={{ duration: ANIMATION_DURATION, ease: "easeOut" }}
 					className={cn(
 						"absolute bottom-10 left-0 right-0",
-						showLayout && "hidden",
 					)}
 				>
 					<ProgressBar

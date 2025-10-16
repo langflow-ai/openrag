@@ -80,7 +80,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 		<div className=" h-screen w-screen flex items-center justify-center">
 			<div
 				className={cn(
-					"app-grid-arrangement bg-black",
+					"app-grid-arrangement bg-black relative",
 					isBannerVisible && "banner-visible",
 					isPanelOpen && isOnKnowledgePage && !isMenuOpen && "filters-open",
 					isMenuOpen && "notifications-open",

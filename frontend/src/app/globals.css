@@ -113,6 +113,7 @@
     --filters-width: 0px;
     --top-banner-height: 0px;
     --header-height: 54px;
+    --sidebar-width: 280px;
 
     &.notifications-open {
       --notifications-width: 320px;
@@ -131,7 +132,7 @@
       var(--header-height)
       1fr;
     grid-template-columns:
-      auto
+      var(--sidebar-width)
       1fr
       var(--notifications-width)
       var(--filters-width);
