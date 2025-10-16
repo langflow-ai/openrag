@@ -21,7 +21,7 @@ export function Header() {
 	return (
 		<header
 			className={cn(
-				`flex w-full h-[${HEADER_HEIGHT}px] items-center justify-between border-b border-border`,
+				`flex w-full h-full items-center justify-between`,
 			)}
 		>
 			<div className="header-start-display px-[16px]">

@@ -1,78 +1,90 @@
-import { ReactNode, useEffect, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Message } from "@/app/chat/components/message";
 import DogIcon from "@/components/logo/dog-icon";
 
 interface OnboardingStepProps {
-  text: string;
-  children: ReactNode;
-  isVisible: boolean;
-  isCompleted?: boolean;
+	text: string;
+	children: ReactNode;
+	isVisible: boolean;
+	isCompleted?: boolean;
 }
 
-export function OnboardingStep({ text, children, isVisible, isCompleted = false }: OnboardingStepProps) {
-  const [displayedText, setDisplayedText] = useState("");
-  const [showChildren, setShowChildren] = useState(false);
+export function OnboardingStep({
+	text,
+	children,
+	isVisible,
+	isCompleted = false,
+}: OnboardingStepProps) {
+	const [displayedText, setDisplayedText] = useState("");
+	const [showChildren, setShowChildren] = useState(false);
 
-  useEffect(() => {
-    if (!isVisible) {
-      setDisplayedText("");
-      setShowChildren(false);
-      return;
-    }
+	useEffect(() => {
+		if (!isVisible) {
+			setDisplayedText("");
+			setShowChildren(false);
+			return;
+		}
 
-    let currentIndex = 0;
-    setDisplayedText("");
-    setShowChildren(false);
+		let currentIndex = 0;
+		setDisplayedText("");
+		setShowChildren(false);
 
-    const interval = setInterval(() => {
-      if (currentIndex < text.length) {
-        setDisplayedText(text.slice(0, currentIndex + 1));
-        currentIndex++;
-      } else {
-        clearInterval(interval);
-        setShowChildren(true);
-      }
-    }, 10); // 10ms per character
+		const interval = setInterval(() => {
+			if (currentIndex < text.length) {
+				setDisplayedText(text.slice(0, currentIndex + 1));
+				currentIndex++;
+			} else {
+				clearInterval(interval);
+				setShowChildren(true);
+			}
+		}, 20); // 20ms per character
 
-    return () => clearInterval(interval);
-  }, [text, isVisible]);
+		return () => clearInterval(interval);
+	}, [text, isVisible]);
 
-  if (!isVisible) return null;
+	if (!isVisible) return null;
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      className={isCompleted ? "opacity-50" : ""}
-    >
-      <Message
-        icon={
-          <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
-            <DogIcon className="h-6 w-6 text-accent-foreground" disabled={isCompleted} />
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <p className={`text-foreground text-sm py-1.5 ${isCompleted ? "text-placeholder-foreground" : ""}`}>
-            {displayedText}
-            {!showChildren && !isCompleted && <span className="inline-block w-1 h-4 bg-primary ml-1 animate-pulse" />}
-          </p>
-          <AnimatePresence>
-            {showChildren && !isCompleted && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
-              >
-                {children}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </Message>
-    </motion.div>
-  );
+	return (
+		<motion.div
+			initial={{ opacity: 0, y: -20 }}
+			animate={{ opacity: 1, y: 0 }}
+			transition={{ duration: 0.4, delay: 0.4, ease: "easeOut" }}
+			className={isCompleted ? "opacity-50" : ""}
+		>
+			<Message
+				icon={
+					<div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
+						<DogIcon
+							className="h-6 w-6 text-accent-foreground"
+							disabled={isCompleted}
+						/>
+					</div>
+				}
+			>
+				<div className="space-y-4">
+					<p
+						className={`text-foreground text-sm py-1.5 ${isCompleted ? "text-placeholder-foreground" : ""}`}
+					>
+						{displayedText}
+						{!showChildren && !isCompleted && (
+							<span className="inline-block w-1 h-4 bg-primary ml-1 animate-pulse" />
+						)}
+					</p>
+					<AnimatePresence>
+						{showChildren && !isCompleted && (
+							<motion.div
+								initial={{ opacity: 0, y: -10 }}
+								animate={{ opacity: 1, y: 0 }}
+								exit={{ opacity: 0, height: 0 }}
+								transition={{ duration: 0.3, delay: 0.3, ease: "easeOut" }}
+							>
+								{children}
+							</motion.div>
+						)}
+					</AnimatePresence>
+				</div>
+			</Message>
+		</motion.div>
+	);
 }
