@@ -118,7 +118,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         <AnimatedConditional
           className="[grid-area:header] bg-background border-b"
           vertical
-          grow={false}
+          slide
           isOpen={showLayout}
           delay={0.2}
         >
@@ -128,7 +128,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         {/* Sidebar Navigation */}
         <AnimatedConditional
           isOpen={showLayout}
-          grow={false}
+          slide
           className="border-r bg-background overflow-hidden [grid-area:nav] w-[280px]"
         >
           <Navigation

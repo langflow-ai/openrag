@@ -4,7 +4,7 @@ export const AnimatedConditional = ({
   children,
   isOpen,
   className,
-  grow = true,
+  slide = false,
   delay,
   vertical = false,
 }: {
@@ -13,10 +13,10 @@ export const AnimatedConditional = ({
   className?: string;
   delay?: number; 
   vertical?: boolean;
-  grow?: boolean;
+  slide?: boolean;
 }) => {
-  const animationProperty = grow ? (vertical ? "height" : "width") : (vertical ? "translateY" : "translateX");
-  const animationValue = isOpen ? (grow ? "auto" : "0") : (grow ? 0 : "-100%");
+  const animationProperty = slide ? (vertical ? "translateY" : "translateX") : (vertical ? "height" : "width");
+  const animationValue = isOpen ? (slide ? "0px" : "auto") : (slide ? "-100%" : "0px");
 
   return (
     <motion.div
