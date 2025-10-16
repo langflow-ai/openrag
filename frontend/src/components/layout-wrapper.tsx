@@ -1,107 +1,85 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import {
-	type ChatConversation,
-	useGetConversationsQuery,
-} from "@/app/api/queries/useGetConversationsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import { OnboardingContent } from "@/app/new-onboarding/components/onboarding-content";
-import { ProgressBar } from "@/app/new-onboarding/components/progress-bar";
-import OnboardingCard from "@/app/onboarding/components/onboarding-card";
-import { AnimatedConditional } from "@/components/animated-conditional";
 import { DoclingHealthBanner } from "@/components/docling-health-banner";
-import { Header } from "@/components/header";
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
-import { Navigation } from "@/components/navigation";
 import { TaskNotificationMenu } from "@/components/task-notification-menu";
 import { useAuth } from "@/contexts/auth-context";
-import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
-import {
-	ANIMATION_DURATION,
-	HEADER_HEIGHT,
-	SIDEBAR_WIDTH,
-	TOTAL_ONBOARDING_STEPS,
-} from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useDoclingHealthQuery } from "@/src/app/api/queries/useDoclingHealthQuery";
 import { ChatRenderer } from "./chat-renderer";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
-	const pathname = usePathname();
-	const { isMenuOpen } = useTask();
-	const { isPanelOpen } = useKnowledgeFilter();
-	const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
-  
-	const {
-		data: settings,
-		isLoading: isSettingsLoading,
-	} = useGetSettingsQuery({
-		enabled: isAuthenticated || isNoAuthMode,
-	});
-	const {
-		data: health,
-		isLoading: isHealthLoading,
-		isError,
-	} = useDoclingHealthQuery();
+  const pathname = usePathname();
+  const { isMenuOpen } = useTask();
+  const { isPanelOpen } = useKnowledgeFilter();
+  const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
 
-	// List of paths that should not show navigation
-	const authPaths = ["/login", "/auth/callback"];
-	const isAuthPage = authPaths.includes(pathname);
-	const isOnKnowledgePage = pathname.startsWith("/knowledge");
+  const { data: settings, isLoading: isSettingsLoading } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
+  });
+  const {
+    data: health,
+    isLoading: isHealthLoading,
+    isError,
+  } = useDoclingHealthQuery();
 
-	const isUnhealthy = health?.status === "unhealthy" || isError;
-	const isBannerVisible = !isHealthLoading && isUnhealthy;
+  // List of paths that should not show navigation
+  const authPaths = ["/login", "/auth/callback"];
+  const isAuthPage = authPaths.includes(pathname);
+  const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
-	// Show loading state when backend isn't ready
-	if (isLoading || isSettingsLoading || !settings) {
-		return (
-			<div className="min-h-screen flex items-center justify-center bg-background">
-				<div className="flex flex-col items-center gap-4">
-					<Loader2 className="h-8 w-8 animate-spin" />
-					<p className="text-muted-foreground">Starting OpenRAG...</p>
-				</div>
-			</div>
-		);
-	}
+  const isUnhealthy = health?.status === "unhealthy" || isError;
+  const isBannerVisible = !isHealthLoading && isUnhealthy;
 
-	if (isAuthPage) {
-		// For auth pages, render without navigation
-		return <div className="h-full">{children}</div>;
-	}
+  // Show loading state when backend isn't ready
+  if (isLoading || isSettingsLoading || !settings) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-muted-foreground">Starting OpenRAG...</p>
+        </div>
+      </div>
+    );
+  }
 
-	// For all other pages, render with Langflow-styled navigation and task menu
-	return (
-		<div className=" h-screen w-screen flex items-center justify-center">
-			<div
-				className={cn(
-					"app-grid-arrangement bg-black relative",
-					isBannerVisible && "banner-visible",
-					isPanelOpen && isOnKnowledgePage && !isMenuOpen && "filters-open",
-					isMenuOpen && "notifications-open",
-				)}
-			>
-				<div className={`w-full z-10 bg-background [grid-area:banner]`} >
-					<DoclingHealthBanner className="w-full" />
-				</div>
+  if (isAuthPage) {
+    // For auth pages, render without navigation
+    return <div className="h-full">{children}</div>;
+  }
+
+  // For all other pages, render with Langflow-styled navigation and task menu
+  return (
+    <div className=" h-screen w-screen flex items-center justify-center">
+      <div
+        className={cn(
+          "app-grid-arrangement bg-black relative",
+          isBannerVisible && "banner-visible",
+          isPanelOpen && isOnKnowledgePage && !isMenuOpen && "filters-open",
+          isMenuOpen && "notifications-open",
+        )}
+      >
+        <div className={`w-full z-10 bg-background [grid-area:banner]`}>
+          <DoclingHealthBanner className="w-full" />
+        </div>
 
         <ChatRenderer settings={settings}>{children}</ChatRenderer>
 
-				{/* Task Notifications Panel */}
-				<aside className="overflow-y-auto overflow-x-hidden [grid-area:notifications]">
-					{isMenuOpen && <TaskNotificationMenu />}
-				</aside>
+        {/* Task Notifications Panel */}
+        <aside className="overflow-y-auto overflow-x-hidden [grid-area:notifications]">
+          {isMenuOpen && <TaskNotificationMenu />}
+        </aside>
 
-				{/* Knowledge Filter Panel */}
-				<aside className="overflow-y-auto overflow-x-hidden [grid-area:filters]">
-					{isPanelOpen && <KnowledgeFilterPanel />}
-				</aside>
-			</div>
-		</div>
-	);
+        {/* Knowledge Filter Panel */}
+        <aside className="overflow-y-auto overflow-x-hidden [grid-area:filters]">
+          {isPanelOpen && <KnowledgeFilterPanel />}
+        </aside>
+      </div>
+    </div>
+  );
 }
