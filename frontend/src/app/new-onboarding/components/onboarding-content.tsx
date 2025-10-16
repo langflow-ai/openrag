@@ -2,6 +2,7 @@
 
 import OnboardingCard from "@/app/onboarding/components/onboarding-card";
 import { OnboardingStep } from "./onboarding-step";
+import { StepTwo } from "./steps/step-two";
 
 export function OnboardingContent({
   handleStepComplete,
@@ -10,8 +11,9 @@ export function OnboardingContent({
   handleStepComplete: () => void;
   currentStep: number;
 }) {
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       <OnboardingStep
         isVisible={currentStep >= 0}
         isCompleted={currentStep > 0}
@@ -20,23 +22,8 @@ export function OnboardingContent({
         <OnboardingCard onComplete={handleStepComplete} />
       </OnboardingStep>
 
-      <OnboardingStep
-        isVisible={currentStep >= 1}
-        isCompleted={currentStep > 1}
-        text="Step 1: Configure your settings"
-      >
-        <div className="space-y-4">
-          <p className="text-muted-foreground">
-            Let's configure some basic settings for your account.
-          </p>
-          <button
-            onClick={handleStepComplete}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-          >
-            Continue
-          </button>
-        </div>
-      </OnboardingStep>
+      {/* Step 2: Learn about OpenRAG */}
+      <StepTwo isVisible={currentStep >= 1} isCompleted={currentStep > 1} />
 
       <OnboardingStep
         isVisible={currentStep >= 2}

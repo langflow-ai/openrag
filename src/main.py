@@ -826,6 +826,16 @@ async def create_app():
             ),
             methods=["POST"],
         ),
+        Route(
+            "/onboarding-chat",
+            require_auth(services["session_manager"])(
+                partial(
+                    chat.onboarding_chat_endpoint,
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
         # Chat history endpoints
         Route(
             "/chat/history",
