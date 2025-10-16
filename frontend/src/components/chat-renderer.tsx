@@ -112,10 +112,10 @@ export function ChatRenderer({
                         }
 					}
 					animate={{
-						width: showLayout ? "100%" : "60vw",
+						width: showLayout ? "100%" : "850px",
 						borderRadius: showLayout ? "0" : "16px",
 						border: showLayout ? "0" : "1px solid #27272A",
-						height: showLayout ? "100%" : "60vh",
+						height: showLayout ? "100%" : "800px",
 						x: x,
                         y: y,
                         translateX: translateX,
@@ -126,7 +126,7 @@ export function ChatRenderer({
 						ease: "easeOut",
 					}}
 					className={cn(
-						"flex h-full w-full items-center justify-center overflow-hidden",
+						"flex h-full w-full max-w-full max-h-full items-center justify-center overflow-hidden",
                         !showLayout && "absolute",
 					)}
 				>
