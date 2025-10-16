@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
 	type ChatConversation,
 	useGetConversationsQuery,
@@ -71,12 +71,6 @@ export function ChatRenderer({
     const y = showLayout ? "0px" : `calc(-${HEADER_HEIGHT/2}px + 50vh)`;
     const translateY = showLayout ? "0px" : `-50vh`;
     const translateX = showLayout ? "0px" : `-50vw`;
-
-    useEffect(() => {
-        setTimeout(() => {
-            setShowLayout(true);
-        }, 4000);
-    }, []);
 
 	// For all other pages, render with Langflow-styled navigation and task menu
 	return (
