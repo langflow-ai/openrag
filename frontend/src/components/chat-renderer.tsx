@@ -62,7 +62,6 @@ export function ChatRenderer({
 			setShowLayout(true);
 		}
 	};
-
 	// List of paths with smaller max-width
 	const smallWidthPaths = ["/settings/connector/new"];
 	const isSmallWidthPath = smallWidthPaths.includes(pathname);
@@ -98,8 +97,8 @@ export function ChatRenderer({
 				<motion.div
 					initial={
 						{
-									width: "100vw",
-									height: "100vh",
+									width: !showLayout ? "100vh" : "100%",
+									height: !showLayout ? "100vh" : "100%",
 									y: showLayout
 										? "0px"
 										: `-${HEADER_HEIGHT}px`,
