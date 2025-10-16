@@ -118,8 +118,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         <AnimatedConditional
           className="[grid-area:header] bg-background border-b"
           vertical
+          grow={false}
           isOpen={showLayout}
-		  delay={0.2}
+          delay={0.2}
         >
           <Header />
         </AnimatedConditional>
@@ -127,7 +128,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         {/* Sidebar Navigation */}
         <AnimatedConditional
           isOpen={showLayout}
-          className="border-r bg-background overflow-hidden [grid-area:nav] w-[380px]"
+          grow={false}
+          className="border-r bg-background overflow-hidden [grid-area:nav] w-[280px]"
         >
           <Navigation
             conversations={conversations}
@@ -137,14 +139,15 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         </AnimatedConditional>
 
         {/* Main Content */}
-        <main className="overflow-y-auto w-full flex items-center justify-center [grid-area:main]">
+        <main className="overflow-visible w-full flex items-center justify-center [grid-area:main]">
           <motion.div
-            layout
             initial={
               !isOnboardingComplete
                 ? {
                     width: "100%",
                     height: "100%",
+                    y: "-27px",
+                    x: "-140px"
                   }
                 : undefined
             }
@@ -153,12 +156,16 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
               borderRadius: showLayout ? "0" : "16px",
               border: showLayout ? "0" : "1px solid #27272A",
               height: showLayout ? "100%" : "60%",
+              y: showLayout ? "0px" : "-27px",
+              x: showLayout ? "0px" : "-140px",
             }}
             transition={{
               duration: 0.4,
               ease: "easeOut",
             }}
-            className={cn("flex h-full w-full items-center justify-center overflow-hidden ")}
+            className={cn(
+              "flex h-full w-full items-center justify-center overflow-hidden ",
+            )}
           >
             <div
               className={cn(
