@@ -24,11 +24,6 @@ export function AnimatedProviderSteps({
 				setCurrentStep(currentStep + 1);
 			}, 1000);
 			return () => clearInterval(interval);
-		} else {
-			const interval = setInterval(() => {
-				setCurrentStep(currentStep + 1);
-			}, 3000);
-			return () => clearInterval(interval);
 		}
 	}, [currentStep, setCurrentStep]);
 
