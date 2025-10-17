@@ -7,6 +7,7 @@ import CodeComponent from "./code-component";
 
 type MarkdownRendererProps = {
   chatMessage: string;
+  className?: string;
 };
 
 const preprocessChatMessage = (text: string): string => {
@@ -48,7 +49,7 @@ export const cleanupTableEmptyCells = (text: string): string => {
     })
     .join("\n");
 };
-export const MarkdownRenderer = ({ chatMessage }: MarkdownRendererProps) => {
+export const MarkdownRenderer = ({ chatMessage, className }: MarkdownRendererProps) => {
   // Process the chat message to handle <think> tags and clean up tables
   const processedChatMessage = preprocessChatMessage(chatMessage);
 
@@ -57,6 +58,7 @@ export const MarkdownRenderer = ({ chatMessage }: MarkdownRendererProps) => {
       className={cn(
         "markdown prose flex w-full max-w-full flex-col items-baseline text-base font-normal word-break-break-word dark:prose-invert",
         !chatMessage ? "text-muted-foreground" : "text-primary",
+        className,
       )}
     >
       <Markdown
