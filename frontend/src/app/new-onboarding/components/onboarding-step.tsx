@@ -82,7 +82,6 @@ export function OnboardingStep({
                 )}
                 chatMessage={text}
               />
-              <span className="inline-block w-1 h-4 bg-primary ml-1 animate-pulse" />
             </div>
           ) : (
             <p
@@ -98,7 +97,7 @@ export function OnboardingStep({
           )}
           {children && (
             <AnimatePresence>
-              {showChildren && !isCompleted && (
+              {((showChildren && !isCompleted) || isMarkdown) && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
