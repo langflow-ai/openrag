@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
 	type OnboardingVariables,
 	useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
+import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { useDoclingHealth } from "@/components/docling-health-banner";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
@@ -60,14 +61,42 @@ const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
 
 	const [currentStep, setCurrentStep] = useState<number | null>(null);
 
+	// Query tasks to track completion
+	const { data: tasks } = useGetTasksQuery({
+		enabled: currentStep !== null, // Only poll when onboarding has started
+		refetchInterval: currentStep !== null ? 1000 : false, // Poll every 1 second during onboarding
+	});
+
+	// Monitor tasks and call onComplete when all tasks are done
+	useEffect(() => {
+		if (currentStep === null || !tasks) {
+			return;
+		}
+
+		// Check if there are any active tasks (pending, running, or processing)
+		const activeTasks = tasks.find(
+			(task) =>
+				task.status === "pending" ||
+				task.status === "running" ||
+				task.status === "processing",
+		);
+
+		// If no active tasks and we've started onboarding, complete it
+		if ((!activeTasks || (activeTasks.processed_files ?? 0) > 0) && tasks.length > 0) {
+			// Set to final step to show "Done"
+			setCurrentStep(TOTAL_PROVIDER_STEPS);
+			// Wait a bit before completing
+			setTimeout(() => {
+				onComplete();
+			}, 1000);
+		}
+	}, [tasks, currentStep, onComplete]);
+
 	// Mutations
 	const onboardingMutation = useOnboardingMutation({
 		onSuccess: (data) => {
 			console.log("Onboarding completed successfully", data);
-			setCurrentStep(TOTAL_PROVIDER_STEPS);
-			setTimeout(() => {
-				onComplete();
-			}, 1000);
+			setCurrentStep(0);
 		},
 		onError: (error) => {
 			toast.error("Failed to complete onboarding", {
@@ -110,7 +139,7 @@ const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
 		}
 
 		onboardingMutation.mutate(onboardingData);
-    setCurrentStep(0);
+		setCurrentStep(0);
 	};
 
 	const isComplete =
@@ -128,7 +157,10 @@ const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
 					<Card
 						className={`w-full max-w-[600px] ${updatedOnboarding ? "border-none" : ""}`}
 					>
-						<Tabs defaultValue={modelProvider} onValueChange={handleSetModelProvider}>
+						<Tabs
+							defaultValue={modelProvider}
+							onValueChange={handleSetModelProvider}
+						>
 							<CardHeader className={`${updatedOnboarding ? "px-0" : ""}`}>
 								<TabsList>
 									<TabsTrigger value="openai">
@@ -205,7 +237,10 @@ const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.4, ease: "easeInOut" }}
 				>
-					<AnimatedProviderSteps currentStep={currentStep} setCurrentStep={setCurrentStep} />
+					<AnimatedProviderSteps
+						currentStep={currentStep}
+						setCurrentStep={setCurrentStep}
+					/>
 				</motion.div>
 			)}
 		</AnimatePresence>
