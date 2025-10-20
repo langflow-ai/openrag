@@ -51,13 +51,17 @@ export function AssistantMessage({
 				expandedFunctionCalls={expandedFunctionCalls}
 				onToggle={onToggle}
 			/>
-			<MarkdownRenderer
-				className="text-foreground text-sm py-1.5"
-				chatMessage={content}
-			/>
-			{isStreaming && (
-				<span className="inline-block w-1 h-4 bg-primary ml-1 animate-pulse" />
-			)}
+			<div className="relative">
+				<MarkdownRenderer
+					className="text-foreground text-sm py-1.5"
+					chatMessage={
+						isStreaming
+							? content +
+								' <span class="inline-block w-1 h-4 bg-primary ml-1 animate-pulse"></span>'
+							: content
+					}
+				/>
+			</div>
 		</Message>
 	);
 }
