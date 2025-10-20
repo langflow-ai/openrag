@@ -7,7 +7,6 @@
     "start": "docusaurus start",
     "build": "docusaurus build",
     "build:pdf": "npm run build && npm run serve & sleep 10 && npx docusaurus-to-pdf && pkill -f 'docusaurus serve'",
-    "pdf": "npx docusaurus-to-pdf",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",
