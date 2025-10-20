@@ -12,12 +12,13 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-from config.settings import clients, INDEX_NAME, EMBED_MODEL
+from config.settings import clients, INDEX_NAME, get_embedding_model
 from utils.document_processing import extract_relevant, process_document_sync
 
 
-def get_token_count(text: str, model: str = EMBED_MODEL) -> int:
+def get_token_count(text: str, model: str = None) -> int:
     """Get accurate token count using tiktoken"""
+    model = model or get_embedding_model()
     try:
         encoding = tiktoken.encoding_for_model(model)
         return len(encoding.encode(text))
@@ -28,12 +29,14 @@ def get_token_count(text: str, model: str = EMBED_MODEL) -> int:
 
 
 def chunk_texts_for_embeddings(
-    texts: List[str], max_tokens: int = None, model: str = EMBED_MODEL
+    texts: List[str], max_tokens: int = None, model: str = None
 ) -> List[List[str]]:
     """
     Split texts into batches that won't exceed token limits.
     If max_tokens is None, returns texts as single batch (no splitting).
     """
+    model = model or get_embedding_model()
+
     if max_tokens is None:
         return [texts]
 
@@ -126,7 +129,11 @@ class DocumentService:
         from utils.file_utils import auto_cleanup_tempfile
         import os
 
-        with auto_cleanup_tempfile() as tmp_path:
+        # Preserve file extension for docling format detection
+        filename = upload_file.filename or "uploaded"
+        suffix = os.path.splitext(filename)[1] or ""
+
+        with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
             # Stream upload file to temporary file
             file_size = 0
             with open(tmp_path, 'wb') as tmp_file:

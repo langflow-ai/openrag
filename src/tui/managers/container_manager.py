@@ -164,10 +164,15 @@ class ContainerManager:
 
     async def _run_compose_command_streaming(
         self, args: List[str], cpu_mode: Optional[bool] = None
-    ) -> AsyncIterator[str]:
-        """Run a compose command and yield output lines in real-time."""
+    ) -> AsyncIterator[tuple[str, bool]]:
+        """Run a compose command and yield output with progress bar support.
+
+        Yields:
+            Tuples of (message, replace_last) where replace_last indicates if the
+            message should replace the previous line (for progress updates)
+        """
         if not self.is_available():
-            yield "No container runtime available"
+            yield ("No container runtime available", False)
             return
 
         if cpu_mode is None:
@@ -179,37 +184,58 @@ class ContainerManager:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,  # Combine stderr with stdout for unified output
+                stderr=asyncio.subprocess.STDOUT,
                 cwd=Path.cwd(),
             )
 
-            # Simple approach: read line by line and yield each one
             if process.stdout:
+                buffer = ""
                 while True:
-                    line = await process.stdout.readline()
-                    if not line:
+                    chunk = await process.stdout.read(1024)
+                    if not chunk:
+                        if buffer.strip():
+                            yield (buffer.strip(), False)
                         break
 
-                    line_text = line.decode(errors="ignore").rstrip()
-                    if line_text:
-                        yield line_text
+                    buffer += chunk.decode(errors="ignore")
 
-            # Wait for process to complete
+                    while "\n" in buffer or "\r" in buffer:
+                        cr_pos = buffer.find("\r")
+                        nl_pos = buffer.find("\n")
+
+                        if cr_pos != -1 and (nl_pos == -1 or cr_pos < nl_pos):
+                            line = buffer[:cr_pos]
+                            buffer = buffer[cr_pos + 1:]
+                            if line.strip():
+                                yield (line.strip(), True)
+                        elif nl_pos != -1:
+                            line = buffer[:nl_pos]
+                            buffer = buffer[nl_pos + 1:]
+                            if line.strip():
+                                yield (line.strip(), False)
+                        else:
+                            break
+
             await process.wait()
 
         except Exception as e:
-            yield f"Command execution failed: {e}"
+            yield (f"Command execution failed: {e}", False)
 
     async def _stream_compose_command(
         self,
         args: List[str],
         success_flag: Dict[str, bool],
         cpu_mode: Optional[bool] = None,
-    ) -> AsyncIterator[str]:
-        """Run compose command with live output and record success/failure."""
+    ) -> AsyncIterator[tuple[str, bool]]:
+        """Run compose command with live output and record success/failure.
+
+        Yields:
+            Tuples of (message, replace_last) where replace_last indicates if the
+            message should replace the previous line (for progress updates)
+        """
         if not self.is_available():
             success_flag["value"] = False
-            yield "No container runtime available"
+            yield ("No container runtime available", False)
             return
 
         if cpu_mode is None:
@@ -226,32 +252,52 @@ class ContainerManager:
             )
         except Exception as e:
             success_flag["value"] = False
-            yield f"Command execution failed: {e}"
+            yield (f"Command execution failed: {e}", False)
             return
 
         success_flag["value"] = True
 
         if process.stdout:
+            # Buffer to accumulate data for progress bar handling
+            buffer = ""
             while True:
-                line = await process.stdout.readline()
-                if not line:
+                chunk = await process.stdout.read(1024)
+                if not chunk:
+                    # Process any remaining buffer content
+                    if buffer.strip():
+                        yield (buffer.strip(), False)
                     break
 
-                line_text = line.decode(errors="ignore")
-                # Compose often uses carriage returns for progress bars; normalise them
-                for chunk in line_text.replace("\r", "\n").split("\n"):
-                    chunk = chunk.strip()
-                    if not chunk:
-                        continue
-                    yield chunk
-                    lowered = chunk.lower()
-                    if "error" in lowered or "failed" in lowered:
-                        success_flag["value"] = False
+                buffer += chunk.decode(errors="ignore")
+
+                # Process complete lines or carriage return updates
+                while "\n" in buffer or "\r" in buffer:
+                    # Check if we have a carriage return (progress update) before newline
+                    cr_pos = buffer.find("\r")
+                    nl_pos = buffer.find("\n")
+
+                    if cr_pos != -1 and (nl_pos == -1 or cr_pos < nl_pos):
+                        # Carriage return found - extract and yield as replaceable line
+                        line = buffer[:cr_pos]
+                        buffer = buffer[cr_pos + 1:]
+                        if line.strip():
+                            yield (line.strip(), True)  # replace_last=True for progress updates
+                    elif nl_pos != -1:
+                        # Newline found - extract and yield as new line
+                        line = buffer[:nl_pos]
+                        buffer = buffer[nl_pos + 1:]
+                        if line.strip():
+                            lowered = line.lower()
+                            yield (line.strip(), False)  # replace_last=False for new lines
+                            if "error" in lowered or "failed" in lowered:
+                                success_flag["value"] = False
+                    else:
+                        break
 
         returncode = await process.wait()
         if returncode != 0:
             success_flag["value"] = False
-            yield f"Command exited with status {returncode}"
+            yield (f"Command exited with status {returncode}", False)
 
     async def _run_runtime_command(self, args: List[str]) -> tuple[bool, str, str]:
         """Run a runtime command (docker/podman) and return (success, stdout, stderr)."""
@@ -459,36 +505,116 @@ class ContainerManager:
                 digests[image] = stdout.strip().splitlines()[0]
         return digests
 
-    def _parse_compose_images(self) -> list[str]:
-        """Best-effort parse of image names from compose files without YAML dependency."""
+    def _extract_images_from_compose_config(self, text: str, tried_json: bool) -> set[str]:
+        """
+        Try JSON first (if we asked for it or it looks like JSON), then YAML if available.
+        Returns a set of image names.
+        """
         images: set[str] = set()
-        for compose in [self.compose_file, self.cpu_compose_file]:
+
+        # Try JSON parse
+        if tried_json or (text.lstrip().startswith("{") and text.rstrip().endswith("}")):
             try:
-                if not compose.exists():
+                cfg = json.loads(text)
+                services = cfg.get("services", {})
+                for _, svc in services.items():
+                    image = svc.get("image")
+                    if image:
+                        images.add(str(image))
+                if images:
+                    return images
+            except json.JSONDecodeError:
+                pass
+
+        # Try YAML (if available) - import here to avoid hard dependency
+        try:
+            import yaml
+            cfg = yaml.safe_load(text) or {}
+            services = cfg.get("services", {})
+            if isinstance(services, dict):
+                for _, svc in services.items():
+                    if isinstance(svc, dict):
+                        image = svc.get("image")
+                        if image:
+                            images.add(str(image))
+            if images:
+                return images
+        except Exception:
+            pass
+
+        return images
+
+    async def _parse_compose_images(self) -> list[str]:
+        """Get resolved image names from compose files using docker/podman compose, with robust fallbacks."""
+        images: set[str] = set()
+
+        compose_files = [self.compose_file, self.cpu_compose_file]
+        for compose_file in compose_files:
+            try:
+                if not compose_file or not compose_file.exists():
                     continue
-                for line in compose.read_text().splitlines():
-                    line = line.strip()
-                    if not line or line.startswith("#"):
+
+                cpu_mode = (compose_file == self.cpu_compose_file)
+
+                # Try JSON format first
+                success, stdout, _ = await self._run_compose_command(
+                    ["config", "--format", "json"],
+                    cpu_mode=cpu_mode
+                )
+
+                if success and stdout.strip():
+                    from_cfg = self._extract_images_from_compose_config(stdout, tried_json=True)
+                    if from_cfg:
+                        images.update(from_cfg)
+                        continue  # this compose file succeeded; move to next file
+
+                # Fallback to YAML output (for older compose versions)
+                success, stdout, _ = await self._run_compose_command(
+                    ["config"],
+                    cpu_mode=cpu_mode
+                )
+
+                if success and stdout.strip():
+                    from_cfg = self._extract_images_from_compose_config(stdout, tried_json=False)
+                    if from_cfg:
+                        images.update(from_cfg)
                         continue
-                    if line.startswith("image:"):
-                        # image: repo/name:tag
-                        val = line.split(":", 1)[1].strip()
-                        # Remove quotes if present
-                        if (val.startswith('"') and val.endswith('"')) or (
-                            val.startswith("'") and val.endswith("'")
-                        ):
-                            val = val[1:-1]
-                        images.add(val)
+
             except Exception:
+                # Keep behavior resilient—just continue to next file
                 continue
-        return list(images)
+
+        # Fallback: manual parsing if compose config didn't work
+        if not images:
+            for compose in compose_files:
+                try:
+                    if not compose.exists():
+                        continue
+                    for line in compose.read_text().splitlines():
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        if line.startswith("image:"):
+                            # image: repo/name:tag
+                            val = line.split(":", 1)[1].strip()
+                            # Remove quotes if present
+                            if (val.startswith('"') and val.endswith('"')) or (
+                                val.startswith("'") and val.endswith("'")
+                            ):
+                                val = val[1:-1]
+                            if val:
+                                images.add(val)
+                except Exception:
+                    continue
+
+        return sorted(images)
 
     async def get_project_images_info(self) -> list[tuple[str, str]]:
         """
         Return list of (image, digest_or_id) for images referenced by compose files.
         If an image isn't present locally, returns '-' for its digest.
         """
-        expected = self._parse_compose_images()
+        expected = await self._parse_compose_images()
         results: list[tuple[str, str]] = []
         for image in expected:
             digest = "-"
@@ -516,14 +642,14 @@ class ContainerManager:
         if hasattr(self, '_compose_search_log'):
             for line in self._compose_search_log.split('\n'):
                 if line.strip():
-                    yield False, line
+                    yield False, line, False
 
-        yield False, f"Final compose file: {compose_file.absolute()}"
+        yield False, f"Final compose file: {compose_file.absolute()}", False
         if not compose_file.exists():
-            yield False, f"ERROR: Compose file not found at {compose_file.absolute()}"
+            yield False, f"ERROR: Compose file not found at {compose_file.absolute()}", False
             return
 
-        yield False, "Starting OpenRAG services..."
+        yield False, "Starting OpenRAG services...", False
 
         missing_images: List[str] = []
         try:
@@ -534,30 +660,30 @@ class ContainerManager:
 
         if missing_images:
             images_list = ", ".join(missing_images)
-            yield False, f"Pulling container images ({images_list})..."
+            yield False, f"Pulling container images ({images_list})...", False
             pull_success = {"value": True}
-            async for line in self._stream_compose_command(
+            async for message, replace_last in self._stream_compose_command(
                 ["pull"], pull_success, cpu_mode
             ):
-                yield False, line
+                yield False, message, replace_last
             if not pull_success["value"]:
-                yield False, "Some images failed to pull; attempting to start services anyway..."
+                yield False, "Some images failed to pull; attempting to start services anyway...", False
 
-        yield False, "Creating and starting containers..."
+        yield False, "Creating and starting containers...", False
         up_success = {"value": True}
-        async for line in self._stream_compose_command(["up", "-d"], up_success, cpu_mode):
-            yield False, line
+        async for message, replace_last in self._stream_compose_command(["up", "-d"], up_success, cpu_mode):
+            yield False, message, replace_last
 
         if up_success["value"]:
-            yield True, "Services started successfully"
+            yield True, "Services started successfully", False
         else:
-            yield False, "Failed to start services. See output above for details."
+            yield False, "Failed to start services. See output above for details.", False
 
     async def stop_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Stop all services and yield progress updates."""
         yield False, "Stopping OpenRAG services..."
 
-        success, stdout, stderr = await self._run_compose_command(["down"])
+        success, stdout, stderr = await self._run_compose_command(["stop"])
 
         if success:
             yield True, "Services stopped successfully"
@@ -581,35 +707,35 @@ class ContainerManager:
         self, cpu_mode: bool = False
     ) -> AsyncIterator[tuple[bool, str]]:
         """Upgrade services (pull latest images and restart) and yield progress updates."""
-        yield False, "Pulling latest images..."
+        yield False, "Pulling latest images...", False
 
         # Pull latest images with streaming output
         pull_success = True
-        async for line in self._run_compose_command_streaming(["pull"], cpu_mode):
-            yield False, line
+        async for message, replace_last in self._run_compose_command_streaming(["pull"], cpu_mode):
+            yield False, message, replace_last
             # Check for error patterns in the output
-            if "error" in line.lower() or "failed" in line.lower():
+            if "error" in message.lower() or "failed" in message.lower():
                 pull_success = False
 
         if not pull_success:
-            yield False, "Failed to pull some images, but continuing with restart..."
+            yield False, "Failed to pull some images, but continuing with restart...", False
 
-        yield False, "Images updated, restarting services..."
+        yield False, "Images updated, restarting services...", False
 
         # Restart with new images using streaming output
         restart_success = True
-        async for line in self._run_compose_command_streaming(
+        async for message, replace_last in self._run_compose_command_streaming(
             ["up", "-d", "--force-recreate"], cpu_mode
         ):
-            yield False, line
+            yield False, message, replace_last
             # Check for error patterns in the output
-            if "error" in line.lower() or "failed" in line.lower():
+            if "error" in message.lower() or "failed" in message.lower():
                 restart_success = False
 
         if restart_success:
-            yield True, "Services upgraded and restarted successfully"
+            yield True, "Services upgraded and restarted successfully", False
         else:
-            yield False, "Some errors occurred during service restart"
+            yield False, "Some errors occurred during service restart", False
 
     async def reset_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Reset all services (stop, remove containers/volumes, clear data) and yield progress updates."""

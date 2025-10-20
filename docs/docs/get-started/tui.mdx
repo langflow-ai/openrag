@@ -3,10 +3,6 @@ title: Terminal User Interface (TUI) commands
 slug: /get-started/tui
 ---
 
-import PartialExternalPreview from '@site/docs/_partial-external-preview.mdx';
-
-<PartialExternalPreview />
-
 The OpenRAG Terminal User Interface (TUI) allows you to set up, configure, and monitor your OpenRAG deployment directly from the terminal, on any operating system.
 
 ![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
@@ -55,9 +51,9 @@ If images are missing, the TUI runs `docker compose pull`, then runs `docker com
 ### Start native services
 
 A "native" service in OpenRAG refers to a service run natively on your machine, and not within a container.
-The `docling-serve` process is a native service in OpenRAG, because it's a document processing service that is run on your local machine, and controlled separately from the containers.
+The `docling serve` process is a native service in OpenRAG, because it's a document processing service that is run on your local machine, and controlled separately from the containers.
 
-To start or stop `docling-serve` or any other native services, in the TUI main menu, click **Start Native Services** or **Stop Native Services**.
+To start or stop `docling serve` or any other native services, in the TUI main menu, click **Start Native Services** or **Stop Native Services**.
 
 To view the status, port, or PID of a native service, in the TUI main menu, click [Status](#status).
 

@@ -55,7 +55,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   };
 
   // List of paths that should not show navigation
-  const authPaths = ["/login", "/auth/callback", "/onboarding"];
+  const authPaths = ["/login", "/auth/callback", "/onboarding", "/new-onboarding"];
   const isAuthPage = authPaths.includes(pathname);
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
@@ -129,7 +129,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             {/* Task Notification Bell */}
             <button
               onClick={toggleMenu}
-              className="h-8 w-8 hover:bg-muted rounded-lg flex items-center justify-center"
+              className="relative h-8 w-8 hover:bg-muted rounded-lg flex items-center justify-center"
             >
               <Bell size={16} className="text-muted-foreground" />
               {activeTasks.length > 0 && (

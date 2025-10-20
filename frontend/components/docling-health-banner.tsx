@@ -69,7 +69,7 @@ function DoclingSetupDialog({
           </div>
 
           <DialogDescription>
-            Then, select <span className="font-semibold text-foreground">Start Native Services</span> in the TUI. Once docling-serve is running, refresh OpenRAG.
+            Then, select <span className="font-semibold text-foreground">Start All Services</span> in the TUI. Once docling-serve is running, refresh OpenRAG.
           </DialogDescription>
         </div>
 
@@ -86,12 +86,25 @@ function DoclingSetupDialog({
   );
 }
 
-export function DoclingHealthBanner({ className }: DoclingHealthBannerProps) {
+// Custom hook to check docling health status
+export function useDoclingHealth() {
   const { data: health, isLoading, isError } = useDoclingHealthQuery();
-  const [showDialog, setShowDialog] = useState(false);
 
   const isHealthy = health?.status === "healthy" && !isError;
   const isUnhealthy = health?.status === "unhealthy" || isError;
+
+  return {
+    health,
+    isLoading,
+    isError,
+    isHealthy,
+    isUnhealthy,
+  };
+}
+
+export function DoclingHealthBanner({ className }: DoclingHealthBannerProps) {
+  const { isLoading, isHealthy, isUnhealthy } = useDoclingHealth();
+  const [showDialog, setShowDialog] = useState(false);
 
   // Only show banner when service is unhealthy
   if (isLoading || isHealthy) {

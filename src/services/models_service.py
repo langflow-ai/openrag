@@ -234,14 +234,68 @@ class ModelsService:
             # Use provided endpoint or default
             watson_endpoint = endpoint
 
+            # Get bearer token from IBM IAM
+            bearer_token = None
+            if api_key:
+                async with httpx.AsyncClient() as client:
+                    token_response = await client.post(
+                        "https://iam.cloud.ibm.com/identity/token",
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                        data={
+                            "grant_type": "urn:ibm:params:oauth:grant-type:apikey",
+                            "apikey": api_key,
+                        },
+                        timeout=10.0,
+                    )
+
+                    if token_response.status_code != 200:
+                        raise Exception(
+                            f"Failed to get IBM IAM token: {token_response.status_code} - {token_response.text}"
+                        )
+
+                    token_data = token_response.json()
+                    bearer_token = token_data.get("access_token")
+
+                    if not bearer_token:
+                        raise Exception("No access_token in IBM IAM response")
+
             # Prepare headers for authentication
             headers = {
                 "Content-Type": "application/json",
             }
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
+            if bearer_token:
+                headers["Authorization"] = f"Bearer {bearer_token}"
             if project_id:
                 headers["Project-ID"] = project_id
+
+            # Validate credentials with a minimal completion request
+            async with httpx.AsyncClient() as client:
+                validation_url = f"{watson_endpoint}/ml/v1/text/generation"
+                validation_params = {"version": "2024-09-16"}
+                validation_payload = {
+                    "input": "test",
+                    "model_id": "ibm/granite-3-2b-instruct",
+                    "project_id": project_id,
+                    "parameters": {
+                        "max_new_tokens": 1,
+                    },
+                }
+
+                validation_response = await client.post(
+                    validation_url,
+                    headers=headers,
+                    params=validation_params,
+                    json=validation_payload,
+                    timeout=10.0,
+                )
+
+                if validation_response.status_code != 200:
+                    raise Exception(
+                        f"Invalid credentials or endpoint: {validation_response.status_code} - {validation_response.text}"
+                    )
+
+                logger.info("IBM Watson credentials validated successfully")
+
             # Fetch foundation models using the correct endpoint
             models_url = f"{watson_endpoint}/ml/v1/foundation_model_specs"
 

@@ -13,8 +13,8 @@ from utils.container_utils import get_container_host
 from utils.document_processing import create_document_converter
 from utils.logging_config import get_logger
 
-load_dotenv()
-load_dotenv("../")
+load_dotenv(override=False)
+load_dotenv("../", override=False)
 
 logger = get_logger(__name__)
 
@@ -43,6 +43,7 @@ if _legacy_flow_id and not os.getenv("LANGFLOW_CHAT_FLOW_ID"):
 
 
 # Langflow superuser credentials for API key generation
+LANGFLOW_AUTO_LOGIN = os.getenv("LANGFLOW_AUTO_LOGIN", "False").lower() in ("true", "1", "yes")
 LANGFLOW_SUPERUSER = os.getenv("LANGFLOW_SUPERUSER")
 LANGFLOW_SUPERUSER_PASSWORD = os.getenv("LANGFLOW_SUPERUSER_PASSWORD")
 # Allow explicit key via environment; generation will be skipped if set
@@ -61,12 +62,6 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
     result = not (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET)
-    logger.debug(
-        "Checking auth mode",
-        no_auth_mode=result,
-        has_client_id=GOOGLE_OAUTH_CLIENT_ID is not None,
-        has_client_secret=GOOGLE_OAUTH_CLIENT_SECRET is not None,
-    )
     return result
 
 
@@ -85,12 +80,6 @@ OPENAI_EMBEDDING_DIMENSIONS = {
         "text-embedding-3-large": 3072,
         "text-embedding-ada-002": 1536,
     }
-
-OLLAMA_EMBEDDING_DIMENSIONS = {
-    "nomic-embed-text": 768,
-    "all-minilm": 384,
-    "mxbai-embed-large": 1024,
-}
 
 WATSONX_EMBEDDING_DIMENSIONS = {
 # IBM Models
@@ -118,6 +107,8 @@ INDEX_BODY = {
             "mimetype": {"type": "keyword"},
             "page": {"type": "integer"},
             "text": {"type": "text"},
+            # Legacy field - kept for backward compatibility
+            # New documents will use chunk_embedding_{model_name} fields
             "chunk_embedding": {
                 "type": "knn_vector",
                 "dimension": VECTOR_DIM,
@@ -128,6 +119,8 @@ INDEX_BODY = {
                     "parameters": {"ef_construction": 100, "m": 16},
                 },
             },
+            # Track which embedding model was used for this chunk
+            "embedding_model": {"type": "keyword"},
             "source_url": {"type": "keyword"},
             "connector_type": {"type": "keyword"},
             "owner": {"type": "keyword"},
@@ -185,7 +178,16 @@ async def generate_langflow_api_key(modify: bool = False):
                 )
                 LANGFLOW_KEY = None  # Clear invalid key
 
-    if not LANGFLOW_SUPERUSER or not LANGFLOW_SUPERUSER_PASSWORD:
+    # Use default langflow/langflow credentials if auto-login is enabled and credentials not set
+    username = LANGFLOW_SUPERUSER
+    password = LANGFLOW_SUPERUSER_PASSWORD
+
+    if LANGFLOW_AUTO_LOGIN and (not username or not password):
+        logger.info("LANGFLOW_AUTO_LOGIN is enabled, using default langflow/langflow credentials")
+        username = username or "langflow"
+        password = password or "langflow"
+
+    if not username or not password:
         logger.warning(
             "LANGFLOW_SUPERUSER and LANGFLOW_SUPERUSER_PASSWORD not set, skipping API key generation"
         )
@@ -203,8 +205,8 @@ async def generate_langflow_api_key(modify: bool = False):
                     f"{LANGFLOW_URL}/api/v1/login",
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                     data={
-                        "username": LANGFLOW_SUPERUSER,
-                        "password": LANGFLOW_SUPERUSER_PASSWORD,
+                        "username": username,
+                        "password": password,
                     },
                     timeout=10,
                 )
@@ -324,7 +326,7 @@ class AppClients:
 
         # Initialize Langflow HTTP client
         self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL, timeout=60.0
+            base_url=LANGFLOW_URL, timeout=300.0
         )
 
         return self
@@ -593,3 +595,8 @@ def get_knowledge_config():
 def get_agent_config():
     """Get agent configuration."""
     return get_openrag_config().agent
+
+
+def get_embedding_model() -> str:
+    """Return the currently configured embedding model."""
+    return get_openrag_config().knowledge.embedding_model

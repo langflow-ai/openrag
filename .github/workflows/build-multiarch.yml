@@ -9,22 +9,15 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-python-packages:
+  check-version:
     runs-on: ubuntu-latest
     outputs:
       skip_release: ${{ steps.version.outputs.skip_release }}
       version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
 
       - name: Extract version from pyproject.toml
         id: version
@@ -50,46 +43,9 @@ jobs:
             echo "Release type: Prerelease"
           fi
 
-      - name: Build wheel and source distribution
-        if: steps.version.outputs.skip_release != 'true'
-        run: |
-          uv build
-
-      - name: List built artifacts
-        if: steps.version.outputs.skip_release != 'true'
-        run: |
-          ls -la dist/
-          echo "Built artifacts:"
-          for file in dist/*; do
-            echo "  - $(basename $file) ($(stat -c%s $file | numfmt --to=iec-i)B)"
-          done
-
-      - name: Upload build artifacts
-        if: steps.version.outputs.skip_release != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-packages
-          path: dist/
-          retention-days: 30
-
-      - name: Create Release
-        if: steps.version.outputs.skip_release != 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: Release ${{ steps.version.outputs.version }}
-          draft: false
-          prerelease: ${{ steps.version.outputs.is_prerelease }}
-          generate_release_notes: true
-          files: |
-            dist/*.whl
-            dist/*.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   build:
-    needs: build-python-packages
-    if: needs.build-python-packages.outputs.skip_release != 'true'
+    needs: check-version
+    if: needs.check-version.outputs.skip_release != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -185,9 +141,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
 
   manifest:
-    needs: [build, build-python-packages]
+    needs: [build, check-version]
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' && needs.build-python-packages.outputs.skip_release != 'true'
+    if: github.event_name != 'pull_request' && needs.check-version.outputs.skip_release != 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -246,3 +202,59 @@ jobs:
           else
             echo "Skipping latest tags - version: $VERSION (not numeric)"
           fi
+
+  build-python-packages:
+    needs: [manifest, check-version]
+    runs-on: ubuntu-latest
+    if: needs.check-version.outputs.skip_release != 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | cut -d '"' -f 2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Build wheel and source distribution
+        run: |
+          uv build
+
+      - name: List built artifacts
+        run: |
+          ls -la dist/
+          echo "Built artifacts:"
+          for file in dist/*; do
+            echo "  - $(basename $file) ($(stat -c%s $file | numfmt --to=iec-i)B)"
+          done
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-packages
+          path: dist/
+          retention-days: 30
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: ${{ needs.check-version.outputs.is_prerelease }}
+          generate_release_notes: true
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

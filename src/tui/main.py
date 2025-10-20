@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+from typing import Iterable, Optional
 from textual.app import App, ComposeResult
 from utils.logging_config import get_logger
 try:
@@ -31,34 +32,35 @@ class OpenRAGTUI(App):
 
     CSS = """
     Screen {
-        background: #0f172a;
+        background: #27272a;
     }
-    
+
     #main-container {
         height: 100%;
         padding: 1;
     }
-    
+
     #welcome-container {
         align: center middle;
         width: 100%;
         height: 100%;
     }
-    
+
     #welcome-text {
         text-align: center;
         margin-bottom: 2;
     }
-    
+
     .button-row {
         align: center middle;
         height: auto;
         margin: 1 0;
     }
-    
+
     .button-row Button {
         margin: 0 1;
         min-width: 20;
+        border: solid #3f3f46;
     }
     
     #config-header {
@@ -103,6 +105,41 @@ class OpenRAGTUI(App):
 
     .helper-text {
         margin: 0 0 1 1;
+    }
+
+    /* Password field label rows */
+    #config-form Horizontal {
+        height: auto;
+        align: left middle;
+        margin-bottom: 0;
+    }
+
+    #config-form Horizontal Label {
+        width: auto;
+        margin-right: 1;
+    }
+
+    /* Password input rows */
+    #opensearch-password-row,
+    #langflow-password-row {
+        width: 100%;
+        height: auto;
+        align: left middle;
+    }
+
+    #opensearch-password-row Input,
+    #langflow-password-row Input {
+        width: 1fr;
+    }
+
+    /* Password toggle buttons */
+    #toggle-opensearch-password,
+    #toggle-langflow-password {
+        min-width: 8;
+        width: 8;
+        height: 3;
+        padding: 0 1;
+        margin-left: 1;
     }
 
     /* Docs path actions row */
@@ -181,80 +218,144 @@ class OpenRAGTUI(App):
         padding: 1;
     }
 
-    /* Frontend-inspired color scheme */
+    /* Modern dark theme with pink accents */
     Static {
-        color: #f1f5f9;
+        color: #fafafa;
     }
 
-    Button.success {
-        background: #4ade80;
-        color: #000;
+    Button,
+    Button.-default,
+    Button.-primary,
+    Button.-success,
+    Button.-warning,
+    Button.-error {
+        background: #27272a !important;
+        color: #fafafa !important;
+        border: round #52525b !important;
+        text-style: none !important;
+        tint: transparent 0% !important;
     }
 
-    Button.error {
-        background: #ef4444;
-        color: #fff;
+    Button > *,
+    Button.-default > *,
+    Button.-primary > *,
+    Button.-success > *,
+    Button.-warning > *,
+    Button.-error > * {
+        background: transparent !important;
+        color: #fafafa !important;
+        text-style: none !important;
     }
 
-    Button.warning {
-        background: #eab308;
-        color: #000;
+    Button:hover,
+    Button.-default:hover,
+    Button.-primary:hover,
+    Button.-success:hover,
+    Button.-warning:hover,
+    Button.-error:hover {
+        background: #27272a !important;
+        color: #fafafa !important;
+        border: round #52525b !important;
     }
 
-    Button.primary {
-        background: #2563eb;
-        color: #fff;
-    }
-
-    Button.default {
-        background: #475569;
-        color: #f1f5f9;
-        border: solid #64748b;
+    Button:focus,
+    Button:focus-within,
+    Button.-active,
+    Button.-default:focus,
+    Button.-default:focus-within,
+    Button.-default.-active,
+    Button.-primary:focus,
+    Button.-primary:focus-within,
+    Button.-primary.-active,
+    Button.-success:focus,
+    Button.-success:focus-within,
+    Button.-success.-active,
+    Button.-warning:focus,
+    Button.-warning:focus-within,
+    Button.-warning.-active,
+    Button.-error:focus,
+    Button.-error:focus-within,
+    Button.-error.-active {
+        background: #27272a !important;
+        color: #fafafa !important;
+        border: round #ec4899 !important;
     }
 
     DataTable {
-        background: #1e293b;
-        color: #f1f5f9;
+        background: #27272a;
+        color: #fafafa;
     }
 
     DataTable > .datatable--header {
-        background: #334155;
-        color: #f1f5f9;
+        background: #3f3f46;
+        color: #fafafa;
     }
 
     DataTable > .datatable--cursor {
-        background: #475569;
+        background: #52525b;
     }
 
     Input {
-        background: #334155;
-        color: #f1f5f9;
-        border: solid #64748b;
+        background: #18181b;
+        color: #fafafa;
+        border: solid #3f3f46;
+    }
+
+    Input:focus {
+        border: solid #ec4899;
     }
 
     Label {
-        color: #f1f5f9;
+        color: #fafafa;
+    }
+
+    Checkbox {
+        background: transparent;
+        color: #fafafa;
+        border: none;
+        padding: 0;
+        margin-left: 2;
+    }
+
+    Checkbox > Static {
+        background: transparent;
+        color: #fafafa;
+    }
+
+    Header {
+        background: #27272a;
+        color: #fafafa;
     }
 
     Footer {
-        background: #334155;
-        color: #f1f5f9;
+        background: #27272a;
+        color: #a1a1aa;
     }
 
     #runtime-status {
-        background: #1e293b;
-        border: solid #64748b;
-        color: #f1f5f9;
+        background: #27272a;
+        border: solid #3f3f46;
+        color: #fafafa;
     }
 
     #system-info {
-        background: #1e293b;
-        border: solid #64748b;
-        color: #f1f5f9;
+        background: #27272a;
+        border: solid #3f3f46;
+        color: #fafafa;
     }
 
     #services-table, #images-table {
-        background: #1e293b;
+        background: #27272a;
+    }
+
+    * {
+        scrollbar-background: #27272a;
+        scrollbar-background-hover: #3f3f46;
+        scrollbar-background-active: #3f3f46;
+        scrollbar-color: #52525b;
+        scrollbar-color-hover: #71717a;
+        scrollbar-color-active: #71717a;
+        scrollbar-corner-color: #27272a;
     }
     """
 
@@ -305,41 +406,103 @@ class OpenRAGTUI(App):
         return True, "Runtime requirements satisfied"
 
 
-def copy_sample_documents():
+def _copy_assets(resource_tree, destination: Path, allowed_suffixes: Optional[Iterable[str]] = None, *, force: bool = False) -> None:
+    """Copy packaged assets into destination and optionally overwrite existing files.
+
+    When ``force`` is True, files are refreshed if the packaged bytes differ.
+    """
+    destination.mkdir(parents=True, exist_ok=True)
+
+    for resource in resource_tree.iterdir():
+        target_path = destination / resource.name
+
+        if resource.is_dir():
+            _copy_assets(resource, target_path, allowed_suffixes, force=force)
+            continue
+
+        if allowed_suffixes and not any(resource.name.endswith(suffix) for suffix in allowed_suffixes):
+            continue
+        resource_bytes = resource.read_bytes()
+
+        if target_path.exists():
+            if not force:
+                continue
+
+            try:
+                if target_path.read_bytes() == resource_bytes:
+                    continue
+            except Exception as read_error:
+                logger.debug(f"Failed to read existing asset {target_path}: {read_error}")
+
+        target_path.write_bytes(resource_bytes)
+        logger.info(f"Copied bundled asset: {target_path}")
+
+
+def copy_sample_documents(*, force: bool = False) -> None:
     """Copy sample documents from package to current directory if they don't exist."""
     documents_dir = Path("documents")
 
-    # Check if documents directory already exists and has files
-    if documents_dir.exists() and any(documents_dir.glob("*.pdf")):
-        return  # Documents already exist, don't overwrite
-
     try:
-        # Get sample documents from package assets
         assets_files = files("tui._assets.documents")
-
-        # Create documents directory if it doesn't exist
-        documents_dir.mkdir(exist_ok=True)
-
-        # Copy each sample document
-        for resource in assets_files.iterdir():
-            if resource.is_file() and resource.name.endswith('.pdf'):
-                dest_path = documents_dir / resource.name
-                if not dest_path.exists():
-                    content = resource.read_bytes()
-                    dest_path.write_bytes(content)
-                    logger.info(f"Copied sample document: {resource.name}")
-
+        _copy_assets(assets_files, documents_dir, allowed_suffixes=(".pdf",), force=force)
     except Exception as e:
         logger.debug(f"Could not copy sample documents: {e}")
         # This is not a critical error - the app can work without sample documents
+
+
+def copy_sample_flows(*, force: bool = False) -> None:
+    """Copy sample flows from package to current directory if they don't exist."""
+    flows_dir = Path("flows")
+
+    try:
+        assets_files = files("tui._assets.flows")
+        _copy_assets(assets_files, flows_dir, allowed_suffixes=(".json",), force=force)
+    except Exception as e:
+        logger.debug(f"Could not copy sample flows: {e}")
+        # The app can proceed without bundled flows
+
+
+def copy_compose_files(*, force: bool = False) -> None:
+    """Copy docker-compose templates into the workspace if they are missing."""
+    try:
+        assets_root = files("tui._assets")
+    except Exception as e:
+        logger.debug(f"Could not access compose assets: {e}")
+        return
+
+    for filename in ("docker-compose.yml", "docker-compose-cpu.yml"):
+        destination = Path(filename)
+        if destination.exists() and not force:
+            continue
+
+        try:
+            resource = assets_root.joinpath(filename)
+            if not resource.is_file():
+                logger.debug(f"Compose template not found in assets: {filename}")
+                continue
+
+            resource_bytes = resource.read_bytes()
+            if destination.exists():
+                try:
+                    if destination.read_bytes() == resource_bytes:
+                        continue
+                except Exception as read_error:
+                    logger.debug(f"Failed to read existing compose file {destination}: {read_error}")
+
+            destination.write_bytes(resource_bytes)
+            logger.info(f"Copied docker-compose template: {filename}")
+        except Exception as error:
+            logger.debug(f"Could not copy compose file {filename}: {error}")
 
 
 def run_tui():
     """Run the OpenRAG TUI application."""
     app = None
     try:
-        # Copy sample documents on first run
-        copy_sample_documents()
+        # Keep bundled assets aligned with the packaged versions
+        copy_sample_documents(force=True)
+        copy_sample_flows(force=True)
+        copy_compose_files(force=True)
 
         app = OpenRAGTUI()
         app.run()

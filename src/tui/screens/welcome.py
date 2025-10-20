@@ -10,6 +10,7 @@ from rich.text import Text
 from rich.align import Align
 from dotenv import load_dotenv
 
+from .. import __version__
 from ..managers.container_manager import ContainerManager, ServiceStatus
 from ..managers.env_manager import EnvManager
 from ..managers.docling_manager import DoclingManager
@@ -116,7 +117,8 @@ class WelcomeScreen(Screen):
 ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝
 """
         welcome_text.append(ascii_art, style="bold white")
-        welcome_text.append("Terminal User Interface for OpenRAG\n\n", style="dim")
+        welcome_text.append("Terminal User Interface for OpenRAG\n", style="dim")
+        welcome_text.append(f"v{__version__}\n\n", style="white")
 
         # Check if all services are running
         all_services_running = self.services_running and self.docling_running
@@ -234,6 +236,22 @@ class WelcomeScreen(Screen):
                 self.query_one("#basic-setup-btn").focus()
         except:
             pass  # Button might not exist
+
+    async def on_screen_resume(self) -> None:
+        """Called when returning from another screen (e.g., config screen)."""
+        # Reload environment variables
+        load_dotenv(override=True)
+
+        # Update OAuth config state
+        self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
+            os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
+        )
+
+        # Re-detect service state
+        self._detect_services_sync()
+
+        # Refresh the welcome content and buttons
+        await self._refresh_welcome_content()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""

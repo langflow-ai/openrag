@@ -8,7 +8,6 @@ import threading
 import time
 from typing import Optional, Tuple, Dict, Any, List, AsyncIterator
 from utils.logging_config import get_logger
-from utils.container_utils import guess_host_ip_for_containers
 
 logger = get_logger(__name__)
 
@@ -32,7 +31,8 @@ class DoclingManager:
 
         self._process: Optional[subprocess.Popen] = None
         self._port = 5001
-        self._host = guess_host_ip_for_containers(logger=logger)  # Get appropriate host IP based on runtime
+        # Bind to all interfaces by default (can be overridden with DOCLING_BIND_HOST env var)
+        self._host = os.getenv('DOCLING_BIND_HOST', '0.0.0.0')
         self._running = False
         self._external_process = False
 
@@ -150,16 +150,20 @@ class DoclingManager:
             else:
                 pid = self._load_pid()
 
+            # Use localhost for display URLs when bound to 0.0.0.0
+            display_host = "localhost" if self._host == "0.0.0.0" else self._host
+
             return {
                 "status": "running",
                 "port": self._port,
                 "host": self._host,
-                "endpoint": f"http://{self._host}:{self._port}",
-                "docs_url": f"http://{self._host}:{self._port}/docs",
-                "ui_url": f"http://{self._host}:{self._port}/ui",
+                "endpoint": f"http://{display_host}:{self._port}",
+                "docs_url": f"http://{display_host}:{self._port}/docs",
+                "ui_url": f"http://{display_host}:{self._port}/ui",
                 "pid": pid
             }
         else:
+            display_host = "localhost" if self._host == "0.0.0.0" else self._host
             return {
                 "status": "stopped",
                 "port": self._port,
@@ -176,10 +180,9 @@ class DoclingManager:
             return False, "Docling serve is already running"
 
         self._port = port
-        # Use provided host or the bridge IP we detected in __init__
+        # Use provided host or keep default from __init__
         if host is not None:
             self._host = host
-        # else: keep self._host as already set in __init__
 
         # Check if port is already in use before trying to start
         import socket
@@ -293,7 +296,8 @@ class DoclingManager:
                 self._running = False
                 return False, f"Docling serve process exited immediately (code: {return_code})"
 
-            return True, f"Docling serve starting on http://{host}:{port}"
+            display_host = "localhost" if self._host == "0.0.0.0" else self._host
+            return True, f"Docling serve starting on http://{display_host}:{port}"
 
         except FileNotFoundError:
             return False, "docling-serve not available. Please install: uv add docling-serve"
@@ -454,7 +458,8 @@ class DoclingManager:
     async def follow_logs(self) -> AsyncIterator[str]:
         """Follow logs from the docling-serve process in real-time."""
         # First yield status message and any existing logs
-        status_msg = f"Docling serve is running on http://{self._host}:{self._port}"
+        display_host = "localhost" if self._host == "0.0.0.0" else self._host
+        status_msg = f"Docling serve is running on http://{display_host}:{self._port}"
 
         with self._log_lock:
             if self._log_buffer:

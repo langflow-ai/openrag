@@ -271,6 +271,7 @@ class ConnectorService:
 
         # Create custom processor for connector files
         from models.processors import ConnectorFileProcessor
+        from services.document_service import DocumentService
 
         processor = ConnectorFileProcessor(
             self,
@@ -280,6 +281,11 @@ class ConnectorService:
             jwt_token=jwt_token,
             owner_name=owner_name,
             owner_email=owner_email,
+            document_service=(
+                self.task_service.document_service
+                if self.task_service and self.task_service.document_service
+                else DocumentService(session_manager=self.session_manager)
+            ),
         )
 
         # Use file IDs as items (no more fake file paths!)
@@ -366,6 +372,7 @@ class ConnectorService:
 
         # Create custom processor for specific connector files
         from models.processors import ConnectorFileProcessor
+        from services.document_service import DocumentService
 
         # Use expanded_file_ids which has folders already expanded
         processor = ConnectorFileProcessor(
@@ -376,6 +383,11 @@ class ConnectorService:
             jwt_token=jwt_token,
             owner_name=owner_name,
             owner_email=owner_email,
+            document_service=(
+                self.task_service.document_service
+                if self.task_service and self.task_service.document_service
+                else DocumentService(session_manager=self.session_manager)
+            ),
         )
 
         # Create custom task using TaskService

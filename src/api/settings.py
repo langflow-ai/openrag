@@ -241,19 +241,49 @@ async def update_settings(request, session_manager):
                     {"error": "embedding_model must be a non-empty string"},
                     status_code=400,
                 )
-            current_config.knowledge.embedding_model = body["embedding_model"].strip()
+            new_embedding_model = body["embedding_model"].strip()
+            current_config.knowledge.embedding_model = new_embedding_model
             config_updated = True
 
             # Also update the ingest flow with the new embedding model
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_ingest_flow_embedding_model(
-                    body["embedding_model"].strip(),
+                    new_embedding_model,
                     current_config.provider.model_provider.lower()
                 )
                 logger.info(
                     f"Successfully updated ingest flow embedding model to '{body['embedding_model'].strip()}'"
                 )
+
+                provider = (
+                    current_config.provider.model_provider.lower()
+                    if current_config.provider.model_provider
+                    else "openai"
+                )
+                endpoint = current_config.provider.endpoint or None
+                llm_model = current_config.agent.llm_model
+
+                change_result = await flows_service.change_langflow_model_value(
+                    provider=provider,
+                    embedding_model=new_embedding_model,
+                    llm_model=llm_model,
+                    endpoint=endpoint,
+                )
+
+                if not change_result.get("success", False):
+                    logger.warning(
+                        "Change embedding model across flows completed with issues",
+                        provider=provider,
+                        embedding_model=new_embedding_model,
+                        change_result=change_result,
+                    )
+                else:
+                    logger.info(
+                        "Successfully updated embedding model across Langflow flows",
+                        provider=provider,
+                        embedding_model=new_embedding_model,
+                    )
             except Exception as e:
                 logger.error(f"Failed to update ingest flow embedding model: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
@@ -506,7 +536,142 @@ async def onboarding(request, flows_service):
                 {"error": "No valid fields provided for update"}, status_code=400
             )
 
+        # Initialize the OpenSearch index now that we have the embedding model configured
+        try:
+            # Import here to avoid circular imports
+            from main import init_index
+
+            logger.info(
+                "Initializing OpenSearch index after onboarding configuration"
+            )
+            await init_index()
+            logger.info("OpenSearch index initialization completed successfully")
+        except Exception as e:
+            if isinstance(e, ValueError):
+                logger.error(
+                    "Failed to initialize OpenSearch index after onboarding",
+                    error=str(e),
+                )
+                return JSONResponse(
+                    {
+                        "error": str(e),
+                        "edited": True,
+                    },
+                    status_code=400,
+                )
+            logger.error(
+                "Failed to initialize OpenSearch index after onboarding",
+                error=str(e),
+            )
+            # Don't fail the entire onboarding process if index creation fails
+            # The application can still work, but document operations may fail
+
         # Save the updated configuration (this will mark it as edited)
+        
+        # If model_provider was updated, assign the new provider to flows
+        if "model_provider" in body:
+            provider = body["model_provider"].strip().lower()
+            try:
+                flow_result = await flows_service.assign_model_provider(provider)
+
+                if flow_result.get("success"):
+                    logger.info(
+                        f"Successfully assigned {provider} to flows",
+                        flow_result=flow_result,
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to assign {provider} to flows",
+                        flow_result=flow_result,
+                    )
+                    # Continue even if flow assignment fails - configuration was still saved
+
+            except Exception as e:
+                logger.error(
+                    "Error assigning model provider to flows",
+                    provider=provider,
+                    error=str(e),
+                )
+                raise
+
+            # Set Langflow global variables based on provider
+            try:
+                # Set API key for IBM/Watson providers
+                if (provider == "watsonx") and "api_key" in body:
+                    api_key = body["api_key"]
+                    await clients._create_langflow_global_variable(
+                        "WATSONX_API_KEY", api_key, modify=True
+                    )
+                    logger.info("Set WATSONX_API_KEY global variable in Langflow")
+
+                # Set project ID for IBM/Watson providers
+                if (provider == "watsonx") and "project_id" in body:
+                    project_id = body["project_id"]
+                    await clients._create_langflow_global_variable(
+                        "WATSONX_PROJECT_ID", project_id, modify=True
+                    )
+                    logger.info(
+                        "Set WATSONX_PROJECT_ID global variable in Langflow"
+                    )
+
+                # Set API key for OpenAI provider
+                if provider == "openai" and "api_key" in body:
+                    api_key = body["api_key"]
+                    await clients._create_langflow_global_variable(
+                        "OPENAI_API_KEY", api_key, modify=True
+                    )
+                    logger.info("Set OPENAI_API_KEY global variable in Langflow")
+
+                # Set base URL for Ollama provider
+                if provider == "ollama" and "endpoint" in body:
+                    endpoint = transform_localhost_url(body["endpoint"])
+
+                    await clients._create_langflow_global_variable(
+                        "OLLAMA_BASE_URL", endpoint, modify=True
+                    )
+                    logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
+
+                await flows_service.change_langflow_model_value(
+                    provider,
+                    body.get("embedding_model"),
+                    body.get("llm_model"),
+                    body.get("endpoint"),
+                )
+
+            except Exception as e:
+                logger.error(
+                    "Failed to set Langflow global variables",
+                    provider=provider,
+                    error=str(e),
+                )
+                raise
+
+        # Handle sample data ingestion if requested
+        if should_ingest_sample_data:
+            try:
+                # Import the function here to avoid circular imports
+                from main import ingest_default_documents_when_ready
+
+                # Get services from the current app state
+                # We need to access the app instance to get services
+                app = request.scope.get("app")
+                if app and hasattr(app.state, "services"):
+                    services = app.state.services
+                    logger.info(
+                        "Starting sample data ingestion as requested in onboarding"
+                    )
+                    await ingest_default_documents_when_ready(services)
+                    logger.info("Sample data ingestion completed successfully")
+                else:
+                    logger.error(
+                        "Could not access services for sample data ingestion"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    "Failed to complete sample data ingestion", error=str(e)
+                )
+                # Don't fail the entire onboarding process if sample data fails
         if config_manager.save_config_file(current_config):
             updated_fields = [
                 k for k in body.keys() if k != "sample_data"
@@ -516,143 +681,18 @@ async def onboarding(request, flows_service):
                 updated_fields=updated_fields,
             )
 
-            # If model_provider was updated, assign the new provider to flows
-            if "model_provider" in body:
-                provider = body["model_provider"].strip().lower()
-                try:
-                    flow_result = await flows_service.assign_model_provider(provider)
-
-                    if flow_result.get("success"):
-                        logger.info(
-                            f"Successfully assigned {provider} to flows",
-                            flow_result=flow_result,
-                        )
-                    else:
-                        logger.warning(
-                            f"Failed to assign {provider} to flows",
-                            flow_result=flow_result,
-                        )
-                        # Continue even if flow assignment fails - configuration was still saved
-
-                except Exception as e:
-                    logger.error(
-                        "Error assigning model provider to flows",
-                        provider=provider,
-                        error=str(e),
-                    )
-                    # Continue even if flow assignment fails - configuration was still saved
-
-            # Set Langflow global variables based on provider
-            if "model_provider" in body:
-                provider = body["model_provider"].strip().lower()
-
-                try:
-                    # Set API key for IBM/Watson providers
-                    if (provider == "watsonx") and "api_key" in body:
-                        api_key = body["api_key"]
-                        await clients._create_langflow_global_variable(
-                            "WATSONX_API_KEY", api_key, modify=True
-                        )
-                        logger.info("Set WATSONX_API_KEY global variable in Langflow")
-
-                    # Set project ID for IBM/Watson providers
-                    if (provider == "watsonx") and "project_id" in body:
-                        project_id = body["project_id"]
-                        await clients._create_langflow_global_variable(
-                            "WATSONX_PROJECT_ID", project_id, modify=True
-                        )
-                        logger.info(
-                            "Set WATSONX_PROJECT_ID global variable in Langflow"
-                        )
-
-                    # Set API key for OpenAI provider
-                    if provider == "openai" and "api_key" in body:
-                        api_key = body["api_key"]
-                        await clients._create_langflow_global_variable(
-                            "OPENAI_API_KEY", api_key, modify=True
-                        )
-                        logger.info("Set OPENAI_API_KEY global variable in Langflow")
-
-                    # Set base URL for Ollama provider
-                    if provider == "ollama" and "endpoint" in body:
-                        endpoint = transform_localhost_url(body["endpoint"])
-
-                        await clients._create_langflow_global_variable(
-                            "OLLAMA_BASE_URL", endpoint, modify=True
-                        )
-                        logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
-
-                    await flows_service.change_langflow_model_value(
-                        provider,
-                        body["embedding_model"],
-                        body["llm_model"],
-                        body["endpoint"],
-                    )
-
-                except Exception as e:
-                    logger.error(
-                        "Failed to set Langflow global variables",
-                        provider=provider,
-                        error=str(e),
-                    )
-                    # Continue even if setting global variables fails
-
-            # Initialize the OpenSearch index now that we have the embedding model configured
-            try:
-                # Import here to avoid circular imports
-                from main import init_index
-
-                logger.info(
-                    "Initializing OpenSearch index after onboarding configuration"
-                )
-                await init_index()
-                logger.info("OpenSearch index initialization completed successfully")
-            except Exception as e:
-                logger.error(
-                    "Failed to initialize OpenSearch index after onboarding",
-                    error=str(e),
-                )
-                # Don't fail the entire onboarding process if index creation fails
-                # The application can still work, but document operations may fail
-
-            # Handle sample data ingestion if requested
-            if should_ingest_sample_data:
-                try:
-                    # Import the function here to avoid circular imports
-                    from main import ingest_default_documents_when_ready
-
-                    # Get services from the current app state
-                    # We need to access the app instance to get services
-                    app = request.scope.get("app")
-                    if app and hasattr(app.state, "services"):
-                        services = app.state.services
-                        logger.info(
-                            "Starting sample data ingestion as requested in onboarding"
-                        )
-                        await ingest_default_documents_when_ready(services)
-                        logger.info("Sample data ingestion completed successfully")
-                    else:
-                        logger.error(
-                            "Could not access services for sample data ingestion"
-                        )
-
-                except Exception as e:
-                    logger.error(
-                        "Failed to complete sample data ingestion", error=str(e)
-                    )
-                    # Don't fail the entire onboarding process if sample data fails
-
-            return JSONResponse(
-                {
-                    "message": "Onboarding configuration updated successfully",
-                    "edited": True,  # Confirm that config is now marked as edited
-                    "sample_data_ingested": should_ingest_sample_data,
-                }
-            )
         else:
             return JSONResponse(
                 {"error": "Failed to save configuration"}, status_code=500
             )
+
+        return JSONResponse(
+            {
+                "message": "Onboarding configuration updated successfully",
+                "edited": True,  # Confirm that config is now marked as edited
+                "sample_data_ingested": should_ingest_sample_data,
+            }
+        )
 
     except Exception as e:
         logger.error("Failed to update onboarding settings", error=str(e))

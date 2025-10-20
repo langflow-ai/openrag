@@ -2,166 +2,131 @@
 
 # OpenRAG
 
-</div>
-<div align="center">
-  <a href="#quick-start" style="color: #0366d6;">🚀 Quick Start</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#tui-interface" style="color: #0366d6;">💻 TUI Interface</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#docker-deployment" style="color: #0366d6;">🐳 Docker Deployment</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#development" style="color: #0366d6;">⚙️ Development</a> &nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#troubleshooting" style="color: #0366d6;">🔧 Troubleshooting</a>
-</div>
-
-
-
-OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with Starlette, Next.js, OpenSearch, and Langflow integration. [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/phact/openrag)
-
-
 <div align="center">
   <a href="https://github.com/langflow-ai/langflow"><img src="https://img.shields.io/badge/Langflow-1C1C1E?style=flat&logo=langflow" alt="Langflow"></a>
   &nbsp;&nbsp;
   <a href="https://github.com/opensearch-project/OpenSearch"><img src="https://img.shields.io/badge/OpenSearch-005EB8?style=flat&logo=opensearch&logoColor=white" alt="OpenSearch"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/encode/starlette"><img src="https://img.shields.io/badge/Starlette-009639?style=flat&logo=fastapi&logoColor=white" alt="Starlette"></a>
+  <a href="https://github.com/docling-project/docling"><img src="https://img.shields.io/badge/Docling-000000?style=flat" alt="Langflow"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/vercel/next.js"><img src="https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js&logoColor=white" alt="Next.js"></a>
-
 </div>
 
+OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with [Starlette](https://github.com/Kludex/starlette) and [Next.js](https://github.com/vercel/next.js). Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Langflow](https://github.com/langflow-ai/langflow), and [Docling](https://github.com/docling-project/docling).
 
+<a href="https://deepwiki.com/phact/openrag"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 
+</div>
+<div align="center">
+  <a href="#quickstart" style="color: #0366d6;">Quickstart</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#tui-interface" style="color: #0366d6;">TUI Interface</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#docker-deployment" style="color: #0366d6;">Docker Deployment</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#development" style="color: #0366d6;">Development</a> &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#troubleshooting" style="color: #0366d6;">Troubleshooting</a>
+</div>
 
+## Quickstart
 
+Use the OpenRAG Terminal User Interface (TUI) to manage your OpenRAG installation without complex command-line operations.
 
-## 🚀 Quick Start
+To launch OpenRAG with the TUI, do the following:
 
-### Prerequisites
+1. Clone the OpenRAG repository.
+    ```bash
+    git clone https://github.com/langflow-ai/openrag.git
+    cd openrag
+    ```
 
-- Docker or Podman with Compose installed
-- Make (for development commands)
+2. To start the TUI, from the repository root, run:
+    ```bash
+    # Install dependencies first
+    uv sync
+    
+    # Launch the TUI
+    uv run openrag
+    ```
 
-### 1. Environment Setup
+    The TUI opens and guides you through OpenRAG setup.
 
-```bash
-# Clone and setup environment
-git clone https://github.com/langflow-ai/openrag.git
-cd openrag
-make setup  # Creates .env and installs dependencies
-```
+For the full TUI guide, see [TUI](https://docs.openr.ag/get-started/tui).
 
-### 2. Configure Environment
+## Docker Deployment
 
-Edit `.env` with your API keys and credentials:
+If you prefer to use Docker to run OpenRAG, the repository includes two Docker Compose `.yml` files.
+They deploy the same applications and containers, but to different environments.
 
-```bash
-# Required
-OPENAI_API_KEY=your_openai_api_key
-OPENSEARCH_PASSWORD=your_secure_password
-LANGFLOW_SUPERUSER=admin
-LANGFLOW_SUPERUSER_PASSWORD=your_secure_password
-LANGFLOW_CHAT_FLOW_ID=your_chat_flow_id
-LANGFLOW_INGEST_FLOW_ID=your_ingest_flow_id
-NUDGES_FLOW_ID=your_nudges_flow_id
-```
-See extended configuration, including ingestion and optional variables: [docs/reference/configuration.md](docs/docs/reference/configuration.md)
-### 3. Start OpenRAG
+- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment for environments with GPU support. GPU support requires an NVIDIA GPU with CUDA support and compatible NVIDIA drivers installed on the OpenRAG host machine. 
 
-```bash
-# Full stack with GPU support
-make dev
+- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
 
-# Or CPU only
-make dev-cpu
-```
+Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing. Installing OpenRAG with the TUI starts `docling serve` automatically, but for a Docker deployment you must manually start the `docling serve` process.
 
-Access the services:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **Langflow**: http://localhost:7860
-- **OpenSearch**: http://localhost:9200
-- **OpenSearch Dashboards**: http://localhost:5601
+To deploy OpenRAG with Docker:
 
-## 🖥️ TUI Interface
+1. Clone the OpenRAG repository.
+    ```bash
+    git clone https://github.com/langflow-ai/openrag.git
+    cd openrag
+    ```
 
-OpenRAG includes a powerful Terminal User Interface (TUI) for easy setup, configuration, and monitoring. The TUI provides a user-friendly way to manage your OpenRAG installation without complex command-line operations.
+2. Install dependencies.
+    ```bash
+    uv sync
+    ```
 
-![OpenRAG TUI Interface](assets/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
+3. Start `docling serve` on the host machine.
+    ```bash
+    uv run python scripts/docling_ctl.py start --port 5001
+    ```
+    
+4. Confirm `docling serve` is running.
+    ```
+    uv run python scripts/docling_ctl.py status
+    ```
 
-### Launching the TUI
+    Successful result:
+    ```bash
+    Status: running
+    Endpoint: http://127.0.0.1:5001
+    Docs: http://127.0.0.1:5001/docs
+    PID: 27746
+    ```
 
-```bash
-# Install dependencies first
-uv sync
+5. Build and start all services.
 
-# Launch the TUI
-uv run openrag
-```
+    For the GPU-accelerated deployment, run:
+    ```bash
+    docker compose build
+    docker compose up -d
+    ```
 
-### TUI Features
+    For environments without GPU support, run: 
+    ```bash
+    docker compose -f docker-compose-cpu.yml up -d
+    ```
 
-See the full TUI guide for features, navigation, and benefits: [docs/get-started/tui.mdx](docs/docs/get-started/tui.mdx)
+   The OpenRAG Docker Compose file starts five containers:
+   | Container Name | Default Address | Purpose |
+   |---|---|---|
+   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
+   | OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
+   | Langflow | http://localhost:7860 | AI workflow engine and flow management. |
+   | OpenSearch | http://localhost:9200 | Vector database for document storage. |
+   | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
 
+6. Access the OpenRAG application at `http://localhost:3000` and continue with the [Quickstart](https://docs.openr.ag/quickstart).
 
+    To stop `docling serve`, run:
+    
+    ```bash
+    uv run python scripts/docling_ctl.py stop
+    ```
 
+For more information, see [Deploy with Docker](https://docs.openr.ag/get-started/docker).
 
-## 🐳 Docker Deployment
+## Troubleshooting
 
-### Standard Deployment
+For common issues and fixes, see [Troubleshoot](https://docs.openr.ag/support/troubleshoot).
 
-```bash
-# Build and start all services
-docker compose build
-docker compose up -d
-```
+## Development
 
-### CPU-Only Deployment
-
-For environments without GPU support:
-
-```bash
-docker compose -f docker-compose-cpu.yml up -d
-```
-
-More deployment commands and tips: [docs/get-started/docker.mdx](docs/docs/get-started/docker.mdx)
-
-## 🔧 Troubleshooting
-
-### Podman on macOS
-
-If using Podman on macOS, you may need to increase VM memory:
-
-```bash
-podman machine stop
-podman machine rm
-podman machine init --memory 8192   # 8 GB example
-podman machine start
-```
-
-### Common Issues
-
-See common issues and fixes: [docs/support/troubleshoot.mdx](docs/docs/reference/troubleshoot.mdx)
-
-
-
-## 🛠️ Development
-
-For developers wanting to contribute to OpenRAG or set up a development environment, please see our comprehensive development guide:
-
-**[📚 See CONTRIBUTING.md for detailed development instructions](CONTRIBUTING.md)**
-
-The contributing guide includes:
-- Complete development environment setup
-- Local development workflows  
-- Testing and debugging procedures
-- Code style guidelines
-- Architecture overview
-- Pull request guidelines
-
-### Quick Development Commands
-
-```bash
-make help                    # See all available commands
-make setup                   # Initial development setup
-make infra                   # Start infrastructure services
-make backend                 # Run backend locally
-make frontend                # Run frontend locally
-```
+For developers wanting to contribute to OpenRAG or set up a development environment, see [CONTRIBUTING.md](CONTRIBUTING.md).

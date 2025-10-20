@@ -244,10 +244,7 @@ function SearchPage() {
                   className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
                   aria-label="View ingestion error"
                 >
-                  <StatusBadge
-                    status={status}
-                    className="pointer-events-none"
-                  />
+                  <StatusBadge status={status} className="pointer-events-none" />
                 </button>
               </DialogTrigger>
               <DialogContent>

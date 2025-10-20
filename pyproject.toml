@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openrag"
-version = "0.1.16"
+version = "0.1.24"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -33,7 +33,11 @@ dependencies = [
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
     "docling-serve>=1.4.1",
+    "easyocr>=1.7.1"
 ]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.21.0", "pytest-mock>=3.12.0", "pytest-cov>=4.0.0"]
 
 [project.scripts]
 openrag = "tui.main:run_tui"
