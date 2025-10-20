@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   type OnboardingVariables,
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
+import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { useDoclingHealth } from "@/components/docling-health-banner";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
@@ -23,6 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
 import { OpenAIOnboarding } from "./openai-onboarding";
@@ -31,10 +34,11 @@ interface OnboardingCardProps {
   onComplete: () => void;
 }
 
+const TOTAL_PROVIDER_STEPS = 4;
+
 const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
   const updatedOnboarding = process.env.UPDATED_ONBOARDING === "true";
   const { isHealthy: isDoclingHealthy } = useDoclingHealth();
-
 
   const [modelProvider, setModelProvider] = useState<string>("openai");
 
@@ -55,11 +59,47 @@ const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
     llm_model: "",
   });
 
+  const [currentStep, setCurrentStep] = useState<number | null>(null);
+
+  // Query tasks to track completion
+  const { data: tasks } = useGetTasksQuery({
+    enabled: currentStep !== null, // Only poll when onboarding has started
+    refetchInterval: currentStep !== null ? 1000 : false, // Poll every 1 second during onboarding
+  });
+
+  // Monitor tasks and call onComplete when all tasks are done
+  useEffect(() => {
+    if (currentStep === null || !tasks) {
+      return;
+    }
+
+    // Check if there are any active tasks (pending, running, or processing)
+    const activeTasks = tasks.find(
+      (task) =>
+        task.status === "pending" ||
+        task.status === "running" ||
+        task.status === "processing",
+    );
+
+    // If no active tasks and we've started onboarding, complete it
+    if (
+      (!activeTasks || (activeTasks.processed_files ?? 0) > 0) &&
+      tasks.length > 0
+    ) {
+      // Set to final step to show "Done"
+      setCurrentStep(TOTAL_PROVIDER_STEPS);
+      // Wait a bit before completing
+      setTimeout(() => {
+        onComplete();
+      }, 1000);
+    }
+  }, [tasks, currentStep, onComplete]);
+
   // Mutations
   const onboardingMutation = useOnboardingMutation({
     onSuccess: (data) => {
       console.log("Onboarding completed successfully", data);
-      onComplete();
+      setCurrentStep(0);
     },
     onError: (error) => {
       toast.error("Failed to complete onboarding", {
@@ -102,81 +142,114 @@ const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
     }
 
     onboardingMutation.mutate(onboardingData);
+    setCurrentStep(0);
   };
 
-  const isComplete = !!settings.llm_model && !!settings.embedding_model && isDoclingHealthy;
+  const isComplete =
+    !!settings.llm_model && !!settings.embedding_model && isDoclingHealthy;
 
   return (
-    <Card className={`w-full max-w-[600px] ${updatedOnboarding ? "border-none" : ""}`}>
-      <Tabs
-        defaultValue={modelProvider}
-        onValueChange={handleSetModelProvider}
-      >
-        <CardHeader className={`${updatedOnboarding ? "px-0" : ""}`}>
-          <TabsList>
-            <TabsTrigger value="openai">
-              <OpenAILogo className="w-4 h-4" />
-              OpenAI
-            </TabsTrigger>
-            <TabsTrigger value="watsonx">
-              <IBMLogo className="w-4 h-4" />
-              IBM watsonx.ai
-            </TabsTrigger>
-            <TabsTrigger value="ollama">
-              <OllamaLogo className="w-4 h-4" />
-              Ollama
-            </TabsTrigger>
-          </TabsList>
-        </CardHeader>
-        <CardContent className={`${updatedOnboarding ? "px-0" : ""}`}>
-          <TabsContent value="openai">
-            <OpenAIOnboarding
-              setSettings={setSettings}
-              sampleDataset={sampleDataset}
-              setSampleDataset={setSampleDataset}
-            />
-          </TabsContent>
-          <TabsContent value="watsonx">
-            <IBMOnboarding
-              setSettings={setSettings}
-              sampleDataset={sampleDataset}
-              setSampleDataset={setSampleDataset}
-            />
-          </TabsContent>
-          <TabsContent value="ollama">
-            <OllamaOnboarding
-              setSettings={setSettings}
-              sampleDataset={sampleDataset}
-              setSampleDataset={setSampleDataset}
-            />
-          </TabsContent>
-        </CardContent>
-      </Tabs>
-      <CardFooter className={`flex  ${updatedOnboarding ? "px-0" : "justify-end"}`}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div>
-              <Button
-                size="sm"
-                onClick={handleComplete}
-                disabled={!isComplete}
-                loading={onboardingMutation.isPending}
-              >
-                <span className="select-none">Complete</span>
-              </Button>
-            </div>
-          </TooltipTrigger>
-          {!isComplete && (
-            <TooltipContent>
-              {!!settings.llm_model && !!settings.embedding_model && !isDoclingHealthy
-                ? "docling-serve must be running to continue"
-                : "Please fill in all required fields"}
-            </TooltipContent>
-          )}
-        </Tooltip>
-      </CardFooter>
-    </Card>
-  )
-}
+    <AnimatePresence mode="wait">
+      {currentStep === null ? (
+        <motion.div
+          key="onboarding-form"
+          initial={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -24 }}
+          transition={{ duration: 0.4, ease: "easeInOut" }}
+        >
+          <Card
+            className={`w-full max-w-[600px] ${
+              updatedOnboarding ? "border-none" : ""
+            }`}
+          >
+            <Tabs
+              defaultValue={modelProvider}
+              onValueChange={handleSetModelProvider}
+            >
+              <CardHeader className={`${updatedOnboarding ? "px-0" : ""}`}>
+                <TabsList>
+                  <TabsTrigger value="openai">
+                    <OpenAILogo className="w-4 h-4" />
+                    OpenAI
+                  </TabsTrigger>
+                  <TabsTrigger value="watsonx">
+                    <IBMLogo className="w-4 h-4" />
+                    IBM watsonx.ai
+                  </TabsTrigger>
+                  <TabsTrigger value="ollama">
+                    <OllamaLogo className="w-4 h-4" />
+                    Ollama
+                  </TabsTrigger>
+                </TabsList>
+              </CardHeader>
+              <CardContent className={`${updatedOnboarding ? "px-0" : ""}`}>
+                <TabsContent value="openai">
+                  <OpenAIOnboarding
+                    setSettings={setSettings}
+                    sampleDataset={sampleDataset}
+                    setSampleDataset={setSampleDataset}
+                  />
+                </TabsContent>
+                <TabsContent value="watsonx">
+                  <IBMOnboarding
+                    setSettings={setSettings}
+                    sampleDataset={sampleDataset}
+                    setSampleDataset={setSampleDataset}
+                  />
+                </TabsContent>
+                <TabsContent value="ollama">
+                  <OllamaOnboarding
+                    setSettings={setSettings}
+                    sampleDataset={sampleDataset}
+                    setSampleDataset={setSampleDataset}
+                  />
+                </TabsContent>
+              </CardContent>
+            </Tabs>
+            <CardFooter
+              className={`flex  ${updatedOnboarding ? "px-0" : "justify-end"}`}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Button
+                      size="sm"
+                      onClick={handleComplete}
+                      disabled={!isComplete}
+                      loading={onboardingMutation.isPending}
+                    >
+                      <span className="select-none">Complete</span>
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                {!isComplete && (
+                  <TooltipContent>
+                    {!!settings.llm_model &&
+                    !!settings.embedding_model &&
+                    !isDoclingHealthy
+                      ? "docling-serve must be running to continue"
+                      : "Please fill in all required fields"}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </CardFooter>
+          </Card>
+        </motion.div>
+      ) : (
+        <motion.div
+          key="provider-steps"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeInOut" }}
+        >
+          <AnimatedProviderSteps
+            currentStep={currentStep}
+            setCurrentStep={setCurrentStep}
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
 
 export default OnboardingCard;

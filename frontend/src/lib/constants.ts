@@ -28,3 +28,8 @@ export const ANIMATION_DURATION = 0.4;
 export const SIDEBAR_WIDTH = 280;
 export const HEADER_HEIGHT = 54;
 export const TOTAL_ONBOARDING_STEPS = 4;
+
+/**
+ * Local Storage Keys
+ */
+export const ONBOARDING_STEP_KEY = "onboarding_current_step";
