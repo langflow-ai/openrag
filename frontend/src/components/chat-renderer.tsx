@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   type ChatConversation,
   useGetConversationsQuery,
@@ -18,6 +18,7 @@ import { useChat } from "@/contexts/chat-context";
 import {
   ANIMATION_DURATION,
   HEADER_HEIGHT,
+  ONBOARDING_STEP_KEY,
   SIDEBAR_WIDTH,
   TOTAL_ONBOARDING_STEPS,
 } from "@/lib/constants";
@@ -39,8 +40,20 @@ export function ChatRenderer({
     startNewConversation,
   } = useChat();
 
-  // Onboarding animation state
-  const [showLayout, setShowLayout] = useState(!!settings?.edited);
+  // Initialize onboarding state based on local storage and settings
+  const [currentStep, setCurrentStep] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    const savedStep = localStorage.getItem(ONBOARDING_STEP_KEY);
+    return savedStep !== null ? parseInt(savedStep, 10) : 0;
+  });
+
+  const [showLayout, setShowLayout] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const savedStep = localStorage.getItem(ONBOARDING_STEP_KEY);
+    // Show layout if settings.edited is true and if no onboarding step is saved
+    return !!settings?.edited && savedStep === null;
+  });
+
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
   const { data: conversations = [], isLoading: isConversationsLoading } =
@@ -53,12 +66,21 @@ export function ChatRenderer({
     startNewConversation();
   };
 
-  const [currentStep, setCurrentStep] = useState(0);
+  // Save current step to local storage whenever it changes
+  useEffect(() => {
+    if (typeof window !== "undefined" && !showLayout) {
+      localStorage.setItem(ONBOARDING_STEP_KEY, currentStep.toString());
+    }
+  }, [currentStep, showLayout]);
 
   const handleStepComplete = () => {
     if (currentStep < TOTAL_ONBOARDING_STEPS - 1) {
       setCurrentStep(currentStep + 1);
     } else {
+      // Onboarding is complete - remove from local storage and show layout
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(ONBOARDING_STEP_KEY);
+      }
       setShowLayout(true);
     }
   };
