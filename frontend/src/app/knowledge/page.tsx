@@ -2,8 +2,10 @@
 
 import {
   themeQuartz,
+  type CheckboxSelectionCallbackParams,
   type ColDef,
   type GetRowIdParams,
+  type ValueFormatterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import { Cloud, FileIcon, Globe } from "lucide-react";
@@ -26,6 +28,14 @@ import GoogleDriveIcon from "../settings/icons/google-drive-icon";
 import OneDriveIcon from "../settings/icons/one-drive-icon";
 import SharePointIcon from "../settings/icons/share-point-icon";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -69,7 +79,7 @@ function SearchPage() {
     parsedFilterData
   );
   // Convert TaskFiles to File format and merge with backend results
-  const taskFilesAsFiles: File[] = taskFiles.map(taskFile => {
+  const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
     return {
       filename: taskFile.filename,
       mimetype: taskFile.mimetype,
@@ -77,17 +87,20 @@ function SearchPage() {
       size: taskFile.size,
       connector_type: taskFile.connector_type,
       status: taskFile.status,
+      error: taskFile.error,
+      embedding_model: taskFile.embedding_model,
+      embedding_dimensions: taskFile.embedding_dimensions,
     };
   });
 
   // Create a map of task files by filename for quick lookup
   const taskFileMap = new Map(
-    taskFilesAsFiles.map(file => [file.filename, file])
+    taskFilesAsFiles.map((file) => [file.filename, file])
   );
 
   // Override backend files with task file status if they exist
   const backendFiles = (searchData as File[])
-    .map(file => {
+    .map((file) => {
       const taskFile = taskFileMap.get(file.filename);
       if (taskFile) {
         // Override backend file with task file data (includes status)
@@ -95,17 +108,17 @@ function SearchPage() {
       }
       return file;
     })
-    .filter(file => {
+    .filter((file) => {
       // Only filter out files that are currently processing AND in taskFiles
       const taskFile = taskFileMap.get(file.filename);
       return !taskFile || taskFile.status !== "processing";
     });
 
-  const filteredTaskFiles = taskFilesAsFiles.filter(taskFile => {
+  const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
     return (
       taskFile.status !== "active" &&
       !backendFiles.some(
-        backendFile => backendFile.filename === taskFile.filename
+        (backendFile) => backendFile.filename === taskFile.filename
       )
     );
   });
@@ -115,11 +128,11 @@ function SearchPage() {
 
   const gridRef = useRef<AgGridReact>(null);
 
-  const columnDefs = [
+  const columnDefs: ColDef<File>[] = [
     {
       field: "filename",
       headerName: "Source",
-      checkboxSelection: (params: CustomCellRendererProps<File>) =>
+      checkboxSelection: (params: CheckboxSelectionCallbackParams<File>) =>
         (params?.data?.status || "active") === "active",
       headerCheckboxSelection: true,
       initialFlex: 2,
@@ -128,7 +141,6 @@ function SearchPage() {
         // Read status directly from data on each render
         const status = data?.status || "active";
         const isActive = status === "active";
-        console.log(data?.filename, status, "a");
         return (
           <div className="flex items-center overflow-hidden w-full">
             <div
@@ -162,7 +174,7 @@ function SearchPage() {
     {
       field: "size",
       headerName: "Size",
-      valueFormatter: (params: CustomCellRendererProps<File>) =>
+      valueFormatter: (params: ValueFormatterParams<File>) =>
         params.value ? `${Math.round(params.value / 1024)} KB` : "-",
     },
     {
@@ -172,13 +184,13 @@ function SearchPage() {
     {
       field: "owner",
       headerName: "Owner",
-      valueFormatter: (params: CustomCellRendererProps<File>) =>
+      valueFormatter: (params: ValueFormatterParams<File>) =>
         params.data?.owner_name || params.data?.owner_email || "—",
     },
     {
       field: "chunkCount",
       headerName: "Chunks",
-      valueFormatter: (params: CustomCellRendererProps<File>) =>
+      valueFormatter: (params: ValueFormatterParams<File>) =>
         params.data?.chunkCount?.toString() || "-",
     },
     {
@@ -193,12 +205,65 @@ function SearchPage() {
       },
     },
     {
+      field: "embedding_model",
+      headerName: "Embedding model",
+      minWidth: 200,
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
+        <span className="text-xs text-muted-foreground">
+          {data?.embedding_model || "—"}
+        </span>
+      ),
+    },
+    {
+      field: "embedding_dimensions",
+      headerName: "Dimensions",
+      width: 110,
+      cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
+        <span className="text-xs text-muted-foreground">
+          {typeof data?.embedding_dimensions === "number"
+            ? data.embedding_dimensions.toString()
+            : "—"}
+        </span>
+      ),
+    },
+    {
       field: "status",
       headerName: "Status",
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
-        console.log(data?.filename, data?.status, "b");
-        // Default to 'active' status if no status is provided
         const status = data?.status || "active";
+        const error =
+          typeof data?.error === "string" && data.error.trim().length > 0
+            ? data.error.trim()
+            : undefined;
+        if (status === "failed" && error) {
+          return (
+            <Dialog>
+              <DialogTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
+                  aria-label="View ingestion error"
+                >
+                  <StatusBadge
+                    status={status}
+                    className="pointer-events-none"
+                  />
+                </button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Ingestion failed</DialogTitle>
+                  <DialogDescription className="text-sm text-muted-foreground">
+                    {data?.filename || "Unknown file"}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+                  {error}
+                </div>
+              </DialogContent>
+            </Dialog>
+          );
+        }
         return <StatusBadge status={status} />;
       },
     },
@@ -245,7 +310,7 @@ function SearchPage() {
 
     try {
       // Delete each file individually since the API expects one filename at a time
-      const deletePromises = selectedRows.map(row =>
+      const deletePromises = selectedRows.map((row) =>
         deleteDocumentMutation.mutateAsync({ filename: row.filename })
       );
 
@@ -344,7 +409,7 @@ function SearchPage() {
         }? This will remove all chunks and data associated with these documents. This action cannot be undone.
 
 Documents to be deleted:
-${selectedRows.map(row => `• ${row.filename}`).join("\n")}`}
+${selectedRows.map((row) => `• ${row.filename}`).join("\n")}`}
         confirmText="Delete All"
         onConfirm={handleBulkDelete}
         isLoading={deleteDocumentMutation.isPending}
