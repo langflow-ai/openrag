@@ -13,9 +13,9 @@ export function UserMessage({ content }: UserMessageProps) {
   return (
     <Message
       icon={
-        <Avatar className="w-8 h-8 flex-shrink-0 select-none">
+        <Avatar className="w-8 h-8 rounded-lg flex-shrink-0 select-none">
           <AvatarImage draggable={false} src={user?.picture} alt={user?.name} />
-          <AvatarFallback className="text-sm bg-primary/20 text-primary">
+          <AvatarFallback className="text-sm bg-accent/20 text-primary rounded-lg">
             {user?.name ? (
               user.name.charAt(0).toUpperCase()
             ) : (
@@ -25,9 +25,9 @@ export function UserMessage({ content }: UserMessageProps) {
         </Avatar>
       }
     >
-      <p className="text-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere">
-        {content}
-      </p>
+          <p className="text-foreground text-sm py-1.5 whitespace-pre-wrap break-words overflow-wrap-anywhere">
+            {content}
+          </p>
     </Message>
   );
 }
