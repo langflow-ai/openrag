@@ -248,11 +248,12 @@ async def onboarding_chat_endpoint(request: Request, session_manager):
 
                                 if event_data.get("event") == "add_message":
                                     data = event_data.get("data", {})
+                                    sender = data.get("sender", "")
                                     current_text = data.get("text", "")
-                                    logger.info("Current text from event", text=current_text, text_length=len(current_text))
+                                    logger.info("Current text from event", sender=sender, text=current_text[:100], text_length=len(current_text))
 
-                                    # Only send delta if text changed
-                                    if current_text and current_text != previous_text:
+                                    # Only process messages from Machine/AI, not User
+                                    if sender == "Machine" and current_text and current_text != previous_text:
                                         # Calculate the delta (new content)
                                         delta_content = current_text[len(previous_text):]
                                         previous_text = current_text

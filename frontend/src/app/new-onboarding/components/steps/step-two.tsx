@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { OnboardingStep } from "../onboarding-step";
 import { Message } from "@/app/chat/types";
 import { UserMessage } from "@/app/chat/components/user-message";
 import { AssistantMessage } from "@/app/chat/components/assistant-message";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 interface StepTwoProps {
   isVisible: boolean;
@@ -16,6 +18,10 @@ export function StepTwo({ isVisible, isCompleted }: StepTwoProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
+
+  useEffect(() => {
+    console.log("Streaming message changed:", streamingMessage?.content.slice(0, 50));
+  }, [streamingMessage]);
 
   const handleAskAboutOpenRAG = async () => {
     setIsLoading(true);
@@ -108,8 +114,18 @@ Together, these tools make it easy to build, connect, and deploy advanced Retrie
               if (chunk.object === "response.chunk" && chunk.delta?.content) {
                 console.log("Adding content:", chunk.delta.content);
                 fullResponse += chunk.delta.content;
-                setStreamingMessage((prev) => prev ? { ...prev, content: fullResponse } : null);
-                console.log("Full response now:", fullResponse);
+
+                // Update state and wait for next frame to allow render
+                setStreamingMessage((prev) => {
+                  const updated = prev ? { ...prev, content: fullResponse } : null;
+                  console.log("Updated streaming message:", updated?.content.slice(0, 50));
+                  return updated;
+                });
+
+                // Yield to browser to allow render
+                await new Promise(resolve => setTimeout(resolve, 0));
+
+                console.log("Full response now:", fullResponse.slice(0, 50));
               } else {
                 console.log("Chunk did not match expected format");
               }
@@ -148,18 +164,20 @@ Together, these tools make it easy to build, connect, and deploy advanced Retrie
         isCompleted={isCompleted}
         text="Excellent, let&apos;s move on to learning the basics. What would you like to read about?"
       >
-        <div className="space-y-4">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleAskAboutOpenRAG}
-            ignoreTitleCase
-            disabled={isLoading}
-            loading={isLoading}
-          >
-            What is OpenRAG?
-          </Button>
-        </div>
+        {messages.length === 0 && (
+          <div className="space-y-4">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleAskAboutOpenRAG}
+              ignoreTitleCase
+              disabled={isLoading}
+              loading={isLoading}
+            >
+              What is OpenRAG?
+            </Button>
+          </div>
+        )}
       </OnboardingStep>
 
       {/* Display messages */}
@@ -176,7 +194,12 @@ Together, these tools make it easy to build, connect, and deploy advanced Retrie
       {/* Display streaming message */}
       {streamingMessage && (
         <div className="mt-4">
-          <AssistantMessage content={streamingMessage.content} expandedFunctionCalls={new Set()} onToggle={() => {}} />
+          <AssistantMessage
+            content={streamingMessage.content}
+            expandedFunctionCalls={new Set()}
+            onToggle={() => {}}
+            isStreaming={true}
+          />
         </div>
       )}
     </>
