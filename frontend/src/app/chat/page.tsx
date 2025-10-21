@@ -12,6 +12,7 @@ import {
   Settings,
   Box,
   User,
+  Wrench,
   X,
   Zap,
 } from "lucide-react";
@@ -192,7 +193,7 @@ function ChatPage() {
   // Load widget HTML from URI
   const loadWidgetFromUri = async (uri: string, messageIndex: number): Promise<string | null> => {
     try {
-      const response = await fetch("/api/mcp/widgets/mcp/messages", {
+      const response = await fetch("/api/mcp/widgets/mcp", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2207,7 +2208,7 @@ function ChatPage() {
     setIsWidgetLoading(true);
 
     try {
-      const response = await fetch("/api/mcp/widgets/mcp/messages", {
+      const response = await fetch("/api/mcp/widgets/mcp", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2667,6 +2668,16 @@ function ChatPage() {
               className="absolute bottom-3 left-12 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
             >
               <Plus className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="iconSm"
+              onClick={handleOpenWidgetModal}
+              disabled={isUploading}
+              className="absolute bottom-3 left-12 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
+            >
+              <Wrench className="h-4 w-4" />
             </Button>
             <Button
               type="submit"

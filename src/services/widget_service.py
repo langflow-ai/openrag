@@ -261,17 +261,17 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
             if not jsx_code:
                 raise Exception("No JSX code block found in response")
 
-            # Write files
-            widget_dir = os.path.join(self.widgets_dir, widget_id)
-            os.makedirs(widget_dir, exist_ok=True)
+            # Write files to widgets/assets/{widget_id}/ directory
+            widget_assets_dir = os.path.join(self.widgets_dir, "assets", widget_id)
+            os.makedirs(widget_assets_dir, exist_ok=True)
 
-            jsx_path = os.path.join(widget_dir, f"{widget_id}.jsx")
+            jsx_path = os.path.join(widget_assets_dir, f"{widget_id}.jsx")
             with open(jsx_path, "w") as f:
                 f.write(jsx_code)
 
             css_path = None
             if css_code:
-                css_path = os.path.join(widget_dir, f"{widget_id}.css")
+                css_path = os.path.join(widget_assets_dir, f"{widget_id}.css")
                 with open(css_path, "w") as f:
                     f.write(css_code)
 
@@ -298,7 +298,7 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
             if mcp_payload:
                 metadata["mcp"] = mcp_payload
 
-            metadata_path = os.path.join(widget_dir, "metadata.json")
+            metadata_path = os.path.join(widget_assets_dir, f"{widget_id}.metadata.json")
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
 
@@ -373,13 +373,17 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
         """List all widgets for a user."""
         try:
             widgets = []
-            if not os.path.exists(self.widgets_dir):
+            assets_dir = os.path.join(self.widgets_dir, "assets")
+            if not os.path.exists(assets_dir):
                 return widgets
 
-            for widget_id in os.listdir(self.widgets_dir):
-                metadata = self._load_widget_metadata(widget_id, register=False)
-                if metadata:
-                    widgets.append(metadata)
+            # Find all widget subdirectories
+            for widget_id in os.listdir(assets_dir):
+                widget_path = os.path.join(assets_dir, widget_id)
+                if os.path.isdir(widget_path):
+                    metadata = self._load_widget_metadata(widget_id, register=False)
+                    if metadata:
+                        widgets.append(metadata)
             return widgets
         except Exception as e:
             logger.error("Failed to list widgets", error=str(e))
@@ -391,11 +395,11 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
             metadata = self._load_widget_metadata(widget_id, register=False)
             if not metadata:
                 return None
-            widget_path = os.path.join(self.widgets_dir, widget_id)
-            jsx_path = os.path.join(widget_path, f"{widget_id}.jsx")
+            widget_assets_dir = os.path.join(self.widgets_dir, "assets", widget_id)
+            jsx_path = os.path.join(widget_assets_dir, f"{widget_id}.jsx")
             with open(jsx_path, "r") as f:
                 jsx_content = f.read()
-            css_path = os.path.join(widget_path, f"{widget_id}.css")
+            css_path = os.path.join(widget_assets_dir, f"{widget_id}.css")
             css_content = None
             if os.path.exists(css_path):
                 with open(css_path, "r") as f:
@@ -408,19 +412,12 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
     async def delete_widget(self, widget_id: str, user_id: str) -> bool:
         """Delete a widget."""
         try:
-            widget_path = os.path.join(self.widgets_dir, widget_id)
-            if not os.path.exists(widget_path):
-                return False
-            import shutil
-            shutil.rmtree(widget_path)
+            widget_assets_dir = os.path.join(self.widgets_dir, "assets", widget_id)
 
-            # Also delete built assets
-            js_asset = os.path.join(self.assets_dir, f"{widget_id}.js")
-            css_asset = os.path.join(self.assets_dir, f"{widget_id}.css")
-            if os.path.exists(js_asset):
-                os.remove(js_asset)
-            if os.path.exists(css_asset):
-                os.remove(css_asset)
+            # Delete the entire widget directory
+            if os.path.exists(widget_assets_dir):
+                import shutil
+                shutil.rmtree(widget_assets_dir)
 
             logger.info("Widget deleted", widget_id=widget_id, user_id=user_id)
             if self._mcp_server:
@@ -437,11 +434,9 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
     async def rename_widget(self, widget_id: str, title: str, user_id: str) -> bool:
         """Rename a widget by updating its title in metadata."""
         try:
-            widget_path = os.path.join(self.widgets_dir, widget_id)
-            if not os.path.exists(widget_path):
-                return False
+            widget_assets_dir = os.path.join(self.widgets_dir, "assets", widget_id)
+            metadata_path = os.path.join(widget_assets_dir, f"{widget_id}.metadata.json")
 
-            metadata_path = os.path.join(widget_path, "metadata.json")
             if not os.path.exists(metadata_path):
                 return False
 
@@ -474,36 +469,37 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
             logger.error("Failed to rename widget", error=str(e), widget_id=widget_id)
             return False
 
-    def _ensure_metadata_defaults(self, widget_path: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+    def _ensure_metadata_defaults(self, widget_id: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Populate metadata defaults such as created_at and persist if backfilled."""
+        widget_assets_dir = os.path.join(self.widgets_dir, "assets", widget_id)
+        metadata_path = os.path.join(widget_assets_dir, f"{widget_id}.metadata.json")
+
         if "created_at" not in metadata:
             try:
-                created_ts = os.path.getmtime(widget_path)
+                created_ts = os.path.getmtime(metadata_path)
                 metadata["created_at"] = datetime.fromtimestamp(
                     created_ts, tz=timezone.utc
                 ).isoformat()
-                metadata_path = os.path.join(widget_path, "metadata.json")
                 with open(metadata_path, "w") as f:
                     json.dump(metadata, f, indent=2)
             except Exception as e:
                 logger.warning(
                     "Failed to backfill widget metadata",
                     error=str(e),
-                    widget_path=widget_path,
+                    widget_id=widget_id,
                 )
         if "description" not in metadata:
             description = self._derive_widget_description(metadata.get("prompt"))
             if description:
                 metadata["description"] = description
                 try:
-                    metadata_path = os.path.join(widget_path, "metadata.json")
                     with open(metadata_path, "w") as f:
                         json.dump(metadata, f, indent=2)
                 except Exception as e:
                     logger.warning(
                         "Failed to persist widget description",
                         error=str(e),
-                        widget_path=widget_path,
+                        widget_id=widget_id,
                     )
         return metadata
 
@@ -593,11 +589,15 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
             return
 
         payloads: List[Dict[str, Any]] = []
-        if os.path.exists(self.widgets_dir):
-            for widget_id in os.listdir(self.widgets_dir):
-                metadata = self._load_widget_metadata(widget_id, register=False)
-                if metadata and metadata.get("mcp"):
-                    payloads.append(metadata["mcp"])
+        assets_dir = os.path.join(self.widgets_dir, "assets")
+        if os.path.exists(assets_dir):
+            # Find all widget subdirectories
+            for widget_id in os.listdir(assets_dir):
+                widget_path = os.path.join(assets_dir, widget_id)
+                if os.path.isdir(widget_path):
+                    metadata = self._load_widget_metadata(widget_id, register=False)
+                    if metadata and metadata.get("mcp"):
+                        payloads.append(metadata["mcp"])
 
         self._mcp_server.replace_widgets(payloads)
 
@@ -608,18 +608,16 @@ Please return the COMPLETE updated widget code (not just the changes) in the sam
 
     def _load_widget_metadata(self, widget_id: str, register: bool = False) -> Optional[Dict[str, Any]]:
         """Load widget metadata from disk and populate MCP details."""
-        widget_path = os.path.join(self.widgets_dir, widget_id)
-        if not os.path.isdir(widget_path):
-            return None
+        widget_assets_dir = os.path.join(self.widgets_dir, "assets", widget_id)
+        metadata_path = os.path.join(widget_assets_dir, f"{widget_id}.metadata.json")
 
-        metadata_path = os.path.join(widget_path, "metadata.json")
         if not os.path.exists(metadata_path):
             return None
 
         with open(metadata_path, "r") as f:
             metadata = json.load(f)
 
-        metadata = self._ensure_metadata_defaults(widget_path, metadata)
+        metadata = self._ensure_metadata_defaults(widget_id, metadata)
         payload = self._build_mcp_payload(widget_id, metadata, register=register)
         if payload:
             if metadata.get("mcp") != payload:

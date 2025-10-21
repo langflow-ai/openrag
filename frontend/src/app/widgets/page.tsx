@@ -96,11 +96,11 @@ function WidgetsPage() {
                 font-family: system-ui, -apple-system, sans-serif;
               }
             </style>
-            <link rel="stylesheet" href="/widgets/assets/${widgetId}.css?t=${timestamp}" onerror="this.remove()">
+            <link rel="stylesheet" href="/widgets/assets/${widgetId}/style.css?t=${timestamp}" onerror="this.remove()">
           </head>
           <body>
             <div id="root"></div>
-            <script type="module" src="/widgets/assets/${widgetId}.js?t=${timestamp}"></script>
+            <script type="module" src="/widgets/assets/${widgetId}/${widgetId}.js?t=${timestamp}"></script>
           </body>
         </html>
       `;

@@ -33,8 +33,8 @@ class MCPWidget:
         """Return the HTML shell that loads the built widget bundle."""
         lines = ['<div id="root"></div>']
         if self.has_css:
-            lines.append(f'<link rel="stylesheet" href="/widgets/assets/{self.widget_id}.css">')
-        lines.append(f'<script type="module" src="/widgets/assets/{self.widget_id}.js"></script>')
+            lines.append(f'<link rel="stylesheet" href="/widgets/assets/{self.widget_id}/style.css">')
+        lines.append(f'<script type="module" src="/widgets/assets/{self.widget_id}/{self.widget_id}.js"></script>')
         return "\n".join(lines)
 
 

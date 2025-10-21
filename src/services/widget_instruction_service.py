@@ -54,7 +54,7 @@ async def _fetch_widget_resources() -> List[Tuple[str, Optional[str], Optional[s
     }
     protocol = "https" if ssl_enabled else "http"
     base_url = f"{protocol}://{host}:{port}"
-    url = f"{base_url}/mcp/widgets/mcp/messages"
+    url = f"{base_url}/mcp/widgets/mcp"
 
     headers = {
         "Content-Type": "application/json",
