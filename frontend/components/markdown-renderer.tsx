@@ -67,10 +67,13 @@ export const MarkdownRenderer = ({ chatMessage, className }: MarkdownRendererPro
         urlTransform={(url) => url}
         components={{
           p({ node, ...props }) {
-            return <p className="w-fit max-w-full">{props.children}</p>;
+            return <p className="w-fit max-w-full first:mt-0 last:mb-0 my-2">{props.children}</p>;
           },
           ol({ node, ...props }) {
             return <ol className="max-w-full">{props.children}</ol>;
+          },
+          strong({ node, ...props }) {
+            return <strong className="font-bold">{props.children}</strong>;
           },
           h1({ node, ...props }) {
             return <h1 className="mb-6 mt-4">{props.children}</h1>;
