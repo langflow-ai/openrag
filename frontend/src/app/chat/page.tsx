@@ -1183,7 +1183,7 @@ function ChatPage() {
 									className="space-y-6 group"
 								>
 									{message.role === "user" && (
-										<UserMessage content={message.content} />
+										<UserMessage animate={message.source !== "langflow"} content={message.content} />
 									)}
 
 									{message.role === "assistant" && (
@@ -1195,6 +1195,7 @@ function ChatPage() {
 											onToggle={toggleFunctionCall}
 											showForkButton={endpoint === "chat"}
 											onFork={(e) => handleForkConversation(index, e)}
+											animate={false}
 										/>
 									)}
 								</div>
@@ -1208,6 +1209,7 @@ function ChatPage() {
 									messageIndex={messages.length}
 									expandedFunctionCalls={expandedFunctionCalls}
 									onToggle={toggleFunctionCall}
+									delay={0.4}
 									isStreaming
 								/>
 							)}
