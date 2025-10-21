@@ -156,7 +156,7 @@ export function ChatRenderer({
               showLayout && "p-6 container",
               showLayout && isSmallWidthPath && "max-w-[850px] ml-0",
               !showLayout &&
-                "w-full bg-card rounded-lg shadow-2xl p-8 overflow-y-auto",
+                "w-full bg-card rounded-lg shadow-2xl p-0 py-2 overflow-y-auto",
             )}
           >
             <motion.div
