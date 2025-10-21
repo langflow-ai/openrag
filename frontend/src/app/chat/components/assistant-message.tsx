@@ -1,4 +1,5 @@
 import { GitBranch } from "lucide-react";
+import { motion } from "motion/react";
 import DogIcon from "@/components/logo/dog-icon";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { cn } from "@/lib/utils";
@@ -30,44 +31,52 @@ export function AssistantMessage({
 	isCompleted = false,
 }: AssistantMessageProps) {
 	return (
-		<Message
-			icon={
-				<div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
-					<DogIcon
-						className="h-6 w-6"
-						disabled={isCompleted}
+		<motion.div
+			initial={{ opacity: 0, y: -20 }}
+			animate={{ opacity: 1, y: 0 }}
+			transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
+			className={isCompleted ? "opacity-50" : ""}
+		>
+			<Message
+				icon={
+					<div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
+						<DogIcon
+							className="h-6 w-6 transition-colors duration-300"
+							disabled={isCompleted}
+						/>
+					</div>
+				}
+				actions={
+					showForkButton && onFork ? (
+						<button
+							type="button"
+							onClick={onFork}
+							className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
+							title="Fork conversation from here"
+						>
+							<GitBranch className="h-3 w-3" />
+						</button>
+					) : undefined
+				}
+			>
+				<FunctionCalls
+					functionCalls={functionCalls}
+					messageIndex={messageIndex}
+					expandedFunctionCalls={expandedFunctionCalls}
+					onToggle={onToggle}
+				/>
+				<div className="relative">
+					<MarkdownRenderer
+						className={cn("text-sm py-1.5 transition-colors duration-300", isCompleted ? "text-placeholder-foreground" : "text-foreground")}
+						chatMessage={
+							isStreaming
+								? content +
+									' <span class="inline-block w-1 h-4 bg-primary ml-1 animate-pulse"></span>'
+								: content
+						}
 					/>
 				</div>
-			}
-			actions={
-				showForkButton && onFork ? (
-					<button
-						onClick={onFork}
-						className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
-						title="Fork conversation from here"
-					>
-						<GitBranch className="h-3 w-3" />
-					</button>
-				) : undefined
-			}
-		>
-			<FunctionCalls
-				functionCalls={functionCalls}
-				messageIndex={messageIndex}
-				expandedFunctionCalls={expandedFunctionCalls}
-				onToggle={onToggle}
-			/>
-			<div className="relative">
-				<MarkdownRenderer
-					className={cn("text-sm py-1.5", isCompleted ? "text-placeholder-foreground" : "text-foreground")}
-					chatMessage={
-						isStreaming
-							? content +
-								' <span class="inline-block w-1 h-4 bg-primary ml-1 animate-pulse"></span>'
-							: content
-					}
-				/>
-			</div>
-		</Message>
+			</Message>
+		</motion.div>
 	);
 }

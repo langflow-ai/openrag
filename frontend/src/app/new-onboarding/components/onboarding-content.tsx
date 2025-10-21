@@ -45,10 +45,12 @@ export function OnboardingContent({
 	const handleNudgeClick = async (nudge: string) => {
 		setSelectedNudge(nudge);
 		setAssistantMessage(null);
+		setTimeout(async () => {
 		await sendMessage({
-			prompt: nudge,
-			previousResponseId: responseId || undefined,
-		});
+				prompt: nudge,
+				previousResponseId: responseId || undefined,
+			});
+		}, 1500);
 	};
 
 	// Determine which message to show (streaming takes precedence)
