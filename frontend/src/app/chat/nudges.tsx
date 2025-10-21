@@ -11,7 +11,7 @@ export default function Nudges({
 	handleSuggestionClick: (suggestion: string) => void;
 }) {
 	return (
-		<div className="flex-shrink-0 h-12 w-full overflow-hidden">
+		<div className="flex-shrink-0 h-12 w-full overflow-hidden pl-10">
 			<AnimatePresence>
 				{nudges.length > 0 && (
 					<motion.div
@@ -24,13 +24,9 @@ export default function Nudges({
 						}}
 					>
 						<div
-							className={
-								onboarding
-									? "relative flex"
-									: "relative px-6 pt-4 flex justify-center"
-							}
+							className="relative flex"
 						>
-							<div className="w-full max-w-[75%]">
+							<div className="w-full">
 								<div className="flex gap-3 justify-start overflow-x-auto scrollbar-hide">
 									{nudges.map((suggestion: string, index: number) => (
 										<button
@@ -38,9 +34,9 @@ export default function Nudges({
 											onClick={() => handleSuggestionClick(suggestion)}
 											className={cn(
 												onboarding
-													? "bg-background hover:bg-background/50 text-foreground border"
-													: "bg-muted hover:bg-muted/50 text-placeholder-foreground hover:text-foreground",
-												"px-2 py-1.5 rounded-lg text-sm transition-colors whitespace-nowrap",
+													? "text-foreground"
+													: "text-placeholder-foreground hover:text-foreground",
+												"bg-background border hover:bg-background/50 px-2 py-1.5 rounded-lg text-sm transition-colors whitespace-nowrap",
 											)}
 										>
 											{suggestion}
