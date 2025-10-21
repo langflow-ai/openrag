@@ -16,7 +16,7 @@ interface SendMessageOptions {
 }
 
 export function useChatStreaming({
-	endpoint = "/api/chat",
+	endpoint = "/api/langflow",
 	onComplete,
 	onError,
 }: UseChatStreamingOptions = {}) {
