@@ -32,6 +32,12 @@ export function OnboardingStep({
       return;
     }
 
+    if (isCompleted) {
+      setDisplayedText(text);
+      setShowChildren(true);
+      return;
+    }
+
     let currentIndex = 0;
     setDisplayedText("");
     setShowChildren(false);
@@ -47,7 +53,7 @@ export function OnboardingStep({
     }, 20); // 20ms per character
 
     return () => clearInterval(interval);
-  }, [text, isVisible]);
+  }, [text, isVisible, isCompleted]);
 
   if (!isVisible) return null;
 
