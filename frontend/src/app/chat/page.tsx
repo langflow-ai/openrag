@@ -2,6 +2,7 @@
 
 import { Loader2, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
@@ -71,8 +72,10 @@ function ChatPage() {
 		x: number;
 		y: number;
 	} | null>(null);
-	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const chatInputRef = useRef<ChatInputHandle>(null);
+
+	const { scrollToBottom } = useStickToBottomContext();
+
 	const lastLoadedConversationRef = useRef<string | null>(null);
 	const { addTask } = useTask();
 	const { selectedFilter, parsedFilterData, setSelectedFilter } =
@@ -82,7 +85,6 @@ function ChatPage() {
 	const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow";
 	const {
 		streamingMessage,
-		isLoading: isStreamingLoading,
 		sendMessage: sendStreamingMessage,
 		abortStream,
 	} = useChatStreaming({
@@ -90,7 +92,7 @@ function ChatPage() {
 		onComplete: (message, responseId) => {
 			setMessages((prev) => [...prev, message]);
 			setLoading(false);
-
+			
 			if (responseId) {
 				cancelNudges();
 				setPreviousResponseIds((prev) => ({
@@ -118,10 +120,6 @@ function ChatPage() {
 			setMessages((prev) => [...prev, errorMessage]);
 		},
 	});
-
-	const scrollToBottom = () => {
-		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-	};
 
 	const getCursorPosition = (textarea: HTMLTextAreaElement) => {
 		// Create a hidden div with the same styles as the textarea
@@ -357,21 +355,10 @@ function ChatPage() {
 		}
 	};
 
-	useEffect(() => {
-		// Only auto-scroll if not in the middle of user interaction
-		if (!isUserInteracting) {
-			const timer = setTimeout(() => {
-				scrollToBottom();
-			}, 50); // Small delay to avoid conflicts with click events
-
-			return () => clearTimeout(timer);
-		}
-	}, [messages, streamingMessage, isUserInteracting]);
-
 	// Reset selected index when search term changes
 	useEffect(() => {
 		setSelectedFilterIndex(0);
-	}, [filterSearchTerm]);
+	}, []);
 
 	// Auto-focus the input on component mount
 	useEffect(() => {
@@ -408,7 +395,7 @@ function ChatPage() {
 			window.removeEventListener("newConversation", handleNewConversation);
 			window.removeEventListener("focusInput", handleFocusInput);
 		};
-	}, [abortStream]);
+	}, [abortStream, setLoading]);
 
 	// Load conversation only when user explicitly selects a conversation
 	useEffect(() => {
@@ -709,7 +696,7 @@ function ChatPage() {
 				handleFileUploadError as EventListener,
 			);
 		};
-	}, [endpoint, setPreviousResponseIds]);
+	}, [endpoint, setPreviousResponseIds, setLoading]);
 
 	const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
 		previousResponseIds[endpoint],
@@ -749,6 +736,10 @@ function ChatPage() {
 			limit: parsedFilterData?.limit ?? 10,
 			scoreThreshold: parsedFilterData?.scoreThreshold ?? 0,
 		});
+		scrollToBottom({
+			animation: "smooth",
+			duration: 1000,
+		  });
 	};
 
 	const handleSendMessage = async (inputMessage: string) => {
@@ -764,6 +755,11 @@ function ChatPage() {
 		setInput("");
 		setLoading(true);
 		setIsFilterHighlighted(false);
+
+		scrollToBottom({
+			animation: "smooth",
+			duration: 1000,
+		  });
 
 		if (asyncMode) {
 			await handleSSEStream(userMessage);
@@ -1113,66 +1109,57 @@ function ChatPage() {
 		}
 	};
 
-	return (
-		<div className="flex flex-col h-full">
-			{/* Debug header - only show in debug mode */}
-			{isDebugMode && (
-				<div className="flex items-center justify-between mb-6">
-					<div className="flex items-center gap-2"></div>
-					<div className="flex items-center gap-4">
-						{/* Async Mode Toggle */}
-						<div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
-							<Button
-								variant={!asyncMode ? "default" : "ghost"}
-								size="sm"
-								onClick={() => setAsyncMode(false)}
-								className="h-7 text-xs"
-							>
-								Streaming Off
-							</Button>
-							<Button
-								variant={asyncMode ? "default" : "ghost"}
-								size="sm"
-								onClick={() => setAsyncMode(true)}
-								className="h-7 text-xs"
-							>
-								<Zap className="h-3 w-3 mr-1" />
-								Streaming On
-							</Button>
-						</div>
-						{/* Endpoint Toggle */}
-						<div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
-							<Button
-								variant={endpoint === "chat" ? "default" : "ghost"}
-								size="sm"
-								onClick={() => handleEndpointChange("chat")}
-								className="h-7 text-xs"
-							>
-								Chat
-							</Button>
-							<Button
-								variant={endpoint === "langflow" ? "default" : "ghost"}
-								size="sm"
-								onClick={() => handleEndpointChange("langflow")}
-								className="h-7 text-xs"
-							>
-								Langflow
-							</Button>
+	return (<>
+				{/* Debug header - only show in debug mode */}
+				{isDebugMode && (
+					<div className="flex items-center justify-between p-6">
+						<div className="flex items-center gap-2"></div>
+						<div className="flex items-center gap-4">
+							{/* Async Mode Toggle */}
+							<div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
+								<Button
+									variant={!asyncMode ? "default" : "ghost"}
+									size="sm"
+									onClick={() => setAsyncMode(false)}
+									className="h-7 text-xs"
+								>
+									Streaming Off
+								</Button>
+								<Button
+									variant={asyncMode ? "default" : "ghost"}
+									size="sm"
+									onClick={() => setAsyncMode(true)}
+									className="h-7 text-xs"
+								>
+									<Zap className="h-3 w-3 mr-1" />
+									Streaming On
+								</Button>
+							</div>
+							{/* Endpoint Toggle */}
+							<div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
+								<Button
+									variant={endpoint === "chat" ? "default" : "ghost"}
+									size="sm"
+									onClick={() => handleEndpointChange("chat")}
+									className="h-7 text-xs"
+								>
+									Chat
+								</Button>
+								<Button
+									variant={endpoint === "langflow" ? "default" : "ghost"}
+									size="sm"
+									onClick={() => handleEndpointChange("langflow")}
+									className="h-7 text-xs"
+								>
+									Langflow
+								</Button>
+							</div>
 						</div>
 					</div>
-				</div>
-			)}
+				)}
 
-			<div
-				className={`flex-1 flex flex-col min-h-0 px-6 ${
-					!isDebugMode ? "pt-6" : ""
-				}`}
-			>
-				<div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
-					{/* Messages Area */}
-					<div
-						className={`flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide space-y-6 min-h-0 transition-all relative`}
-					>
+				<StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden p-6">
+					<div className="flex flex-col place-self-center space-y-6 max-w-[960px] w-full mx-auto">
 						{messages.length === 0 && !streamingMessage ? (
 							<div className="flex items-center justify-center h-full text-muted-foreground">
 								<div className="text-center">
@@ -1190,7 +1177,12 @@ function ChatPage() {
 						) : (
 							<>
 								{messages.map((message, index) => (
-									<div key={index} className="space-y-6 group">
+									<div
+										key={`${
+											message.role
+										}-${index}-${message.timestamp?.getTime()}`}
+										className="space-y-6 group"
+									>
 										{message.role === "user" && (
 											<UserMessage content={message.content} />
 										)}
@@ -1220,55 +1212,58 @@ function ChatPage() {
 										isStreaming
 									/>
 								)}
-								<div ref={messagesEndRef} />
 							</>
 						)}
+						{!streamingMessage && (
+							<Nudges
+								nudges={loading ? [] : (nudges as string[])}
+								handleSuggestionClick={handleSuggestionClick}
+							/>
+						)}
 					</div>
-				</div>
-			</div>
+				</StickToBottom.Content>
 
-			{/* Suggestion chips - always show unless streaming */}
-			{!streamingMessage && (
-				<Nudges
-					nudges={loading ? [] : (nudges as string[])}
-					handleSuggestionClick={handleSuggestionClick}
-				/>
-			)}
-
-			{/* Input Area - Fixed at bottom */}
-			<ChatInput
-				ref={chatInputRef}
-				input={input}
-				loading={loading}
-				isUploading={isUploading}
-				selectedFilter={selectedFilter}
-				isFilterDropdownOpen={isFilterDropdownOpen}
-				availableFilters={availableFilters}
-				filterSearchTerm={filterSearchTerm}
-				selectedFilterIndex={selectedFilterIndex}
-				anchorPosition={anchorPosition}
-				textareaHeight={textareaHeight}
-				parsedFilterData={parsedFilterData}
-				onSubmit={handleSubmit}
-				onChange={onChange}
-				onKeyDown={handleKeyDown}
-				onHeightChange={(height) => setTextareaHeight(height)}
-				onFilterSelect={handleFilterSelect}
-				onAtClick={onAtClick}
-				onFilePickerChange={handleFilePickerChange}
-				onFilePickerClick={handleFilePickerClick}
-				setSelectedFilter={setSelectedFilter}
-				setIsFilterHighlighted={setIsFilterHighlighted}
-				setIsFilterDropdownOpen={setIsFilterDropdownOpen}
-			/>
-		</div>
+				{/* Input Area - Fixed at bottom */}
+				<ChatInput
+					ref={chatInputRef}
+					input={input}
+					loading={loading}
+					isUploading={isUploading}
+					selectedFilter={selectedFilter}
+					isFilterDropdownOpen={isFilterDropdownOpen}
+					availableFilters={availableFilters}
+					filterSearchTerm={filterSearchTerm}
+					selectedFilterIndex={selectedFilterIndex}
+					anchorPosition={anchorPosition}
+					textareaHeight={textareaHeight}
+					parsedFilterData={parsedFilterData}
+					onSubmit={handleSubmit}
+					onChange={onChange}
+					onKeyDown={handleKeyDown}
+					onHeightChange={(height) => setTextareaHeight(height)}
+					onFilterSelect={handleFilterSelect}
+					onAtClick={onAtClick}
+					onFilePickerChange={handleFilePickerChange}
+					onFilePickerClick={handleFilePickerClick}
+					setSelectedFilter={setSelectedFilter}
+					setIsFilterHighlighted={setIsFilterHighlighted}
+					setIsFilterDropdownOpen={setIsFilterDropdownOpen}
+				/></>
 	);
 }
 
 export default function ProtectedChatPage() {
 	return (
 		<ProtectedRoute>
+			<div className="flex w-full h-full overflow-hidden">
+			<StickToBottom
+				className="flex h-full flex-1 flex-col"
+				resize="smooth"
+				initial="instant"
+				mass={1}
+			>
 			<ChatPage />
+			</StickToBottom></div>
 		</ProtectedRoute>
 	);
 }
