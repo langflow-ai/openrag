@@ -76,9 +76,8 @@ export function OnboardingStep({
           )
         }
       >
-        <div className="space-y-4">
+        <div>
           {isMarkdown ? (
-            <div className="py-1.5">
               <MarkdownRenderer
                 className={cn(
                   isCompleted
@@ -88,7 +87,6 @@ export function OnboardingStep({
                 )}
                 chatMessage={text}
               />
-            </div>
           ) : (
             <p
               className={`text-foreground text-sm py-1.5 ${
@@ -97,7 +95,7 @@ export function OnboardingStep({
             >
               {displayedText}
               {!showChildren && !isCompleted && (
-                <span className="inline-block w-1 h-4 bg-primary ml-1 animate-pulse" />
+                <span className="inline-block w-1 h-3.5 bg-primary ml-1 animate-pulse" />
               )}
             </p>
           )}
@@ -110,7 +108,8 @@ export function OnboardingStep({
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.3, delay: 0.3, ease: "easeOut" }}
                 >
-                  {children}
+                  <div className="pt-2">
+                  {children}</div>
                 </motion.div>
               )}
             </AnimatePresence>
