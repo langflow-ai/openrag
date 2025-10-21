@@ -1,6 +1,7 @@
 import { GitBranch } from "lucide-react";
 import DogIcon from "@/components/logo/dog-icon";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { cn } from "@/lib/utils";
 import type { FunctionCall } from "../types";
 import { FunctionCalls } from "./function-calls";
 import { Message } from "./message";
@@ -14,6 +15,7 @@ interface AssistantMessageProps {
 	isStreaming?: boolean;
 	showForkButton?: boolean;
 	onFork?: (e: React.MouseEvent) => void;
+	isCompleted?: boolean;
 }
 
 export function AssistantMessage({
@@ -25,12 +27,16 @@ export function AssistantMessage({
 	isStreaming = false,
 	showForkButton = false,
 	onFork,
+	isCompleted = false,
 }: AssistantMessageProps) {
 	return (
 		<Message
 			icon={
 				<div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
-					<DogIcon className="h-6 w-6 text-accent-foreground" />
+					<DogIcon
+						className="h-6 w-6"
+						disabled={isCompleted}
+					/>
 				</div>
 			}
 			actions={
@@ -53,7 +59,7 @@ export function AssistantMessage({
 			/>
 			<div className="relative">
 				<MarkdownRenderer
-					className="text-foreground text-sm py-1.5"
+					className={cn("text-sm py-1.5", isCompleted ? "text-placeholder-foreground" : "text-foreground")}
 					chatMessage={
 						isStreaming
 							? content +
