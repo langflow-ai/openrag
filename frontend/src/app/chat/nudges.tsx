@@ -11,7 +11,7 @@ export default function Nudges({
 	handleSuggestionClick: (suggestion: string) => void;
 }) {
 	return (
-		<div className="flex-shrink-0 h-12 w-full overflow-hidden pl-10">
+		<div className="flex-shrink-0 h-12 w-full overflow-hidden">
 			<AnimatePresence>
 				{nudges.length > 0 && (
 					<motion.div

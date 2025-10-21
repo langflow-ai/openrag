@@ -92,7 +92,7 @@ function ChatPage() {
 		onComplete: (message, responseId) => {
 			setMessages((prev) => [...prev, message]);
 			setLoading(false);
-			
+
 			if (responseId) {
 				cancelNudges();
 				setPreviousResponseIds((prev) => ({
@@ -739,7 +739,7 @@ function ChatPage() {
 		scrollToBottom({
 			animation: "smooth",
 			duration: 1000,
-		  });
+		});
 	};
 
 	const handleSendMessage = async (inputMessage: string) => {
@@ -759,7 +759,7 @@ function ChatPage() {
 		scrollToBottom({
 			animation: "smooth",
 			duration: 1000,
-		  });
+		});
 
 		if (asyncMode) {
 			await handleSSEStream(userMessage);
@@ -1109,146 +1109,148 @@ function ChatPage() {
 		}
 	};
 
-	return (<>
-				{/* Debug header - only show in debug mode */}
-				{isDebugMode && (
-					<div className="flex items-center justify-between p-6">
-						<div className="flex items-center gap-2"></div>
-						<div className="flex items-center gap-4">
-							{/* Async Mode Toggle */}
-							<div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
-								<Button
-									variant={!asyncMode ? "default" : "ghost"}
-									size="sm"
-									onClick={() => setAsyncMode(false)}
-									className="h-7 text-xs"
-								>
-									Streaming Off
-								</Button>
-								<Button
-									variant={asyncMode ? "default" : "ghost"}
-									size="sm"
-									onClick={() => setAsyncMode(true)}
-									className="h-7 text-xs"
-								>
-									<Zap className="h-3 w-3 mr-1" />
-									Streaming On
-								</Button>
-							</div>
-							{/* Endpoint Toggle */}
-							<div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
-								<Button
-									variant={endpoint === "chat" ? "default" : "ghost"}
-									size="sm"
-									onClick={() => handleEndpointChange("chat")}
-									className="h-7 text-xs"
-								>
-									Chat
-								</Button>
-								<Button
-									variant={endpoint === "langflow" ? "default" : "ghost"}
-									size="sm"
-									onClick={() => handleEndpointChange("langflow")}
-									className="h-7 text-xs"
-								>
-									Langflow
-								</Button>
-							</div>
+	return (
+		<>
+			{/* Debug header - only show in debug mode */}
+			{isDebugMode && (
+				<div className="flex items-center justify-between p-6">
+					<div className="flex items-center gap-2"></div>
+					<div className="flex items-center gap-4">
+						{/* Async Mode Toggle */}
+						<div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
+							<Button
+								variant={!asyncMode ? "default" : "ghost"}
+								size="sm"
+								onClick={() => setAsyncMode(false)}
+								className="h-7 text-xs"
+							>
+								Streaming Off
+							</Button>
+							<Button
+								variant={asyncMode ? "default" : "ghost"}
+								size="sm"
+								onClick={() => setAsyncMode(true)}
+								className="h-7 text-xs"
+							>
+								<Zap className="h-3 w-3 mr-1" />
+								Streaming On
+							</Button>
+						</div>
+						{/* Endpoint Toggle */}
+						<div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
+							<Button
+								variant={endpoint === "chat" ? "default" : "ghost"}
+								size="sm"
+								onClick={() => handleEndpointChange("chat")}
+								className="h-7 text-xs"
+							>
+								Chat
+							</Button>
+							<Button
+								variant={endpoint === "langflow" ? "default" : "ghost"}
+								size="sm"
+								onClick={() => handleEndpointChange("langflow")}
+								className="h-7 text-xs"
+							>
+								Langflow
+							</Button>
 						</div>
 					</div>
-				)}
+				</div>
+			)}
 
-				<StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden p-6">
-					<div className="flex flex-col place-self-center space-y-6 max-w-[960px] w-full mx-auto">
-						{messages.length === 0 && !streamingMessage ? (
-							<div className="flex items-center justify-center h-full text-muted-foreground">
-								<div className="text-center">
-									{isUploading ? (
-										<>
-											<Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin" />
-											<p>Processing your document...</p>
-											<p className="text-sm mt-2">
-												This may take a few moments
-											</p>
-										</>
-									) : null}
-								</div>
+			<StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden p-6">
+				<div className="flex flex-col place-self-center space-y-6 max-w-[960px] w-full mx-auto">
+					{messages.length === 0 && !streamingMessage ? (
+						<div className="flex items-center justify-center h-full text-muted-foreground">
+							<div className="text-center">
+								{isUploading ? (
+									<>
+										<Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin" />
+										<p>Processing your document...</p>
+										<p className="text-sm mt-2">This may take a few moments</p>
+									</>
+								) : null}
 							</div>
-						) : (
-							<>
-								{messages.map((message, index) => (
-									<div
-										key={`${
-											message.role
-										}-${index}-${message.timestamp?.getTime()}`}
-										className="space-y-6 group"
-									>
-										{message.role === "user" && (
-											<UserMessage content={message.content} />
-										)}
+						</div>
+					) : (
+						<>
+							{messages.map((message, index) => (
+								<div
+									key={`${
+										message.role
+									}-${index}-${message.timestamp?.getTime()}`}
+									className="space-y-6 group"
+								>
+									{message.role === "user" && (
+										<UserMessage content={message.content} />
+									)}
 
-										{message.role === "assistant" && (
-											<AssistantMessage
-												content={message.content}
-												functionCalls={message.functionCalls}
-												messageIndex={index}
-												expandedFunctionCalls={expandedFunctionCalls}
-												onToggle={toggleFunctionCall}
-												showForkButton={endpoint === "chat"}
-												onFork={(e) => handleForkConversation(index, e)}
-											/>
-										)}
-									</div>
-								))}
+									{message.role === "assistant" && (
+										<AssistantMessage
+											content={message.content}
+											functionCalls={message.functionCalls}
+											messageIndex={index}
+											expandedFunctionCalls={expandedFunctionCalls}
+											onToggle={toggleFunctionCall}
+											showForkButton={endpoint === "chat"}
+											onFork={(e) => handleForkConversation(index, e)}
+										/>
+									)}
+								</div>
+							))}
 
-								{/* Streaming Message Display */}
-								{streamingMessage && (
-									<AssistantMessage
-										content={streamingMessage.content}
-										functionCalls={streamingMessage.functionCalls}
-										messageIndex={messages.length}
-										expandedFunctionCalls={expandedFunctionCalls}
-										onToggle={toggleFunctionCall}
-										isStreaming
-									/>
-								)}
-							</>
-						)}
-						{!streamingMessage && (
+							{/* Streaming Message Display */}
+							{streamingMessage && (
+								<AssistantMessage
+									content={streamingMessage.content}
+									functionCalls={streamingMessage.functionCalls}
+									messageIndex={messages.length}
+									expandedFunctionCalls={expandedFunctionCalls}
+									onToggle={toggleFunctionCall}
+									isStreaming
+								/>
+							)}
+						</>
+					)}
+					{!streamingMessage && (
+						<div className="pl-10">
 							<Nudges
 								nudges={loading ? [] : (nudges as string[])}
 								handleSuggestionClick={handleSuggestionClick}
 							/>
-						)}
-					</div>
-				</StickToBottom.Content>
+						</div>
+					)}
+				</div>
+			</StickToBottom.Content>
 
-				{/* Input Area - Fixed at bottom */}
-				<ChatInput
-					ref={chatInputRef}
-					input={input}
-					loading={loading}
-					isUploading={isUploading}
-					selectedFilter={selectedFilter}
-					isFilterDropdownOpen={isFilterDropdownOpen}
-					availableFilters={availableFilters}
-					filterSearchTerm={filterSearchTerm}
-					selectedFilterIndex={selectedFilterIndex}
-					anchorPosition={anchorPosition}
-					textareaHeight={textareaHeight}
-					parsedFilterData={parsedFilterData}
-					onSubmit={handleSubmit}
-					onChange={onChange}
-					onKeyDown={handleKeyDown}
-					onHeightChange={(height) => setTextareaHeight(height)}
-					onFilterSelect={handleFilterSelect}
-					onAtClick={onAtClick}
-					onFilePickerChange={handleFilePickerChange}
-					onFilePickerClick={handleFilePickerClick}
-					setSelectedFilter={setSelectedFilter}
-					setIsFilterHighlighted={setIsFilterHighlighted}
-					setIsFilterDropdownOpen={setIsFilterDropdownOpen}
-				/></>
+			{/* Input Area - Fixed at bottom */}
+			<ChatInput
+				ref={chatInputRef}
+				input={input}
+				loading={loading}
+				isUploading={isUploading}
+				selectedFilter={selectedFilter}
+				isFilterDropdownOpen={isFilterDropdownOpen}
+				availableFilters={availableFilters}
+				filterSearchTerm={filterSearchTerm}
+				selectedFilterIndex={selectedFilterIndex}
+				anchorPosition={anchorPosition}
+				textareaHeight={textareaHeight}
+				parsedFilterData={parsedFilterData}
+				onSubmit={handleSubmit}
+				onChange={onChange}
+				onKeyDown={handleKeyDown}
+				onHeightChange={(height) => setTextareaHeight(height)}
+				onFilterSelect={handleFilterSelect}
+				onAtClick={onAtClick}
+				onFilePickerChange={handleFilePickerChange}
+				onFilePickerClick={handleFilePickerClick}
+				setSelectedFilter={setSelectedFilter}
+				setIsFilterHighlighted={setIsFilterHighlighted}
+				setIsFilterDropdownOpen={setIsFilterDropdownOpen}
+			/>
+		</>
 	);
 }
 
@@ -1256,14 +1258,15 @@ export default function ProtectedChatPage() {
 	return (
 		<ProtectedRoute>
 			<div className="flex w-full h-full overflow-hidden">
-			<StickToBottom
-				className="flex h-full flex-1 flex-col"
-				resize="smooth"
-				initial="instant"
-				mass={1}
-			>
-			<ChatPage />
-			</StickToBottom></div>
+				<StickToBottom
+					className="flex h-full flex-1 flex-col"
+					resize="smooth"
+					initial="instant"
+					mass={1}
+				>
+					<ChatPage />
+				</StickToBottom>
+			</div>
 		</ProtectedRoute>
 	);
 }
