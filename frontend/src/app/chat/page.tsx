@@ -2669,7 +2669,7 @@ function ChatPage() {
             >
               <Plus className="h-4 w-4" />
             </Button>
-            <Button
+            {/* <Button
               type="button"
               variant="outline"
               size="iconSm"
@@ -2678,7 +2678,7 @@ function ChatPage() {
               className="absolute bottom-3 left-12 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
             >
               <Wrench className="h-4 w-4" />
-            </Button>
+            </Button> */}
             <Button
               type="submit"
               disabled={!input.trim() || loading}
