@@ -69,7 +69,7 @@ export function OnboardingStep({
           icon || (
             <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
               <DogIcon
-                className="h-6 w-6 text-accent-foreground"
+                className="h-6 w-6 text-accent-foreground transition-colors duration-300"
                 disabled={isCompleted}
               />
             </div>
@@ -83,13 +83,13 @@ export function OnboardingStep({
                   isCompleted
                     ? "text-placeholder-foreground"
                     : "text-foreground",
-                  "text-sm py-1.5",
+                  "text-sm py-1.5 transition-colors duration-300",
                 )}
                 chatMessage={text}
               />
           ) : (
             <p
-              className={`text-foreground text-sm py-1.5 ${
+              className={`text-foreground text-sm py-1.5 transition-colors duration-300 ${
                 isCompleted ? "text-placeholder-foreground" : ""
               }`}
             >
