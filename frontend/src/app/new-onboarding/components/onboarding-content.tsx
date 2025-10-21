@@ -80,14 +80,12 @@ export function OnboardingContent({
 
 			{/* User message - show when nudge is selected */}
 			{currentStep >= 1 && !!selectedNudge && (
-				<div className={currentStep > 1 ? "opacity-50" : ""}>
-					<UserMessage content={selectedNudge} />
-				</div>
+				<UserMessage content={selectedNudge} isCompleted={currentStep > 1} />
 			)}
 
 			{/* Assistant message - show streaming or final message */}
 			{currentStep >= 1 && !!selectedNudge && (displayMessage || isLoading) && (
-				<div className={currentStep > 1 ? "opacity-50" : ""}>
+				<>
 					<AssistantMessage
 						content={displayMessage?.content || ""}
 						functionCalls={displayMessage?.functionCalls}
@@ -95,6 +93,7 @@ export function OnboardingContent({
 						expandedFunctionCalls={new Set()}
 						onToggle={() => {}}
 						isStreaming={!!streamingMessage}
+						isCompleted={currentStep > 1}
 					/>
 					{!isLoading && displayMessage && currentStep === 1 && (
 						<div className="mt-4">
@@ -107,8 +106,7 @@ export function OnboardingContent({
 							</button>
 						</div>
 					)}
-				</div>
-			)}
+			</>)}
 
 			<OnboardingStep
 				isVisible={currentStep >= 2}
