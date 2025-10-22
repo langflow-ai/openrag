@@ -75,20 +75,6 @@ export function AdvancedOnboarding({
               />
             </LabelWrapper>
           )}
-          {(hasLanguageModels || hasEmbeddingModels) && !updatedOnboarding && <Separator />}
-          {!updatedOnboarding && (
-            <LabelWrapper
-              label="Sample dataset"
-              description="Load sample data to chat with immediately."
-              id="sample-dataset"
-              flex
-            >
-              <Switch
-                checked={sampleDataset}
-                onCheckedChange={setSampleDataset}
-              />
-            </LabelWrapper>
-          )}
         </AccordionContent>
       </AccordionItem>
     </Accordion>
