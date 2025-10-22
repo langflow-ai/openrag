@@ -4,6 +4,7 @@ export interface Message {
   timestamp: Date;
   functionCalls?: FunctionCall[];
   isStreaming?: boolean;
+  source?: "langflow" | "chat";
 }
 
 export interface FunctionCall {
