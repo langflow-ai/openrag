@@ -7,6 +7,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -40,7 +41,6 @@ interface TaskContextType {
   tasks: Task[];
   files: TaskFile[];
   addTask: (taskId: string) => void;
-  addFiles: (files: Partial<TaskFile>[], taskId: string) => void;
   refreshTasks: () => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
   isPolling: boolean;
@@ -57,7 +57,6 @@ interface TaskContextType {
 const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
 export function TaskProvider({ children }: { children: React.ReactNode }) {
-  const [files, setFiles] = useState<TaskFile[]>([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRecentTasksExpanded, setIsRecentTasksExpanded] = useState(false);
   const previousTasksRef = useRef<Task[]>([]);
@@ -89,40 +88,97 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     },
   });
 
-  const refetchSearch = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: ["search"],
-      exact: false,
+  // Derive files from tasks query data
+  const files = useMemo(() => {
+    const derivedFiles: TaskFile[] = [];
+    const now = new Date().toISOString();
+
+    tasks.forEach((task) => {
+      if (task.files && typeof task.files === "object") {
+        Object.entries(task.files).forEach(([filePath, fileInfo]) => {
+          if (typeof fileInfo === "object" && fileInfo) {
+            const fileInfoEntry = fileInfo as TaskFileEntry;
+            const fileName =
+              fileInfoEntry.filename || filePath.split("/").pop() || filePath;
+            const fileStatus = fileInfoEntry.status ?? "processing";
+
+            // Map backend file status to our TaskFile status
+            let mappedStatus: TaskFile["status"];
+            switch (fileStatus) {
+              case "pending":
+              case "running":
+                mappedStatus = "processing";
+                break;
+              case "completed":
+                mappedStatus = "active";
+                break;
+              case "failed":
+                mappedStatus = "failed";
+                break;
+              default:
+                mappedStatus = "processing";
+            }
+
+            const fileError = (() => {
+              if (
+                typeof fileInfoEntry.error === "string" &&
+                fileInfoEntry.error.trim().length > 0
+              ) {
+                return fileInfoEntry.error.trim();
+              }
+              if (
+                mappedStatus === "failed" &&
+                typeof task.error === "string" &&
+                task.error.trim().length > 0
+              ) {
+                return task.error.trim();
+              }
+              return undefined;
+            })();
+
+            // Detect connector type based on file path
+            let connectorType = "local";
+            if (filePath.includes("/") && !filePath.startsWith("/")) {
+              connectorType = "s3";
+            }
+
+            derivedFiles.push({
+              filename: fileName,
+              mimetype: "",
+              source_url: filePath,
+              size: 0,
+              connector_type: connectorType,
+              status: mappedStatus,
+              task_id: task.task_id,
+              created_at:
+                typeof fileInfoEntry.created_at === "string"
+                  ? fileInfoEntry.created_at
+                  : now,
+              updated_at:
+                typeof fileInfoEntry.updated_at === "string"
+                  ? fileInfoEntry.updated_at
+                  : now,
+              error: fileError,
+              embedding_model:
+                typeof fileInfoEntry.embedding_model === "string"
+                  ? fileInfoEntry.embedding_model
+                  : undefined,
+              embedding_dimensions:
+                typeof fileInfoEntry.embedding_dimensions === "number"
+                  ? fileInfoEntry.embedding_dimensions
+                  : undefined,
+            });
+          }
+        });
+      }
     });
-  }, [queryClient]);
 
-  const addFiles = useCallback(
-    (newFiles: Partial<TaskFile>[], taskId: string) => {
-      const now = new Date().toISOString();
-      const filesToAdd: TaskFile[] = newFiles.map((file) => ({
-        filename: file.filename || "",
-        mimetype: file.mimetype || "",
-        source_url: file.source_url || "",
-        size: file.size || 0,
-        connector_type: file.connector_type || "local",
-        status: "processing",
-        task_id: taskId,
-        created_at: now,
-        updated_at: now,
-        error: file.error,
-        embedding_model: file.embedding_model,
-        embedding_dimensions: file.embedding_dimensions,
-      }));
+    return derivedFiles;
+  }, [tasks]);
 
-      setFiles((prevFiles) => [...prevFiles, ...filesToAdd]);
-    },
-    [],
-  );
-
-  // Handle task status changes and file updates
+  // Handle task status changes for notifications
   useEffect(() => {
     if (tasks.length === 0) {
-      // Store current tasks as previous for next comparison
       previousTasksRef.current = tasks;
       return;
     }
@@ -130,7 +186,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     // Check for task status changes by comparing with previous tasks
     tasks.forEach((currentTask) => {
       const previousTask = previousTasksRef.current.find(
-        (prev) => prev.task_id === currentTask.task_id,
+        (prev) => prev.task_id === currentTask.task_id
       );
 
       // Only show toasts if we have previous data and status has changed
@@ -138,109 +194,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         (previousTask && previousTask.status !== currentTask.status) ||
         (!previousTask && previousTasksRef.current.length !== 0)
       ) {
-        // Process files from failed task and add them to files list
-        if (currentTask.files && typeof currentTask.files === "object") {
-          const taskFileEntries = Object.entries(currentTask.files);
-          const now = new Date().toISOString();
-
-          taskFileEntries.forEach(([filePath, fileInfo]) => {
-            if (typeof fileInfo === "object" && fileInfo) {
-              const fileInfoEntry = fileInfo as TaskFileEntry;
-              // Use the filename from backend if available, otherwise extract from path
-              const fileName =
-                fileInfoEntry.filename ||
-                filePath.split("/").pop() ||
-                filePath;
-              const fileStatus = fileInfoEntry.status ?? "processing";
-
-              // Map backend file status to our TaskFile status
-              let mappedStatus: TaskFile["status"];
-              switch (fileStatus) {
-                case "pending":
-                case "running":
-                  mappedStatus = "processing";
-                  break;
-                case "completed":
-                  mappedStatus = "active";
-                  break;
-                case "failed":
-                  mappedStatus = "failed";
-                  break;
-                default:
-                  mappedStatus = "processing";
-              }
-
-              const fileError = (() => {
-                if (
-                  typeof fileInfoEntry.error === "string" &&
-                  fileInfoEntry.error.trim().length > 0
-                ) {
-                  return fileInfoEntry.error.trim();
-                }
-                if (
-                  mappedStatus === "failed" &&
-                  typeof currentTask.error === "string" &&
-                  currentTask.error.trim().length > 0
-                ) {
-                  return currentTask.error.trim();
-                }
-                return undefined;
-              })();
-
-              setFiles((prevFiles) => {
-                const existingFileIndex = prevFiles.findIndex(
-                  (f) =>
-                    f.source_url === filePath &&
-                    f.task_id === currentTask.task_id,
-                );
-
-                // Detect connector type based on file path or other indicators
-                let connectorType = "local";
-                if (filePath.includes("/") && !filePath.startsWith("/")) {
-                  // Likely S3 key format (bucket/path/file.ext)
-                  connectorType = "s3";
-                }
-
-                const fileEntry: TaskFile = {
-                  filename: fileName,
-                  mimetype: "", // We don't have this info from the task
-                  source_url: filePath,
-                  size: 0, // We don't have this info from the task
-                  connector_type: connectorType,
-                  status: mappedStatus,
-                  task_id: currentTask.task_id,
-                  created_at:
-                    typeof fileInfoEntry.created_at === "string"
-                      ? fileInfoEntry.created_at
-                      : now,
-                  updated_at:
-                    typeof fileInfoEntry.updated_at === "string"
-                      ? fileInfoEntry.updated_at
-                      : now,
-                  error: fileError,
-                  embedding_model:
-                    typeof fileInfoEntry.embedding_model === "string"
-                      ? fileInfoEntry.embedding_model
-                      : undefined,
-                  embedding_dimensions:
-                    typeof fileInfoEntry.embedding_dimensions === "number"
-                      ? fileInfoEntry.embedding_dimensions
-                      : undefined,
-                };
-
-                if (existingFileIndex >= 0) {
-                  // Update existing file
-                  const updatedFiles = [...prevFiles];
-                  updatedFiles[existingFileIndex] = fileEntry;
-                  return updatedFiles;
-                } else {
-                  // Add new file
-                  return [...prevFiles, fileEntry];
-                }
-              });
-            }
-          });
-        }
         if (
           previousTask &&
           previousTask.status !== "completed" &&
@@ -273,16 +226,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               },
             },
           });
-          setTimeout(() => {
-            setFiles((prevFiles) =>
-              prevFiles.filter(
-                (file) =>
-                  file.task_id !== currentTask.task_id ||
-                  file.status === "failed",
-              ),
-            );
-            refetchSearch();
-          }, 500);
+          queryClient.invalidateQueries({
+            queryKey: ["search"],
+            exact: false,
+          });
         } else if (
           previousTask &&
           previousTask.status !== "failed" &&
@@ -301,7 +248,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
     // Store current tasks as previous for next comparison
     previousTasksRef.current = tasks;
-  }, [tasks, refetchSearch]);
+  }, [tasks, queryClient]);
 
   const addTask = useCallback(
     (_taskId: string) => {
@@ -311,20 +258,18 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         refetchTasks();
       }, 500);
     },
-    [refetchTasks],
+    [refetchTasks]
   );
 
   const refreshTasks = useCallback(async () => {
-    setFiles([]);
     await refetchTasks();
   }, [refetchTasks]);
-
 
   const cancelTask = useCallback(
     async (taskId: string) => {
       cancelTaskMutation.mutate({ taskId });
     },
-    [cancelTaskMutation],
+    [cancelTaskMutation]
   );
 
   const toggleMenu = useCallback(() => {
@@ -338,14 +283,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       (task) =>
         task.status === "pending" ||
         task.status === "running" ||
-        task.status === "processing",
+        task.status === "processing"
     );
 
   const value: TaskContextType = {
     tasks,
     files,
     addTask,
-    addFiles,
     refreshTasks,
     cancelTask,
     isPolling,
