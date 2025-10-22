@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StickToBottom } from "use-stick-to-bottom";
 import { AssistantMessage } from "@/app/chat/components/assistant-message";
 import { UserMessage } from "@/app/chat/components/user-message";
@@ -59,6 +59,12 @@ export function OnboardingContent({
 	// Determine which message to show (streaming takes precedence)
 	const displayMessage = streamingMessage || assistantMessage;
 
+	useEffect(() => {
+		if (currentStep === 1 && !isLoading && !!displayMessage) {
+			handleStepComplete();
+		}
+	}, [isLoading, displayMessage, handleStepComplete]);
+
 	return (
 		<StickToBottom
 			className="flex h-full flex-1 flex-col"
@@ -68,6 +74,7 @@ export function OnboardingContent({
 		>
 			<StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden px-8 py-6">
 				<div className="flex flex-col place-self-center w-full space-y-6">
+					{/* Step 1 */}
 					<OnboardingStep
 						isVisible={currentStep >= 0}
 						isCompleted={currentStep > 0}
@@ -76,6 +83,7 @@ export function OnboardingContent({
 						<OnboardingCard onComplete={handleStepComplete} />
 					</OnboardingStep>
 
+					{/* Step 2 */}
 					<OnboardingStep
 						isVisible={currentStep >= 1}
 						isCompleted={currentStep > 1 || !!selectedNudge}
@@ -94,7 +102,7 @@ export function OnboardingContent({
 					{currentStep >= 1 && !!selectedNudge && (
 						<UserMessage
 							content={selectedNudge}
-							isCompleted={currentStep > 1}
+							isCompleted={currentStep > 2}
 						/>
 					)}
 
@@ -109,13 +117,13 @@ export function OnboardingContent({
 								expandedFunctionCalls={new Set()}
 								onToggle={() => {}}
 								isStreaming={!!streamingMessage}
-								isCompleted={currentStep > 1}
+								isCompleted={currentStep > 2}
 							/>
 						)}
 					
-					{/* Still kind of part of step 2 */}
+					{/* Step 3 */}
 					<OnboardingStep
-						isVisible={currentStep === 1 && !isLoading && !!displayMessage}
+						isVisible={currentStep >= 2 && !isLoading && !!displayMessage}
 						isCompleted={currentStep > 2}
 						text="Now, let's add your data."
 						hideIcon={true}
@@ -123,6 +131,7 @@ export function OnboardingContent({
 						<OnboardingUpload onComplete={handleStepComplete} />
 					</OnboardingStep>
 
+					{/* Step 4 */}
 					<OnboardingStep
 						isVisible={currentStep >= 2}
 						isCompleted={currentStep > 2}

@@ -1,6 +1,8 @@
 import { ChangeEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { duplicateCheck, uploadFile } from "@/lib/upload-utils";
+import { AnimatePresence, motion } from "motion/react";
+import { AnimatedProviderSteps } from "@/app/onboarding/components/animated-provider-steps";
 
 interface OnboardingUploadProps {
   onComplete: () => void;
@@ -9,6 +11,12 @@ interface OnboardingUploadProps {
 const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [currentStep, setCurrentStep] = useState<number | null>(null);
+
+  const STEP_LIST = [
+    "Analyzing your document",
+    "Ingesting your document",
+  ];
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
@@ -24,12 +32,14 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const performUpload = async (file: File, replace = false) => {
     setIsUploading(true);
     try {
+      setCurrentStep(1);
       await uploadFile(file, replace);
       console.log("Document uploaded successfully");
     } catch (error) {
       console.error("Upload failed", (error as Error).message);
     } finally {
       setIsUploading(false);
+      setCurrentStep(STEP_LIST.length);
       onComplete();
     }
   };
@@ -42,6 +52,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     }
 
     try {
+      setCurrentStep(0);
       const duplicateInfo = await duplicateCheck(selectedFile);
       if (duplicateInfo.exists) {
         console.log("Duplicate file detected");
@@ -58,23 +69,45 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
 
   return (
-    <div className="space-y-4">
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={handleUploadClick}
-        disabled={isUploading}
-      >
-        {isUploading ? "Uploading..." : "Add a Document"}
-      </Button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        onChange={handleFileChange}
-        className="hidden"
-        accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
-      />
-    </div>
+    <AnimatePresence mode="wait">
+      {currentStep === null ? (
+        <motion.div
+          key="user-ingest"
+          initial={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -24 }}
+          transition={{ duration: 0.4, ease: "easeInOut" }}
+        >
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleUploadClick}
+            disabled={isUploading}
+          >
+            {isUploading ? "Uploading..." : "Add a Document"}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFileChange}
+            className="hidden"
+            accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
+          />
+        </motion.div>
+      ) : (
+        <motion.div
+          key="ingest-steps"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeInOut" }}
+        >
+          <AnimatedProviderSteps
+            currentStep={currentStep}
+            setCurrentStep={setCurrentStep}
+            steps={STEP_LIST}
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
 
