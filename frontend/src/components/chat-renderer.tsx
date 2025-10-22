@@ -28,7 +28,7 @@ export function ChatRenderer({
 	settings,
 	children,
 }: {
-	settings: Settings;
+	settings: Settings | undefined;
 	children: React.ReactNode;
 }) {
 	const pathname = usePathname();
