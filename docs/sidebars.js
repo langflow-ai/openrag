@@ -17,78 +17,54 @@
 const sidebars = {
   tutorialSidebar: [
     {
-      type: "category",
-      label: "Get Started",
-      items: [
-        {
-          type: "doc",
-          id: "get-started/what-is-openrag",
-          label: "About OpenRAG"
-        },
-        {
-          type: "doc",
-          id: "get-started/install",
-          label: "Install OpenRAG"
-        },
-        {
-          type: "doc",
-          id: "get-started/docker",
-          label: "Deploy with Docker"
-        },
-        {
-          type: "doc",
-          id: "get-started/quickstart",
-          label: "Quickstart"
-        },
-        {
-          type: "doc",
-          id: "get-started/tui",
-          label: "Terminal User Interface (TUI)"
-        },
-      ],
+      type: "doc",
+      id: "get-started/what-is-openrag",
+      label: "About OpenRAG"
     },
     {
-      type: "category",
-      label: "Core components",
-      items: [
-        {
-          type: "doc",
-          id: "core-components/agents",
-          label: "Langflow Agents"
-        },
-        {
-          type: "doc",
-          id: "core-components/knowledge",
-          label: "OpenSearch Knowledge"
-        },
-        {
-          type: "doc",
-          id: "core-components/ingestion",
-          label: "Docling Ingestion"
-        }
-      ],
+      type: "doc",
+      id: "get-started/install",
+      label: "Install OpenRAG with TUI"
     },
     {
-      type: "category",
-      label: "Reference",
-      items: [
-        {
-          type: "doc",
-          id: "reference/configuration",
-          label: "Environment variables"
-        },
-      ],
+      type: "doc",
+      id: "get-started/docker",
+      label: "Install OpenRAG containers"
     },
     {
-      type: "category",
-      label: "Support",
-      items: [
-        {
-          type: "doc",
-          id: "support/troubleshoot",
-          label: "Troubleshoot"
-        },
-      ],
+      type: "doc",
+      id: "get-started/quickstart",
+      label: "Quickstart"
+    },
+    {
+      type: "doc",
+      id: "get-started/tui",
+      label: "Terminal User Interface (TUI)"
+    },
+    {
+      type: "doc",
+      id: "core-components/agents",
+      label: "Langflow in OpenRAG"
+    },
+    {
+      type: "doc",
+      id: "core-components/knowledge",
+      label: "OpenSearch in OpenRAG"
+    },
+    {
+      type: "doc",
+      id: "core-components/ingestion",
+      label: "Docling in OpenRAG"
+    },
+    {
+      type: "doc",
+      id: "reference/configuration",
+      label: "Environment variables"
+    },
+    {
+      type: "doc",
+      id: "support/troubleshoot",
+      label: "Troubleshooting"
     },
   ],
 };
