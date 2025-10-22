@@ -1,0 +1,87 @@
+name: Update Documentation PDF
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - '!docs/pdf/**'
+  # TEMP: for testing this workflow before merge, remove after confirmed working
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/update-docs-pdf.yml'
+
+jobs:
+  generate-pdf:
+    name: Generate and Update PDF
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+          cache-dependency-path: ./docs/yarn.lock
+
+      - name: Install dependencies
+        run: cd docs && yarn install
+
+      - name: Setup Chrome for Puppeteer
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Build docs and generate PDF
+        run: |
+          cd docs
+          yarn build
+          yarn serve &
+          SERVER_PID=$!
+          echo "Waiting for docusaurus server to start..."
+          for i in {1..30}; do
+            if curl -s http://localhost:3000 > /dev/null; then
+              echo "Server is ready!"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          node generate-pdf-ci.js
+          kill $SERVER_PID || true
+
+      - name: Check if PDF was updated
+        id: check_pdf
+        run: |
+          if git diff --quiet docs/pdf/openrag-documentation.pdf; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create pull request
+        if: steps.check_pdf.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: Update documentation PDF
+          branch: auto/update-docs-pdf
+          delete-branch: true
+          title: 'docs: Update documentation PDF'
+          body: |
+            ## Automated PDF Update
+
+            This PR updates the documentation PDF based on recent changes to the docs directory.
+
+            ### Changes
+            - Updated `docs/pdf/openrag-documentation.pdf`
+
+            Please review the PDF to ensure it was generated correctly before merging.
+          labels: documentation,automated
