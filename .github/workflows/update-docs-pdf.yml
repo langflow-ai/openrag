@@ -54,7 +54,7 @@ jobs:
             echo "Waiting... ($i/30)"
             sleep 2
           done
-          node generate-pdf-ci.js
+          npx @robertjdominguez/docusaurus-to-pdf
           kill $SERVER_PID || true
 
       - name: Check if PDF was updated

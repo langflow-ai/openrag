@@ -4,5 +4,5 @@
   "outputDir": "./pdf/openrag-documentation.pdf",
   "customStyles": "table { max-width: 3500px !important; } .navbar, .footer, .breadcrumbs { display: none !important; }",
   "forceImages": true,
-  "puppeteerArgs": ["--no-sandbox", "--disable-setuid-sandbox"]
+  "noSandbox": true
 }
