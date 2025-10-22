@@ -54,7 +54,7 @@ jobs:
             echo "Waiting... ($i/30)"
             sleep 2
           done
-          npx @robertjdominguez/docusaurus-to-pdf
+          npx github:robertjdominguez/docusaurus-to-pdf#add-no-sandbox-option
           kill $SERVER_PID || true
 
       - name: Check if PDF was updated
