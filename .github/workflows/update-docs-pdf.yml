@@ -34,28 +34,23 @@ jobs:
       - name: Install dependencies
         run: cd docs && yarn install
 
-      - name: Setup Chrome for Puppeteer
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
+      - name: Build documentation
+        run: cd docs && yarn build
 
-      - name: Build docs and generate PDF
+      - name: Serve docs and generate PDF
         run: |
           cd docs
-          yarn build
           yarn serve &
           SERVER_PID=$!
-          echo "Waiting for docusaurus server to start..."
+          echo "Waiting for server to start..."
           for i in {1..30}; do
             if curl -s http://localhost:3000 > /dev/null; then
-              echo "Server is ready!"
+              echo "Server ready!"
               break
             fi
-            echo "Waiting... ($i/30)"
             sleep 2
           done
-          npm install -g git+https://github.com/aaron-rai/docusaurus-to-pdf.git#feature/noSandbox
-          docusaurus-to-pdf
+          npx mr-pdf --initialDocURLs="http://localhost:3000/" --contentSelector="article" --paginationSelector=".pagination-nav__item--next > a" --excludeSelectors=".margin-vert--xl a,[class^='tocCollapsible'],.breadcrumbs,.theme-edit-this-page" --coverImage="https://docusaurus.io/img/docusaurus.png" --coverTitle="OpenRAG Documentation" --outputPDFFilename="./pdf/openrag-documentation.pdf" --puppeteerArgs="--no-sandbox,--disable-setuid-sandbox"
           kill $SERVER_PID || true
 
       - name: Check if PDF was updated
