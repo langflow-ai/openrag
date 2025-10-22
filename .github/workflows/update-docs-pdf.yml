@@ -54,7 +54,7 @@ jobs:
             echo "Waiting... ($i/30)"
             sleep 2
           done
-          npm install -g git+https://github.com/robertjdominguez/docusaurus-to-pdf.git#add-no-sandbox-option
+          npm install -g git+https://github.com/aaron-rai/docusaurus-to-pdf.git#feature/noSandbox
           docusaurus-to-pdf
           kill $SERVER_PID || true
 
