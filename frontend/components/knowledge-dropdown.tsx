@@ -456,11 +456,6 @@ export function KnowledgeDropdown() {
       icon: Folder,
       onClick: () => setShowFolderDialog(true),
     },
-    {
-      label: "Amazon S3",
-      icon: AwsIcon,
-      onClick: () => setShowS3Dialog(true),
-    },
     ...(awsEnabled
       ? [
           {
