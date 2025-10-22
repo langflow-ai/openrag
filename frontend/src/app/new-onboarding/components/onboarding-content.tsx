@@ -207,26 +207,7 @@ export function OnboardingContent({
 						text="Step 2: Connect your model"
 					>
 						<div className="space-y-4">
-							<p className="text-muted-foreground">
-								Choose and connect your preferred AI model provider.
-							</p>
-							<button
-								type="button"
-								onClick={handleStepComplete}
-								className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-							>
-								Continue
-							</button>
-						</div>
-					</OnboardingStep>
-
-					<OnboardingStep
-						isVisible={currentStep >= 3}
-						isCompleted={currentStep > 3}
-						text="Step 3: You're all set!"
-					>
-						<div className="space-y-4">
-							<p className="text-muted-foreground">
+						<p className="text-muted-foreground">
 								Upload a starter document to begin building your knowledge base
 								or jump straight into a conversation.
 							</p>
@@ -239,6 +220,23 @@ export function OnboardingContent({
 								>
 									{isUploading ? "Uploading..." : "Upload a Document"}
 								</button>
+								<input
+								ref={fileInputRef}
+								type="file"
+								onChange={handleFileChange}
+								className="hidden"
+								accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
+							/>
+							</div>
+						</div>
+					</OnboardingStep>
+
+					<OnboardingStep
+						isVisible={currentStep >= 3}
+						isCompleted={currentStep > 3}
+						text="Step 3: You're all set!"
+					>
+						<div className="space-y-4">
 								<button
 									type="button"
 									onClick={handleStepComplete}
@@ -246,14 +244,6 @@ export function OnboardingContent({
 								>
 									Go to Chat
 								</button>
-							</div>
-							<input
-								ref={fileInputRef}
-								type="file"
-								onChange={handleFileChange}
-								className="hidden"
-								accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
-							/>
 						</div>
 					</OnboardingStep>
 				</div>
