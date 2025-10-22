@@ -345,6 +345,15 @@
     @apply text-xs opacity-70;
   }
 
+  .prose :where(strong):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+    @apply text-current;
+  }
+
+  .prose :where(a):not(:where([class~="not-prose"],[class~="not-prose"] *))
+ {
+    @apply text-current;
+  }
+
   .box-shadow-inner::after {
     content: " ";
     position: absolute;
