@@ -34,7 +34,15 @@ interface OnboardingCardProps {
   onComplete: () => void;
 }
 
-const TOTAL_PROVIDER_STEPS = 4;
+
+const STEP_LIST = [
+  "Setting up your model provider",
+  "Defining schema",
+  "Configuring Langflow",
+  "Ingesting sample data",
+];
+
+const TOTAL_PROVIDER_STEPS = STEP_LIST.length;
 
 const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
   const updatedOnboarding = process.env.UPDATED_ONBOARDING === "true";
@@ -245,6 +253,7 @@ const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
           <AnimatedProviderSteps
             currentStep={currentStep}
             setCurrentStep={setCurrentStep}
+            steps={STEP_LIST}
           />
         </motion.div>
       )}
