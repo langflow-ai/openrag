@@ -39,7 +39,9 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       console.error("Upload failed", (error as Error).message);
     } finally {
       setIsUploading(false);
+      await new Promise(resolve => setTimeout(resolve, 1000));
       setCurrentStep(STEP_LIST.length);
+      await new Promise(resolve => setTimeout(resolve, 500));
       onComplete();
     }
   };
