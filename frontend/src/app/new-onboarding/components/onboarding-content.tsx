@@ -63,7 +63,7 @@ export function OnboardingContent({
 		if (currentStep === 1 && !isLoading && !!displayMessage) {
 			handleStepComplete();
 		}
-	}, [isLoading, displayMessage, handleStepComplete]);
+	}, [isLoading, displayMessage, handleStepComplete, currentStep]);
 
 	return (
 		<StickToBottom
