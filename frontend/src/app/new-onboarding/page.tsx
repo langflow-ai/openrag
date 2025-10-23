@@ -3,11 +3,7 @@
 import { Suspense, useState } from "react";
 import { DoclingHealthBanner } from "@/components/docling-health-banner";
 import { ProtectedRoute } from "@/components/protected-route";
-import { DotPattern } from "@/components/ui/dot-pattern";
-import { cn } from "@/lib/utils";
-import OnboardingCard from "../onboarding/components/onboarding-card";
 import { OnboardingContent } from "./components/onboarding-content";
-import { OnboardingStep } from "./components/onboarding-step";
 import { ProgressBar } from "./components/progress-bar";
 
 const TOTAL_STEPS = 4;
@@ -28,7 +24,7 @@ function NewOnboardingPage() {
 			{/* Chat-like content area */}
 			<div className="flex flex-col items-center gap-5 w-full max-w-3xl z-10">
 				<div className="w-full h-[872px] bg-background border rounded-lg p-4 shadow-sm overflow-y-auto">
-					<OnboardingContent />
+					<OnboardingContent handleStepComplete={handleStepComplete} currentStep={currentStep} />
 				</div>
 
 				<ProgressBar currentStep={currentStep} totalSteps={TOTAL_STEPS} />
