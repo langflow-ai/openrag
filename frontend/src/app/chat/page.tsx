@@ -1250,33 +1250,34 @@ function ChatPage() {
 					)}
 				</div>
 			</StickToBottom.Content>
-
-			{/* Input Area - Fixed at bottom */}
-			<ChatInput
-				ref={chatInputRef}
-				input={input}
-				loading={loading}
-				isUploading={isUploading}
-				selectedFilter={selectedFilter}
-				isFilterDropdownOpen={isFilterDropdownOpen}
-				availableFilters={availableFilters}
-				filterSearchTerm={filterSearchTerm}
-				selectedFilterIndex={selectedFilterIndex}
-				anchorPosition={anchorPosition}
-				textareaHeight={textareaHeight}
-				parsedFilterData={parsedFilterData}
-				onSubmit={handleSubmit}
-				onChange={onChange}
-				onKeyDown={handleKeyDown}
-				onHeightChange={(height) => setTextareaHeight(height)}
-				onFilterSelect={handleFilterSelect}
-				onAtClick={onAtClick}
-				onFilePickerChange={handleFilePickerChange}
-				onFilePickerClick={handleFilePickerClick}
-				setSelectedFilter={setSelectedFilter}
-				setIsFilterHighlighted={setIsFilterHighlighted}
-				setIsFilterDropdownOpen={setIsFilterDropdownOpen}
-			/>
+			<div className="p-6 pt-0 max-w-[960px] mx-auto w-full">
+				{/* Input Area - Fixed at bottom */}
+				<ChatInput
+					ref={chatInputRef}
+					input={input}
+					loading={loading}
+					isUploading={isUploading}
+					selectedFilter={selectedFilter}
+					isFilterDropdownOpen={isFilterDropdownOpen}
+					availableFilters={availableFilters}
+					filterSearchTerm={filterSearchTerm}
+					selectedFilterIndex={selectedFilterIndex}
+					anchorPosition={anchorPosition}
+					textareaHeight={textareaHeight}
+					parsedFilterData={parsedFilterData}
+					onSubmit={handleSubmit}
+					onChange={onChange}
+					onKeyDown={handleKeyDown}
+					onHeightChange={(height) => setTextareaHeight(height)}
+					onFilterSelect={handleFilterSelect}
+					onAtClick={onAtClick}
+					onFilePickerChange={handleFilePickerChange}
+					onFilePickerClick={handleFilePickerClick}
+					setSelectedFilter={setSelectedFilter}
+					setIsFilterHighlighted={setIsFilterHighlighted}
+					setIsFilterDropdownOpen={setIsFilterDropdownOpen}
+				/>
+			</div>
 		</>
 	);
 }
