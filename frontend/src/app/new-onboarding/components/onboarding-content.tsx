@@ -138,13 +138,13 @@ export function OnboardingContent({
 						text="Step 3: You're all set!"
 					>
 						<div className="space-y-4">
-							<button
-								type="button"
-								onClick={handleStepComplete}
-								className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-							>
-								Go to Chat
-							</button>
+								<button
+									type="button"
+									onClick={handleStepComplete}
+									className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+								>
+									Go to Chat
+								</button>
 						</div>
 					</OnboardingStep>
 				</div>
