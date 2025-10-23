@@ -93,8 +93,9 @@ For OAuth setup, use **Advanced Setup**.
    1. To install OpenRAG with **Advanced Setup**, click **Advanced Setup** or press <kbd>2</kbd>. 
    2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
    3. Paste your OpenAI API key in the OpenAI API key field.
-   4. Add your client and secret values for Google, Azure, or AWS OAuth.
-   These values can be found in your OAuth provider.
+   4. Add your client and secret values for Google or Microsoft OAuth.
+   These values can be found with your OAuth provider.
+   For more information, see the [Google OAuth client](https://developers.google.com/identity/protocols/oauth2) or [Microsoft Graph OAuth client](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth) documentation.
    5. The OpenRAG TUI presents redirect URIs for your OAuth app.
    These are the URLs your OAuth provider will redirect back to after user sign-in.
    Register these redirect values with your OAuth provider as they are presented in the TUI.
@@ -107,8 +108,8 @@ For OAuth setup, use **Advanced Setup**.
       Command completed successfully
       ```
    8. To open the OpenRAG application, click **Open App**, press <kbd>6</kbd>, or navigate to `http://localhost:3000`.
-   You will be presented with your provider's OAuth sign-in screen, and be redirected to the redirect URI after sign-in.
-   Continue with Application Onboarding.
+   You are presented with your provider's OAuth sign-in screen.
+   After sign-in, you are redirected to the redirect URI.
 
        Two additional variables are available for Advanced Setup:
 
@@ -116,7 +117,10 @@ For OAuth setup, use **Advanced Setup**.
 
        The `WEBHOOK_BASE_URL` controls where the endpoint for `/connectors/CONNECTOR_TYPE/webhook` will be available.
        This connection enables real-time document synchronization with external services.
-       For example, for Google Drive file synchronization the webhook URL is `/connectors/google_drive/webhook`.
+       Supported webhook endpoints:
+       - Google Drive: `/connectors/google_drive/webhook`
+       - OneDrive: `/connectors/onedrive/webhook`  
+       - SharePoint: `/connectors/sharepoint/webhook`
        
    9. Continue with [Application Onboarding](#application-onboarding).
   </TabItem>
