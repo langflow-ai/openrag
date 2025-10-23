@@ -9,6 +9,7 @@ import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
+import { FILES_REGEX } from "@/lib/constants";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import { AssistantMessage } from "./components/assistant-message";
@@ -1176,29 +1177,53 @@ function ChatPage() {
 					) : (
 						<>
 							{messages.map((message, index) => (
-								<div
-									key={`${
-										message.role
-									}-${index}-${message.timestamp?.getTime()}`}
-									className="space-y-6 group"
-								>
-									{message.role === "user" && (
-										<UserMessage animate={message.source !== "langflow"} content={message.content} />
-									)}
+								<>
+									{message.role === "user" &&
+										(messages[index]?.content.match(FILES_REGEX)?.[0] ??
+											null) === null && (
+											<div
+												key={`${
+													message.role
+												}-${index}-${message.timestamp?.getTime()}`}
+												className="space-y-6 group"
+											>
+												<UserMessage
+													animate={message.source !== "langflow"}
+													content={message.content}
+													files={
+														index >= 2
+															? (messages[index - 2]?.content.match(
+																	FILES_REGEX,
+																)?.[0] ?? undefined)
+															: undefined
+													}
+												/>
+											</div>
+										)}
 
-									{message.role === "assistant" && (
-										<AssistantMessage
-											content={message.content}
-											functionCalls={message.functionCalls}
-											messageIndex={index}
-											expandedFunctionCalls={expandedFunctionCalls}
-											onToggle={toggleFunctionCall}
-											showForkButton={endpoint === "chat"}
-											onFork={(e) => handleForkConversation(index, e)}
-											animate={false}
-										/>
-									)}
-								</div>
+									{message.role === "assistant" &&
+										(index < 1 ||
+											(messages[index - 1]?.content.match(FILES_REGEX)?.[0] ??
+												null) === null) && (
+											<div
+												key={`${
+													message.role
+												}-${index}-${message.timestamp?.getTime()}`}
+												className="space-y-6 group"
+											>
+												<AssistantMessage
+													content={message.content}
+													functionCalls={message.functionCalls}
+													messageIndex={index}
+													expandedFunctionCalls={expandedFunctionCalls}
+													onToggle={toggleFunctionCall}
+													showForkButton={endpoint === "chat"}
+													onFork={(e) => handleForkConversation(index, e)}
+													animate={false}
+												/>
+											</div>
+										)}
+								</>
 							))}
 
 							{/* Streaming Message Display */}
