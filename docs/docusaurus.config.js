@@ -25,6 +25,9 @@ const config = {
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: process.env.BASE_URL ? process.env.BASE_URL : '/',
 
+  // Control search engine indexing - set to true to prevent indexing
+  noIndex: true,
+
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
   organizationName: 'langflow-ai', // Usually your GitHub org/user name.

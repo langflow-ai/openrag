@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StickToBottom } from "use-stick-to-bottom";
 import { AssistantMessage } from "@/app/chat/components/assistant-message";
 import { UserMessage } from "@/app/chat/components/user-message";
@@ -8,7 +8,9 @@ import Nudges from "@/app/chat/nudges";
 import type { Message } from "@/app/chat/types";
 import OnboardingCard from "@/app/onboarding/components/onboarding-card";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
+
 import { OnboardingStep } from "./onboarding-step";
+import OnboardingUpload from "./onboarding-upload";
 
 export function OnboardingContent({
 	handleStepComplete,
@@ -57,6 +59,12 @@ export function OnboardingContent({
 	// Determine which message to show (streaming takes precedence)
 	const displayMessage = streamingMessage || assistantMessage;
 
+	useEffect(() => {
+		if (currentStep === 1 && !isLoading && !!displayMessage) {
+			handleStepComplete();
+		}
+	}, [isLoading, displayMessage, handleStepComplete, currentStep]);
+
 	return (
 		<StickToBottom
 			className="flex h-full flex-1 flex-col"
@@ -66,6 +74,7 @@ export function OnboardingContent({
 		>
 			<StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden px-8 py-6">
 				<div className="flex flex-col place-self-center w-full space-y-6">
+					{/* Step 1 */}
 					<OnboardingStep
 						isVisible={currentStep >= 0}
 						isCompleted={currentStep > 0}
@@ -74,6 +83,7 @@ export function OnboardingContent({
 						<OnboardingCard onComplete={handleStepComplete} />
 					</OnboardingStep>
 
+					{/* Step 2 */}
 					<OnboardingStep
 						isVisible={currentStep >= 1}
 						isCompleted={currentStep > 1 || !!selectedNudge}
@@ -92,7 +102,7 @@ export function OnboardingContent({
 					{currentStep >= 1 && !!selectedNudge && (
 						<UserMessage
 							content={selectedNudge}
-							isCompleted={currentStep > 1}
+							isCompleted={currentStep > 2}
 						/>
 					)}
 
@@ -100,65 +110,41 @@ export function OnboardingContent({
 					{currentStep >= 1 &&
 						!!selectedNudge &&
 						(displayMessage || isLoading) && (
-							<>
-								<AssistantMessage
-									content={displayMessage?.content || ""}
-									functionCalls={displayMessage?.functionCalls}
-									messageIndex={0}
-									expandedFunctionCalls={new Set()}
-									onToggle={() => {}}
-									isStreaming={!!streamingMessage}
-									isCompleted={currentStep > 1}
-								/>
-								{!isLoading && displayMessage && currentStep === 1 && (
-									<div className="mt-4">
-										<button
-											type="button"
-											onClick={handleStepComplete}
-											className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-										>
-											Continue
-										</button>
-									</div>
-								)}
-							</>
+							<AssistantMessage
+								content={displayMessage?.content || ""}
+								functionCalls={displayMessage?.functionCalls}
+								messageIndex={0}
+								expandedFunctionCalls={new Set()}
+								onToggle={() => {}}
+								isStreaming={!!streamingMessage}
+								isCompleted={currentStep > 2}
+							/>
 						)}
-
+					
+					{/* Step 3 */}
 					<OnboardingStep
-						isVisible={currentStep >= 2}
+						isVisible={currentStep >= 2 && !isLoading && !!displayMessage}
 						isCompleted={currentStep > 2}
-						text="Step 2: Connect your model"
+						text="Now, let's add your data."
+						hideIcon={true}
 					>
-						<div className="space-y-4">
-							<p className="text-muted-foreground">
-								Choose and connect your preferred AI model provider.
-							</p>
-							<button
-								type="button"
-								onClick={handleStepComplete}
-								className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-							>
-								Continue
-							</button>
-						</div>
+						<OnboardingUpload onComplete={handleStepComplete} />
 					</OnboardingStep>
 
+					{/* Step 4 */}
 					<OnboardingStep
 						isVisible={currentStep >= 3}
 						isCompleted={currentStep > 3}
 						text="Step 3: You're all set!"
 					>
 						<div className="space-y-4">
-							<p className="text-muted-foreground">
-								Your account is ready to use. Let's start chatting!
-							</p>
-							<button
-								type="button"
-								onClick={handleStepComplete}
-								className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-							>
-								Go to Chat
-							</button>
+								<button
+									type="button"
+									onClick={handleStepComplete}
+									className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+								>
+									Go to Chat
+								</button>
 						</div>
 					</OnboardingStep>
 				</div>
