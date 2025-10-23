@@ -28,7 +28,7 @@ export function ChatRenderer({
 	settings,
 	children,
 }: {
-	settings: Settings;
+	settings: Settings | undefined;
 	children: React.ReactNode;
 }) {
 	const pathname = usePathname();
@@ -51,7 +51,8 @@ export function ChatRenderer({
 		if (typeof window === "undefined") return false;
 		const savedStep = localStorage.getItem(ONBOARDING_STEP_KEY);
 		// Show layout if settings.edited is true and if no onboarding step is saved
-		return !!settings?.edited && savedStep === null;
+		const isEdited = settings?.edited ?? true;
+		return isEdited ? savedStep === null : false;
 	});
 
 	// Only fetch conversations on chat page

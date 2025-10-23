@@ -35,9 +35,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   const isUnhealthy = health?.status === "unhealthy" || isError;
   const isBannerVisible = !isHealthLoading && isUnhealthy;
+  const isSettingsLoadingOrError = isSettingsLoading || !settings;
 
   // Show loading state when backend isn't ready
-  if (isLoading || isSettingsLoading || !settings) {
+  if (isLoading || (isSettingsLoadingOrError && (isNoAuthMode || isAuthenticated))) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
