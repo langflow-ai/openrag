@@ -37,12 +37,14 @@ import GoogleDriveIcon from "@/app/settings/icons/google-drive-icon";
 import OneDriveIcon from "@/app/settings/icons/one-drive-icon";
 import SharePointIcon from "@/app/settings/icons/share-point-icon";
 import AwsIcon from "@/app/settings/icons/aws-icon";
+import { cn } from "@/lib/utils";
 
 export function KnowledgeDropdown() {
   const { addTask } = useTask();
   const { refetch: refetchTasks } = useGetTasksQuery();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showS3Dialog, setShowS3Dialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
@@ -474,7 +476,7 @@ export function KnowledgeDropdown() {
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu onOpenChange={setIsMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button disabled={isLoading}>
             {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -491,7 +493,14 @@ export function KnowledgeDropdown() {
                   : "Processing..."
                 : "Add Knowledge"}
             </span>
-            {!isLoading && <ChevronDown className="h-4 w-4" />}
+            {!isLoading && (
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition-transform duration-200",
+                  isMenuOpen && "rotate-180"
+                )}
+              />
+            )}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
