@@ -125,27 +125,10 @@ export function OnboardingContent({
 					<OnboardingStep
 						isVisible={currentStep >= 2 && !isLoading && !!displayMessage}
 						isCompleted={currentStep > 2}
-						text="Now, let's add your data."
+						text="Lastly, let's add your data."
 						hideIcon={true}
 					>
 						<OnboardingUpload onComplete={handleStepComplete} />
-					</OnboardingStep>
-
-					{/* Step 4 */}
-					<OnboardingStep
-						isVisible={currentStep >= 3}
-						isCompleted={currentStep > 3}
-						text="Step 3: You're all set!"
-					>
-						<div className="space-y-4">
-								<button
-									type="button"
-									onClick={handleStepComplete}
-									className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-								>
-									Go to Chat
-								</button>
-						</div>
 					</OnboardingStep>
 				</div>
 			</StickToBottom.Content>
