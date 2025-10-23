@@ -9,16 +9,12 @@ import { cn } from "@/lib/utils";
 export function AnimatedProviderSteps({
   currentStep,
   setCurrentStep,
+  steps,
 }: {
   currentStep: number;
   setCurrentStep: (step: number) => void;
+  steps: string[];
 }) {
-  const steps = [
-    "Setting up your model provider",
-    "Defining schema",
-    "Configuring Langflow",
-    "Ingesting sample data",
-  ];
 
   useEffect(() => {
     if (currentStep < steps.length - 1) {
@@ -27,7 +23,7 @@ export function AnimatedProviderSteps({
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [currentStep, setCurrentStep]);
+  }, [currentStep, setCurrentStep, steps]);
 
   const isDone = currentStep >= steps.length;
 
