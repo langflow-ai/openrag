@@ -450,12 +450,16 @@ export function KnowledgeDropdown() {
   const menuItems = [
     {
       label: "File",
-      icon: File,
+      icon: ({ className }: { className?: string }) => (
+        <File className={cn(className, "text-muted-foreground")} />
+      ),
       onClick: handleFileUpload,
     },
     {
       label: "Folder",
-      icon: Folder,
+      icon: ({ className }: { className?: string }) => (
+        <Folder className={cn(className, "text-muted-foreground")} />
+      ),
       onClick: () => setShowFolderDialog(true),
     },
     ...(awsEnabled
@@ -510,7 +514,7 @@ export function KnowledgeDropdown() {
               onClick={item.onClick}
               disabled={"disabled" in item ? item.disabled : false}
             >
-              <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />
+              <item.icon className="mr-2 h-4 w-4" />
               {item.label}
             </DropdownMenuItem>
           ))}
