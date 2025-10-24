@@ -1,6 +1,6 @@
 import { ChangeEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { duplicateCheck, uploadFile } from "@/lib/upload-utils";
+import { uploadFileForContext } from "@/lib/upload-utils";
 import { AnimatePresence, motion } from "motion/react";
 import { AnimatedProviderSteps } from "@/app/onboarding/components/animated-provider-steps";
 
@@ -28,12 +28,11 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     fileInputRef.current?.click();
   };
 
-
-  const performUpload = async (file: File, replace = false) => {
+  const performUpload = async (file: File) => {
     setIsUploading(true);
     try {
-      setCurrentStep(1);
-      await uploadFile(file, replace);
+      setCurrentStep(0);
+      await uploadFileForContext(file);
       console.log("Document uploaded successfully");
     } catch (error) {
       console.error("Upload failed", (error as Error).message);
@@ -54,14 +53,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     }
 
     try {
-      setCurrentStep(0);
-      const duplicateInfo = await duplicateCheck(selectedFile);
-      if (duplicateInfo.exists) {
-        console.log("Duplicate file detected");
-        return;
-      }
-
-      await performUpload(selectedFile, false);
+      await performUpload(selectedFile);
     } catch (error) {
       console.error("Unable to prepare file for upload", (error as Error).message);
     } finally {
