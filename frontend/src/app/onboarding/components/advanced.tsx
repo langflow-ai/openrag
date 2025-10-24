@@ -1,5 +1,4 @@
 import { LabelWrapper } from "@/components/label-wrapper";
-import OllamaLogo from "@/components/logo/ollama-logo";
 import {
   Accordion,
   AccordionContent,
@@ -39,6 +38,8 @@ export function AdvancedOnboarding({
     languageModels !== undefined &&
     languageModel !== undefined &&
     setLanguageModel !== undefined;
+
+  const updatedOnboarding = process.env.UPDATED_ONBOARDING === "true";
   return (
     <Accordion type="single" collapsible>
       <AccordionItem value="item-1">
@@ -74,18 +75,20 @@ export function AdvancedOnboarding({
               />
             </LabelWrapper>
           )}
-          {(hasLanguageModels || hasEmbeddingModels) && <Separator />}
-          <LabelWrapper
-            label="Sample dataset"
-            description="Load 2 sample PDFs to chat with data immediately."
-            id="sample-dataset"
-            flex
-          >
-            <Switch
-              checked={sampleDataset}
-              onCheckedChange={setSampleDataset}
-            />
-          </LabelWrapper>
+          {(hasLanguageModels || hasEmbeddingModels) && !updatedOnboarding && <Separator />}
+          {!updatedOnboarding && (
+            <LabelWrapper
+              label="Sample dataset"
+              description="Load sample data to chat with immediately."
+              id="sample-dataset"
+              flex
+            >
+              <Switch
+                checked={sampleDataset}
+                onCheckedChange={setSampleDataset}
+              />
+            </LabelWrapper>
+          )}
         </AccordionContent>
       </AccordionItem>
     </Accordion>

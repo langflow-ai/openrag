@@ -7,14 +7,13 @@
   &nbsp;&nbsp;
   <a href="https://github.com/opensearch-project/OpenSearch"><img src="https://img.shields.io/badge/OpenSearch-005EB8?style=flat&logo=opensearch&logoColor=white" alt="OpenSearch"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/encode/starlette"><img src="https://img.shields.io/badge/Starlette-009639?style=flat&logo=fastapi&logoColor=white" alt="Starlette"></a>
+  <a href="https://github.com/docling-project/docling"><img src="https://img.shields.io/badge/Docling-000000?style=flat" alt="Langflow"></a>
   &nbsp;&nbsp;
-  <a href="https://github.com/vercel/next.js"><img src="https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js&logoColor=white" alt="Next.js"></a>
-  &nbsp;&nbsp;
-  <a href="https://deepwiki.com/phact/openrag"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </div>
 
-OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with Starlette, Next.js, OpenSearch, and Langflow integration.
+OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with [Starlette](https://github.com/Kludex/starlette) and [Next.js](https://github.com/vercel/next.js). Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Langflow](https://github.com/langflow-ai/langflow), and [Docling](https://github.com/docling-project/docling).
+
+<a href="https://deepwiki.com/phact/openrag"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 
 </div>
 <div align="center">
@@ -48,12 +47,12 @@ To launch OpenRAG with the TUI, do the following:
 
     The TUI opens and guides you through OpenRAG setup.
 
-For the full TUI guide, see [TUI](docs/docs/get-started/tui.mdx).
+For the full TUI installation guide, see [TUI](https://docs.openr.ag/install).
 
-## Docker Deployment
+## Docker installation
 
 If you prefer to use Docker to run OpenRAG, the repository includes two Docker Compose `.yml` files.
-They deploy the same applications and containers, but to different environments.
+They deploy the same applications and containers locally, but to different environments.
 
 - [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment for environments with GPU support. GPU support requires an NVIDIA GPU with CUDA support and compatible NVIDIA drivers installed on the OpenRAG host machine. 
 
@@ -61,7 +60,7 @@ They deploy the same applications and containers, but to different environments.
 
 Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing. Installing OpenRAG with the TUI starts `docling serve` automatically, but for a Docker deployment you must manually start the `docling serve` process.
 
-To deploy OpenRAG with Docker:
+To install OpenRAG with Docker:
 
 1. Clone the OpenRAG repository.
     ```bash
@@ -114,7 +113,7 @@ To deploy OpenRAG with Docker:
    | OpenSearch | http://localhost:9200 | Vector database for document storage. |
    | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
 
-6. Access the OpenRAG application at `http://localhost:3000` and continue with the [Quickstart](docs/docs/get-started/quickstart.mdx).
+6. Access the OpenRAG application at `http://localhost:3000` and continue with the [Quickstart](https://docs.openr.ag/quickstart).
 
     To stop `docling serve`, run:
     
@@ -122,11 +121,11 @@ To deploy OpenRAG with Docker:
     uv run python scripts/docling_ctl.py stop
     ```
 
-For more information, see [Deploy with Docker](docs/docs/get-started/docker.mdx).
+For more information, see [Install with Docker](https://docs.openr.ag/get-started/docker).
 
 ## Troubleshooting
 
-For common issues and fixes, see [Troubleshoot](docs/docs/support/troubleshoot.mdx).
+For common issues and fixes, see [Troubleshoot](https://docs.openr.ag/support/troubleshoot).
 
 ## Development
 

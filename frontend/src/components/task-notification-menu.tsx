@@ -169,95 +169,87 @@ export function TaskNotificationMenu() {
           {activeTasks.length > 0 && (
             <div className="p-4 space-y-3">
               <h4 className="text-sm font-medium text-muted-foreground">Active Tasks</h4>
-              {activeTasks.map((task) => (
-                <Card key={task.task_id} className="bg-card/50">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        {getTaskIcon(task.status)}
-                        Task {task.task_id.substring(0, 8)}...
-                      </CardTitle>
-                    </div>
-                    <CardDescription className="text-xs">
-                      Started {formatRelativeTime(task.created_at)}
-                      {formatDuration(task.duration_seconds) && (
-                        <span className="ml-2 text-muted-foreground">
-                          • {formatDuration(task.duration_seconds)}
-                        </span>
-                      )}
-                    </CardDescription>
-                  </CardHeader>
-                  {formatTaskProgress(task) && (
-                    <CardContent className="pt-0">
-                      <div className="space-y-2">
-                        <div className="text-xs text-muted-foreground">
-                          Progress: {formatTaskProgress(task)?.basic}
-                        </div>
-                        {formatTaskProgress(task)?.detailed && (
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                              <span className="text-green-600">
-                                {formatTaskProgress(task)?.detailed.successful} success
-                              </span>
+              {activeTasks.map((task) => {
+                const progress = formatTaskProgress(task)
+                const showCancel =
+                  task.status === 'pending' ||
+                  task.status === 'running' ||
+                  task.status === 'processing'
+
+                return (
+                  <Card key={task.task_id} className="bg-card/50">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          {getTaskIcon(task.status)}
+                          Task {task.task_id.substring(0, 8)}...
+                        </CardTitle>
+                      </div>
+                      <CardDescription className="text-xs">
+                        Started {formatRelativeTime(task.created_at)}
+                        {formatDuration(task.duration_seconds) && (
+                          <span className="ml-2 text-muted-foreground">
+                            • {formatDuration(task.duration_seconds)}
+                          </span>
+                        )}
+                      </CardDescription>
+                    </CardHeader>
+                    {(progress || showCancel) && (
+                      <CardContent className="pt-0">
+                        {progress && (
+                          <div className="space-y-2">
+                            <div className="text-xs text-muted-foreground">
+                              Progress: {progress.basic}
                             </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                              <span className="text-red-600">
-                                {formatTaskProgress(task)?.detailed.failed} failed
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                              <span className="text-blue-600">
-                                {formatTaskProgress(task)?.detailed.running} running
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                              <span className="text-yellow-600">
-                                {formatTaskProgress(task)?.detailed.pending} pending
-                              </span>
-                            </div>
+                            {progress.detailed && (
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="flex items-center gap-1">
+                                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                  <span className="text-green-600">
+                                    {progress.detailed.successful} success
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                  <span className="text-red-600">
+                                    {progress.detailed.failed} failed
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                  <span className="text-blue-600">
+                                    {progress.detailed.running} running
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                  <span className="text-yellow-600">
+                                    {progress.detailed.pending} pending
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
-                      </div>
-                      {/* Cancel button in bottom right */}
-                      {(task.status === 'pending' || task.status === 'running' || task.status === 'processing') && (
-                        <div className="flex justify-end mt-3">
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => cancelTask(task.task_id)}
-                            className="h-7 px-3 text-xs"
-                            title="Cancel task"
-                          >
-                            <X className="h-3 w-3 mr-1" />
-                            Cancel
-                          </Button>
-                        </div>
-                      )}
-                    </CardContent>
-                  )}
-                  {/* Cancel button for tasks without progress */}
-                  {!formatTaskProgress(task) && (task.status === 'pending' || task.status === 'running' || task.status === 'processing') && (
-                    <CardContent className="pt-0">
-                      <div className="flex justify-end">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => cancelTask(task.task_id)}
-                          className="h-7 px-3 text-xs"
-                          title="Cancel task"
-                        >
-                          <X className="h-3 w-3 mr-1" />
-                          Cancel
-                        </Button>
-                      </div>
-                    </CardContent>
-                  )}
-                </Card>
-              ))}
+                        {showCancel && (
+                          <div className={`flex justify-end ${progress ? 'mt-3' : ''}`}>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => cancelTask(task.task_id)}
+                              className="h-7 px-3 text-xs"
+                              title="Cancel task"
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              Cancel
+                            </Button>
+                          </div>
+                        )}
+                      </CardContent>
+                    )}
+                  </Card>
+                )
+              })}
             </div>
           )}
 
@@ -282,43 +274,47 @@ export function TaskNotificationMenu() {
               
               {isExpanded && (
                 <div className="space-y-2 transition-all duration-200">
-                  {recentTasks.map((task) => (
-                    <div
-                      key={task.task_id}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      {getTaskIcon(task.status)}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium truncate">
-                          Task {task.task_id.substring(0, 8)}...
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatRelativeTime(task.updated_at)}
-                          {formatDuration(task.duration_seconds) && (
-                            <span className="ml-2">
-                              • {formatDuration(task.duration_seconds)}
-                            </span>
-                          )}
-                        </div>
-                        {/* Show final results for completed tasks */}
-                        {task.status === 'completed' && formatTaskProgress(task)?.detailed && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {formatTaskProgress(task)?.detailed.successful} success, {' '}
-                            {formatTaskProgress(task)?.detailed.failed} failed
-                            {(formatTaskProgress(task)?.detailed.running || 0) > 0 && (
-                              <span>, {formatTaskProgress(task)?.detailed.running} running</span>
+                  {recentTasks.map((task) => {
+                    const progress = formatTaskProgress(task)
+
+                    return (
+                      <div
+                        key={task.task_id}
+                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        {getTaskIcon(task.status)}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium truncate">
+                            Task {task.task_id.substring(0, 8)}...
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatRelativeTime(task.updated_at)}
+                            {formatDuration(task.duration_seconds) && (
+                              <span className="ml-2">
+                                • {formatDuration(task.duration_seconds)}
+                              </span>
                             )}
                           </div>
-                        )}
-                        {task.status === 'failed' && task.error && (
-                          <div className="text-xs text-red-600 mt-1 truncate">
-                            {task.error}
-                          </div>
-                        )}
+                          {/* Show final results for completed tasks */}
+                          {task.status === 'completed' && progress?.detailed && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {progress.detailed.successful} success,{' '}
+                              {progress.detailed.failed} failed
+                              {(progress.detailed.running || 0) > 0 && (
+                                <span>, {progress.detailed.running} running</span>
+                              )}
+                            </div>
+                          )}
+                          {task.status === 'failed' && task.error && (
+                            <div className="text-xs text-red-600 mt-1 truncate">
+                              {task.error}
+                            </div>
+                          )}
+                        </div>
+                        {getStatusBadge(task.status)}
                       </div>
-                      {getStatusBadge(task.status)}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>

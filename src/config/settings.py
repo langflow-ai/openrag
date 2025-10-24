@@ -81,12 +81,6 @@ OPENAI_EMBEDDING_DIMENSIONS = {
         "text-embedding-ada-002": 1536,
     }
 
-OLLAMA_EMBEDDING_DIMENSIONS = {
-    "nomic-embed-text": 768,
-    "all-minilm": 384,
-    "mxbai-embed-large": 1024,
-}
-
 WATSONX_EMBEDDING_DIMENSIONS = {
 # IBM Models
 "ibm/granite-embedding-107m-multilingual": 384,  
@@ -113,6 +107,8 @@ INDEX_BODY = {
             "mimetype": {"type": "keyword"},
             "page": {"type": "integer"},
             "text": {"type": "text"},
+            # Legacy field - kept for backward compatibility
+            # New documents will use chunk_embedding_{model_name} fields
             "chunk_embedding": {
                 "type": "knn_vector",
                 "dimension": VECTOR_DIM,
@@ -123,6 +119,8 @@ INDEX_BODY = {
                     "parameters": {"ef_construction": 100, "m": 16},
                 },
             },
+            # Track which embedding model was used for this chunk
+            "embedding_model": {"type": "keyword"},
             "source_url": {"type": "keyword"},
             "connector_type": {"type": "keyword"},
             "owner": {"type": "keyword"},
@@ -328,7 +326,7 @@ class AppClients:
 
         # Initialize Langflow HTTP client
         self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL, timeout=60.0
+            base_url=LANGFLOW_URL, timeout=300.0
         )
 
         return self
@@ -597,3 +595,8 @@ def get_knowledge_config():
 def get_agent_config():
     """Get agent configuration."""
     return get_openrag_config().agent
+
+
+def get_embedding_model() -> str:
+    """Return the currently configured embedding model."""
+    return get_openrag_config().knowledge.embedding_model

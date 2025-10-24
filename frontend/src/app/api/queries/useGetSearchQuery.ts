@@ -29,6 +29,8 @@ export interface ChunkResult {
   owner_email?: string;
   file_size?: number;
   connector_type?: string;
+  embedding_model?: string;
+  embedding_dimensions?: number;
   index?: number;
 }
 
@@ -43,6 +45,8 @@ export interface File {
   owner_email?: string;
   size: number;
   connector_type: string;
+  embedding_model?: string;
+  embedding_dimensions?: number;
   status?:
     | "processing"
     | "active"
@@ -50,6 +54,7 @@ export interface File {
     | "failed"
     | "hidden"
     | "sync";
+  error?: string;
   chunks?: ChunkResult[];
 }
 
@@ -133,6 +138,8 @@ export const useGetSearchQuery = (
           owner_email?: string;
           file_size?: number;
           connector_type?: string;
+          embedding_model?: string;
+          embedding_dimensions?: number;
         }
       >();
 
@@ -141,6 +148,15 @@ export const useGetSearchQuery = (
         if (existing) {
           existing.chunks.push(chunk);
           existing.totalScore += chunk.score;
+          if (!existing.embedding_model && chunk.embedding_model) {
+            existing.embedding_model = chunk.embedding_model;
+          }
+          if (
+            existing.embedding_dimensions == null &&
+            typeof chunk.embedding_dimensions === "number"
+          ) {
+            existing.embedding_dimensions = chunk.embedding_dimensions;
+          }
         } else {
           fileMap.set(chunk.filename, {
             filename: chunk.filename,
@@ -153,6 +169,8 @@ export const useGetSearchQuery = (
             owner_email: chunk.owner_email,
             file_size: chunk.file_size,
             connector_type: chunk.connector_type,
+            embedding_model: chunk.embedding_model,
+            embedding_dimensions: chunk.embedding_dimensions,
           });
         }
       });
@@ -168,6 +186,8 @@ export const useGetSearchQuery = (
         owner_email: file.owner_email || "",
         size: file.file_size || 0,
         connector_type: file.connector_type || "local",
+        embedding_model: file.embedding_model,
+        embedding_dimensions: file.embedding_dimensions,
         chunks: file.chunks,
       }));
 

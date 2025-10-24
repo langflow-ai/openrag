@@ -156,15 +156,24 @@ class TaskProcessor:
         owner_email: str = None,
         file_size: int = None,
         connector_type: str = "local",
+        embedding_model: str = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
         docling conversion + embeddings + OpenSearch indexing.
+
+        Args:
+            embedding_model: Embedding model to use (defaults to the current
+                embedding model from settings)
         """
         import datetime
-        from config.settings import INDEX_NAME, EMBED_MODEL, clients
+        from config.settings import INDEX_NAME, clients, get_embedding_model
         from services.document_service import chunk_texts_for_embeddings
         from utils.document_processing import extract_relevant
+        from utils.embedding_fields import get_embedding_field_name, ensure_embedding_field_exists
+
+        # Use provided embedding model or fall back to default
+        embedding_model = embedding_model or get_embedding_model()
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
@@ -174,6 +183,18 @@ class TaskProcessor:
         # Check if already exists
         if await self.check_document_exists(file_hash, opensearch_client):
             return {"status": "unchanged", "id": file_hash}
+
+        # Ensure the embedding field exists for this model
+        embedding_field_name = await ensure_embedding_field_exists(
+            opensearch_client, embedding_model, INDEX_NAME
+        )
+
+        logger.info(
+            "Processing document with embedding model",
+            embedding_model=embedding_model,
+            embedding_field=embedding_field_name,
+            file_hash=file_hash,
+        )
 
         # Convert and extract
         result = clients.converter.convert(file_path)
@@ -188,7 +209,7 @@ class TaskProcessor:
 
         for batch in text_batches:
             resp = await clients.patched_async_client.embeddings.create(
-                model=EMBED_MODEL, input=batch
+                model=embedding_model, input=batch
             )
             embeddings.extend([d.embedding for d in resp.data])
 
@@ -202,7 +223,11 @@ class TaskProcessor:
                 "mimetype": slim_doc["mimetype"],
                 "page": chunk["page"],
                 "text": chunk["text"],
-                "chunk_embedding": vect,
+                # Store embedding in model-specific field
+                embedding_field_name: vect,
+                # Track which model was used
+                "embedding_model": embedding_model,
+                "embedding_dimensions": len(vect),
                 "file_size": file_size,
                 "connector_type": connector_type,
                 "indexed_time": datetime.datetime.now().isoformat(),
@@ -331,8 +356,9 @@ class ConnectorFileProcessor(TaskProcessor):
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
+        document_service=None,
     ):
-        super().__init__()
+        super().__init__(document_service=document_service)
         self.connector_service = connector_service
         self.connection_id = connection_id
         self.files_to_process = files_to_process
@@ -550,7 +576,7 @@ class S3FileProcessor(TaskProcessor):
         import time
         import asyncio
         import datetime
-        from config.settings import INDEX_NAME, EMBED_MODEL, clients
+        from config.settings import INDEX_NAME, clients, get_embedding_model
         from services.document_service import chunk_texts_for_embeddings
         from utils.document_processing import process_document_sync
 

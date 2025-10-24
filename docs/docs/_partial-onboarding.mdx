@@ -5,16 +5,14 @@ import TabItem from '@theme/TabItem';
 
 The first time you start OpenRAG, whether using the TUI or a `.env` file, you must complete application onboarding.
 
-Most values from onboarding can be changed later in the OpenRAG **Settings** page, but there are important restrictions.
+Values from onboarding can be changed later in the OpenRAG **Settings** page.
 
-The **language model provider** and **embeddings model provider** can only be selected at onboarding, and you must use the same provider for your language model and embedding model.
-To change your provider selection later, you must completely reinstall OpenRAG.
-
-The **language model** can be changed later in **Settings**, but the **embeddings model** cannot be changed later.
+Choose one LLM provider and complete only those steps:
 
     <Tabs groupId="Provider">
     <TabItem value="OpenAI" label="OpenAI" default>
     1. Enable **Get API key from environment variable** to automatically enter your key from the TUI-generated `.env` file.
+    Alternatively, paste an OpenAI API key into the field.
     2. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
     3. To load 2 sample PDFs, enable **Sample dataset**.
     This is recommended, but not required.

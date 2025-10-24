@@ -1,0 +1,28 @@
+interface DogIconProps extends React.SVGProps<SVGSVGElement> {
+  disabled?: boolean;
+}
+
+const DogIcon = ({ disabled = false, stroke, ...props }: DogIconProps) => {
+  const strokeColor = disabled ? "#71717A" : (stroke || "#0F62FE");
+
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      {...props}
+    >
+      <path
+        d="M19.9049 23H17.907C17.907 23 15.4096 20.5 16.908 16C17.3753 14.2544 17.3813 12.4181 17.2439 11C17.161 10.1434 17.0256 9.43934 16.908 9C16.7416 8.33333 16.8081 7 18.4065 7C19.5457 7 20.9571 6.92944 21.4034 6.5C22.3268 5.61145 21.9029 4 21.9029 4C21.9029 4 20.9039 3 18.906 3C18.7395 2.33333 17.7072 1 14.9101 1C12.113 1 11.5835 2.16589 10.9143 4C10.4155 5.36686 10.423 6.99637 11.1692 7.71747M14.4106 4C14.2441 5.33333 14.4106 8 11.9132 8C11.5968 8 11.3534 7.89548 11.1692 7.71747M14.9101 23H12.4127M7.91738 23H12.4127M10.4148 15.5C11.5715 16.1667 13.5905 18.6 12.4127 23M3.42204 15C1.02177 18.5 1.64205 23 5.41997 23C5.41997 22 5.71966 19.2 6.91841 16C8.41686 12 11.1692 11.4349 11.1692 7.71747M16.908 4V4.5"
+        stroke={strokeColor}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+export default DogIcon;
