@@ -60,7 +60,6 @@ function ChatPage() {
 	const [availableFilters, setAvailableFilters] = useState<
 		KnowledgeFilterData[]
 	>([]);
-	const [textareaHeight, setTextareaHeight] = useState(40);
 	const [filterSearchTerm, setFilterSearchTerm] = useState("");
 	const [selectedFilterIndex, setSelectedFilterIndex] = useState(0);
 	const [isFilterHighlighted, setIsFilterHighlighted] = useState(false);
@@ -71,6 +70,8 @@ function ChatPage() {
 		x: number;
 		y: number;
 	} | null>(null);
+	const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+	
 	const chatInputRef = useRef<ChatInputHandle>(null);
 
 	const { scrollToBottom } = useStickToBottomContext();
@@ -127,7 +128,7 @@ function ChatPage() {
 
 		// Copy all computed styles to the hidden div
 		for (const style of computedStyle) {
-			(div.style as any)[style] = computedStyle.getPropertyValue(style);
+			(div.style as unknown as Record<string, string>)[style] = computedStyle.getPropertyValue(style);
 		}
 
 		// Set the div to be hidden but not un-rendered
@@ -302,13 +303,6 @@ function ChatPage() {
 
 	const handleFilePickerClick = () => {
 		chatInputRef.current?.clickFileInput();
-	};
-
-	const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const files = e.target.files;
-		if (files && files.length > 0) {
-			handleFileUpload(files[0]);
-		}
 	};
 
 	const loadAvailableFilters = async () => {
@@ -601,6 +595,7 @@ function ChatPage() {
 
 			setLoading(true);
 			setIsUploading(true);
+			setUploadedFile(null); // Clear previous file
 
 			// Add initial upload message
 			const uploadStartMessage: Message = {
@@ -627,6 +622,7 @@ function ChatPage() {
 			};
 
 			setMessages((prev) => [...prev.slice(0, -1), uploadMessage]);
+			setUploadedFile(null); // Clear file after upload
 
 			// Update the response ID for this endpoint
 			if (result.response_id) {
@@ -658,6 +654,7 @@ function ChatPage() {
 				timestamp: new Date(),
 			};
 			setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+			setUploadedFile(null); // Clear file on error
 		};
 
 		window.addEventListener(
@@ -891,6 +888,17 @@ function ChatPage() {
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
+		
+		// Check if there's an uploaded file and upload it first
+		if (uploadedFile) {
+			// Upload the file first
+			await handleFileUpload(uploadedFile);
+			// Clear the file after upload
+			setUploadedFile(null);
+			chatInputRef.current?.clickFileInput?.(); // Reset file input if needed
+		}
+		
+		// Then send the message
 		handleSendMessage(input);
 	};
 
@@ -1284,16 +1292,15 @@ function ChatPage() {
 					filterSearchTerm={filterSearchTerm}
 					selectedFilterIndex={selectedFilterIndex}
 					anchorPosition={anchorPosition}
-					textareaHeight={textareaHeight}
 					parsedFilterData={parsedFilterData}
+					uploadedFile={uploadedFile}
 					onSubmit={handleSubmit}
 					onChange={onChange}
 					onKeyDown={handleKeyDown}
-					onHeightChange={(height) => setTextareaHeight(height)}
 					onFilterSelect={handleFilterSelect}
 					onAtClick={onAtClick}
-					onFilePickerChange={handleFilePickerChange}
 					onFilePickerClick={handleFilePickerClick}
+					onFileSelected={setUploadedFile}
 					setSelectedFilter={setSelectedFilter}
 					setIsFilterHighlighted={setIsFilterHighlighted}
 					setIsFilterDropdownOpen={setIsFilterDropdownOpen}
