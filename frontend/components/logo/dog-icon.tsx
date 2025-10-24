@@ -3,25 +3,22 @@ interface DogIconProps extends React.SVGProps<SVGSVGElement> {
 }
 
 const DogIcon = ({ disabled = false, stroke, ...props }: DogIconProps) => {
-  const strokeColor = disabled ? "#71717A" : (stroke || "#0F62FE");
+  const fillColor = disabled ? "#71717A" : (stroke || "#22A7AF");
 
   return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      {...props}
-    >
-      <path
-        d="M19.9049 23H17.907C17.907 23 15.4096 20.5 16.908 16C17.3753 14.2544 17.3813 12.4181 17.2439 11C17.161 10.1434 17.0256 9.43934 16.908 9C16.7416 8.33333 16.8081 7 18.4065 7C19.5457 7 20.9571 6.92944 21.4034 6.5C22.3268 5.61145 21.9029 4 21.9029 4C21.9029 4 20.9039 3 18.906 3C18.7395 2.33333 17.7072 1 14.9101 1C12.113 1 11.5835 2.16589 10.9143 4C10.4155 5.36686 10.423 6.99637 11.1692 7.71747M14.4106 4C14.2441 5.33333 14.4106 8 11.9132 8C11.5968 8 11.3534 7.89548 11.1692 7.71747M14.9101 23H12.4127M7.91738 23H12.4127M10.4148 15.5C11.5715 16.1667 13.5905 18.6 12.4127 23M3.42204 15C1.02177 18.5 1.64205 23 5.41997 23C5.41997 22 5.71966 19.2 6.91841 16C8.41686 12 11.1692 11.4349 11.1692 7.71747M16.908 4V4.5"
-        stroke={strokeColor}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    disabled ? (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 18" fill={fillColor}>
+        <path d="M8 18H2V16H8V18Z"/>
+        <path fill-rule="evenodd" clip-rule="evenodd" d="M20 2H22V6H24V10H20V14H24V16H14V14H2V16H0V8H2V6H8V10H10V12H16V6H14V10H12V8H10V2H12V0H20V2ZM18 6H20V4H18V6Z"/>
+      </svg>
+    ) : (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="20" viewBox="0 0 24 20" fill={fillColor}>
+        <path fill-rule="evenodd" clip-rule="evenodd" d="M11.0769 10.9091H16.6154V5.45455H14.7692V9.09091H12.9231V7.27273H11.0769V1.81818H12.9231V0H20.3077V1.81818H22.1538V5.45455H24V9.09091H20.3077V14.5455H18.4615V20H14.7692V16.3636H12.9231V14.5455H7.38462V16.3636H5.53846V20H1.84615V10.9091H3.69231V9.09091H11.0769V10.9091ZM18.4615 5.45455H20.3077V3.63636H18.4615V5.45455Z"/>
+        <path d="M1.84615 10.9091H0V7.27273H1.84615V10.9091Z"/>
+        <path d="M3.69231 7.27273H1.84615V5.45455H3.69231V7.27273Z"/>
+        <path d="M5.53846 5.45455H3.69231V3.63636H5.53846V5.45455Z"/>
+      </svg>
+    )
   )
 }
 
