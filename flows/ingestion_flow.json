@@ -4149,12 +4149,39 @@
         },
         "selected": false,
         "type": "genericNode"
+      },
+      {
+        "data": {
+          "id": "note-DCu9M",
+          "node": {
+            "description": "## README\n\nThis flow transforms raw documents into searchable knowledge stored in an OpenSearch vector database.\nThis [knowledge](https://docs.openr.ag/knowledge) serves as context that your [agents](https://docs.openr.ag/agents) draw upon to answer questions and perform tasks.\n\n* Data sources: This flow ingests data from OAuth connectors or can load from your local machine. For more, see [Ingest Knowledge](https://docs.openr.ag/knowledge#ingest-knowledge).\n* Docling ingestion: The [**Docling Serve** component](https://docs.openr.ag/ingestion) processes input documents by connecting to your instance of Docling serve. For more, see [Docling Ingestion](https://docs.openr.ag/ingestion).\n* Processing: The flow adds metadata through three [**DataFrame Operations** components](https://docs.langflow.org/components-processing#dataframe-operations) that add `filename`, `file_size`, and `mimetype` columns.\nThe **Split Text** component then splits the processed text into uniform, easily searchable chunks.\n* Embedding generation:The [**Embedding Model** component](https://docs.langflow.org/components-embedding-models) generates vector embeddings with the model you selected at [Application onboarding](https://docs.openr.ag/install#application-onboarding), and the [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch) stores the processed documents and their embeddings in the documents index.\n* Metadata and ownership: The **Secret Input** components provide user context that is stored as metadata in OpenSearch. These fields are populated from OAuth configuration values, and enable multi-tenant document isolation in OpenSearch, so each user's documents remain private and traceable.\n\nFor more information, see the [OpenRAG docs](https://docs.openr.ag/ingestion#knowledge-ingestion-flows).\n",
+            "display_name": "",
+            "documentation": "",
+            "template": {}
+          },
+          "type": "note"
+        },
+        "dragging": false,
+        "height": 439,
+        "id": "note-DCu9M",
+        "measured": {
+          "height": 439,
+          "width": 1000
+        },
+        "position": {
+          "x": -538.3997974029603,
+          "y": 1984.9915833571447
+        },
+        "resizing": true,
+        "selected": false,
+        "type": "noteNode",
+        "width": 1000
       }
     ],
     "viewport": {
-      "x": -418.8241631881149,
-      "y": -563.2891507884635,
-      "zoom": 0.6194861362488232
+      "x": 502.99612621025017,
+      "y": -497.01724621189965,
+      "zoom": 0.5248650535598084
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
