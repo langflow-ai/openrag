@@ -158,8 +158,8 @@ function AuthCallbackContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-card rounded-lg m-4">
+      <Card className="w-full max-w-md bg-card rounded-lg m-4">
         <CardHeader className="text-center">
           <CardTitle className="flex items-center justify-center gap-2">
             {status === "processing" && (

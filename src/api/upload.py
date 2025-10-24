@@ -99,13 +99,12 @@ async def upload_context(
     # Get optional parameters
     previous_response_id = form.get("previous_response_id")
     endpoint = form.get("endpoint", "langflow")
-
-    jwt_token = session_manager.get_effective_jwt_token(user_id, request.state.jwt_token)
-
+    
     # Get user info from request state (set by auth middleware)
     user = request.state.user
     user_id = user.user_id if user else None
 
+    jwt_token = session_manager.get_effective_jwt_token(user_id, request.state.jwt_token)
     # Process document and extract content
     doc_result = await document_service.process_upload_context(upload_file, filename)
 
