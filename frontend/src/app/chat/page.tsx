@@ -248,6 +248,7 @@ function ChatPage() {
 					timestamp: new Date(),
 				};
 				setMessages((prev) => [...prev.slice(0, -1), pollingMessage]);
+				return null;
 			} else if (response.ok) {
 				// Original flow: Direct response
 
@@ -277,12 +278,15 @@ function ChatPage() {
 
 					// If this is a new conversation (no currentConversationId), set it now
 					if (!currentConversationId) {
+						console.log("Setting current conversation ID to:", result.response_id);
 						setCurrentConversationId(result.response_id);
 						refreshConversations(true);
 					} else {
 						// For existing conversations, do a silent refresh to keep backend in sync
 						refreshConversationsSilent();
 					}
+
+					return result.response_id;
 				}
 			} else {
 				throw new Error(`Upload failed: ${response.status}`);
@@ -721,7 +725,7 @@ function ChatPage() {
 		},
 	);
 
-	const handleSSEStream = async (userMessage: Message) => {
+	const handleSSEStream = async (userMessage: Message, previousResponseId?: string) => {
 		// Prepare filters
 		const processedFilters = parsedFilterData?.filters
 			? (() => {
@@ -747,10 +751,13 @@ function ChatPage() {
 				})()
 			: undefined;
 
+		// Use passed previousResponseId if available, otherwise fall back to state
+		const responseIdToUse = previousResponseId || previousResponseIds[endpoint];
+
 		// Use the hook to send the message
 		await sendStreamingMessage({
 			prompt: userMessage.content,
-			previousResponseId: previousResponseIds[endpoint] || undefined,
+			previousResponseId: responseIdToUse || undefined,
 			filters: processedFilters,
 			limit: parsedFilterData?.limit ?? 10,
 			scoreThreshold: parsedFilterData?.scoreThreshold ?? 0,
@@ -761,7 +768,7 @@ function ChatPage() {
 		});
 	};
 
-	const handleSendMessage = async (inputMessage: string) => {
+	const handleSendMessage = async (inputMessage: string, previousResponseId?: string) => {
 		if (!inputMessage.trim() || loading) return;
 
 		const userMessage: Message = {
@@ -781,7 +788,7 @@ function ChatPage() {
 		});
 
 		if (asyncMode) {
-			await handleSSEStream(userMessage);
+			await handleSSEStream(userMessage, previousResponseId);
 		} else {
 			// Original non-streaming logic
 			try {
@@ -890,16 +897,25 @@ function ChatPage() {
 		e.preventDefault();
 		
 		// Check if there's an uploaded file and upload it first
+		let uploadedResponseId: string | null = null;
 		if (uploadedFile) {
 			// Upload the file first
-			await handleFileUpload(uploadedFile);
+			const responseId = await handleFileUpload(uploadedFile);
 			// Clear the file after upload
 			setUploadedFile(null);
-			chatInputRef.current?.clickFileInput?.(); // Reset file input if needed
+
+			// If the upload resulted in a new conversation, store the response ID
+			if (responseId) {
+				uploadedResponseId = responseId;
+				setPreviousResponseIds((prev) => ({
+					...prev,
+					[endpoint]: responseId,
+				}));
+			}
 		}
-		
-		// Then send the message
-		handleSendMessage(input);
+
+		// Pass the responseId from upload (if any) to handleSendMessage
+		handleSendMessage(input, uploadedResponseId || undefined);
 	};
 
 	const toggleFunctionCall = (functionCallId: string) => {
