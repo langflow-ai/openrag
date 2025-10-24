@@ -47,7 +47,7 @@ To launch OpenRAG with the TUI, do the following:
 
     The TUI opens and guides you through OpenRAG setup.
 
-For the full TUI guide, see [TUI](https://docs.openr.ag/get-started/tui).
+For the full TUI installation guide, see [TUI](https://docs.openr.ag/install).
 
 ## Docker installation
 

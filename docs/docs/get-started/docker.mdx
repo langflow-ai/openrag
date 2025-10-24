@@ -3,25 +3,24 @@ title: Install OpenRAG containers
 slug: /get-started/docker
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
 
-There are two different Docker Compose files.
-They deploy the same applications and containers locally, but to different environments.
+OpenRAG has two Docker Compose files. Both files deploy the same applications and containers locally, but they are for different environments.
 
-- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing.
+- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing. This Docker Compose file requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support.
 
-- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
-
-Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing. Installing OpenRAG with the TUI starts `docling serve` automatically, but for a Docker deployment you must manually start the `docling serve` process.
+- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without NVIDIA GPU support. Use this Docker Compose file for environments where GPU drivers aren't available.
 
 ## Prerequisites
 
-- [Python Version 3.10 to 3.13](https://www.python.org/downloads/release/python-3100/)
-- [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/) installed
-- [Docker Compose](https://docs.docker.com/compose/install/) installed. If you're using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
+- Install [Python Version 3.10 to 3.13](https://www.python.org/downloads/release/python-3100/)
+- Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- Install [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/)
+- Install [Docker Compose](https://docs.docker.com/compose/install/). If using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
 - Create an [OpenAI API key](https://platform.openai.com/api-keys). This key is **required** to start OpenRAG, but you can choose a different model provider during [Application Onboarding](#application-onboarding).
-- Optional: GPU support requires an NVIDIA GPU with CUDA support and compatible NVIDIA drivers installed on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
+- Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
 
 ## Install OpenRAG with Docker Compose
 
@@ -49,8 +48,7 @@ To install OpenRAG with Docker Compose, do the following:
    touch .env
    ```
 
-4. Set environment variables. The Docker Compose files will be populated with values from your `.env`.
-The following values are **required** to be set:
+4. The Docker Compose files are populated with the values from your .env. The following values must be set:
 
    ```bash
    OPENSEARCH_PASSWORD=your_secure_password
@@ -63,7 +61,8 @@ The following values are **required** to be set:
    For more information on configuring OpenRAG with environment variables, see [Environment variables](/reference/configuration).
 
 5. Start `docling serve` on the host machine.
-   Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing.
+   OpenRAG Docker installations require that `docling serve` is running on port 5001 on the host machine.
+   This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing.
    
    ```bash
    uv run python scripts/docling_ctl.py start --port 5001
@@ -74,7 +73,7 @@ The following values are **required** to be set:
    uv run python scripts/docling_ctl.py status
    ```
 
-   Successful result:
+   Make sure the response shows that `docling serve` is running, for example:
    ```bash
    Status: running
    Endpoint: http://127.0.0.1:5001
@@ -84,16 +83,21 @@ The following values are **required** to be set:
 
 7. Deploy OpenRAG locally with Docker Compose based on your deployment type.
 
-   For GPU-enabled systems, run the following commands:
+   <Tabs groupId="Compose file">
+     <TabItem value="docker-compose.yml" label="docker-compose.yml" default>
    ```bash
    docker compose build
    docker compose up -d
-   ```
-
-   For environments without GPU support, run: 
+   ```   
+     </TabItem>
+     <TabItem value="docker-compose-cpu.yml" label="docker-compose-cpu.yml">
+   
    ```bash
    docker compose -f docker-compose-cpu.yml up -d
    ```
+   
+     </TabItem>
+   </Tabs>
 
    The OpenRAG Docker Compose file starts five containers:
    | Container Name | Default Address | Purpose |
@@ -110,7 +114,7 @@ The following values are **required** to be set:
    docker compose ps
    ```
 
-   You can now access the application at:
+   You can now access OpenRAG at the following endpoints:
 
    - **Frontend**: http://localhost:3000
    - **Backend API**: http://localhost:8000
@@ -129,7 +133,7 @@ uv run python scripts/docling_ctl.py stop
 ## Container management commands
 
 Manage your OpenRAG containers with the following commands.
-These commands are also available in the TUI's [Status menu](/get-started/tui#status).
+These commands are also available in the TUI's [Status menu](/install#status).
 
 ### Upgrade containers
 
