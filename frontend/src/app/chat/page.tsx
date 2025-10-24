@@ -278,7 +278,6 @@ function ChatPage() {
 
 					// If this is a new conversation (no currentConversationId), set it now
 					if (!currentConversationId) {
-						console.log("Setting current conversation ID to:", result.response_id);
 						setCurrentConversationId(result.response_id);
 						refreshConversations(true);
 					} else {
@@ -914,8 +913,11 @@ function ChatPage() {
 			}
 		}
 
-		// Pass the responseId from upload (if any) to handleSendMessage
-		handleSendMessage(input, uploadedResponseId || undefined);
+		// Only send message if there's input text
+		if (input.trim()) {
+			// Pass the responseId from upload (if any) to handleSendMessage
+			handleSendMessage(input, uploadedResponseId || undefined);
+		}
 	};
 
 	const toggleFunctionCall = (functionCallId: string) => {
