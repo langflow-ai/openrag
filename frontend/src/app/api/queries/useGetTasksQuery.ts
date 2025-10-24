@@ -4,6 +4,26 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
+export interface TaskFileEntry {
+  status?:
+    | "pending"
+    | "running"
+    | "processing"
+    | "completed"
+    | "failed"
+    | "error";
+  result?: unknown;
+  error?: string;
+  retry_count?: number;
+  created_at?: string;
+  updated_at?: string;
+  duration_seconds?: number;
+  filename?: string;
+  embedding_model?: string;
+  embedding_dimensions?: number;
+  [key: string]: unknown;
+}
+
 export interface Task {
   task_id: string;
   status:
@@ -24,7 +44,7 @@ export interface Task {
   duration_seconds?: number;
   result?: Record<string, unknown>;
   error?: string;
-  files?: Record<string, Record<string, unknown>>;
+  files?: Record<string, TaskFileEntry>;
 }
 
 export interface TasksResponse {

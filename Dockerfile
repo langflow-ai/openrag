@@ -53,10 +53,11 @@ RUN echo y | opensearch-plugin install repository-s3
 # Create a script to apply security configuration after OpenSearch starts
 RUN echo '#!/bin/bash' > /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Waiting for OpenSearch to start..."' >> /usr/share/opensearch/setup-security.sh && \
-    echo 'until curl -s -k -u admin:${OPENSEARCH_INITIAL_ADMIN_PASSWORD} https://localhost:9200; do sleep 1; done' >> /usr/share/opensearch/setup-security.sh && \
-    echo 'echo "Generating admin hash from OPENSEARCH_INITIAL_ADMIN_PASSWORD..."' >> /usr/share/opensearch/setup-security.sh && \
-    echo 'if [ -z "${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" ]; then echo "[ERROR] OPENSEARCH_INITIAL_ADMIN_PASSWORD not set"; exit 1; fi' >> /usr/share/opensearch/setup-security.sh && \
-    echo 'HASH=$(/usr/share/opensearch/plugins/opensearch-security/tools/hash.sh -p "${OPENSEARCH_INITIAL_ADMIN_PASSWORD}")' >> /usr/share/opensearch/setup-security.sh && \
+    echo 'PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-${OPENSEARCH_PASSWORD}}' >> /usr/share/opensearch/setup-security.sh && \
+    echo 'if [ -z "$PASSWORD" ]; then echo "[ERROR] OPENSEARCH_INITIAL_ADMIN_PASSWORD or OPENSEARCH_PASSWORD must be set"; exit 1; fi' >> /usr/share/opensearch/setup-security.sh && \
+    echo 'until curl -s -k -u admin:$PASSWORD https://localhost:9200; do sleep 1; done' >> /usr/share/opensearch/setup-security.sh && \
+    echo 'echo "Generating admin hash from configured password..."' >> /usr/share/opensearch/setup-security.sh && \
+    echo 'HASH=$(/usr/share/opensearch/plugins/opensearch-security/tools/hash.sh -p "$PASSWORD")' >> /usr/share/opensearch/setup-security.sh && \
     echo 'if [ -z "$HASH" ]; then echo "[ERROR] Failed to generate admin hash"; exit 1; fi' >> /usr/share/opensearch/setup-security.sh && \
     echo 'sed -i "s|^  hash: \".*\"|  hash: \"$HASH\"|" /usr/share/opensearch/securityconfig/internal_users.yml' >> /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Updated internal_users.yml with runtime-generated admin hash"' >> /usr/share/opensearch/setup-security.sh && \
