@@ -16,6 +16,7 @@ interface OnboardingStepProps {
   hideIcon?: boolean;
   isLoadingModels?: boolean;
   loadingStatus?: string[];
+  reserveSpaceForThinking?: boolean;
 }
 
 export function OnboardingStep({
@@ -28,6 +29,7 @@ export function OnboardingStep({
   hideIcon = false,
   isLoadingModels = false,
   loadingStatus = [],
+  reserveSpaceForThinking = false,
 }: OnboardingStepProps) {
   const [displayedText, setDisplayedText] = useState("");
   const [showChildren, setShowChildren] = useState(false);
@@ -151,7 +153,7 @@ export function OnboardingStep({
                 )}
                 chatMessage={text}
               />
-          ) : (
+          ) : reserveSpaceForThinking ? (
             <div className="flex flex-col gap-2 py-1.5">
               <p
                 className={`text-foreground text-sm transition-colors duration-300 ${
@@ -165,6 +167,17 @@ export function OnboardingStep({
               </p>
               <div className="h-6" />
             </div>
+          ) : (
+            <p
+              className={`text-foreground text-sm py-1.5 transition-colors duration-300 ${
+                isCompleted ? "text-placeholder-foreground" : ""
+              }`}
+            >
+              {displayedText}
+              {!showChildren && !isCompleted && (
+                <span className="inline-block w-1 h-3.5 bg-primary ml-1 animate-pulse" />
+              )}
+            </p>
           )}
           {children && (
             <AnimatePresence>
