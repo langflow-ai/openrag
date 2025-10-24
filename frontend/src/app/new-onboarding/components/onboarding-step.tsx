@@ -153,7 +153,7 @@ export function OnboardingStep({
                 )}
                 chatMessage={text}
               />
-          ) : reserveSpaceForThinking ? (
+          ) : reserveSpaceForThinking && !isCompleted ? (
             <div className="flex flex-col gap-2 py-1.5">
               <p
                 className={`text-foreground text-sm transition-colors duration-300 ${
