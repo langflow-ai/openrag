@@ -1198,7 +1198,7 @@ function ChatPage() {
 					) : (
 						<>
 							{messages.map((message, index) => (
-								<>
+								<div key={`message-${index}-${message.timestamp?.getTime()}`}>
 									{message.role === "user" &&
 										(messages[index]?.content.match(FILES_REGEX)?.[0] ??
 											null) === null && (
@@ -1244,7 +1244,7 @@ function ChatPage() {
 												/>
 											</div>
 										)}
-								</>
+								</div>
 							))}
 
 							{/* Streaming Message Display */}
