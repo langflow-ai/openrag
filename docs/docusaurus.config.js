@@ -86,8 +86,13 @@ const config = {
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       mermaid: {
-        theme: {light: 'neutral', dark: 'dark'},
         options: {
+          flowchart: {
+            useMaxWidth: false,
+            htmlLabels: true
+          },
+          maxTextSize: 100,
+          fontSize: 16
         },
       },
       // Replace with your project's social card
