@@ -1209,7 +1209,7 @@ function ChatPage() {
 												className="space-y-6 group"
 											>
 												<UserMessage
-													animate={message.source !== "langflow"}
+													animate={message.source ? message.source !== "langflow" : false}
 													content={message.content}
 													files={
 														index >= 2
@@ -1241,6 +1241,7 @@ function ChatPage() {
 													showForkButton={endpoint === "chat"}
 													onFork={(e) => handleForkConversation(index, e)}
 													animate={false}
+													isInactive={index < messages.length - 1}
 												/>
 											</div>
 										)}
@@ -1257,6 +1258,7 @@ function ChatPage() {
 									onToggle={toggleFunctionCall}
 									delay={0.4}
 									isStreaming
+									isCompleted={false}
 								/>
 							)}
 						</>
