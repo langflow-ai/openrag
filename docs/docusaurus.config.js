@@ -76,9 +76,20 @@ const config = {
 
   plugins: [require.resolve('docusaurus-plugin-image-zoom')],
 
+  themes: ['@docusaurus/theme-mermaid'],
+
+  markdown: {
+    mermaid: true,
+  },
+
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
+      mermaid: {
+        theme: {light: 'neutral', dark: 'dark'},
+        options: {
+        },
+      },
       // Replace with your project's social card
       // image: 'img/docusaurus-social-card.jpg',
       navbar: {
