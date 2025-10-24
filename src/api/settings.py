@@ -62,6 +62,8 @@ async def get_settings(request, session_manager):
             # OpenRAG configuration
             "provider": {
                 "model_provider": provider_config.model_provider,
+                "endpoint": provider_config.endpoint if provider_config.endpoint else None,
+                "project_id": provider_config.project_id if provider_config.project_id else None,
                 # Note: API key is not exposed for security
             },
             "knowledge": {
@@ -417,8 +419,10 @@ async def update_settings(request, session_manager):
                 return JSONResponse(
                     {"error": "api_key must be a string"}, status_code=400
                 )
-            current_config.provider.api_key = body["api_key"]
-            config_updated = True
+            # Only update if non-empty string (empty string means keep current value)
+            if body["api_key"].strip():
+                current_config.provider.api_key = body["api_key"]
+                config_updated = True
 
         if "endpoint" in body:
             if not isinstance(body["endpoint"], str) or not body["endpoint"].strip():
