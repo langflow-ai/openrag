@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
 import OpenAILogo from "@/components/logo/openai-logo";
@@ -14,10 +14,14 @@ export function OpenAIOnboarding({
 	setSettings,
 	sampleDataset,
 	setSampleDataset,
+	setIsLoadingModels,
+	setLoadingStatus,
 }: {
 	setSettings: (settings: OnboardingVariables) => void;
 	sampleDataset: boolean;
 	setSampleDataset: (dataset: boolean) => void;
+	setIsLoadingModels?: (isLoading: boolean) => void;
+	setLoadingStatus?: (status: string[]) => void;
 }) {
 	const [apiKey, setApiKey] = useState("");
 	const [getFromEnv, setGetFromEnv] = useState(true);
@@ -68,6 +72,19 @@ export function OpenAIOnboarding({
 		},
 		setSettings,
 	);
+
+	// Notify parent about loading state
+	useEffect(() => {
+		setIsLoadingModels?.(isLoadingModels);
+
+		// Set detailed loading status
+		if (isLoadingModels) {
+			const status = ["Connecting to OpenAI", "Fetching language models", "Fetching embedding models"];
+			setLoadingStatus?.(status);
+		} else {
+			setLoadingStatus?.([]);
+		}
+	}, [isLoadingModels, setIsLoadingModels, setLoadingStatus]);
 	return (
 		<>
 			<div className="space-y-5">

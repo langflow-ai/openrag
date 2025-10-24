@@ -32,12 +32,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTask } from "@/contexts/task-context";
+import { cn } from "@/lib/utils";
+import {
+  duplicateCheck,
+  uploadFile as uploadFileUtil,
+} from "@/lib/upload-utils";
 import type { File as SearchFile } from "@/src/app/api/queries/useGetSearchQuery";
 import GoogleDriveIcon from "@/app/settings/icons/google-drive-icon";
 import OneDriveIcon from "@/app/settings/icons/one-drive-icon";
 import SharePointIcon from "@/app/settings/icons/share-point-icon";
 import AwsIcon from "@/app/settings/icons/aws-icon";
-import { cn } from "@/lib/utils";
 
 export function KnowledgeDropdown() {
   const { addTask } = useTask();
@@ -155,45 +159,33 @@ export function KnowledgeDropdown() {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const resetFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const files = event.target.files;
+
     if (files && files.length > 0) {
       const file = files[0];
 
       // File selection will close dropdown automatically
 
       try {
-        // Check if filename already exists (using ORIGINAL filename)
         console.log("[Duplicate Check] Checking file:", file.name);
-        const checkResponse = await fetch(
-          `/api/documents/check-filename?filename=${encodeURIComponent(
-            file.name
-          )}`
-        );
-
-        console.log("[Duplicate Check] Response status:", checkResponse.status);
-
-        if (!checkResponse.ok) {
-          const errorText = await checkResponse.text();
-          console.error("[Duplicate Check] Error response:", errorText);
-          throw new Error(
-            `Failed to check duplicates: ${checkResponse.statusText}`
-          );
-        }
-
-        const checkData = await checkResponse.json();
+        const checkData = await duplicateCheck(file);
         console.log("[Duplicate Check] Result:", checkData);
 
         if (checkData.exists) {
-          // Show duplicate handling dialog
           console.log("[Duplicate Check] Duplicate detected, showing dialog");
           setPendingFile(file);
           setDuplicateFilename(file.name);
           setShowDuplicateDialog(true);
-          // Reset file input
-          if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-          }
+          resetFileInput();
           return;
         }
 
@@ -208,105 +200,20 @@ export function KnowledgeDropdown() {
       }
     }
 
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    resetFileInput();
   };
 
   const uploadFile = async (file: File, replace: boolean) => {
     setFileUploading(true);
 
-    // Trigger the same file upload event as the chat page
-    window.dispatchEvent(
-      new CustomEvent("fileUploadStart", {
-        detail: { filename: file.name },
-      })
-    );
-
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("replace_duplicates", replace.toString());
-
-      // Use router upload and ingest endpoint (automatically routes based on configuration)
-      const uploadIngestRes = await fetch("/api/router/upload_ingest", {
-        method: "POST",
-        body: formData,
-      });
-
-      const uploadIngestJson = await uploadIngestRes.json();
-
-      if (!uploadIngestRes.ok) {
-        throw new Error(uploadIngestJson?.error || "Upload and ingest failed");
-      }
-
-      // Extract results from the response - handle both unified and simple formats
-      const fileId =
-        uploadIngestJson?.upload?.id ||
-        uploadIngestJson?.id ||
-        uploadIngestJson?.task_id;
-      const filePath =
-        uploadIngestJson?.upload?.path || uploadIngestJson?.path || "uploaded";
-      const runJson = uploadIngestJson?.ingestion;
-      const deleteResult = uploadIngestJson?.deletion;
-      console.log("c", uploadIngestJson);
-      if (!fileId) {
-        throw new Error("Upload successful but no file id returned");
-      }
-      // Check if ingestion actually succeeded
-      if (
-        runJson &&
-        runJson.status !== "COMPLETED" &&
-        runJson.status !== "SUCCESS"
-      ) {
-        const errorMsg = runJson.error || "Ingestion pipeline failed";
-        throw new Error(
-          `Ingestion failed: ${errorMsg}. Try setting DISABLE_INGEST_WITH_LANGFLOW=true if you're experiencing Langflow component issues.`
-        );
-      }
-      // Log deletion status if provided
-      if (deleteResult) {
-        if (deleteResult.status === "deleted") {
-          console.log(
-            "File successfully cleaned up from Langflow:",
-            deleteResult.file_id
-          );
-        } else if (deleteResult.status === "delete_failed") {
-          console.warn(
-            "Failed to cleanup file from Langflow:",
-            deleteResult.error
-          );
-        }
-      }
-      // Notify UI
-      window.dispatchEvent(
-        new CustomEvent("fileUploaded", {
-          detail: {
-            file: file,
-            result: {
-              file_id: fileId,
-              file_path: filePath,
-              run: runJson,
-              deletion: deleteResult,
-              unified: true,
-            },
-          },
-        })
-      );
-
+      await uploadFileUtil(file, replace);
       refetchTasks();
     } catch (error) {
-      window.dispatchEvent(
-        new CustomEvent("fileUploadError", {
-          detail: {
-            filename: file.name,
-            error: error instanceof Error ? error.message : "Upload failed",
-          },
-        })
-      );
+      toast.error("Upload failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
     } finally {
-      window.dispatchEvent(new CustomEvent("fileUploadComplete"));
       setFileUploading(false);
     }
   };
@@ -323,6 +230,7 @@ export function KnowledgeDropdown() {
       });
 
       await uploadFile(pendingFile, true);
+
       setPendingFile(null);
       setDuplicateFilename("");
     }
