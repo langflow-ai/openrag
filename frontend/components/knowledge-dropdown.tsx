@@ -4,10 +4,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   Cloud,
+  File,
+  Folder,
   FolderOpen,
   Loader2,
   PlugZap,
-  Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -22,6 +23,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTask } from "@/contexts/task-context";
@@ -31,13 +38,18 @@ import {
   uploadFile as uploadFileUtil,
 } from "@/lib/upload-utils";
 import type { File as SearchFile } from "@/src/app/api/queries/useGetSearchQuery";
+import GoogleDriveIcon from "@/app/settings/icons/google-drive-icon";
+import OneDriveIcon from "@/app/settings/icons/one-drive-icon";
+import SharePointIcon from "@/app/settings/icons/share-point-icon";
+import AwsIcon from "@/app/settings/icons/aws-icon";
+import { cn } from "@/lib/utils";
 
 export function KnowledgeDropdown() {
   const { addTask } = useTask();
   const { refetch: refetchTasks } = useGetTasksQuery();
   const queryClient = useQueryClient();
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showFolderDialog, setShowFolderDialog] = useState(false);
   const [showS3Dialog, setShowS3Dialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
@@ -59,7 +71,6 @@ export function KnowledgeDropdown() {
     };
   }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Check AWS availability and cloud connectors on mount
   useEffect(() => {
@@ -145,24 +156,6 @@ export function KnowledgeDropdown() {
     checkAvailability();
   }, []);
 
-  // Handle click outside to close dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () =>
-        document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [isOpen]);
-
   const handleFileUpload = () => {
     fileInputRef.current?.click();
   };
@@ -181,8 +174,7 @@ export function KnowledgeDropdown() {
     if (files && files.length > 0) {
       const file = files[0];
 
-      // Close dropdown immediately after file selection
-      setIsOpen(false);
+      // File selection will close dropdown automatically
 
       try {
         console.log("[Duplicate Check] Checking file:", file.name);
@@ -335,13 +327,19 @@ export function KnowledgeDropdown() {
     }
   };
 
+  // Icon mapping for cloud connectors
+  const connectorIconMap = {
+    google_drive: GoogleDriveIcon,
+    onedrive: OneDriveIcon,
+    sharepoint: SharePointIcon,
+  };
+
   const cloudConnectorItems = Object.entries(cloudConnectors)
     .filter(([, info]) => info.available)
     .map(([type, info]) => ({
       label: info.name,
-      icon: PlugZap,
+      icon: connectorIconMap[type as keyof typeof connectorIconMap] || PlugZap,
       onClick: async () => {
-        setIsOpen(false);
         if (info.connected && info.hasToken) {
           setIsNavigatingToCloud(true);
           try {
@@ -356,36 +354,29 @@ export function KnowledgeDropdown() {
         }
       },
       disabled: !info.connected || !info.hasToken,
-      tooltip: !info.connected
-        ? `Connect ${info.name} in Settings first`
-        : !info.hasToken
-        ? `Reconnect ${info.name} - access token required`
-        : undefined,
     }));
 
   const menuItems = [
     {
-      label: "Add File",
-      icon: Upload,
+      label: "File",
+      icon: ({ className }: { className?: string }) => (
+        <File className={cn(className, "text-muted-foreground")} />
+      ),
       onClick: handleFileUpload,
     },
     {
-      label: "Process Folder",
-      icon: FolderOpen,
-      onClick: () => {
-        setIsOpen(false);
-        setShowFolderDialog(true);
-      },
+      label: "Folder",
+      icon: ({ className }: { className?: string }) => (
+        <Folder className={cn(className, "text-muted-foreground")} />
+      ),
+      onClick: () => setShowFolderDialog(true),
     },
     ...(awsEnabled
       ? [
           {
-            label: "Process S3 Bucket",
-            icon: Cloud,
-            onClick: () => {
-              setIsOpen(false);
-              setShowS3Dialog(true);
-            },
+            label: "Amazon S3",
+            icon: AwsIcon,
+            onClick: () => setShowS3Dialog(true),
           },
         ]
       : []),
@@ -398,13 +389,9 @@ export function KnowledgeDropdown() {
 
   return (
     <>
-      <div ref={dropdownRef} className="relative">
-        <Button
-          type="button"
-          onClick={() => !isLoading && setIsOpen(!isOpen)}
-          disabled={isLoading}
-        >
-          <>
+      <DropdownMenu onOpenChange={setIsMenuOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button disabled={isLoading}>
             {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
             <span>
               {isLoading
@@ -422,46 +409,34 @@ export function KnowledgeDropdown() {
             {!isLoading && (
               <ChevronDown
                 className={cn(
-                  "h-4 w-4 transition-transform",
-                  isOpen && "rotate-180"
+                  "h-4 w-4 transition-transform duration-200",
+                  isMenuOpen && "rotate-180"
                 )}
               />
             )}
-          </>
-        </Button>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          {menuItems.map((item, index) => (
+            <DropdownMenuItem
+              key={`${item.label}-${index}`}
+              onClick={item.onClick}
+              disabled={"disabled" in item ? item.disabled : false}
+            >
+              <item.icon className="mr-2 h-4 w-4" />
+              {item.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        {isOpen && !isLoading && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-md z-50">
-            <div className="py-1">
-              {menuItems.map((item, index) => (
-                <button
-                  key={`${item.label}-${index}`}
-                  type="button"
-                  onClick={item.onClick}
-                  disabled={"disabled" in item ? item.disabled : false}
-                  title={"tooltip" in item ? item.tooltip : undefined}
-                  className={cn(
-                    "w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground",
-                    "disabled" in item &&
-                      item.disabled &&
-                      "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-current"
-                  )}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          onChange={handleFileChange}
-          className="hidden"
-          accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
-        />
-      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        onChange={handleFileChange}
+        className="hidden"
+        accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
+      />
 
       {/* Process Folder Dialog */}
       <Dialog open={showFolderDialog} onOpenChange={setShowFolderDialog}>
@@ -483,7 +458,7 @@ export function KnowledgeDropdown() {
                 type="text"
                 placeholder="/path/to/documents"
                 value={folderPath}
-                onChange={e => setFolderPath(e.target.value)}
+                onChange={(e) => setFolderPath(e.target.value)}
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -525,7 +500,7 @@ export function KnowledgeDropdown() {
                 type="text"
                 placeholder="s3://bucket/path"
                 value={bucketUrl}
-                onChange={e => setBucketUrl(e.target.value)}
+                onChange={(e) => setBucketUrl(e.target.value)}
               />
             </div>
             <div className="flex justify-end gap-2">
