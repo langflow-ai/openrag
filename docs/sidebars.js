@@ -40,11 +40,6 @@ const sidebars = {
           id: "get-started/quickstart",
           label: "Quickstart"
         },
-        {
-          type: "doc",
-          id: "get-started/tui",
-          label: "Terminal User Interface (TUI)"
-        },
       ],
     },
     {
