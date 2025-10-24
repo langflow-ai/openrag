@@ -38,11 +38,6 @@ const sidebars = {
     },
     {
       type: "doc",
-      id: "get-started/tui",
-      label: "Terminal User Interface (TUI)"
-    },
-    {
-      type: "doc",
       id: "core-components/agents",
       label: "Langflow in OpenRAG"
     },
