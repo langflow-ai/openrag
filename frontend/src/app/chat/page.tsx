@@ -25,9 +25,7 @@ import type {
 } from "./types";
 
 function ChatPage() {
-	const isDebugMode =
-		process.env.NODE_ENV === "development" ||
-		process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
+	const isDebugMode = process.env.NEXT_PUBLIC_OPENRAG_DEBUG === "true";
 	const {
 		endpoint,
 		setEndpoint,
