@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
 import IBMLogo from "@/components/logo/ibm-logo";
@@ -14,10 +14,14 @@ export function IBMOnboarding({
   setSettings,
   sampleDataset,
   setSampleDataset,
+  setIsLoadingModels,
+  setLoadingStatus,
 }: {
   setSettings: (settings: OnboardingVariables) => void;
   sampleDataset: boolean;
   setSampleDataset: (dataset: boolean) => void;
+  setIsLoadingModels?: (isLoading: boolean) => void;
+  setLoadingStatus?: (status: string[]) => void;
 }) {
   const [endpoint, setEndpoint] = useState("https://us-south.ml.cloud.ibm.com");
   const [apiKey, setApiKey] = useState("");
@@ -99,6 +103,19 @@ export function IBMOnboarding({
     },
     setSettings,
   );
+
+  // Notify parent about loading state
+  useEffect(() => {
+    setIsLoadingModels?.(isLoadingModels);
+
+    // Set detailed loading status
+    if (isLoadingModels) {
+      const status = ["Connecting to IBM watsonx.ai", "Fetching language models", "Fetching embedding models"];
+      setLoadingStatus?.(status);
+    } else {
+      setLoadingStatus?.([]);
+    }
+  }, [isLoadingModels, setIsLoadingModels, setLoadingStatus]);
   return (
     <>
       <div className="space-y-4">

@@ -12,6 +12,7 @@ import { useDoclingHealth } from "@/components/docling-health-banner";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
 import OpenAILogo from "@/components/logo/openai-logo";
+import { AnimatedProcessingIcon } from "@/components/ui/animated-processing-icon";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -33,6 +34,8 @@ import { OpenAIOnboarding } from "./openai-onboarding";
 
 interface OnboardingCardProps {
 	onComplete: () => void;
+	setIsLoadingModels?: (isLoading: boolean) => void;
+	setLoadingStatus?: (status: string[]) => void;
 }
 
 
@@ -45,12 +48,53 @@ const STEP_LIST = [
 
 const TOTAL_PROVIDER_STEPS = STEP_LIST.length;
 
-const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
+const OnboardingCard = ({
+	onComplete,
+	setIsLoadingModels: setIsLoadingModelsParent,
+	setLoadingStatus: setLoadingStatusParent,
+}: OnboardingCardProps) => {
 	const { isHealthy: isDoclingHealthy } = useDoclingHealth();
 
 	const [modelProvider, setModelProvider] = useState<string>("openai");
 
 	const [sampleDataset, setSampleDataset] = useState<boolean>(true);
+
+	const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
+
+	const [loadingStatus, setLoadingStatus] = useState<string[]>([]);
+
+	const [currentStatusIndex, setCurrentStatusIndex] = useState<number>(0);
+
+	// Pass loading state to parent
+	useEffect(() => {
+		setIsLoadingModelsParent?.(isLoadingModels);
+	}, [isLoadingModels, setIsLoadingModelsParent]);
+
+	useEffect(() => {
+		setLoadingStatusParent?.(loadingStatus);
+	}, [loadingStatus, setLoadingStatusParent]);
+
+	// Cycle through loading status messages once
+	useEffect(() => {
+		if (!isLoadingModels || loadingStatus.length === 0) {
+			setCurrentStatusIndex(0);
+			return;
+		}
+
+		const interval = setInterval(() => {
+			setCurrentStatusIndex((prev) => {
+				const nextIndex = prev + 1;
+				// Stop at the last message
+				if (nextIndex >= loadingStatus.length - 1) {
+					clearInterval(interval);
+					return loadingStatus.length - 1;
+				}
+				return nextIndex;
+			});
+		}, 1500); // Change status every 1.5 seconds
+
+		return () => clearInterval(interval);
+	}, [isLoadingModels, loadingStatus]);
 
 	const handleSetModelProvider = (provider: string) => {
 		setModelProvider(provider);
@@ -206,6 +250,8 @@ const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
 									setSettings={setSettings}
 									sampleDataset={sampleDataset}
 									setSampleDataset={setSampleDataset}
+									setIsLoadingModels={setIsLoadingModels}
+									setLoadingStatus={setLoadingStatus}
 								/>
 							</TabsContent>
 							<TabsContent value="watsonx">
@@ -213,6 +259,8 @@ const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
 									setSettings={setSettings}
 									sampleDataset={sampleDataset}
 									setSampleDataset={setSampleDataset}
+									setIsLoadingModels={setIsLoadingModels}
+									setLoadingStatus={setLoadingStatus}
 								/>
 							</TabsContent>
 							<TabsContent value="ollama">
@@ -220,33 +268,37 @@ const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
 									setSettings={setSettings}
 									sampleDataset={sampleDataset}
 									setSampleDataset={setSampleDataset}
+									setIsLoadingModels={setIsLoadingModels}
+									setLoadingStatus={setLoadingStatus}
 								/>
 							</TabsContent>
 						</Tabs>
 
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<div>
-									<Button
-										size="sm"
-										onClick={handleComplete}
-										disabled={!isComplete}
-										loading={onboardingMutation.isPending}
-									>
-										<span className="select-none">Complete</span>
-									</Button>
-								</div>
-							</TooltipTrigger>
-							{!isComplete && (
-								<TooltipContent>
-									{!!settings.llm_model &&
-									!!settings.embedding_model &&
-									!isDoclingHealthy
-										? "docling-serve must be running to continue"
-										: "Please fill in all required fields"}
-								</TooltipContent>
-							)}
-						</Tooltip>
+						{!isLoadingModels && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<div>
+										<Button
+											size="sm"
+											onClick={handleComplete}
+											disabled={!isComplete}
+											loading={onboardingMutation.isPending}
+										>
+											<span className="select-none">Complete</span>
+										</Button>
+									</div>
+								</TooltipTrigger>
+								{!isComplete && (
+									<TooltipContent>
+										{!!settings.llm_model &&
+										!!settings.embedding_model &&
+										!isDoclingHealthy
+											? "docling-serve must be running to continue"
+											: "Please fill in all required fields"}
+									</TooltipContent>
+								)}
+							</Tooltip>
+						)}
 					</div>
 				</motion.div>
 			) : (

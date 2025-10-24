@@ -72,6 +72,14 @@ const config = {
             height: "0",
           },
         },
+        shimmer: {
+          "0%": {
+            backgroundPosition: "200% 0",
+          },
+          "100%": {
+            backgroundPosition: "-200% 0",
+          },
+        },
       },
       animation: {
         overlayShow: "overlayShow 400ms cubic-bezier(0.16, 1, 0.3, 1)",
@@ -79,6 +87,7 @@ const config = {
         wiggle: "wiggle 150ms ease-in-out 1",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        shimmer: "shimmer 3s ease-in-out infinite",
       },
       colors: {
         border: "hsl(var(--border))",
