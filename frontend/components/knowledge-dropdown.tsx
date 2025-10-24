@@ -42,7 +42,6 @@ import GoogleDriveIcon from "@/app/settings/icons/google-drive-icon";
 import OneDriveIcon from "@/app/settings/icons/one-drive-icon";
 import SharePointIcon from "@/app/settings/icons/share-point-icon";
 import AwsIcon from "@/app/settings/icons/aws-icon";
-import { cn } from "@/lib/utils";
 
 export function KnowledgeDropdown() {
   const { addTask } = useTask();
