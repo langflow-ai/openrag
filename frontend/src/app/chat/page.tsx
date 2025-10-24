@@ -698,8 +698,16 @@ function ChatPage() {
 		};
 	}, [endpoint, setPreviousResponseIds, setLoading]);
 
+	// Check if onboarding is complete by looking at local storage
+	const isOnboardingComplete =
+		typeof window !== "undefined" &&
+		localStorage.getItem("onboarding-step") === null;
+
 	const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
 		previousResponseIds[endpoint],
+		{
+			enabled: isOnboardingComplete, // Only fetch nudges after onboarding is complete
+		},
 	);
 
 	const handleSSEStream = async (userMessage: Message) => {
