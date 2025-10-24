@@ -23,7 +23,54 @@ Ready to get started? [Install OpenRAG](/install) and then run the [Quickstart](
 
 OpenRAG deploys and orchestrates a lightweight, container-based architecture that combines **Langflow**, **OpenSearch**, and **Docling** into a cohesive RAG platform.
 
-![OpenRAG Architecture Diagram](/img/openrag-architecture.png)
+```mermaid
+flowchart LR
+    %% Define subgraphs for the different sections
+    subgraph LocalService["Local Service"]
+        DoclingSrv[Docling Serve]
+        style DoclingSrv fill:#a8d1ff,stroke:#0066cc,color:black,stroke-width:2px
+    end
+
+    subgraph Containers
+        Backend[OpenRAG Backend]
+        style Backend fill:#e6ffe6,stroke:#006600,color:black,stroke-width:2px
+        Langflow
+        style Langflow fill:#e6ffe6,stroke:#006600,color:black,stroke-width:2px
+        OpenSearch
+        style OpenSearch fill:#e6ffe6,stroke:#006600,color:black,stroke-width:2px
+        Frontend[OpenRAG Frontend]
+        style Frontend fill:#ffcc99,stroke:#ff6600,color:black,stroke-width:2px
+        
+        %% Place Backend and Frontend on the same level
+        Backend --- Frontend
+        linkStyle 7 stroke-opacity:0
+    end
+
+    subgraph ThirdParty["Third Party Services"]
+        OneDrive
+        style OneDrive fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
+        GoogleDrive[Google Drive]
+        style GoogleDrive fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
+        SharePoint[SharePoint...]
+        style SharePoint fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
+        More[...]
+        style More fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
+    end
+
+    %% Define connections
+    DoclingSrv --> Backend
+    OneDrive --> Backend
+    GoogleDrive --> Backend
+    SharePoint --> Backend
+    Backend --> Langflow
+    Langflow <--> OpenSearch
+    Backend <--> Frontend
+    
+    %% Style subgraphs
+    style LocalService fill:#333333,stroke:#666666,color:white
+    style Containers fill:#444444,stroke:#666666,color:white
+    style ThirdParty fill:#333333,stroke:#666666,color:white
+```
 
 The **OpenRAG Backend** is the central orchestration service that coordinates all other components.
 
