@@ -33,3 +33,6 @@ export const TOTAL_ONBOARDING_STEPS = 3;
  * Local Storage Keys
  */
 export const ONBOARDING_STEP_KEY = "onboarding_current_step";
+
+export const FILES_REGEX =
+		/(?<=I'm uploading a document called ['"])[^'"]+\.[^.]+(?=['"]\. Here is its content:)/;
