@@ -68,6 +68,9 @@ export async function uploadFileForContext(
       (uploadJson as { response_id?: string }).response_id || "uploaded";
     const filePath =
       (uploadJson as { filename?: string }).filename || file.name;
+    const pages = (uploadJson as { pages?: number }).pages;
+    const contentLength = (uploadJson as { content_length?: number }).content_length;
+    const confirmation = (uploadJson as { confirmation?: string }).confirmation;
 
     const result: UploadFileResult = {
       fileId,
@@ -85,6 +88,11 @@ export async function uploadFileForContext(
           result: {
             file_id: fileId,
             file_path: filePath,
+            filename: filePath,
+            pages: pages,
+            content_length: contentLength,
+            confirmation: confirmation,
+            response_id: fileId,
             run: null,
             deletion: null,
             unified: false,
