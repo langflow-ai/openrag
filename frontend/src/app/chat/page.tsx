@@ -698,9 +698,24 @@ function ChatPage() {
 	}, [endpoint, setPreviousResponseIds, setLoading]);
 
 	// Check if onboarding is complete by looking at local storage
-	const isOnboardingComplete =
-		typeof window !== "undefined" &&
-		localStorage.getItem("onboarding-step") === null;
+	const [isOnboardingComplete, setIsOnboardingComplete] = useState(() => {
+		if (typeof window === "undefined") return false;
+		return localStorage.getItem("onboarding-step") === null;
+	});
+
+	// Listen for storage changes to detect when onboarding completes
+	useEffect(() => {
+		const checkOnboarding = () => {
+			if (typeof window !== "undefined") {
+				setIsOnboardingComplete(localStorage.getItem("onboarding-step") === null);
+			}
+		};
+
+		// Check periodically since storage events don't fire in the same tab
+		const interval = setInterval(checkOnboarding, 500);
+
+		return () => clearInterval(interval);
+	}, []);
 
 	const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
 		previousResponseIds[endpoint],

@@ -29,6 +29,87 @@ export async function duplicateCheck(
   return response.json();
 }
 
+export async function uploadFileForContext(
+  file: File
+): Promise<UploadFileResult> {
+  window.dispatchEvent(
+    new CustomEvent("fileUploadStart", {
+      detail: { filename: file.name },
+    })
+  );
+
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const uploadResponse = await fetch("/api/upload_context", {
+      method: "POST",
+      body: formData,
+    });
+
+    let payload: unknown;
+    try {
+      payload = await uploadResponse.json();
+    } catch (error) {
+      throw new Error("Upload failed: unable to parse server response");
+    }
+
+    const uploadJson =
+      typeof payload === "object" && payload !== null ? payload : {};
+
+    if (!uploadResponse.ok) {
+      const errorMessage =
+        (uploadJson as { error?: string }).error ||
+        "Upload failed";
+      throw new Error(errorMessage);
+    }
+
+    const fileId =
+      (uploadJson as { response_id?: string }).response_id || "uploaded";
+    const filePath =
+      (uploadJson as { filename?: string }).filename || file.name;
+
+    const result: UploadFileResult = {
+      fileId,
+      filePath,
+      run: null,
+      deletion: null,
+      unified: false,
+      raw: uploadJson,
+    };
+
+    window.dispatchEvent(
+      new CustomEvent("fileUploaded", {
+        detail: {
+          file,
+          result: {
+            file_id: fileId,
+            file_path: filePath,
+            run: null,
+            deletion: null,
+            unified: false,
+          },
+        },
+      })
+    );
+
+    return result;
+  } catch (error) {
+    window.dispatchEvent(
+      new CustomEvent("fileUploadError", {
+        detail: {
+          filename: file.name,
+          error:
+            error instanceof Error ? error.message : "Upload failed",
+        },
+      })
+    );
+    throw error;
+  } finally {
+    window.dispatchEvent(new CustomEvent("fileUploadComplete"));
+  }
+}
+
 export async function uploadFile(
   file: File,
   replace = false
