@@ -1,4 +1,4 @@
-import { Check, Funnel, Loader2, Plus, X } from "lucide-react";
+import { ArrowRight, Check, Funnel, Loader2, Plus, X } from "lucide-react";
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import type { FilterColor } from "@/components/filter-icon-popover";
@@ -82,34 +82,45 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 		}));
 
 		return (
-			<div className="pb-8 flex px-6">
 				<div className="w-full">
 					<form onSubmit={onSubmit} className="relative">
-						<div className="relative w-full bg-muted/20 rounded-lg border border-border/50 focus-within:ring-1 focus-within:ring-ring">
-							{selectedFilter && (
-								<div className="flex items-center gap-2 px-4 pt-3 pb-1">
-									<span
-										className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
-											filterAccentClasses[parsedFilterData?.color || "zinc"]
-										}`}
+						<div className="relative flex items-center w-full p-2 gap-2 rounded-xl border border-input focus-within:ring-1 focus-within:ring-ring">
+							{selectedFilter ? (
+								<span
+									className={`inline-flex items-center p-1 rounded-sm text-xs font-medium transition-colors ${
+										filterAccentClasses[parsedFilterData?.color || "zinc"]
+									}`}
+								>
+									{selectedFilter.name}
+									<button
+										type="button"
+										onClick={() => {
+											setSelectedFilter(null);
+											setIsFilterHighlighted(false);
+										}}
+										className="ml-0.5 rounded-full p-0.5"
 									>
-										@filter:{selectedFilter.name}
-										<button
-											type="button"
-											onClick={() => {
-												setSelectedFilter(null);
-												setIsFilterHighlighted(false);
-											}}
-											className="ml-1 rounded-full p-0.5"
-										>
-											<X className="h-3 w-3" />
-										</button>
-									</span>
-								</div>
+										<X className="h-4 w-4" />
+									</button>
+								</span>
+							) : (
+								<Button
+									type="button"
+									variant="ghost"
+									size="iconSm"
+									className="h-8 w-8 p-0 rounded-md hover:bg-muted/50"
+									onMouseDown={(e) => {
+										e.preventDefault();
+									}}
+									onClick={onAtClick}
+									data-filter-button
+								>
+									<Funnel className="h-4 w-4" />
+								</Button>
 							)}
 							<div
-								className="relative"
-								style={{ height: `${textareaHeight + 60}px` }}
+								className="relative flex-1"
+								style={{ height: `${textareaHeight}px` }}
 							>
 								<TextareaAutosize
 									ref={inputRef}
@@ -118,20 +129,36 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 									onKeyDown={onKeyDown}
 									onHeightChange={onHeightChange}
 									maxRows={7}
-									minRows={2}
-									placeholder="Type to ask a question..."
+									minRows={1}
+									placeholder="Ask a question..."
 									disabled={loading}
-									className={`w-full bg-transparent px-4 ${
-										selectedFilter ? "pt-2" : "pt-4"
-									} focus-visible:outline-none resize-none`}
-									rows={2}
-								/>
-								{/* Safe area at bottom for buttons */}
-								<div
-									className="absolute bottom-0 left-0 right-0 bg-transparent pointer-events-none"
-									style={{ height: "60px" }}
+									className={`w-full text-sm bg-transparent focus-visible:outline-none resize-none`}
+									rows={1}
 								/>
 							</div>
+							<Button
+								type="button"
+								variant="ghost"
+								size="iconSm"
+								onClick={onFilePickerClick}
+								disabled={isUploading}
+								className="h-8 w-8 p-0 !rounded-md hover:bg-muted/50"
+							>
+								<Plus className="h-4 w-4" />
+							</Button>
+							<Button
+								variant="default"
+								type="submit"
+								size="iconSm"
+								disabled={!input.trim() || loading}
+								className="!rounded-md h-8 w-8 p-0"
+							>
+								{loading ? (
+									<Loader2 className="h-4 w-4 animate-spin" />
+								) : (
+									<ArrowRight className="h-4 w-4" />
+								)}
+							</Button>
 						</div>
 						<input
 							ref={fileInputRef}
@@ -140,19 +167,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 							className="hidden"
 							accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
 						/>
-						<Button
-							type="button"
-							variant="outline"
-							size="iconSm"
-							className="absolute bottom-3 left-3 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
-							onMouseDown={(e) => {
-								e.preventDefault();
-							}}
-							onClick={onAtClick}
-							data-filter-button
-						>
-							<Funnel className="h-4 w-4" />
-						</Button>
+
 						<Popover
 							open={isFilterDropdownOpen}
 							onOpenChange={(open) => {
@@ -257,26 +272,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 								</div>
 							</PopoverContent>
 						</Popover>
-						<Button
-							type="button"
-							variant="outline"
-							size="iconSm"
-							onClick={onFilePickerClick}
-							disabled={isUploading}
-							className="absolute bottom-3 left-12 h-8 w-8 p-0 rounded-full hover:bg-muted/50"
-						>
-							<Plus className="h-4 w-4" />
-						</Button>
-						<Button
-							type="submit"
-							disabled={!input.trim() || loading}
-							className="absolute bottom-3 right-3 rounded-lg h-10 px-4"
-						>
-							{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
-						</Button>
 					</form>
 				</div>
-			</div>
 		);
 	},
 );

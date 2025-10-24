@@ -1,4 +1,4 @@
-import { User } from "lucide-react";
+import { FileText, User } from "lucide-react";
 import { motion } from "motion/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/auth-context";
@@ -9,12 +9,12 @@ interface UserMessageProps {
 	content: string;
 	isCompleted?: boolean;
 	animate?: boolean;
+	files?: string;
 }
 
-export function UserMessage({ content, isCompleted, animate = true }: UserMessageProps) {
+export function UserMessage({ content, isCompleted, animate = true, files }: UserMessageProps) {
 	const { user } = useAuth();
 
-	console.log("animate", animate);
 
 	return (
 		<motion.div
@@ -38,6 +38,12 @@ export function UserMessage({ content, isCompleted, animate = true }: UserMessag
 					</Avatar>
 				}
 			>
+				{files && (
+					<p className="text-muted-foreground flex items-center gap-2 font-normal text-mmd py-1.5 whitespace-pre-wrap break-words overflow-wrap-anywhere transition-colors duration-300">
+						<FileText className="h-4 w-4" />
+						{files}
+					</p>
+				)}
 				<p
 					className={cn(
 						"text-foreground text-sm py-1.5 whitespace-pre-wrap break-words overflow-wrap-anywhere transition-colors duration-300",
