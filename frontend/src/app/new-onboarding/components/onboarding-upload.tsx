@@ -14,8 +14,8 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const [currentStep, setCurrentStep] = useState<number | null>(null);
 
   const STEP_LIST = [
-    "Analyzing your document",
-    "Ingesting your document",
+    "Uploading your document",
+    "Processing your document",
   ];
 
   const resetFileInput = () => {
