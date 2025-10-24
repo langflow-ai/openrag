@@ -201,7 +201,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 											variant="default"
 											type="submit"
 											size="iconSm"
-											disabled={!input.trim() || loading}
+											disabled={(!input.trim() && !uploadedFile) || loading}
 											className="!rounded-md h-8 w-8 p-0"
 										>
 											{loading ? (
