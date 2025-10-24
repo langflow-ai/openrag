@@ -19,6 +19,18 @@ What's more, every part of the stack is swappable. Write your own custom compone
 
 Ready to get started? [Install OpenRAG](/install) and then run the [Quickstart](/quickstart) to create a powerful RAG pipeline.
 
-## System architecture 
+## OpenRAG architecture
+
+OpenRAG deploys and orchestrates a lightweight, container-based architecture that combines **Langflow**, **OpenSearch**, and **Docling** into a cohesive RAG platform.
 
 ![OpenRAG Architecture Diagram](/img/openrag-architecture.png)
+
+The **OpenRAG Backend** is the central orchestration service that coordinates all other components.
+
+**Langflow** provides a visual workflow engine for building AI agents, and connects to **OpenSearch** for vector storage and retrieval.
+
+**Docling Serve** is a local document processing service managed by the **OpenRAG Backend**.
+
+**Third Party Services** like **Google Drive** connect to the **OpenRAG Backend** through OAuth authentication, allowing synchronication of cloud storage with the OpenSearch knowledge base.
+
+The **OpenRAG Frontend** provides the user interface for interacting with the system.
