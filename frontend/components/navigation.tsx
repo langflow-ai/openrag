@@ -402,9 +402,8 @@ export function Navigation({
 						</div>
 					</div>
 
-					<div className="flex-1 min-h-0 flex flex-col">
-						{/* Conversations List - grows naturally, doesn't fill all space */}
-						<div className="flex-shrink-0 overflow-y-auto scrollbar-hide space-y-1 max-h-full">
+					<div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide">
+						<div className="space-y-1 flex flex-col">
 							{loadingNewConversation || isConversationsLoading ? (
 								<div className="text-[13px] text-muted-foreground p-2">
 									Loading...
