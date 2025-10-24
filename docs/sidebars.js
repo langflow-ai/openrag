@@ -33,7 +33,7 @@ const sidebars = {
         {
           type: "doc",
           id: "get-started/docker",
-          label: "Deploy with Docker"
+          label: "Install with Docker"
         },
         {
           type: "doc",
