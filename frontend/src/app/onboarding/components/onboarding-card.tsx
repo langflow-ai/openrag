@@ -46,7 +46,6 @@ const STEP_LIST = [
 const TOTAL_PROVIDER_STEPS = STEP_LIST.length;
 
 const OnboardingCard = ({ onComplete }: OnboardingCardProps) => {
-	const updatedOnboarding = process.env.UPDATED_ONBOARDING === "true";
 	const { isHealthy: isDoclingHealthy } = useDoclingHealth();
 
 	const [modelProvider, setModelProvider] = useState<string>("openai");
