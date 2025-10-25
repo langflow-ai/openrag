@@ -18,3 +18,73 @@ OpenRAG builds on Langflow's familiar interface while adding OpenSearch for vect
 What's more, every part of the stack is swappable. Write your own custom components in Python, try different language models, and customize your flows to build an agentic RAG system.
 
 Ready to get started? [Install OpenRAG](/install) and then run the [Quickstart](/quickstart) to create a powerful RAG pipeline.
+
+## OpenRAG architecture
+
+OpenRAG deploys and orchestrates a lightweight, container-based architecture that combines **Langflow**, **OpenSearch**, and **Docling** into a cohesive RAG platform.
+
+```mermaid
+%%{init: {'theme': 'dark', 'flowchart': {'useMaxWidth': false, 'width': '100%'}}}%%
+flowchart LR
+    %% Encapsulate the entire diagram in a rectangle with black background
+    subgraph DiagramContainer["OpenRAG Architecture"]
+        style DiagramContainer fill:#000000,stroke:#ffffff,color:white,stroke-width:2px
+
+        %% Define subgraphs for the different sections
+        subgraph LocalService["Local Service"]
+            DoclingSrv[Docling Serve]
+            style DoclingSrv fill:#a8d1ff,stroke:#0066cc,color:black,stroke-width:2px
+        end
+
+        subgraph Containers
+            Backend["OpenRAG Backend"]
+            style Backend fill:#e6ffe6,stroke:#006600,color:black,stroke-width:2px
+            Langflow
+            style Langflow fill:#e6ffe6,stroke:#006600,color:black,stroke-width:2px
+            OpenSearch
+            style OpenSearch fill:#e6ffe6,stroke:#006600,color:black,stroke-width:2px
+            Frontend["OpenRAG Frontend"]
+            style Frontend fill:#ffcc99,stroke:#ff6600,color:black,stroke-width:2px
+        end
+
+        subgraph ThirdParty["Third Party Services"]
+            OneDrive
+            style OneDrive fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
+            GoogleDrive["Google Drive"]
+            style GoogleDrive fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
+            SharePoint["SharePoint"]
+            style SharePoint fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
+            More[...]
+            style More fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
+        end
+
+        %% Define connections
+        DoclingSrv --> Backend
+        OneDrive --> Backend
+        GoogleDrive --> Backend
+        SharePoint --> Backend
+        More --> Backend
+        Backend --> Langflow
+        Langflow <--> OpenSearch
+        Backend <--> Frontend
+
+        %% Style subgraphs
+        style LocalService fill:#333333,stroke:#666666,color:white,stroke-width:2px
+        style Containers fill:#444444,stroke:#666666,color:white,stroke-width:2px
+        style ThirdParty fill:#333333,stroke:#666666,color:white,stroke-width:2px
+    end
+
+    %% Ensure Backend and Frontend are on the same level and have enough width for text
+    classDef sameLevel width:180px
+    class Backend,Frontend sameLevel
+```
+
+The **OpenRAG Backend** is the central orchestration service that coordinates all other components.
+
+**Langflow** provides a visual workflow engine for building AI agents, and connects to **OpenSearch** for vector storage and retrieval.
+
+**Docling Serve** is a local document processing service managed by the **OpenRAG Backend**.
+
+**Third Party Services** like **Google Drive** connect to the **OpenRAG Backend** through OAuth authentication, allowing synchronication of cloud storage with the OpenSearch knowledge base.
+
+The **OpenRAG Frontend** provides the user interface for interacting with the system.
