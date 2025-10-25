@@ -148,46 +148,49 @@
   text-align: center;
   margin: 2rem 0;
   width: 100% !important;
-  min-height: 400px !important;
+  min-height: 500px !important;
   display: block !important;
+  overflow: visible !important;
 }
 
 .mermaid svg {
   width: 100% !important;
+  max-width: none !important;
   min-width: 800px !important;
-  min-height: 400px !important;
+  min-height: 500px !important;
   height: auto !important;
   display: block !important;
   margin: 0 auto !important;
   transform: scale(1) !important;
 }
 
-/* Override any potential conflicts */
+/* Force Mermaid diagram sizing */
 .markdown .mermaid {
   width: 100% !important;
-  min-height: 400px !important;
+  min-height: 500px !important;
+  display: block !important;
 }
 
 .markdown .mermaid svg {
   width: 100% !important;
   min-width: 800px !important;
-  min-height: 400px !important;
-  transform: none !important;
+  min-height: 500px !important;
+  transform: scale(1) !important;
 }
 
 /* Target the specific Mermaid container */
 div[class*="mermaid"] {
   width: 100% !important;
-  min-height: 400px !important;
+  min-height: 500px !important;
 }
 
 div[class*="mermaid"] svg {
   width: 100% !important;
   min-width: 800px !important;
-  min-height: 400px !important;
+  min-height: 500px !important;
 }
 
-/* Additional aggressive targeting for Mermaid sizing */
+/* Force Mermaid to render at full size */
 .mermaid,
 .mermaid > *,
 .mermaid svg,
@@ -195,17 +198,16 @@ div[class*="mermaid"] svg {
 .mermaid div svg {
   width: 100% !important;
   min-width: 800px !important;
-  min-height: 400px !important;
+  min-height: 500px !important;
   max-width: none !important;
   display: block !important;
   transform: none !important;
   scale: 1 !important;
 }
 
-/* Force Mermaid to not be constrained */
+/* Override any potential scaling issues */
 .mermaid svg {
+  transform: none !important;
+  scale: 1 !important;
   viewBox: unset !important;
-  width: 100% !important;
-  min-width: 800px !important;
-  min-height: 400px !important;
 }

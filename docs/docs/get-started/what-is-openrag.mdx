@@ -48,10 +48,10 @@ flowchart LR
         end
 
         subgraph ThirdParty["Third Party Services"]
-            OneDrive
-            style OneDrive fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
             GoogleDrive["Google Drive"]
             style GoogleDrive fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
+            OneDrive
+            style OneDrive fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
             SharePoint["SharePoint"]
             style SharePoint fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
             More[...]
@@ -60,8 +60,8 @@ flowchart LR
 
         %% Define connections
         DoclingSrv --> Backend
-        OneDrive --> Backend
         GoogleDrive --> Backend
+        OneDrive --> Backend
         SharePoint --> Backend
         More --> Backend
         Backend --> Langflow
@@ -73,10 +73,6 @@ flowchart LR
         style Containers fill:#444444,stroke:#666666,color:white,stroke-width:2px
         style ThirdParty fill:#333333,stroke:#666666,color:white,stroke-width:2px
     end
-
-    %% Ensure Backend and Frontend are on the same level and have enough width for text
-    classDef sameLevel width:180px
-    class Backend,Frontend sameLevel
 ```
 
 The **OpenRAG Backend** is the central orchestration service that coordinates all other components.
