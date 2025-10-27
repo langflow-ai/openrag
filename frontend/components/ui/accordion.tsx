@@ -1,7 +1,7 @@
 "use client";
 
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
-import { ChevronDown } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -28,12 +28,12 @@ const AccordionTrigger = React.forwardRef<
     <AccordionPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex flex-1 items-center p-4 py-2.5 gap-2 font-medium !text-mmd text-muted-foreground transition-all [&[data-state=open]>svg]:rotate-180",
+        "flex flex-1 items-center p-4 py-2.5 gap-2 font-medium !text-mmd text-muted-foreground transition-all [&[data-state=open]>svg]:rotate-90",
         className,
       )}
       {...props}
     >
-      <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200" />
+      <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform duration-200" />
       {children}
     </AccordionPrimitive.Trigger>
   </AccordionPrimitive.Header>
