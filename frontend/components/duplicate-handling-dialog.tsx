@@ -34,7 +34,7 @@ export const DuplicateHandlingDialog: React.FC<
 					<DialogTitle>Overwrite document</DialogTitle>
 					<DialogDescription className="pt-2 text-muted-foreground">
 						Overwriting will replace the existing document with another version.
-						This can't be undone.
+						This can&apos;t be undone.
 					</DialogDescription>
 				</DialogHeader>
 

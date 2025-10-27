@@ -5,8 +5,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { ModelSelector } from "./model-selector";
 
 export function AdvancedOnboarding({
