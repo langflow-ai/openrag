@@ -5,8 +5,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { ModelSelector } from "./model-selector";
 
 export function AdvancedOnboarding({
@@ -72,20 +70,6 @@ export function AdvancedOnboarding({
                 icon={icon}
                 value={languageModel}
                 onValueChange={setLanguageModel}
-              />
-            </LabelWrapper>
-          )}
-          {(hasLanguageModels || hasEmbeddingModels) && !updatedOnboarding && <Separator />}
-          {!updatedOnboarding && (
-            <LabelWrapper
-              label="Sample dataset"
-              description="Load sample data to chat with immediately."
-              id="sample-dataset"
-              flex
-            >
-              <Switch
-                checked={sampleDataset}
-                onCheckedChange={setSampleDataset}
               />
             </LabelWrapper>
           )}

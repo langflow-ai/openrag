@@ -866,7 +866,7 @@ function KnowledgeSourcesPage() {
                 description={
                   <>
                     <p className="mb-2">
-                      You're entering Langflow. You can edit the{" "}
+                      You&apos;re entering Langflow. You can edit the{" "}
                       <b>Agent flow</b> and other underlying flows. Manual
                       changes to components, wiring, or I/O can break this
                       experience.
@@ -1013,7 +1013,7 @@ function KnowledgeSourcesPage() {
                 description={
                   <>
                     <p className="mb-2">
-                      You're entering Langflow. You can edit the{" "}
+                      You&apos;re entering Langflow. You can edit the{" "}
                       <b>Ingest flow</b> and other underlying flows. Manual
                       changes to components, wiring, or I/O can break this
                       experience.

@@ -47,12 +47,12 @@ To launch OpenRAG with the TUI, do the following:
 
     The TUI opens and guides you through OpenRAG setup.
 
-For the full TUI guide, see [TUI](https://docs.openr.ag/get-started/tui).
+For the full TUI installation guide, see [TUI](https://docs.openr.ag/install).
 
-## Docker Deployment
+## Docker installation
 
 If you prefer to use Docker to run OpenRAG, the repository includes two Docker Compose `.yml` files.
-They deploy the same applications and containers, but to different environments.
+They deploy the same applications and containers locally, but to different environments.
 
 - [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment for environments with GPU support. GPU support requires an NVIDIA GPU with CUDA support and compatible NVIDIA drivers installed on the OpenRAG host machine. 
 
@@ -60,7 +60,7 @@ They deploy the same applications and containers, but to different environments.
 
 Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing. Installing OpenRAG with the TUI starts `docling serve` automatically, but for a Docker deployment you must manually start the `docling serve` process.
 
-To deploy OpenRAG with Docker:
+To install OpenRAG with Docker:
 
 1. Clone the OpenRAG repository.
     ```bash
@@ -121,7 +121,7 @@ To deploy OpenRAG with Docker:
     uv run python scripts/docling_ctl.py stop
     ```
 
-For more information, see [Deploy with Docker](https://docs.openr.ag/get-started/docker).
+For more information, see [Install with Docker](https://docs.openr.ag/get-started/docker).
 
 ## Troubleshooting
 

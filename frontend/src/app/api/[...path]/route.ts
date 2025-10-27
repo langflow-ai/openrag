@@ -106,9 +106,8 @@ async function proxyRequest(
     }
     const response = await fetch(backendUrl, init);
 
-    const responseBody = await response.text();
     const responseHeaders = new Headers();
-    
+
     // Copy response headers
     for (const [key, value] of response.headers.entries()) {
       if (!key.toLowerCase().startsWith('transfer-encoding') &&
@@ -117,11 +116,22 @@ async function proxyRequest(
       }
     }
 
-    return new NextResponse(responseBody, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeaders,
-    });
+    // For streaming responses, pass the body directly without buffering
+    if (response.body) {
+      return new NextResponse(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
+    } else {
+      // Fallback for non-streaming responses
+      const responseBody = await response.text();
+      return new NextResponse(responseBody, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
+    }
   } catch (error) {
     console.error('Proxy error:', error);
     return NextResponse.json(

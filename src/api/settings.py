@@ -525,13 +525,10 @@ async def onboarding(request, flows_service):
         # Get current configuration
         current_config = get_openrag_config()
 
-        # Check if config is NOT marked as edited (only allow onboarding if not yet configured)
+        # Warn if config was already edited (onboarding being re-run)
         if current_config.edited:
-            return JSONResponse(
-                {
-                    "error": "Configuration has already been edited. Use /settings endpoint for updates."
-                },
-                status_code=403,
+            logger.warning(
+                "Onboarding is being run although configuration was already edited before"
             )
 
         # Parse request body

@@ -191,6 +191,7 @@
           }
         },
         "id": "xy-edge__MCP-7EY21{œdataTypeœ:œMCPœ,œidœ:œMCP-7EY21œ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-crjWf{œfieldNameœ:œtoolsœ,œidœ:œAgent-crjWfœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
+        "selected": false,
         "source": "MCP-7EY21",
         "sourceHandle": "{œdataTypeœ:œMCPœ,œidœ:œMCP-7EY21œ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
         "target": "Agent-crjWf",
@@ -448,8 +449,8 @@
           "width": 192
         },
         "position": {
-          "x": 1264.0651279011304,
-          "y": 1192.017532447814
+          "x": 1338.2905337667046,
+          "y": 1206.5715335979264
         },
         "selected": false,
         "type": "genericNode"
@@ -755,7 +756,7 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2025-10-06T15:23:50.339Z",
+            "last_updated": "2025-10-09T17:03:19.845Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -1261,7 +1262,7 @@
                     "display_name": "as_dataframe",
                     "name": "as_dataframe",
                     "readonly": false,
-                    "status": true,
+                    "status": false,
                     "tags": [
                       "as_dataframe"
                     ]
@@ -1280,7 +1281,7 @@
                     "display_name": "as_vector_store",
                     "name": "as_vector_store",
                     "readonly": false,
-                    "status": true,
+                    "status": false,
                     "tags": [
                       "as_vector_store"
                     ]
@@ -1375,8 +1376,8 @@
           "width": 320
         },
         "position": {
-          "x": 1202.1762389080463,
-          "y": 395.8072555285192
+          "x": 1183.2560374129,
+          "y": 320.1264495479339
         },
         "selected": false,
         "type": "genericNode"
@@ -1409,7 +1410,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-10-06T15:23:50.341Z",
+            "last_updated": "2025-10-09T17:03:19.846Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -1734,7 +1735,7 @@
             ],
             "frozen": false,
             "icon": "bot",
-            "last_updated": "2025-10-06T15:23:50.396Z",
+            "last_updated": "2025-10-09T17:03:19.888Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2086,7 +2087,7 @@
                 "trace_as_input": true,
                 "trace_as_metadata": true,
                 "type": "str",
-                "value": "You are a helpful assistant that can use tools to answer questions and perform tasks."
+                "value": "You are a helpful assistant that can use tools to answer questions and perform tasks. You are part of OpenRAG, an assistant that analyzes documents and provides informations about them. When asked about what is OpenRAG, answer the following:\n\n\"OpenRAG is an open-source package for building agentic RAG systems. It supports integration with a wide range of orchestration tools, vector databases, and LLM providers. OpenRAG connects and amplifies three popular, proven open-source projects into one powerful platform:\n\n**Langflow** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://www.langflow.org/)\n\n**OpenSearch** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://opensearch.org/)\n\n**Docling** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://www.docling.ai/)\""
               },
               "tools": {
                 "_input_type": "HandleInput",
@@ -2241,8 +2242,8 @@
           "width": 320
         },
         "position": {
-          "x": 745.3341059713564,
-          "y": 95.0152511387621
+          "x": 722.0477041311764,
+          "y": 119.75705309395346
         },
         "selected": false,
         "type": "genericNode"
@@ -2273,7 +2274,7 @@
             ],
             "frozen": false,
             "icon": "brain-circuit",
-            "last_updated": "2025-10-06T15:23:50.343Z",
+            "last_updated": "2025-10-09T17:03:19.855Z",
             "legacy": false,
             "lf_version": "1.6.0",
             "metadata": {
@@ -2571,8 +2572,8 @@
           "width": 320
         },
         "position": {
-          "x": 1206.0291133693556,
-          "y": -185.39565741253472
+          "x": 1188.5643119892204,
+          "y": -237.60813653856357
         },
         "selected": false,
         "type": "genericNode"
@@ -2601,7 +2602,7 @@
             "frozen": false,
             "icon": "Mcp",
             "key": "mcp_lf-starter_project",
-            "last_updated": "2025-10-06T15:23:56.578Z",
+            "last_updated": "2025-10-09T17:03:19.855Z",
             "legacy": false,
             "mcpServerName": "lf-starter_project",
             "metadata": {
@@ -2819,17 +2820,46 @@
           "width": 320
         },
         "position": {
-          "x": 675.7137923419156,
-          "y": 878.6218422334763
+          "x": 733.9297969423658,
+          "y": 862.6124409683524
         },
         "selected": false,
         "type": "genericNode"
+      },
+      {
+        "data": {
+          "id": "note-Wg9xF",
+          "node": {
+            "description": "## README\n\nThis flow generates answers for OpenRAG's chat, informed by the context stored in OpenSearch.\nIn this flow, the [**Langflow Agent** component](https://docs.langflow.org/agents) uses the connected [**Language Model** component](https://docs.langflow.org/components-models) to select the correct tool to complete requests.\n* If the Agent determines your request requires external knowledge, it will embed your query with the [**Embedding Model** component](https://docs.langflow.org/components-embedding-models) and query your [OpenSearch knowledge](https://docs.openr.ag/knowledge).\n\n* If the Agent determines your request requires a web search, it selects the [**MCP Tools** component](https://docs.langflow.org/mcp-client#mcp-tools-parameters) to fetch web content with the [OpenSearch URL ingestion flow](https://docs.openr.ag/ingestion#url-flow).\n\nUsing the retrieved data, the Agent generates a response with the connected [**Language Model** component](https://docs.langflow.org/components-models) and sends it to the [**Chat Output** component](https://docs.langflow.org/components-io).\n\nFor more information, see the [OpenRAG docs](https://docs.openr.ag/agents).",
+            "display_name": "",
+            "documentation": "",
+            "template": {
+              "backgroundColor": "amber"
+            }
+          },
+          "type": "note"
+        },
+        "dragging": false,
+        "height": 469,
+        "id": "note-Wg9xF",
+        "measured": {
+          "height": 469,
+          "width": 644
+        },
+        "position": {
+          "x": 19.942791510714386,
+          "y": 259.5061905471592
+        },
+        "resizing": false,
+        "selected": false,
+        "type": "noteNode",
+        "width": 644
       }
     ],
     "viewport": {
-      "x": -237.0727605845459,
-      "y": 154.6885920024542,
-      "zoom": 0.602433700773958
+      "x": 15.987785397208654,
+      "y": 201.25966590756093,
+      "zoom": 0.6870962766086257
     }
   },
   "description": "OpenRAG OpenSearch Agent",
