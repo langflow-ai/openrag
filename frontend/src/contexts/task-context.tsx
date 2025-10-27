@@ -64,9 +64,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 	const previousTasksRef = useRef<Task[]>([]);
 	const { isAuthenticated, isNoAuthMode } = useAuth();
 
-	const savedStep = localStorage.getItem(ONBOARDING_STEP_KEY);
-	const hasStartedOnboarding = savedStep !== null;
-
 	const queryClient = useQueryClient();
 
 	// Use React Query hooks
@@ -92,6 +89,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 			});
 		},
 	});
+
+	// Helper function to check if onboarding is active
+	const isOnboardingActive = useCallback(() => {
+		if (typeof window === "undefined") return false;
+		return localStorage.getItem(ONBOARDING_STEP_KEY) !== null;
+	}, []);
 
 	const refetchSearch = useCallback(() => {
 		queryClient.invalidateQueries({
@@ -264,7 +267,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 							successfulFiles !== 1 ? "s" : ""
 						} uploaded successfully`;
 					}
-					if (!hasStartedOnboarding) {
+					if (!isOnboardingActive()) {
 						toast.success("Task completed", {
 							description,
 							action: {
@@ -304,7 +307,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
 		// Store current tasks as previous for next comparison
 		previousTasksRef.current = tasks;
-	}, [tasks, refetchSearch]);
+	}, [tasks, refetchSearch, isOnboardingActive]);
 
 	const addTask = useCallback(
 		(_taskId: string) => {
