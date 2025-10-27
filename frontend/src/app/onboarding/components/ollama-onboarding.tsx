@@ -14,13 +14,11 @@ export function OllamaOnboarding({
 	sampleDataset,
 	setSampleDataset,
 	setIsLoadingModels,
-	setLoadingStatus,
 }: {
 	setSettings: (settings: OnboardingVariables) => void;
 	sampleDataset: boolean;
 	setSampleDataset: (dataset: boolean) => void;
 	setIsLoadingModels?: (isLoading: boolean) => void;
-	setLoadingStatus?: (status: string[]) => void;
 }) {
 	const [endpoint, setEndpoint] = useState(`http://localhost:11434`);
 	const [showConnecting, setShowConnecting] = useState(false);
@@ -74,20 +72,7 @@ export function OllamaOnboarding({
 		},
 		setSettings,
 	);
-
-	// Notify parent about loading state
-	useEffect(() => {
-		setIsLoadingModels?.(isLoadingModels);
-
-		// Set detailed loading status
-		if (isLoadingModels) {
-			const status = ["Connecting to Ollama", "Fetching language models", "Fetching embedding models"];
-			setLoadingStatus?.(status);
-		} else {
-			setLoadingStatus?.([]);
-		}
-	}, [isLoadingModels, setIsLoadingModels, setLoadingStatus]);
-
+	
 	// Check validation state based on models query
 	const hasConnectionError = debouncedEndpoint && modelsError;
 	const hasNoModels =

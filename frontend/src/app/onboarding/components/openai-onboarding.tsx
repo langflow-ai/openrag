@@ -15,13 +15,11 @@ export function OpenAIOnboarding({
 	sampleDataset,
 	setSampleDataset,
 	setIsLoadingModels,
-	setLoadingStatus,
 }: {
 	setSettings: (settings: OnboardingVariables) => void;
 	sampleDataset: boolean;
 	setSampleDataset: (dataset: boolean) => void;
 	setIsLoadingModels?: (isLoading: boolean) => void;
-	setLoadingStatus?: (status: string[]) => void;
 }) {
 	const [apiKey, setApiKey] = useState("");
 	const [getFromEnv, setGetFromEnv] = useState(true);
@@ -62,6 +60,10 @@ export function OpenAIOnboarding({
 		setEmbeddingModel("");
 	};
 
+	useEffect(() => {
+		setIsLoadingModels?.(isLoadingModels);
+	}, [isLoadingModels, setIsLoadingModels]);
+
 	// Update settings when values change
 	useUpdateSettings(
 		"openai",
@@ -72,19 +74,7 @@ export function OpenAIOnboarding({
 		},
 		setSettings,
 	);
-
-	// Notify parent about loading state
-	useEffect(() => {
-		setIsLoadingModels?.(isLoadingModels);
-
-		// Set detailed loading status
-		if (isLoadingModels) {
-			const status = ["Connecting to OpenAI", "Fetching language models", "Fetching embedding models"];
-			setLoadingStatus?.(status);
-		} else {
-			setLoadingStatus?.([]);
-		}
-	}, [isLoadingModels, setIsLoadingModels, setLoadingStatus]);
+	
 	return (
 		<>
 			<div className="space-y-5">
