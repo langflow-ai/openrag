@@ -190,14 +190,6 @@ function ChatPage() {
     setIsUploading(true);
     setLoading(true);
 
-    // Add initial upload message
-    const uploadStartMessage: Message = {
-      role: "assistant",
-      content: `🔄 Starting upload of **${file.name}**...`,
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, uploadStartMessage]);
-
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -242,28 +234,24 @@ function ChatPage() {
         // Add task to centralized tracking
         addTask(taskId);
 
-        // Update message to show task is being tracked
-        const pollingMessage: Message = {
-          role: "assistant",
-          content: `⏳ Upload initiated for **${file.name}**. Processing in background... (Task ID: ${taskId})`,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev.slice(0, -1), pollingMessage]);
         return null;
       } else if (response.ok) {
         // Original flow: Direct response
 
         const uploadMessage: Message = {
-          role: "assistant",
-          content: `📄 Document uploaded: **${result.filename}** (${
-            result.pages
-          } pages, ${result.content_length.toLocaleString()} characters)\n\n${
-            result.confirmation
-          }`,
+          role: "user",
+          content: `I'm uploading a document called "${result.filename}". Here is its content:`,
           timestamp: new Date(),
         };
 
-        setMessages((prev) => [...prev.slice(0, -1), uploadMessage]);
+		const confirmationMessage: Message = {
+			role: "assistant",
+			content: `Confirmed`,
+			timestamp: new Date(),
+		  };
+  
+
+        setMessages((prev) => [...prev, uploadMessage, confirmationMessage]);
 
         // Add file to conversation docs
         if (result.filename) {
