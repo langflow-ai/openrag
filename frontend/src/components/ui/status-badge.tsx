@@ -1,4 +1,4 @@
-import { AnimatedProcessingIcon } from "./animated-processing-icon";
+import AnimatedProcessingIcon from "./animated-processing-icon";
 
 export type Status =
   | "processing"
