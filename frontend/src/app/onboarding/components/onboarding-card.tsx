@@ -270,31 +270,29 @@ const OnboardingCard = ({
 							</TabsContent>
 						</Tabs>
 
-						{!isLoadingModels && (
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<div>
-										<Button
-											size="sm"
-											onClick={handleComplete}
-											disabled={!isComplete}
-											loading={onboardingMutation.isPending}
-										>
-											<span className="select-none">Complete</span>
-										</Button>
-									</div>
-								</TooltipTrigger>
-								{!isComplete && (
-									<TooltipContent>
-										{!!settings.llm_model &&
-										!!settings.embedding_model &&
-										!isDoclingHealthy
-											? "docling-serve must be running to continue"
-											: "Please fill in all required fields"}
-									</TooltipContent>
-								)}
-							</Tooltip>
-						)}
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<div>
+									<Button
+										size="sm"
+										onClick={handleComplete}
+										disabled={!isComplete || isLoadingModels}
+										loading={onboardingMutation.isPending}
+									>
+										<span className="select-none">Complete</span>
+									</Button>
+								</div>
+							</TooltipTrigger>
+							{!isComplete && (
+								<TooltipContent>
+									{isLoadingModels ? "Loading models..." : (!!settings.llm_model &&
+									!!settings.embedding_model &&
+									!isDoclingHealthy
+										? "docling-serve must be running to continue"
+										: "Please fill in all required fields")}
+								</TooltipContent>
+							)}
+						</Tooltip>
 					</div>
 				</motion.div>
 			) : (
@@ -303,7 +301,6 @@ const OnboardingCard = ({
 					initial={{ opacity: 0, y: 24 }}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.4, ease: "easeInOut" }}
-					className="-mt-8"
 				>
 					<AnimatedProviderSteps
             currentStep={currentStep}
