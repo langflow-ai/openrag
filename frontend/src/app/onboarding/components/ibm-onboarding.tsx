@@ -89,6 +89,10 @@ export function IBMOnboarding({
     setSampleDataset(dataset);
   };
 
+  useEffect(() => {
+		setIsLoadingModels?.(isLoadingModels);
+	}, [isLoadingModels, setIsLoadingModels]);
+
   // Update settings when values change
   useUpdateSettings(
     "watsonx",

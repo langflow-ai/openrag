@@ -60,6 +60,10 @@ export function OpenAIOnboarding({
 		setEmbeddingModel("");
 	};
 
+	useEffect(() => {
+		setIsLoadingModels?.(isLoadingModels);
+	}, [isLoadingModels, setIsLoadingModels]);
+
 	// Update settings when values change
 	useUpdateSettings(
 		"openai",

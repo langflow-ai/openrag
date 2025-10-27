@@ -53,6 +53,15 @@ const OnboardingCard = ({
 
 	const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
 
+	const [loadingStep, setLoadingStep] = useState<number>(0);
+
+	// Reset loading step when models start loading
+	useEffect(() => {
+		if (isLoadingModels) {
+			setLoadingStep(0);
+		}
+	}, [isLoadingModels]);
+
 	const handleSetModelProvider = (provider: string) => {
 		setModelProvider(provider);
 		setSettings({
@@ -230,6 +239,30 @@ const OnboardingCard = ({
 									Ollama
 								</TabsTrigger>
 							</TabsList>
+							<AnimatePresence>
+							{isLoadingModels && (
+								<motion.div
+									initial={{ opacity: 0, height: 0 }}
+									animate={{ opacity: 1, height: "auto" }}
+									exit={{ opacity: 0, height: 0 }}
+									transition={{ duration: 0.1, ease: "easeInOut" }}
+									className="overflow-hidden"
+								>
+									<div className="py-3">
+									<AnimatedProviderSteps
+										currentStep={loadingStep}
+										isCompleted={false}
+										setCurrentStep={setLoadingStep}
+										steps={[
+											"Connecting to the provider",
+											"Fetching language models",
+											"Fetching embedding models",
+										]}
+										storageKey="model-loading-steps"
+									/></div>
+								</motion.div>
+							)}
+						</AnimatePresence>
 							<TabsContent value="openai">
 								<OpenAIOnboarding
 									setSettings={setSettings}
@@ -255,6 +288,8 @@ const OnboardingCard = ({
 								/>
 							</TabsContent>
 						</Tabs>
+
+						
 
 						<Tooltip>
 							<TooltipTrigger asChild>
