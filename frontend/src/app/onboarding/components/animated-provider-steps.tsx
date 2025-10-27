@@ -113,9 +113,9 @@ export function AnimatedProviderSteps({
 									initial={{ opacity: 1, y: 0, height: "auto" }}
 									exit={{ opacity: 0, y: -24, height: 0 }}
 									transition={{ duration: 0.4, ease: "easeInOut" }}
-									className="flex items-center gap-5 overflow-y-hidden relative h-6"
+									className="flex items-center gap-4 overflow-y-hidden relative h-6"
 								>
-									<div className="w-px h-6 bg-border" />
+									<div className="w-px h-6 bg-border ml-2" />
 									<div className="relative h-5 w-full">
 										<AnimatePresence mode="sync" initial={false}>
 											<motion.span
