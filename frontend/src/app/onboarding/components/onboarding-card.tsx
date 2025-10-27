@@ -81,6 +81,10 @@ const OnboardingCard = ({
 		isCompleted ? TOTAL_PROVIDER_STEPS : null,
 	);
 
+	const [processingStartTime, setProcessingStartTime] = useState<number | null>(
+		null,
+	);
+
 	// Query tasks to track completion
 	const { data: tasks } = useGetTasksQuery({
 		enabled: currentStep !== null, // Only poll when onboarding has started
@@ -162,6 +166,8 @@ const OnboardingCard = ({
 			onboardingData.project_id = settings.project_id;
 		}
 
+		// Record the start time when user clicks Complete
+		setProcessingStartTime(Date.now());
 		onboardingMutation.mutate(onboardingData);
 		setCurrentStep(0);
 	};
@@ -330,6 +336,7 @@ const OnboardingCard = ({
 						isCompleted={isCompleted}
 						setCurrentStep={setCurrentStep}
 						steps={STEP_LIST}
+						processingStartTime={processingStartTime}
 					/>
 				</motion.div>
 			)}

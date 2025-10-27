@@ -19,34 +19,30 @@ export function AnimatedProviderSteps({
 	setCurrentStep,
 	steps,
 	storageKey = "provider-steps",
+	processingStartTime,
 }: {
 	currentStep: number;
 	isCompleted: boolean;
 	setCurrentStep: (step: number) => void;
 	steps: string[];
 	storageKey?: string;
+	processingStartTime?: number | null;
 }) {
 	const [startTime, setStartTime] = useState<number | null>(null);
 	const [elapsedTime, setElapsedTime] = useState<number>(0);
 
-	// Initialize start time from local storage or set new one
+	// Initialize start time from prop or local storage
 	useEffect(() => {
-		const storedStartTime = localStorage.getItem(`${storageKey}-start`);
 		const storedElapsedTime = localStorage.getItem(`${storageKey}-elapsed`);
 
 		if (isCompleted && storedElapsedTime) {
 			// If completed, use stored elapsed time
 			setElapsedTime(parseFloat(storedElapsedTime));
-		} else if (storedStartTime) {
-			// If in progress, use stored start time
-			setStartTime(parseInt(storedStartTime));
-		} else {
-			// First time, set new start time
-			const now = Date.now();
-			setStartTime(now);
-			localStorage.setItem(`${storageKey}-start`, now.toString());
+		} else if (processingStartTime) {
+			// Use the start time passed from parent (when user clicked Complete)
+			setStartTime(processingStartTime);
 		}
-	}, [storageKey, isCompleted]);
+	}, [storageKey, isCompleted, processingStartTime]);
 
 	// Progress through steps
 	useEffect(() => {
@@ -64,7 +60,6 @@ export function AnimatedProviderSteps({
 			const elapsed = Date.now() - startTime;
 			setElapsedTime(elapsed);
 			localStorage.setItem(`${storageKey}-elapsed`, elapsed.toString());
-			localStorage.removeItem(`${storageKey}-start`);
 		}
 	}, [isCompleted, startTime, storageKey]);
 
