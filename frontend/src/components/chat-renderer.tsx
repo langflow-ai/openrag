@@ -149,6 +149,7 @@ export function ChatRenderer({
 					className={cn(
 						"flex h-full w-full max-w-full max-h-full items-center justify-center overflow-hidden",
 						!showLayout && "absolute",
+						showLayout && !isOnChatPage && "bg-background",
 					)}
 				>
 					<div
@@ -172,7 +173,7 @@ export function ChatRenderer({
 								ease: "easeOut",
 								delay: ANIMATION_DURATION,
 							}}
-							className={cn("w-full h-full 0v")}
+							className={cn("w-full h-full")}
 						>
 							<div className={cn("w-full h-full", !showLayout && "hidden")}>
 								{children}
