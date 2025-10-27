@@ -86,6 +86,14 @@ export function ChatRenderer({
 		}
 	};
 
+	const handleSkipOnboarding = () => {
+		// Skip onboarding by marking it as complete
+		if (typeof window !== "undefined") {
+			localStorage.removeItem(ONBOARDING_STEP_KEY);
+		}
+		setShowLayout(true);
+	};
+
 	// List of paths with smaller max-width
 	const smallWidthPaths = ["/settings/connector/new"];
 	const isSmallWidthPath = smallWidthPaths.includes(pathname);
@@ -196,6 +204,7 @@ export function ChatRenderer({
 					<ProgressBar
 						currentStep={currentStep}
 						totalSteps={TOTAL_ONBOARDING_STEPS}
+						onSkip={handleSkipOnboarding}
 					/>
 				</motion.div>
 			</main>
