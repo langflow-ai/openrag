@@ -337,7 +337,8 @@ export function Navigation({
 				message.role === "user" &&
 				(message.content.match(FILES_REGEX)?.[0] ?? null) !== null,
 		)
-		.map((message) => message.content.match(FILES_REGEX)?.[0] ?? null);
+		.map((message) => message.content.match(FILES_REGEX)?.[0] ?? null)
+		.concat(conversationDocs.map((doc) => doc.filename));
 
 	return (
 		<div className="flex flex-col h-full bg-background">
