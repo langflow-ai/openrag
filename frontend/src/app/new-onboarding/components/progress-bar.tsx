@@ -1,15 +1,20 @@
+import { ArrowRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
 interface ProgressBarProps {
   currentStep: number;
   totalSteps: number;
+  onSkip?: () => void;
 }
 
-export function ProgressBar({ currentStep, totalSteps }: ProgressBarProps) {
+export function ProgressBar({ currentStep, totalSteps, onSkip }: ProgressBarProps) {
   const progressPercentage = ((currentStep + 1) / totalSteps) * 100;
 
   return (
-    <div className="w-full">
-      <div className="flex items-center max-w-48 mx-auto gap-3">
-        <div className="flex-1 h-1 bg-background rounded-full overflow-hidden">
+    <div className="w-full flex items-center px-6 gap-4">
+      <div className="flex-1" />
+      <div className="flex items-center gap-3">
+        <div className="w-48 h-1 bg-background rounded-full overflow-hidden">
           <div
             className="h-full transition-all duration-300 ease-in-out"
             style={{
@@ -21,6 +26,19 @@ export function ProgressBar({ currentStep, totalSteps }: ProgressBarProps) {
         <span className="text-xs text-muted-foreground whitespace-nowrap">
           {currentStep + 1}/{totalSteps}
         </span>
+      </div>
+      <div className="flex-1 flex justify-end">
+        {currentStep > 0 && onSkip && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onSkip}
+            className="flex items-center gap-2 text-xs text-muted-foreground"
+          >
+            Skip onboarding
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        )}
       </div>
     </div>
   );
