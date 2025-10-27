@@ -27,6 +27,7 @@ import { OpenAIOnboarding } from "./openai-onboarding";
 
 interface OnboardingCardProps {
 	onComplete: () => void;
+	isCompleted?: boolean;
 	setIsLoadingModels?: (isLoading: boolean) => void;
 	setLoadingStatus?: (status: string[]) => void;
 }
@@ -43,6 +44,7 @@ const TOTAL_PROVIDER_STEPS = STEP_LIST.length;
 
 const OnboardingCard = ({
 	onComplete,
+	isCompleted = false,
 	setIsLoadingModels: setIsLoadingModelsParent,
 	setLoadingStatus: setLoadingStatusParent,
 }: OnboardingCardProps) => {
@@ -104,7 +106,7 @@ const OnboardingCard = ({
 		llm_model: "",
 	});
 
-	const [currentStep, setCurrentStep] = useState<number | null>(null);
+	const [currentStep, setCurrentStep] = useState<number | null>(isCompleted ? TOTAL_PROVIDER_STEPS : null);
 
 	// Query tasks to track completion
 	const { data: tasks } = useGetTasksQuery({
@@ -130,6 +132,7 @@ const OnboardingCard = ({
 		if (
 			(!activeTasks || (activeTasks.processed_files ?? 0) > 0) &&
 			tasks.length > 0
+			&& !isCompleted
 		) {
 			// Set to final step to show "Done"
 			setCurrentStep(TOTAL_PROVIDER_STEPS);
@@ -138,7 +141,7 @@ const OnboardingCard = ({
 				onComplete();
 			}, 1000);
 		}
-	}, [tasks, currentStep, onComplete]);
+	}, [tasks, currentStep, onComplete, isCompleted]);
 
 	// Mutations
 	const onboardingMutation = useOnboardingMutation({
@@ -300,9 +303,11 @@ const OnboardingCard = ({
 					initial={{ opacity: 0, y: 24 }}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.4, ease: "easeInOut" }}
+					className="-mt-8"
 				>
 					<AnimatedProviderSteps
             currentStep={currentStep}
+			isCompleted={isCompleted}
             setCurrentStep={setCurrentStep}
             steps={STEP_LIST}
           />
