@@ -143,7 +143,7 @@ export function AnimatedProviderSteps({
 					exit={{ opacity: 0 }}
 					transition={{ duration: 0.3 }}
 				>
-					<Accordion type="single" collapsible defaultValue="steps">
+					<Accordion type="single" collapsible>
 						<AccordionItem value="steps" className="border-none">
 							<AccordionTrigger className="hover:no-underline p-0 py-2">
 								<div className="flex items-center gap-2">
