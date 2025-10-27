@@ -63,6 +63,8 @@ interface ChatContextType {
   clearConversationDocs: () => void;
   placeholderConversation: ConversationData | null;
   setPlaceholderConversation: (conversation: ConversationData | null) => void;
+  conversationLoaded: boolean;
+  setConversationLoaded: (loaded: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -89,6 +91,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   >([]);
   const [placeholderConversation, setPlaceholderConversation] =
     useState<ConversationData | null>(null);
+  const [conversationLoaded, setConversationLoaded] = useState(false);
 
   // Debounce refresh requests to prevent excessive reloads
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -133,6 +136,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setConversationData(conversation);
     // Clear placeholder when loading a real conversation
     setPlaceholderConversation(null);
+    setConversationLoaded(true);
     // Clear conversation docs to prevent duplicates when switching conversations
     setConversationDocs([]);
   }, []);
@@ -143,6 +147,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setPreviousResponseIds({ chat: null, langflow: null });
     setConversationData(null);
     setConversationDocs([]);
+    setConversationLoaded(false);
 
     // Create a temporary placeholder conversation to show in sidebar
     const placeholderConversation: ConversationData = {
@@ -214,6 +219,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       clearConversationDocs,
       placeholderConversation,
       setPlaceholderConversation,
+      conversationLoaded,
+      setConversationLoaded,
     }),
     [
       endpoint,
@@ -231,6 +238,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       addConversationDoc,
       clearConversationDocs,
       placeholderConversation,
+      conversationLoaded,
+      setConversationLoaded,
     ]
   );
 
