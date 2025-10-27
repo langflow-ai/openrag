@@ -87,6 +87,7 @@ export function Navigation({
 		refreshConversations,
 		placeholderConversation,
 		setPlaceholderConversation,
+		conversationLoaded,
 	} = useChat();
 
 	const { loading } = useLoadingStore();
@@ -331,13 +332,33 @@ export function Navigation({
 		setCurrentConversationId,
 	]);
 
+	useEffect(() => {
+		let activeConvo;
+
+		if (currentConversationId && conversations.length > 0) {
+			activeConvo = conversations.find(conv => conv.response_id === currentConversationId);
+		}
+
+		if (isOnChatPage) {
+			if ( conversations.length === 0 && !placeholderConversation) {
+				handleNewConversation();
+			} else if (activeConvo && !conversationLoaded) {
+				loadConversation(activeConvo);
+				refreshConversations();
+			} else if ( conversations.length > 0 && currentConversationId === null && !placeholderConversation) {
+				handleNewConversation();
+			}
+		}
+	}, [isOnChatPage, conversations, conversationLoaded]);
+
 	const newConversationFiles = conversationData?.messages
 		.filter(
 			(message) =>
 				message.role === "user" &&
 				(message.content.match(FILES_REGEX)?.[0] ?? null) !== null,
 		)
-		.map((message) => message.content.match(FILES_REGEX)?.[0] ?? null);
+		.map((message) => message.content.match(FILES_REGEX)?.[0] ?? null)
+		.concat(conversationDocs.map((doc) => doc.filename));
 
 	return (
 		<div className="flex flex-col h-full bg-background">
