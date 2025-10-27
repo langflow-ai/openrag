@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Message } from "@/app/chat/components/message";
 import DogIcon from "@/components/logo/dog-icon";
-import { AnimatedProcessingIcon } from "@/components/ui/animated-processing-icon";
+import AnimatedProcessingIcon from "@/components/ui/animated-processing-icon";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { cn } from "@/lib/utils";
 
