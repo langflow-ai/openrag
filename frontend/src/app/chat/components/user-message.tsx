@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Message } from "./message";
 
 interface UserMessageProps {
-	content: string;
+	content: string | undefined;
 	isCompleted?: boolean;
 	animate?: boolean;
 	files?: string;
