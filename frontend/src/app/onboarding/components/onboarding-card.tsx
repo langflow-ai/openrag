@@ -12,14 +12,7 @@ import { useDoclingHealth } from "@/components/docling-health-banner";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
 import OpenAILogo from "@/components/logo/openai-logo";
-import { AnimatedProcessingIcon } from "@/components/ui/animated-processing-icon";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardFooter,
-	CardHeader,
-} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
 	Tooltip,

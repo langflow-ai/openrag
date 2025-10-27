@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckIcon } from "lucide-react";
 import { useEffect } from "react";
-import { AnimatedProcessingIcon } from "@/components/ui/animated-processing-icon";
+import AnimatedProcessingIcon from "@/components/ui/animated-processing-icon";
 import { cn } from "@/lib/utils";
 
 export function AnimatedProviderSteps({

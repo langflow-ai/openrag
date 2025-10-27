@@ -34,7 +34,12 @@ const config = {
   projectName: 'openrag', // Usually your repo name.
 
   onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
+  markdown: {
+    mermaid: true,
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
+  },
 
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
@@ -75,6 +80,8 @@ const config = {
   ],
 
   plugins: [require.resolve('docusaurus-plugin-image-zoom')],
+
+  themes: ['@docusaurus/theme-mermaid'],
 
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
@@ -117,6 +124,17 @@ const config = {
       prism: {
         theme: prismThemes.github,
         darkTheme: prismThemes.dracula,
+      },
+      mermaid: {
+        theme: {light: 'neutral', dark: 'forest'},
+        options: {
+          maxTextSize: 50000,
+          fontSize: 18,
+          fontFamily: 'Arial, sans-serif',
+          useMaxWidth: false,
+          width: '100%',
+          height: 'auto',
+        },
       },
       zoom: {
         selector: '.markdown img',
