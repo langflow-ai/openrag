@@ -14,7 +14,7 @@ export function ProgressBar({ currentStep, totalSteps }: ProgressBarProps) {
             className="h-full transition-all duration-300 ease-in-out"
             style={{
               width: `${progressPercentage}%`,
-              background: 'linear-gradient(to right, #818CF8, #22A7AF)'
+              background: 'linear-gradient(to right, #773EFF, #22A7AF)'
             }}
           />
         </div>

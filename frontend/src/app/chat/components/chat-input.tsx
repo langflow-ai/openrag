@@ -1,8 +1,7 @@
-import { ArrowRight, Check, Funnel, Loader2, Plus, X } from "lucide-react";
+import { ArrowRight, Check, Funnel, Loader2, Plus } from "lucide-react";
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import type { FilterColor } from "@/components/filter-icon-popover";
-import { filterAccentClasses } from "@/components/knowledge-filter-panel";
 import { Button } from "@/components/ui/button";
 import {
 	Popover,
@@ -10,6 +9,9 @@ import {
 	PopoverContent,
 } from "@/components/ui/popover";
 import type { KnowledgeFilterData } from "../types";
+import { useState } from "react";
+import { FilePreview } from "./file-preview";
+import { SelectedKnowledgeFilter } from "./selected-knowledge-filter";
 
 export interface ChatInputHandle {
 	focusInput: () => void;
@@ -26,19 +28,18 @@ interface ChatInputProps {
 	filterSearchTerm: string;
 	selectedFilterIndex: number;
 	anchorPosition: { x: number; y: number } | null;
-	textareaHeight: number;
 	parsedFilterData: { color?: FilterColor } | null;
+	uploadedFile: File | null;
 	onSubmit: (e: React.FormEvent) => void;
 	onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
 	onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-	onHeightChange: (height: number) => void;
 	onFilterSelect: (filter: KnowledgeFilterData | null) => void;
 	onAtClick: () => void;
-	onFilePickerChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 	onFilePickerClick: () => void;
 	setSelectedFilter: (filter: KnowledgeFilterData | null) => void;
 	setIsFilterHighlighted: (highlighted: boolean) => void;
 	setIsFilterDropdownOpen: (open: boolean) => void;
+	onFileSelected: (file: File | null) => void;
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -53,24 +54,24 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 			filterSearchTerm,
 			selectedFilterIndex,
 			anchorPosition,
-			textareaHeight,
 			parsedFilterData,
+			uploadedFile,
 			onSubmit,
 			onChange,
 			onKeyDown,
-			onHeightChange,
 			onFilterSelect,
 			onAtClick,
-			onFilePickerChange,
 			onFilePickerClick,
 			setSelectedFilter,
 			setIsFilterHighlighted,
 			setIsFilterDropdownOpen,
+			onFileSelected,
 		},
 		ref,
 	) => {
 		const inputRef = useRef<HTMLTextAreaElement>(null);
 		const fileInputRef = useRef<HTMLInputElement>(null);
+		const [textareaHeight, setTextareaHeight] = useState(0);
 
 		useImperativeHandle(ref, () => ({
 			focusInput: () => {
@@ -80,90 +81,143 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 				fileInputRef.current?.click();
 			},
 		}));
+		
+		const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+			const files = e.target.files;
+			if (files && files.length > 0) {
+				onFileSelected(files[0]);
+			} else {
+				onFileSelected(null);
+			}
+		};
 
 		return (
 				<div className="w-full">
 					<form onSubmit={onSubmit} className="relative">
-						<div className="relative flex items-center w-full p-2 gap-2 rounded-xl border border-input focus-within:ring-1 focus-within:ring-ring">
-							{selectedFilter ? (
-								<span
-									className={`inline-flex items-center p-1 rounded-sm text-xs font-medium transition-colors ${
-										filterAccentClasses[parsedFilterData?.color || "zinc"]
-									}`}
-								>
-									{selectedFilter.name}
-									<button
-										type="button"
-										onClick={() => {
-											setSelectedFilter(null);
-											setIsFilterHighlighted(false);
-										}}
-										className="ml-0.5 rounded-full p-0.5"
-									>
-										<X className="h-4 w-4" />
-									</button>
-								</span>
-							) : (
-								<Button
-									type="button"
-									variant="ghost"
-									size="iconSm"
-									className="h-8 w-8 p-0 rounded-md hover:bg-muted/50"
-									onMouseDown={(e) => {
-										e.preventDefault();
+						{/* Outer container - flex-col to stack file preview above input */}
+						<div className="flex flex-col w-full gap-2 rounded-xl border border-input focus-within:ring-1 focus-within:ring-ring p-2">
+							{/* File Preview Section - Always above */}
+							{uploadedFile && (
+								<FilePreview
+									uploadedFile={uploadedFile}
+									onClear={() => {
+										onFileSelected(null);
 									}}
-									onClick={onAtClick}
-									data-filter-button
-								>
-									<Funnel className="h-4 w-4" />
-								</Button>
-							)}
-							<div
-								className="relative flex-1"
-								style={{ height: `${textareaHeight}px` }}
-							>
-								<TextareaAutosize
-									ref={inputRef}
-									value={input}
-									onChange={onChange}
-									onKeyDown={onKeyDown}
-									onHeightChange={onHeightChange}
-									maxRows={7}
-									minRows={1}
-									placeholder="Ask a question..."
-									disabled={loading}
-									className={`w-full text-sm bg-transparent focus-visible:outline-none resize-none`}
-									rows={1}
 								/>
+							)}
+
+							{/* Main Input Container - flex-row or flex-col based on textarea height */}
+							<div className={`relative flex w-full gap-2 ${
+								textareaHeight > 40 ? 'flex-col' : 'flex-row items-center'
+							}`}>
+								{/* Filter + Textarea Section */}
+								<div className={`flex items-center gap-2 ${textareaHeight > 40 ? 'w-full' : 'flex-1'}`}>
+									{textareaHeight <= 40 && (
+										selectedFilter ? (
+											<SelectedKnowledgeFilter
+												selectedFilter={selectedFilter}
+												parsedFilterData={parsedFilterData}
+												onClear={() => {
+													setSelectedFilter(null);
+													setIsFilterHighlighted(false);
+												}}
+											/>
+										) : (
+											<Button
+												type="button"
+												variant="ghost"
+												size="iconSm"
+												className="h-8 w-8 p-0 rounded-md hover:bg-muted/50"
+												onMouseDown={(e) => {
+													e.preventDefault();
+												}}
+												onClick={onAtClick}
+												data-filter-button
+											>
+												<Funnel className="h-4 w-4" />
+											</Button>
+										)
+									)}
+									<div
+										className="relative flex-1"
+										style={{ height: `${textareaHeight}px` }}
+									>
+										<TextareaAutosize
+											ref={inputRef}
+											value={input}
+											onChange={onChange}
+											onKeyDown={onKeyDown}
+											onHeightChange={(height) => setTextareaHeight(height)}
+											maxRows={7}
+											minRows={1}
+											placeholder="Ask a question..."
+											disabled={loading}
+											className={`w-full text-sm bg-transparent focus-visible:outline-none resize-none`}
+											rows={1}
+										/>
+									</div>
+								</div>
+
+								{/* Action Buttons Section */}
+								<div className={`flex items-center gap-2 ${textareaHeight > 40 ? 'justify-between w-full' : ''}`}>
+									{textareaHeight > 40 && (
+										selectedFilter ? (
+											<SelectedKnowledgeFilter
+												selectedFilter={selectedFilter}
+												parsedFilterData={parsedFilterData}
+												onClear={() => {
+													setSelectedFilter(null);
+													setIsFilterHighlighted(false);
+												}}
+											/>
+										) : (
+											<Button
+												type="button"
+												variant="ghost"
+												size="iconSm"
+												className="h-8 w-8 p-0 rounded-md hover:bg-muted/50"
+												onMouseDown={(e) => {
+													e.preventDefault();
+												}}
+												onClick={onAtClick}
+												data-filter-button
+											>
+												<Funnel className="h-4 w-4" />
+											</Button>
+										)
+									)}
+									<div className="flex items-center gap-2">
+										<Button
+											type="button"
+											variant="ghost"
+											size="iconSm"
+											onClick={onFilePickerClick}
+											disabled={isUploading}
+											className="h-8 w-8 p-0 !rounded-md hover:bg-muted/50"
+										>
+											<Plus className="h-4 w-4" />
+										</Button>
+										<Button
+											variant="default"
+											type="submit"
+											size="iconSm"
+											disabled={(!input.trim() && !uploadedFile) || loading}
+											className="!rounded-md h-8 w-8 p-0"
+										>
+											{loading ? (
+												<Loader2 className="h-4 w-4 animate-spin" />
+											) : (
+												<ArrowRight className="h-4 w-4" />
+											)}
+										</Button>
+									</div>
+								</div>
 							</div>
-							<Button
-								type="button"
-								variant="ghost"
-								size="iconSm"
-								onClick={onFilePickerClick}
-								disabled={isUploading}
-								className="h-8 w-8 p-0 !rounded-md hover:bg-muted/50"
-							>
-								<Plus className="h-4 w-4" />
-							</Button>
-							<Button
-								variant="default"
-								type="submit"
-								size="iconSm"
-								disabled={!input.trim() || loading}
-								className="!rounded-md h-8 w-8 p-0"
-							>
-								{loading ? (
-									<Loader2 className="h-4 w-4 animate-spin" />
-								) : (
-									<ArrowRight className="h-4 w-4" />
-								)}
-							</Button>
 						</div>
 						<input
 							ref={fileInputRef}
 							type="file"
-							onChange={onFilePickerChange}
+							onChange={handleFilePickerChange}
 							className="hidden"
 							accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
 						/>
