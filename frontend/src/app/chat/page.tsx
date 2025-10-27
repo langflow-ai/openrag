@@ -60,7 +60,6 @@ function ChatPage() {
 	const [availableFilters, setAvailableFilters] = useState<
 		KnowledgeFilterData[]
 	>([]);
-	const [textareaHeight, setTextareaHeight] = useState(40);
 	const [filterSearchTerm, setFilterSearchTerm] = useState("");
 	const [selectedFilterIndex, setSelectedFilterIndex] = useState(0);
 	const [isFilterHighlighted, setIsFilterHighlighted] = useState(false);
@@ -71,6 +70,8 @@ function ChatPage() {
 		x: number;
 		y: number;
 	} | null>(null);
+	const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+	
 	const chatInputRef = useRef<ChatInputHandle>(null);
 
 	const { scrollToBottom } = useStickToBottomContext();
@@ -127,7 +128,7 @@ function ChatPage() {
 
 		// Copy all computed styles to the hidden div
 		for (const style of computedStyle) {
-			(div.style as any)[style] = computedStyle.getPropertyValue(style);
+			(div.style as unknown as Record<string, string>)[style] = computedStyle.getPropertyValue(style);
 		}
 
 		// Set the div to be hidden but not un-rendered
@@ -247,6 +248,7 @@ function ChatPage() {
 					timestamp: new Date(),
 				};
 				setMessages((prev) => [...prev.slice(0, -1), pollingMessage]);
+				return null;
 			} else if (response.ok) {
 				// Original flow: Direct response
 
@@ -282,6 +284,8 @@ function ChatPage() {
 						// For existing conversations, do a silent refresh to keep backend in sync
 						refreshConversationsSilent();
 					}
+
+					return result.response_id;
 				}
 			} else {
 				throw new Error(`Upload failed: ${response.status}`);
@@ -302,13 +306,6 @@ function ChatPage() {
 
 	const handleFilePickerClick = () => {
 		chatInputRef.current?.clickFileInput();
-	};
-
-	const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const files = e.target.files;
-		if (files && files.length > 0) {
-			handleFileUpload(files[0]);
-		}
 	};
 
 	const loadAvailableFilters = async () => {
@@ -601,6 +598,7 @@ function ChatPage() {
 
 			setLoading(true);
 			setIsUploading(true);
+			setUploadedFile(null); // Clear previous file
 
 			// Add initial upload message
 			const uploadStartMessage: Message = {
@@ -627,6 +625,7 @@ function ChatPage() {
 			};
 
 			setMessages((prev) => [...prev.slice(0, -1), uploadMessage]);
+			setUploadedFile(null); // Clear file after upload
 
 			// Update the response ID for this endpoint
 			if (result.response_id) {
@@ -658,6 +657,7 @@ function ChatPage() {
 				timestamp: new Date(),
 			};
 			setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
+			setUploadedFile(null); // Clear file on error
 		};
 
 		window.addEventListener(
@@ -724,7 +724,7 @@ function ChatPage() {
 		},
 	);
 
-	const handleSSEStream = async (userMessage: Message) => {
+	const handleSSEStream = async (userMessage: Message, previousResponseId?: string) => {
 		// Prepare filters
 		const processedFilters = parsedFilterData?.filters
 			? (() => {
@@ -750,10 +750,13 @@ function ChatPage() {
 				})()
 			: undefined;
 
+		// Use passed previousResponseId if available, otherwise fall back to state
+		const responseIdToUse = previousResponseId || previousResponseIds[endpoint];
+
 		// Use the hook to send the message
 		await sendStreamingMessage({
 			prompt: userMessage.content,
-			previousResponseId: previousResponseIds[endpoint] || undefined,
+			previousResponseId: responseIdToUse || undefined,
 			filters: processedFilters,
 			limit: parsedFilterData?.limit ?? 10,
 			scoreThreshold: parsedFilterData?.scoreThreshold ?? 0,
@@ -764,7 +767,7 @@ function ChatPage() {
 		});
 	};
 
-	const handleSendMessage = async (inputMessage: string) => {
+	const handleSendMessage = async (inputMessage: string, previousResponseId?: string) => {
 		if (!inputMessage.trim() || loading) return;
 
 		const userMessage: Message = {
@@ -784,7 +787,7 @@ function ChatPage() {
 		});
 
 		if (asyncMode) {
-			await handleSSEStream(userMessage);
+			await handleSSEStream(userMessage, previousResponseId);
 		} else {
 			// Original non-streaming logic
 			try {
@@ -891,7 +894,30 @@ function ChatPage() {
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
-		handleSendMessage(input);
+		
+		// Check if there's an uploaded file and upload it first
+		let uploadedResponseId: string | null = null;
+		if (uploadedFile) {
+			// Upload the file first
+			const responseId = await handleFileUpload(uploadedFile);
+			// Clear the file after upload
+			setUploadedFile(null);
+
+			// If the upload resulted in a new conversation, store the response ID
+			if (responseId) {
+				uploadedResponseId = responseId;
+				setPreviousResponseIds((prev) => ({
+					...prev,
+					[endpoint]: responseId,
+				}));
+			}
+		}
+
+		// Only send message if there's input text
+		if (input.trim()) {
+			// Pass the responseId from upload (if any) to handleSendMessage
+			handleSendMessage(input, uploadedResponseId || undefined);
+		}
 	};
 
 	const toggleFunctionCall = (functionCallId: string) => {
@@ -1286,16 +1312,15 @@ function ChatPage() {
 					filterSearchTerm={filterSearchTerm}
 					selectedFilterIndex={selectedFilterIndex}
 					anchorPosition={anchorPosition}
-					textareaHeight={textareaHeight}
 					parsedFilterData={parsedFilterData}
+					uploadedFile={uploadedFile}
 					onSubmit={handleSubmit}
 					onChange={onChange}
 					onKeyDown={handleKeyDown}
-					onHeightChange={(height) => setTextareaHeight(height)}
 					onFilterSelect={handleFilterSelect}
 					onAtClick={onAtClick}
-					onFilePickerChange={handleFilePickerChange}
 					onFilePickerClick={handleFilePickerClick}
+					onFileSelected={setUploadedFile}
 					setSelectedFilter={setSelectedFilter}
 					setIsFilterHighlighted={setIsFilterHighlighted}
 					setIsFilterDropdownOpen={setIsFilterDropdownOpen}

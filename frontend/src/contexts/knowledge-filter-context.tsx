@@ -130,7 +130,7 @@ export function KnowledgeFilterProvider({
       },
       limit: 10,
       scoreThreshold: 0,
-      color: "zinc",
+      color: "amber",
       icon: "filter",
     });
     setIsPanelOpen(true);
