@@ -133,6 +133,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setConversationData(conversation);
     // Clear placeholder when loading a real conversation
     setPlaceholderConversation(null);
+    // Clear conversation docs to prevent duplicates when switching conversations
+    setConversationDocs([]);
   }, []);
 
   const startNewConversation = useCallback(() => {
