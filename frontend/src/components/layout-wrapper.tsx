@@ -60,7 +60,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
   // List of paths with smaller max-width
-  const smallWidthPaths = ["/settings/connector/new"];
+  const smallWidthPaths = ["/settings", "/settings/connector/new"];
   const isSmallWidthPath = smallWidthPaths.includes(pathname);
 
   // Calculate active tasks for the bell icon
