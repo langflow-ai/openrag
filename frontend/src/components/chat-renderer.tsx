@@ -156,7 +156,7 @@ export function ChatRenderer({
 					}}
 					className={cn(
 						"flex h-full w-full max-w-full max-h-full items-center justify-center overflow-hidden",
-						!showLayout && "absolute",
+						!showLayout && "absolute max-h-[calc(100vh-190px)]",
 						showLayout && !isOnChatPage && "bg-background",
 					)}
 				>
@@ -199,7 +199,7 @@ export function ChatRenderer({
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: showLayout ? 0 : 1, y: showLayout ? 20 : 0 }}
 					transition={{ duration: ANIMATION_DURATION, ease: "easeOut" }}
-					className={cn("absolute bottom-10 left-0 right-0")}
+					className={cn("absolute bottom-6 left-0 right-0")}
 				>
 					<ProgressBar
 						currentStep={currentStep}

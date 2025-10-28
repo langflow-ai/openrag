@@ -7,29 +7,29 @@ const DogIcon = ({ disabled = false, stroke, ...props }: DogIconProps) => {
 
   // CSS for the stepped animation states
   const animationCSS = `
-    .state1 { animation: showState1 600ms infinite; }
-    .state2 { animation: showState2 600ms infinite; }
-    .state3 { animation: showState3 600ms infinite; }
-    .state4 { animation: showState4 600ms infinite; }
+    .state1 { animation: showDogState1 600ms infinite; }
+    .state2 { animation: showDogState2 600ms infinite; }
+    .state3 { animation: showDogState3 600ms infinite; }
+    .state4 { animation: showDogState4 600ms infinite; }
     
-    @keyframes showState1 {
+    @keyframes showDogState1 {
       0%, 24.99% { opacity: 1; }
       25%, 100% { opacity: 0; }
     }
     
-    @keyframes showState2 {
+    @keyframes showDogState2 {
       0%, 24.99% { opacity: 0; }
       25%, 49.99% { opacity: 1; }
       50%, 100% { opacity: 0; }
     }
     
-    @keyframes showState3 {
+    @keyframes showDogState3 {
       0%, 49.99% { opacity: 0; }
       50%, 74.99% { opacity: 1; }
       75%, 100% { opacity: 0; }
     }
     
-    @keyframes showState4 {
+    @keyframes showDogState4 {
       0%, 74.99% { opacity: 0; }
       75%, 100% { opacity: 1; }
     }
