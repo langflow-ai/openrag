@@ -18,7 +18,7 @@ export function TabTrigger({
 					isLoading && selected ? "opacity-100" : "opacity-0",
 				)}
 			>
-				<AnimatedProcessingIcon className="text-current shrink-0 h-6 w-6" />
+				<AnimatedProcessingIcon className="text-current shrink-0 h-10 w-10" />
 			</div>
 			<div
 				className={cn(
