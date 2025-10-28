@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Install OpenRAG with TUI | OpenRAG</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="robots" content="noindex, nofollow"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://docs.openr.ag/install"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Install OpenRAG with TUI | OpenRAG"><meta data-rh="true" name="description" content="Install the OpenRAG Python wheel, and then run the OpenRAG Terminal User Interface(TUI) to start your OpenRAG deployment with a guided setup process."><meta data-rh="true" property="og:description" content="Install the OpenRAG Python wheel, and then run the OpenRAG Terminal User Interface(TUI) to start your OpenRAG deployment with a guided setup process."><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://docs.openr.ag/install"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/install" hreflang="en"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/install" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Install OpenRAG with TUI","item":"https://docs.openr.ag/install"}]}</script><link rel="stylesheet" href="/assets/css/styles.66669ecc.css">
-<script src="/assets/js/runtime~main.a1d34cd7.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.610e9562.js" defer="defer"></script>
 <script src="/assets/js/main.cbdacd68.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -16,7 +16,7 @@
 <p><img decoding="async" loading="lazy" alt="OpenRAG TUI Interface" src="/assets/images/OpenRAG_TUI_2025-09-10T13_04_11_757637-9441c53ba39162a88ac6c11cbeaed0e0.svg" width="1995" height="1099" class="img_ev3q"></p>
 <p>Instead of starting OpenRAG using Docker commands and manually editing values in the <code>.env</code> file, the TUI walks you through the setup. It prompts for variables where required, creates a <code>.env</code> file for you, and then starts OpenRAG.</p>
 <p>Once OpenRAG is running, use the TUI to monitor your application, control your containers, and retrieve logs.</p>
-<p>If you prefer running Docker commands and manually editing <code>.env</code> files, see <a class="" href="/get-started/docker">Install with Docker</a>.</p>
+<p>If you prefer running Podman or Docker containers and manually editing <code>.env</code> files, see <a class="" href="/get-started/docker">Install OpenRAG Containers</a>.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="prerequisites">Prerequisites<a href="#prerequisites" class="hash-link" aria-label="Direct link to Prerequisites" title="Direct link to Prerequisites" translate="no">​</a></h2>
 <ul>
 <li class="">Install <a href="https://www.python.org/downloads/release/python-3100/" target="_blank" rel="noopener noreferrer" class="">Python Version 3.10 to 3.13</a></li>
@@ -27,8 +27,9 @@
 <li class="">Optional: Install GPU support with an NVIDIA GPU, <a href="https://docs.nvidia.com/cuda/" target="_blank" rel="noopener noreferrer" class="">CUDA</a> support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don&#x27;t have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.</li>
 </ul>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="install-python-wheel">Install the OpenRAG Python wheel<a href="#install-python-wheel" class="hash-link" aria-label="Direct link to Install the OpenRAG Python wheel" title="Direct link to Install the OpenRAG Python wheel" translate="no">​</a></h2>
-<div class="theme-admonition theme-admonition-important admonition_xJq3 alert alert--info"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M7 2.3c3.14 0 5.7 2.56 5.7 5.7s-2.56 5.7-5.7 5.7A5.71 5.71 0 0 1 1.3 8c0-3.14 2.56-5.7 5.7-5.7zM7 1C3.14 1 0 4.14 0 8s3.14 7 7 7 7-3.14 7-7-3.14-7-7-7zm1 3H6v5h2V4zm0 6H6v2h2v-2z"></path></svg></span>important</div><div class="admonitionContent_BuS1"><p>The <code>.whl</code> file is currently available as an internal download during public preview, and will be published to PyPI in a future release.</p></div></div>
 <p>The OpenRAG wheel installs the Terminal User Interface (TUI) for configuring and running OpenRAG.</p>
+<p>To quickly install and start OpenRAG, run <code>uvx openrag</code>.</p>
+<p>To first set up a project and then install OpenRAG, do the following:</p>
 <ol>
 <li class="">
 <p>Create a new project with a virtual environment using <code>uv init</code>.</p>
@@ -37,18 +38,26 @@
 For more information on virtual environments, see the <a href="https://docs.astral.sh/uv/pip/environments" target="_blank" rel="noopener noreferrer" class="">uv documentation</a>.</p>
 </li>
 <li class="">
-<p>Add the local OpenRAG wheel to your project&#x27;s virtual environment.</p>
-<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uv add PATH/TO/openrag-VERSION-py3-none-any.whl</span><br></span></code></pre></div></div>
-<p>Replace <code>PATH/TO/</code> and <code>VERSION</code> with the path and version of your downloaded OpenRAG <code>.whl</code> file.</p>
-<p>For example, if your <code>.whl</code> file is in the <code>~/Downloads</code> directory, the command is <code>uv add ~/Downloads/openrag-0.1.8-py3-none-any.whl</code>.</p>
-</li>
-<li class="">
 <p>Ensure all dependencies are installed and updated in your virtual environment.</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uv sync</span><br></span></code></pre></div></div>
 </li>
 <li class="">
-<p>Start the OpenRAG TUI.</p>
+<p>Install and start the OpenRAG TUI.</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uvx openrag</span><br></span></code></pre></div></div>
+<p>To install a specific version of the Langflow package, add the required version to the command, such as <code>uvx --from openrag==0.1.25 openrag</code>.</p>
+<details class="details_lb9f alert alert--info details_b_Ee" data-collapsed="true"><summary>Install a local wheel without uvx</summary><div><div class="collapsibleContent_i85q"><p>If you downloaded the OpenRAG wheel to your local machine, follow these steps:</p><ol>
+<li class="">
+<p>Add the wheel to your project&#x27;s virtual environment.</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uv add PATH/TO/openrag-VERSION-py3-none-any.whl</span><br></span></code></pre></div></div>
+<p>Replace <code>PATH/TO/</code> and <code>VERSION</code> with the path and version of your downloaded OpenRAG <code>.whl</code> file.</p>
+<p>For example, if your <code>.whl</code> file is in the <code>~/Downloads</code> directory:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uv add ~/Downloads/openrag-0.1.8-py3-none-any.whl</span><br></span></code></pre></div></div>
+</li>
+<li class="">
+<p>Run OpenRAG.</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uv run openrag</span><br></span></code></pre></div></div>
+</li>
+</ol></div></div></details>
 </li>
 <li class="">
 <p>Continue with <a href="#setup" class="">Set up OpenRAG with the TUI</a>.</p>
