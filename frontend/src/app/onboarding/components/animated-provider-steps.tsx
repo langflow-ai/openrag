@@ -80,7 +80,7 @@ export function AnimatedProviderSteps({
 						<div
 							className={cn(
 								"transition-all duration-150 relative",
-								isDone ? "w-3.5 h-3.5" : "w-3.5 h-2.5",
+								isDone ? "w-3.5 h-3.5" : "w-6 h-6",
 							)}
 						>
 							<CheckIcon
@@ -110,7 +110,7 @@ export function AnimatedProviderSteps({
 									transition={{ duration: 0.4, ease: "easeInOut" }}
 									className="flex items-center gap-4 overflow-y-hidden relative h-6"
 								>
-									<div className="w-px h-6 bg-border ml-2" />
+									<div className="w-px h-6 bg-border ml-3" />
 									<div className="relative h-5 w-full">
 										<AnimatePresence mode="sync" initial={false}>
 											<motion.span

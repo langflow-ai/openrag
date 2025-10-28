@@ -30,12 +30,12 @@ export function ProgressBar({ currentStep, totalSteps, onSkip }: ProgressBarProp
       <div className="flex-1 flex justify-end">
         {currentStep > 0 && onSkip && (
           <Button
-            variant="ghost"
+            variant="link"
             size="sm"
             onClick={onSkip}
-            className="flex items-center gap-2 text-xs text-muted-foreground"
+            className="flex items-center gap-2 text-mmd !text-placeholder-foreground hover:!text-foreground hover:!no-underline"
           >
-            Skip onboarding
+            Skip overview
             <ArrowRight className="w-4 h-4" />
           </Button>
         )}

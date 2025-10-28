@@ -76,7 +76,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 						onClick={handleUploadClick}
 						disabled={isUploading}
 					>
-						{isUploading ? "Uploading..." : "Add a Document"}
+						<div>{isUploading ? "Uploading..." : "Add a document"}</div>
 					</Button>
 					<input
 						ref={fileInputRef}
