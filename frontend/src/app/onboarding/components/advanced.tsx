@@ -37,7 +37,6 @@ export function AdvancedOnboarding({
     languageModel !== undefined &&
     setLanguageModel !== undefined;
 
-  const updatedOnboarding = process.env.UPDATED_ONBOARDING === "true";
   return (
     <Accordion type="single" collapsible>
       <AccordionItem value="item-1">

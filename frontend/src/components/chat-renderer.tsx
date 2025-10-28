@@ -8,8 +8,8 @@ import {
 	useGetConversationsQuery,
 } from "@/app/api/queries/useGetConversationsQuery";
 import type { Settings } from "@/app/api/queries/useGetSettingsQuery";
-import { OnboardingContent } from "@/app/new-onboarding/components/onboarding-content";
-import { ProgressBar } from "@/app/new-onboarding/components/progress-bar";
+import { OnboardingContent } from "@/app/onboarding/components/onboarding-content";
+import { ProgressBar } from "@/app/onboarding/components/progress-bar";
 import { AnimatedConditional } from "@/components/animated-conditional";
 import { Header } from "@/components/header";
 import { Navigation } from "@/components/navigation";
