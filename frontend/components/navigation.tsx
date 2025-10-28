@@ -594,8 +594,8 @@ export function Navigation({
 										No documents yet
 									</div>
 								) : (
-									newConversationFiles?.map((file) => (
-											<div key={`${file}`} className="flex-1 min-w-0 px-3">
+									newConversationFiles?.map((file, index) => (
+											<div key={`${file}-${index}`} className="flex-1 min-w-0 px-3">
 												<div className="text-mmd font-medium text-foreground truncate">
 													{file}
 												</div>

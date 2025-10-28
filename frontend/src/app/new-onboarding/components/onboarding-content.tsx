@@ -24,9 +24,6 @@ export function OnboardingContent({
 	const [assistantMessage, setAssistantMessage] = useState<Message | null>(
 		null,
 	);
-	const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
-	const [loadingStatus, setLoadingStatus] = useState<string[]>([]);
-	const [hasStartedOnboarding, setHasStartedOnboarding] = useState<boolean>(false);
 
 	const { streamingMessage, isLoading, sendMessage } = useChatStreaming({
 		onComplete: (message, newResponseId) => {
@@ -81,18 +78,14 @@ export function OnboardingContent({
 					<OnboardingStep
 						isVisible={currentStep >= 0}
 						isCompleted={currentStep > 0}
+						showCompleted={true}
 						text="Let's get started by setting up your model provider."
-						isLoadingModels={isLoadingModels}
-						loadingStatus={loadingStatus}
-						reserveSpaceForThinking={!hasStartedOnboarding}
 					>
 						<OnboardingCard
 							onComplete={() => {
-								setHasStartedOnboarding(true);
 								handleStepComplete();
 							}}
-							setIsLoadingModels={setIsLoadingModels}
-							setLoadingStatus={setLoadingStatus}
+							isCompleted={currentStep > 0}
 						/>
 					</OnboardingStep>
 
