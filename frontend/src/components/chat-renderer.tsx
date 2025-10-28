@@ -199,7 +199,7 @@ export function ChatRenderer({
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: showLayout ? 0 : 1, y: showLayout ? 20 : 0 }}
 					transition={{ duration: ANIMATION_DURATION, ease: "easeOut" }}
-					className={cn("absolute bottom-10 left-0 right-0")}
+					className={cn("absolute bottom-6 left-0 right-0")}
 				>
 					<ProgressBar
 						currentStep={currentStep}
