@@ -368,16 +368,6 @@ class OpenRAGTUI(App):
 
     def on_mount(self) -> None:
         """Initialize the application."""
-        # Check if running on native Windows and exit
-        if self.platform_detector.is_native_windows():
-            print("\n" + "=" * 60)
-            print("⚠️  Native Windows Not Supported")
-            print("=" * 60)
-            print(self.platform_detector.get_wsl_recommendation())
-            print("=" * 60 + "\n")
-            self.exit(1)
-            return
-
         # Check for runtime availability and show appropriate screen
         if not self.container_manager.is_available():
             notify_with_diagnostics(
@@ -507,6 +497,18 @@ def copy_compose_files(*, force: bool = False) -> None:
 
 def run_tui():
     """Run the OpenRAG TUI application."""
+    # Check for native Windows before launching TUI
+    from .utils.platform import PlatformDetector
+    platform_detector = PlatformDetector()
+
+    if platform_detector.is_native_windows():
+        print("\n" + "=" * 60)
+        print("⚠️  Native Windows Not Supported")
+        print("=" * 60)
+        print(platform_detector.get_wsl_recommendation())
+        print("=" * 60 + "\n")
+        sys.exit(1)
+
     app = None
     try:
         # Keep bundled assets aligned with the packaged versions
