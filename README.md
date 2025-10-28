@@ -28,100 +28,37 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 
 Use the OpenRAG Terminal User Interface (TUI) to manage your OpenRAG installation without complex command-line operations.
 
-To launch OpenRAG with the TUI, do the following:
+To quickly install and start OpenRAG, run `uvx openrag`.
 
-1. Clone the OpenRAG repository.
-    ```bash
-    git clone https://github.com/langflow-ai/openrag.git
-    cd openrag
-    ```
+To first set up a project and then install OpenRAG, do the following:
 
-2. To start the TUI, from the repository root, run:
-    ```bash
-    # Install dependencies first
-    uv sync
-    
-    # Launch the TUI
-    uv run openrag
-    ```
+1. Create a new project with a virtual environment using `uv init`.
 
-    The TUI opens and guides you through OpenRAG setup.
+   ```bash
+   uv init YOUR_PROJECT_NAME
+   cd YOUR_PROJECT_NAME
+   ```
+
+   The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
+   For more information on virtual environments, see the [uv documentation](https://docs.astral.sh/uv/pip/environments).
+
+2. Ensure all dependencies are installed and updated in your virtual environment.
+   ```bash
+   uv sync
+   ```
+
+3. Install and start the OpenRAG TUI.
+   ```bash
+   uvx openrag
+   ```
+   
+   To install a specific version of the Langflow package, add the required version to the command, such as `uvx --from openrag==0.1.25 openrag`.
 
 For the full TUI installation guide, see [TUI](https://docs.openr.ag/install).
 
-## Docker installation
+## Docker or Podman installation
 
-If you prefer to use Docker to run OpenRAG, the repository includes two Docker Compose `.yml` files.
-They deploy the same applications and containers locally, but to different environments.
-
-- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment for environments with GPU support. GPU support requires an NVIDIA GPU with CUDA support and compatible NVIDIA drivers installed on the OpenRAG host machine. 
-
-- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without GPU support. Use this Docker compose file for environments where GPU drivers aren't available.
-
-Both Docker deployments depend on `docling serve` to be running on port `5001` on the host machine. This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing. Installing OpenRAG with the TUI starts `docling serve` automatically, but for a Docker deployment you must manually start the `docling serve` process.
-
-To install OpenRAG with Docker:
-
-1. Clone the OpenRAG repository.
-    ```bash
-    git clone https://github.com/langflow-ai/openrag.git
-    cd openrag
-    ```
-
-2. Install dependencies.
-    ```bash
-    uv sync
-    ```
-
-3. Start `docling serve` on the host machine.
-    ```bash
-    uv run python scripts/docling_ctl.py start --port 5001
-    ```
-    
-4. Confirm `docling serve` is running.
-    ```
-    uv run python scripts/docling_ctl.py status
-    ```
-
-    Successful result:
-    ```bash
-    Status: running
-    Endpoint: http://127.0.0.1:5001
-    Docs: http://127.0.0.1:5001/docs
-    PID: 27746
-    ```
-
-5. Build and start all services.
-
-    For the GPU-accelerated deployment, run:
-    ```bash
-    docker compose build
-    docker compose up -d
-    ```
-
-    For environments without GPU support, run: 
-    ```bash
-    docker compose -f docker-compose-cpu.yml up -d
-    ```
-
-   The OpenRAG Docker Compose file starts five containers:
-   | Container Name | Default Address | Purpose |
-   |---|---|---|
-   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
-   | OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
-   | Langflow | http://localhost:7860 | AI workflow engine and flow management. |
-   | OpenSearch | http://localhost:9200 | Vector database for document storage. |
-   | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
-
-6. Access the OpenRAG application at `http://localhost:3000` and continue with the [Quickstart](https://docs.openr.ag/quickstart).
-
-    To stop `docling serve`, run:
-    
-    ```bash
-    uv run python scripts/docling_ctl.py stop
-    ```
-
-For more information, see [Install with Docker](https://docs.openr.ag/get-started/docker).
+For more information, see [Install OpenRAG containers](https://docs.openr.ag/get-started/docker).
 
 ## Troubleshooting
 
