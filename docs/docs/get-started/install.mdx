@@ -17,7 +17,7 @@ Instead of starting OpenRAG using Docker commands and manually editing values in
 
 Once OpenRAG is running, use the TUI to monitor your application, control your containers, and retrieve logs.
 
-If you prefer running Docker commands and manually editing `.env` files, see [Install with Docker](/get-started/docker).
+If you prefer running Podman or Docker containers and manually editing `.env` files, see [Install OpenRAG Containers](/get-started/docker).
 
 ## Prerequisites 
 
@@ -30,11 +30,11 @@ If you prefer running Docker commands and manually editing `.env` files, see [In
 
 ## Install the OpenRAG Python wheel {#install-python-wheel}
 
-:::important
-The `.whl` file is currently available as an internal download during public preview, and will be published to PyPI in a future release.
-:::
-
 The OpenRAG wheel installs the Terminal User Interface (TUI) for configuring and running OpenRAG.
+
+To quickly install and start OpenRAG, run `uvx openrag`.
+
+To first set up a project and then install OpenRAG, do the following:
 
 1. Create a new project with a virtual environment using `uv init`.
 
@@ -46,26 +46,45 @@ The OpenRAG wheel installs the Terminal User Interface (TUI) for configuring and
    The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
    For more information on virtual environments, see the [uv documentation](https://docs.astral.sh/uv/pip/environments).
 
-2. Add the local OpenRAG wheel to your project's virtual environment.
-
-   ```bash
-   uv add PATH/TO/openrag-VERSION-py3-none-any.whl
-   ```
-   Replace `PATH/TO/` and `VERSION` with the path and version of your downloaded OpenRAG `.whl` file.
-
-   For example, if your `.whl` file is in the `~/Downloads` directory, the command is `uv add ~/Downloads/openrag-0.1.8-py3-none-any.whl`.
-
-3. Ensure all dependencies are installed and updated in your virtual environment.
+2. Ensure all dependencies are installed and updated in your virtual environment.
    ```bash
    uv sync
    ```
 
-4. Start the OpenRAG TUI.
+3. Install and start the OpenRAG TUI.
    ```bash
-   uv run openrag
+   uvx openrag
    ```
+   
+   To install a specific version of the Langflow package, add the required version to the command, such as `uvx --from openrag==0.1.25 openrag`.
 
-5. Continue with [Set up OpenRAG with the TUI](#setup).
+    <details closed>
+    <summary>Install a local wheel without uvx</summary>
+    
+    If you downloaded the OpenRAG wheel to your local machine, follow these steps:
+
+    1. Add the wheel to your project's virtual environment.
+
+       ```bash
+       uv add PATH/TO/openrag-VERSION-py3-none-any.whl
+       ```
+
+       Replace `PATH/TO/` and `VERSION` with the path and version of your downloaded OpenRAG `.whl` file.
+
+       For example, if your `.whl` file is in the `~/Downloads` directory:
+
+       ```bash
+       uv add ~/Downloads/openrag-0.1.8-py3-none-any.whl
+       ```
+
+    2. Run OpenRAG.
+
+       ```bash
+       uv run openrag
+       ```
+    
+    </details>
+4. Continue with [Set up OpenRAG with the TUI](#setup).
 
 ## Set up OpenRAG with the TUI {#setup}
 
