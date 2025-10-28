@@ -14,11 +14,13 @@ export function OllamaOnboarding({
 	sampleDataset,
 	setSampleDataset,
 	setIsLoadingModels,
+	onValidationChange,
 }: {
 	setSettings: (settings: OnboardingVariables) => void;
 	sampleDataset: boolean;
 	setSampleDataset: (dataset: boolean) => void;
 	setIsLoadingModels?: (isLoading: boolean) => void;
+	onValidationChange?: (validation: { hasError: boolean }) => void;
 }) {
   const [endpoint, setEndpoint] = useState(`http://localhost:11434`);
   const [showConnecting, setShowConnecting] = useState(false);
