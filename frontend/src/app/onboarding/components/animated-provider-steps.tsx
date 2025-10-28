@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -20,6 +20,7 @@ export function AnimatedProviderSteps({
 	steps,
 	storageKey = "provider-steps",
 	processingStartTime,
+	hasError = false,
 }: {
 	currentStep: number;
 	isCompleted: boolean;
@@ -27,6 +28,7 @@ export function AnimatedProviderSteps({
 	steps: string[];
 	storageKey?: string;
 	processingStartTime?: number | null;
+	hasError?: boolean;
 }) {
 	const [startTime, setStartTime] = useState<number | null>(null);
 	const [elapsedTime, setElapsedTime] = useState<number>(0);
@@ -63,7 +65,7 @@ export function AnimatedProviderSteps({
 		}
 	}, [isCompleted, startTime, storageKey]);
 
-	const isDone = currentStep >= steps.length && !isCompleted;
+	const isDone = currentStep >= steps.length && !isCompleted && !hasError;
 
 	return (
 		<AnimatePresence mode="wait">
@@ -80,7 +82,7 @@ export function AnimatedProviderSteps({
 						<div
 							className={cn(
 								"transition-all duration-150 relative",
-								isDone ? "w-3.5 h-3.5" : "w-6 h-6",
+								isDone || hasError ? "w-3.5 h-3.5" : "w-6 h-6",
 							)}
 						>
 							<CheckIcon
@@ -89,21 +91,27 @@ export function AnimatedProviderSteps({
 									isDone ? "opacity-100" : "opacity-0",
 								)}
 							/>
+							<XIcon
+								className={cn(
+									"text-accent-red-foreground shrink-0 w-3.5 h-3.5 absolute inset-0 transition-all duration-150",
+									hasError ? "opacity-100" : "opacity-0",
+								)}
+							/>
 							<AnimatedProcessingIcon
 								className={cn(
 									"text-current shrink-0 absolute inset-0 transition-all duration-150",
-									isDone ? "opacity-0" : "opacity-100",
+									isDone || hasError ? "opacity-0" : "opacity-100",
 								)}
 							/>
 						</div>
 
-						<span className="text-mmd font-medium text-muted-foreground">
-							{isDone ? "Done" : "Thinking"}
+						<span className="!text-mmd font-medium text-muted-foreground">
+							{hasError ? "Error" : isDone ? "Done" : "Thinking"}
 						</span>
 					</div>
 					<div className="overflow-hidden">
 						<AnimatePresence>
-							{!isDone && (
+							{!isDone && !hasError && (
 								<motion.div
 									initial={{ opacity: 1, y: 0, height: "auto" }}
 									exit={{ opacity: 0, y: -24, height: 0 }}
