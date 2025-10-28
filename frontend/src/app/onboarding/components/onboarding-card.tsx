@@ -135,9 +135,6 @@ const OnboardingCard = ({
 		onError: (error) => {
 			setError(error.message);
 			setCurrentStep(TOTAL_PROVIDER_STEPS);
-			toast.error("Failed to complete onboarding", {
-				description: error.message,
-			});
 			// Reset to provider selection after 1 second
 			setTimeout(() => {
 				setCurrentStep(null);
