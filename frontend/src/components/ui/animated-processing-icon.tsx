@@ -7,43 +7,43 @@ const AnimatedProcessingIcon = ({
 }) => {
   // CSS for the stepped animation states
   const animationCSS = `
-    .state-1 { opacity: 1; animation: showState1 1.5s infinite steps(1, end); }
-    .state-2 { opacity: 0; animation: showState2 1.5s infinite steps(1, end); }
-    .state-3 { opacity: 0; animation: showState3 1.5s infinite steps(1, end); }
-    .state-4 { opacity: 0; animation: showState4 1.5s infinite steps(1, end); }
-    .state-5 { opacity: 0; animation: showState5 1.5s infinite steps(1, end); }
-    .state-6 { opacity: 0; animation: showState6 1.5s infinite steps(1, end); }
+    .state-1 { opacity: 1; animation: showPawsState1 1.5s infinite steps(1, end); }
+    .state-2 { opacity: 0; animation: showPawsState2 1.5s infinite steps(1, end); }
+    .state-3 { opacity: 0; animation: showPawsState3 1.5s infinite steps(1, end); }
+    .state-4 { opacity: 0; animation: showPawsState4 1.5s infinite steps(1, end); }
+    .state-5 { opacity: 0; animation: showPawsState5 1.5s infinite steps(1, end); }
+    .state-6 { opacity: 0; animation: showPawsState6 1.5s infinite steps(1, end); }
 
-    @keyframes showState1 {
+    @keyframes showPawsState1 {
       0%, 16.66% { opacity: 1; }
       16.67%, 100% { opacity: 0; }
     }
 
-    @keyframes showState2 {
+    @keyframes showPawsState2 {
       0%, 16.66% { opacity: 0; }
       16.67%, 33.33% { opacity: 1; }
       33.34%, 100% { opacity: 0; }
     }
 
-    @keyframes showState3 {
+    @keyframes showPawsState3 {
       0%, 33.33% { opacity: 0; }
       33.34%, 50% { opacity: 1; }
       50.01%, 100% { opacity: 0; }
     }
 
-    @keyframes showState4 {
+    @keyframes showPawsState4 {
       0%, 50% { opacity: 0; }
       50.01%, 66.66% { opacity: 1; }
       66.67%, 100% { opacity: 0; }
     }
 
-    @keyframes showState5 {
+    @keyframes showPawsState5 {
       0%, 66.66% { opacity: 0; }
       66.67%, 83.33% { opacity: 1; }
       83.34%, 100% { opacity: 0; }
     }
 
-    @keyframes showState6 {
+    @keyframes showPawsState6 {
       0%, 83.33% { opacity: 0; }
       83.34%, 100% { opacity: 1; }
     }

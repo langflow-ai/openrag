@@ -84,7 +84,7 @@ export function OnboardingContent({
 						text="Let's get started by setting up your model provider."
 						isLoadingModels={isLoadingModels}
 						loadingStatus={loadingStatus}
-						reserveSpaceForThinking={true}
+						reserveSpaceForThinking={currentStep === 0}
 					>
 						<OnboardingCard
 							onComplete={() => {
