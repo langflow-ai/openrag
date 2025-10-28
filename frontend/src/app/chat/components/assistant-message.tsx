@@ -46,7 +46,7 @@ export function AssistantMessage({
 		>
 			<Message
 				icon={
-					<div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 select-none">
+					<div className="w-8 h-8 flex items-center justify-center flex-shrink-0 select-none">
 						<DogIcon
 							className="h-6 w-6 transition-colors duration-300"
 							disabled={isCompleted || isInactive}
