@@ -81,7 +81,7 @@ export function AnimatedProviderSteps({
 					<div className="flex items-center gap-2">
 						<div
 							className={cn(
-								"transition-all duration-150 relative",
+								"transition-all duration-300 relative",
 								isDone || hasError ? "w-3.5 h-3.5" : "w-6 h-6",
 							)}
 						>
