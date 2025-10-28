@@ -255,7 +255,7 @@ const OnboardingCard = ({
 										className={cn(
 											error &&
 												modelProvider === "watsonx" &&
-												"data-[state=active]:ring-2 data-[state=active]:ring-destructive",
+												"data-[state=active]:border-destructive",
 										)}
 									>
 										<TabTrigger
@@ -287,7 +287,7 @@ const OnboardingCard = ({
 										className={cn(
 											error &&
 												modelProvider === "ollama" &&
-												"data-[state=active]:ring-2 data-[state=active]:ring-destructive",
+												"data-[state=active]:border-destructive",
 										)}
 									>
 										<TabTrigger
