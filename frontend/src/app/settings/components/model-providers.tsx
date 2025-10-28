@@ -43,20 +43,12 @@ export const ModelProviders = () => {
     },
   };
 
-  // const currentProvider = modelProvidersMap[
-  //   (settings.provider?.model_provider as ModelProvider) || "openai"
-  // ] as { name: string; logo: ReactNode; logoBgClass: string };
+  const currentProvider = modelProvidersMap[
+    (settings.provider?.model_provider as ModelProvider) || "openai"
+  ] as { name: string; logo: ReactNode; logoBgClass: string };
 
-  // const currentProviderKey =
-  //   (settings.provider?.model_provider as ModelProvider) || "openai";
-
-  const currentProvider = modelProvidersMap["watsonx"] as {
-    name: string;
-    logo: ReactNode;
-    logoBgClass: string;
-  };
-
-  const currentProviderKey = "watsonx";
+  const currentProviderKey =
+    (settings.provider?.model_provider as ModelProvider) || "openai";
 
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
