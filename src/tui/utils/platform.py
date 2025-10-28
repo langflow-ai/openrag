@@ -30,6 +30,15 @@ class PlatformDetector:
         self.platform_system = platform.system()
         self.platform_machine = platform.machine()
 
+    def is_native_windows(self) -> bool:
+        """
+        Check if running on native Windows (not WSL).
+
+        Returns True if running on native Windows, False otherwise.
+        WSL environments will return False since they identify as Linux.
+        """
+        return self.platform_system == "Windows"
+
     def detect_runtime(self) -> RuntimeInfo:
         """Detect available container runtime and compose capabilities."""
         # First check if we have podman installed
@@ -166,6 +175,23 @@ class PlatformDetector:
         ) as e:
             return False, 0, f"Error checking Podman VM memory: {e}"
 
+    def get_wsl_recommendation(self) -> str:
+        """Get recommendation message for native Windows users to use WSL."""
+        return """
+⚠️  Running on native Windows detected.
+
+For the best experience, we recommend using Windows Subsystem for Linux (WSL).
+
+To set up WSL:
+  1. Open PowerShell or Command Prompt as Administrator
+  2. Run: wsl --install
+  3. Restart your computer
+  4. Set up your Linux distribution (Ubuntu recommended)
+  5. Install Docker or Podman in WSL
+
+Learn more: https://docs.microsoft.com/en-us/windows/wsl/install
+"""
+
     def get_installation_instructions(self) -> str:
         if self.platform_system == "Darwin":
             return """
@@ -200,6 +226,10 @@ Docker Desktop for Windows:
 
 Or Podman Desktop:
   https://podman-desktop.io/downloads
+
+For better performance, consider using WSL:
+  Run: wsl --install
+  https://docs.microsoft.com/en-us/windows/wsl/install
 """
         else:
             return """
