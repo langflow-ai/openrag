@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -70,6 +71,7 @@ const OnboardingCard = ({
 			embedding_model: "",
 			llm_model: "",
 		});
+		setError(null);
 	};
 
 	const [settings, setSettings] = useState<OnboardingVariables>({
@@ -85,6 +87,8 @@ const OnboardingCard = ({
 	const [processingStartTime, setProcessingStartTime] = useState<number | null>(
 		null,
 	);
+
+	const [error, setError] = useState<string | null>(null);
 
 	// Query tasks to track completion
 	const { data: tasks } = useGetTasksQuery({
@@ -126,11 +130,18 @@ const OnboardingCard = ({
 		onSuccess: (data) => {
 			console.log("Onboarding completed successfully", data);
 			setCurrentStep(0);
+			setError(null);
 		},
 		onError: (error) => {
+			setError(error.message);
+			setCurrentStep(TOTAL_PROVIDER_STEPS);
 			toast.error("Failed to complete onboarding", {
 				description: error.message,
 			});
+			// Reset to provider selection after 1 second
+			setTimeout(() => {
+				setCurrentStep(null);
+			}, 1000);
 		},
 	});
 
@@ -143,6 +154,9 @@ const OnboardingCard = ({
 			toast.error("Please complete all required fields");
 			return;
 		}
+
+		// Clear any previous error
+		setError(null);
 
 		// Prepare onboarding data
 		const onboardingData: OnboardingVariables = {
@@ -181,17 +195,29 @@ const OnboardingCard = ({
 			{currentStep === null ? (
 				<motion.div
 					key="onboarding-form"
-					initial={{ opacity: 1, y: 0 }}
-					exit={{ opacity: 0, y: -24 }}
+					initial={{ opacity: 0, y: -24 }}
+					animate={{ opacity: 1, y: 0 }}
+					exit={{ opacity: 0, y: 24 }}
 					transition={{ duration: 0.4, ease: "easeInOut" }}
 				>
 					<div className={`w-full max-w-[600px] flex flex-col gap-6`}>
+						{error && (
+							<div
+								className="flex items-center gap-4"
+							>
+								<X className="w-4 h-4 text-destructive shrink-0" />
+								<span className="text-mmd text-muted-foreground">{error}</span>
+							</div>
+						)}
 						<Tabs
 							defaultValue={modelProvider}
 							onValueChange={handleSetModelProvider}
 						>
 							<TabsList className="mb-4">
-								<TabsTrigger value="openai">
+								<TabsTrigger
+									value="openai"
+									className={cn(error && modelProvider === "openai" && "data-[state=active]:border-destructive")}
+								>
 									<TabTrigger
 										selected={modelProvider === "openai"}
 										isLoading={isLoadingModels}
@@ -214,7 +240,10 @@ const OnboardingCard = ({
 										OpenAI
 									</TabTrigger>
 								</TabsTrigger>
-								<TabsTrigger value="watsonx">
+								<TabsTrigger
+									value="watsonx"
+									className={cn(error && modelProvider === "watsonx" && "data-[state=active]:ring-2 data-[state=active]:ring-destructive")}
+								>
 									<TabTrigger
 										selected={modelProvider === "watsonx"}
 										isLoading={isLoadingModels}
@@ -239,7 +268,10 @@ const OnboardingCard = ({
 										IBM watsonx.ai
 									</TabTrigger>
 								</TabsTrigger>
-								<TabsTrigger value="ollama">
+								<TabsTrigger
+									value="ollama"
+									className={cn(error && modelProvider === "ollama" && "data-[state=active]:ring-2 data-[state=active]:ring-destructive")}
+								>
 									<TabTrigger
 										selected={modelProvider === "ollama"}
 										isLoading={isLoadingModels}
@@ -321,6 +353,7 @@ const OnboardingCard = ({
 					key="provider-steps"
 					initial={{ opacity: 0, y: 24 }}
 					animate={{ opacity: 1, y: 0 }}
+					exit={{ opacity: 0, y: 24 }}
 					transition={{ duration: 0.4, ease: "easeInOut" }}
 				>
 					<AnimatedProviderSteps
@@ -329,6 +362,7 @@ const OnboardingCard = ({
 						setCurrentStep={setCurrentStep}
 						steps={STEP_LIST}
 						processingStartTime={processingStartTime}
+						hasError={!!error}
 					/>
 				</motion.div>
 			)}
