@@ -87,6 +87,7 @@ export function Navigation({
 		refreshConversations,
 		placeholderConversation,
 		setPlaceholderConversation,
+		conversationLoaded,
 	} = useChat();
 
 	const { loading } = useLoadingStore();
@@ -331,6 +332,25 @@ export function Navigation({
 		setCurrentConversationId,
 	]);
 
+	useEffect(() => {
+		let activeConvo;
+
+		if (currentConversationId && conversations.length > 0) {
+			activeConvo = conversations.find(conv => conv.response_id === currentConversationId);
+		}
+
+		if (isOnChatPage) {
+			if ( conversations.length === 0 && !placeholderConversation) {
+				handleNewConversation();
+			} else if (activeConvo && !conversationLoaded) {
+				loadConversation(activeConvo);
+				refreshConversations();
+			} else if ( conversations.length > 0 && currentConversationId === null && !placeholderConversation) {
+				handleNewConversation();
+			}
+		}
+	}, [isOnChatPage, conversations, conversationLoaded]);
+
 	const newConversationFiles = conversationData?.messages
 		.filter(
 			(message) =>
@@ -574,8 +594,8 @@ export function Navigation({
 										No documents yet
 									</div>
 								) : (
-									newConversationFiles?.map((file) => (
-											<div key={`${file}`} className="flex-1 min-w-0 px-3">
+									newConversationFiles?.map((file, index) => (
+											<div key={`${file}-${index}`} className="flex-1 min-w-0 px-3">
 												<div className="text-mmd font-medium text-foreground truncate">
 													{file}
 												</div>

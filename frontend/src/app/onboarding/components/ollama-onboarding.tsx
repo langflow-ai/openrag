@@ -10,19 +10,15 @@ import { useUpdateSettings } from "../hooks/useUpdateSettings";
 import { ModelSelector } from "./model-selector";
 
 export function OllamaOnboarding({
-  setSettings,
-  sampleDataset,
-  setSampleDataset,
-  setIsLoadingModels,
-  setLoadingStatus,
-  onValidationChange,
+	setSettings,
+	sampleDataset,
+	setSampleDataset,
+	setIsLoadingModels,
 }: {
-  setSettings: (settings: OnboardingVariables) => void;
-  sampleDataset: boolean;
-  setSampleDataset: (dataset: boolean) => void;
-  setIsLoadingModels?: (isLoading: boolean) => void;
-  setLoadingStatus?: (status: string[]) => void;
-  onValidationChange?: (validation: { hasError: boolean }) => void;
+	setSettings: (settings: OnboardingVariables) => void;
+	sampleDataset: boolean;
+	setSampleDataset: (dataset: boolean) => void;
+	setIsLoadingModels?: (isLoading: boolean) => void;
 }) {
   const [endpoint, setEndpoint] = useState(`http://localhost:11434`);
   const [showConnecting, setShowConnecting] = useState(false);
@@ -66,40 +62,23 @@ export function OllamaOnboarding({
     };
   }, [debouncedEndpoint, isLoadingModels]);
 
-  // Update settings when values change
-  useUpdateSettings(
-    "ollama",
-    {
-      endpoint,
-      languageModel,
-      embeddingModel,
-    },
-    setSettings
-  );
-
-  // Notify parent about loading state
-  useEffect(() => {
-    setIsLoadingModels?.(isLoadingModels);
-
-    // Set detailed loading status
-    if (isLoadingModels) {
-      const status = [
-        "Connecting to Ollama",
-        "Fetching language models",
-        "Fetching embedding models",
-      ];
-      setLoadingStatus?.(status);
-    } else {
-      setLoadingStatus?.([]);
-    }
-  }, [isLoadingModels, setIsLoadingModels, setLoadingStatus]);
-
-  // Check validation state based on models query
-  const hasConnectionError = debouncedEndpoint && modelsError;
-  const hasNoModels =
-    modelsData &&
-    !modelsData.language_models?.length &&
-    !modelsData.embedding_models?.length;
+	// Update settings when values change
+	useUpdateSettings(
+		"ollama",
+		{
+			endpoint,
+			languageModel,
+			embeddingModel,
+		},
+		setSettings,
+	);
+	
+	// Check validation state based on models query
+	const hasConnectionError = debouncedEndpoint && modelsError;
+	const hasNoModels =
+		modelsData &&
+		!modelsData.language_models?.length &&
+		!modelsData.embedding_models?.length;
 
   // Notify parent about validation state changes
   useEffect(() => {
