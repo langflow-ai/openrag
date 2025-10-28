@@ -8,14 +8,14 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialModifyFlows from '@site/docs/_partial-modify-flows.mdx';
 
-OpenRAG uses [Docling](https://docling-project.github.io/docling/) for its document ingestion pipeline.
+OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion.
 More specifically, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve), which starts a `docling serve` process on your local machine and runs Docling ingestion through an API service.
 
 Docling ingests documents from your local machine or OAuth connectors, splits them into chunks, and stores them as separate, structured documents in the OpenSearch `documents` index.
 
 OpenRAG chose Docling for its support for a wide variety of file formats, high performance, and advanced understanding of tables and images.
 
-To modify OpenRAG's Knowledge Ingest settings or flows, click <Icon name="Settings" aria-hidden="true"/> **Settings**.
+To modify OpenRAG's ingestion settings, including the Docling settings and ingestion flows, click <Icon name="Settings" aria-hidden="true"/> **Settings**.
 
 ## Knowledge ingestion settings
 
