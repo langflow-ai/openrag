@@ -15,6 +15,7 @@ from rich.text import Text
 
 from ..managers.container_manager import ContainerManager
 from ..utils.clipboard import copy_text_to_clipboard
+from ..utils.platform import PlatformDetector
 
 
 class DiagnosticsScreen(Screen):
@@ -52,6 +53,7 @@ class DiagnosticsScreen(Screen):
     def __init__(self):
         super().__init__()
         self.container_manager = ContainerManager()
+        self.platform_detector = PlatformDetector()
         self._logger = logging.getLogger("openrag.diagnostics")
         self._status_timer = None
 
@@ -199,6 +201,23 @@ class DiagnosticsScreen(Screen):
         """Get system information text."""
         info_text = Text()
 
+        # Platform information
+        info_text.append("Platform Information\n", style="bold")
+        info_text.append("=" * 30 + "\n")
+        info_text.append(f"System: {self.platform_detector.platform_system}\n")
+        info_text.append(f"Machine: {self.platform_detector.platform_machine}\n")
+
+        # Windows-specific warning
+        if self.platform_detector.is_native_windows():
+            info_text.append("\n")
+            info_text.append("⚠️  Native Windows Detected\n", style="bold yellow")
+            info_text.append("-" * 30 + "\n")
+            info_text.append(self.platform_detector.get_wsl_recommendation())
+            info_text.append("\n")
+
+        info_text.append("\n")
+
+        # Container runtime information
         runtime_info = self.container_manager.get_runtime_info()
 
         info_text.append("Container Runtime Information\n", style="bold")

@@ -368,6 +368,15 @@ class OpenRAGTUI(App):
 
     def on_mount(self) -> None:
         """Initialize the application."""
+        # Check if running on native Windows and recommend WSL
+        if self.platform_detector.is_native_windows():
+            notify_with_diagnostics(
+                self,
+                "Running on native Windows. For best experience, use WSL. See diagnostics for details.",
+                severity="warning",
+                timeout=15,
+            )
+
         # Check for runtime availability and show appropriate screen
         if not self.container_manager.is_available():
             notify_with_diagnostics(
