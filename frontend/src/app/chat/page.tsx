@@ -1154,8 +1154,6 @@ function ChatPage() {
     }
   };
 
-  console.log(messages)
-
   return (
     <>
       {/* Debug header - only show in debug mode */}
