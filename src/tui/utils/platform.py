@@ -190,9 +190,6 @@ To set up WSL:
   5. Install Docker or Podman in WSL
 
 Learn more: https://docs.microsoft.com/en-us/windows/wsl/install
-
-Alternatively, you can use Docker Desktop for Windows:
-  https://docs.docker.com/desktop/install/windows-install/
 """
 
     def get_installation_instructions(self) -> str:
