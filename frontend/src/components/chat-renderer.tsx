@@ -156,7 +156,7 @@ export function ChatRenderer({
 					}}
 					className={cn(
 						"flex h-full w-full max-w-full max-h-full items-center justify-center overflow-hidden",
-						!showLayout && "absolute",
+						!showLayout && "absolute max-h-[calc(100vh-190px)]",
 						showLayout && !isOnChatPage && "bg-background",
 					)}
 				>
