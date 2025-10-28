@@ -497,6 +497,18 @@ def copy_compose_files(*, force: bool = False) -> None:
 
 def run_tui():
     """Run the OpenRAG TUI application."""
+    # Check for native Windows before launching TUI
+    from .utils.platform import PlatformDetector
+    platform_detector = PlatformDetector()
+
+    if platform_detector.is_native_windows():
+        print("\n" + "=" * 60)
+        print("⚠️  Native Windows Not Supported")
+        print("=" * 60)
+        print(platform_detector.get_wsl_recommendation())
+        print("=" * 60 + "\n")
+        sys.exit(1)
+
     app = None
     try:
         # Keep bundled assets aligned with the packaged versions
