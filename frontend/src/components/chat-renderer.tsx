@@ -86,6 +86,14 @@ export function ChatRenderer({
 		}
 	};
 
+	const handleSkipOnboarding = () => {
+		// Skip onboarding by marking it as complete
+		if (typeof window !== "undefined") {
+			localStorage.removeItem(ONBOARDING_STEP_KEY);
+		}
+		setShowLayout(true);
+	};
+
 	// List of paths with smaller max-width
 	const smallWidthPaths = ["/settings/connector/new"];
 	const isSmallWidthPath = smallWidthPaths.includes(pathname);
@@ -149,6 +157,7 @@ export function ChatRenderer({
 					className={cn(
 						"flex h-full w-full max-w-full max-h-full items-center justify-center overflow-hidden",
 						!showLayout && "absolute",
+						showLayout && !isOnChatPage && "bg-background",
 					)}
 				>
 					<div
@@ -172,7 +181,7 @@ export function ChatRenderer({
 								ease: "easeOut",
 								delay: ANIMATION_DURATION,
 							}}
-							className={cn("w-full h-full 0v")}
+							className={cn("w-full h-full")}
 						>
 							<div className={cn("w-full h-full", !showLayout && "hidden")}>
 								{children}
@@ -195,6 +204,7 @@ export function ChatRenderer({
 					<ProgressBar
 						currentStep={currentStep}
 						totalSteps={TOTAL_ONBOARDING_STEPS}
+						onSkip={handleSkipOnboarding}
 					/>
 				</motion.div>
 			</main>

@@ -9,7 +9,7 @@ import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
-import { FILES_REGEX } from "@/lib/constants";
+import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
 import { AssistantMessage } from "./components/assistant-message";
@@ -911,9 +911,9 @@ function ChatPage() {
     }
 
     // Only send message if there's input text
-    if (input.trim()) {
+    if (input.trim() || uploadedFile) {
       // Pass the responseId from upload (if any) to handleSendMessage
-      handleSendMessage(input, uploadedResponseId || undefined);
+      handleSendMessage(!input.trim() ? FILE_CONFIRMATION : input, uploadedResponseId || undefined);
     }
   };
 
@@ -1154,6 +1154,8 @@ function ChatPage() {
     }
   };
 
+  console.log(messages)
+
   return (
     <>
       {/* Debug header - only show in debug mode */}
@@ -1236,7 +1238,10 @@ function ChatPage() {
                               ? message.source !== "langflow"
                               : false
                           }
-                          content={message.content}
+                          content={index >= 2
+							&& (messages[index - 2]?.content.match(
+								FILES_REGEX,
+							  )?.[0] ?? undefined) && message.content === FILE_CONFIRMATION ? undefined : message.content}
                           files={
                             index >= 2
                               ? messages[index - 2]?.content.match(

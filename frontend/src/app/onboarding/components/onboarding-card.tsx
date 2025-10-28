@@ -27,24 +27,23 @@ import { OpenAIOnboarding } from "./openai-onboarding";
 
 interface OnboardingCardProps {
 	onComplete: () => void;
+	isCompleted?: boolean;
 	setIsLoadingModels?: (isLoading: boolean) => void;
 	setLoadingStatus?: (status: string[]) => void;
 }
 
-
 const STEP_LIST = [
-  "Setting up your model provider",
-  "Defining schema",
-  "Configuring Langflow",
-  "Ingesting sample data",
+	"Setting up your model provider",
+	"Defining schema",
+	"Configuring Langflow",
+	"Ingesting sample data",
 ];
 
 const TOTAL_PROVIDER_STEPS = STEP_LIST.length;
 
 const OnboardingCard = ({
 	onComplete,
-	setIsLoadingModels: setIsLoadingModelsParent,
-	setLoadingStatus: setLoadingStatusParent,
+	isCompleted = false,
 }: OnboardingCardProps) => {
 	const { isHealthy: isDoclingHealthy } = useDoclingHealth();
 
@@ -54,40 +53,14 @@ const OnboardingCard = ({
 
 	const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
 
-	const [loadingStatus, setLoadingStatus] = useState<string[]>([]);
+	const [loadingStep, setLoadingStep] = useState<number>(0);
 
-	const [currentStatusIndex, setCurrentStatusIndex] = useState<number>(0);
-
-	// Pass loading state to parent
+	// Reset loading step when models start loading
 	useEffect(() => {
-		setIsLoadingModelsParent?.(isLoadingModels);
-	}, [isLoadingModels, setIsLoadingModelsParent]);
-
-	useEffect(() => {
-		setLoadingStatusParent?.(loadingStatus);
-	}, [loadingStatus, setLoadingStatusParent]);
-
-	// Cycle through loading status messages once
-	useEffect(() => {
-		if (!isLoadingModels || loadingStatus.length === 0) {
-			setCurrentStatusIndex(0);
-			return;
+		if (isLoadingModels) {
+			setLoadingStep(0);
 		}
-
-		const interval = setInterval(() => {
-			setCurrentStatusIndex((prev) => {
-				const nextIndex = prev + 1;
-				// Stop at the last message
-				if (nextIndex >= loadingStatus.length - 1) {
-					clearInterval(interval);
-					return loadingStatus.length - 1;
-				}
-				return nextIndex;
-			});
-		}, 1500); // Change status every 1.5 seconds
-
-		return () => clearInterval(interval);
-	}, [isLoadingModels, loadingStatus]);
+	}, [isLoadingModels]);
 
 	const handleSetModelProvider = (provider: string) => {
 		setModelProvider(provider);
@@ -104,7 +77,13 @@ const OnboardingCard = ({
 		llm_model: "",
 	});
 
-	const [currentStep, setCurrentStep] = useState<number | null>(null);
+	const [currentStep, setCurrentStep] = useState<number | null>(
+		isCompleted ? TOTAL_PROVIDER_STEPS : null,
+	);
+
+	const [processingStartTime, setProcessingStartTime] = useState<number | null>(
+		null,
+	);
 
 	// Query tasks to track completion
 	const { data: tasks } = useGetTasksQuery({
@@ -129,7 +108,8 @@ const OnboardingCard = ({
 		// If no active tasks and we've started onboarding, complete it
 		if (
 			(!activeTasks || (activeTasks.processed_files ?? 0) > 0) &&
-			tasks.length > 0
+			tasks.length > 0 &&
+			!isCompleted
 		) {
 			// Set to final step to show "Done"
 			setCurrentStep(TOTAL_PROVIDER_STEPS);
@@ -138,7 +118,7 @@ const OnboardingCard = ({
 				onComplete();
 			}, 1000);
 		}
-	}, [tasks, currentStep, onComplete]);
+	}, [tasks, currentStep, onComplete, isCompleted]);
 
 	// Mutations
 	const onboardingMutation = useOnboardingMutation({
@@ -186,6 +166,8 @@ const OnboardingCard = ({
 			onboardingData.project_id = settings.project_id;
 		}
 
+		// Record the start time when user clicks Complete
+		setProcessingStartTime(Date.now());
 		onboardingMutation.mutate(onboardingData);
 		setCurrentStep(0);
 	};
@@ -208,43 +190,91 @@ const OnboardingCard = ({
 							onValueChange={handleSetModelProvider}
 						>
 							<TabsList className="mb-4">
-								<TabsTrigger
-									value="openai"
-								>
-									<div className={cn("flex items-center justify-center gap-2 w-8 h-8 rounded-md", modelProvider === "openai" ? "bg-white" : "bg-muted")}>
-										<OpenAILogo className={cn("w-4 h-4 shrink-0", modelProvider === "openai" ? "text-black" : "text-muted-foreground")} />
+								<TabsTrigger value="openai">
+									<div
+										className={cn(
+											"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
+											modelProvider === "openai" ? "bg-white" : "bg-muted",
+										)}
+									>
+										<OpenAILogo
+											className={cn(
+												"w-4 h-4 shrink-0",
+												modelProvider === "openai"
+													? "text-black"
+													: "text-muted-foreground",
+											)}
+										/>
 									</div>
 									OpenAI
 								</TabsTrigger>
-								<TabsTrigger
-									value="watsonx"
-								>
-									<div className={cn("flex items-center justify-center gap-2 w-8 h-8 rounded-md", modelProvider === "watsonx" ? "bg-[#1063FE]" : "bg-muted")}>
-										<IBMLogo className={cn("w-4 h-4 shrink-0", modelProvider === "watsonx" ? "text-white" : "text-muted-foreground")} />
+								<TabsTrigger value="watsonx">
+									<div
+										className={cn(
+											"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
+											modelProvider === "watsonx" ? "bg-[#1063FE]" : "bg-muted",
+										)}
+									>
+										<IBMLogo
+											className={cn(
+												"w-4 h-4 shrink-0",
+												modelProvider === "watsonx"
+													? "text-white"
+													: "text-muted-foreground",
+											)}
+										/>
 									</div>
 									IBM watsonx.ai
 								</TabsTrigger>
-								<TabsTrigger
-									value="ollama"
-								>
-									<div className={cn("flex items-center justify-center gap-2 w-8 h-8 rounded-md", modelProvider === "ollama" ? "bg-white" : "bg-muted")}>
+								<TabsTrigger value="ollama">
+									<div
+										className={cn(
+											"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
+											modelProvider === "ollama" ? "bg-white" : "bg-muted",
+										)}
+									>
 										<OllamaLogo
 											className={cn(
 												"w-4 h-4 shrink-0",
-												modelProvider === "ollama" ? "text-black" : "text-muted-foreground",
+												modelProvider === "ollama"
+													? "text-black"
+													: "text-muted-foreground",
 											)}
 										/>
 									</div>
 									Ollama
 								</TabsTrigger>
 							</TabsList>
+							<AnimatePresence>
+							{isLoadingModels && (
+								<motion.div
+									initial={{ opacity: 0, height: 0 }}
+									animate={{ opacity: 1, height: "auto" }}
+									exit={{ opacity: 0, height: 0 }}
+									transition={{ duration: 0.1, ease: "easeInOut" }}
+									className="overflow-hidden"
+								>
+									<div className="py-3">
+									<AnimatedProviderSteps
+										currentStep={loadingStep}
+										isCompleted={false}
+										setCurrentStep={setLoadingStep}
+										steps={[
+											"Connecting to the provider",
+											"Fetching language models",
+											"Fetching embedding models",
+										]}
+										storageKey="model-loading-steps"
+									/></div>
+								</motion.div>
+							)}
+						</AnimatePresence>
 							<TabsContent value="openai">
 								<OpenAIOnboarding
 									setSettings={setSettings}
 									sampleDataset={sampleDataset}
 									setSampleDataset={setSampleDataset}
 									setIsLoadingModels={setIsLoadingModels}
-									setLoadingStatus={setLoadingStatus}
 								/>
 							</TabsContent>
 							<TabsContent value="watsonx">
@@ -253,7 +283,6 @@ const OnboardingCard = ({
 									sampleDataset={sampleDataset}
 									setSampleDataset={setSampleDataset}
 									setIsLoadingModels={setIsLoadingModels}
-									setLoadingStatus={setLoadingStatus}
 								/>
 							</TabsContent>
 							<TabsContent value="ollama">
@@ -262,36 +291,37 @@ const OnboardingCard = ({
 									sampleDataset={sampleDataset}
 									setSampleDataset={setSampleDataset}
 									setIsLoadingModels={setIsLoadingModels}
-									setLoadingStatus={setLoadingStatus}
 								/>
 							</TabsContent>
 						</Tabs>
 
-						{!isLoadingModels && (
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<div>
-										<Button
-											size="sm"
-											onClick={handleComplete}
-											disabled={!isComplete}
-											loading={onboardingMutation.isPending}
-										>
-											<span className="select-none">Complete</span>
-										</Button>
-									</div>
-								</TooltipTrigger>
-								{!isComplete && (
-									<TooltipContent>
-										{!!settings.llm_model &&
-										!!settings.embedding_model &&
-										!isDoclingHealthy
+						
+
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<div>
+									<Button
+										size="sm"
+										onClick={handleComplete}
+										disabled={!isComplete || isLoadingModels}
+										loading={onboardingMutation.isPending}
+									>
+										<span className="select-none">Complete</span>
+									</Button>
+								</div>
+							</TooltipTrigger>
+							{!isComplete && (
+								<TooltipContent>
+									{isLoadingModels
+										? "Loading models..."
+										: !!settings.llm_model &&
+												!!settings.embedding_model &&
+												!isDoclingHealthy
 											? "docling-serve must be running to continue"
 											: "Please fill in all required fields"}
-									</TooltipContent>
-								)}
-							</Tooltip>
-						)}
+								</TooltipContent>
+							)}
+						</Tooltip>
 					</div>
 				</motion.div>
 			) : (
@@ -302,10 +332,12 @@ const OnboardingCard = ({
 					transition={{ duration: 0.4, ease: "easeInOut" }}
 				>
 					<AnimatedProviderSteps
-            currentStep={currentStep}
-            setCurrentStep={setCurrentStep}
-            steps={STEP_LIST}
-          />
+						currentStep={currentStep}
+						isCompleted={isCompleted}
+						setCurrentStep={setCurrentStep}
+						steps={STEP_LIST}
+						processingStartTime={processingStartTime}
+					/>
 				</motion.div>
 			)}
 		</AnimatePresence>
