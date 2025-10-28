@@ -1,4 +1,3 @@
-import { LabelWrapper } from "@/components/label-wrapper";
 import OpenAILogo from "@/components/logo/openai-logo";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,18 +7,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
-import { useForm } from "react-hook-form";
-import { useGetOpenAIModelsQuery } from "@/app/api/queries/useGetModelsQuery";
-
-interface OpenAISettingsForm {
-  apiKey: string;
-  useEnvironmentKey: boolean;
-}
+import { OpenAIOnboarding } from "@/app/onboarding/components/openai-onboarding";
+import { OnboardingVariables } from "@/app/api/mutations/useOnboardingMutation";
 
 const OpenAISettingsDialog = ({
   open,
@@ -28,34 +20,18 @@ const OpenAISettingsDialog = ({
   open: boolean;
   setOpen: (open: boolean) => void;
 }) => {
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    reset,
-    setError,
-    formState: { errors },
-  } = useForm<OpenAISettingsForm>({
-    mode: "onSubmit",
-    defaultValues: {
-      apiKey: "",
-      useEnvironmentKey: true,
-    },
+  const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
+  const [settings, setSettings] = useState<OnboardingVariables>({
+    model_provider: "openai",
+    embedding_model: "",
+    llm_model: "",
   });
 
-  const useEnvironmentKey = watch("useEnvironmentKey", true);
-  const apiKey = watch("apiKey", "");
-  const [isValidating, setIsValidating] = useState(false);
-
-  // Query for validating API key - only enabled when we need to validate
-  const { refetch: validateApiKey } = useGetOpenAIModelsQuery(
-    apiKey ? { apiKey: apiKey.trim() } : undefined,
-    {
-      enabled: false, // Disabled by default, we'll trigger manually with refetch
-      retry: false, // Don't retry on validation failure
-    }
-  );
+  // Validation state from OpenAI onboarding component
+  const [validationState, setValidationState] = useState({
+    getFromEnv: true,
+    hasError: false,
+  });
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -69,130 +45,69 @@ const OpenAISettingsDialog = ({
     },
   });
 
-  // Reset state when dialog opens
-  useEffect(() => {
-    if (open) {
-      reset({
-        apiKey: "",
-        useEnvironmentKey: true,
-      });
-    }
-  }, [open, reset]);
-
-  const handleUseEnvironmentKeyChange = (checked: boolean) => {
-    setValue("useEnvironmentKey", checked);
-    if (checked) {
-      setValue("apiKey", "");
-    }
-  };
-
-  const onSubmit = async (data: OpenAISettingsForm) => {
-    // If using environment key, skip validation and submit directly
-    if (data.useEnvironmentKey) {
-      updateSettingsMutation.mutate({
-        api_key: "",
-        model_provider: "openai",
-      });
+  const handleSave = () => {
+    // Validate form
+    if (
+      !settings.llm_model ||
+      !settings.embedding_model ||
+      (!validationState.getFromEnv && !settings.api_key)
+    ) {
+      toast.error("Please fill in all required fields");
       return;
     }
 
-    setIsValidating(true);
-
-    try {
-      const result = await validateApiKey();
-
-      if (result.isError || !result.data) {
-        setError("apiKey", {
-          message: "Invalid OpenAI API key. Verify or replace the key.",
-        });
-        return;
-      }
-
-      // API key is valid, proceed with update
-      updateSettingsMutation.mutate({
-        api_key: data.apiKey.trim(),
-        model_provider: "openai",
-      });
-    } catch {
-      setError("apiKey", {
-        message: "Failed to validate API key. Please try again.",
-      });
-    } finally {
-      setIsValidating(false);
+    // If not using env key and there's a validation error, don't proceed
+    if (
+      isLoadingModels ||
+      (!validationState.getFromEnv && validationState.hasError)
+    ) {
+      toast.error("Please provide a valid API key");
+      return;
     }
+
+    // Submit the update
+    updateSettingsMutation.mutate({
+      api_key: settings.api_key,
+      model_provider: "openai",
+      llm_model: settings.llm_model,
+      embedding_model: settings.embedding_model,
+    });
   };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded flex items-center justify-center">
-                <OpenAILogo />
-              </div>
-              OpenAI Setup
-            </DialogTitle>
-          </DialogHeader>
+      <DialogContent autoFocus={false} className="max-w-2xl">
+        <DialogHeader className="mb-4">
+          <DialogTitle className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
+              <OpenAILogo className="text-black" />
+            </div>
+            OpenAI Setup
+          </DialogTitle>
+        </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <LabelWrapper
-              label="Use environment OpenAI API key"
-              id="get-api-key"
-              description="Use the key from your environment config. Turn off to set a new key."
-              flex
-            >
-              <Switch
-                checked={useEnvironmentKey}
-                onCheckedChange={handleUseEnvironmentKeyChange}
-              />
-            </LabelWrapper>
-            {!useEnvironmentKey && (
-              <div className="space-y-1">
-                <LabelWrapper
-                  label="OpenAI API key"
-                  helperText="Enter a new API key for your OpenAI account."
-                  required
-                  id="api-key"
-                >
-                  <Input
-                    {...register("apiKey", {
-                      required: !useEnvironmentKey && "API key is required",
-                    })}
-                    className={errors.apiKey ? "!border-destructive" : ""}
-                    id="api-key"
-                    type="password"
-                    placeholder="sk-..."
-                  />
-                </LabelWrapper>
-                {errors.apiKey && (
-                  <p className="text-sm text-destructive">
-                    {errors.apiKey.message}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isValidating || updateSettingsMutation.isPending}
-            >
-              {isValidating
-                ? "Validating..."
-                : updateSettingsMutation.isPending
-                ? "Saving..."
-                : "Save"}
-            </Button>
-          </DialogFooter>
-        </form>
+        <OpenAIOnboarding
+          setSettings={setSettings}
+          sampleDataset={false}
+          setSampleDataset={() => {}}
+          setIsLoadingModels={setIsLoadingModels}
+          onValidationChange={setValidationState}
+        />
+        <DialogFooter className="mt-4">
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => setOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={isLoadingModels || updateSettingsMutation.isPending}
+          >
+            {updateSettingsMutation.isPending ? "Saving..." : "Save"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

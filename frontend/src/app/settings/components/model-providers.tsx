@@ -11,6 +11,7 @@ import { ReactNode, useState } from "react";
 import OpenAISettingsDialog from "./openai-settings-dialog";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
 import WatsonxSettingsDialog from "./watsonx-settings-dialog";
+import { cn } from "@/lib/utils";
 
 export const ModelProviders = () => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
@@ -23,49 +24,67 @@ export const ModelProviders = () => {
 
   const modelProvidersMap: Record<
     ModelProvider,
-    { name: string; logo: ReactNode }
+    { name: string; logo: ReactNode; logoBgClass: string }
   > = {
     openai: {
       name: "OpenAI",
-      logo: <OpenAILogo />,
+      logo: <OpenAILogo className="text-black" />,
+      logoBgClass: "bg-white",
     },
     ollama: {
       name: "Ollama",
-      logo: <OllamaLogo />,
+      logo: <OllamaLogo className="text-black" />,
+      logoBgClass: "bg-white",
     },
     watsonx: {
       name: "IBM watsonx.ai",
-      logo: <IBMLogo />,
+      logo: <IBMLogo className="text-white" />,
+      logoBgClass: "bg-[#1063FE]",
     },
   };
 
-  const currentProvider = modelProvidersMap[
-    (settings.provider?.model_provider as ModelProvider) || "openai"
-  ] as { name: string; logo: ReactNode };
+  // const currentProvider = modelProvidersMap[
+  //   (settings.provider?.model_provider as ModelProvider) || "openai"
+  // ] as { name: string; logo: ReactNode; logoBgClass: string };
 
-  const currentProviderKey =
-    (settings.provider?.model_provider as ModelProvider) || "openai";
+  // const currentProviderKey =
+  //   (settings.provider?.model_provider as ModelProvider) || "openai";
+
+  const currentProvider = modelProvidersMap["watsonx"] as {
+    name: string;
+    logo: ReactNode;
+    logoBgClass: string;
+  };
+
+  const currentProviderKey = "watsonx";
 
   return (
-    <>
-      <Card className="relative flex flex-col max-w-sm">
+    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <Card className="relative flex flex-col">
         <CardHeader>
           <div className="flex flex-col items-start justify-between">
             <div className="flex flex-col gap-3">
               <div className="mb-1">
-                <div className="w-8 h-8 rounded flex items-center justify-center">
+                <div
+                  className={cn(
+                    "w-8 h-8 rounded flex items-center justify-center border",
+                    currentProvider.logoBgClass
+                  )}
+                >
                   {currentProvider.logo}
                 </div>
               </div>
               <CardTitle className="flex flex-row items-center gap-2">
                 {currentProvider.name}
-                <div className="h-2 w-2 bg-accent-emerald rounded-full" />
+                <div className="h-2 w-2 bg-accent-emerald-foreground rounded-full" />
               </CardTitle>
             </div>
           </div>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col justify-end space-y-4">
-          <Button onClick={() => setDialogOpen(true)}>Edit Setup</Button>
+          <Button variant="outline" onClick={() => setDialogOpen(true)}>
+            Edit Setup
+          </Button>
         </CardContent>
       </Card>
       {currentProviderKey === "openai" && (
@@ -77,7 +96,7 @@ export const ModelProviders = () => {
       {currentProviderKey === "watsonx" && (
         <WatsonxSettingsDialog open={dialogOpen} setOpen={setDialogOpen} />
       )}
-    </>
+    </div>
   );
 };
 

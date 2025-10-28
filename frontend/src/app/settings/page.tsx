@@ -716,7 +716,7 @@ function KnowledgeSourcesPage() {
                         <div
                           className={`w-8 h-8 ${
                             connector ? "bg-white" : "bg-muted grayscale"
-                          } rounded flex items-center justify-center`}
+                          } rounded flex items-center justify-center border`}
                         >
                           {connector.icon}
                         </div>
@@ -739,6 +739,7 @@ function KnowledgeSourcesPage() {
                       {connector?.status === "connected" ? (
                         <>
                           <Button
+                            variant="outline"
                             onClick={() => navigateToKnowledgePage(connector)}
                             disabled={isSyncing === connector.id}
                             className="w-full cursor-pointer"
@@ -810,7 +811,7 @@ function KnowledgeSourcesPage() {
       <div className="space-y-6">
         <div>
           <h2 className="text-lg font-semibold tracking-tight mb-2">
-            Model Providers
+            Model Provider
           </h2>
         </div>
         <ModelProviders />
@@ -884,7 +885,8 @@ function KnowledgeSourcesPage() {
             </div>
           </div>
           <CardDescription>
-            This Agent retrieves from your knowledge and generates chat responses. Edit in Langflow for full control.
+            This Agent retrieves from your knowledge and generates chat
+            responses. Edit in Langflow for full control.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -965,9 +967,7 @@ function KnowledgeSourcesPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between mb-3">
-            <CardTitle className="text-lg">
-              Knowledge Ingest
-            </CardTitle>
+            <CardTitle className="text-lg">Knowledge Ingest</CardTitle>
             <div className="flex gap-2">
               <ConfirmationDialog
                 trigger={
@@ -1031,7 +1031,8 @@ function KnowledgeSourcesPage() {
             </div>
           </div>
           <CardDescription>
-            Configure how files are ingested and stored for retrieval. Edit in Langflow for full control.
+            Configure how files are ingested and stored for retrieval. Edit in
+            Langflow for full control.
           </CardDescription>
         </CardHeader>
         <CardContent>

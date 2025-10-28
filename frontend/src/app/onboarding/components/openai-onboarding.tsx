@@ -11,131 +11,148 @@ import { useUpdateSettings } from "../hooks/useUpdateSettings";
 import { AdvancedOnboarding } from "./advanced";
 
 export function OpenAIOnboarding({
-	setSettings,
-	sampleDataset,
-	setSampleDataset,
-	setIsLoadingModels,
-	setLoadingStatus,
+  setSettings,
+  sampleDataset,
+  setSampleDataset,
+  setIsLoadingModels,
+  setLoadingStatus,
+  onValidationChange,
 }: {
-	setSettings: (settings: OnboardingVariables) => void;
-	sampleDataset: boolean;
-	setSampleDataset: (dataset: boolean) => void;
-	setIsLoadingModels?: (isLoading: boolean) => void;
-	setLoadingStatus?: (status: string[]) => void;
+  setSettings: (settings: OnboardingVariables) => void;
+  sampleDataset: boolean;
+  setSampleDataset: (dataset: boolean) => void;
+  setIsLoadingModels?: (isLoading: boolean) => void;
+  setLoadingStatus?: (status: string[]) => void;
+  onValidationChange?: (validation: {
+    getFromEnv: boolean;
+    hasError: boolean;
+  }) => void;
 }) {
-	const [apiKey, setApiKey] = useState("");
-	const [getFromEnv, setGetFromEnv] = useState(true);
-	const debouncedApiKey = useDebouncedValue(apiKey, 500);
+  const [apiKey, setApiKey] = useState("");
+  const [getFromEnv, setGetFromEnv] = useState(true);
+  const debouncedApiKey = useDebouncedValue(apiKey, 500);
 
-	// Fetch models from API when API key is provided
-	const {
-		data: modelsData,
-		isLoading: isLoadingModels,
-		error: modelsError,
-	} = useGetOpenAIModelsQuery(
-		getFromEnv
-			? { apiKey: "" }
-			: debouncedApiKey
-				? { apiKey: debouncedApiKey }
-				: undefined,
-		{ enabled: debouncedApiKey !== "" || getFromEnv },
-	);
-	// Use custom hook for model selection logic
-	const {
-		languageModel,
-		embeddingModel,
-		setLanguageModel,
-		setEmbeddingModel,
-		languageModels,
-		embeddingModels,
-	} = useModelSelection(modelsData);
-	const handleSampleDatasetChange = (dataset: boolean) => {
-		setSampleDataset(dataset);
-	};
+  // Fetch models from API when API key is provided
+  const {
+    data: modelsData,
+    isLoading: isLoadingModels,
+    error: modelsError,
+  } = useGetOpenAIModelsQuery(
+    getFromEnv
+      ? { apiKey: "" }
+      : debouncedApiKey
+      ? { apiKey: debouncedApiKey }
+      : undefined,
+    { enabled: debouncedApiKey !== "" || getFromEnv }
+  );
+  // Use custom hook for model selection logic
+  const {
+    languageModel,
+    embeddingModel,
+    setLanguageModel,
+    setEmbeddingModel,
+    languageModels,
+    embeddingModels,
+  } = useModelSelection(modelsData);
+  const handleSampleDatasetChange = (dataset: boolean) => {
+    setSampleDataset(dataset);
+  };
 
-	const handleGetFromEnvChange = (fromEnv: boolean) => {
-		setGetFromEnv(fromEnv);
-		if (fromEnv) {
-			setApiKey("");
-		}
-		setLanguageModel("");
-		setEmbeddingModel("");
-	};
+  const handleGetFromEnvChange = (fromEnv: boolean) => {
+    setGetFromEnv(fromEnv);
+    if (fromEnv) {
+      setApiKey("");
+    }
+    setLanguageModel("");
+    setEmbeddingModel("");
+  };
 
-	// Update settings when values change
-	useUpdateSettings(
-		"openai",
-		{
-			apiKey,
-			languageModel,
-			embeddingModel,
-		},
-		setSettings,
-	);
+  // Update settings when values change
+  useUpdateSettings(
+    "openai",
+    {
+      apiKey,
+      languageModel,
+      embeddingModel,
+    },
+    setSettings
+  );
 
-	// Notify parent about loading state
-	useEffect(() => {
-		setIsLoadingModels?.(isLoadingModels);
+  // Notify parent about loading state
+  useEffect(() => {
+    setIsLoadingModels?.(isLoadingModels);
 
-		// Set detailed loading status
-		if (isLoadingModels) {
-			const status = ["Connecting to OpenAI", "Fetching language models", "Fetching embedding models"];
-			setLoadingStatus?.(status);
-		} else {
-			setLoadingStatus?.([]);
-		}
-	}, [isLoadingModels, setIsLoadingModels, setLoadingStatus]);
-	return (
-		<>
-			<div className="space-y-5">
-				<LabelWrapper
-					label="Use environment OpenAI API key"
-					id="get-api-key"
-					description="Reuse the key from your environment config. Turn off to enter a different key."
-					flex
-				>
-					<Switch
-						checked={getFromEnv}
-						onCheckedChange={handleGetFromEnvChange}
-					/>
-				</LabelWrapper>
-				{!getFromEnv && (
-					<div className="space-y-1">
-						<LabelInput
-							label="OpenAI API key"
-							helperText="The API key for your OpenAI account."
-							className={modelsError ? "!border-destructive" : ""}
-							id="api-key"
-							type="password"
-							required
-							placeholder="sk-..."
-							value={apiKey}
-							onChange={(e) => setApiKey(e.target.value)}
-						/>
-						{isLoadingModels && (
-							<p className="text-mmd text-muted-foreground">
-								Validating API key...
-							</p>
-						)}
-						{modelsError && (
-							<p className="text-mmd text-destructive">
-								Invalid OpenAI API key. Verify or replace the key.
-							</p>
-						)}
-					</div>
-				)}
-			</div>
-			<AdvancedOnboarding
-				icon={<OpenAILogo className="w-4 h-4" />}
-				languageModels={languageModels}
-				embeddingModels={embeddingModels}
-				languageModel={languageModel}
-				embeddingModel={embeddingModel}
-				sampleDataset={sampleDataset}
-				setLanguageModel={setLanguageModel}
-				setSampleDataset={handleSampleDatasetChange}
-				setEmbeddingModel={setEmbeddingModel}
-			/>
-		</>
-	);
+    // Set detailed loading status
+    if (isLoadingModels) {
+      const status = [
+        "Connecting to OpenAI",
+        "Fetching language models",
+        "Fetching embedding models",
+      ];
+      setLoadingStatus?.(status);
+    } else {
+      setLoadingStatus?.([]);
+    }
+  }, [isLoadingModels, setIsLoadingModels, setLoadingStatus]);
+
+  // Notify parent about validation state changes
+  useEffect(() => {
+    onValidationChange?.({
+      getFromEnv,
+      hasError: !!modelsError,
+    });
+  }, [getFromEnv, modelsError, onValidationChange]);
+  return (
+    <>
+      <div className="space-y-5">
+        <LabelWrapper
+          label="Use environment OpenAI API key"
+          id="get-api-key"
+          description="Reuse the key from your environment config. Turn off to enter a different key."
+          flex
+        >
+          <Switch
+            checked={getFromEnv}
+            onCheckedChange={handleGetFromEnvChange}
+          />
+        </LabelWrapper>
+        {!getFromEnv && (
+          <div className="space-y-1">
+            <LabelInput
+              label="OpenAI API key"
+              helperText="The API key for your OpenAI account."
+              className={modelsError ? "!border-destructive" : ""}
+              id="api-key"
+              type="password"
+              required
+              placeholder="sk-..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            {isLoadingModels && (
+              <p className="text-mmd text-muted-foreground">
+                Validating API key...
+              </p>
+            )}
+            {modelsError && (
+              <p className="text-mmd text-destructive">
+                Invalid OpenAI API key. Verify or replace the key.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+      <AdvancedOnboarding
+        icon={<OpenAILogo className="w-4 h-4" />}
+        languageModels={languageModels}
+        embeddingModels={embeddingModels}
+        languageModel={languageModel}
+        embeddingModel={embeddingModel}
+        sampleDataset={sampleDataset}
+        setLanguageModel={setLanguageModel}
+        setSampleDataset={handleSampleDatasetChange}
+        setEmbeddingModel={setEmbeddingModel}
+      />
+    </>
+  );
 }

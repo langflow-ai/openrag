@@ -16,12 +16,14 @@ export function IBMOnboarding({
   setSampleDataset,
   setIsLoadingModels,
   setLoadingStatus,
+  onValidationChange,
 }: {
   setSettings: (settings: OnboardingVariables) => void;
   sampleDataset: boolean;
   setSampleDataset: (dataset: boolean) => void;
   setIsLoadingModels?: (isLoading: boolean) => void;
   setLoadingStatus?: (status: string[]) => void;
+  onValidationChange?: (validation: { hasError: boolean }) => void;
 }) {
   const [endpoint, setEndpoint] = useState("https://us-south.ml.cloud.ibm.com");
   const [apiKey, setApiKey] = useState("");
@@ -75,7 +77,7 @@ export function IBMOnboarding({
           apiKey: debouncedApiKey,
           projectId: debouncedProjectId,
         }
-      : undefined,
+      : undefined
   );
 
   // Use custom hook for model selection logic
@@ -101,7 +103,7 @@ export function IBMOnboarding({
       languageModel,
       embeddingModel,
     },
-    setSettings,
+    setSettings
   );
 
   // Notify parent about loading state
@@ -110,12 +112,23 @@ export function IBMOnboarding({
 
     // Set detailed loading status
     if (isLoadingModels) {
-      const status = ["Connecting to IBM watsonx.ai", "Fetching language models", "Fetching embedding models"];
+      const status = [
+        "Connecting to IBM watsonx.ai",
+        "Fetching language models",
+        "Fetching embedding models",
+      ];
       setLoadingStatus?.(status);
     } else {
       setLoadingStatus?.([]);
     }
   }, [isLoadingModels, setIsLoadingModels, setLoadingStatus]);
+
+  // Notify parent about validation state changes
+  useEffect(() => {
+    onValidationChange?.({
+      hasError: !!modelsError,
+    });
+  }, [modelsError, onValidationChange]);
   return (
     <>
       <div className="space-y-4">
