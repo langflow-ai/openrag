@@ -26,8 +26,6 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 
 ## Quickstart
 
-Use the OpenRAG Terminal User Interface (TUI) to manage your OpenRAG installation without complex command-line operations.
-
 To quickly run OpenRAG without creating or modifying any project files, use `uvx`:
 
 ```bash
