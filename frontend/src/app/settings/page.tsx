@@ -4,7 +4,6 @@ import { ArrowUpRight, Loader2, Minus, PlugZap, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { useUpdateFlowSettingMutation } from "@/app/api/mutations/useUpdateFlowSettingMutation";
 import {
   useGetIBMModelsQuery,
   useGetOllamaModelsQuery,
@@ -54,6 +53,7 @@ import GoogleDriveIcon from "./icons/google-drive-icon";
 import OneDriveIcon from "./icons/one-drive-icon";
 import SharePointIcon from "./icons/share-point-icon";
 import ModelProviders from "./components/model-providers";
+import { useUpdateSettingsMutation } from "../api/mutations/useUpdateSettingsMutation";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
@@ -181,7 +181,7 @@ function KnowledgeSourcesPage() {
       : openaiModelsData; // fallback to openai
 
   // Mutations
-  const updateFlowSettingMutation = useUpdateFlowSettingMutation({
+  const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
       console.log("Setting updated successfully");
     },
@@ -192,8 +192,8 @@ function KnowledgeSourcesPage() {
 
   // Debounced update function
   const debouncedUpdate = useDebounce(
-    (variables: Parameters<typeof updateFlowSettingMutation.mutate>[0]) => {
-      updateFlowSettingMutation.mutate(variables);
+    (variables: Parameters<typeof updateSettingsMutation.mutate>[0]) => {
+      updateSettingsMutation.mutate(variables);
     },
     500
   );
@@ -239,20 +239,20 @@ function KnowledgeSourcesPage() {
 
   // Update model selection immediately
   const handleModelChange = (newModel: string) => {
-    updateFlowSettingMutation.mutate({ llm_model: newModel });
+    updateSettingsMutation.mutate({ llm_model: newModel });
   };
 
   // Update system prompt with save button
   const handleSystemPromptSave = () => {
-    updateFlowSettingMutation.mutate({ system_prompt: systemPrompt });
+    updateSettingsMutation.mutate({ system_prompt: systemPrompt });
   };
 
   // Update embedding model selection immediately
   const handleEmbeddingModelChange = (newModel: string) => {
-    updateFlowSettingMutation.mutate({ embedding_model: newModel });
+    updateSettingsMutation.mutate({ embedding_model: newModel });
   };
 
-  const isEmbeddingModelSelectDisabled = updateFlowSettingMutation.isPending;
+  const isEmbeddingModelSelectDisabled = updateSettingsMutation.isPending;
 
   // Update chunk size setting with debounce
   const handleChunkSizeChange = (value: string) => {
@@ -271,17 +271,17 @@ function KnowledgeSourcesPage() {
   // Update docling settings
   const handleTableStructureChange = (checked: boolean) => {
     setTableStructure(checked);
-    updateFlowSettingMutation.mutate({ table_structure: checked });
+    updateSettingsMutation.mutate({ table_structure: checked });
   };
 
   const handleOcrChange = (checked: boolean) => {
     setOcr(checked);
-    updateFlowSettingMutation.mutate({ ocr: checked });
+    updateSettingsMutation.mutate({ ocr: checked });
   };
 
   const handlePictureDescriptionsChange = (checked: boolean) => {
     setPictureDescriptions(checked);
-    updateFlowSettingMutation.mutate({ picture_descriptions: checked });
+    updateSettingsMutation.mutate({ picture_descriptions: checked });
   };
 
   // Helper function to get connector icon
@@ -950,14 +950,14 @@ function KnowledgeSourcesPage() {
               <Button
                 onClick={handleSystemPromptSave}
                 disabled={
-                  updateFlowSettingMutation.isPending ||
+                  updateSettingsMutation.isPending ||
                   systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
                 }
                 className="min-w-[120px]"
                 size="sm"
                 variant="outline"
               >
-                {updateFlowSettingMutation.isPending ? (
+                {updateSettingsMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Saving...

@@ -25,30 +25,19 @@ export function OllamaSettingsForm() {
     register,
     watch,
     setValue,
-    formState: { errors, dirtyFields },
+    formState: { errors },
   } = useFormContext<OllamaSettingsFormData>();
 
   const endpoint = watch("endpoint");
-
   const debouncedEndpoint = useDebouncedValue(endpoint, 500);
-
-  // Check if endpoint field is dirty
-  const credentialsAreDirty = dirtyFields.endpoint;
-
-  // Fetch models when endpoint is provided AND field is dirty
-  const shouldFetchModels = credentialsAreDirty ? !!debouncedEndpoint : false;
 
   const {
     data: modelsData,
     isLoading: isLoadingModels,
     error: modelsError,
-  } = useGetOllamaModelsQuery(
-    shouldFetchModels
-      ? {
-          endpoint: debouncedEndpoint,
-        }
-      : undefined
-  );
+  } = useGetOllamaModelsQuery({
+    endpoint: debouncedEndpoint,
+  });
 
   useEffect(() => {
     if (modelsError || isLoadingModels) {

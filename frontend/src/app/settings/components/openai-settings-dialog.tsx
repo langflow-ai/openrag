@@ -112,9 +112,7 @@ const OpenAISettingsDialog = ({
               </Button>
               <Button
                 type="submit"
-                disabled={
-                  !formState.isValid || updateSettingsMutation.isPending
-                }
+                disabled={updateSettingsMutation.isPending}
               >
                 {updateSettingsMutation.isPending ? "Saving..." : "Save"}
               </Button>

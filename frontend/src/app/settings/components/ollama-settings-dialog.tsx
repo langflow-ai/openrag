@@ -99,12 +99,7 @@ const OllamaSettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={
-                  !formState.isValid || updateSettingsMutation.isPending
-                }
-              >
+              <Button type="submit" disabled={updateSettingsMutation.isPending}>
                 {updateSettingsMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>

@@ -28,7 +28,7 @@ export function OpenAISettingsForm() {
     register,
     watch,
     setValue,
-    formState: { errors, dirtyFields },
+    formState: { errors },
   } = useFormContext<OpenAISettingsFormData>();
 
   const apiKey = watch("apiKey");
@@ -51,7 +51,7 @@ export function OpenAISettingsForm() {
     error: modelsError,
   } = useGetOpenAIModelsQuery(
     {
-      apiKey: debouncedApiKey,
+      apiKey: useExistingKey ? "" : debouncedApiKey,
     }
   );
 

@@ -119,7 +119,7 @@ const WatsonxSettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button type="submit" disabled={updateSettingsMutation.isPending}>
                 {updateSettingsMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
