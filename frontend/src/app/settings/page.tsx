@@ -139,7 +139,9 @@ function KnowledgeSourcesPage() {
 
   // Fetch available models based on provider
   const { data: openaiModelsData } = useGetOpenAIModelsQuery(
-    undefined, // Let backend use stored API key from configuration
+    {
+      apiKey: ""
+    },
     {
       enabled:
         (isAuthenticated || isNoAuthMode) && currentProvider === "openai",
@@ -147,7 +149,9 @@ function KnowledgeSourcesPage() {
   );
 
   const { data: ollamaModelsData } = useGetOllamaModelsQuery(
-    undefined, // No params for now, could be extended later
+    {
+      endpoint: settings.provider?.endpoint,
+    },
     {
       enabled:
         (isAuthenticated || isNoAuthMode) && currentProvider === "ollama",
@@ -155,7 +159,11 @@ function KnowledgeSourcesPage() {
   );
 
   const { data: ibmModelsData } = useGetIBMModelsQuery(
-    undefined, // No params for now, could be extended later
+    {
+      endpoint: settings.provider?.endpoint,
+      apiKey: "",
+      projectId: settings.provider?.project_id,
+    },
     {
       enabled:
         (isAuthenticated || isNoAuthMode) && currentProvider === "watsonx",

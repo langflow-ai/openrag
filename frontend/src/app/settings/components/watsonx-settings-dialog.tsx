@@ -7,11 +7,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useState } from "react";
+import { useEffect } from "react";
+import { FormProvider, useForm } from "react-hook-form";
 import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { toast } from "sonner";
-import { IBMOnboarding } from "@/app/onboarding/components/ibm-onboarding";
-import { OnboardingVariables } from "@/app/api/mutations/useOnboardingMutation";
+import {
+  WatsonxSettingsForm,
+  type WatsonxSettingsFormData,
+} from "./watsonx-settings-form";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useAuth } from "@/contexts/auth-context";
 
 const WatsonxSettingsDialog = ({
   open,
@@ -20,17 +25,38 @@ const WatsonxSettingsDialog = ({
   open: boolean;
   setOpen: (open: boolean) => void;
 }) => {
-  const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
-  const [settings, setSettings] = useState<OnboardingVariables>({
-    model_provider: "watsonx",
-    embedding_model: "",
-    llm_model: "",
+  const { isAuthenticated, isNoAuthMode } = useAuth();
+
+  const { data: settings = {} } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
   });
 
-  // Validation state from IBM onboarding component
-  const [validationState, setValidationState] = useState({
-    hasError: false,
+  const methods = useForm<WatsonxSettingsFormData>({
+    mode: "onSubmit",
+    defaultValues: {
+      endpoint: "",
+      apiKey: "",
+      projectId: "",
+      llmModel: "",
+      embeddingModel: "",
+    },
   });
+
+  const { handleSubmit, reset } = methods;
+
+  // Initialize form from settings when dialog opens or settings change
+  useEffect(() => {
+    if (open && settings) {
+      reset({
+        endpoint:
+          settings.provider?.endpoint || "https://us-south.ml.cloud.ibm.com",
+        apiKey: "",
+        projectId: settings.provider?.project_id || "",
+        llmModel: settings.agent?.llm_model || "",
+        embeddingModel: settings.knowledge?.embedding_model || "",
+      });
+    }
+  }, [open, settings, reset]);
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -44,71 +70,61 @@ const WatsonxSettingsDialog = ({
     },
   });
 
-  const handleSave = () => {
-    // Validate form
-    if (
-      !settings.llm_model ||
-      !settings.embedding_model ||
-      !settings.endpoint ||
-      !settings.project_id ||
-      !settings.api_key
-    ) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
+  const onSubmit = (data: WatsonxSettingsFormData) => {
+    const payload: {
+      endpoint: string;
+      api_key?: string;
+      project_id: string;
+      model_provider: string;
+      llm_model: string;
+      embedding_model: string;
+    } = {
+      endpoint: data.endpoint,
+      project_id: data.projectId,
+      model_provider: "watsonx",
+      llm_model: data.llmModel,
+      embedding_model: data.embeddingModel,
+    };
 
-    // If there's a validation error, don't proceed
-    if (isLoadingModels || validationState.hasError) {
-      toast.error("Please provide valid watsonx credentials");
-      return;
+    // Only include api_key if a value was entered
+    if (data.apiKey) {
+      payload.api_key = data.apiKey;
     }
 
     // Submit the update
-    updateSettingsMutation.mutate({
-      endpoint: settings.endpoint,
-      api_key: settings.api_key,
-      project_id: settings.project_id,
-      model_provider: "watsonx",
-      llm_model: settings.llm_model,
-      embedding_model: settings.embedding_model,
-    });
+    updateSettingsMutation.mutate(payload);
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent autoFocus={false} className="max-w-2xl">
-        <DialogHeader className="mb-4">
-          <DialogTitle className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded flex items-center justify-center bg-[#1063FE]">
-              <IBMLogo className="text-white" />
-            </div>
-            IBM watsonx.ai Setup
-          </DialogTitle>
-        </DialogHeader>
+        <FormProvider {...methods}>
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <DialogHeader className="mb-4">
+              <DialogTitle className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded flex items-center justify-center bg-[#1063FE]">
+                  <IBMLogo className="text-white" />
+                </div>
+                IBM watsonx.ai Setup
+              </DialogTitle>
+            </DialogHeader>
 
-        <IBMOnboarding
-          setSettings={setSettings}
-          sampleDataset={false}
-          setSampleDataset={() => {}}
-          setIsLoadingModels={setIsLoadingModels}
-          onValidationChange={setValidationState}
-        />
+            <WatsonxSettingsForm />
 
-        <DialogFooter className="mt-4">
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => setOpen(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isLoadingModels || updateSettingsMutation.isPending}
-          >
-            {updateSettingsMutation.isPending ? "Saving..." : "Save"}
-          </Button>
-        </DialogFooter>
+            <DialogFooter className="mt-4">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">
+                {updateSettingsMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </FormProvider>
       </DialogContent>
     </Dialog>
   );

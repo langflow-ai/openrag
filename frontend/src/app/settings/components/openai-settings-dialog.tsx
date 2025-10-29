@@ -7,11 +7,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useState } from "react";
+import { useEffect } from "react";
+import { FormProvider, useForm } from "react-hook-form";
 import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { toast } from "sonner";
-import { OpenAIOnboarding } from "@/app/onboarding/components/openai-onboarding";
-import { OnboardingVariables } from "@/app/api/mutations/useOnboardingMutation";
+import {
+  OpenAISettingsForm,
+  type OpenAISettingsFormData,
+} from "./openai-settings-form";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useAuth } from "@/contexts/auth-context";
 
 const OpenAISettingsDialog = ({
   open,
@@ -20,18 +25,33 @@ const OpenAISettingsDialog = ({
   open: boolean;
   setOpen: (open: boolean) => void;
 }) => {
-  const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
-  const [settings, setSettings] = useState<OnboardingVariables>({
-    model_provider: "openai",
-    embedding_model: "",
-    llm_model: "",
+  const { isAuthenticated, isNoAuthMode } = useAuth();
+
+  const { data: settings = {} } = useGetSettingsQuery({
+    enabled: isAuthenticated || isNoAuthMode,
   });
 
-  // Validation state from OpenAI onboarding component
-  const [validationState, setValidationState] = useState({
-    getFromEnv: true,
-    hasError: false,
+  const methods = useForm<OpenAISettingsFormData>({
+    mode: "onChange",
+    defaultValues: {
+      apiKey: "",
+      llmModel: "",
+      embeddingModel: "",
+    },
   });
+
+  const { handleSubmit, reset, formState } = methods;
+
+  // Initialize form from settings when dialog opens or settings change
+  useEffect(() => {
+    if (open && settings) {
+      reset({
+        apiKey: "", // Never pre-fill API key for security
+        llmModel: settings.agent?.llm_model || "",
+        embeddingModel: settings.knowledge?.embedding_model || "",
+      });
+    }
+  }, [open, settings, reset]);
 
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -45,69 +65,62 @@ const OpenAISettingsDialog = ({
     },
   });
 
-  const handleSave = () => {
-    // Validate form
-    if (
-      !settings.llm_model ||
-      !settings.embedding_model ||
-      (!validationState.getFromEnv && !settings.api_key)
-    ) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
+  const onSubmit = (data: OpenAISettingsFormData) => {
+    const payload: {
+      api_key?: string;
+      model_provider: string;
+      llm_model: string;
+      embedding_model: string;
+    } = {
+      model_provider: "openai",
+      llm_model: data.llmModel,
+      embedding_model: data.embeddingModel,
+    };
 
-    // If not using env key and there's a validation error, don't proceed
-    if (
-      isLoadingModels ||
-      (!validationState.getFromEnv && validationState.hasError)
-    ) {
-      toast.error("Please provide a valid API key");
-      return;
+    // Only include api_key if a value was entered
+    if (data.apiKey) {
+      payload.api_key = data.apiKey;
     }
 
     // Submit the update
-    updateSettingsMutation.mutate({
-      api_key: settings.api_key,
-      model_provider: "openai",
-      llm_model: settings.llm_model,
-      embedding_model: settings.embedding_model,
-    });
+    updateSettingsMutation.mutate(payload);
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent autoFocus={false} className="max-w-2xl">
-        <DialogHeader className="mb-4">
-          <DialogTitle className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
-              <OpenAILogo className="text-black" />
-            </div>
-            OpenAI Setup
-          </DialogTitle>
-        </DialogHeader>
+        <FormProvider {...methods}>
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <DialogHeader className="mb-4">
+              <DialogTitle className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
+                  <OpenAILogo className="text-black" />
+                </div>
+                OpenAI Setup
+              </DialogTitle>
+            </DialogHeader>
 
-        <OpenAIOnboarding
-          setSettings={setSettings}
-          sampleDataset={false}
-          setSampleDataset={() => {}}
-          setIsLoadingModels={setIsLoadingModels}
-          onValidationChange={setValidationState}
-        />
-        <DialogFooter className="mt-4">
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => setOpen(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isLoadingModels || updateSettingsMutation.isPending}
-          >
-            {updateSettingsMutation.isPending ? "Saving..." : "Save"}
-          </Button>
-        </DialogFooter>
+            <OpenAISettingsForm />
+
+            <DialogFooter className="mt-4">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  !formState.isValid || updateSettingsMutation.isPending
+                }
+              >
+                {updateSettingsMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </FormProvider>
       </DialogContent>
     </Dialog>
   );
