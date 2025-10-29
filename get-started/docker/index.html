@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Install OpenRAG containers | OpenRAG</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="robots" content="noindex, nofollow"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://docs.openr.ag/get-started/docker"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Install OpenRAG containers | OpenRAG"><meta data-rh="true" name="description" content="OpenRAG has two Docker Compose files. Both files deploy the same applications and containers locally, but they are for different environments."><meta data-rh="true" property="og:description" content="OpenRAG has two Docker Compose files. Both files deploy the same applications and containers locally, but they are for different environments."><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://docs.openr.ag/get-started/docker"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/get-started/docker" hreflang="en"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/get-started/docker" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Install OpenRAG containers","item":"https://docs.openr.ag/get-started/docker"}]}</script><link rel="stylesheet" href="/assets/css/styles.66669ecc.css">
-<script src="/assets/js/runtime~main.610e9562.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.628a6e5b.js" defer="defer"></script>
 <script src="/assets/js/main.cbdacd68.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -87,7 +87,8 @@ This enables <a href="https://opensource.apple.com/projects/mlx/" target="_blank
 <p>To stop <code>docling serve</code> when you&#x27;re done with your OpenRAG deployment, run:</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">uv run python scripts/docling_ctl.py stop</span><br></span></code></pre></div></div>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="application-onboarding">Application onboarding<a href="#application-onboarding" class="hash-link" aria-label="Direct link to Application onboarding" title="Direct link to Application onboarding" translate="no">​</a></h2>
-<p>The first time you start OpenRAG, whether using the TUI or a <code>.env</code> file, you must complete application onboarding.</p>
+<p>The first time you start OpenRAG, whether using the TUI or a <code>.env</code> file, it&#x27;s recommended that you complete application onboarding.</p>
+<p>To skip onboarding, click <strong>Skip onboarding</strong>.</p>
 <p>Values from onboarding can be changed later in the OpenRAG <strong>Settings</strong> page.</p>
 <p>Choose one LLM provider and complete only those steps:</p>
 <div class="theme-tabs-container tabs-container tabList__CuJ"><ul role="tablist" aria-orientation="horizontal" class="tabs"><li role="tab" tabindex="0" aria-selected="true" class="tabs__item tabItem_LNqP tabs__item--active">OpenAI</li><li role="tab" tabindex="-1" aria-selected="false" class="tabs__item tabItem_LNqP">IBM watsonx.ai</li><li role="tab" tabindex="-1" aria-selected="false" class="tabs__item tabItem_LNqP">Ollama</li></ul><div class="margin-top--md"><div role="tabpanel" class="tabItem_Ymn6"><ol>
@@ -97,14 +98,16 @@ Alternatively, paste an OpenAI API key into the field.</li>
 <li class="">To load 2 sample PDFs, enable <strong>Sample dataset</strong>.
 This is recommended, but not required.</li>
 <li class="">Click <strong>Complete</strong>.</li>
+<li class="">To complete the onboarding tasks, click <strong>What is OpenRAG</strong>, and then click <strong>Add a Document</strong>.</li>
 <li class="">Continue with the <a class="" href="/quickstart">Quickstart</a>.</li>
 </ol></div><div role="tabpanel" class="tabItem_Ymn6" hidden=""><ol>
-<li class="">Complete the fields for <strong>watsonx.ai API Endpoint</strong>, <strong>IBM API key</strong>, and <strong>IBM Project ID</strong>.
+<li class="">Complete the fields for <strong>watsonx.ai API Endpoint</strong>, <strong>IBM Project ID</strong>, and <strong>IBM API key</strong>.
 These values are found in your IBM watsonx deployment.</li>
 <li class="">Under <strong>Advanced settings</strong>, select your <strong>Embedding Model</strong> and <strong>Language Model</strong>.</li>
 <li class="">To load 2 sample PDFs, enable <strong>Sample dataset</strong>.
 This is recommended, but not required.</li>
 <li class="">Click <strong>Complete</strong>.</li>
+<li class="">To complete the onboarding tasks, click <strong>What is OpenRAG</strong>, and then click <strong>Add a Document</strong>.</li>
 <li class="">Continue with the <a class="" href="/quickstart">Quickstart</a>.</li>
 </ol></div><div role="tabpanel" class="tabItem_Ymn6" hidden=""><div class="theme-admonition theme-admonition-tip admonition_xJq3 alert alert--success"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 12 16"><path fill-rule="evenodd" d="M6.5 0C3.48 0 1 2.19 1 5c0 .92.55 2.25 1 3 1.34 2.25 1.78 2.78 2 4v1h5v-1c.22-1.22.66-1.75 2-4 .45-.75 1-2.08 1-3 0-2.81-2.48-5-5.5-5zm3.64 7.48c-.25.44-.47.8-.67 1.11-.86 1.41-1.25 2.06-1.45 3.23-.02.05-.02.11-.02.17H5c0-.06 0-.13-.02-.17-.2-1.17-.59-1.83-1.45-3.23-.2-.31-.42-.67-.67-1.11C2.44 6.78 2 5.65 2 5c0-2.2 2.02-4 4.5-4 1.22 0 2.36.42 3.22 1.19C10.55 2.94 11 3.94 11 5c0 .66-.44 1.78-.86 2.48zM4 14h5c-.23 1.14-1.3 2-2.5 2s-2.27-.86-2.5-2z"></path></svg></span>tip</div><div class="admonitionContent_BuS1"><p>Ollama is not included with OpenRAG. To install Ollama, see the <a href="https://docs.ollama.com/" target="_blank" rel="noopener noreferrer" class="">Ollama documentation</a>.</p></div></div><ol>
 <li class="">Enter your Ollama server&#x27;s base URL address.
@@ -115,6 +118,7 @@ OpenRAG retrieves the available models from your Ollama server.</li>
 <li class="">To load 2 sample PDFs, enable <strong>Sample dataset</strong>.
 This is recommended, but not required.</li>
 <li class="">Click <strong>Complete</strong>.</li>
+<li class="">To complete the onboarding tasks, click <strong>What is OpenRAG</strong>, and then click <strong>Add a Document</strong>.</li>
 <li class="">Continue with the <a class="" href="/quickstart">Quickstart</a>.</li>
 </ol></div></div></div>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="container-management-commands">Container management commands<a href="#container-management-commands" class="hash-link" aria-label="Direct link to Container management commands" title="Direct link to Container management commands" translate="no">​</a></h2>

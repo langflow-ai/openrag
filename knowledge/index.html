@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">OpenSearch in OpenRAG | OpenRAG</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="robots" content="noindex, nofollow"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://docs.openr.ag/knowledge"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="OpenSearch in OpenRAG | OpenRAG"><meta data-rh="true" name="description" content="OpenRAG uses OpenSearch for its vector-backed knowledge store."><meta data-rh="true" property="og:description" content="OpenRAG uses OpenSearch for its vector-backed knowledge store."><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://docs.openr.ag/knowledge"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/knowledge" hreflang="en"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/knowledge" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"OpenSearch in OpenRAG","item":"https://docs.openr.ag/knowledge"}]}</script><link rel="stylesheet" href="/assets/css/styles.66669ecc.css">
-<script src="/assets/js/runtime~main.610e9562.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.628a6e5b.js" defer="defer"></script>
 <script src="/assets/js/main.cbdacd68.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -24,10 +24,11 @@ To configure the knowledge ingestion pipeline parameters, see <a class="" href="
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="direct-file-ingestion">Direct file ingestion<a href="#direct-file-ingestion" class="hash-link" aria-label="Direct link to Direct file ingestion" title="Direct link to Direct file ingestion" translate="no">​</a></h3>
 <p>The <strong>Knowledge Ingest</strong> flow uses Langflow&#x27;s <a href="https://docs.langflow.org/components-data#file" target="_blank" rel="noopener noreferrer" class=""><strong>File</strong> component</a> to split and embed files loaded from your local machine into the OpenSearch database.</p>
 <p>The default path to your local folder is mounted from the <code>./documents</code> folder in your OpenRAG project directory to the <code>/app/documents/</code> directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the <strong>Documents Paths</strong> variable in either the TUI&#x27;s <a class="" href="/install#setup">Advanced Setup</a> menu or in the <code>.env</code> used by Docker Compose.</p>
-<p>To load and process a single file from the mapped location, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> <strong>Add Knowledge</strong>, and then click <strong>Add File</strong>.
+<p>To load and process a single file from the mapped location, click <strong>Add Knowledge</strong>, and then click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg> <strong>File</strong>.
 The file is loaded into your OpenSearch database, and appears in the Knowledge page.</p>
-<p>To load and process a directory from the mapped location, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> <strong>Add Knowledge</strong>, and then click <strong>Process Folder</strong>.
+<p>To load and process a directory from the mapped location, click <strong>Add Knowledge</strong>, and then click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg> <strong>Folder</strong>.
 The files are loaded into your OpenSearch database, and appear in the Knowledge page.</p>
+<p>To add files directly to a chat session, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> in the chat input and select the files you want to include. Files added this way are processed and made available to the agent for the current conversation, and are not permanently added to the knowledge base.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="oauth-ingestion">Ingest files through OAuth connectors<a href="#oauth-ingestion" class="hash-link" aria-label="Direct link to Ingest files through OAuth connectors" title="Direct link to Ingest files through OAuth connectors" translate="no">​</a></h3>
 <p>OpenRAG supports Google Drive, OneDrive, and Sharepoint as OAuth connectors for seamless document synchronization.</p>
 <p>OAuth integration allows individual users to connect their personal cloud storage accounts to OpenRAG. Each user must separately authorize OpenRAG to access their own cloud storage files. When a user connects a cloud service, they are redirected to authenticate with that service provider and grant OpenRAG permission to sync documents from their personal cloud storage.</p>
@@ -44,20 +45,21 @@ The TUI generates a new <code>.env</code> file with your OAuth values.</li>
 <li class="">Click <strong>Start Container Services</strong>.</li>
 </ol></div><div role="tabpanel" class="tabItem_Ymn6" hidden=""><ol>
 <li class="">Stop the Docker deployment.</li>
-<li class="">Add the OAuth provider&#x27;s client and secret key in the <code>.env</code> file for Docker Compose.</li>
-</ol><div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">GOOGLE_OAUTH_CLIENT_ID=&#x27;YOUR_OAUTH_CLIENT_ID&#x27;</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">GOOGLE_OAUTH_CLIENT_SECRET=&#x27;YOUR_OAUTH_CLIENT_SECRET&#x27;</span><br></span></code></pre></div></div><ol start="3">
-<li class="">Save your <code>.env</code>. file.</li>
+<li class="">Add the OAuth provider&#x27;s client and secret key in the <code>.env</code> file for Docker Compose.<!-- -->
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">GOOGLE_OAUTH_CLIENT_ID=&#x27;YOUR_OAUTH_CLIENT_ID&#x27;</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">GOOGLE_OAUTH_CLIENT_SECRET=&#x27;YOUR_OAUTH_CLIENT_SECRET&#x27;</span><br></span></code></pre></div></div>
+</li>
+<li class="">Save your <code>.env</code> file.</li>
 <li class="">Start the Docker deployment.</li>
 </ol></div></div></div>
 <p>The OpenRAG frontend at <code>http://localhost:3000</code> now redirects to an OAuth callback login page for your OAuth provider.
 A successful authentication opens OpenRAG with the required scopes for your connected storage.</p>
 <p>To add knowledge from an OAuth-connected storage provider, do the following:</p>
 <ol>
-<li class="">Click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> <strong>Add Knowledge</strong>, and then select the storage provider, for example, <strong>Google Drive</strong>.
+<li class="">Click <strong>Add Knowledge</strong>, and then select the storage provider, for example, <strong>Google Drive</strong>.
 The <strong>Add Cloud Knowledge</strong> page opens.</li>
-<li class="">To add files or folders from the connected storage, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> <strong>Add Files</strong>.
+<li class="">To add files or folders from the connected storage, click <strong>Add Files</strong>.
 Select the files or folders you want and click <strong>Select</strong>.
-You can select multiples.</li>
+You can select multiple files.</li>
 <li class="">When your files are selected, click <strong>Ingest Files</strong>.
 The ingestion process may take some time, depending on the size of your documents.</li>
 <li class="">When ingestion is complete, your documents are available in the Knowledge screen.</li>
@@ -77,32 +79,33 @@ Knowledge filters are saved search configurations that allow you to create custo
 <p>To create a knowledge filter, do the following:</p>
 <ol>
 <li class="">
-<p>Click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-funnel" aria-hidden="true"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"></path></svg> <strong>All Knowledge</strong>, and then click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> <strong>Create New Filter</strong>.
-The <strong>Create New Knowledge Filter</strong> pane appears.</p>
+<p>Click <strong>Knowledge</strong>, and then click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> <strong>Knowledge Filters</strong>.
+The <strong>Knowledge Filter</strong> pane appears.</p>
 </li>
 <li class="">
-<p>Enter a <strong>Name</strong> and <strong>Description</strong>, and then click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-save" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"></path><path d="M7 3v4a1 1 0 0 0 1 1h7"></path></svg> <strong>Create Filter</strong>.
-A new filter is created with default settings that match everything.</p>
+<p>Enter a <strong>Name</strong> and <strong>Description</strong>, and then click <strong>Create Filter</strong>.
+A new filter is created with default settings that match all documents.</p>
 </li>
 <li class="">
-<p>To modify the default filter, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-funnel" aria-hidden="true"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"></path></svg> <strong>All Knowledge</strong>, and then click your new filter to edit it in the <strong>Knowledge Filter</strong> pane.</p>
+<p>To modify the filter, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-library" aria-hidden="true"><path d="m16 6 4 14"></path><path d="M12 6v14"></path><path d="M8 8v12"></path><path d="M4 4v16"></path></svg> <strong>Knowledge</strong>, and then click your new filter to edit it in the <strong>Knowledge Filter</strong> pane.</p>
 <p>The following filter options are configurable.</p>
 <ul>
 <li class=""><strong>Search Query</strong>: Enter text for semantic search, such as &quot;financial reports from Q4&quot;.</li>
 <li class=""><strong>Data Sources</strong>: Select specific data sources or folders to include.</li>
 <li class=""><strong>Document Types</strong>: Filter by file type.</li>
 <li class=""><strong>Owners</strong>: Filter by who uploaded the documents.</li>
-<li class=""><strong>Sources</strong>: Filter by connector types, such as local upload or Google Drive.</li>
-<li class=""><strong>Result Limit</strong>: Set maximum number of results. The default is <code>10</code>.</li>
+<li class=""><strong>Connectors</strong>: Filter by connector types, such as local upload or Google Drive.</li>
+<li class=""><strong>Response Limit</strong>: Set maximum number of results. The default is <code>10</code>.</li>
 <li class=""><strong>Score Threshold</strong>: Set minimum relevance score. The default score is <code>0</code>.</li>
 </ul>
 </li>
 <li class="">
-<p>When you&#x27;re done editing the filter, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-save" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"></path><path d="M7 3v4a1 1 0 0 0 1 1h7"></path></svg> <strong>Save Configuration</strong>.</p>
+<p>When you&#x27;re done editing the filter, click <strong>Update Filter</strong>.</p>
 </li>
 <li class="">
-<p>To apply the filter to OpenRAG globally, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-funnel" aria-hidden="true"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"></path></svg> <strong>All Knowledge</strong>, and then select the filter to apply.</p>
-<p>To apply the filter to a single chat session, in the <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-square" aria-hidden="true"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path></svg> <strong>Chat</strong> window, click <strong>@</strong>, and then select the filter to apply.</p>
+<p>To apply the filter to OpenRAG globally, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-library" aria-hidden="true"><path d="m16 6 4 14"></path><path d="M12 6v14"></path><path d="M8 8v12"></path><path d="M4 4v16"></path></svg> <strong>Knowledge</strong>, and then select the filter to apply. One filter can be enabled at a time.</p>
+<p>To apply the filter to a single chat session, in the <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-square" aria-hidden="true"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path></svg> <strong>Chat</strong> window, click <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-funnel" aria-hidden="true"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z"></path></svg>, and then select the filter to apply.</p>
+<p>To delete the filter, in the <strong>Knowledge Filter</strong> pane, click <strong>Delete Filter</strong>.</p>
 </li>
 </ol>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="openrag-default-configuration">OpenRAG default configuration<a href="#openrag-default-configuration" class="hash-link" aria-label="Direct link to OpenRAG default configuration" title="Direct link to OpenRAG default configuration" translate="no">​</a></h2>
