@@ -7,7 +7,7 @@ import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-Get started with OpenRAG by loading your knowledge, swapping out your language model, and then chatting with the OpenRAG API.
+Get started with OpenRAG by loading your knowledge, swapping out your language model, and then chatting with the Langflow API.
 
 ## Prerequisites
 
@@ -17,20 +17,20 @@ Get started with OpenRAG by loading your knowledge, swapping out your language m
 
 1. In OpenRAG, click <Icon name="MessageSquare" aria-hidden="true"/> **Chat**.
    The chat is powered by the OpenRAG OpenSearch Agent.
-   For more information, see [Langflow Agents](/agents).
+   For more information, see [Langflow in OpenRAG](/agents).
 2. Ask `What documents are available to you?`
    The agent responds with a message summarizing the documents that OpenRAG loads by default.
    Knowledge is stored in OpenSearch.
-   For more information, see [Knowledge](/knowledge).
+   For more information, see [OpenSearch in OpenRAG](/knowledge).
 3. To confirm the agent is correct about the default knowledge, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
    The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database.
-   Click on a document to display the chunks derived from splitting the default documents into the vector database.
-4. To add documents to your knowledge base, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**.
-   * Select **Add File** to add a single file from your local machine.
-   * Select **Process Folder** to process an entire folder of documents from your local machine.
+   Click on a document to display the chunks derived from splitting the default documents into the OpenSearch vector database.
+4. To add documents to your knowledge base, click **Add Knowledge**.
+   * Select <Icon name="File" aria-hidden="true"/> **File** to add a single file from your local machine.
+   * Select <Icon name="Folder" aria-hidden="true"/> **Folder** to process an entire folder of documents from your local machine. The default directory is `/documents` in your OpenRAG directory.
    * Select your cloud storage provider to add knowledge from an OAuth-connected storage provider. For more information, see [OAuth ingestion](/knowledge#oauth-ingestion).
 5. Return to the Chat window and ask a question about your loaded data.
-   For example, with a manual about a PC tablet loaded, ask `How do I connect this device to WiFI?`
+   For example, with a manual about a PC tablet loaded, ask `How do I connect this device to WiFi?`
    The agent responds with a message indicating it now has your knowledge as context for answering questions.
 6. Click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)**.
 This log describes how the agent uses tools.
@@ -44,8 +44,12 @@ In this example, you'll try a different LLM to demonstrate how the Agent's respo
 
 1. To edit the Agent's behavior, click **Edit in Langflow**.
 You can more quickly access the **Language Model** and **Agent Instructions** fields in this page, but for illustration purposes, navigate to the Langflow visual builder.
+To revert the flow to its initial state, click **Restore flow**.
 2. OpenRAG warns you that you're entering Langflow. Click **Proceed**.
-The OpenRAG OpenSearch Agent flow appears in a new browser window.
+
+    If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from the `.env` file in your OpenRAG directory.
+
+    The OpenRAG OpenSearch Agent flow appears in a new browser window.
    ![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
 
 3. Find the **Language Model** component, and then change the **Model Name** field to a different OpenAI model.

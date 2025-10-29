@@ -1,5 +1,6 @@
 import json
 import platform
+import time
 from starlette.responses import JSONResponse
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
@@ -634,6 +635,29 @@ async def onboarding(request, flows_service):
                 {"error": "No valid fields provided for update"}, status_code=400
             )
 
+        # Validate provider setup before initializing OpenSearch index
+        try:
+            from api.provider_validation import validate_provider_setup
+
+            provider = current_config.provider.model_provider.lower() if current_config.provider.model_provider else "openai"
+
+            logger.info(f"Validating provider setup for {provider}")
+            await validate_provider_setup(
+                provider=provider,
+                api_key=current_config.provider.api_key,
+                embedding_model=current_config.knowledge.embedding_model,
+                llm_model=current_config.agent.llm_model,
+                endpoint=current_config.provider.endpoint,
+                project_id=current_config.provider.project_id,
+            )
+            logger.info(f"Provider setup validation completed successfully for {provider}")
+        except Exception as e:
+            logger.error(f"Provider validation failed: {str(e)}")
+            return JSONResponse(
+                {"error": str(e)},
+                status_code=400,
+            )
+
         # Initialize the OpenSearch index now that we have the embedding model configured
         try:
             # Import here to avoid circular imports
@@ -795,7 +819,7 @@ async def onboarding(request, flows_service):
     except Exception as e:
         logger.error("Failed to update onboarding settings", error=str(e))
         return JSONResponse(
-            {"error": f"Failed to update onboarding settings: {str(e)}"},
+            {"error": str(e)},
             status_code=500,
         )
 
