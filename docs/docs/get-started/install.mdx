@@ -9,7 +9,7 @@ import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
 
 [Install the OpenRAG Python wheel](#install-python-wheel), and then run the [OpenRAG Terminal User Interface(TUI)](#setup) to start your OpenRAG deployment with a guided setup process.
 
-The OpenRAG Terminal User Interface (TUI) allows you to set up, configure, and monitor your OpenRAG deployment directly from the terminal, on any operating system.
+The OpenRAG Terminal User Interface (TUI) allows you to set up, configure, and monitor your OpenRAG deployment directly from the terminal.
 
 ![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
@@ -102,10 +102,12 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 
    1. To install OpenRAG with **Basic Setup**, click **Basic Setup** or press <kbd>1</kbd>. 
    2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
+   Only the **OpenSearch Admin Password** and **OpenAI API key** are required.
+   To generate the optional **Langflow Admin Password**, click **Generate Password**.
    3. Paste your OpenAI API key in the OpenAI API key field.
    4. Click **Save Configuration**.
    Your passwords are saved in the `.env` file used to start OpenRAG.
-   5. To start OpenRAG, click **Start Container Services**.
+   5. To start OpenRAG, click **Start All Services**.
       Startup pulls container images and runs them, so it can take some time.
       When startup is complete, the TUI displays the following:
       ```bash
@@ -127,14 +129,14 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
    These are the URLs your OAuth provider will redirect back to after user sign-in.
    Register these redirect values with your OAuth provider as they are presented in the TUI.
    6. Click **Save Configuration**.
-   7. To start OpenRAG, click **Start Container Services**.
+   7. To start OpenRAG, click **Start All Services**.
       Startup pulls container images and runs them, so it can take some time.
       When startup is complete, the TUI displays the following:
       ```bash
       Services started successfully
       Command completed successfully
       ```
-   8. To open the OpenRAG application, click **Open App**, press <kbd>6</kbd>, or navigate to `http://localhost:3000`.
+   8. To open the OpenRAG application, click **Open App**.
    You are presented with your provider's OAuth sign-in screen.
    After sign-in, you are redirected to the redirect URI.
 
@@ -159,9 +161,9 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 
 After installation, the TUI can deploy, manage, and upgrade your OpenRAG containers.
 
-### Start container services
+### Start all services
 
-Click **Start Container Services** to start the OpenRAG containers.
+Click **Start All Services** to start the OpenRAG containers.
 The TUI automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses.
 The TUI then pulls the images and deploys the containers with the following command.
 ```bash
@@ -169,15 +171,6 @@ docker compose up -d
 ```
 
 If images are missing, the TUI runs `docker compose pull`, then runs `docker compose up -d`.
-
-### Start native services
-
-A "native" service in OpenRAG refers to a service run natively on your machine, and not within a container.
-The `docling serve` process is a native service in OpenRAG, because it's a document processing service that is run on your local machine, and controlled separately from the containers.
-
-To start or stop `docling serve` or any other native services, in the TUI main menu, click **Start Native Services** or **Stop Native Services**.
-
-To view the status, port, or PID of a native service, in the TUI main menu, click [Status](#status).
 
 ### Status
 
@@ -206,6 +199,15 @@ When the first command is complete, OpenRAG removes any additional Docker object
 ```
 docker system prune -f
 ```
+
+### Native services status
+
+A _native service_ in OpenRAG refers to a service run locally on your machine, and not within a container.
+The `docling serve` process is a native service in OpenRAG, because it's a document processing service that is run on your local machine, and controlled separately from the containers.
+
+To start or stop `docling serve` or any other native services, in the TUI Status menu, click **Stop** or **Restart**.
+
+To view the status, port, or PID of a native service, in the TUI main menu, click [Status](#status).
 
 ## Diagnostics
 
