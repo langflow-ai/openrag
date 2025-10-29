@@ -24,6 +24,7 @@ import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
 import { OpenAIOnboarding } from "./openai-onboarding";
+import { TabTrigger } from "./tab-trigger";
 
 interface OnboardingCardProps {
 	onComplete: () => void;
@@ -191,84 +192,77 @@ const OnboardingCard = ({
 						>
 							<TabsList className="mb-4">
 								<TabsTrigger value="openai">
-									<div
-										className={cn(
-											"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
-											modelProvider === "openai" ? "bg-white" : "bg-muted",
-										)}
+									<TabTrigger
+										selected={modelProvider === "openai"}
+										isLoading={isLoadingModels}
 									>
-										<OpenAILogo
+										<div
 											className={cn(
-												"w-4 h-4 shrink-0",
-												modelProvider === "openai"
-													? "text-black"
-													: "text-muted-foreground",
+												"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
+												modelProvider === "openai" ? "bg-white" : "bg-muted",
 											)}
-										/>
-									</div>
-									OpenAI
+										>
+											<OpenAILogo
+												className={cn(
+													"w-4 h-4 shrink-0",
+													modelProvider === "openai"
+														? "text-black"
+														: "text-muted-foreground",
+												)}
+											/>
+										</div>
+										OpenAI
+									</TabTrigger>
 								</TabsTrigger>
 								<TabsTrigger value="watsonx">
-									<div
-										className={cn(
-											"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
-											modelProvider === "watsonx" ? "bg-[#1063FE]" : "bg-muted",
-										)}
+									<TabTrigger
+										selected={modelProvider === "watsonx"}
+										isLoading={isLoadingModels}
 									>
-										<IBMLogo
+										<div
 											className={cn(
-												"w-4 h-4 shrink-0",
+												"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
 												modelProvider === "watsonx"
-													? "text-white"
-													: "text-muted-foreground",
+													? "bg-[#1063FE]"
+													: "bg-muted",
 											)}
-										/>
-									</div>
-									IBM watsonx.ai
+										>
+											<IBMLogo
+												className={cn(
+													"w-4 h-4 shrink-0",
+													modelProvider === "watsonx"
+														? "text-white"
+														: "text-muted-foreground",
+												)}
+											/>
+										</div>
+										IBM watsonx.ai
+									</TabTrigger>
 								</TabsTrigger>
 								<TabsTrigger value="ollama">
-									<div
-										className={cn(
-											"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
-											modelProvider === "ollama" ? "bg-white" : "bg-muted",
-										)}
+									<TabTrigger
+										selected={modelProvider === "ollama"}
+										isLoading={isLoadingModels}
 									>
-										<OllamaLogo
+										<div
 											className={cn(
-												"w-4 h-4 shrink-0",
-												modelProvider === "ollama"
-													? "text-black"
-													: "text-muted-foreground",
+												"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
+												modelProvider === "ollama" ? "bg-white" : "bg-muted",
 											)}
-										/>
-									</div>
-									Ollama
+										>
+											<OllamaLogo
+												className={cn(
+													"w-4 h-4 shrink-0",
+													modelProvider === "ollama"
+														? "text-black"
+														: "text-muted-foreground",
+												)}
+											/>
+										</div>
+										Ollama
+									</TabTrigger>
 								</TabsTrigger>
 							</TabsList>
-							<AnimatePresence>
-							{isLoadingModels && (
-								<motion.div
-									initial={{ opacity: 0, height: 0 }}
-									animate={{ opacity: 1, height: "auto" }}
-									exit={{ opacity: 0, height: 0 }}
-									transition={{ duration: 0.1, ease: "easeInOut" }}
-									className="overflow-hidden"
-								>
-									<div className="py-3">
-									<AnimatedProviderSteps
-										currentStep={loadingStep}
-										isCompleted={false}
-										setCurrentStep={setLoadingStep}
-										steps={[
-											"Connecting to the provider",
-											"Fetching language models",
-											"Fetching embedding models",
-										]}
-										storageKey="model-loading-steps"
-									/></div>
-								</motion.div>
-							)}
-						</AnimatePresence>
 							<TabsContent value="openai">
 								<OpenAIOnboarding
 									setSettings={setSettings}
@@ -294,8 +288,6 @@ const OnboardingCard = ({
 								/>
 							</TabsContent>
 						</Tabs>
-
-						
 
 						<Tooltip>
 							<TooltipTrigger asChild>
