@@ -136,7 +136,7 @@ OpenRAG automatically detects and configures the correct vector dimensions for e
 
 The complete list of supported models is available at [`models_service.py` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py).
 
-You can use custom embe*dding models by specifying them in your configuration.
+You can use custom embedding models by specifying them in your configuration.
 
 If you use an unknown embedding model, OpenRAG will automatically fall back to `1536` dimensions and log a warning. The system will continue to work, but search quality may be affected if the actual model dimensions differ from `1536`.
 
