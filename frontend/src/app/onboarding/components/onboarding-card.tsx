@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -70,6 +71,7 @@ const OnboardingCard = ({
 			embedding_model: "",
 			llm_model: "",
 		});
+		setError(null);
 	};
 
 	const [settings, setSettings] = useState<OnboardingVariables>({
@@ -85,6 +87,8 @@ const OnboardingCard = ({
 	const [processingStartTime, setProcessingStartTime] = useState<number | null>(
 		null,
 	);
+
+	const [error, setError] = useState<string | null>(null);
 
 	// Query tasks to track completion
 	const { data: tasks } = useGetTasksQuery({
@@ -126,11 +130,15 @@ const OnboardingCard = ({
 		onSuccess: (data) => {
 			console.log("Onboarding completed successfully", data);
 			setCurrentStep(0);
+			setError(null);
 		},
 		onError: (error) => {
-			toast.error("Failed to complete onboarding", {
-				description: error.message,
-			});
+			setError(error.message);
+			setCurrentStep(TOTAL_PROVIDER_STEPS);
+			// Reset to provider selection after 1 second
+			setTimeout(() => {
+				setCurrentStep(null);
+			}, 1000);
 		},
 	});
 
@@ -143,6 +151,9 @@ const OnboardingCard = ({
 			toast.error("Please complete all required fields");
 			return;
 		}
+
+		// Clear any previous error
+		setError(null);
 
 		// Prepare onboarding data
 		const onboardingData: OnboardingVariables = {
@@ -181,139 +192,179 @@ const OnboardingCard = ({
 			{currentStep === null ? (
 				<motion.div
 					key="onboarding-form"
-					initial={{ opacity: 1, y: 0 }}
-					exit={{ opacity: 0, y: -24 }}
+					initial={{ opacity: 0, y: -24 }}
+					animate={{ opacity: 1, y: 0 }}
+					exit={{ opacity: 0, y: 24 }}
 					transition={{ duration: 0.4, ease: "easeInOut" }}
 				>
-					<div className={`w-full max-w-[600px] flex flex-col gap-6`}>
-						<Tabs
-							defaultValue={modelProvider}
-							onValueChange={handleSetModelProvider}
-						>
-							<TabsList className="mb-4">
-								<TabsTrigger value="openai">
-									<TabTrigger
-										selected={modelProvider === "openai"}
-										isLoading={isLoadingModels}
-									>
-										<div
-											className={cn(
-												"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
-												modelProvider === "openai" ? "bg-white" : "bg-muted",
-											)}
-										>
-											<OpenAILogo
-												className={cn(
-													"w-4 h-4 shrink-0",
-													modelProvider === "openai"
-														? "text-black"
-														: "text-muted-foreground",
-												)}
-											/>
-										</div>
-										OpenAI
-									</TabTrigger>
-								</TabsTrigger>
-								<TabsTrigger value="watsonx">
-									<TabTrigger
-										selected={modelProvider === "watsonx"}
-										isLoading={isLoadingModels}
-									>
-										<div
-											className={cn(
-												"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
-												modelProvider === "watsonx"
-													? "bg-[#1063FE]"
-													: "bg-muted",
-											)}
-										>
-											<IBMLogo
-												className={cn(
-													"w-4 h-4 shrink-0",
-													modelProvider === "watsonx"
-														? "text-white"
-														: "text-muted-foreground",
-												)}
-											/>
-										</div>
-										IBM watsonx.ai
-									</TabTrigger>
-								</TabsTrigger>
-								<TabsTrigger value="ollama">
-									<TabTrigger
-										selected={modelProvider === "ollama"}
-										isLoading={isLoadingModels}
-									>
-										<div
-											className={cn(
-												"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
-												modelProvider === "ollama" ? "bg-white" : "bg-muted",
-											)}
-										>
-											<OllamaLogo
-												className={cn(
-													"w-4 h-4 shrink-0",
-													modelProvider === "ollama"
-														? "text-black"
-														: "text-muted-foreground",
-												)}
-											/>
-										</div>
-										Ollama
-									</TabTrigger>
-								</TabsTrigger>
-							</TabsList>
-							<TabsContent value="openai">
-								<OpenAIOnboarding
-									setSettings={setSettings}
-									sampleDataset={sampleDataset}
-									setSampleDataset={setSampleDataset}
-									setIsLoadingModels={setIsLoadingModels}
-								/>
-							</TabsContent>
-							<TabsContent value="watsonx">
-								<IBMOnboarding
-									setSettings={setSettings}
-									sampleDataset={sampleDataset}
-									setSampleDataset={setSampleDataset}
-									setIsLoadingModels={setIsLoadingModels}
-								/>
-							</TabsContent>
-							<TabsContent value="ollama">
-								<OllamaOnboarding
-									setSettings={setSettings}
-									sampleDataset={sampleDataset}
-									setSampleDataset={setSampleDataset}
-									setIsLoadingModels={setIsLoadingModels}
-								/>
-							</TabsContent>
-						</Tabs>
-
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<div>
-									<Button
-										size="sm"
-										onClick={handleComplete}
-										disabled={!isComplete || isLoadingModels}
-										loading={onboardingMutation.isPending}
-									>
-										<span className="select-none">Complete</span>
-									</Button>
-								</div>
-							</TooltipTrigger>
-							{!isComplete && (
-								<TooltipContent>
-									{isLoadingModels
-										? "Loading models..."
-										: !!settings.llm_model &&
-												!!settings.embedding_model &&
-												!isDoclingHealthy
-											? "docling-serve must be running to continue"
-											: "Please fill in all required fields"}
-								</TooltipContent>
+					<div className={`w-full max-w-[600px] flex flex-col`}>
+						<AnimatePresence mode="wait">
+							{error && (
+								<motion.div
+									key="error"
+									initial={{ opacity: 1, y: 0, height: "auto" }}
+									exit={{ opacity: 0, y: -10, height: 0 }}
+								>
+									<div className="pb-6 flex items-center gap-4">
+										<X className="w-4 h-4 text-destructive shrink-0" />
+										<span className="text-mmd text-muted-foreground">
+											{error}
+										</span>
+									</div>
+								</motion.div>
 							)}
-						</Tooltip>
+						</AnimatePresence>
+						<div className={`w-full flex flex-col gap-6`}>
+							<Tabs
+								defaultValue={modelProvider}
+								onValueChange={handleSetModelProvider}
+							>
+								<TabsList className="mb-4">
+									<TabsTrigger
+										value="openai"
+										className={cn(
+											error &&
+												modelProvider === "openai" &&
+												"data-[state=active]:border-destructive",
+										)}
+									>
+										<TabTrigger
+											selected={modelProvider === "openai"}
+											isLoading={isLoadingModels}
+										>
+											<div
+												className={cn(
+													"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
+													modelProvider === "openai" ? "bg-white" : "bg-muted",
+												)}
+											>
+												<OpenAILogo
+													className={cn(
+														"w-4 h-4 shrink-0",
+														modelProvider === "openai"
+															? "text-black"
+															: "text-muted-foreground",
+													)}
+												/>
+											</div>
+											OpenAI
+										</TabTrigger>
+									</TabsTrigger>
+									<TabsTrigger
+										value="watsonx"
+										className={cn(
+											error &&
+												modelProvider === "watsonx" &&
+												"data-[state=active]:border-destructive",
+										)}
+									>
+										<TabTrigger
+											selected={modelProvider === "watsonx"}
+											isLoading={isLoadingModels}
+										>
+											<div
+												className={cn(
+													"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
+													modelProvider === "watsonx"
+														? "bg-[#1063FE]"
+														: "bg-muted",
+												)}
+											>
+												<IBMLogo
+													className={cn(
+														"w-4 h-4 shrink-0",
+														modelProvider === "watsonx"
+															? "text-white"
+															: "text-muted-foreground",
+													)}
+												/>
+											</div>
+											IBM watsonx.ai
+										</TabTrigger>
+									</TabsTrigger>
+									<TabsTrigger
+										value="ollama"
+										className={cn(
+											error &&
+												modelProvider === "ollama" &&
+												"data-[state=active]:border-destructive",
+										)}
+									>
+										<TabTrigger
+											selected={modelProvider === "ollama"}
+											isLoading={isLoadingModels}
+										>
+											<div
+												className={cn(
+													"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
+													modelProvider === "ollama" ? "bg-white" : "bg-muted",
+												)}
+											>
+												<OllamaLogo
+													className={cn(
+														"w-4 h-4 shrink-0",
+														modelProvider === "ollama"
+															? "text-black"
+															: "text-muted-foreground",
+													)}
+												/>
+											</div>
+											Ollama
+										</TabTrigger>
+									</TabsTrigger>
+								</TabsList>
+								<TabsContent value="openai">
+									<OpenAIOnboarding
+										setSettings={setSettings}
+										sampleDataset={sampleDataset}
+										setSampleDataset={setSampleDataset}
+										setIsLoadingModels={setIsLoadingModels}
+									/>
+								</TabsContent>
+								<TabsContent value="watsonx">
+									<IBMOnboarding
+										setSettings={setSettings}
+										sampleDataset={sampleDataset}
+										setSampleDataset={setSampleDataset}
+										setIsLoadingModels={setIsLoadingModels}
+									/>
+								</TabsContent>
+								<TabsContent value="ollama">
+									<OllamaOnboarding
+										setSettings={setSettings}
+										sampleDataset={sampleDataset}
+										setSampleDataset={setSampleDataset}
+										setIsLoadingModels={setIsLoadingModels}
+									/>
+								</TabsContent>
+							</Tabs>
+
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<div>
+										<Button
+											size="sm"
+											onClick={handleComplete}
+											disabled={!isComplete || isLoadingModels}
+											loading={onboardingMutation.isPending}
+										>
+											<span className="select-none">Complete</span>
+										</Button>
+									</div>
+								</TooltipTrigger>
+								{!isComplete && (
+									<TooltipContent>
+										{isLoadingModels
+											? "Loading models..."
+											: !!settings.llm_model &&
+													!!settings.embedding_model &&
+													!isDoclingHealthy
+												? "docling-serve must be running to continue"
+												: "Please fill in all required fields"}
+									</TooltipContent>
+								)}
+							</Tooltip>
+						</div>
 					</div>
 				</motion.div>
 			) : (
@@ -321,6 +372,7 @@ const OnboardingCard = ({
 					key="provider-steps"
 					initial={{ opacity: 0, y: 24 }}
 					animate={{ opacity: 1, y: 0 }}
+					exit={{ opacity: 0, y: 24 }}
 					transition={{ duration: 0.4, ease: "easeInOut" }}
 				>
 					<AnimatedProviderSteps
@@ -329,6 +381,7 @@ const OnboardingCard = ({
 						setCurrentStep={setCurrentStep}
 						steps={STEP_LIST}
 						processingStartTime={processingStartTime}
+						hasError={!!error}
 					/>
 				</motion.div>
 			)}
