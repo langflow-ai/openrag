@@ -15,13 +15,11 @@ export function IBMOnboarding({
   sampleDataset,
   setSampleDataset,
   setIsLoadingModels,
-  onValidationChange,
 }: {
   setSettings: (settings: OnboardingVariables) => void;
   sampleDataset: boolean;
   setSampleDataset: (dataset: boolean) => void;
   setIsLoadingModels?: (isLoading: boolean) => void;
-  onValidationChange?: (validation: { hasError: boolean }) => void;
 }) {
   const [endpoint, setEndpoint] = useState("https://us-south.ml.cloud.ibm.com");
   const [apiKey, setApiKey] = useState("");
@@ -75,7 +73,7 @@ export function IBMOnboarding({
           apiKey: debouncedApiKey,
           projectId: debouncedProjectId,
         }
-      : undefined
+      : undefined,
   );
 
   // Use custom hook for model selection logic
@@ -105,15 +103,8 @@ export function IBMOnboarding({
       languageModel,
       embeddingModel,
     },
-    setSettings
+    setSettings,
   );
-
-  // Notify parent about validation state changes
-  useEffect(() => {
-    onValidationChange?.({
-      hasError: !!modelsError,
-    });
-  }, [modelsError, onValidationChange]);
 
   return (
     <>

@@ -15,52 +15,50 @@ export function OpenAIOnboarding({
 	sampleDataset,
 	setSampleDataset,
 	setIsLoadingModels,
-	onValidationChange,
 }: {
 	setSettings: (settings: OnboardingVariables) => void;
 	sampleDataset: boolean;
 	setSampleDataset: (dataset: boolean) => void;
 	setIsLoadingModels?: (isLoading: boolean) => void;
-	onValidationChange?: (validation: { getFromEnv: boolean; hasError: boolean }) => void;
 }) {
-  const [apiKey, setApiKey] = useState("");
-  const [getFromEnv, setGetFromEnv] = useState(true);
-  const debouncedApiKey = useDebouncedValue(apiKey, 500);
+	const [apiKey, setApiKey] = useState("");
+	const [getFromEnv, setGetFromEnv] = useState(true);
+	const debouncedApiKey = useDebouncedValue(apiKey, 500);
 
-  // Fetch models from API when API key is provided
-  const {
-    data: modelsData,
-    isLoading: isLoadingModels,
-    error: modelsError,
-  } = useGetOpenAIModelsQuery(
-    getFromEnv
-      ? { apiKey: "" }
-      : debouncedApiKey
-      ? { apiKey: debouncedApiKey }
-      : undefined,
-    { enabled: debouncedApiKey !== "" || getFromEnv }
-  );
-  // Use custom hook for model selection logic
-  const {
-    languageModel,
-    embeddingModel,
-    setLanguageModel,
-    setEmbeddingModel,
-    languageModels,
-    embeddingModels,
-  } = useModelSelection(modelsData);
-  const handleSampleDatasetChange = (dataset: boolean) => {
-    setSampleDataset(dataset);
-  };
+	// Fetch models from API when API key is provided
+	const {
+		data: modelsData,
+		isLoading: isLoadingModels,
+		error: modelsError,
+	} = useGetOpenAIModelsQuery(
+		getFromEnv
+			? { apiKey: "" }
+			: debouncedApiKey
+				? { apiKey: debouncedApiKey }
+				: undefined,
+		{ enabled: debouncedApiKey !== "" || getFromEnv },
+	);
+	// Use custom hook for model selection logic
+	const {
+		languageModel,
+		embeddingModel,
+		setLanguageModel,
+		setEmbeddingModel,
+		languageModels,
+		embeddingModels,
+	} = useModelSelection(modelsData);
+	const handleSampleDatasetChange = (dataset: boolean) => {
+		setSampleDataset(dataset);
+	};
 
-  const handleGetFromEnvChange = (fromEnv: boolean) => {
-    setGetFromEnv(fromEnv);
-    if (fromEnv) {
-      setApiKey("");
-    }
-    setLanguageModel("");
-    setEmbeddingModel("");
-  };
+	const handleGetFromEnvChange = (fromEnv: boolean) => {
+		setGetFromEnv(fromEnv);
+		if (fromEnv) {
+			setApiKey("");
+		}
+		setLanguageModel("");
+		setEmbeddingModel("");
+	};
 
 	useEffect(() => {
 		setIsLoadingModels?.(isLoadingModels);
@@ -76,14 +74,6 @@ export function OpenAIOnboarding({
 		},
 		setSettings,
 	);
-
-	// Notify parent about validation state changes
-	useEffect(() => {
-		onValidationChange?.({
-		  getFromEnv,
-		  hasError: !!modelsError,
-		});
-	  }, [getFromEnv, modelsError, onValidationChange]);
 	
 	return (
 		<>
