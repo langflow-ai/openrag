@@ -182,7 +182,7 @@ class ModelsService:
                                 {
                                     "value": model_name,
                                     "label": model_name,
-                                    "default": False,
+                                    "default": "nomic-embed-text" in model_name.lower(),
                                 }
                             )
                         elif not is_embedding and has_completion and has_tools:
@@ -191,7 +191,7 @@ class ModelsService:
                                 {
                                     "value": model_name,
                                     "label": model_name,
-                                    "default": "llama3" in model_name.lower(),
+                                    "default": "gpt-oss" in model_name.lower(),
                                 }
                             )
                     except Exception as e:

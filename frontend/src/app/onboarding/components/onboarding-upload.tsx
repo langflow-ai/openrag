@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { type ChangeEvent, useRef, useState } from "react";
 import { AnimatedProviderSteps } from "@/app/onboarding/components/animated-provider-steps";
 import { Button } from "@/components/ui/button";
-import { uploadFileForContext } from "@/lib/upload-utils";
+import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
 	onComplete: () => void;
@@ -29,7 +29,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 		setIsUploading(true);
 		try {
 			setCurrentStep(0);
-			await uploadFileForContext(file);
+			await uploadFile(file, true);
 			console.log("Document uploaded successfully");
 		} catch (error) {
 			console.error("Upload failed", (error as Error).message);
