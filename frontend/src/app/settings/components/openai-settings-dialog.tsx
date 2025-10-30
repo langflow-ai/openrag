@@ -32,7 +32,7 @@ const OpenAISettingsDialog = ({
   });
 
   const methods = useForm<OpenAISettingsFormData>({
-    mode: "onChange",
+    mode: "onSubmit",
     defaultValues: {
       apiKey: "",
       llmModel: "",

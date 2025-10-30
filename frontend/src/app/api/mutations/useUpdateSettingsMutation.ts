@@ -60,14 +60,13 @@ export const useUpdateSettingsMutation = (
   return useMutation({
     mutationFn: updateSettings,
     onSuccess: (...args) => {
-      // Invalidate settings query
       queryClient.invalidateQueries({ 
         queryKey: ["settings"], 
         refetchType: "all"
       });
-      // Call the custom onSuccess if provided
       options?.onSuccess?.(...args);
     },
     onError: options?.onError,
+    onSettled: options?.onSettled,
   });
 };

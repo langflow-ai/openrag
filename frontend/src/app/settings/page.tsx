@@ -819,7 +819,7 @@ function KnowledgeSourcesPage() {
       <div className="space-y-6">
         <div>
           <h2 className="text-lg font-semibold tracking-tight mb-2">
-            Model Provider
+            Model Providers
           </h2>
         </div>
         <ModelProviders />

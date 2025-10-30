@@ -12,6 +12,7 @@ import OpenAISettingsDialog from "./openai-settings-dialog";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
 import WatsonxSettingsDialog from "./watsonx-settings-dialog";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 export const ModelProviders = () => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
@@ -20,26 +21,34 @@ export const ModelProviders = () => {
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
 
   const modelProvidersMap: Record<
     ModelProvider,
-    { name: string; logo: ReactNode; logoBgClass: string }
+    {
+      name: string;
+      logo: (props: React.SVGProps<SVGSVGElement>) => ReactNode;
+      logoColor: string;
+      logoBgColor: string;
+    }
   > = {
     openai: {
       name: "OpenAI",
-      logo: <OpenAILogo className="text-black" />,
-      logoBgClass: "bg-white",
+      logo: OpenAILogo,
+      logoColor: "text-black",
+      logoBgColor: "bg-white",
     },
     ollama: {
       name: "Ollama",
-      logo: <OllamaLogo className="text-black" />,
-      logoBgClass: "bg-white",
+      logo: OllamaLogo,
+      logoColor: "text-black",
+      logoBgColor: "bg-white",
     },
     watsonx: {
       name: "IBM watsonx.ai",
-      logo: <IBMLogo className="text-white" />,
-      logoBgClass: "bg-[#1063FE]",
+      logo: IBMLogo,
+      logoColor: "text-white",
+      logoBgColor: "bg-[#1063FE]",
     },
   };
 
@@ -57,7 +66,12 @@ export const ModelProviders = () => {
     <>
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {sortedProviderKeys.map((providerKey) => {
-          const provider = modelProvidersMap[providerKey];
+          const {
+            name,
+            logo: Logo,
+            logoColor,
+            logoBgColor,
+          } = modelProvidersMap[providerKey];
           const isActive = providerKey === currentProviderKey;
 
           return (
@@ -65,7 +79,7 @@ export const ModelProviders = () => {
               key={providerKey}
               className={cn(
                 "relative flex flex-col",
-                !isActive && "opacity-60"
+                !isActive && "text-muted-foreground"
               )}
             >
               <CardHeader>
@@ -75,14 +89,20 @@ export const ModelProviders = () => {
                       <div
                         className={cn(
                           "w-8 h-8 rounded flex items-center justify-center border",
-                          provider.logoBgClass
+                          isActive ? logoBgColor : "bg-muted"
                         )}
                       >
-                        {provider.logo}
+                        {
+                          <Logo
+                            className={
+                              isActive ? logoColor : "text-muted-foreground"
+                            }
+                          />
+                        }
                       </div>
                     </div>
                     <CardTitle className="flex flex-row items-center gap-2">
-                      {provider.name}
+                      {name}
                       {isActive && (
                         <div className="h-2 w-2 bg-accent-emerald-foreground rounded-full" />
                       )}
@@ -91,25 +111,44 @@ export const ModelProviders = () => {
                 </div>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col justify-end space-y-4">
-                {isActive && (
-                  <Button variant="outline" onClick={() => setDialogOpen(true)}>
+                {isActive ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setDialogOpen(providerKey)}
+                  >
                     Edit Setup
                   </Button>
+                ) : (
+                  <p>
+                    See{" "}
+                    <Link
+                      href="https://docs.openr.ag/install/#application-onboarding"
+                      className="text-accent-purple-foreground"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Application onboarding docs
+                    </Link>{" "}
+                    for configuration detail.
+                  </p>
                 )}
               </CardContent>
             </Card>
           );
         })}
       </div>
-      {currentProviderKey === "openai" && (
-        <OpenAISettingsDialog open={dialogOpen} setOpen={setDialogOpen} />
-      )}
-      {currentProviderKey === "ollama" && (
-        <OllamaSettingsDialog open={dialogOpen} setOpen={setDialogOpen} />
-      )}
-      {currentProviderKey === "watsonx" && (
-        <WatsonxSettingsDialog open={dialogOpen} setOpen={setDialogOpen} />
-      )}
+      <OpenAISettingsDialog
+        open={dialogOpen === "openai"}
+        setOpen={() => setDialogOpen(undefined)}
+      />
+      <OllamaSettingsDialog
+        open={dialogOpen === "ollama"}
+        setOpen={() => setDialogOpen(undefined)}
+      />
+      <WatsonxSettingsDialog
+        open={dialogOpen === "watsonx"}
+        setOpen={() => setDialogOpen(undefined)}
+      />
     </>
   );
 };

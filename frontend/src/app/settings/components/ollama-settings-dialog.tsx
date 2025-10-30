@@ -32,7 +32,7 @@ const OllamaSettingsDialog = ({
   });
 
   const methods = useForm<OllamaSettingsFormData>({
-    mode: "onChange",
+    mode: "onSubmit",
     defaultValues: {
       endpoint: "",
       llmModel: "",
@@ -40,7 +40,7 @@ const OllamaSettingsDialog = ({
     },
   });
 
-  const { handleSubmit, reset, formState } = methods;
+  const { handleSubmit, reset } = methods;
 
   // Initialize form from settings when dialog opens or settings change
   useEffect(() => {
