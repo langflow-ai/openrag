@@ -10,18 +10,6 @@ logger = get_logger(__name__)
 class ModelsService:
     """Service for fetching available models from different AI providers"""
 
-    OLLAMA_EMBEDDING_MODELS = [
-        "nomic-embed-text",
-        "mxbai-embed-large",
-        "snowflake-arctic-embed",
-        "all-minilm",
-        "bge-m3",
-        "bge-large",
-        "paraphrase-multilingual",
-        "granite-embedding",
-        "jina-embeddings-v2-base-en",
-    ]
-
     OPENAI_TOOL_CALLING_MODELS = [
         "gpt-5",
         "gpt-5-mini",
