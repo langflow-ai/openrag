@@ -1,5 +1,6 @@
 import httpx
 from typing import Dict, List
+from api.provider_validation import test_embedding
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -8,18 +9,6 @@ logger = get_logger(__name__)
 
 class ModelsService:
     """Service for fetching available models from different AI providers"""
-
-    OLLAMA_EMBEDDING_MODELS = [
-        "nomic-embed-text",
-        "mxbai-embed-large",
-        "snowflake-arctic-embed",
-        "all-minilm",
-        "bge-m3",
-        "bge-large",
-        "paraphrase-multilingual",
-        "granite-embedding",
-        "jina-embeddings-v2-base-en",
-    ]
 
     OPENAI_TOOL_CALLING_MODELS = [
         "gpt-5",
@@ -171,10 +160,12 @@ class ModelsService:
                         has_tools = TOOL_CALLING_CAPABILITY in capabilities
 
                         # Check if it's an embedding model
-                        is_embedding = any(
-                            embed_model in model_name.lower()
-                            for embed_model in self.OLLAMA_EMBEDDING_MODELS
-                        )
+                        try:
+                            await test_embedding("ollama", endpoint=endpoint, embedding_model=model_name)
+                            is_embedding = True
+                        except Exception as e:
+                            logger.warning(f"Failed to test embedding for model {model_name}: {str(e)}")
+                            is_embedding = False
 
                         if is_embedding:
                             # Embedding models only need completion capability
