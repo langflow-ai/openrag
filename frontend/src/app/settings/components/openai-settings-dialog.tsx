@@ -7,9 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useEffect } from "react";
 import { FormProvider, useForm } from "react-hook-form";
-import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { toast } from "sonner";
 import {
   OpenAISettingsForm,
@@ -17,6 +15,7 @@ import {
 } from "./openai-settings-form";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
+import { useOnboardingMutation } from "@/app/api/mutations/useOnboardingMutation";
 
 const OpenAISettingsDialog = ({
   open,
@@ -31,29 +30,22 @@ const OpenAISettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
+  const isOpenAIConfigured = settings.provider?.model_provider === "openai";
+
   const methods = useForm<OpenAISettingsFormData>({
-    mode: "onSubmit",
+    mode: "onChange",
     defaultValues: {
       apiKey: "",
-      llmModel: "",
-      embeddingModel: "",
+      llmModel: isOpenAIConfigured ? settings.agent?.llm_model : "",
+      embeddingModel: isOpenAIConfigured
+        ? settings.knowledge?.embedding_model
+        : "",
     },
   });
 
-  const { handleSubmit, reset, formState } = methods;
+  const { handleSubmit } = methods;
 
-  // Initialize form from settings when dialog opens or settings change
-  useEffect(() => {
-    if (open && settings) {
-      reset({
-        apiKey: "", // Never pre-fill API key for security
-        llmModel: settings.agent?.llm_model || "",
-        embeddingModel: settings.knowledge?.embedding_model || "",
-      });
-    }
-  }, [open, settings, reset]);
-
-  const updateSettingsMutation = useUpdateSettingsMutation({
+  const onboardingMutation = useOnboardingMutation({
     onSuccess: () => {
       toast.success("OpenAI settings updated successfully");
       setOpen(false);
@@ -83,7 +75,7 @@ const OpenAISettingsDialog = ({
     }
 
     // Submit the update
-    updateSettingsMutation.mutate(payload);
+    onboardingMutation.mutate(payload);
   };
 
   return (
@@ -100,7 +92,7 @@ const OpenAISettingsDialog = ({
               </DialogTitle>
             </DialogHeader>
 
-            <OpenAISettingsForm />
+            <OpenAISettingsForm isCurrentProvider={isOpenAIConfigured} />
 
             <DialogFooter className="mt-4">
               <Button
@@ -110,11 +102,8 @@ const OpenAISettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={updateSettingsMutation.isPending}
-              >
-                {updateSettingsMutation.isPending ? "Saving..." : "Save"}
+              <Button type="submit" disabled={onboardingMutation.isPending}>
+                {onboardingMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
           </form>

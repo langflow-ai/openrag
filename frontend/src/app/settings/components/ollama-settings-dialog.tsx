@@ -7,9 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useEffect } from "react";
 import { FormProvider, useForm } from "react-hook-form";
-import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { toast } from "sonner";
 import {
   OllamaSettingsForm,
@@ -17,6 +15,7 @@ import {
 } from "./ollama-settings-form";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
+import { useOnboardingMutation } from "@/app/api/mutations/useOnboardingMutation";
 
 const OllamaSettingsDialog = ({
   open,
@@ -31,29 +30,24 @@ const OllamaSettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
+  const isOllamaConfigured = settings.provider?.model_provider === "ollama";
+
   const methods = useForm<OllamaSettingsFormData>({
-    mode: "onSubmit",
+    mode: "onChange",
     defaultValues: {
-      endpoint: "",
-      llmModel: "",
-      embeddingModel: "",
+      endpoint: isOllamaConfigured
+        ? settings.provider?.endpoint
+        : "http://localhost:11434",
+      llmModel: isOllamaConfigured ? settings.agent?.llm_model : "",
+      embeddingModel: isOllamaConfigured
+        ? settings.knowledge?.embedding_model
+        : "",
     },
   });
 
-  const { handleSubmit, reset } = methods;
+  const { handleSubmit } = methods;
 
-  // Initialize form from settings when dialog opens or settings change
-  useEffect(() => {
-    if (open && settings) {
-      reset({
-        endpoint: settings.provider?.endpoint || "http://localhost:11434",
-        llmModel: settings.agent?.llm_model || "",
-        embeddingModel: settings.knowledge?.embedding_model || "",
-      });
-    }
-  }, [open, settings, reset]);
-
-  const updateSettingsMutation = useUpdateSettingsMutation({
+  const onboardingMutation = useOnboardingMutation({
     onSuccess: () => {
       toast.success("Ollama settings updated successfully");
       setOpen(false);
@@ -67,7 +61,7 @@ const OllamaSettingsDialog = ({
 
   const onSubmit = (data: OllamaSettingsFormData) => {
     // Submit the update
-    updateSettingsMutation.mutate({
+    onboardingMutation.mutate({
       endpoint: data.endpoint,
       model_provider: "ollama",
       llm_model: data.llmModel,
@@ -99,8 +93,8 @@ const OllamaSettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={updateSettingsMutation.isPending}>
-                {updateSettingsMutation.isPending ? "Saving..." : "Save"}
+              <Button type="submit" disabled={onboardingMutation.isPending}>
+                {onboardingMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
           </form>

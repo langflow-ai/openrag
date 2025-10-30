@@ -1,19 +1,13 @@
 import { useEffect, useState } from "react";
-import { useFormContext, Controller } from "react-hook-form";
+import { useFormContext } from "react-hook-form";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useGetOpenAIModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useDebouncedValue } from "@/lib/debounce";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { AnimatedConditional } from "@/components/animated-conditional";
 import OpenAILogo from "@/components/logo/openai-logo";
+import { ModelSelectors } from "./model-selectors";
 
 export interface OpenAISettingsFormData {
   apiKey: string;
@@ -21,10 +15,13 @@ export interface OpenAISettingsFormData {
   embeddingModel: string;
 }
 
-export function OpenAISettingsForm() {
+export function OpenAISettingsForm({
+  isCurrentProvider = false,
+}: {
+  isCurrentProvider: boolean;
+}) {
   const [useExistingKey, setUseExistingKey] = useState(true);
   const {
-    control,
     register,
     watch,
     setValue,
@@ -32,7 +29,6 @@ export function OpenAISettingsForm() {
   } = useFormContext<OpenAISettingsFormData>();
 
   const apiKey = watch("apiKey");
-
   const debouncedApiKey = useDebouncedValue(apiKey, 500);
 
   // Handle switch change
@@ -44,6 +40,11 @@ export function OpenAISettingsForm() {
     }
   };
 
+  const shouldFetchModels = isCurrentProvider
+    ? useExistingKey
+      ? true
+      : !!debouncedApiKey
+    : !!debouncedApiKey;
 
   const {
     data: modelsData,
@@ -52,35 +53,37 @@ export function OpenAISettingsForm() {
   } = useGetOpenAIModelsQuery(
     {
       apiKey: useExistingKey ? "" : debouncedApiKey,
+    },
+    {
+      enabled: shouldFetchModels,
     }
   );
-
-  useEffect(() => {
-    if (modelsError || isLoadingModels) {
-      setValue("llmModel", "");
-      setValue("embeddingModel", "");
-    }
-  }, [modelsError, isLoadingModels, setValue]);
 
   const languageModels = modelsData?.language_models || [];
   const embeddingModels = modelsData?.embedding_models || [];
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <LabelWrapper
-          label="Use existing OpenAI API key"
-          id="use-existing-key"
-          description="Reuse the key from your environment config. Turn off to enter a different key."
-          flex
-        >
-          <Switch
-            checked={useExistingKey}
-            onCheckedChange={handleUseExistingKeyChange}
-          />
-        </LabelWrapper>
-      </div>
-      <AnimatedConditional isOpen={!useExistingKey} duration={0.2} vertical>
+      {isCurrentProvider && (
+        <div className="space-y-2">
+          <LabelWrapper
+            label="Use existing OpenAI API key"
+            id="use-existing-key"
+            description="Reuse the key from your environment config. Turn off to enter a different key."
+            flex
+          >
+            <Switch
+              checked={useExistingKey}
+              onCheckedChange={handleUseExistingKeyChange}
+            />
+          </LabelWrapper>
+        </div>
+      )}
+      <AnimatedConditional
+        isOpen={!isCurrentProvider || !useExistingKey}
+        duration={0.2}
+        vertical
+      >
         <div className="space-y-2">
           <LabelWrapper
             label="OpenAI API key"
@@ -90,7 +93,7 @@ export function OpenAISettingsForm() {
           >
             <Input
               {...register("apiKey", {
-                required: !useExistingKey ? "API key is required" : false,
+                required: !isCurrentProvider || !useExistingKey ? "API key is required" : false,
               })}
               className={
                 errors.apiKey || modelsError ? "!border-destructive" : ""
@@ -106,9 +109,7 @@ export function OpenAISettingsForm() {
         </div>
       </AnimatedConditional>
       {isLoadingModels && (
-        <p className="text-sm text-muted-foreground">
-          Validating API key...
-        </p>
+        <p className="text-sm text-muted-foreground">Validating API key...</p>
       )}
       {modelsError && (
         <p className="text-sm text-destructive">
@@ -116,100 +117,12 @@ export function OpenAISettingsForm() {
         </p>
       )}
 
-      <div className="space-y-2">
-        <LabelWrapper
-          label="Embedding model"
-          helperText="Model used for knowledge ingest and retrieval"
-          id="embedding-model"
-          required={true}
-        >
-          <Controller
-            control={control}
-            name="embeddingModel"
-            rules={{ required: "Embedding model is required" }}
-            render={({ field }) => (
-              <Select
-                value={field.value}
-                onValueChange={field.onChange}
-                disabled={isLoadingModels || !embeddingModels.length}
-              >
-                <SelectTrigger id="embedding-model">
-                  <div className="flex items-center gap-2">
-                    <OpenAILogo className="w-4 h-4" />
-                    <SelectValue
-                      placeholder={
-                        isLoadingModels
-                          ? "Loading models..."
-                          : embeddingModels.length
-                          ? "Select an embedding model"
-                          : "No embedding models found"
-                      }
-                    />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {embeddingModels.map((model) => (
-                    <SelectItem key={model.value} value={model.value}>
-                      {model.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </LabelWrapper>
-        {errors.embeddingModel && (
-          <p className="text-sm text-destructive">
-            {errors.embeddingModel.message}
-          </p>
-        )}
-      </div>
-      <div className="space-y-2">
-        <LabelWrapper
-          label="Language model"
-          helperText="Model used for chat"
-          id="language-model"
-          required={true}
-        >
-          <Controller
-            control={control}
-            name="llmModel"
-            rules={{ required: "Language model is required" }}
-            render={({ field }) => (
-              <Select
-                value={field.value}
-                onValueChange={field.onChange}
-                disabled={isLoadingModels || !languageModels.length}
-              >
-                <SelectTrigger id="language-model">
-                  <div className="flex items-center gap-2">
-                    <OpenAILogo className="w-4 h-4" />
-                    <SelectValue
-                      placeholder={
-                        isLoadingModels
-                          ? "Loading models..."
-                          : languageModels.length
-                          ? "Select a language model"
-                          : "No language models found"
-                      }
-                    />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {languageModels.map((model) => (
-                    <SelectItem key={model.value} value={model.value}>
-                      {model.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </LabelWrapper>
-        {errors.llmModel && (
-          <p className="text-sm text-destructive">{errors.llmModel.message}</p>
-        )}
-      </div>
+      <ModelSelectors
+        languageModels={languageModels}
+        embeddingModels={embeddingModels}
+        isLoadingModels={isLoadingModels}
+        logo={<OpenAILogo className="w-4 h-4" />}
+      />
     </div>
   );
 }

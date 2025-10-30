@@ -119,18 +119,21 @@ export const ModelProviders = () => {
                     Edit Setup
                   </Button>
                 ) : (
-                  <p>
-                    See{" "}
-                    <Link
-                      href="https://docs.openr.ag/install/#application-onboarding"
-                      className="text-accent-purple-foreground"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Application onboarding docs
-                    </Link>{" "}
-                    for configuration detail.
-                  </p>
+                  // <p>
+                  //   See{" "}
+                  //   <Link
+                  //     href="https://docs.openr.ag/install/#application-onboarding"
+                  //     className="text-accent-purple-foreground"
+                  //     target="_blank"
+                  //     rel="noopener noreferrer"
+                  //   >
+                  //     Application onboarding docs
+                  //   </Link>{" "}
+                  //   for configuration detail.
+                  // </p>
+                  <Button onClick={() => setDialogOpen(providerKey)}>
+                    Switch to {name}
+                  </Button>
                 )}
               </CardContent>
             </Card>

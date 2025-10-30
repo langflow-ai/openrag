@@ -7,9 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useEffect } from "react";
 import { FormProvider, useForm } from "react-hook-form";
-import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { toast } from "sonner";
 import {
   WatsonxSettingsForm,
@@ -17,6 +15,7 @@ import {
 } from "./watsonx-settings-form";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
+import { useOnboardingMutation } from "@/app/api/mutations/useOnboardingMutation";
 
 const WatsonxSettingsDialog = ({
   open,
@@ -31,34 +30,26 @@ const WatsonxSettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
+  const isWatsonxConfigured = settings.provider?.model_provider === "watsonx";
+
   const methods = useForm<WatsonxSettingsFormData>({
-    mode: "onSubmit",
+    mode: "onChange",
     defaultValues: {
-      endpoint: "",
+      endpoint: isWatsonxConfigured
+        ? settings.provider?.endpoint
+        : "https://us-south.ml.cloud.ibm.com",
       apiKey: "",
-      projectId: "",
-      llmModel: "",
-      embeddingModel: "",
+      projectId: isWatsonxConfigured ? settings.provider?.project_id : "",
+      llmModel: isWatsonxConfigured ? settings.agent?.llm_model : "",
+      embeddingModel: isWatsonxConfigured
+        ? settings.knowledge?.embedding_model
+        : "",
     },
   });
 
-  const { handleSubmit, reset } = methods;
+  const { handleSubmit } = methods;
 
-  // Initialize form from settings when dialog opens or settings change
-  useEffect(() => {
-    if (open && settings) {
-      reset({
-        endpoint:
-          settings.provider?.endpoint || "https://us-south.ml.cloud.ibm.com",
-        apiKey: "",
-        projectId: settings.provider?.project_id || "",
-        llmModel: settings.agent?.llm_model || "",
-        embeddingModel: settings.knowledge?.embedding_model || "",
-      });
-    }
-  }, [open, settings, reset]);
-
-  const updateSettingsMutation = useUpdateSettingsMutation({
+  const onboardingMutation = useOnboardingMutation({
     onSuccess: () => {
       toast.success("watsonx settings updated successfully");
       setOpen(false);
@@ -92,7 +83,7 @@ const WatsonxSettingsDialog = ({
     }
 
     // Submit the update
-    updateSettingsMutation.mutate(payload);
+    onboardingMutation.mutate(payload);
   };
 
   return (
@@ -109,7 +100,7 @@ const WatsonxSettingsDialog = ({
               </DialogTitle>
             </DialogHeader>
 
-            <WatsonxSettingsForm />
+            <WatsonxSettingsForm isCurrentProvider={isWatsonxConfigured} />
 
             <DialogFooter className="mt-4">
               <Button
@@ -119,8 +110,8 @@ const WatsonxSettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={updateSettingsMutation.isPending}>
-                {updateSettingsMutation.isPending ? "Saving..." : "Save"}
+              <Button type="submit" disabled={onboardingMutation.isPending}>
+                {onboardingMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
           </form>
