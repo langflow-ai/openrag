@@ -279,7 +279,7 @@ class AppClients:
         self.opensearch = None
         self.langflow_client = None
         self.langflow_http_client = None
-        self.patched_async_client = None
+        self._patched_async_client = None  # Private attribute
         self.converter = None
 
     async def initialize(self):
@@ -318,8 +318,21 @@ class AppClients:
                 "No Langflow client initialized yet, will attempt later on first use"
             )
 
-        # Initialize patched OpenAI client
-        self.patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
+        # Initialize patched OpenAI client if API key is available
+        # This allows the app to start even if OPENAI_API_KEY is not set yet
+        # (e.g., when it will be provided during onboarding)
+        # The property will handle lazy initialization if needed later
+        if self._patched_async_client is None:
+            try:
+                openai_key = os.getenv("OPENAI_API_KEY")
+                if openai_key:
+                    self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
+                    logger.info("OpenAI client initialized with API key from environment")
+                else:
+                    logger.info("OpenAI API key not found in environment - will be initialized on first use if needed")
+            except Exception as e:
+                logger.warning("Failed to initialize OpenAI client", error=str(e))
+                self._patched_async_client = None
 
         # Initialize document converter
         self.converter = create_document_converter(ocr_engine=DOCLING_OCR_ENGINE)
@@ -349,6 +362,41 @@ class AppClients:
                 )
                 self.langflow_client = None
         return self.langflow_client
+
+    @property
+    def patched_async_client(self):
+        """
+        Property that ensures OpenAI client is initialized on first access.
+        This allows lazy initialization so the app can start without an API key.
+        """
+        if self._patched_async_client is not None:
+            return self._patched_async_client
+
+        # Try to initialize the client on-demand
+        # First check if OPENAI_API_KEY is in environment
+        openai_key = os.getenv("OPENAI_API_KEY")
+
+        if not openai_key:
+            # Try to get from config (in case it was set during onboarding)
+            try:
+                config = get_openrag_config()
+                if config and config.provider and config.provider.api_key:
+                    openai_key = config.provider.api_key
+                    # Set it in environment so AsyncOpenAI can pick it up
+                    os.environ["OPENAI_API_KEY"] = openai_key
+                    logger.info("Loaded OpenAI API key from config file")
+            except Exception as e:
+                logger.debug("Could not load OpenAI key from config", error=str(e))
+
+        # Try to initialize the client - AsyncOpenAI() will read from environment
+        try:
+            self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
+            logger.info("OpenAI client initialized on-demand")
+        except Exception as e:
+            logger.error("Failed to initialize OpenAI client on-demand", error=str(e))
+            raise ValueError(f"Failed to initialize OpenAI client: {str(e)}. Please complete onboarding or set OPENAI_API_KEY environment variable.")
+
+        return self._patched_async_client
 
     async def langflow_request(self, method: str, endpoint: str, **kwargs):
         """Central method for all Langflow API requests"""

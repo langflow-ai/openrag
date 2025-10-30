@@ -203,10 +203,14 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
         # OpenAI API Key
-        yield Label("OpenAI API Key *")
+        yield Label("OpenAI API Key")
         # Where to create OpenAI keys (helper above the box)
         yield Static(
             Text("Get a key: https://platform.openai.com/api-keys", style="dim"),
+            classes="helper-text",
+        )
+        yield Static(
+            Text("Can also be provided during onboarding", style="dim italic"),
             classes="helper-text",
         )
         current_value = getattr(self.env_manager.config, "openai_api_key", "")
