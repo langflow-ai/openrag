@@ -43,42 +43,64 @@ export const ModelProviders = () => {
     },
   };
 
-  const currentProvider = modelProvidersMap[
-    (settings.provider?.model_provider as ModelProvider) || "openai"
-  ] as { name: string; logo: ReactNode; logoBgClass: string };
-
   const currentProviderKey =
     (settings.provider?.model_provider as ModelProvider) || "openai";
 
+  // Get all provider keys with active provider first
+  const allProviderKeys: ModelProvider[] = ["openai", "ollama", "watsonx"];
+  const sortedProviderKeys = [
+    currentProviderKey,
+    ...allProviderKeys.filter((key) => key !== currentProviderKey),
+  ];
+
   return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      <Card className="relative flex flex-col">
-        <CardHeader>
-          <div className="flex flex-col items-start justify-between">
-            <div className="flex flex-col gap-3">
-              <div className="mb-1">
-                <div
-                  className={cn(
-                    "w-8 h-8 rounded flex items-center justify-center border",
-                    currentProvider.logoBgClass
-                  )}
-                >
-                  {currentProvider.logo}
+    <>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {sortedProviderKeys.map((providerKey) => {
+          const provider = modelProvidersMap[providerKey];
+          const isActive = providerKey === currentProviderKey;
+
+          return (
+            <Card
+              key={providerKey}
+              className={cn(
+                "relative flex flex-col",
+                !isActive && "opacity-60"
+              )}
+            >
+              <CardHeader>
+                <div className="flex flex-col items-start justify-between">
+                  <div className="flex flex-col gap-3">
+                    <div className="mb-1">
+                      <div
+                        className={cn(
+                          "w-8 h-8 rounded flex items-center justify-center border",
+                          provider.logoBgClass
+                        )}
+                      >
+                        {provider.logo}
+                      </div>
+                    </div>
+                    <CardTitle className="flex flex-row items-center gap-2">
+                      {provider.name}
+                      {isActive && (
+                        <div className="h-2 w-2 bg-accent-emerald-foreground rounded-full" />
+                      )}
+                    </CardTitle>
+                  </div>
                 </div>
-              </div>
-              <CardTitle className="flex flex-row items-center gap-2">
-                {currentProvider.name}
-                <div className="h-2 w-2 bg-accent-emerald-foreground rounded-full" />
-              </CardTitle>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="flex-1 flex flex-col justify-end space-y-4">
-          <Button variant="outline" onClick={() => setDialogOpen(true)}>
-            Edit Setup
-          </Button>
-        </CardContent>
-      </Card>
+              </CardHeader>
+              <CardContent className="flex-1 flex flex-col justify-end space-y-4">
+                {isActive && (
+                  <Button variant="outline" onClick={() => setDialogOpen(true)}>
+                    Edit Setup
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
       {currentProviderKey === "openai" && (
         <OpenAISettingsDialog open={dialogOpen} setOpen={setDialogOpen} />
       )}
@@ -88,7 +110,7 @@ export const ModelProviders = () => {
       {currentProviderKey === "watsonx" && (
         <WatsonxSettingsDialog open={dialogOpen} setOpen={setDialogOpen} />
       )}
-    </div>
+    </>
   );
 };
 

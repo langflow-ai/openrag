@@ -53,7 +53,7 @@ export const useGetOpenAIModelsQuery = (
     {
       queryKey: ["models", "openai", params],
       queryFn: getOpenAIModels,
-      retry: 2,
+      // retry: 2,
       // enabled: !!params?.apiKey,
       // staleTime: 0, // Always fetch fresh data
       // gcTime: 0, // Don't cache results
@@ -89,7 +89,7 @@ export const useGetOllamaModelsQuery = (
     {
       queryKey: ["models", "ollama", params],
       queryFn: getOllamaModels,
-      retry: 2,
+      // retry: 2,
       // staleTime: 0, // Always fetch fresh data
       // gcTime: 0, // Don't cache results
       ...options,
@@ -130,7 +130,7 @@ export const useGetIBMModelsQuery = (
     {
       queryKey: ["models", "ibm", params],
       queryFn: getIBMModels,
-      retry: 2,
+      // retry: 2,
       // enabled: !!params?.endpoint && !!params?.apiKey && !!params?.projectId, // Only run if all required params are provided
       // staleTime: 0, // Always fetch fresh data
       // gcTime: 0, // Don't cache results
