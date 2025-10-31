@@ -1108,6 +1108,8 @@ async def create_app():
     @app.on_event("shutdown")
     async def shutdown_event():
         await cleanup_subscriptions_proper(services)
+        # Cleanup async clients
+        await clients.cleanup()
 
     return app
 
