@@ -1,4 +1,5 @@
 from config.settings import (
+    AGENT_COMPONENT_DISPLAY_NAME,
     DISABLE_INGEST_WITH_LANGFLOW,
     LANGFLOW_URL_INGEST_FLOW_ID,
     NUDGES_FLOW_ID,
@@ -170,18 +171,18 @@ class FlowsService:
 
                         provider = config.provider.model_provider.lower()
 
-                        # Step 1: Assign model provider (replace components) if not OpenAI
-                        if provider != "openai":
-                            logger.info(
-                                f"Assigning {provider} components to {flow_type} flow"
-                            )
-                            provider_result = await self.assign_model_provider(provider)
+                        # # Step 1: Assign model provider (replace components) if not OpenAI
+                        # if provider != "openai":
+                        #     logger.info(
+                        #         f"Assigning {provider} components to {flow_type} flow"
+                        #     )
+                        #     provider_result = await self.assign_model_provider(provider)
 
-                            if not provider_result.get("success"):
-                                logger.warning(
-                                    f"Failed to assign {provider} components: {provider_result.get('error', 'Unknown error')}"
-                                )
-                                # Continue anyway, maybe just value updates will work
+                        #     if not provider_result.get("success"):
+                        #         logger.warning(
+                        #             f"Failed to assign {provider} components: {provider_result.get('error', 'Unknown error')}"
+                        #         )
+                        #         # Continue anyway, maybe just value updates will work
 
                         # Step 2: Update model values for the specific flow being reset
                         single_flow_config = [
@@ -733,9 +734,6 @@ class FlowsService:
                 ]
 
             # Determine target component IDs based on provider
-            target_embedding_name, target_llm_name = self._get_provider_component_ids(
-                provider
-            )
 
             results = []
 
@@ -745,8 +743,6 @@ class FlowsService:
                     result = await self._update_provider_components(
                         config,
                         provider,
-                        target_embedding_name,
-                        target_llm_name,
                         embedding_model,
                         llm_model,
                         endpoint,
@@ -802,8 +798,6 @@ class FlowsService:
         self,
         config,
         provider: str,
-        target_embedding_name: str,
-        target_llm_name: str,
         embedding_model: str,
         llm_model: str,
         endpoint: str = None,
@@ -826,21 +820,28 @@ class FlowsService:
 
         # Update embedding component
         if not DISABLE_INGEST_WITH_LANGFLOW:
-            embedding_node, _ = self._find_node_in_flow(flow_data, display_name=target_embedding_name)
+            embedding_node, _ = self._find_node_in_flow(flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME)
             if embedding_node:
                 if self._update_component_fields(
                     embedding_node, provider, embedding_model, endpoint
                 ):
                     updates_made.append(f"embedding model: {embedding_model}")
 
+        # # Update LLM component (if exists in this flow)
+        # llm_node, _ = self._find_node_in_flow(flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME)
+        # if llm_node:
+        #     if self._update_component_fields(
+        #         llm_node, provider, llm_model, endpoint
+        #     ):
+        #         updates_made.append(f"llm model: {llm_model}")
+
         # Update LLM component (if exists in this flow)
-        if target_llm_name:
-            llm_node, _ = self._find_node_in_flow(flow_data, display_name=target_llm_name)
-            if llm_node:
-                if self._update_component_fields(
-                    llm_node, provider, llm_model, endpoint
-                ):
-                    updates_made.append(f"llm model: {llm_model}")
+        agent_node, _ = self._find_node_in_flow(flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME)
+        if agent_node:
+            if self._update_component_fields(
+                agent_node, provider, llm_model, endpoint
+            ):
+                updates_made.append(f"agent model: {llm_model}")
 
         # If no updates were made, return skip message
         if not updates_made:
@@ -885,8 +886,18 @@ class FlowsService:
 
         updated = False
 
+        if "agent_llm" in template:
+            provider_name = "IBM watsonx.ai" if provider == "watsonx" else "Ollama" if provider == "ollama" else "OpenAI"
+            template["agent_llm"]["value"] = provider_name
+            updated = True
+
+        if "provider" in template:
+            provider_name = "WatsonX" if provider == "watsonx" else "Ollama" if provider == "ollama" else "OpenAI"
+            template["provider"]["value"] = provider_name
+            updated = True
+
         # Update model_name field (common to all providers)
-        if provider == "openai" and "model" in template:
+        if "model" in template:
             template["model"]["value"] = model_value
             template["model"]["options"] = [model_value]
             updated = True
@@ -897,10 +908,40 @@ class FlowsService:
 
         # Update endpoint/URL field based on provider
         if endpoint:
-            if provider == "watsonx" and "url" in template:
+            if provider == "watsonx" and "base_url" in template:
                 # Watson uses "url" field
-                template["url"]["value"] = endpoint
-                template["url"]["options"] = [endpoint]
+                template["base_url"]["value"] = endpoint
+                template["base_url"]["options"] = [endpoint]
+                template["base_url"]["show"] = True
                 updated = True
+            if provider == "watsonx" and "api_base" in template:
+                # Watson uses "url" field
+                template["api_base"]["value"] = endpoint
+                template["api_base"]["show"] = True
+                updated = True
+
+        if provider == "openai" and "api_key" in template:
+            template["api_key"]["value"] = "OPENAI_API_KEY"
+            template["api_key"]["load_from_db"] = True
+            template["api_key"]["show"] = True
+            updated = True
+
+        if provider == "ollama" and "base_url" in template:
+            template["base_url"]["value"] = "OLLAMA_BASE_URL"
+            template["base_url"]["load_from_db"] = True
+            template["base_url"]["show"] = True
+            updated = True
+
+        if provider == "watsonx" and "project_id" in template:
+            template["project_id"]["value"] = "WATSONX_PROJECT_ID"
+            template["project_id"]["load_from_db"] = True
+            template["project_id"]["show"] = True
+            updated = True
+        
+        if provider == "watsonx" and "api_key" in template:
+            template["api_key"]["value"] = "WATSONX_API_KEY"
+            template["api_key"]["load_from_db"] = True
+            template["api_key"]["show"] = True
+            updated = True
 
         return updated
