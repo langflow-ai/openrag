@@ -7,7 +7,7 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx'; 
 
-[Install the OpenRAG Python wheel](#install-python-wheel), and then run the [OpenRAG Terminal User Interface(TUI)](#setup) to start your OpenRAG deployment with a guided setup process.
+[Install OpenRAG](#install) and then run the [OpenRAG Terminal User Interface(TUI)](#setup) to start your OpenRAG deployment with a guided setup process.
 
 The OpenRAG Terminal User Interface (TUI) allows you to set up, configure, and monitor your OpenRAG deployment directly from the terminal.
 
@@ -28,13 +28,13 @@ If you prefer running Podman or Docker containers and manually editing `.env` fi
 - Create an [OpenAI API key](https://platform.openai.com/api-keys). This key is **required** to start OpenRAG, but you can choose a different model provider during [Application Onboarding](#application-onboarding).
 - Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
 
-## Install the OpenRAG Python wheel {#install-python-wheel}
+## Install OpenRAG {#install}
 
-The OpenRAG wheel installs the Terminal User Interface (TUI) for configuring and running OpenRAG.
+:::note Windows users
+To use OpenRAG on Windows, use [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
+:::
 
-To quickly install and start OpenRAG, run `uvx openrag`.
-
-To first set up a project and then install OpenRAG, do the following:
+To set up a project and install OpenRAG as a dependency, do the following:
 
 1. Create a new project with a virtual environment using `uv init`.
 
@@ -46,20 +46,23 @@ To first set up a project and then install OpenRAG, do the following:
    The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
    For more information on virtual environments, see the [uv documentation](https://docs.astral.sh/uv/pip/environments).
 
-2. Ensure all dependencies are installed and updated in your virtual environment.
+2. Add OpenRAG to your project.
    ```bash
-   uv sync
+   uv add openrag
    ```
 
-3. Install and start the OpenRAG TUI.
+   To add a specific version of OpenRAG:
    ```bash
-   uvx openrag
+   uv add openrag==0.1.25
    ```
-   
-   To install a specific version of the Langflow package, add the required version to the command, such as `uvx --from openrag==0.1.25 openrag`.
+
+3. Start the OpenRAG TUI.
+   ```bash
+   uv run openrag
+   ```
 
     <details closed>
-    <summary>Install a local wheel without uvx</summary>
+    <summary>Install a local wheel</summary>
     
     If you downloaded the OpenRAG wheel to your local machine, follow these steps:
 
@@ -102,8 +105,10 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 
    1. To install OpenRAG with **Basic Setup**, click **Basic Setup** or press <kbd>1</kbd>. 
    2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
-   Only the **OpenSearch Admin Password** and **OpenAI API key** are required.
-   To generate the optional **Langflow Admin Password**, click **Generate Password**.
+   
+       The OpenSearch password is required. The Langflow admin password is optional.
+       If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
+   
    3. Paste your OpenAI API key in the OpenAI API key field.
    4. Click **Save Configuration**.
    Your passwords are saved in the `.env` file used to start OpenRAG.
@@ -121,6 +126,10 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 
    1. To install OpenRAG with **Advanced Setup**, click **Advanced Setup** or press <kbd>2</kbd>. 
    2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
+   
+       The OpenSearch password is required. The Langflow admin password is optional.
+       If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
+   
    3. Paste your OpenAI API key in the OpenAI API key field.
    4. Add your client and secret values for Google or Microsoft OAuth.
    These values can be found with your OAuth provider.
@@ -157,7 +166,15 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 
 <PartialOnboarding />
 
-## Manage OpenRAG containers with the TUI
+## Close the OpenRAG TUI
+
+To close the OpenRAG TUI, press <kbd>q</kbd>.
+The OpenRAG containers will continue to be served until the containers are stopped.
+For more information, see [Manage OpenRAG containers with the TUI ](#tui-container-management).
+
+To start the TUI again, run `uv run openrag`.
+
+## Manage OpenRAG containers with the TUI {#tui-container-management}
 
 After installation, the TUI can deploy, manage, and upgrade your OpenRAG containers.
 
