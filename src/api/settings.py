@@ -63,6 +63,8 @@ async def get_settings(request, session_manager):
             # OpenRAG configuration
             "provider": {
                 "model_provider": provider_config.model_provider,
+                "endpoint": provider_config.endpoint if provider_config.endpoint else None,
+                "project_id": provider_config.project_id if provider_config.project_id else None,
                 # Note: API key is not exposed for security
             },
             "knowledge": {
@@ -183,6 +185,10 @@ async def update_settings(request, session_manager):
             "ocr",
             "picture_descriptions",
             "embedding_model",
+            "model_provider",
+            "api_key",
+            "endpoint",
+            "project_id",
         }
 
         # Check for invalid fields
@@ -396,21 +402,116 @@ async def update_settings(request, session_manager):
                 # Don't fail the entire settings update if flow update fails
                 # The config will still be saved
 
+        # Update provider settings
+        if "model_provider" in body:
+            if (
+                not isinstance(body["model_provider"], str)
+                or not body["model_provider"].strip()
+            ):
+                return JSONResponse(
+                    {"error": "model_provider must be a non-empty string"},
+                    status_code=400,
+                )
+            current_config.provider.model_provider = body["model_provider"].strip()
+            config_updated = True
+
+        if "api_key" in body:
+            if not isinstance(body["api_key"], str):
+                return JSONResponse(
+                    {"error": "api_key must be a string"}, status_code=400
+                )
+            # Only update if non-empty string (empty string means keep current value)
+            if body["api_key"].strip():
+                current_config.provider.api_key = body["api_key"]
+                config_updated = True
+
+        if "endpoint" in body:
+            if not isinstance(body["endpoint"], str) or not body["endpoint"].strip():
+                return JSONResponse(
+                    {"error": "endpoint must be a non-empty string"}, status_code=400
+                )
+            current_config.provider.endpoint = body["endpoint"].strip()
+            config_updated = True
+
+        if "project_id" in body:
+            if (
+                not isinstance(body["project_id"], str)
+                or not body["project_id"].strip()
+            ):
+                return JSONResponse(
+                    {"error": "project_id must be a non-empty string"}, status_code=400
+                )
+            current_config.provider.project_id = body["project_id"].strip()
+            config_updated = True
+
         if not config_updated:
             return JSONResponse(
                 {"error": "No valid fields provided for update"}, status_code=400
             )
 
         # Save the updated configuration
-        if config_manager.save_config_file(current_config):
-            logger.info(
-                "Configuration updated successfully", updated_fields=list(body.keys())
-            )
-            return JSONResponse({"message": "Configuration updated successfully"})
-        else:
+        if not config_manager.save_config_file(current_config):
             return JSONResponse(
                 {"error": "Failed to save configuration"}, status_code=500
             )
+
+        # Update Langflow global variables if provider settings changed
+        if any(key in body for key in ["model_provider", "api_key", "endpoint", "project_id"]):
+            try:
+                provider = current_config.provider.model_provider.lower() if current_config.provider.model_provider else "openai"
+                
+                # Set API key for IBM/Watson providers
+                if (provider == "watsonx") and "api_key" in body:
+                    api_key = body["api_key"]
+                    await clients._create_langflow_global_variable(
+                        "WATSONX_API_KEY", api_key, modify=True
+                    )
+                    logger.info("Set WATSONX_API_KEY global variable in Langflow")
+
+                # Set project ID for IBM/Watson providers
+                if (provider == "watsonx") and "project_id" in body:
+                    project_id = body["project_id"]
+                    await clients._create_langflow_global_variable(
+                        "WATSONX_PROJECT_ID", project_id, modify=True
+                    )
+                    logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
+
+                # Set API key for OpenAI provider
+                if provider == "openai" and "api_key" in body:
+                    api_key = body["api_key"]
+                    await clients._create_langflow_global_variable(
+                        "OPENAI_API_KEY", api_key, modify=True
+                    )
+                    logger.info("Set OPENAI_API_KEY global variable in Langflow")
+
+                # Set base URL for Ollama provider
+                if provider == "ollama" and "endpoint" in body:
+                    endpoint = transform_localhost_url(body["endpoint"])
+                    await clients._create_langflow_global_variable(
+                        "OLLAMA_BASE_URL", endpoint, modify=True
+                    )
+                    logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
+
+                # Update model values across flows if provider changed
+                if "model_provider" in body:
+                    flows_service = _get_flows_service()
+                    await flows_service.change_langflow_model_value(
+                        provider,
+                        current_config.knowledge.embedding_model,
+                        current_config.agent.llm_model,
+                        current_config.provider.endpoint,
+                    )
+                    logger.info(f"Successfully updated Langflow flows for provider {provider}")
+
+            except Exception as e:
+                logger.error(f"Failed to update Langflow settings: {str(e)}")
+                # Don't fail the entire settings update if Langflow update fails
+                # The config was still saved
+
+        logger.info(
+            "Configuration updated successfully", updated_fields=list(body.keys())
+        )
+        return JSONResponse({"message": "Configuration updated successfully"})
 
     except Exception as e:
         logger.error("Failed to update settings", error=str(e))
