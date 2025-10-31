@@ -170,8 +170,9 @@ class EnvManager:
         """
         self.config.validation_errors.clear()
 
-        # Always validate OpenAI API key
-        if not validate_openai_api_key(self.config.openai_api_key):
+        # OpenAI API key is now optional (can be provided during onboarding)
+        # Only validate format if a key is provided
+        if self.config.openai_api_key and not validate_openai_api_key(self.config.openai_api_key):
             self.config.validation_errors["openai_api_key"] = (
                 "Invalid OpenAI API key format (should start with sk-)"
             )
@@ -268,7 +269,9 @@ class EnvManager:
                 f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
-                f.write(f"OPENAI_API_KEY={self._quote_env_value(self.config.openai_api_key)}\n")
+                # Only write OpenAI API key if provided (can be set during onboarding instead)
+                if self.config.openai_api_key:
+                    f.write(f"OPENAI_API_KEY={self._quote_env_value(self.config.openai_api_key)}\n")
                 f.write(
                     f"OPENRAG_DOCUMENTS_PATHS={self._quote_env_value(self.config.openrag_documents_paths)}\n"
                 )
@@ -345,7 +348,7 @@ class EnvManager:
     def get_no_auth_setup_fields(self) -> List[tuple[str, str, str, bool]]:
         """Get fields required for no-auth setup mode. Returns (field_name, display_name, placeholder, can_generate)."""
         return [
-            ("openai_api_key", "OpenAI API Key", "sk-...", False),
+            ("openai_api_key", "OpenAI API Key", "sk-... or leave empty", False),
             (
                 "opensearch_password",
                 "OpenSearch Password",

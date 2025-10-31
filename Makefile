@@ -2,10 +2,12 @@
 # Provides easy commands for development workflow
 
 # Load variables from .env if present so `make` commands pick them up
+# Strip quotes from values to avoid issues with tools that don't handle them like python-dotenv does
 ifneq (,$(wildcard .env))
   include .env
-  # Export all simple KEY=VALUE pairs to the environment for child processes
   export $(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env)
+  # Strip single quotes from all exported variables
+  $(foreach var,$(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env),$(eval $(var):=$(shell echo $($(var)) | sed "s/^'//;s/'$$//")))
 endif
 
 .PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install \
