@@ -48,15 +48,28 @@ To install OpenRAG with Docker Compose, do the following:
    touch .env
    ```
 
-4. The Docker Compose files are populated with the values from your .env. The following values must be set:
+4. The Docker Compose files are populated with the values from your `.env` file. The following values must be set:
 
    ```bash
    OPENSEARCH_PASSWORD=your_secure_password
    OPENAI_API_KEY=your_openai_api_key
-   LANGFLOW_SUPERUSER=admin
-   LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
    LANGFLOW_SECRET_KEY=your_secret_key
    ```
+
+   `OPENSEARCH_PASSWORD` can be automatically generated when using the TUI, but for a Docker Compose installation, you can set it manually instead. To generate an OpenSearch admin password, see the [OpenSearch documentation](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
+
+   The `OPENAI_API_KEY` is found in your OpenAI account. 
+
+   `LANGFLOW_SECRET_KEY` is automatically generated when using the TUI, and Langflow will also auto-generate it if not set. For more information, see the [Langflow documentation](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key).
+
+   The following Langflow configuration values are optional but important to consider:
+
+   ```bash
+   LANGFLOW_SUPERUSER=admin
+   LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
+   ```
+
+   `LANGFLOW_SUPERUSER` defaults to `admin`. You can omit it or set it to a different username. `LANGFLOW_SUPERUSER_PASSWORD` is optional. If omitted, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required. If set, Langflow requires password authentication.
    
    For more information on configuring OpenRAG with environment variables, see [Environment variables](/reference/configuration).
 

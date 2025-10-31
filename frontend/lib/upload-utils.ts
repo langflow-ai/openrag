@@ -194,21 +194,6 @@ export async function uploadFile(
       raw: uploadIngestJson,
     };
 
-    window.dispatchEvent(
-      new CustomEvent("fileUploaded", {
-        detail: {
-          file,
-          result: {
-            file_id: fileId,
-            file_path: filePath,
-            run: runJson,
-            deletion: deletionJson,
-            unified: true,
-          },
-        },
-      })
-    );
-
     return result;
   } catch (error) {
     window.dispatchEvent(

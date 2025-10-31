@@ -38,6 +38,26 @@ This example increases the machine size to 8 GB of RAM, which should be sufficie
 
 Ensure ports 3000, 7860, 8000, 9200, 5601 are available.
 
+## OCR ingestion fails (easyocr not installed)
+
+If Docling ingestion fails with an OCR-related error and mentions `easyocr` is missing, this is likely due to a stale `uv` cache.
+
+`easyocr` is already included as a dependency in OpenRAG's `pyproject.toml`. Project-managed installations using `uv sync` and `uv run` always sync dependencies directly from your `pyproject.toml`, so they should have `easyocr` installed.
+
+If you're running OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project. This cache may become stale. 
+
+On macOS, this cache directory is typically a user cache directory such as `/Users/USER_NAME/.cache/uv`.
+1. To clear the uv cache, run:
+    ```bash
+    uv cache clean
+    ```
+2. Start OpenRAG:
+    ```bash
+    uvx openrag
+    ```
+
+If you do not need OCR, you can disable OCR-based processing in your ingestion settings to avoid requiring `easyocr`.
+
 ## Langflow container already exists
 
 If you are running other versions of Langflow containers on your machine, you may encounter an issue where Docker or Podman  thinks Langflow is already up.
