@@ -15,7 +15,7 @@ import {
 } from "./openai-settings-form";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
-import { useOnboardingMutation } from "@/app/api/mutations/useOnboardingMutation";
+import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 
 const OpenAISettingsDialog = ({
   open,
@@ -33,7 +33,7 @@ const OpenAISettingsDialog = ({
   const isOpenAIConfigured = settings.provider?.model_provider === "openai";
 
   const methods = useForm<OpenAISettingsFormData>({
-    mode: "onChange",
+    mode: "onSubmit",
     defaultValues: {
       apiKey: "",
       llmModel: isOpenAIConfigured ? settings.agent?.llm_model : "",
@@ -45,7 +45,7 @@ const OpenAISettingsDialog = ({
 
   const { handleSubmit } = methods;
 
-  const onboardingMutation = useOnboardingMutation({
+  const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
       toast.success("OpenAI settings updated successfully");
       setOpen(false);
@@ -75,16 +75,16 @@ const OpenAISettingsDialog = ({
     }
 
     // Submit the update
-    onboardingMutation.mutate(payload);
+    settingsMutation.mutate(payload);
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent autoFocus={false} className="max-w-2xl">
+      <DialogContent className="max-w-2xl">
         <FormProvider {...methods}>
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <DialogHeader className="mb-4">
-              <DialogTitle className="flex items-center gap-2">
+          <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
+            <DialogHeader className="mb-2">
+              <DialogTitle className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
                   <OpenAILogo className="text-black" />
                 </div>
@@ -94,7 +94,7 @@ const OpenAISettingsDialog = ({
 
             <OpenAISettingsForm isCurrentProvider={isOpenAIConfigured} />
 
-            <DialogFooter className="mt-4">
+            <DialogFooter>
               <Button
                 variant="outline"
                 type="button"
@@ -102,8 +102,8 @@ const OpenAISettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={onboardingMutation.isPending}>
-                {onboardingMutation.isPending ? "Saving..." : "Save"}
+              <Button type="submit" disabled={settingsMutation.isPending}>
+                {settingsMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
           </form>

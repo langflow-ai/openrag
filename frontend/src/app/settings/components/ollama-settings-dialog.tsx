@@ -15,7 +15,7 @@ import {
 } from "./ollama-settings-form";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
-import { useOnboardingMutation } from "@/app/api/mutations/useOnboardingMutation";
+import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 
 const OllamaSettingsDialog = ({
   open,
@@ -33,7 +33,7 @@ const OllamaSettingsDialog = ({
   const isOllamaConfigured = settings.provider?.model_provider === "ollama";
 
   const methods = useForm<OllamaSettingsFormData>({
-    mode: "onChange",
+    mode: "onSubmit",
     defaultValues: {
       endpoint: isOllamaConfigured
         ? settings.provider?.endpoint
@@ -47,7 +47,7 @@ const OllamaSettingsDialog = ({
 
   const { handleSubmit } = methods;
 
-  const onboardingMutation = useOnboardingMutation({
+  const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
       toast.success("Ollama settings updated successfully");
       setOpen(false);
@@ -60,8 +60,7 @@ const OllamaSettingsDialog = ({
   });
 
   const onSubmit = (data: OllamaSettingsFormData) => {
-    // Submit the update
-    onboardingMutation.mutate({
+    settingsMutation.mutate({
       endpoint: data.endpoint,
       model_provider: "ollama",
       llm_model: data.llmModel,
@@ -71,10 +70,10 @@ const OllamaSettingsDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent autoFocus={false} className="max-w-2xl">
+      <DialogContent className="max-w-2xl">
         <FormProvider {...methods}>
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <DialogHeader className="mb-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
+            <DialogHeader className="mb-2">
               <DialogTitle className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
                   <OllamaLogo className="text-black" />
@@ -84,7 +83,6 @@ const OllamaSettingsDialog = ({
             </DialogHeader>
 
             <OllamaSettingsForm />
-
             <DialogFooter className="mt-4">
               <Button
                 variant="outline"
@@ -93,8 +91,8 @@ const OllamaSettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={onboardingMutation.isPending}>
-                {onboardingMutation.isPending ? "Saving..." : "Save"}
+              <Button type="submit" disabled={settingsMutation.isPending}>
+                {settingsMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
           </form>

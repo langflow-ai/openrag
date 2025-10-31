@@ -1,20 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFormContext, Controller } from "react-hook-form";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useGetIBMModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useDebouncedValue } from "@/lib/debounce";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { AnimatedConditional } from "@/components/animated-conditional";
 import IBMLogo from "@/components/logo/ibm-logo";
 import { ModelSelectors } from "./model-selectors";
+import { ModelSelector } from "@/app/onboarding/components/model-selector";
 
 export interface WatsonxSettingsFormData {
   endpoint: string;
@@ -51,13 +45,18 @@ const endpointOptions = [
   },
 ];
 
-export function WatsonxSettingsForm({ isCurrentProvider = false }: { isCurrentProvider: boolean }) {
+export function WatsonxSettingsForm({
+  isCurrentProvider = false,
+}: {
+  isCurrentProvider: boolean;
+}) {
   const [useExistingKey, setUseExistingKey] = useState(true);
   const {
     control,
     register,
     watch,
     setValue,
+    clearErrors,
     formState: { errors },
   } = useFormContext<WatsonxSettingsFormData>();
 
@@ -78,10 +77,15 @@ export function WatsonxSettingsForm({ isCurrentProvider = false }: { isCurrentPr
     }
   };
 
+  // Clear form errors when useExistingKey changes
+  useEffect(() => {
+    clearErrors("apiKey");
+  }, [useExistingKey, clearErrors]);
+
   const shouldFetchModels = isCurrentProvider
     ? useExistingKey
-    ? !!debouncedEndpoint && !!debouncedProjectId
-    : !!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId
+      ? !!debouncedEndpoint && !!debouncedProjectId
+      : !!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId
     : !!debouncedEndpoint && !!debouncedProjectId && !!debouncedApiKey;
 
   const {
@@ -91,7 +95,6 @@ export function WatsonxSettingsForm({ isCurrentProvider = false }: { isCurrentPr
   } = useGetIBMModelsQuery(
     {
       endpoint: debouncedEndpoint,
-      // Don't pass API key when using existing - backend will use stored key
       apiKey: useExistingKey ? "" : debouncedApiKey,
       projectId: debouncedProjectId,
     },
@@ -109,29 +112,27 @@ export function WatsonxSettingsForm({ isCurrentProvider = false }: { isCurrentPr
         <LabelWrapper
           label="watsonx.ai API Endpoint"
           helperText="Base URL of the API"
+          id="api-endpoint"
           required
-          id="endpoint"
         >
           <Controller
             control={control}
             name="endpoint"
             rules={{ required: "API endpoint is required" }}
             render={({ field }) => (
-              <Select
-                value={field.value || "https://us-south.ml.cloud.ibm.com"}
+              <ModelSelector
+                options={endpointOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+                value={field.value}
+                custom
                 onValueChange={field.onChange}
-              >
-                <SelectTrigger id="endpoint">
-                  <SelectValue placeholder="Select endpoint..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {endpointOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                searchPlaceholder="Search endpoint..."
+                noOptionsPlaceholder="No endpoints available"
+                placeholder="Select endpoint..."
+                hasError={!!errors.endpoint || !!modelsError}
+              />
             )}
           />
         </LabelWrapper>
@@ -139,7 +140,6 @@ export function WatsonxSettingsForm({ isCurrentProvider = false }: { isCurrentPr
           <p className="text-sm text-destructive">{errors.endpoint.message}</p>
         )}
       </div>
-
       <div className="space-y-2">
         <LabelWrapper
           label="watsonx Project ID"
@@ -151,7 +151,9 @@ export function WatsonxSettingsForm({ isCurrentProvider = false }: { isCurrentPr
             {...register("projectId", {
               required: "Project ID is required",
             })}
-            className={errors.projectId ? "!border-destructive" : ""}
+            className={
+              errors.projectId || modelsError ? "!border-destructive" : ""
+            }
             id="project-id"
             type="text"
             placeholder="your-project-id"
@@ -161,23 +163,26 @@ export function WatsonxSettingsForm({ isCurrentProvider = false }: { isCurrentPr
           <p className="text-sm text-destructive">{errors.projectId.message}</p>
         )}
       </div>
-      {isCurrentProvider && (
-      <div className="space-y-2">
-        <LabelWrapper
-          label="Use existing watsonx API key"
-          id="use-existing-key"
-          description="Reuse the key from your environment config. Turn off to enter a different key."
-          flex
+      <div className={useExistingKey ? "space-y-3" : "space-y-2"}>
+        {isCurrentProvider && (
+          <LabelWrapper
+            label="Use existing watsonx API key"
+            id="use-existing-key"
+            description="Reuse the key from your environment config. Turn off to enter a different key."
+            flex
+          >
+            <Switch
+              checked={useExistingKey}
+              onCheckedChange={handleUseExistingKeyChange}
+            />
+          </LabelWrapper>
+        )}
+        <AnimatedConditional
+          isOpen={!useExistingKey}
+          duration={0.2}
+          vertical
+          className={!useExistingKey ? "!mt-4" : "!mt-0"}
         >
-          <Switch
-            checked={useExistingKey}
-            onCheckedChange={handleUseExistingKeyChange}
-          />
-        </LabelWrapper>
-      </div>
-      )}
-      <AnimatedConditional isOpen={!isCurrentProvider || !useExistingKey} duration={0.2} vertical>
-        <div className="space-y-2">
           <LabelWrapper
             label="watsonx API key"
             helperText="API key to access watsonx.ai"
@@ -186,7 +191,7 @@ export function WatsonxSettingsForm({ isCurrentProvider = false }: { isCurrentPr
           >
             <Input
               {...register("apiKey", {
-                required: !isCurrentProvider || !useExistingKey ? "API key is required" : false,
+                required: !useExistingKey ? "API key is required" : false,
               })}
               className={
                 errors.apiKey || modelsError ? "!border-destructive" : ""
@@ -197,21 +202,22 @@ export function WatsonxSettingsForm({ isCurrentProvider = false }: { isCurrentPr
             />
           </LabelWrapper>
           {errors.apiKey && (
-            <p className="text-sm text-destructive">{errors.apiKey.message}</p>
+            <p className="text-sm text-destructive mt-2">
+              {errors.apiKey.message}
+            </p>
           )}
-        </div>
-      </AnimatedConditional>
-      {isLoadingModels && (
-        <p className="text-sm text-muted-foreground">
-          Validating configuration...
-        </p>
-      )}
-      {modelsError && (
-        <p className="text-sm text-destructive">
-          Connection failed. Check your configuration.
-        </p>
-      )}
-
+        </AnimatedConditional>
+        {isLoadingModels && (
+          <p className="text-sm text-muted-foreground">
+            Validating configuration...
+          </p>
+        )}
+        {modelsError && (
+          <p className="text-sm text-destructive">
+            Connection failed. Check your configuration.
+          </p>
+        )}
+      </div>
       <ModelSelectors
         languageModels={languageModels}
         embeddingModels={embeddingModels}

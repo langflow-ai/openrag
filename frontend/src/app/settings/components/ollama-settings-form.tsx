@@ -16,7 +16,7 @@ export function OllamaSettingsForm() {
   const {
     register,
     watch,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useFormContext<OllamaSettingsFormData>();
 
   const endpoint = watch("endpoint");
@@ -31,15 +31,19 @@ export function OllamaSettingsForm() {
       endpoint: debouncedEndpoint,
     },
     {
-      enabled: !!endpoint,
+      enabled: isDirty && !!debouncedEndpoint,
     }
   );
 
   const languageModels = modelsData?.language_models || [];
   const embeddingModels = modelsData?.embedding_models || [];
 
+  const endpointError = modelsError
+    ? "Connection failed. Check your Ollama server URL."
+    : errors.endpoint?.message;
+
   return (
-    <div className="space-y-4">
+    <div>
       <div className="space-y-2">
         <LabelWrapper
           label="Ollama Base URL"
@@ -49,29 +53,23 @@ export function OllamaSettingsForm() {
         >
           <Input
             {...register("endpoint", {
-              value: "http://localhost:11434",
               required: "Ollama base URL is required",
             })}
-            className={errors.endpoint ? "!border-destructive" : ""}
+            className={endpointError ? "!border-destructive" : ""}
             id="endpoint"
             type="text"
+            placeholder="http://localhost:11434"
           />
         </LabelWrapper>
-        {errors.endpoint && (
-          <p className="text-sm text-destructive">{errors.endpoint.message}</p>
+        {endpointError && (
+          <p className="text-sm text-destructive">{endpointError}</p>
+        )}
+        {isLoadingModels && (
+          <p className="text-sm text-muted-foreground">
+            Validating connection...
+          </p>
         )}
       </div>
-      {isLoadingModels && (
-        <p className="text-sm text-muted-foreground">
-          Validating connection...
-        </p>
-      )}
-      {modelsError && (
-        <p className="text-sm text-destructive">
-          Connection failed. Check your Ollama server URL.
-        </p>
-      )}
-
       <ModelSelectors
         languageModels={languageModels}
         embeddingModels={embeddingModels}

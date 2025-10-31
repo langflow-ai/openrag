@@ -25,6 +25,7 @@ export function OpenAISettingsForm({
     register,
     watch,
     setValue,
+    clearErrors,
     formState: { errors },
   } = useFormContext<OpenAISettingsFormData>();
 
@@ -39,6 +40,11 @@ export function OpenAISettingsForm({
       setValue("apiKey", "");
     }
   };
+
+  // Clear form errors when useExistingKey changes
+  useEffect(() => {
+    clearErrors("apiKey");
+  }, [useExistingKey, clearErrors]);
 
   const shouldFetchModels = isCurrentProvider
     ? useExistingKey
@@ -62,10 +68,14 @@ export function OpenAISettingsForm({
   const languageModels = modelsData?.language_models || [];
   const embeddingModels = modelsData?.embedding_models || [];
 
+  const apiKeyError = modelsError
+    ? "Invalid OpenAI API key. Verify or replace the key."
+    : errors.apiKey?.message;
+
   return (
     <div className="space-y-4">
-      {isCurrentProvider && (
-        <div className="space-y-2">
+      <div className="space-y-2">
+        {isCurrentProvider && (
           <LabelWrapper
             label="Use existing OpenAI API key"
             id="use-existing-key"
@@ -77,14 +87,13 @@ export function OpenAISettingsForm({
               onCheckedChange={handleUseExistingKeyChange}
             />
           </LabelWrapper>
-        </div>
-      )}
-      <AnimatedConditional
-        isOpen={!isCurrentProvider || !useExistingKey}
-        duration={0.2}
-        vertical
-      >
-        <div className="space-y-2">
+        )}
+        <AnimatedConditional
+          isOpen={!useExistingKey}
+          duration={0.2}
+          vertical
+          className={!useExistingKey ? "!mt-4" : "!mt-0"}
+        >
           <LabelWrapper
             label="OpenAI API key"
             helperText="The API key for your OpenAI account"
@@ -93,30 +102,22 @@ export function OpenAISettingsForm({
           >
             <Input
               {...register("apiKey", {
-                required: !isCurrentProvider || !useExistingKey ? "API key is required" : false,
+                required: !useExistingKey ? "API key is required" : false,
               })}
-              className={
-                errors.apiKey || modelsError ? "!border-destructive" : ""
-              }
+              className={apiKeyError ? "!border-destructive" : ""}
               id="api-key"
               type="password"
               placeholder="sk-..."
             />
           </LabelWrapper>
-          {errors.apiKey && (
-            <p className="text-sm text-destructive">{errors.apiKey.message}</p>
-          )}
-        </div>
-      </AnimatedConditional>
-      {isLoadingModels && (
-        <p className="text-sm text-muted-foreground">Validating API key...</p>
-      )}
-      {modelsError && (
-        <p className="text-sm text-destructive">
-          Invalid OpenAI API key. Verify or replace the key.
-        </p>
-      )}
-
+        </AnimatedConditional>
+        {apiKeyError && (
+          <p className="text-sm text-destructive">{apiKeyError}</p>
+        )}
+        {isLoadingModels && (
+          <p className="text-sm text-muted-foreground">Validating API key...</p>
+        )}
+      </div>
       <ModelSelectors
         languageModels={languageModels}
         embeddingModels={embeddingModels}
@@ -126,4 +127,3 @@ export function OpenAISettingsForm({
     </div>
   );
 }
-

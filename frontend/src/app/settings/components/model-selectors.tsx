@@ -1,14 +1,8 @@
 import { Controller, useFormContext } from "react-hook-form";
 import { LabelWrapper } from "@/components/label-wrapper";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ReactNode, useEffect } from "react";
 import { ModelOption } from "@/app/api/queries/useGetModelsQuery";
+import { ModelSelector } from "@/app/onboarding/components/model-selector";
 
 interface ModelSelectorsProps {
   languageModels: ModelOption[];
@@ -37,24 +31,21 @@ export function ModelSelectors({
   const llmModel = watch(languageModelName);
   const embeddingModel = watch(embeddingModelName);
 
-  const defaultLlmModel = languageModels.find((model) => model.default)?.value;
-  const defaultEmbeddingModel = embeddingModels.find(
-    (model) => model.default
-  )?.value;
-
-  useEffect(() => {
-    if (isLoadingModels) {
-      setValue(languageModelName, "");
-      setValue(embeddingModelName, "");
-    }
-  }, [isLoadingModels, setValue]);
+  const defaultLlmModel =
+    languageModels.find((model) => model.default)?.value ||
+    languageModels[0]?.value;
+  const defaultEmbeddingModel =
+    embeddingModels.find((model) => model.default)?.value ||
+    embeddingModels[0]?.value;
 
   useEffect(() => {
     if (defaultLlmModel && !llmModel) {
-    setValue(languageModelName, defaultLlmModel, { shouldValidate: true });
+      setValue(languageModelName, defaultLlmModel, { shouldValidate: true });
     }
     if (defaultEmbeddingModel && !embeddingModel) {
-      setValue(embeddingModelName, defaultEmbeddingModel, { shouldValidate: true });
+      setValue(embeddingModelName, defaultEmbeddingModel, {
+        shouldValidate: true,
+      });
     }
   }, [defaultLlmModel, defaultEmbeddingModel, setValue]);
 
@@ -72,33 +63,18 @@ export function ModelSelectors({
             name={embeddingModelName}
             rules={{ required: "Embedding model is required" }}
             render={({ field }) => (
-              <Select
+              <ModelSelector
+                options={embeddingModels}
+                icon={logo}
+                noOptionsPlaceholder={
+                  isLoadingModels
+                    ? "Loading models..."
+                    : "No embedding models detected"
+                }
+                placeholder="Select an embedding model"
                 value={field.value}
                 onValueChange={field.onChange}
-                disabled={isLoadingModels || !embeddingModels.length}
-              >
-                <SelectTrigger id="embedding-model">
-                  <div className="flex items-center gap-2">
-                    {logo}
-                    <SelectValue
-                      placeholder={
-                        isLoadingModels
-                          ? "Loading models..."
-                          : embeddingModels.length
-                          ? "Select an embedding model"
-                          : "No embedding models found"
-                      }
-                    />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {embeddingModels.map((model) => (
-                    <SelectItem key={model.value} value={model.value}>
-                      {model.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             )}
           />
         </LabelWrapper>
@@ -108,7 +84,6 @@ export function ModelSelectors({
           </p>
         )}
       </div>
-
       <div className="space-y-2">
         <LabelWrapper
           label="Language model"
@@ -121,33 +96,18 @@ export function ModelSelectors({
             name={languageModelName}
             rules={{ required: "Language model is required" }}
             render={({ field }) => (
-              <Select
+              <ModelSelector
+                options={languageModels}
+                icon={logo}
+                noOptionsPlaceholder={
+                  isLoadingModels
+                    ? "Loading models..."
+                    : "No language models detected"
+                }
+                placeholder="Select a language model"
                 value={field.value}
                 onValueChange={field.onChange}
-                disabled={isLoadingModels || !languageModels.length}
-              >
-                <SelectTrigger id="language-model">
-                  <div className="flex items-center gap-2">
-                    {logo}
-                    <SelectValue
-                      placeholder={
-                        isLoadingModels
-                          ? "Loading models..."
-                          : languageModels.length
-                          ? "Select a language model"
-                          : "No language models found"
-                      }
-                    />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {languageModels.map((model) => (
-                    <SelectItem key={model.value} value={model.value}>
-                      {model.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             )}
           />
         </LabelWrapper>
@@ -160,4 +120,3 @@ export function ModelSelectors({
     </>
   );
 }
-

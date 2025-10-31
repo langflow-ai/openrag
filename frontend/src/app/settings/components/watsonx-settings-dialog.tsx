@@ -15,7 +15,7 @@ import {
 } from "./watsonx-settings-form";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
-import { useOnboardingMutation } from "@/app/api/mutations/useOnboardingMutation";
+import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 
 const WatsonxSettingsDialog = ({
   open,
@@ -33,7 +33,7 @@ const WatsonxSettingsDialog = ({
   const isWatsonxConfigured = settings.provider?.model_provider === "watsonx";
 
   const methods = useForm<WatsonxSettingsFormData>({
-    mode: "onChange",
+    mode: "onSubmit",
     defaultValues: {
       endpoint: isWatsonxConfigured
         ? settings.provider?.endpoint
@@ -49,7 +49,7 @@ const WatsonxSettingsDialog = ({
 
   const { handleSubmit } = methods;
 
-  const onboardingMutation = useOnboardingMutation({
+  const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
       toast.success("watsonx settings updated successfully");
       setOpen(false);
@@ -83,26 +83,26 @@ const WatsonxSettingsDialog = ({
     }
 
     // Submit the update
-    onboardingMutation.mutate(payload);
+    settingsMutation.mutate(payload);
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent autoFocus={false} className="max-w-2xl">
         <FormProvider {...methods}>
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <DialogHeader className="mb-4">
-              <DialogTitle className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded flex items-center justify-center bg-[#1063FE]">
-                  <IBMLogo className="text-white" />
+          <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
+            <DialogHeader className="mb-2">
+              <DialogTitle className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
+                  <IBMLogo className="text-black" />
                 </div>
                 IBM watsonx.ai Setup
               </DialogTitle>
-            </DialogHeader>
+            </DialogHeader> 
 
             <WatsonxSettingsForm isCurrentProvider={isWatsonxConfigured} />
 
-            <DialogFooter className="mt-4">
+            <DialogFooter>
               <Button
                 variant="outline"
                 type="button"
@@ -110,8 +110,8 @@ const WatsonxSettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={onboardingMutation.isPending}>
-                {onboardingMutation.isPending ? "Saving..." : "Save"}
+              <Button type="submit" disabled={settingsMutation.isPending}>
+                {settingsMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
           </form>
