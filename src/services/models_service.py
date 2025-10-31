@@ -64,7 +64,7 @@ class ModelsService:
                             {
                                 "value": model_id,
                                 "label": model_id,
-                                "default": model_id == "gpt-5",
+                                "default": model_id == "gpt-4o",
                             }
                         )
 
