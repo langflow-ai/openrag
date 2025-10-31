@@ -40,19 +40,10 @@ Ensure ports 3000, 7860, 8000, 9200, 5601 are available.
 
 ## OCR ingestion fails (easyocr not installed)
 
-If Docling ingestion fails with an OCR-related error and mentions `easyocr` is missing, install `easyocr` in your OpenRAG environment.
+If Docling ingestion fails with an OCR-related error and mentions `easyocr` is missing, this is likely due to a stale uv cache.
 
-For project-managed installs, ensure `easyocr` is included in your `pyproject.toml`.
-1. From the `pyproject.toml` directory, run:
-    ```bash
-    uv add easyocr
-    ```
-2. Start OpenRAG:
-    ```bash
-    uvx openrag
-    ```
+`easyocr` is already included as a dependency in OpenRAG's `pyproject.toml`. If you're running OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that may become stale.
 
-If you're running OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment and does not modify your project.
 On macOS, this cache directory is typically a user cache directory such as `/Users/USER_NAME/.cache/uv`.
 1. To clear the uv cache, run:
     ```bash
