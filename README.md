@@ -26,11 +26,17 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 
 ## Quickstart
 
-Use the OpenRAG Terminal User Interface (TUI) to manage your OpenRAG installation without complex command-line operations.
+To quickly run OpenRAG without creating or modifying any project files, use `uvx`:
 
-To quickly install and start OpenRAG, run `uvx openrag`.
+```bash
+uvx openrag
+```
+This runs OpenRAG without installing it to your project or globally.
+To run a specific version of OpenRAG, add the version to the command, such as: `uvx --from openrag==0.1.25 openrag`.
 
-To first set up a project and then install OpenRAG, do the following:
+## Install Python package
+
+To first set up a project and then install the OpenRAG Python package, do the following:
 
 1. Create a new project with a virtual environment using `uv init`.
 
@@ -42,17 +48,22 @@ To first set up a project and then install OpenRAG, do the following:
    The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
    For more information on virtual environments, see the [uv documentation](https://docs.astral.sh/uv/pip/environments).
 
-2. Ensure all dependencies are installed and updated in your virtual environment.
+2. Add OpenRAG to your project.
    ```bash
-   uv sync
+   uv add openrag
    ```
 
-3. Install and start the OpenRAG TUI.
+   To add a specific version of OpenRAG:
    ```bash
-   uvx openrag
+   uv add openrag==0.1.25
    ```
-   
-   To install a specific version of the Langflow package, add the required version to the command, such as `uvx --from openrag==0.1.25 openrag`.
+
+3. Start the OpenRAG TUI.
+   ```bash
+   uv run openrag
+   ```
+
+4. Continue with the [Quickstart](https://docs.openr.ag/quickstart).
 
 For the full TUI installation guide, see [TUI](https://docs.openr.ag/install).
 
