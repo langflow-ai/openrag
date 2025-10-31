@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.9.2">
 <title data-rh="true">Install OpenRAG with TUI | OpenRAG</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="robots" content="noindex, nofollow"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://docs.openr.ag/install"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Install OpenRAG with TUI | OpenRAG"><meta data-rh="true" name="description" content="Install the OpenRAG Python wheel, and then run the OpenRAG Terminal User Interface(TUI) to start your OpenRAG deployment with a guided setup process."><meta data-rh="true" property="og:description" content="Install the OpenRAG Python wheel, and then run the OpenRAG Terminal User Interface(TUI) to start your OpenRAG deployment with a guided setup process."><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://docs.openr.ag/install"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/install" hreflang="en"><link data-rh="true" rel="alternate" href="https://docs.openr.ag/install" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Install OpenRAG with TUI","item":"https://docs.openr.ag/install"}]}</script><link rel="stylesheet" href="/assets/css/styles.66669ecc.css">
-<script src="/assets/js/runtime~main.628a6e5b.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.0969a7ac.js" defer="defer"></script>
 <script src="/assets/js/main.cbdacd68.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -26,6 +26,7 @@
 <li class="">Create an <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="">OpenAI API key</a>. This key is <strong>required</strong> to start OpenRAG, but you can choose a different model provider during <a href="#application-onboarding" class="">Application Onboarding</a>.</li>
 <li class="">Optional: Install GPU support with an NVIDIA GPU, <a href="https://docs.nvidia.com/cuda/" target="_blank" rel="noopener noreferrer" class="">CUDA</a> support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don&#x27;t have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.</li>
 </ul>
+<div class="theme-admonition theme-admonition-note admonition_xJq3 alert alert--secondary"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M6.3 5.69a.942.942 0 0 1-.28-.7c0-.28.09-.52.28-.7.19-.18.42-.28.7-.28.28 0 .52.09.7.28.18.19.28.42.28.7 0 .28-.09.52-.28.7a1 1 0 0 1-.7.3c-.28 0-.52-.11-.7-.3zM8 7.99c-.02-.25-.11-.48-.31-.69-.2-.19-.42-.3-.69-.31H6c-.27.02-.48.13-.69.31-.2.2-.3.44-.31.69h1v3c.02.27.11.5.31.69.2.2.42.31.69.31h1c.27 0 .48-.11.69-.31.2-.19.3-.42.31-.69H8V7.98v.01zM7 2.3c-3.14 0-5.7 2.54-5.7 5.68 0 3.14 2.56 5.7 5.7 5.7s5.7-2.55 5.7-5.7c0-3.15-2.56-5.69-5.7-5.69v.01zM7 .98c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.12-7-7 3.14-7 7-7z"></path></svg></span>Windows users</div><div class="admonitionContent_BuS1"><p>To use OpenRAG on Windows, use <a href="https://learn.microsoft.com/en-us/windows/wsl/install" target="_blank" rel="noopener noreferrer" class="">WSL (Windows Subsystem for Linux)</a>.</p></div></div>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="install-python-wheel">Install the OpenRAG Python wheel<a href="#install-python-wheel" class="hash-link" aria-label="Direct link to Install the OpenRAG Python wheel" title="Direct link to Install the OpenRAG Python wheel" translate="no">​</a></h2>
 <p>The OpenRAG wheel installs the Terminal User Interface (TUI) for configuring and running OpenRAG.</p>
 <p>To quickly install and start OpenRAG, run <code>uvx openrag</code>.</p>
@@ -71,26 +72,41 @@ If the TUI detects OAuth credentials, it enforces the <strong>Advanced Setup</st
 <strong>Basic Setup</strong> does not set up OAuth connections for ingestion from cloud providers.
 For OAuth setup, use <strong>Advanced Setup</strong>.
 For information about the difference between basic (no auth) and OAuth in OpenRAG, see <a class="" href="/knowledge#auth">Authentication and document access</a>.</p><ol>
-<li class="">To install OpenRAG with <strong>Basic Setup</strong>, click <strong>Basic Setup</strong> or press <kbd>1</kbd>.</li>
-<li class="">Click <strong>Generate Passwords</strong> to generate passwords for OpenSearch and Langflow.
-Only the <strong>OpenSearch Admin Password</strong> and <strong>OpenAI API key</strong> are required.
-To generate the optional <strong>Langflow Admin Password</strong>, click <strong>Generate Password</strong>.</li>
-<li class="">Paste your OpenAI API key in the OpenAI API key field.</li>
-<li class="">Click <strong>Save Configuration</strong>.
-Your passwords are saved in the <code>.env</code> file used to start OpenRAG.</li>
-<li class="">To start OpenRAG, click <strong>Start All Services</strong>.
+<li class="">
+<p>To install OpenRAG with <strong>Basic Setup</strong>, click <strong>Basic Setup</strong> or press <kbd>1</kbd>.</p>
+</li>
+<li class="">
+<p>Click <strong>Generate Passwords</strong> to generate passwords for OpenSearch and Langflow.</p>
+<p>The OpenSearch password is required. The Langflow admin password is optional.
+If no Langflow admin password is generated, Langflow runs in <a href="https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login" target="_blank" rel="noopener noreferrer" class="">autologin mode</a> with no password required.</p>
+</li>
+<li class="">
+<p>Paste your OpenAI API key in the OpenAI API key field.</p>
+</li>
+<li class="">
+<p>Click <strong>Save Configuration</strong>.
+Your passwords are saved in the <code>.env</code> file used to start OpenRAG.</p>
+</li>
+<li class="">
+<p>To start OpenRAG, click <strong>Start All Services</strong>.
 Startup pulls container images and runs them, so it can take some time.
-When startup is complete, the TUI displays the following:<!-- -->
+When startup is complete, the TUI displays the following:</p>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><span class="token-line" style="color:#393A34"><span class="token plain">Services started successfully</span><br></span><span class="token-line" style="color:#393A34"><span class="token plain">Command completed successfully</span><br></span></code></pre></div></div>
 </li>
-<li class="">To open the OpenRAG application, click <strong>Open App</strong>.</li>
-<li class="">Continue with <a href="#application-onboarding" class="">Application Onboarding</a>.</li>
+<li class="">
+<p>To open the OpenRAG application, click <strong>Open App</strong>.</p>
+</li>
+<li class="">
+<p>Continue with <a href="#application-onboarding" class="">Application Onboarding</a>.</p>
+</li>
 </ol></div><div role="tabpanel" class="tabItem_Ymn6" hidden=""><ol>
 <li class="">
 <p>To install OpenRAG with <strong>Advanced Setup</strong>, click <strong>Advanced Setup</strong> or press <kbd>2</kbd>.</p>
 </li>
 <li class="">
 <p>Click <strong>Generate Passwords</strong> to generate passwords for OpenSearch and Langflow.</p>
+<p>The OpenSearch password is required. The Langflow admin password is optional.
+If no Langflow admin password is generated, Langflow runs in <a href="https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login" target="_blank" rel="noopener noreferrer" class="">autologin mode</a> with no password required.</p>
 </li>
 <li class="">
 <p>Paste your OpenAI API key in the OpenAI API key field.</p>
@@ -168,7 +184,12 @@ This is recommended, but not required.</li>
 <li class="">To complete the onboarding tasks, click <strong>What is OpenRAG</strong>, and then click <strong>Add a Document</strong>.</li>
 <li class="">Continue with the <a class="" href="/quickstart">Quickstart</a>.</li>
 </ol></div></div></div>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="manage-openrag-containers-with-the-tui">Manage OpenRAG containers with the TUI<a href="#manage-openrag-containers-with-the-tui" class="hash-link" aria-label="Direct link to Manage OpenRAG containers with the TUI" title="Direct link to Manage OpenRAG containers with the TUI" translate="no">​</a></h2>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="close-the-openrag-tui">Close the OpenRAG TUI<a href="#close-the-openrag-tui" class="hash-link" aria-label="Direct link to Close the OpenRAG TUI" title="Direct link to Close the OpenRAG TUI" translate="no">​</a></h2>
+<p>To close the OpenRAG TUI, press <kbd>q</kbd>.
+The OpenRAG containers will continue to be served until the containers are stopped.
+For more information, see <a href="#tui-container-management" class="">Manage OpenRAG containers with the TUI </a>.</p>
+<p>To start the TUI again, run <code>uv run openrag</code>.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="tui-container-management">Manage OpenRAG containers with the TUI<a href="#tui-container-management" class="hash-link" aria-label="Direct link to Manage OpenRAG containers with the TUI" title="Direct link to Manage OpenRAG containers with the TUI" translate="no">​</a></h2>
 <p>After installation, the TUI can deploy, manage, and upgrade your OpenRAG containers.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="start-all-services">Start all services<a href="#start-all-services" class="hash-link" aria-label="Direct link to Start all services" title="Direct link to Start all services" translate="no">​</a></h3>
 <p>Click <strong>Start All Services</strong> to start the OpenRAG containers.
@@ -199,7 +220,7 @@ The <code>docling serve</code> process is a native service in OpenRAG, because i
 <p>To start or stop <code>docling serve</code> or any other native services, in the TUI Status menu, click <strong>Stop</strong> or <strong>Restart</strong>.</p>
 <p>To view the status, port, or PID of a native service, in the TUI main menu, click <a href="#status" class="">Status</a>.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="diagnostics">Diagnostics<a href="#diagnostics" class="hash-link" aria-label="Direct link to Diagnostics" title="Direct link to Diagnostics" translate="no">​</a></h2>
-<p>The <strong>Diagnostics</strong> menu provides health monitoring for your container runtimes and monitoring of your OpenSearch security.</p></div><footer class="theme-doc-footer docusaurus-mt-lg"><div class="row margin-top--sm theme-doc-footer-edit-meta-row"><div class="col noPrint_WFHX"><a href="https://github.com/openrag/openrag/tree/main/docs/docs/get-started/install.mdx" target="_blank" rel="noopener noreferrer" class="theme-edit-this-page"><svg fill="currentColor" height="20" width="20" viewBox="0 0 40 40" class="iconEdit_Z9Sw" aria-hidden="true"><g><path d="m34.5 11.7l-3 3.1-6.3-6.3 3.1-3q0.5-0.5 1.2-0.5t1.1 0.5l3.9 3.9q0.5 0.4 0.5 1.1t-0.5 1.2z m-29.5 17.1l18.4-18.5 6.3 6.3-18.4 18.4h-6.3v-6.2z"></path></g></svg>Edit this page</a></div><div class="col lastUpdated_JAkA"></div></div></footer></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">About OpenRAG</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/get-started/docker"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Install OpenRAG containers</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#prerequisites" class="table-of-contents__link toc-highlight">Prerequisites</a></li><li><a href="#install-python-wheel" class="table-of-contents__link toc-highlight">Install the OpenRAG Python wheel</a></li><li><a href="#setup" class="table-of-contents__link toc-highlight">Set up OpenRAG with the TUI</a></li><li><a href="#application-onboarding" class="table-of-contents__link toc-highlight">Application onboarding</a></li><li><a href="#manage-openrag-containers-with-the-tui" class="table-of-contents__link toc-highlight">Manage OpenRAG containers with the TUI</a><ul><li><a href="#start-all-services" class="table-of-contents__link toc-highlight">Start all services</a></li><li><a href="#status" class="table-of-contents__link toc-highlight">Status</a></li><li><a href="#native-services-status" class="table-of-contents__link toc-highlight">Native services status</a></li></ul></li><li><a href="#diagnostics" class="table-of-contents__link toc-highlight">Diagnostics</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer"><div class="container container-fluid"><div class="row footer__links"><div class="theme-layout-footer-column col footer__col"><div class="footer__title"></div><ul class="footer__items clean-list"><li class="footer__item"><div class="footer-links">
+<p>The <strong>Diagnostics</strong> menu provides health monitoring for your container runtimes and monitoring of your OpenSearch security.</p></div><footer class="theme-doc-footer docusaurus-mt-lg"><div class="row margin-top--sm theme-doc-footer-edit-meta-row"><div class="col noPrint_WFHX"><a href="https://github.com/openrag/openrag/tree/main/docs/docs/get-started/install.mdx" target="_blank" rel="noopener noreferrer" class="theme-edit-this-page"><svg fill="currentColor" height="20" width="20" viewBox="0 0 40 40" class="iconEdit_Z9Sw" aria-hidden="true"><g><path d="m34.5 11.7l-3 3.1-6.3-6.3 3.1-3q0.5-0.5 1.2-0.5t1.1 0.5l3.9 3.9q0.5 0.4 0.5 1.1t-0.5 1.2z m-29.5 17.1l18.4-18.5 6.3 6.3-18.4 18.4h-6.3v-6.2z"></path></g></svg>Edit this page</a></div><div class="col lastUpdated_JAkA"></div></div></footer></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">About OpenRAG</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/get-started/docker"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Install OpenRAG containers</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#prerequisites" class="table-of-contents__link toc-highlight">Prerequisites</a></li><li><a href="#install-python-wheel" class="table-of-contents__link toc-highlight">Install the OpenRAG Python wheel</a></li><li><a href="#setup" class="table-of-contents__link toc-highlight">Set up OpenRAG with the TUI</a></li><li><a href="#application-onboarding" class="table-of-contents__link toc-highlight">Application onboarding</a></li><li><a href="#close-the-openrag-tui" class="table-of-contents__link toc-highlight">Close the OpenRAG TUI</a></li><li><a href="#tui-container-management" class="table-of-contents__link toc-highlight">Manage OpenRAG containers with the TUI</a><ul><li><a href="#start-all-services" class="table-of-contents__link toc-highlight">Start all services</a></li><li><a href="#status" class="table-of-contents__link toc-highlight">Status</a></li><li><a href="#native-services-status" class="table-of-contents__link toc-highlight">Native services status</a></li></ul></li><li><a href="#diagnostics" class="table-of-contents__link toc-highlight">Diagnostics</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer"><div class="container container-fluid"><div class="row footer__links"><div class="theme-layout-footer-column col footer__col"><div class="footer__title"></div><ul class="footer__items clean-list"><li class="footer__item"><div class="footer-links">
                   <span>© 2025 OpenRAG</span>
                   </div></li></ul></div></div></div></footer></div>
 </body>
