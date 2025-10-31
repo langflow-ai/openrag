@@ -470,7 +470,7 @@ async def initialize_services():
         session_manager=session_manager,
     )
     openrag_connector_service = ConnectorService(
-        patched_async_client=clients.patched_async_client,
+        patched_async_client=clients,  # Pass the clients object itself
         process_pool=process_pool,
         embed_model=get_embedding_model(),
         index_name=INDEX_NAME,
@@ -1108,6 +1108,8 @@ async def create_app():
     @app.on_event("shutdown")
     async def shutdown_event():
         await cleanup_subscriptions_proper(services)
+        # Cleanup async clients
+        await clients.cleanup()
 
     return app
 
