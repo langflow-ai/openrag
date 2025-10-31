@@ -693,28 +693,28 @@ async def onboarding(request, flows_service):
         # If model_provider was updated, assign the new provider to flows
         if "model_provider" in body:
             provider = body["model_provider"].strip().lower()
-            try:
-                flow_result = await flows_service.assign_model_provider(provider)
+            # try:
+            #     flow_result = await flows_service.assign_model_provider(provider)
 
-                if flow_result.get("success"):
-                    logger.info(
-                        f"Successfully assigned {provider} to flows",
-                        flow_result=flow_result,
-                    )
-                else:
-                    logger.warning(
-                        f"Failed to assign {provider} to flows",
-                        flow_result=flow_result,
-                    )
-                    # Continue even if flow assignment fails - configuration was still saved
+            #     if flow_result.get("success"):
+            #         logger.info(
+            #             f"Successfully assigned {provider} to flows",
+            #             flow_result=flow_result,
+            #         )
+            #     else:
+            #         logger.warning(
+            #             f"Failed to assign {provider} to flows",
+            #             flow_result=flow_result,
+            #         )
+            #         # Continue even if flow assignment fails - configuration was still saved
 
-            except Exception as e:
-                logger.error(
-                    "Error assigning model provider to flows",
-                    provider=provider,
-                    error=str(e),
-                )
-                raise
+            # except Exception as e:
+            #     logger.error(
+            #         "Error assigning model provider to flows",
+            #         provider=provider,
+            #         error=str(e),
+            #     )
+            #     raise
 
             # Set Langflow global variables based on provider
             try:
