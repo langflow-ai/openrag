@@ -78,7 +78,7 @@ export function ModelSelectors({
             )}
           />
         </LabelWrapper>
-        {errors[embeddingModelName] && (
+        {embeddingModels.length > 0 && errors[embeddingModelName] && (
           <p className="text-sm text-destructive">
             {errors[embeddingModelName]?.message as string}
           </p>
@@ -111,7 +111,7 @@ export function ModelSelectors({
             )}
           />
         </LabelWrapper>
-        {errors[languageModelName] && (
+        {languageModels.length > 0 && errors[languageModelName] && (
           <p className="text-sm text-destructive">
             {errors[languageModelName]?.message as string}
           </p>

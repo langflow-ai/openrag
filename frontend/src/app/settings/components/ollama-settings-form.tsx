@@ -43,7 +43,7 @@ export function OllamaSettingsForm() {
     : errors.endpoint?.message;
 
   return (
-    <div>
+    <div className="space-y-4">
       <div className="space-y-2">
         <LabelWrapper
           label="Ollama Base URL"
