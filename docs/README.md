@@ -68,7 +68,7 @@ Apply this to all documentation files that contain tabs or details elements so t
 2. Check your `.mdx` files to confirm these elements are removed.
 Don't commit the changes.
 
-3. From `openrag/docs`, run this command to build the site with the changes, and create a PDF at `documents/openrag`.
+3. From `openrag/docs`, run this command to build the site with the changes, and create a PDF at `openrag/documents`.
 ```
 npm run build:pdf
 ```
