@@ -31,11 +31,13 @@ The **Knowledge Ingest** flow uses Langflow's [**File** component](https://docs.
 
 The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#setup) menu or in the `.env` used by Docker Compose.
 
-To load and process a single file from the mapped location, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then click **Add File**.
+To load and process a single file from the mapped location, click **Add Knowledge**, and then click <Icon name="File" aria-hidden="true"/> **File**.
 The file is loaded into your OpenSearch database, and appears in the Knowledge page.
 
-To load and process a directory from the mapped location, click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then click **Process Folder**. 
+To load and process a directory from the mapped location, click **Add Knowledge**, and then click <Icon name="Folder" aria-hidden="true"/> **Folder**.
 The files are loaded into your OpenSearch database, and appear in the Knowledge page.
+
+To add files directly to a chat session, click <Icon name="Plus" aria-hidden="true"/> in the chat input and select the files you want to include. Files added this way are processed and made available to the agent for the current conversation, and are not permanently added to the knowledge base.
 
 ### Ingest files through OAuth connectors {#oauth-ingestion}
 
@@ -61,11 +63,11 @@ If you wish to use another provider, add the secrets to another provider.
   <TabItem value=".env" label=".env">
    1. Stop the Docker deployment.
    2. Add the OAuth provider's client and secret key in the `.env` file for Docker Compose.
-   ```bash    
-   GOOGLE_OAUTH_CLIENT_ID='YOUR_OAUTH_CLIENT_ID'
-   GOOGLE_OAUTH_CLIENT_SECRET='YOUR_OAUTH_CLIENT_SECRET'
-   ```
-   3. Save your `.env`. file.
+       ```bash    
+       GOOGLE_OAUTH_CLIENT_ID='YOUR_OAUTH_CLIENT_ID'
+       GOOGLE_OAUTH_CLIENT_SECRET='YOUR_OAUTH_CLIENT_SECRET'
+       ```
+   3. Save your `.env` file.
    4. Start the Docker deployment.
   </TabItem>
 </Tabs>
@@ -75,11 +77,11 @@ A successful authentication opens OpenRAG with the required scopes for your conn
 
 To add knowledge from an OAuth-connected storage provider, do the following:
 
-1. Click <Icon name="Plus" aria-hidden="true"/> **Add Knowledge**, and then select the storage provider, for example, **Google Drive**.
+1. Click **Add Knowledge**, and then select the storage provider, for example, **Google Drive**.
 The **Add Cloud Knowledge** page opens.
-2. To add files or folders from the connected storage, click <Icon name="Plus" aria-hidden="true"/> **Add Files**.
+2. To add files or folders from the connected storage, click **Add Files**.
 Select the files or folders you want and click **Select**.
-You can select multiples.
+You can select multiple files.
 3. When your files are selected, click **Ingest Files**.
 The ingestion process may take some time, depending on the size of your documents.
 4. When ingestion is complete, your documents are available in the Knowledge screen.
@@ -104,11 +106,11 @@ Knowledge filters help agents work more efficiently with large document collecti
 
 To create a knowledge filter, do the following:
 
-1. Click <Icon name="Funnel" aria-hidden="true"/> **All Knowledge**, and then click <Icon name="Plus" aria-hidden="true"/> **Create New Filter**.
-    The **Create New Knowledge Filter** pane appears.
-2. Enter a **Name** and **Description**, and then click <Icon name="Save" aria-hidden="true"/> **Create Filter**.
-A new filter is created with default settings that match everything.
-3. To modify the default filter, click <Icon name="Funnel" aria-hidden="true"/> **All Knowledge**, and then click your new filter to edit it in the **Knowledge Filter** pane.
+1. Click **Knowledge**, and then click <Icon name="Plus" aria-hidden="true"/> **Knowledge Filters**.
+    The **Knowledge Filter** pane appears.
+2. Enter a **Name** and **Description**, and then click **Create Filter**.
+A new filter is created with default settings that match all documents.
+3. To modify the filter, click <Icon name="Library" aria-hidden="true"/> **Knowledge**, and then click your new filter to edit it in the **Knowledge Filter** pane.
 
    The following filter options are configurable.
    
@@ -116,15 +118,17 @@ A new filter is created with default settings that match everything.
    * **Data Sources**: Select specific data sources or folders to include.
    * **Document Types**: Filter by file type.
    * **Owners**: Filter by who uploaded the documents.
-   * **Sources**: Filter by connector types, such as local upload or Google Drive.
-   * **Result Limit**: Set maximum number of results. The default is `10`.
+   * **Connectors**: Filter by connector types, such as local upload or Google Drive.
+   * **Response Limit**: Set maximum number of results. The default is `10`.
    * **Score Threshold**: Set minimum relevance score. The default score is `0`.
 
-4. When you're done editing the filter, click <Icon name="Save" aria-hidden="true"/> **Save Configuration**.
+4. When you're done editing the filter, click **Update Filter**.
 
-5. To apply the filter to OpenRAG globally, click <Icon name="Funnel" aria-hidden="true"/> **All Knowledge**, and then select the filter to apply.
+5. To apply the filter to OpenRAG globally, click <Icon name="Library" aria-hidden="true"/> **Knowledge**, and then select the filter to apply. One filter can be enabled at a time.
 
-    To apply the filter to a single chat session, in the <Icon name="MessageSquare" aria-hidden="true"/> **Chat** window, click **@**, and then select the filter to apply.
+    To apply the filter to a single chat session, in the <Icon name="MessageSquare" aria-hidden="true"/> **Chat** window, click <Icon name="Funnel" aria-hidden="true"/>, and then select the filter to apply.
+
+    To delete the filter, in the **Knowledge Filter** pane, click **Delete Filter**.
 
 ## OpenRAG default configuration
 

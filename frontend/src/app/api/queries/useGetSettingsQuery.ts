@@ -26,6 +26,9 @@ export interface Settings {
   edited?: boolean;
   provider?: {
     model_provider?: string;
+    // Note: api_key is never returned by the backend for security reasons
+    endpoint?: string;
+    project_id?: string;
   };
   knowledge?: KnowledgeSettings;
   agent?: AgentSettings;
