@@ -110,7 +110,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
         payload = {
             "model": llm_model,
             "messages": [
-                {"role": "user", "content": "What's the weather like?"}
+                {"role": "user", "content": "What tools do you have available?"}
             ],
             "tools": [
                 {
@@ -233,7 +233,7 @@ async def _test_watsonx_completion_with_tools(
             "model_id": llm_model,
             "project_id": project_id,
             "messages": [
-                {"role": "user", "content": "What's the weather like?"}
+                {"role": "user", "content": "What tools do you have available?"}
             ],
             "tools": [
                 {
@@ -356,7 +356,7 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
         payload = {
             "model": llm_model,
             "messages": [
-                {"role": "user", "content": "What's the weather like?"}
+                {"role": "user", "content": "What tools do you have available?"}
             ],
             "tools": [
                 {
