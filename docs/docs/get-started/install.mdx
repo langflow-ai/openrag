@@ -30,6 +30,10 @@ If you prefer running Podman or Docker containers and manually editing `.env` fi
 
 ## Install OpenRAG {#install}
 
+:::note Windows users
+To use OpenRAG on Windows, use [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
+:::
+
 To set up a project and install OpenRAG as a dependency, do the following:
 
 1. Create a new project with a virtual environment using `uv init`.
@@ -101,8 +105,10 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 
    1. To install OpenRAG with **Basic Setup**, click **Basic Setup** or press <kbd>1</kbd>. 
    2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
-   Only the **OpenSearch Admin Password** and **OpenAI API key** are required.
-   To generate the optional **Langflow Admin Password**, click **Generate Password**.
+   
+       The OpenSearch password is required. The Langflow admin password is optional.
+       If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
+   
    3. Paste your OpenAI API key in the OpenAI API key field.
    4. Click **Save Configuration**.
    Your passwords are saved in the `.env` file used to start OpenRAG.
@@ -120,6 +126,10 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 
    1. To install OpenRAG with **Advanced Setup**, click **Advanced Setup** or press <kbd>2</kbd>. 
    2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
+   
+       The OpenSearch password is required. The Langflow admin password is optional.
+       If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
+   
    3. Paste your OpenAI API key in the OpenAI API key field.
    4. Add your client and secret values for Google or Microsoft OAuth.
    These values can be found with your OAuth provider.
@@ -156,7 +166,15 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 
 <PartialOnboarding />
 
-## Manage OpenRAG containers with the TUI
+## Close the OpenRAG TUI
+
+To close the OpenRAG TUI, press <kbd>q</kbd>.
+The OpenRAG containers will continue to be served until the containers are stopped.
+For more information, see [Manage OpenRAG containers with the TUI ](#tui-container-management).
+
+To start the TUI again, run `uv run openrag`.
+
+## Manage OpenRAG containers with the TUI {#tui-container-management}
 
 After installation, the TUI can deploy, manage, and upgrade your OpenRAG containers.
 
