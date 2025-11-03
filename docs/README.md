@@ -50,20 +50,20 @@ To update the PDF, do the following:
 Content in tabs, details, and summary elements is hidden from PDF builds and it must be included.
 To remove these items, give the following prompt or something similar to your IDE.
 
-```
-Flatten documentation for PDF: remove tabs and details elements
-In all MDX files in docs/docs/, flatten interactive elements:
-Remove all <Tabs> and <TabItem> components:
-Convert each tab's content to a regular section with an appropriate heading (### for subsections, ## for main sections)
-Show all tab content sequentially
-Remove the import statements for Tabs and TabItem where they're no longer used
-Remove all <details> and <summary> elements:
-Convert details content to regular text with an appropriate heading (### for subsections)
-Show all content directly (no collapsible sections)
-Keep all content visible — nothing should be hidden or collapsed
-Maintain proper formatting and structure
-Apply this to all documentation files that contain tabs or details elements so the content is fully flat and visible for PDF generation.
-```
+   ```
+   Flatten documentation for PDF: remove tabs and details elements
+   In all MDX files in docs/docs/, flatten interactive elements:
+   Remove all <Tabs> and <TabItem> components:
+   Convert each tab's content to a regular section with an appropriate heading (### for subsections, ## for main sections)
+   Show all tab content sequentially
+   Remove the import statements for Tabs and TabItem where they're no longer used
+   Remove all <details> and <summary> elements:
+   Convert details content to regular text with an appropriate heading (### for subsections)
+   Show all content directly (no collapsible sections)
+   Keep all content visible — nothing should be hidden or collapsed
+   Maintain proper formatting and structure
+   Apply this to all documentation files that contain tabs or details elements so the content is fully flat and visible for PDF generation.
+   ```
 
 2. Check your `.mdx` files to confirm these elements are removed.
 Don't commit the changes.
