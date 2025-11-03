@@ -26,6 +26,7 @@ export function ModelSelector({
 	searchPlaceholder = "Search model...",
 	noOptionsPlaceholder = "No models available",
 	custom = false,
+	hasError = false,
 }: {
 	options: {
 		value: string;
@@ -39,6 +40,7 @@ export function ModelSelector({
 	noOptionsPlaceholder?: string;
 	custom?: boolean;
 	onValueChange: (value: string) => void;
+	hasError?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const [searchValue, setSearchValue] = useState("");
@@ -57,7 +59,7 @@ export function ModelSelector({
 					role="combobox"
 					disabled={options.length === 0}
 					aria-expanded={open}
-					className="w-full gap-2 justify-between font-normal text-sm"
+					className={cn("w-full gap-2 justify-between font-normal text-sm", hasError && "!border-destructive")}
 				>
 					{value ? (
 						<div className="flex items-center gap-2">

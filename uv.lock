@@ -2352,7 +2352,7 @@ wheels = [
 
 [[package]]
 name = "openrag"
-version = "0.1.25"
+version = "0.1.28"
 source = { editable = "." }
 dependencies = [
     { name = "agentd" },

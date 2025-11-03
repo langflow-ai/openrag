@@ -21,7 +21,7 @@ class ConnectorService:
         task_service=None,
         session_manager=None,
     ):
-        self.openai_client = patched_async_client
+        self.clients = patched_async_client  # Store the clients object to access the property
         self.process_pool = process_pool
         self.embed_model = embed_model
         self.index_name = index_name
