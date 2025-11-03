@@ -98,7 +98,7 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 <Tabs groupId="Setup method">
   <TabItem value="Basic setup" label="Basic setup" default>
 
-    **Basic Setup** generates all of the required values for OpenRAG except the OpenAI API key.
+    **Basic Setup** can generate all of the required values for OpenRAG except the OpenAI API key.
     **Basic Setup** does not set up OAuth connections for ingestion from cloud providers.
     For OAuth setup, use **Advanced Setup**.
     For information about the difference between basic (no auth) and OAuth in OpenRAG, see [Authentication and document access](/knowledge#auth).
@@ -119,8 +119,9 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
       Services started successfully
       Command completed successfully
       ```
-   6. To open the OpenRAG application, click **Open App**.
-   7. Continue with [Application Onboarding](#application-onboarding).
+   6. To start the Docling service, under **Native Services**, click **Start**.
+   7. To open the OpenRAG application, click **Open App**.
+   8. Continue with [Application Onboarding](#application-onboarding).
   </TabItem>
   <TabItem value="Advanced setup" label="Advanced setup">
 
@@ -145,7 +146,8 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
       Services started successfully
       Command completed successfully
       ```
-   8. To open the OpenRAG application, click **Open App**.
+   8. To start the Docling service, under **Native Services**, click **Start**.
+   9. To open the OpenRAG application, click **Open App**.
    You are presented with your provider's OAuth sign-in screen.
    After sign-in, you are redirected to the redirect URI.
 
@@ -160,7 +162,7 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
        - OneDrive: `/connectors/onedrive/webhook`  
        - SharePoint: `/connectors/sharepoint/webhook`
        
-   9. Continue with [Application Onboarding](#application-onboarding).
+   10. Continue with [Application Onboarding](#application-onboarding).
   </TabItem>
 </Tabs>
 
@@ -229,3 +231,20 @@ To view the status, port, or PID of a native service, in the TUI main menu, clic
 ## Diagnostics
 
 The **Diagnostics** menu provides health monitoring for your container runtimes and monitoring of your OpenSearch security.
+
+## Reinstall OpenRAG {#reinstall}
+
+To reinstall OpenRAG with a completely fresh setup:
+
+1. Reset your containers using the **Reset** button in the [TUI status](#status) menu.
+   This removes all containers, volumes, and data.
+
+2. Optional: Delete your project's `.env` file.
+   The Reset operation does not remove your project's `.env` file, so your passwords, API keys, and OAuth settings can be preserved.
+   If you delete the `.env` file, run the [Set up OpenRAG with the TUI](#setup) process again to create a new configuration.
+
+3. In the TUI Setup menu, follow these steps from [Basic Setup](#setup):
+   1. Click **Start All Services** to pull container images and start them.
+   2. Under **Native Services**, click **Start** to start the Docling service.
+   3. Click **Open App** to open the OpenRAG application.
+   4. Continue with [Application Onboarding](#application-onboarding).

@@ -7,7 +7,14 @@ The first time you start OpenRAG, whether using the TUI or a `.env` file, it's r
 
 To skip onboarding, click **Skip onboarding**.
 
-Values from onboarding can be changed later in the OpenRAG **Settings** page.
+:::warning
+Most values from onboarding can be changed later in the OpenRAG **Settings** page, but there are important restrictions.
+
+The **language model provider** and **embeddings model provider** can only be selected at onboarding.
+To change your provider selection later, you must [reinstall OpenRAG](/install#reinstall).
+
+You must use the same provider for your language model and embedding model, unless you're using Ollama.
+:::
 
 Choose one LLM provider and complete only those steps:
 
