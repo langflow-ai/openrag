@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Loader2, CheckCircle, XCircle, ArrowLeft } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
+import AnimatedProcessingIcon from "@/components/ui/animated-processing-icon"
 
 function AuthCallbackContent() {
   const router = useRouter()
@@ -164,7 +165,9 @@ function AuthCallbackContent() {
           <CardTitle className="flex items-center justify-center gap-2">
             {status === "processing" && (
               <>
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <AnimatedProcessingIcon
+                  className="h-5 w-5 text-current"
+                />
                 {getTitle()}
               </>
             )}

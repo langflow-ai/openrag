@@ -12,6 +12,7 @@ import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
 import { useDoclingHealthQuery } from "@/src/app/api/queries/useDoclingHealthQuery";
 import { ChatRenderer } from "./chat-renderer";
+import AnimatedProcessingIcon from "./ui/animated-processing-icon";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -19,18 +20,29 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isPanelOpen } = useKnowledgeFilter();
   const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
 
+  // List of paths that should not show navigation
+  const authPaths = ["/login", "/auth/callback"];
+  const isAuthPage = authPaths.includes(pathname);
+
+  // Call all hooks unconditionally (React rules)
+  // But disable queries for auth pages to prevent unnecessary requests
   const { data: settings, isLoading: isSettingsLoading } = useGetSettingsQuery({
-    enabled: isAuthenticated || isNoAuthMode,
+    enabled: !isAuthPage && (isAuthenticated || isNoAuthMode),
   });
   const {
     data: health,
     isLoading: isHealthLoading,
     isError,
-  } = useDoclingHealthQuery();
+  } = useDoclingHealthQuery({
+    enabled: !isAuthPage,
+  });
 
-  // List of paths that should not show navigation
-  const authPaths = ["/login", "/auth/callback"];
-  const isAuthPage = authPaths.includes(pathname);
+  // For auth pages, render immediately without navigation
+  // This prevents the main layout from flashing
+  if (isAuthPage) {
+    return <div className="h-full">{children}</div>;
+  }
+
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
   const isUnhealthy = health?.status === "unhealthy" || isError;
@@ -42,16 +54,11 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin" />
+          <AnimatedProcessingIcon className="h-8 w-8 text-current" />
           <p className="text-muted-foreground">Starting OpenRAG...</p>
         </div>
       </div>
     );
-  }
-
-  if (isAuthPage) {
-    // For auth pages, render without navigation
-    return <div className="h-full">{children}</div>;
   }
 
   // For all other pages, render with Langflow-styled navigation and task menu
