@@ -69,8 +69,9 @@ To remove these items, give the following prompt or something similar to your ID
 Don't commit the changes.
 
 3. From `openrag/docs`, run this command to build the site with the changes, and create a PDF at `openrag/documents`.
-```
-npm run build:pdf
-```
+
+   ```
+   npm run build:pdf
+   ```
 
 4. Check the PDF's content, then commit and create a pull request.
