@@ -96,7 +96,10 @@ export function useDoclingHealth() {
 	const { data: health, isLoading, isError } = useDoclingHealthQuery();
 
 	const isHealthy = health?.status === "healthy" && !isError;
-	const isUnhealthy = health?.status === "unhealthy" || isError;
+	// Only consider unhealthy if backend is up but docling is down
+	// Don't show banner if backend is unavailable
+	const isUnhealthy = health?.status === "unhealthy";
+	const isBackendUnavailable = health?.status === "backend-unavailable" || isError;
 
 	return {
 		health,
@@ -104,6 +107,7 @@ export function useDoclingHealth() {
 		isError,
 		isHealthy,
 		isUnhealthy,
+		isBackendUnavailable,
 	};
 }
 
