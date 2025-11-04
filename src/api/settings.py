@@ -230,7 +230,7 @@ async def update_settings(request, session_manager):
                 flows_service = _get_flows_service()
                 await flows_service.update_chat_flow_system_prompt(
                     body["system_prompt"],
-                    current_config.provider.model_provider.lower()
+                    current_config.agent.system_prompt
                 )
                 logger.info(f"Successfully updated chat flow system prompt")
             except Exception as e:
