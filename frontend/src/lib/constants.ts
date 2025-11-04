@@ -21,7 +21,7 @@ export const DEFAULT_KNOWLEDGE_SETTINGS = {
  * UI Constants
  */
 export const UI_CONSTANTS = {
-  MAX_SYSTEM_PROMPT_CHARS: 2000,
+  MAX_SYSTEM_PROMPT_CHARS: 4000,
 } as const;
 
 export const ANIMATION_DURATION = 0.4;
