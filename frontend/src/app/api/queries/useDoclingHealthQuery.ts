@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 
 export interface DoclingHealthResponse {
-  status: "healthy" | "unhealthy";
+  status: "healthy" | "unhealthy" | "backend-unavailable";
   message?: string;
 }
 
@@ -26,15 +26,23 @@ export const useDoclingHealthQuery = (
 
       if (response.ok) {
         return { status: "healthy" };
+      } else if (response.status === 503) {
+        // Backend is up but docling is down (backend returns 503 for docling issues)
+        return {
+          status: "unhealthy",
+          message: `Health check failed with status: ${response.status}`,
+        };
       } else {
+        // Other backend errors - treat as docling unhealthy
         return {
           status: "unhealthy",
           message: `Health check failed with status: ${response.status}`,
         };
       }
     } catch (error) {
+      // Network error - backend is likely down, don't show docling banner
       return {
-        status: "unhealthy",
+        status: "backend-unavailable",
         message: error instanceof Error ? error.message : "Connection failed",
       };
     }

@@ -101,6 +101,7 @@ services:
     ports:
       - "7860:7860"
     environment:
+      - LANGFLOW_DEACTIVATE_TRACING=true
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
       - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
