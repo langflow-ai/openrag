@@ -121,15 +121,18 @@ class ContainerManager:
         return Path(filename)
 
     def is_available(self) -> bool:
-        """Check if container runtime is available."""
-        return self.runtime_info.runtime_type != RuntimeType.NONE
+        """Check if container runtime with compose is available."""
+        return (self.runtime_info.runtime_type != RuntimeType.NONE and
+                len(self.runtime_info.compose_command) > 0)
 
     def get_runtime_info(self) -> RuntimeInfo:
         """Get container runtime information."""
         return self.runtime_info
 
     def get_installation_help(self) -> str:
-        """Get installation instructions if runtime is not available."""
+        """Get installation instructions based on what's missing."""
+        if self.runtime_info.has_runtime_without_compose:
+            return self.platform_detector.get_compose_installation_instructions()
         return self.platform_detector.get_installation_instructions()
 
     async def _run_compose_command(
@@ -644,6 +647,9 @@ class ContainerManager:
                 if line.strip():
                     yield False, line, False
 
+        # Show runtime detection info
+        runtime_cmd_str = " ".join(self.runtime_info.compose_command)
+        yield False, f"Using compose command: {runtime_cmd_str}", False
         yield False, f"Final compose file: {compose_file.absolute()}", False
         if not compose_file.exists():
             yield False, f"ERROR: Compose file not found at {compose_file.absolute()}", False
