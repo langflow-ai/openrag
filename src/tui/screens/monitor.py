@@ -2,7 +2,7 @@
 
 import asyncio
 import re
-from typing import Literal, Any
+from typing import Literal, Any, Optional
 
 # Define button variant type
 ButtonVariant = Literal["default", "primary", "success", "warning", "error"]
@@ -296,7 +296,7 @@ class MonitorScreen(Screen):
                 self.run_worker(self._show_logs(service_name))
                 self._start_follow(service_name)
 
-    async def _start_services(self, cpu_mode: bool = False) -> None:
+    async def _start_services(self, cpu_mode: Optional[bool] = None) -> None:
         """Start services with progress updates."""
         self.operation_in_progress = True
         try:
