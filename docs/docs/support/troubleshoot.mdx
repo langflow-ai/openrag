@@ -13,6 +13,14 @@ This page provides troubleshooting advice for issues you might encounter when us
 Check that `OPENSEARCH_PASSWORD` set in [Environment variables](/reference/configuration) meets requirements.
 The password must contain at least 8 characters, and must contain at least one uppercase letter, one lowercase letter, one digit, and one special character that is strong.
 
+## OpenRAG fails to start from the TUI with "Operation not supported" error
+
+This error occurs when starting OpenRAG with the TUI in [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
+
+The error occurs because OpenRAG is running within a WSL environment, so `webbrowser.open()` can't launch a browser automatically.
+
+To access the OpenRAG application, open a web browser and enter `http://localhost:3000` in the address bar.
+
 ## Langflow connection issues
 
 Verify the `LANGFLOW_SUPERUSER` credentials set in [Environment variables](/reference/configuration) are correct.
