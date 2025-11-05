@@ -39,7 +39,7 @@ This command will:
 - Create a versioned sidebar file at `versioned_sidebars/version-1.0.0-sidebars.json`
 - Append the new version to `versions.json`
 
-3. After creating a version, update the Docusaurus configuration to include multiple versions.
+2. After creating a version, update the Docusaurus configuration to include multiple versions.
 `lastVersion:'1.0.0'` makes the '1.0.0' release the `latest` version.
 `current` is the work-in-progress docset, accessible at `/docs/next`.
 To remove a version, remove it from `onlyIncludeVersions`.
@@ -62,14 +62,14 @@ docs: {
 },
 ```
 
-4. Test the deployment locally.
+3. Test the deployment locally.
 
 ```bash
 npm run build
 npm run serve
 ```
 
-5. To add subsequent versions, repeat the process, first running the CLI command then updating `docusaurus.config.js`.
+4. To add subsequent versions, repeat the process, first running the CLI command then updating `docusaurus.config.js`.
 
 ```bash
 # Create version 2.0.0 from current docs
