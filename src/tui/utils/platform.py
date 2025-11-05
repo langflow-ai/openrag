@@ -21,6 +21,7 @@ class RuntimeInfo:
     compose_command: list[str]
     runtime_command: list[str]
     version: Optional[str] = None
+    has_runtime_without_compose: bool = False  # True if docker/podman exists but compose missing
 
 
 class PlatformDetector:
@@ -49,7 +50,8 @@ class PlatformDetector:
             docker_version = self._get_docker_version()
             if docker_version and podman_version in docker_version:
                 # This is podman masquerading as docker
-                if self._check_command(["docker", "compose", "--help"]):
+                if self._check_command(["docker", "compose", "--help"]) and \
+                   self._check_command(["docker", "compose", "version"]):
                     return RuntimeInfo(
                         RuntimeType.PODMAN,
                         ["docker", "compose"],
@@ -65,7 +67,8 @@ class PlatformDetector:
                     )
 
             # Check for native podman compose
-            if self._check_command(["podman", "compose", "--help"]):
+            if self._check_command(["podman", "compose", "--help"]) and \
+               self._check_command(["podman", "compose", "version"]):
                 return RuntimeInfo(
                     RuntimeType.PODMAN,
                     ["podman", "compose"],
@@ -73,8 +76,10 @@ class PlatformDetector:
                     podman_version,
                 )
 
-        # Check for actual docker
-        if self._check_command(["docker", "compose", "--help"]):
+        # Check for actual docker - try docker compose (new) first, then docker-compose (old)
+        # Check both --help and version to ensure compose subcommand actually works
+        if self._check_command(["docker", "compose", "--help"]) and \
+           self._check_command(["docker", "compose", "version"]):
             version = self._get_docker_version()
             return RuntimeInfo(
                 RuntimeType.DOCKER, ["docker", "compose"], ["docker"], version
@@ -83,6 +88,27 @@ class PlatformDetector:
             version = self._get_docker_version()
             return RuntimeInfo(
                 RuntimeType.DOCKER_COMPOSE, ["docker-compose"], ["docker"], version
+            )
+
+        # Check if we have docker/podman runtime but no working compose
+        docker_version = self._get_docker_version()
+        if docker_version:
+            return RuntimeInfo(
+                RuntimeType.DOCKER,
+                [],
+                ["docker"],
+                docker_version,
+                has_runtime_without_compose=True
+            )
+
+        podman_version = self._get_podman_version()
+        if podman_version:
+            return RuntimeInfo(
+                RuntimeType.PODMAN,
+                [],
+                ["podman"],
+                podman_version,
+                has_runtime_without_compose=True
             )
 
         return RuntimeInfo(RuntimeType.NONE, [], [])
@@ -114,7 +140,15 @@ class PlatformDetector:
     def _check_command(self, cmd: list[str]) -> bool:
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            return result.returncode == 0
+            # Check both return code and that stderr doesn't contain "unknown" error
+            # This helps catch cases where docker exists but compose subcommand doesn't
+            if result.returncode != 0:
+                return False
+            # Check both stdout and stderr for error indicators
+            combined = (result.stdout + result.stderr).lower()
+            if "unknown" in combined and ("command" in combined or "flag" in combined or "shorthand" in combined):
+                return False
+            return True
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
 
@@ -192,6 +226,64 @@ To set up WSL:
 Learn more: https://docs.microsoft.com/en-us/windows/wsl/install
 """
 
+    def get_compose_installation_instructions(self) -> str:
+        """Get instructions for installing compose when runtime exists but compose is missing."""
+        if self.platform_system == "Darwin":
+            return """
+Container runtime detected but Docker Compose is missing.
+
+Recommended - Install Docker Desktop for Mac:
+  Docker Desktop includes both Docker Engine and Docker Compose.
+  https://docs.docker.com/desktop/install/mac-install/
+
+Or install docker-compose separately:
+  brew install docker-compose
+
+For Podman:
+  brew install podman-compose
+"""
+        elif self.platform_system == "Linux":
+            return """
+Container runtime detected but Docker Compose is missing.
+
+Install Docker Compose plugin:
+  # For Ubuntu/Debian:
+  sudo apt-get update
+  sudo apt-get install docker-compose-plugin
+
+  # For RHEL/Fedora:
+  sudo dnf install docker-compose-plugin
+
+Or install standalone docker-compose:
+  sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  sudo chmod +x /usr/local/bin/docker-compose
+
+For Podman:
+  # Ubuntu/Debian: sudo apt install podman-compose
+  # RHEL/Fedora: sudo dnf install podman-compose
+"""
+        elif self.platform_system == "Windows":
+            return """
+Container runtime detected but Docker Compose is missing.
+
+Please install Docker Compose in WSL:
+
+  In WSL terminal, install Docker Compose plugin:
+  sudo apt-get update
+  sudo apt-get install docker-compose-plugin
+
+  Or for Podman:
+  sudo apt install podman-compose
+"""
+        else:
+            return """
+Container runtime detected but Docker Compose is missing.
+
+Please install Docker Compose:
+  - Docker Compose: https://docs.docker.com/compose/install/
+  - Or Podman Compose: https://github.com/containers/podman-compose
+"""
+
     def get_installation_instructions(self) -> str:
         if self.platform_system == "Darwin":
             return """
@@ -219,17 +311,18 @@ Or Podman:
 """
         elif self.platform_system == "Windows":
             return """
-No container runtime found. Please install one:
+No container runtime found. Please install one using WSL:
 
-Docker Desktop for Windows:
-  https://docs.docker.com/desktop/install/windows-install/
-
-Or Podman Desktop:
-  https://podman-desktop.io/downloads
-
-For better performance, consider using WSL:
   Run: wsl --install
   https://docs.microsoft.com/en-us/windows/wsl/install
+  
+ Docker:
+  curl -fsSL https://get.docker.com -o get-docker.sh
+  sudo sh get-docker.sh
+
+Or Podman:
+  # Ubuntu/Debian: sudo apt install podman
+  # RHEL/Fedora: sudo dnf install podman
 """
         else:
             return """
