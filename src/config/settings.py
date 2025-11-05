@@ -98,7 +98,7 @@ INDEX_BODY = {
     "settings": {
         "index": {"knn": True},
         "number_of_shards": 1,
-        "number_of_replicas": 1,
+        "number_of_replicas": 0,
     },
     "mappings": {
         "properties": {
