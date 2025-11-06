@@ -47,7 +47,15 @@ export function ModelSelectors({
         shouldValidate: true,
       });
     }
-  }, [defaultLlmModel, defaultEmbeddingModel, setValue]);
+  }, [
+    defaultLlmModel,
+    defaultEmbeddingModel,
+    llmModel,
+    embeddingModel,
+    setValue,
+    languageModelName,
+    embeddingModelName,
+  ]);
 
   return (
     <>

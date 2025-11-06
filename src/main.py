@@ -39,6 +39,7 @@ from api import (
     models,
     nudges,
     oidc,
+    provider_health,
     router,
     search,
     settings,
@@ -985,6 +986,14 @@ async def create_app():
                 )
             ),
             methods=["POST"],
+        ),
+        # Provider health check endpoint
+        Route(
+            "/provider/health",
+            require_auth(services["session_manager"])(
+                provider_health.check_provider_health
+            ),
+            methods=["GET"],
         ),
         # Models endpoints
         Route(

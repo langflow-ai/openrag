@@ -62,7 +62,6 @@ export const useUpdateSettingsMutation = (
     onSuccess: (...args) => {
       queryClient.invalidateQueries({ 
         queryKey: ["settings"], 
-        refetchType: "all"
       });
       options?.onSuccess?.(...args);
     },
