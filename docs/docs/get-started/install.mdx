@@ -28,66 +28,112 @@ If you prefer running Podman or Docker containers and manually editing `.env` fi
 - Create an [OpenAI API key](https://platform.openai.com/api-keys). This key is **required** to start OpenRAG, but you can choose a different model provider during [Application Onboarding](#application-onboarding).
 - Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
 
-## Install OpenRAG {#install}
+## Installation Methods {#install}
 
 :::note Windows users
 To use OpenRAG on Windows, use [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
 :::
 
-To set up a project and install OpenRAG as a dependency, do the following:
+Choose an installation method based on your needs:
 
-1. Create a new project with a virtual environment using `uv init`.
+* For a quick test, use `uvx` to run OpenRAG without creating a project or modifying files.
+* Use `uv add` to install OpenRAG as a managed dependency in a new or existing Python project.
+* Use `uv pip install` to install OpenRAG into an existing virtual environment.
 
-   ```bash
-   uv init YOUR_PROJECT_NAME
-   cd YOUR_PROJECT_NAME
-   ```
+<Tabs groupId="Installation method">
+  <TabItem value="uvx" label="Quick test with uvx" default>
 
-   The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
-   For more information on virtual environments, see the [uv documentation](https://docs.astral.sh/uv/pip/environments).
+    Use `uvx` to quickly run OpenRAG without creating a project or modifying any files.
 
-2. Add OpenRAG to your project.
-   ```bash
-   uv add openrag
-   ```
-
-   To add a specific version of OpenRAG:
-   ```bash
-   uv add openrag==0.1.25
-   ```
-
-3. Start the OpenRAG TUI.
-   ```bash
-   uv run openrag
-   ```
-
-    <details closed>
-    <summary>Install a local wheel</summary>
-    
-    If you downloaded the OpenRAG wheel to your local machine, follow these steps:
-
-    1. Add the wheel to your project's virtual environment.
-
+    1. Create a directory to store the OpenRAG configuration files:
        ```bash
-       uv add PATH/TO/openrag-VERSION-py3-none-any.whl
+       mkdir openrag-workspace
+       cd openrag-workspace
        ```
 
-       Replace `PATH/TO/` and `VERSION` with the path and version of your downloaded OpenRAG `.whl` file.
-
-       For example, if your `.whl` file is in the `~/Downloads` directory:
-
+    2. Run OpenRAG:
        ```bash
-       uv add ~/Downloads/openrag-0.1.8-py3-none-any.whl
+       uvx openrag
        ```
 
-    2. Run OpenRAG.
+       To run a specific version:
+       ```bash
+       uvx --from openrag==0.1.30 openrag
+       ```
 
+    The TUI creates a `.env` file and docker-compose files in the current working directory.
+
+  </TabItem>
+  <TabItem value="uv-add" label="Python project with uv add">
+
+    Use `uv add` to install OpenRAG as a dependency in your Python project. This adds OpenRAG to your `pyproject.toml` and lockfile, making your installation reproducible and version-controlled.
+
+    1. Create a new project with a virtual environment:
+       ```bash
+       uv init YOUR_PROJECT_NAME
+       cd YOUR_PROJECT_NAME
+       ```
+
+       The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
+
+    2. Add OpenRAG to your project:
+       ```bash
+       uv add openrag
+       ```
+
+       To add a specific version:
+       ```bash
+       uv add openrag==0.1.30
+       ```
+
+    3. Start the OpenRAG TUI:
        ```bash
        uv run openrag
        ```
-    
+
+    <details closed>
+      <summary>Install a local wheel</summary>
+      
+      If you downloaded the OpenRAG wheel to your local machine, install it by specifying its path:
+
+      1. Add the wheel to your project:
+         ```bash
+         uv add PATH/TO/openrag-VERSION-py3-none-any.whl
+         ```
+
+         Replace `PATH/TO/` and `VERSION` with the path and version of your downloaded OpenRAG `.whl` file.
+
+      2. Run OpenRAG:
+         ```bash
+         uv run openrag
+         ```
     </details>
-4. Continue with [Set up OpenRAG with the TUI](#setup).
+
+  </TabItem>
+  <TabItem value="uv-pip" label="Existing virtual environment with uv pip install">
+
+    Use `uv pip install` to install OpenRAG into an existing virtual environment that isn't managed by `uv`.
+
+    :::tip
+    For new projects, `uv add` is recommended as it manages dependencies in your project's lockfile.
+    :::
+
+    1. Activate your virtual environment.
+
+    2. Install OpenRAG:
+       ```bash
+       uv pip install openrag
+       ```
+
+    3. Run OpenRAG:
+       ```bash
+       openrag
+       ```
+
+  </TabItem>
+</Tabs>
+
+Continue with [Set up OpenRAG with the TUI](#setup).
 
 ## Set up OpenRAG with the TUI {#setup}
 
