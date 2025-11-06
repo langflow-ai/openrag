@@ -1,5 +1,5 @@
 version = 1
-revision = 4
+revision = 3
 requires-python = ">=3.13"
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
@@ -2352,7 +2352,7 @@ wheels = [
 
 [[package]]
 name = "openrag"
-version = "0.1.29"
+version = "0.1.30"
 source = { editable = "." }
 dependencies = [
     { name = "agentd" },
@@ -2361,6 +2361,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "docling", extra = ["ocrmac"], marker = "sys_platform == 'darwin'" },
     { name = "docling", extra = ["vlm"] },
+    { name = "docling-core" },
     { name = "docling-serve" },
     { name = "easyocr" },
     { name = "google-api-python-client" },
@@ -2399,6 +2400,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=45.0.6" },
     { name = "docling", extras = ["ocrmac", "vlm"], marker = "sys_platform == 'darwin'", specifier = "==2.41.0" },
     { name = "docling", extras = ["vlm"], marker = "sys_platform != 'darwin'", specifier = "==2.41.0" },
+    { name = "docling-core", specifier = "==2.48.1" },
     { name = "docling-serve", specifier = "==1.5.0" },
     { name = "easyocr", specifier = ">=1.7.1" },
     { name = "google-api-python-client", specifier = ">=2.143.0" },

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openrag"
-version = "0.1.29"
+version = "0.1.30"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -33,6 +33,7 @@ dependencies = [
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
     "docling-serve==1.5.0",
+    "docling-core==2.48.1",
     "easyocr>=1.7.1"
 ]
 
