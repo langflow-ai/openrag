@@ -23,8 +23,12 @@ export function useProviderHealth() {
   } = useProviderHealthQuery();
 
   const isHealthy = health?.status === "healthy" && !isError;
+  // Only consider unhealthy if backend is up but provider validation failed
+  // Don't show banner if backend is unavailable
   const isUnhealthy =
-    health?.status === "unhealthy" || health?.status === "error" || isError;
+    health?.status === "unhealthy" || health?.status === "error";
+  const isBackendUnavailable =
+    health?.status === "backend-unavailable" || isError;
 
   return {
     health,
@@ -34,17 +38,23 @@ export function useProviderHealth() {
     isError,
     isHealthy,
     isUnhealthy,
+    isBackendUnavailable,
   };
 }
 
 export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
-  const { isLoading, isHealthy, error } = useProviderHealth();
+  const { isLoading, isHealthy, isUnhealthy, health } = useProviderHealth();
   const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery();
 
-  if (!isHealthy && !isLoading) {
-    const errorMessage = error?.message || "Provider validation failed";
+  // Only show banner when provider is unhealthy (not when backend is unavailable)
+  if (isLoading || isHealthy) {
+    return null;
+  }
+
+  if (isUnhealthy) {
+    const errorMessage = health?.message || "Provider validation failed";
     const settingsUrl = settings.provider?.model_provider
       ? `/settings?setup=${settings.provider?.model_provider}`
       : "/settings";

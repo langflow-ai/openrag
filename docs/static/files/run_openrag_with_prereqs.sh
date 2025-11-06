@@ -1,4 +1,29 @@
 #!/usr/bin/env bash
+
+
+# --- support 'curl ... | bash' without breaking TUI --------------------------
+# If this script is being read from a PIPE (curl | bash), slurp it to a temp file
+# and re-exec from that file. After that, it's safe to reattach to /dev/tty.
+if [ -p /dev/stdin ]; then
+  tmp="$(mktemp -t openrag.XXXXXX)"
+  # Read the entire piped script into the temp file
+  cat > "$tmp"
+  chmod +x "$tmp"
+  exec bash "$tmp" "$@"
+fi
+
+# Now we are running from a real file, not stdin. It is safe to reattach.
+# (Only if not already attached to a TTY)
+if [ ! -t 0 ] || [ ! -t 1 ] || [ ! -t 2 ]; then
+  if [ -e /dev/tty ]; then
+    exec </dev/tty >/dev/tty 2>&1
+  else
+    echo "This installer needs an interactive terminal. Try: bash <(curl -fsSL ...)" >&2
+    exit 1
+  fi
+fi
+
+
 set -euo pipefail
 
 say() { printf "%s\n" "$*" >&2; }
