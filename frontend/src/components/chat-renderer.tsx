@@ -155,7 +155,7 @@ export function ChatRenderer({
 						ease: "easeOut",
 					}}
 					className={cn(
-						"flex h-full w-full max-w-full max-h-full items-center justify-center overflow-hidden",
+						"flex h-full w-full max-w-full max-h-full items-center justify-center overflow-y-auto",
 						!showLayout && "absolute max-h-[calc(100vh-190px)]",
 						showLayout && !isOnChatPage && "bg-background",
 					)}
@@ -163,10 +163,10 @@ export function ChatRenderer({
 					<div
 						className={cn(
 							"h-full bg-background w-full",
-							showLayout && !isOnChatPage && "p-6 container overflow-y-auto",
+							showLayout && !isOnChatPage && "p-6 container",
 							showLayout && isSmallWidthPath && "max-w-[850px] ml-0",
 							!showLayout &&
-								"w-full bg-card rounded-lg shadow-2xl p-0 py-2 overflow-y-auto",
+								"w-full bg-card rounded-lg shadow-2xl p-0 py-2",
 						)}
 					>
 						<motion.div

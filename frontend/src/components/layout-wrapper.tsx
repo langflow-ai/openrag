@@ -1,18 +1,24 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import { DoclingHealthBanner } from "@/components/docling-health-banner";
+import {
+  DoclingHealthBanner,
+  useDoclingHealth,
+} from "@/components/docling-health-banner";
+import {
+  ProviderHealthBanner,
+  useProviderHealth,
+} from "@/components/provider-health-banner";
 import { KnowledgeFilterPanel } from "@/components/knowledge-filter-panel";
 import { TaskNotificationMenu } from "@/components/task-notification-menu";
 import { useAuth } from "@/contexts/auth-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
-import { useDoclingHealthQuery } from "@/src/app/api/queries/useDoclingHealthQuery";
 import { ChatRenderer } from "./chat-renderer";
 import AnimatedProcessingIcon from "./ui/animated-processing-icon";
+import { AnimatedConditional } from "./animated-conditional";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -29,13 +35,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { data: settings, isLoading: isSettingsLoading } = useGetSettingsQuery({
     enabled: !isAuthPage && (isAuthenticated || isNoAuthMode),
   });
-  const {
-    data: health,
-    isLoading: isHealthLoading,
-    isError,
-  } = useDoclingHealthQuery({
-    enabled: !isAuthPage,
-  });
+
+  const { isUnhealthy: isDoclingUnhealthy } = useDoclingHealth();
+  const { isUnhealthy: isProviderUnhealthy } = useProviderHealth();
 
   // For auth pages, render immediately without navigation
   // This prevents the main layout from flashing
@@ -45,12 +47,13 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
-  const isUnhealthy = health?.status === "unhealthy" || isError;
-  const isBannerVisible = !isHealthLoading && isUnhealthy;
   const isSettingsLoadingOrError = isSettingsLoading || !settings;
 
   // Show loading state when backend isn't ready
-  if (isLoading || (isSettingsLoadingOrError && (isNoAuthMode || isAuthenticated))) {
+  if (
+    isLoading ||
+    (isSettingsLoadingOrError && (isNoAuthMode || isAuthenticated))
+  ) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
@@ -63,17 +66,31 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
-    <div className=" h-screen w-screen flex items-center justify-center">
+    <div className="h-screen w-screen flex items-center justify-center">
       <div
         className={cn(
           "app-grid-arrangement bg-black relative",
-          isBannerVisible && "banner-visible",
           isPanelOpen && isOnKnowledgePage && !isMenuOpen && "filters-open",
-          isMenuOpen && "notifications-open",
+          isMenuOpen && "notifications-open"
         )}
       >
-        <div className={`w-full z-10 bg-background [grid-area:banner]`}>
-          <DoclingHealthBanner className="w-full" />
+        <div className="w-full z-10 bg-background [grid-area:banner]">
+          <AnimatedConditional
+            vertical
+            isOpen={isDoclingUnhealthy}
+            className="w-full"
+          >
+            <DoclingHealthBanner />
+          </AnimatedConditional>
+          {settings?.edited && (
+            <AnimatedConditional
+              vertical
+              isOpen={isProviderUnhealthy}
+              className="w-full"
+            >
+              <ProviderHealthBanner />
+            </AnimatedConditional>
+          )}
         </div>
 
         <ChatRenderer settings={settings}>{children}</ChatRenderer>
