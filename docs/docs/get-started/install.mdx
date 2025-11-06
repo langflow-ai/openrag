@@ -36,12 +36,31 @@ To use OpenRAG on Windows, use [WSL (Windows Subsystem for Linux)](https://learn
 
 Choose an installation method based on your needs:
 
+* The automatic installer script detects and installs prerequisites and then runs OpenRAG. Recommended for first-time users.
 * For a quick test, use `uvx` to run OpenRAG without creating a project or modifying files.
 * Use `uv add` to install OpenRAG as a managed dependency in a new or existing Python project.
 * Use `uv pip install` to install OpenRAG into an existing virtual environment.
 
 <Tabs groupId="Installation method">
-  <TabItem value="uvx" label="Quick test with uvx" default>
+  <TabItem value="installer" label="Automatic installer" default>
+
+    The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, then runs OpenRAG with `uvx`.
+
+    1. Create a directory to store the OpenRAG configuration files:
+       ```bash
+       mkdir openrag-workspace
+       cd openrag-workspace
+       ```
+
+    2. Run the installer:
+       ```bash
+       curl -LsSf https://docs.openr.ag/scripts/run_openrag_with_prereqs.sh | sh
+       ```
+
+    The TUI creates a `.env` file and docker-compose files in the current working directory.
+
+  </TabItem>
+  <TabItem value="uvx" label="Quick test with uvx">
 
     Use `uvx` to quickly run OpenRAG without creating a project or modifying any files.
 
