@@ -1,1 +1,0 @@
-../../scripts/run_openrag_with_prereqs.sh
