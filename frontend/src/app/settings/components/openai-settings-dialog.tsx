@@ -16,6 +16,9 @@ import {
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
 import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
+import { AnimatePresence, motion } from "motion/react";
+import { useQueryClient } from "@tanstack/react-query";
+import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 
 const OpenAISettingsDialog = ({
   open,
@@ -25,6 +28,7 @@ const OpenAISettingsDialog = ({
   setOpen: (open: boolean) => void;
 }) => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
@@ -47,13 +51,16 @@ const OpenAISettingsDialog = ({
 
   const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
+      // Update provider health cache to healthy since backend validated the setup
+      const healthData: ProviderHealthResponse = {
+        status: "healthy",
+        message: "Provider is configured and working correctly",
+        provider: "openai",
+      };
+      queryClient.setQueryData(["provider", "health"], healthData);
+
       toast.success("OpenAI settings updated successfully");
       setOpen(false);
-    },
-    onError: (error) => {
-      toast.error("Failed to update OpenAI settings", {
-        description: error.message,
-      });
     },
   });
 
@@ -94,7 +101,21 @@ const OpenAISettingsDialog = ({
 
             <OpenAISettingsForm isCurrentProvider={isOpenAIConfigured} />
 
-            <DialogFooter>
+            <AnimatePresence mode="wait">
+              {settingsMutation.isError && (
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                >
+                  <p className="rounded-lg border border-destructive p-4">
+                    {settingsMutation.error?.message}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <DialogFooter className="mt-4">
               <Button
                 variant="outline"
                 type="button"

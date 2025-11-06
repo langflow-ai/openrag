@@ -15,6 +15,7 @@ from config.settings import (
     get_openrag_config,
     config_manager,
 )
+from api.provider_validation import validate_provider_setup
 
 logger = get_logger(__name__)
 
@@ -201,7 +202,115 @@ async def update_settings(request, session_manager):
                 status_code=400,
             )
 
+        # Validate types early before modifying config
+        if "embedding_model" in body:
+            if (
+                not isinstance(body["embedding_model"], str)
+                or not body["embedding_model"].strip()
+            ):
+                return JSONResponse(
+                    {"error": "embedding_model must be a non-empty string"},
+                    status_code=400,
+                )
+        
+        if "table_structure" in body:
+            if not isinstance(body["table_structure"], bool):
+                return JSONResponse(
+                    {"error": "table_structure must be a boolean"}, status_code=400
+                )
+        
+        if "ocr" in body:
+            if not isinstance(body["ocr"], bool):
+                return JSONResponse(
+                    {"error": "ocr must be a boolean"}, status_code=400
+                )
+        
+        if "picture_descriptions" in body:
+            if not isinstance(body["picture_descriptions"], bool):
+                return JSONResponse(
+                    {"error": "picture_descriptions must be a boolean"}, status_code=400
+                )
+        
+        if "chunk_size" in body:
+            if not isinstance(body["chunk_size"], int) or body["chunk_size"] <= 0:
+                return JSONResponse(
+                    {"error": "chunk_size must be a positive integer"}, status_code=400
+                )
+        
+        if "chunk_overlap" in body:
+            if not isinstance(body["chunk_overlap"], int) or body["chunk_overlap"] < 0:
+                return JSONResponse(
+                    {"error": "chunk_overlap must be a non-negative integer"},
+                    status_code=400,
+                )
+        
+        if "model_provider" in body:
+            if (
+                not isinstance(body["model_provider"], str)
+                or not body["model_provider"].strip()
+            ):
+                return JSONResponse(
+                    {"error": "model_provider must be a non-empty string"},
+                    status_code=400,
+                )
+        
+        if "api_key" in body:
+            if not isinstance(body["api_key"], str):
+                return JSONResponse(
+                    {"error": "api_key must be a string"}, status_code=400
+                )
+        
+        if "endpoint" in body:
+            if not isinstance(body["endpoint"], str) or not body["endpoint"].strip():
+                return JSONResponse(
+                    {"error": "endpoint must be a non-empty string"}, status_code=400
+                )
+        
+        if "project_id" in body:
+            if (
+                not isinstance(body["project_id"], str)
+                or not body["project_id"].strip()
+            ):
+                return JSONResponse(
+                    {"error": "project_id must be a non-empty string"}, status_code=400
+                )
+
+        # Validate provider setup if provider-related fields are being updated
+        # Do this BEFORE modifying any config
+        provider_fields = ["model_provider", "api_key", "endpoint", "project_id", "llm_model", "embedding_model"]
+        should_validate = any(field in body for field in provider_fields)
+        
+        if should_validate:
+            try:
+                logger.info("Running provider validation before modifying config")
+                
+                provider = body.get("model_provider", current_config.provider.model_provider)
+                api_key = body.get("api_key") if "api_key" in body and body["api_key"].strip() else current_config.provider.api_key
+                endpoint = body.get("endpoint", current_config.provider.endpoint)
+                project_id = body.get("project_id", current_config.provider.project_id)
+                llm_model = body.get("llm_model", current_config.agent.llm_model)
+                embedding_model = body.get("embedding_model", current_config.knowledge.embedding_model)
+        
+                await validate_provider_setup(
+                    provider=provider,
+                    api_key=api_key,
+                    embedding_model=embedding_model,
+                    llm_model=llm_model,
+                    endpoint=endpoint,
+                    project_id=project_id,
+                )
+                
+                logger.info(f"Provider validation successful for {provider}")
+                
+            except Exception as e:
+                logger.error(f"Provider validation failed: {str(e)}")
+                return JSONResponse(
+                    {"error": f"{str(e)}"}, 
+                    status_code=400
+                )
+
         # Update configuration
+        # Only reached if validation passed or wasn't needed
         config_updated = False
 
         # Update agent settings
@@ -240,14 +349,6 @@ async def update_settings(request, session_manager):
 
         # Update knowledge settings
         if "embedding_model" in body:
-            if (
-                not isinstance(body["embedding_model"], str)
-                or not body["embedding_model"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "embedding_model must be a non-empty string"},
-                    status_code=400,
-                )
             new_embedding_model = body["embedding_model"].strip()
             current_config.knowledge.embedding_model = new_embedding_model
             config_updated = True
@@ -297,10 +398,6 @@ async def update_settings(request, session_manager):
                 # The config will still be saved
 
         if "table_structure" in body:
-            if not isinstance(body["table_structure"], bool):
-                return JSONResponse(
-                    {"error": "table_structure must be a boolean"}, status_code=400
-                )
             current_config.knowledge.table_structure = body["table_structure"]
             config_updated = True
 
@@ -318,10 +415,6 @@ async def update_settings(request, session_manager):
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
         if "ocr" in body:
-            if not isinstance(body["ocr"], bool):
-                return JSONResponse(
-                    {"error": "ocr must be a boolean"}, status_code=400
-                )
             current_config.knowledge.ocr = body["ocr"]
             config_updated = True
 
@@ -339,10 +432,6 @@ async def update_settings(request, session_manager):
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
         if "picture_descriptions" in body:
-            if not isinstance(body["picture_descriptions"], bool):
-                return JSONResponse(
-                    {"error": "picture_descriptions must be a boolean"}, status_code=400
-                )
             current_config.knowledge.picture_descriptions = body["picture_descriptions"]
             config_updated = True
 
@@ -360,10 +449,6 @@ async def update_settings(request, session_manager):
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
         if "chunk_size" in body:
-            if not isinstance(body["chunk_size"], int) or body["chunk_size"] <= 0:
-                return JSONResponse(
-                    {"error": "chunk_size must be a positive integer"}, status_code=400
-                )
             current_config.knowledge.chunk_size = body["chunk_size"]
             config_updated = True
 
@@ -380,11 +465,6 @@ async def update_settings(request, session_manager):
                 # The config will still be saved
 
         if "chunk_overlap" in body:
-            if not isinstance(body["chunk_overlap"], int) or body["chunk_overlap"] < 0:
-                return JSONResponse(
-                    {"error": "chunk_overlap must be a non-negative integer"},
-                    status_code=400,
-                )
             current_config.knowledge.chunk_overlap = body["chunk_overlap"]
             config_updated = True
 
@@ -404,43 +484,20 @@ async def update_settings(request, session_manager):
 
         # Update provider settings
         if "model_provider" in body:
-            if (
-                not isinstance(body["model_provider"], str)
-                or not body["model_provider"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "model_provider must be a non-empty string"},
-                    status_code=400,
-                )
             current_config.provider.model_provider = body["model_provider"].strip()
             config_updated = True
 
         if "api_key" in body:
-            if not isinstance(body["api_key"], str):
-                return JSONResponse(
-                    {"error": "api_key must be a string"}, status_code=400
-                )
             # Only update if non-empty string (empty string means keep current value)
             if body["api_key"].strip():
                 current_config.provider.api_key = body["api_key"]
                 config_updated = True
 
         if "endpoint" in body:
-            if not isinstance(body["endpoint"], str) or not body["endpoint"].strip():
-                return JSONResponse(
-                    {"error": "endpoint must be a non-empty string"}, status_code=400
-                )
             current_config.provider.endpoint = body["endpoint"].strip()
             config_updated = True
 
         if "project_id" in body:
-            if (
-                not isinstance(body["project_id"], str)
-                or not body["project_id"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "project_id must be a non-empty string"}, status_code=400
-                )
             current_config.provider.project_id = body["project_id"].strip()
             config_updated = True
 

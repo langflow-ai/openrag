@@ -6,22 +6,50 @@ import OpenAILogo from "@/components/logo/openai-logo";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
 import { useAuth } from "@/contexts/auth-context";
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
 import OpenAISettingsDialog from "./openai-settings-dialog";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
 import WatsonxSettingsDialog from "./watsonx-settings-dialog";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { useProviderHealth } from "@/components/provider-health-banner";
 
 export const ModelProviders = () => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
+  const { isUnhealthy } = useProviderHealth();
+
   const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
+
+  const allProviderKeys: ModelProvider[] = ["openai", "ollama", "watsonx"];
+
+  // Handle URL search param to open dialogs
+  useEffect(() => {
+    const searchParam = searchParams.get("setup");
+    if (searchParam && allProviderKeys.includes(searchParam as ModelProvider)) {
+      setDialogOpen(searchParam as ModelProvider);
+    }
+  }, [searchParams]);
+
+  // Function to close dialog and remove search param
+  const handleCloseDialog = () => {
+    setDialogOpen(undefined);
+    // Remove search param from URL
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("setup");
+    const newUrl = params.toString()
+      ? `${window.location.pathname}?${params.toString()}`
+      : window.location.pathname;
+    router.replace(newUrl);
+  };
 
   const modelProvidersMap: Record<
     ModelProvider,
@@ -56,7 +84,6 @@ export const ModelProviders = () => {
     (settings.provider?.model_provider as ModelProvider) || "openai";
 
   // Get all provider keys with active provider first
-  const allProviderKeys: ModelProvider[] = ["openai", "ollama", "watsonx"];
   const sortedProviderKeys = [
     currentProviderKey,
     ...allProviderKeys.filter((key) => key !== currentProviderKey),
@@ -72,14 +99,15 @@ export const ModelProviders = () => {
             logoColor,
             logoBgColor,
           } = modelProvidersMap[providerKey];
-          const isActive = providerKey === currentProviderKey;
+          const isCurrentProvider = providerKey === currentProviderKey;
 
           return (
             <Card
               key={providerKey}
               className={cn(
                 "relative flex flex-col",
-                !isActive && "text-muted-foreground"
+                !isCurrentProvider && "text-muted-foreground",
+                isCurrentProvider && isUnhealthy && "border-destructive"
               )}
             >
               <CardHeader>
@@ -89,13 +117,15 @@ export const ModelProviders = () => {
                       <div
                         className={cn(
                           "w-8 h-8 rounded flex items-center justify-center border",
-                          isActive ? logoBgColor : "bg-muted"
+                          isCurrentProvider ? logoBgColor : "bg-muted"
                         )}
                       >
                         {
                           <Logo
                             className={
-                              isActive ? logoColor : "text-muted-foreground"
+                              isCurrentProvider
+                                ? logoColor
+                                : "text-muted-foreground"
                             }
                           />
                         }
@@ -103,20 +133,27 @@ export const ModelProviders = () => {
                     </div>
                     <CardTitle className="flex flex-row items-center gap-2">
                       {name}
-                      {isActive && (
-                        <div className="h-2 w-2 bg-accent-emerald-foreground rounded-full" />
+                      {isCurrentProvider && (
+                        <div
+                          className={cn(
+                            "h-2 w-2 rounded-full",
+                            isUnhealthy
+                              ? "bg-destructive"
+                              : "bg-accent-emerald-foreground"
+                          )}
+                        />
                       )}
                     </CardTitle>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col justify-end space-y-4">
-                {isActive ? (
+                {isCurrentProvider ? (
                   <Button
-                    variant="outline"
+                    variant={isUnhealthy ? "default" : "outline"}
                     onClick={() => setDialogOpen(providerKey)}
                   >
-                    Edit Setup
+                    {isUnhealthy ? "Fix Setup" : "Edit Setup"}
                   </Button>
                 ) : (
                   <p>
@@ -139,15 +176,15 @@ export const ModelProviders = () => {
       </div>
       <OpenAISettingsDialog
         open={dialogOpen === "openai"}
-        setOpen={() => setDialogOpen(undefined)}
+        setOpen={handleCloseDialog}
       />
       <OllamaSettingsDialog
         open={dialogOpen === "ollama"}
-        setOpen={() => setDialogOpen(undefined)}
+        setOpen={handleCloseDialog}
       />
       <WatsonxSettingsDialog
         open={dialogOpen === "watsonx"}
-        setOpen={() => setDialogOpen(undefined)}
+        setOpen={handleCloseDialog}
       />
     </>
   );

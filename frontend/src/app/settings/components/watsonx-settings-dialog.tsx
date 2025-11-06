@@ -16,6 +16,9 @@ import {
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
 import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
+import { useQueryClient } from "@tanstack/react-query";
+import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
+import { AnimatePresence, motion } from "motion/react";
 
 const WatsonxSettingsDialog = ({
   open,
@@ -25,6 +28,7 @@ const WatsonxSettingsDialog = ({
   setOpen: (open: boolean) => void;
 }) => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
@@ -51,13 +55,15 @@ const WatsonxSettingsDialog = ({
 
   const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
+      // Update provider health cache to healthy since backend validated the setup
+      const healthData: ProviderHealthResponse = {
+        status: "healthy",
+        message: "Provider is configured and working correctly",
+        provider: "watsonx",
+      };
+      queryClient.setQueryData(["provider", "health"], healthData);
       toast.success("watsonx settings updated successfully");
       setOpen(false);
-    },
-    onError: (error) => {
-      toast.error("Failed to update watsonx settings", {
-        description: error.message,
-      });
     },
   });
 
@@ -98,10 +104,24 @@ const WatsonxSettingsDialog = ({
                 </div>
                 IBM watsonx.ai Setup
               </DialogTitle>
-            </DialogHeader> 
+            </DialogHeader>
 
             <WatsonxSettingsForm isCurrentProvider={isWatsonxConfigured} />
-
+           
+            <AnimatePresence mode="wait">
+              {settingsMutation.isError && (
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                >
+                  <p className="rounded-lg border border-destructive p-4">
+                    {settingsMutation.error?.message}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <DialogFooter>
               <Button
                 variant="outline"

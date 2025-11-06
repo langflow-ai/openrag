@@ -111,7 +111,6 @@
   .app-grid-arrangement {
     --notifications-width: 0px;
     --filters-width: 0px;
-    --top-banner-height: 0px;
     --header-height: 54px;
     --sidebar-width: 280px;
 
@@ -121,14 +120,11 @@
     &.filters-open {
       --filters-width: 320px;
     }
-    &.banner-visible {
-      --top-banner-height: 52px;
-    }
     display: grid;
     height: 100%;
     width: 100%;
     grid-template-rows:
-      var(--top-banner-height)
+      auto
       var(--header-height)
       1fr;
     grid-template-columns:
@@ -345,12 +341,12 @@
     @apply text-xs opacity-70;
   }
 
-  .prose :where(strong):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
+  .prose
+    :where(strong):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
     @apply text-current;
   }
 
-  .prose :where(a):not(:where([class~="not-prose"],[class~="not-prose"] *))
- {
+  .prose :where(a):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
     @apply text-current;
   }
 

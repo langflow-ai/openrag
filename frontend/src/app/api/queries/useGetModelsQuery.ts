@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useGetSettingsQuery } from "./useGetSettingsQuery";
 
 export interface ModelOption {
   value: string;
@@ -55,6 +56,7 @@ export const useGetOpenAIModelsQuery = (
       queryFn: getOpenAIModels,
       staleTime: 0, // Always fetch fresh data
       gcTime: 0, // Don't cache results
+      retry: false,
       ...options,
     },
     queryClient,
@@ -89,6 +91,7 @@ export const useGetOllamaModelsQuery = (
       queryFn: getOllamaModels,
       staleTime: 0, // Always fetch fresh data
       gcTime: 0, // Don't cache results
+      retry: false,
       ...options,
     },
     queryClient,
@@ -129,10 +132,73 @@ export const useGetIBMModelsQuery = (
       queryFn: getIBMModels,
       staleTime: 0, // Always fetch fresh data
       gcTime: 0, // Don't cache results
+      retry: false,
       ...options,
     },
     queryClient,
   );
 
   return queryResult;
+};
+
+/**
+ * Hook that automatically fetches models for the current provider
+ * based on the settings configuration
+ */
+export const useGetCurrentProviderModelsQuery = (
+  options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
+) => {
+  const { data: settings } = useGetSettingsQuery();
+  const currentProvider = settings?.provider?.model_provider;
+
+  // Determine which hook to use based on current provider
+  const openaiModels = useGetOpenAIModelsQuery(
+    { apiKey: "" },
+    {
+      enabled: currentProvider === "openai" && options?.enabled !== false,
+      ...options,
+    }
+  );
+
+  const ollamaModels = useGetOllamaModelsQuery(
+    { endpoint: settings?.provider?.endpoint },
+    {
+      enabled: currentProvider === "ollama" && !!settings?.provider?.endpoint && options?.enabled !== false,
+      ...options,
+    }
+  );
+
+  const ibmModels = useGetIBMModelsQuery(
+    {
+      endpoint: settings?.provider?.endpoint,
+      apiKey: "",
+      projectId: settings?.provider?.project_id,
+    },
+    {
+      enabled:
+        currentProvider === "watsonx" &&
+        !!settings?.provider?.endpoint &&
+        !!settings?.provider?.project_id &&
+        options?.enabled !== false,
+      ...options,
+    }
+  );
+
+  // Return the appropriate query result based on current provider
+  switch (currentProvider) {
+    case "openai":
+      return openaiModels;
+    case "ollama":
+      return ollamaModels;
+    case "watsonx":
+      return ibmModels;
+    default:
+      // Return a default/disabled query if no provider is set
+      return {
+        data: undefined,
+        isLoading: false,
+        error: null,
+        refetch: async () => ({ data: undefined }),
+      } as ReturnType<typeof useGetOpenAIModelsQuery>;
+  }
 };

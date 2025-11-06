@@ -4,15 +4,10 @@ import { ArrowUpRight, Loader2, Minus, PlugZap, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import {
-  useGetIBMModelsQuery,
-  useGetOllamaModelsQuery,
-  useGetOpenAIModelsQuery,
-} from "@/app/api/queries/useGetModelsQuery";
+import { useGetCurrentProviderModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
-import OpenAILogo from "@/components/logo/openai-logo";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,17 +19,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Select,
-  SelectContent,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
@@ -46,14 +30,13 @@ import {
 } from "@/lib/constants";
 import { useDebounce } from "@/lib/debounce";
 import { ModelSelector } from "../onboarding/components/model-selector";
-import { getFallbackModels, type ModelProvider } from "./helpers/model-helpers";
-import { ModelSelectItems } from "./helpers/model-select-item";
-
+import { getModelLogo, type ModelProvider } from "./helpers/model-helpers";
 import GoogleDriveIcon from "./icons/google-drive-icon";
 import OneDriveIcon from "./icons/one-drive-icon";
 import SharePointIcon from "./icons/share-point-icon";
 import ModelProviders from "./components/model-providers";
 import { useUpdateSettingsMutation } from "../api/mutations/useUpdateSettingsMutation";
+import { toast } from "sonner";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
@@ -137,56 +120,18 @@ function KnowledgeSourcesPage() {
   const currentProvider = (settings.provider?.model_provider ||
     "openai") as ModelProvider;
 
-  // Fetch available models based on provider
-  const { data: openaiModelsData } = useGetOpenAIModelsQuery(
-    {
-      apiKey: ""
-    },
-    {
-      enabled:
-        (isAuthenticated || isNoAuthMode) && currentProvider === "openai",
-    }
-  );
-
-  const { data: ollamaModelsData } = useGetOllamaModelsQuery(
-    {
-      endpoint: settings.provider?.endpoint,
-    },
-    {
-      enabled:
-        (isAuthenticated || isNoAuthMode) && currentProvider === "ollama",
-    }
-  );
-
-  const { data: ibmModelsData } = useGetIBMModelsQuery(
-    {
-      endpoint: settings.provider?.endpoint,
-      apiKey: "",
-      projectId: settings.provider?.project_id,
-    },
-    {
-      enabled:
-        (isAuthenticated || isNoAuthMode) && currentProvider === "watsonx",
-    }
-  );
-
-  // Select the appropriate models data based on provider
-  const modelsData =
-    currentProvider === "openai"
-      ? openaiModelsData
-      : currentProvider === "ollama"
-      ? ollamaModelsData
-      : currentProvider === "watsonx"
-      ? ibmModelsData
-      : openaiModelsData; // fallback to openai
+  const { data: modelsData, isLoading: modelsLoading } =
+    useGetCurrentProviderModelsQuery();
 
   // Mutations
   const updateSettingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
-      console.log("Setting updated successfully");
+      toast.success("Settings updated successfully");
     },
     onError: (error) => {
-      console.error("Failed to update setting:", error.message);
+      toast.error("Failed to update settings", {
+        description: error.message,
+      });
     },
   });
 
@@ -239,7 +184,7 @@ function KnowledgeSourcesPage() {
 
   // Update model selection immediately
   const handleModelChange = (newModel: string) => {
-    updateSettingsMutation.mutate({ llm_model: newModel });
+    if (newModel) updateSettingsMutation.mutate({ llm_model: newModel });
   };
 
   // Update system prompt with save button
@@ -249,7 +194,7 @@ function KnowledgeSourcesPage() {
 
   // Update embedding model selection immediately
   const handleEmbeddingModelChange = (newModel: string) => {
-    updateSettingsMutation.mutate({ embedding_model: newModel });
+    if (newModel) updateSettingsMutation.mutate({ embedding_model: newModel });
   };
 
   const isEmbeddingModelSelectDisabled = updateSettingsMutation.isPending;
@@ -465,11 +410,17 @@ function KnowledgeSourcesPage() {
   const getStatusBadge = (status: Connector["status"]) => {
     switch (status) {
       case "connected":
-        return <div className="h-2 w-2 bg-green-500 rounded-full" />;
+        return (
+          <div className="h-2 w-2 bg-accent-emerald-foreground rounded-full" />
+        );
       case "connecting":
-        return <div className="h-2 w-2 bg-yellow-500 rounded-full" />;
+        return (
+          <div className="h-2 w-2 bg-accent-amber-foreground rounded-full" />
+        );
       case "error":
-        return <div className="h-2 w-2 bg-red-500 rounded-full" />;
+        return (
+          <div className="h-2 w-2 bg-accent-red-foreground rounded-full" />
+        );
       default:
         return <div className="h-2 w-2 bg-muted rounded-full" />;
     }
@@ -909,12 +860,12 @@ function KnowledgeSourcesPage() {
                 <ModelSelector
                   options={modelsData?.language_models || []}
                   noOptionsPlaceholder={
-                    modelsData
-                      ? "No language models detected."
-                      : "Loading models..."
+                    modelsLoading
+                      ? "Loading models..."
+                      : "No language models detected."
                   }
-                  icon={<OpenAILogo className="w-4 h-4" />}
-                  value={modelsData ? settings.agent?.llm_model || "" : ""}
+                  icon={getModelLogo("", currentProvider)}
+                  value={settings.agent?.llm_model || ""}
                   onValueChange={handleModelChange}
                 />
               </LabelWrapper>
@@ -1051,41 +1002,17 @@ function KnowledgeSourcesPage() {
                 id="embedding-model-select"
                 label="Embedding model"
               >
-                <Select
-                  disabled={isEmbeddingModelSelectDisabled}
-                  value={
-                    settings.knowledge?.embedding_model ||
-                    modelsData?.embedding_models?.find((m) => m.default)
-                      ?.value ||
-                    "text-embedding-ada-002"
+                <ModelSelector
+                  options={modelsData?.embedding_models || []}
+                  noOptionsPlaceholder={
+                    modelsLoading
+                      ? "Loading models..."
+                      : "No embedding models detected."
                   }
+                  icon={getModelLogo("", currentProvider)}
+                  value={settings.knowledge?.embedding_model || ""}
                   onValueChange={handleEmbeddingModelChange}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <SelectTrigger
-                        disabled={isEmbeddingModelSelectDisabled}
-                        id="embedding-model-select"
-                      >
-                        <SelectValue placeholder="Select an embedding model" />
-                      </SelectTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {isEmbeddingModelSelectDisabled
-                        ? "Please wait while we update your settings"
-                        : "Choose the embedding model used for new ingests"}
-                    </TooltipContent>
-                  </Tooltip>
-                  <SelectContent>
-                    <ModelSelectItems
-                      models={modelsData?.embedding_models}
-                      fallbackModels={
-                        getFallbackModels(currentProvider).embedding
-                      }
-                      provider={currentProvider}
-                    />
-                  </SelectContent>
-                </Select>
+                />
               </LabelWrapper>
             </div>
             <div className="grid grid-cols-2 gap-4">
