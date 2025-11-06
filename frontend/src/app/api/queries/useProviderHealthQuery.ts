@@ -12,7 +12,7 @@ export interface ProviderHealthDetails {
 }
 
 export interface ProviderHealthResponse {
-  status: "healthy" | "unhealthy" | "error";
+  status: "healthy" | "unhealthy" | "error" | "backend-unavailable";
   message: string;
   provider: string;
   details?: ProviderHealthDetails;
@@ -38,21 +38,44 @@ export const useProviderHealthQuery = (
   const queryClient = useQueryClient();
 
   async function checkProviderHealth(): Promise<ProviderHealthResponse> {
-    const url = new URL("/api/provider/health", window.location.origin);
-    
-    // Add provider query param if specified
-    if (params?.provider) {
-      url.searchParams.set("provider", params.provider);
-    }
+    try {
+      const url = new URL("/api/provider/health", window.location.origin);
 
-    const response = await fetch(url.toString());
-    
-    if (response.ok) {
-      return await response.json();
-    } else {
-      // For 400 and 503 errors, still parse JSON for error details
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`${providerTitleMap[errorData.provider as ModelProvider] || "Provider"} error: ${errorData.message || "Failed to check provider health"}`);
+      // Add provider query param if specified
+      if (params?.provider) {
+        url.searchParams.set("provider", params.provider);
+      }
+
+      const response = await fetch(url.toString());
+
+      if (response.ok) {
+        return await response.json();
+      } else if (response.status === 503) {
+        // Backend is up but provider validation failed
+        const errorData = await response.json().catch(() => ({}));
+        return {
+          status: "unhealthy",
+          message: errorData.message || "Provider validation failed",
+          provider: errorData.provider || params?.provider || "unknown",
+          details: errorData.details,
+        };
+      } else {
+        // Other backend errors (400, etc.) - treat as provider issues
+        const errorData = await response.json().catch(() => ({}));
+        return {
+          status: "error",
+          message: errorData.message || "Failed to check provider health",
+          provider: errorData.provider || params?.provider || "unknown",
+          details: errorData.details,
+        };
+      }
+    } catch (error) {
+      // Network error - backend is likely down, don't show provider banner
+      return {
+        status: "backend-unavailable",
+        message: error instanceof Error ? error.message : "Connection failed",
+        provider: params?.provider || "unknown",
+      };
     }
   }
 
