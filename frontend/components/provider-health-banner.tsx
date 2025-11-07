@@ -7,6 +7,7 @@ import { useProviderHealthQuery } from "@/src/app/api/queries/useProviderHealthQ
 import { Button } from "./ui/button";
 import { useRouter } from "next/navigation";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { ModelProvider } from "@/app/settings/helpers/model-helpers";
 
 interface ProviderHealthBannerProps {
   className?: string;
@@ -42,11 +43,21 @@ export function useProviderHealth() {
   };
 }
 
+const providerTitleMap: Record<ModelProvider, string> = {
+  openai: "OpenAI",
+  ollama: "Ollama",
+  watsonx: "IBM watsonx.ai",
+};
+
 export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
   const { isLoading, isHealthy, isUnhealthy, health } = useProviderHealth();
   const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery();
+
+  const providerTitle =
+    providerTitleMap[settings.provider?.model_provider as ModelProvider] ||
+    "Provider";
 
   // Only show banner when provider is unhealthy (not when backend is unavailable)
   if (isLoading || isHealthy) {
@@ -71,7 +82,7 @@ export function ProviderHealthBanner({ className }: ProviderHealthBannerProps) {
           icon={AlertTriangle}
         />
         <BannerTitle className="font-medium flex items-center gap-2">
-          {errorMessage}
+          {providerTitle} error - {errorMessage}
         </BannerTitle>
         <Button size="sm" onClick={() => router.push(settingsUrl)}>
           Fix Setup

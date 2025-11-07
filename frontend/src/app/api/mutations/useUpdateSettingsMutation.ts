@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { Settings } from "../queries/useGetSettingsQuery";
+import { useGetCurrentProviderModelsQuery } from "../queries/useGetModelsQuery";
 
 export interface UpdateSettingsRequest {
   // Agent settings
@@ -37,6 +38,7 @@ export const useUpdateSettingsMutation = (
   >
 ) => {
   const queryClient = useQueryClient();
+  const { refetch: refetchModels } = useGetCurrentProviderModelsQuery();
 
   async function updateSettings(
     variables: UpdateSettingsRequest
@@ -63,6 +65,7 @@ export const useUpdateSettingsMutation = (
       queryClient.invalidateQueries({ 
         queryKey: ["settings"], 
       });
+      refetchModels(); // Refetch models for the settings page
       options?.onSuccess?.(...args);
     },
     onError: options?.onError,
