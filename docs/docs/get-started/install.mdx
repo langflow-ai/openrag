@@ -25,7 +25,7 @@ If you prefer running Podman or Docker containers and manually editing `.env` fi
 - Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - Install [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/)
 - Install [Docker Compose](https://docs.docker.com/compose/install/). If using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
-- Optional: Create an [OpenAI API key](https://platform.openai.com/api-keys). You can provide this key during [Application Onboarding](#application-onboarding) or choose a different model provider.
+- Optional: Create an [OpenAI API key](https://platform.openai.com/api-keys). During [Application Onboarding](#application-onboarding), you can provide this key or choose a different model provider.
 - Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
 
 ## Install OpenRAG {#install}
@@ -174,7 +174,7 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
        The OpenSearch password is required. The Langflow admin password is optional.
        If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
    
-   3. Optionally, paste your OpenAI API key in the OpenAI API key field. You can also provide this during onboarding or choose a different model provider.
+   3. Optional: Paste your OpenAI API key in the OpenAI API key field. You can also provide this during onboarding or choose a different model provider.
    4. Click **Save Configuration**.
    Your passwords are saved in the `.env` file used to start OpenRAG.
    5. To start OpenRAG, click **Start All Services**.
