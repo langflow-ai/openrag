@@ -69,7 +69,7 @@ For the full TUI installation guide, see [TUI](https://docs.openr.ag/install).
 
 ## Docker or Podman installation
 
-For more information, see [Install OpenRAG containers](https://docs.openr.ag/get-started/docker).
+For more information, see [Install OpenRAG containers](https://docs.openr.ag/docker).
 
 ## Troubleshooting
 
