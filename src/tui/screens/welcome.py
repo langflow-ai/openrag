@@ -85,16 +85,27 @@ class WelcomeScreen(Screen):
             if result.returncode == 0:
                 import json
                 services = []
-                for line in result.stdout.strip().split('\n'):
-                    if line.strip():
-                        try:
-                            service = json.loads(line)
-                            services.append(service)
-                        except json.JSONDecodeError:
-                            continue
+
+                # Try parsing as a single JSON array first (podman format)
+                try:
+                    parsed = json.loads(result.stdout.strip())
+                    if isinstance(parsed, list):
+                        services = parsed
+                    else:
+                        services = [parsed] if isinstance(parsed, dict) else []
+                except json.JSONDecodeError:
+                    # Fallback: try parsing line-by-line (docker format)
+                    for line in result.stdout.strip().split('\n'):
+                        if line.strip():
+                            try:
+                                service = json.loads(line)
+                                if isinstance(service, dict):
+                                    services.append(service)
+                            except json.JSONDecodeError:
+                                continue
 
                 # Check if any services are running
-                running_services = [s for s in services if s.get('State') == 'running']
+                running_services = [s for s in services if isinstance(s, dict) and s.get('State') == 'running']
                 self.services_running = len(running_services) > 0
             else:
                 self.services_running = False
@@ -196,6 +207,8 @@ class WelcomeScreen(Screen):
                 s.name for s in services.values() if s.status == ServiceStatus.RUNNING
             ]
             self.services_running = len(running_services) > 0
+        else:
+            self.services_running = False
 
         # Check native service state
         self.docling_running = self.docling_manager.is_running()
