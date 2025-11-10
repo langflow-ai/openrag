@@ -11,7 +11,7 @@ ifneq (,$(wildcard .env))
 endif
 
 .PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install \
-       test test-integration test-ci \
+       test test-integration test-ci test-ci-local \
        backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup
 
@@ -46,7 +46,8 @@ help:
 	@echo "Testing:"
 	@echo "  test             - Run all backend tests"
 	@echo "  test-integration - Run integration tests (requires infra)"
-	@echo "  test-ci          - Start infra, run integration tests, tear down"
+	@echo "  test-ci          - Start infra, run integration tests, tear down (uses DockerHub images)"
+	@echo "  test-ci-local    - Same as test-ci but builds all images locally"
 	@echo "  lint         - Run linting checks"
 	@echo ""
 
@@ -268,7 +269,88 @@ test-ci:
 	echo ""; \
 	echo "Tearing down infra"; \
 	uv run python scripts/docling_ctl.py stop || true; \
-	docker compose down -v || true; \
+	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
+	exit $$TEST_RESULT
+
+# CI-friendly integration test target with local builds: builds all images, brings up infra, waits, runs tests, tears down
+test-ci-local:
+	@set -e; \
+	echo "Installing test dependencies..."; \
+	uv sync --group dev; \
+	if [ ! -f keys/private_key.pem ]; then \
+		echo "Generating RSA keys for JWT signing..."; \
+		uv run python -c "from src.main import generate_jwt_keys; generate_jwt_keys()"; \
+	else \
+		echo "RSA keys already exist, ensuring correct permissions..."; \
+		chmod 600 keys/private_key.pem 2>/dev/null || true; \
+		chmod 644 keys/public_key.pem 2>/dev/null || true; \
+	fi; \
+	echo "Cleaning up old containers and volumes..."; \
+	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
+	echo "Building all images locally..."; \
+	docker build -t phact/openrag-opensearch:latest -f Dockerfile .; \
+	docker build -t phact/openrag-backend:latest -f Dockerfile.backend .; \
+	docker build -t phact/openrag-frontend:latest -f Dockerfile.frontend .; \
+	docker build -t phact/openrag-langflow:latest -f Dockerfile.langflow .; \
+	echo "Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
+	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow; \
+	echo "Starting docling-serve..."; \
+	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
+	echo "Docling-serve started at $$DOCLING_ENDPOINT"; \
+	echo "Waiting for backend OIDC endpoint..."; \
+	for i in $$(seq 1 60); do \
+		docker exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "Waiting for OpenSearch security config to be fully applied..."; \
+	for i in $$(seq 1 60); do \
+		if docker logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
+			echo "✓ Security configuration applied"; \
+			break; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "Verifying OIDC authenticator is active in OpenSearch..."; \
+	AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null); \
+	if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
+		echo "✓ OIDC authenticator configured"; \
+		echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
+	else \
+		echo "✗ OIDC authenticator NOT found in security config!"; \
+		echo "Security config:"; \
+		echo "$$AUTHC_CONFIG" | head -50; \
+		exit 1; \
+	fi; \
+	echo "Waiting for Langflow..."; \
+	for i in $$(seq 1 60); do \
+		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "Waiting for docling-serve at $$DOCLING_ENDPOINT..."; \
+	for i in $$(seq 1 60); do \
+		curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "Running integration tests"; \
+	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
+	GOOGLE_OAUTH_CLIENT_ID="" \
+	GOOGLE_OAUTH_CLIENT_SECRET="" \
+	OPENSEARCH_HOST=localhost OPENSEARCH_PORT=9200 \
+	OPENSEARCH_USERNAME=admin OPENSEARCH_PASSWORD=$${OPENSEARCH_PASSWORD} \
+	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
+	uv run pytest tests/integration -vv -s -o log_cli=true --log-cli-level=DEBUG; \
+	TEST_RESULT=$$?; \
+	echo ""; \
+	echo "=== Post-test JWT diagnostics ==="; \
+	echo "Generating test JWT token..."; \
+	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))" 2>/dev/null || echo ""); \
+	if [ -n "$$TEST_TOKEN" ]; then \
+		echo "Testing JWT against OpenSearch..."; \
+		HTTP_CODE=$$(curl -k -s -w "%{http_code}" -o /tmp/os_diag.txt -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
+		echo "HTTP $$HTTP_CODE: $$(cat /tmp/os_diag.txt | head -c 150)"; \
+	fi; \
+	echo "================================="; \
+	echo ""; \
+	echo "Tearing down infra"; \
+	uv run python scripts/docling_ctl.py stop || true; \
+	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
 	exit $$TEST_RESULT
 
 lint:
