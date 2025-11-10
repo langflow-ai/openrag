@@ -28,7 +28,7 @@ If you prefer running Podman or Docker containers and manually editing `.env` fi
 - Create an [OpenAI API key](https://platform.openai.com/api-keys). This key is **required** to start OpenRAG, but you can choose a different model provider during [Application Onboarding](#application-onboarding).
 - Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
 
-## Installation Methods {#install}
+## Install OpenRAG {#install}
 
 :::note Windows users
 To use OpenRAG on Windows, use [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
@@ -36,7 +36,7 @@ To use OpenRAG on Windows, use [WSL (Windows Subsystem for Linux)](https://learn
 
 Choose an installation method based on your needs:
 
-* The automatic installer script detects and installs prerequisites and then runs OpenRAG. Recommended for first-time users.
+* For new users, the automatic installer script detects and installs prerequisites and then runs OpenRAG. 
 * For a quick test, use `uvx` to run OpenRAG without creating a project or modifying files.
 * Use `uv add` to install OpenRAG as a managed dependency in a new or existing Python project.
 * Use `uv pip install` to install OpenRAG into an existing virtual environment.
