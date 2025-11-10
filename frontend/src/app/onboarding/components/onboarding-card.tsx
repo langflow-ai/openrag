@@ -26,6 +26,8 @@ import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
 import { OpenAIOnboarding } from "./openai-onboarding";
 import { TabTrigger } from "./tab-trigger";
+import { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface OnboardingCardProps {
 	onComplete: () => void;
@@ -56,6 +58,8 @@ const OnboardingCard = ({
 	const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
 
 	const [loadingStep, setLoadingStep] = useState<number>(0);
+
+	const queryClient = useQueryClient();
 
 	// Reset loading step when models start loading
 	useEffect(() => {
@@ -129,6 +133,13 @@ const OnboardingCard = ({
 	const onboardingMutation = useOnboardingMutation({
 		onSuccess: (data) => {
 			console.log("Onboarding completed successfully", data);
+			// Update provider health cache to healthy since backend just validated
+			const healthData: ProviderHealthResponse = {
+				status: "healthy",
+				message: "Provider is configured and working correctly",
+				provider: settings.model_provider,
+			  };
+			queryClient.setQueryData(["provider", "health"], healthData);
 			setCurrentStep(0);
 			setError(null);
 		},

@@ -86,6 +86,19 @@ You can select multiple files.
 The ingestion process may take some time, depending on the size of your documents.
 4. When ingestion is complete, your documents are available in the Knowledge screen.
 
+If ingestion fails, click **Status** to view the logged error.
+
+## Monitor ingestion tasks
+
+When you upload files, process folders, or sync documents, OpenRAG processes them as background tasks.
+A badge appears on the <Icon name="Bell" aria-hidden="true"/> **Tasks** icon when there are active tasks running.
+To open the Tasks menu, click <Icon name="Bell" aria-hidden="true"/> **Tasks**.
+
+**Active Tasks** shows tasks that are currently processing.
+A **Pending** task is queued and waiting to start, a **Running** task is actively processing files, and a **Processing** task is performing ingestion operations. For each active task, you can find the task ID, start time, duration, the number of files processed so far, and the total files.
+
+You can cancel active tasks by clicking <Icon name="X" aria-hidden="true"/> **Cancel**. Canceling a task stops processing immediately and marks the task as failed.
+
 ## Explore knowledge
 
 The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database's `documents` index.

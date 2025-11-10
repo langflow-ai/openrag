@@ -1,9 +1,9 @@
-import { ModelProvider } from "@/app/settings/helpers/model-helpers";
 import {
   type UseQueryOptions,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useGetSettingsQuery } from "./useGetSettingsQuery";
 
 export interface ProviderHealthDetails {
   llm_model: string;
@@ -22,12 +22,6 @@ export interface ProviderHealthParams {
   provider?: "openai" | "ollama" | "watsonx";
 }
 
-const providerTitleMap: Record<ModelProvider, string> = {
-  openai: "OpenAI",
-  ollama: "Ollama",
-  watsonx: "IBM watsonx.ai",
-};
-
 export const useProviderHealthQuery = (
   params?: ProviderHealthParams,
   options?: Omit<
@@ -36,6 +30,8 @@ export const useProviderHealthQuery = (
   >
 ) => {
   const queryClient = useQueryClient();
+
+  const { data: settings = {} } = useGetSettingsQuery();
 
   async function checkProviderHealth(): Promise<ProviderHealthResponse> {
     try {
@@ -84,6 +80,7 @@ export const useProviderHealthQuery = (
       queryKey: ["provider", "health"],
       queryFn: checkProviderHealth,
       retry: false, // Don't retry health checks automatically
+      enabled: !!settings?.edited && options?.enabled !== false, // Only run after onboarding is complete
       ...options,
     },
     queryClient

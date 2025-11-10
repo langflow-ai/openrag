@@ -57,7 +57,7 @@ export function ModelSelector({
   }, [options, value, custom, onValueChange]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         {/** biome-ignore lint/a11y/useSemanticElements: has to be a Button */}
         <Button
@@ -99,7 +99,8 @@ export function ModelSelector({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className=" p-0 w-[var(--radix-popover-trigger-width)]"
+        className="p-0 w-[var(--radix-popover-trigger-width)]"
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <Command>
           <CommandInput
@@ -107,7 +108,10 @@ export function ModelSelector({
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandList>
+          <CommandList
+            className="max-h-[300px] overflow-y-auto"
+            onWheel={(e) => e.stopPropagation()}
+          >
             <CommandEmpty>{noOptionsPlaceholder}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => (
