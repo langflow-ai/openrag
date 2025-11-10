@@ -8,6 +8,13 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/test-integration.yml'
+  workflow_dispatch:
+    inputs:
+      use_local_images:
+        description: 'Build images locally instead of pulling from DockerHub'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   tests:
@@ -57,6 +64,12 @@ jobs:
           # Disable startup ingest noise unless a test enables it
           DISABLE_STARTUP_INGEST: "true"
         run: |
-          make test-ci
+          if [ "${{ inputs.use_local_images }}" == "true" ]; then
+            echo "Running tests with locally built images..."
+            make test-ci-local
+          else
+            echo "Running tests with DockerHub images..."
+            make test-ci
+          fi
           echo "Keys directory after tests:"
           ls -la keys/ || echo "No keys directory"
