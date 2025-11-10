@@ -58,6 +58,11 @@ const sidebars = {
     },
     {
       type: "doc",
+      id: "reference/ollama",
+      label: "Using Ollama with OpenRAG"
+    },
+    {
+      type: "doc",
       id: "support/troubleshoot",
       label: "Troubleshooting"
     },

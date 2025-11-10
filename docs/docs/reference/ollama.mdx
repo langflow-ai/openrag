@@ -1,0 +1,38 @@
+---
+title: Use Ollama with OpenRAG
+slug: /reference/ollama
+---
+
+import Icon from "@site/src/components/icon/icon";
+
+Using Ollama for your OpenRAG language model provider offers greater flexibility and configuration, but can also be overwhelming to start.
+
+For baseline performance, OpenRAG recommends OpenAI's `text-embedding-3-small` text embedding model, and OpenAI's `gpt-4o` language model.
+
+To run more powerful models or improve performance, use Ollama Cloud or run Ollama on a remote machine, and then connect your OpenRAG provider to that URL.
+
+### Connect to Ollama Cloud
+
+To use Ollama Cloud, enter the Ollama Cloud URL in your OpenRAG Model provider settings:
+
+1. Click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+2. Navigate to the **Model Provider** section.
+3. Select **Ollama** as your provider.
+4. Enter your Ollama Cloud URL in the **Ollama Base URL** field.
+5. Select your **Embedding Model** and **Language Model** from the available options.
+6. Save your settings.
+
+### Connect to a remote Ollama instance
+
+To use a remote machine running Ollama, do the following:
+
+1. Ensure your remote Ollama server is accessible from your OpenRAG instance.
+2. Click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+3. Navigate to the **Model Provider** section.
+4. Select **Ollama** as your provider.
+5. Enter your remote Ollama server's base URL (for example, `http://your-remote-server:11434`) in the **Ollama Base URL** field.
+6. OpenRAG automatically transforms `localhost` to access services outside of the container when needed.
+7. Select your **Embedding Model** and **Language Model** from the available options.
+8. Save your settings.
+
+OpenRAG sends a test connection to your Ollama server to confirm connectivity before saving the configuration.
