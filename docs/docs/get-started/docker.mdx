@@ -1,6 +1,6 @@
 ---
 title: Install OpenRAG containers
-slug: /get-started/docker
+slug: /docker
 ---
 
 import Tabs from '@theme/Tabs';
@@ -19,7 +19,7 @@ OpenRAG has two Docker Compose files. Both files deploy the same applications an
 - Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - Install [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/)
 - Install [Docker Compose](https://docs.docker.com/compose/install/). If using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
-- Create an [OpenAI API key](https://platform.openai.com/api-keys). This key is **required** to start OpenRAG, but you can choose a different model provider during [Application Onboarding](#application-onboarding).
+- Optional: Create an [OpenAI API key](https://platform.openai.com/api-keys). You can provide this key during [Application Onboarding](#application-onboarding) or choose a different model provider.
 - Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
 
 ## Install OpenRAG with Docker Compose
@@ -48,19 +48,20 @@ To install OpenRAG with Docker Compose, do the following:
    touch .env
    ```
 
-4. The Docker Compose files are populated with the values from your `.env` file. The following values must be set:
+4. The Docker Compose files are populated with the values from your `.env` file. 
+   The `OPENSEARCH_PASSWORD` value must be set.
+   `OPENSEARCH_PASSWORD` can be automatically generated when using the TUI, but for a Docker Compose installation, you can set it manually instead. To generate an OpenSearch admin password, see the [OpenSearch documentation](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
+
+   The following values are optional:
 
    ```bash
-   OPENSEARCH_PASSWORD=your_secure_password
    OPENAI_API_KEY=your_openai_api_key
    LANGFLOW_SECRET_KEY=your_secret_key
    ```
 
-   `OPENSEARCH_PASSWORD` can be automatically generated when using the TUI, but for a Docker Compose installation, you can set it manually instead. To generate an OpenSearch admin password, see the [OpenSearch documentation](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
+   `OPENAI_API_KEY` is optional. You can provide it during [Application Onboarding](#application-onboarding) or choose a different model provider. If you want to set it in your `.env` file, you can find your OpenAI API key in your [OpenAI account](https://platform.openai.com/api-keys).
 
-   The `OPENAI_API_KEY` is found in your OpenAI account. 
-
-   `LANGFLOW_SECRET_KEY` is automatically generated when using the TUI, and Langflow will also auto-generate it if not set. For more information, see the [Langflow documentation](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key).
+   `LANGFLOW_SECRET_KEY` is optional. Langflow will auto-generate it if not set. For more information, see the [Langflow documentation](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key).
 
    The following Langflow configuration values are optional but important to consider:
 

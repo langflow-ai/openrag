@@ -17,7 +17,7 @@ Instead of starting OpenRAG using Docker commands and manually editing values in
 
 Once OpenRAG is running, use the TUI to monitor your application, control your containers, and retrieve logs.
 
-If you prefer running Podman or Docker containers and manually editing `.env` files, see [Install OpenRAG Containers](/get-started/docker).
+If you prefer running Podman or Docker containers and manually editing `.env` files, see [Install OpenRAG Containers](/docker).
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ If you prefer running Podman or Docker containers and manually editing `.env` fi
 - Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - Install [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/)
 - Install [Docker Compose](https://docs.docker.com/compose/install/). If using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
-- Create an [OpenAI API key](https://platform.openai.com/api-keys). This key is **required** to start OpenRAG, but you can choose a different model provider during [Application Onboarding](#application-onboarding).
+- Optional: Create an [OpenAI API key](https://platform.openai.com/api-keys). During [Application Onboarding](#application-onboarding), you can provide this key or choose a different model provider.
 - Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
 
 ## Install OpenRAG {#install}
@@ -163,7 +163,7 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
 <Tabs groupId="Setup method">
   <TabItem value="Basic setup" label="Basic setup" default>
 
-    **Basic Setup** can generate all of the required values for OpenRAG except the OpenAI API key.
+    **Basic Setup** can generate all of the required values for OpenRAG. The OpenAI API key is optional and can be provided during onboarding.
     **Basic Setup** does not set up OAuth connections for ingestion from cloud providers.
     For OAuth setup, use **Advanced Setup**.
     For information about the difference between basic (no auth) and OAuth in OpenRAG, see [Authentication and document access](/knowledge#auth).
@@ -174,7 +174,7 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
        The OpenSearch password is required. The Langflow admin password is optional.
        If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
    
-   3. Paste your OpenAI API key in the OpenAI API key field.
+   3. Optional: Paste your OpenAI API key in the OpenAI API key field. You can also provide this during onboarding or choose a different model provider.
    4. Click **Save Configuration**.
    Your passwords are saved in the `.env` file used to start OpenRAG.
    5. To start OpenRAG, click **Start All Services**.
