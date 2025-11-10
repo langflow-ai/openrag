@@ -113,6 +113,26 @@ docker_is_podman() {
   return 1
 }
 
+# --- Homebrew install (macOS only, idempotent) -----------------------------
+install_homebrew_if_missing() {
+  [ "$PLATFORM" != "macOS" ] && return 0
+  if has_cmd brew; then
+    say ">>> Homebrew present: $(brew --version 2>/dev/null | head -1 || echo ok)"
+    return 0
+  fi
+  say ">>> Homebrew not found."
+  if ! ask_yes_no "Install Homebrew now?"; then return 1; fi
+  if ! has_cmd curl; then say ">>> curl is required. Please install curl and re-run."; exit 1; fi
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  # Add brew to PATH for this session (common locations)
+  if [ -x /opt/homebrew/bin/brew ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [ -x /usr/local/bin/brew ]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
+  ensure_path_has_common_bins
+}
+
 # --- uv install (optional) --------------------------------------------------
 install_uv() {
   if has_cmd uv; then
@@ -122,6 +142,9 @@ install_uv() {
   if ! ask_yes_no "uv not found. Install uv now?"; then return; fi
   if ! has_cmd curl; then say ">>> curl is required to install uv. Please install curl and re-run."; exit 1; fi
   curl -LsSf https://astral.sh/uv/install.sh | sh
+  # Add uv to PATH for this session
+  [ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"
+  [ -d "$HOME/.cargo/bin" ] && export PATH="$HOME/.cargo/bin:$PATH"
 }
 
 # --- Docker: install if missing (never reinstall) ---------------------------
@@ -136,13 +159,19 @@ install_docker_if_missing() {
 
   case "$PLATFORM" in
     macOS)
+      # Ensure Homebrew is available for Docker Desktop installation
+      if ! has_cmd brew; then
+        install_homebrew_if_missing || {
+          say ">>> Cannot install Docker Desktop without Homebrew."
+          say ">>> Please download manually from: https://www.docker.com/products/docker-desktop/"
+          exit 1
+        }
+      fi
       if has_cmd brew; then
+        say ">>> Installing Docker Desktop via Homebrew..."
         brew install --cask docker
         say ">>> Starting Docker Desktop..."
         open -gj -a Docker || true
-      else
-        say ">>> Homebrew not found. Install from https://brew.sh then: brew install --cask docker"
-        exit 1
       fi
       ;;
     Linux|WSL)
@@ -266,11 +295,16 @@ install_podman_if_missing() {
 
   case "$PLATFORM" in
     macOS)
+      # Ensure Homebrew is available for Podman installation
+      if ! has_cmd brew; then
+        install_homebrew_if_missing || {
+          say ">>> Cannot install Podman without Homebrew."
+          say ">>> Please install manually from: https://podman.io/getting-started/installation"
+          exit 1
+        }
+      fi
       if has_cmd brew; then
         brew install podman
-      else
-        say ">>> Install Homebrew first (https://brew.sh) then: brew install podman"
-        exit 1
       fi
       ;;
     Linux|WSL)
@@ -346,7 +380,14 @@ else
   # Optional: podman-compose for compose-like UX
   if ! command -v podman-compose >/dev/null 2>&1; then
     if ask_yes_no "Install podman-compose (optional)?"; then
-      if   has_cmd brew;    then brew install podman-compose
+      if [ "$PLATFORM" = "macOS" ]; then
+        # Ensure Homebrew is available for podman-compose on macOS
+        if ! has_cmd brew; then
+          install_homebrew_if_missing || say ">>> Install podman-compose manually or via pip3"
+        fi
+        if has_cmd brew; then
+          brew install podman-compose
+        fi
       elif has_cmd apt-get; then $SUDO apt-get update -y && $SUDO apt-get install -y podman-compose || pip3 install --user podman-compose || true
       elif has_cmd dnf;     then $SUDO dnf install -y podman-compose || true
       elif has_cmd yum;     then $SUDO yum install -y podman-compose || true
