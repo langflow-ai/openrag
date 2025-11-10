@@ -322,9 +322,49 @@ install_podman_if_missing() {
 
 ensure_podman_ready() {
   if [ "$PLATFORM" = "macOS" ]; then
+    local machine_name="podman-machine-default"
+    local min_memory_mb=8192  # 8 GB minimum
+
+    # Check if any machine exists
+    if ! podman machine list 2>/dev/null | grep -qE '(running|stopped)'; then
+      say ">>> Podman machine does not exist. Initializing with 8GB memory…"
+      podman machine init --memory "$min_memory_mb" || {
+        say ">>> Failed to initialize Podman machine."
+        return 1
+      }
+    else
+      # Machine exists - check if it has enough memory
+      say ">>> Checking Podman machine configuration…"
+      local current_memory
+      current_memory=$(podman machine inspect "$machine_name" --format "{{.Resources.Memory}}" 2>/dev/null || echo "0")
+
+      if [ "$current_memory" -gt 0 ] && [ "$current_memory" -lt "$min_memory_mb" ]; then
+        say ">>> Podman machine has ${current_memory}MB memory, but ${min_memory_mb}MB is recommended."
+        if ask_yes_no "Recreate Podman machine with ${min_memory_mb}MB memory?"; then
+          say ">>> Stopping and removing existing Podman machine…"
+          podman machine stop 2>/dev/null || true
+          podman machine rm -f "$machine_name" || {
+            say ">>> Failed to remove existing machine."
+            return 1
+          }
+          say ">>> Initializing new Podman machine with ${min_memory_mb}MB memory…"
+          podman machine init --memory "$min_memory_mb" || {
+            say ">>> Failed to initialize Podman machine."
+            return 1
+          }
+        else
+          say ">>> Continuing with existing machine (may have insufficient resources)."
+        fi
+      fi
+    fi
+
+    # Now check if it's running
     if ! podman machine list 2>/dev/null | grep -q running; then
       say ">>> Starting Podman machine (macOS)…"
-      podman machine start || true
+      podman machine start || {
+        say ">>> Failed to start Podman machine."
+        return 1
+      }
       for i in {1..30}; do podman_ready && break || sleep 2; done
     fi
   fi
