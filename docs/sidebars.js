@@ -23,6 +23,11 @@ const sidebars = {
     },
     {
       type: "doc",
+      id: "get-started/quickstart",
+      label: "Quickstart"
+    },
+    {
+      type: "doc",
       id: "get-started/install",
       label: "Install OpenRAG with TUI"
     },
@@ -30,11 +35,6 @@ const sidebars = {
       type: "doc",
       id: "get-started/docker",
       label: "Install OpenRAG containers"
-    },
-    {
-      type: "doc",
-      id: "get-started/quickstart",
-      label: "Quickstart"
     },
     {
       type: "doc",

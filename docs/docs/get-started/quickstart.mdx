@@ -11,7 +11,47 @@ Get started with OpenRAG by loading your knowledge, swapping out your language m
 
 ## Prerequisites
 
-- Install and start OpenRAG with the [TUI](/install) or [Docker](/get-started/docker)
+:::tip
+This quickstart uses a minimal setup to demonstrate OpenRAG's core functionality. After you complete the quickstart, it is recommended that you reinstall OpenRAG with your preferred configuration because some settings are immutable after initial setup. For all installation options, see [Install OpenRAG with TUI](/install) and [Install OpenRAG with containers](/docker).
+:::
+
+Install OpenRAG with the automatic installer.
+The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, and then starts OpenRAG with `uvx`.
+
+    1. Create a directory to store the OpenRAG configuration files:
+       ```bash
+       mkdir openrag-workspace
+       cd openrag-workspace
+       ```
+
+    2. Run the installer:
+       ```bash
+       curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
+       ```
+
+        The TUI creates a `.env` file and docker-compose files in the current working directory, and then starts OpenRAG.
+
+    3. Select **Basic Setup**.
+    4. To generate a password for OpenSearch, click **Generate Passwords**.
+    The other fields aren't required.
+    5. To start OpenRAG, click **Start All Services**.
+      Startup pulls container images and runs them, so it can take some time.
+      When startup is complete, the TUI displays the following:
+          ```bash
+          Services started successfully
+          Command completed successfully
+          ```
+    6. To open the OpenRAG application, navigate to the TUI main menu, and then click **Open App**.
+    Alternatively, in your browser, navigate to `localhost:3000`.
+    7. For your model provider, select **OpenAI**.
+    8. In the **OpenAI API key** field, paste your OpenAI API key.
+    The default model settings are fine for the quickstart.
+    9. To confirm your provider settings, click **Complete**.
+    10. To complete onboarding, click **What is OpenRAG**, and then click **Add a document**.
+    Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+
+    To quit OpenRAG, navigate to the TUI main menu and press <kbd>q</kbd>.
+    To start OpenRAG again, run `uvx openrag`.
 
 ## Load and chat with your own documents
 
@@ -43,7 +83,7 @@ To modify the knowledge ingestion or Agent behavior, click <Icon name="Settings2
 In this example, you'll try a different LLM to demonstrate how the Agent's response changes.
 
 1. To edit the Agent's behavior, click **Edit in Langflow**.
-You can more quickly access the **Language Model** and **Agent Instructions** fields in this page, but for illustration purposes, navigate to the Langflow visual builder.
+You can more quickly access these parameters in the **Language model** and **Agent Instructions** fields in this page, but for illustration purposes, navigate to the Langflow visual builder.
 To revert the flow to its initial state, click **Restore flow**.
 2. OpenRAG warns you that you're entering Langflow. Click **Proceed**.
 
