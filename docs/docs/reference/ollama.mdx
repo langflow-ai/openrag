@@ -6,11 +6,14 @@ slug: /reference/ollama
 import Icon from "@site/src/components/icon/icon";
 
 Using Ollama for your OpenRAG language model provider offers greater flexibility and configuration, but can also be overwhelming to start.
+These recommendations are a reasonable starting point for users with at least one GPU and experience running LLMs locally.
 
 For best performance, OpenRAG recommends OpenAI's `gpt-oss:20b` language model. However, this model uses 16GB of RAM, so consider using Ollama Cloud or running Ollama on a remote machine.
 
-To run this model in Ollama Cloud, follow the steps in [Connect to Ollama Cloud models](#ollama-cloud).
-To run this model on a remote Ollama server, follow the steps in [Connect to a remote Ollama instance](#ollama-remote).
+For generating embeddings, OpenRAG recommends the [`nomic-embed-text`](https://ollama.com/library/nomic-embed-text) embedding model, which provides high-quality embeddings optimized for retrieval tasks.
+
+To run models in Ollama Cloud, follow the steps in [Connect to Ollama Cloud models](#ollama-cloud).
+To run models on a remote Ollama server, follow the steps in [Connect to a remote Ollama instance](#ollama-remote).
 
 ## Connect to Ollama Cloud models {#ollama-cloud}
 
