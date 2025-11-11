@@ -1,42 +1,22 @@
 import { useFormContext } from "react-hook-form";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Input } from "@/components/ui/input";
-import { useGetOllamaModelsQuery } from "@/app/api/queries/useGetModelsQuery";
-import { useDebouncedValue } from "@/lib/debounce";
-import OllamaLogo from "@/components/logo/ollama-logo";
-import { ModelSelectors } from "./model-selectors";
 
 export interface OllamaSettingsFormData {
   endpoint: string;
-  llmModel: string;
-  embeddingModel: string;
 }
 
-export function OllamaSettingsForm() {
+export function OllamaSettingsForm({
+  modelsError,
+  isLoadingModels,
+}: {
+  modelsError?: Error | null;
+  isLoadingModels?: boolean;
+}) {
   const {
     register,
-    watch,
-    formState: { errors, isDirty },
+    formState: { errors },
   } = useFormContext<OllamaSettingsFormData>();
-
-  const endpoint = watch("endpoint");
-  const debouncedEndpoint = useDebouncedValue(endpoint, 500);
-
-  const {
-    data: modelsData,
-    isLoading: isLoadingModels,
-    error: modelsError,
-  } = useGetOllamaModelsQuery(
-    {
-      endpoint: debouncedEndpoint,
-    },
-    {
-      enabled: isDirty && !!debouncedEndpoint,
-    }
-  );
-
-  const languageModels = modelsData?.language_models || [];
-  const embeddingModels = modelsData?.embedding_models || [];
 
   const endpointError = modelsError
     ? "Connection failed. Check your Ollama server URL."
@@ -70,12 +50,9 @@ export function OllamaSettingsForm() {
           </p>
         )}
       </div>
-      <ModelSelectors
-        languageModels={languageModels}
-        embeddingModels={embeddingModels}
-        isLoadingModels={isLoadingModels}
-        logo={<OllamaLogo className="w-4 h-4" />}
-      />
+      <p className="text-sm text-muted-foreground">
+        Configure language and embedding models in the Settings page after saving your endpoint.
+      </p>
     </div>
   );
 }

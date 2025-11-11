@@ -3,9 +3,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
-import { useGetOpenAIModelsQuery } from "@/app/api/queries/useGetModelsQuery";
+import { useGetAnthropicModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
-import OpenAILogo from "@/components/logo/openai-logo";
+import AnthropicLogo from "@/components/logo/anthropic-logo";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -16,11 +16,11 @@ import {
 } from "@/components/ui/dialog";
 import { useDebouncedValue } from "@/lib/debounce";
 import {
-	OpenAISettingsForm,
-	type OpenAISettingsFormData,
-} from "./openai-settings-form";
+	AnthropicSettingsForm,
+	type AnthropicSettingsFormData,
+} from "./anthropic-settings-form";
 
-const OpenAISettingsDialog = ({
+const AnthropicSettingsDialog = ({
 	open,
 	setOpen,
 }: {
@@ -29,7 +29,7 @@ const OpenAISettingsDialog = ({
 }) => {
 	const queryClient = useQueryClient();
 
-	const methods = useForm<OpenAISettingsFormData>({
+	const methods = useForm<AnthropicSettingsFormData>({
 		mode: "onSubmit",
 		defaultValues: {
 			apiKey: "",
@@ -43,7 +43,7 @@ const OpenAISettingsDialog = ({
 	const {
 		isLoading: isLoadingModels,
 		error: modelsError,
-	} = useGetOpenAIModelsQuery(
+	} = useGetAnthropicModelsQuery(
 		{
 			apiKey: debouncedApiKey,
 		},
@@ -60,23 +60,23 @@ const OpenAISettingsDialog = ({
 			const healthData: ProviderHealthResponse = {
 				status: "healthy",
 				message: "Provider is configured and working correctly",
-				provider: "openai",
+				provider: "anthropic",
 			};
 			queryClient.setQueryData(["provider", "health"], healthData);
 
-			toast.success("OpenAI credentials saved. Configure models in the Settings page.");
+			toast.success("Anthropic credentials saved. Configure models in the Settings page.");
 			setOpen(false);
 		},
 	});
 
-	const onSubmit = (data: OpenAISettingsFormData) => {
+	const onSubmit = (data: AnthropicSettingsFormData) => {
 		const payload: {
-			openai_api_key?: string;
+			anthropic_api_key?: string;
 		} = {};
 
 		// Only include api_key if a value was entered
 		if (data.apiKey) {
-			payload.openai_api_key = data.apiKey;
+			payload.anthropic_api_key = data.apiKey;
 		}
 
 		// Submit the update
@@ -91,13 +91,13 @@ const OpenAISettingsDialog = ({
 						<DialogHeader className="mb-2">
 							<DialogTitle className="flex items-center gap-3">
 								<div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
-									<OpenAILogo className="text-black" />
+									<AnthropicLogo className="text-black" />
 								</div>
-								OpenAI Setup
+								Anthropic Setup
 							</DialogTitle>
 						</DialogHeader>
 
-						<OpenAISettingsForm
+						<AnthropicSettingsForm
 							modelsError={modelsError}
 							isLoadingModels={isLoadingModels}
 						/>
@@ -138,4 +138,4 @@ const OpenAISettingsDialog = ({
 	);
 };
 
-export default OpenAISettingsDialog;
+export default AnthropicSettingsDialog;

@@ -34,23 +34,26 @@ async def validate_provider_setup(
     try:
         logger.info(f"Starting validation for provider: {provider_lower}")
 
-        # Test completion with tool calling
-        await test_completion_with_tools(
-            provider=provider_lower,
-            api_key=api_key,
-            llm_model=llm_model,
-            endpoint=endpoint,
-            project_id=project_id,
-        )
+        if embedding_model:
+            # Test embedding
+            await test_embedding(
+                provider=provider_lower,
+                api_key=api_key,
+                embedding_model=embedding_model,
+                endpoint=endpoint,
+                project_id=project_id,
+            )
 
-        # Test embedding
-        await test_embedding(
-            provider=provider_lower,
-            api_key=api_key,
-            embedding_model=embedding_model,
-            endpoint=endpoint,
-            project_id=project_id,
-        )
+        elif llm_model:
+            # Test completion with tool calling
+            await test_completion_with_tools(
+                provider=provider_lower,
+                api_key=api_key,
+                llm_model=llm_model,
+                endpoint=endpoint,
+                project_id=project_id,
+            )
+        
 
         logger.info(f"Validation successful for provider: {provider_lower}")
 
@@ -74,6 +77,8 @@ async def test_completion_with_tools(
         await _test_watsonx_completion_with_tools(api_key, llm_model, endpoint, project_id)
     elif provider == "ollama":
         await _test_ollama_completion_with_tools(llm_model, endpoint)
+    elif provider == "anthropic":
+        await _test_anthropic_completion_with_tools(api_key, llm_model)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -434,4 +439,61 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
         raise Exception("Request timed out")
     except Exception as e:
         logger.error(f"Ollama embedding test failed: {str(e)}")
+        raise
+
+
+# Anthropic validation functions
+async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) -> None:
+    """Test Anthropic completion with tool calling."""
+    try:
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+
+        # Simple tool calling test with Anthropic's format
+        payload = {
+            "model": llm_model,
+            "max_tokens": 50,
+            "messages": [
+                {"role": "user", "content": "What tools do you have available?"}
+            ],
+            "tools": [
+                {
+                    "name": "get_weather",
+                    "description": "Get the current weather",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "The city and state"
+                            }
+                        },
+                        "required": ["location"]
+                    }
+                }
+            ],
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json=payload,
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Anthropic completion test failed: {response.status_code} - {response.text}")
+                raise Exception(f"Anthropic API error: {response.status_code}")
+
+            logger.info("Anthropic completion with tool calling test passed")
+
+    except httpx.TimeoutException:
+        logger.error("Anthropic completion test timed out")
+        raise Exception("Request timed out")
+    except Exception as e:
+        logger.error(f"Anthropic completion test failed: {str(e)}")
         raise

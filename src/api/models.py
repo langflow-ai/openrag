@@ -16,9 +16,9 @@ async def get_openai_models(request, models_service, session_manager):
         if not api_key:
             try:
                 config = get_openrag_config()
-                api_key = config.provider.api_key
+                api_key = config.providers.openai.api_key
                 logger.info(
-                    f"Retrieved API key from config: {'yes' if api_key else 'no'}"
+                    f"Retrieved OpenAI API key from config: {'yes' if api_key else 'no'}"
                 )
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
@@ -39,6 +39,40 @@ async def get_openai_models(request, models_service, session_manager):
             {"error": f"Failed to retrieve OpenAI models: {str(e)}"}, status_code=500
         )
 
+async def get_anthropic_models(request, models_service, session_manager):
+    """Get available Anthropic models"""
+    try:
+        # Get API key from query parameters
+        query_params = dict(request.query_params)
+        api_key = query_params.get("api_key")
+
+        # If no API key provided, try to get it from stored configuration
+        if not api_key:
+            try:
+                config = get_openrag_config()
+                api_key = config.providers.anthropic.api_key
+                logger.info(
+                    f"Retrieved Anthropic API key from config: {'yes' if api_key else 'no'}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to get config: {e}")
+
+        if not api_key:
+            return JSONResponse(
+                {
+                    "error": "Anthropic API key is required either as query parameter or in configuration"
+                },
+                status_code=400,
+            )
+
+        models = await models_service.get_anthropic_models(api_key=api_key)
+        return JSONResponse(models)
+    except Exception as e:
+        logger.error(f"Failed to get Anthropic models: {str(e)}")
+        return JSONResponse(
+            {"error": f"Failed to retrieve Anthropic models: {str(e)}"}, status_code=500
+        )
+
 
 async def get_ollama_models(request, models_service, session_manager):
     """Get available Ollama models"""
@@ -47,13 +81,13 @@ async def get_ollama_models(request, models_service, session_manager):
         query_params = dict(request.query_params)
         endpoint = query_params.get("endpoint")
 
-        # If no API key provided, try to get it from stored configuration
+        # If no endpoint provided, try to get it from stored configuration
         if not endpoint:
             try:
                 config = get_openrag_config()
-                endpoint = config.provider.endpoint
+                endpoint = config.providers.ollama.endpoint
                 logger.info(
-                    f"Retrieved endpoint from config: {'yes' if endpoint else 'no'}"
+                    f"Retrieved Ollama endpoint from config: {'yes' if endpoint else 'no'}"
                 )
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
@@ -88,9 +122,9 @@ async def get_ibm_models(request, models_service, session_manager):
         # If no API key provided, try to get it from stored configuration
         if not api_key:
             try:
-                api_key = config.provider.api_key
+                api_key = config.providers.watsonx.api_key
                 logger.info(
-                    f"Retrieved API key from config: {'yes' if api_key else 'no'}"
+                    f"Retrieved WatsonX API key from config: {'yes' if api_key else 'no'}"
                 )
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
@@ -98,16 +132,16 @@ async def get_ibm_models(request, models_service, session_manager):
         if not api_key:
             return JSONResponse(
                 {
-                    "error": "OpenAI API key is required either as query parameter or in configuration"
+                    "error": "WatsonX API key is required either as query parameter or in configuration"
                 },
                 status_code=400,
             )
 
         if not endpoint:
             try:
-                endpoint = config.provider.endpoint
+                endpoint = config.providers.watsonx.endpoint
                 logger.info(
-                    f"Retrieved endpoint from config: {'yes' if endpoint else 'no'}"
+                    f"Retrieved WatsonX endpoint from config: {'yes' if endpoint else 'no'}"
                 )
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
@@ -122,9 +156,9 @@ async def get_ibm_models(request, models_service, session_manager):
 
         if not project_id:
             try:
-                project_id = config.provider.project_id
+                project_id = config.providers.watsonx.project_id
                 logger.info(
-                    f"Retrieved project ID from config: {'yes' if project_id else 'no'}"
+                    f"Retrieved WatsonX project ID from config: {'yes' if project_id else 'no'}"
                 )
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")

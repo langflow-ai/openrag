@@ -1,4 +1,4 @@
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, LockIcon } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +30,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <label
         className={cn(
           "relative block h-fit w-full text-sm group",
-          icon ? className : ""
+          icon ? className : "",
         )}
       >
         {icon && (
@@ -45,14 +45,14 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className={cn(
             "primary-input",
             icon && "!pl-9",
-            type === "password" && "!pr-8",
+            (type === "password" || props.disabled) && "!pr-8",
             icon ? inputClassName : className
           )}
           ref={ref}
           {...props}
           onChange={handleChange}
         />
-        {type === "password" && (
+        {type === "password" && !props.disabled && (
           <button
             type="button"
             className="absolute top-1/2 opacity-0 group-hover:opacity-100 hover:text-primary transition-all right-3 transform -translate-y-1/2 text-sm text-muted-foreground"
@@ -65,6 +65,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
               <EyeOff className="w-4" />
             )}
           </button>
+        )}
+        {props.disabled && (
+          <div className="absolute top-1/2 right-3 transform -translate-y-1/2 text-sm text-muted-foreground">
+            <LockIcon className="w-4" />
+          </div>
         )}
       </label>
     );

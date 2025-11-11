@@ -20,6 +20,10 @@ export interface OpenAIModelsParams {
   apiKey?: string;
 }
 
+export interface AnthropicModelsParams {
+  apiKey?: string;
+}
+
 export interface OllamaModelsParams {
   endpoint?: string;
 }
@@ -54,6 +58,41 @@ export const useGetOpenAIModelsQuery = (
     {
       queryKey: ["models", "openai", params],
       queryFn: getOpenAIModels,
+      staleTime: 0, // Always fetch fresh data
+      gcTime: 0, // Don't cache results
+      retry: false,
+      ...options,
+    },
+    queryClient,
+  );
+
+  return queryResult;
+};
+
+export const useGetAnthropicModelsQuery = (
+  params?: AnthropicModelsParams,
+  options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
+) => {
+  const queryClient = useQueryClient();
+
+  async function getAnthropicModels(): Promise<ModelsResponse> {
+    const url = new URL("/api/models/anthropic", window.location.origin);
+    if (params?.apiKey) {
+      url.searchParams.set("api_key", params.apiKey);
+    }
+
+    const response = await fetch(url.toString());
+    if (response.ok) {
+      return await response.json();
+    } else {
+      throw new Error("Failed to fetch Anthropic models");
+    }
+  }
+
+  const queryResult = useQuery(
+    {
+      queryKey: ["models", "anthropic", params],
+      queryFn: getAnthropicModels,
       staleTime: 0, // Always fetch fresh data
       gcTime: 0, // Don't cache results
       retry: false,
@@ -142,14 +181,14 @@ export const useGetIBMModelsQuery = (
 };
 
 /**
- * Hook that automatically fetches models for the current provider
+ * Hook that automatically fetches models for the current LLM provider
  * based on the settings configuration
  */
 export const useGetCurrentProviderModelsQuery = (
   options?: Omit<UseQueryOptions<ModelsResponse>, "queryKey" | "queryFn">,
 ) => {
   const { data: settings } = useGetSettingsQuery();
-  const currentProvider = settings?.provider?.model_provider;
+  const currentProvider = settings?.agent?.llm_provider;
 
   // Determine which hook to use based on current provider
   const openaiModels = useGetOpenAIModelsQuery(
@@ -160,25 +199,33 @@ export const useGetCurrentProviderModelsQuery = (
     }
   );
 
-  const ollamaModels = useGetOllamaModelsQuery(
-    { endpoint: settings?.provider?.endpoint },
+  const anthropicModels = useGetAnthropicModelsQuery(
+    { apiKey: "" },
     {
-      enabled: currentProvider === "ollama" && !!settings?.provider?.endpoint && options?.enabled !== false,
+      enabled: currentProvider === "anthropic" && options?.enabled !== false,
+      ...options,
+    }
+  );
+
+  const ollamaModels = useGetOllamaModelsQuery(
+    { endpoint: settings?.providers?.ollama?.endpoint },
+    {
+      enabled: currentProvider === "ollama" && !!settings?.providers?.ollama?.endpoint && options?.enabled !== false,
       ...options,
     }
   );
 
   const ibmModels = useGetIBMModelsQuery(
     {
-      endpoint: settings?.provider?.endpoint,
+      endpoint: settings?.providers?.watsonx?.endpoint,
       apiKey: "",
-      projectId: settings?.provider?.project_id,
+      projectId: settings?.providers?.watsonx?.project_id,
     },
     {
       enabled:
         currentProvider === "watsonx" &&
-        !!settings?.provider?.endpoint &&
-        !!settings?.provider?.project_id &&
+        !!settings?.providers?.watsonx?.endpoint &&
+        !!settings?.providers?.watsonx?.project_id &&
         options?.enabled !== false,
       ...options,
     }
@@ -188,6 +235,8 @@ export const useGetCurrentProviderModelsQuery = (
   switch (currentProvider) {
     case "openai":
       return openaiModels;
+    case "anthropic":
+      return anthropicModels;
     case "ollama":
       return ollamaModels;
     case "watsonx":

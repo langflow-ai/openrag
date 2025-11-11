@@ -14,11 +14,13 @@ import {
   type OllamaSettingsFormData,
 } from "./ollama-settings-form";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useGetOllamaModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useAuth } from "@/contexts/auth-context";
 import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import { AnimatePresence, motion } from "motion/react";
+import { useDebouncedValue } from "@/lib/debounce";
 
 const OllamaSettingsDialog = ({
   open,
@@ -34,22 +36,34 @@ const OllamaSettingsDialog = ({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isOllamaConfigured = settings.provider?.model_provider === "ollama";
+  const isOllamaConfigured = settings.providers?.ollama?.configured === true;
 
   const methods = useForm<OllamaSettingsFormData>({
     mode: "onSubmit",
     defaultValues: {
       endpoint: isOllamaConfigured
-        ? settings.provider?.endpoint
+        ? settings.providers?.ollama?.endpoint
         : "http://localhost:11434",
-      llmModel: isOllamaConfigured ? settings.agent?.llm_model : "",
-      embeddingModel: isOllamaConfigured
-        ? settings.knowledge?.embedding_model
-        : "",
     },
   });
 
-  const { handleSubmit } = methods;
+  const { handleSubmit, watch, formState } = methods;
+  const endpoint = watch("endpoint");
+  const debouncedEndpoint = useDebouncedValue(endpoint, 500);
+
+  const {
+    isLoading: isLoadingModels,
+    error: modelsError,
+  } = useGetOllamaModelsQuery(
+    {
+      endpoint: debouncedEndpoint,
+    },
+    {
+      enabled: formState.isDirty && !!debouncedEndpoint && open,
+    }
+  );
+
+  const hasValidationError = !!modelsError || !!formState.errors.endpoint;
 
   const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -61,17 +75,14 @@ const OllamaSettingsDialog = ({
       };
       queryClient.setQueryData(["provider", "health"], healthData);
 
-      toast.success("Ollama settings updated successfully");
+      toast.success("Ollama endpoint saved. Configure models in the Settings page.");
       setOpen(false);
     },
   });
 
   const onSubmit = (data: OllamaSettingsFormData) => {
     settingsMutation.mutate({
-      endpoint: data.endpoint,
-      model_provider: "ollama",
-      llm_model: data.llmModel,
-      embedding_model: data.embeddingModel,
+      ollama_endpoint: data.endpoint,
     });
   };
 
@@ -89,7 +100,10 @@ const OllamaSettingsDialog = ({
               </DialogTitle>
             </DialogHeader>
 
-            <OllamaSettingsForm />
+            <OllamaSettingsForm
+              modelsError={modelsError}
+              isLoadingModels={isLoadingModels}
+            />
 
             <AnimatePresence mode="wait">
               {settingsMutation.isError && (
@@ -113,8 +127,11 @@ const OllamaSettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={settingsMutation.isPending}>
-                {settingsMutation.isPending ? "Saving..." : "Save"}
+              <Button
+                type="submit"
+                disabled={settingsMutation.isPending || hasValidationError || isLoadingModels}
+              >
+                {settingsMutation.isPending ? "Saving..." : isLoadingModels ? "Validating..." : "Save"}
               </Button>
             </DialogFooter>
           </form>

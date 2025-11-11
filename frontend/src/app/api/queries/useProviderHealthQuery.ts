@@ -14,7 +14,11 @@ export interface ProviderHealthDetails {
 export interface ProviderHealthResponse {
   status: "healthy" | "unhealthy" | "error" | "backend-unavailable";
   message: string;
-  provider: string;
+  provider?: string;
+  llm_provider?: string;
+  embedding_provider?: string;
+  llm_error?: string | null;
+  embedding_error?: string | null;
   details?: ProviderHealthDetails;
 }
 
@@ -53,6 +57,10 @@ export const useProviderHealthQuery = (
           status: "unhealthy",
           message: errorData.message || "Provider validation failed",
           provider: errorData.provider || params?.provider || "unknown",
+          llm_provider: errorData.llm_provider,
+          embedding_provider: errorData.embedding_provider,
+          llm_error: errorData.llm_error,
+          embedding_error: errorData.embedding_error,
           details: errorData.details,
         };
       } else {
@@ -62,6 +70,10 @@ export const useProviderHealthQuery = (
           status: "error",
           message: errorData.message || "Failed to check provider health",
           provider: errorData.provider || params?.provider || "unknown",
+          llm_provider: errorData.llm_provider,
+          embedding_provider: errorData.embedding_provider,
+          llm_error: errorData.llm_error,
+          embedding_error: errorData.embedding_error,
           details: errorData.details,
         };
       }
