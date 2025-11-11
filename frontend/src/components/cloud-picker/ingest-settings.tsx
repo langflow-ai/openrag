@@ -53,7 +53,7 @@ export const IngestSettings = ({
   });
 
   // Get the current provider from API settings
-  const currentProvider = (apiSettings.provider?.model_provider ||
+  const currentProvider = (apiSettings.providers?.model_provider ||
     "openai") as ModelProvider;
 
   // Fetch available models based on provider
