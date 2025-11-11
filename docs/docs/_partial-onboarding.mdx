@@ -1,6 +1,7 @@
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import PartialOllama from '@site/docs/_partial-ollama.mdx'; 
 
 ## Application onboarding 
 
@@ -51,11 +52,14 @@ Choose one LLM provider and complete only those steps:
     OpenRAG automatically transforms `localhost` to access services outside of the container, and sends a test connection to your Ollama server to confirm connectivity.
     2. Select the **Embedding Model** and **Language Model** your Ollama server is running.
     OpenRAG retrieves the available models from your Ollama server.
+        <details closed>
+        <summary>Ollama server configuration</summary>
+        <PartialOllama />
+        </details>
     3. To load 2 sample PDFs, enable **Sample dataset**.
     This is recommended, but not required.
     4. Click **Complete**.
     5. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
     6. Continue with the [Quickstart](/quickstart).
-    For more information, see [Using Ollama with OpenRAG](/reference/ollama).  
     </TabItem>
     </Tabs>
