@@ -1,5 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
-import { type ChangeEvent, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { useGetNudgesQuery } from "@/app/api/queries/useGetNudgesQuery";
+import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/components/animated-provider-steps";
 import { Button } from "@/components/ui/button";
 import { uploadFile } from "@/lib/upload-utils";
@@ -14,6 +16,46 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 	const [currentStep, setCurrentStep] = useState<number | null>(null);
 
 	const STEP_LIST = ["Uploading your document", "Processing your document"];
+
+	// Query tasks to track completion
+	const { data: tasks } = useGetTasksQuery({
+		enabled: currentStep !== null, // Only poll when upload has started
+		refetchInterval: currentStep !== null ? 1000 : false, // Poll every 1 second during upload
+	});
+
+	const { refetch: refetchNudges } = useGetNudgesQuery(null);
+
+	// Monitor tasks and call onComplete when file processing is done
+	useEffect(() => {
+		if (currentStep === null || !tasks) {
+			return;
+		}
+
+		// Check if there are any active tasks (pending, running, or processing)
+		const activeTasks = tasks.find(
+			(task) =>
+				task.status === "pending" ||
+				task.status === "running" ||
+				task.status === "processing",
+		);
+
+		// If no active tasks and we have more than 1 task (initial + new upload), complete it
+		if (
+			(!activeTasks || (activeTasks.processed_files ?? 0) > 0) &&
+			tasks.length > 1
+		) {
+			// Set to final step to show "Done"
+			setCurrentStep(STEP_LIST.length);
+
+			// Refetch nudges to get new ones
+			refetchNudges();
+
+			// Wait a bit before completing
+			setTimeout(() => {
+				onComplete();
+			}, 1000);
+		}
+	}, [tasks, currentStep, onComplete, refetchNudges]);
 
 	const resetFileInput = () => {
 		if (fileInputRef.current) {
@@ -30,15 +72,17 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 		try {
 			setCurrentStep(0);
 			await uploadFile(file, true);
-			console.log("Document uploaded successfully");
+			console.log("Document upload task started successfully");
+			// Move to processing step - task monitoring will handle completion
+			setTimeout(() => {
+				setCurrentStep(1);
+			}, 1500);
 		} catch (error) {
 			console.error("Upload failed", (error as Error).message);
+			// Reset on error
+			setCurrentStep(null);
 		} finally {
 			setIsUploading(false);
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-			setCurrentStep(STEP_LIST.length);
-			await new Promise((resolve) => setTimeout(resolve, 500));
-			onComplete();
 		}
 	};
 
