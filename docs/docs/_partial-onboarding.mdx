@@ -12,7 +12,7 @@ Most values from onboarding can be changed later in the OpenRAG **Settings** pag
 The **language model provider** and **embeddings model provider** can only be selected at onboarding.
 To change your provider selection later, you must [reinstall OpenRAG](/install#reinstall).
 
-You must use the same provider for your language model and embedding model, unless you're using Ollama.
+You can use different providers for your language model and embedding model. For example, you can use Anthropic for your language model and OpenAI for embeddings.
 :::
 
 Choose one LLM provider and complete only those steps:
@@ -43,15 +43,20 @@ Choose one LLM provider and complete only those steps:
        
     </TabItem>
     <TabItem value="Anthropic" label="Anthropic">
+    :::info
+    Anthropic does not provide embedding models. Select Anthropic for your language model, and then select a different provider for embeddings.
+    :::
     1. Enable **Use environment Anthropic API key** to automatically use your key from the TUI-generated `.env` file.
     Alternatively, paste an Anthropic API key into the field.
-    2. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+    2. Under **Advanced settings**, select your **Language Model**.
+    No embedding models are available from Anthropic. Select an embedding provider in the next onboarding step.
     3. To load 2 sample PDFs, enable **Sample dataset**.
     This is recommended, but not required.
     4. Click **Complete**.
-    5. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
+    5. Select a provider for embeddings, and choose an embedding model.
+    6. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
     Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-    6. Continue with the [Quickstart](/quickstart).       
+    7. Continue with the [Quickstart](/quickstart).       
 
     </TabItem>
     <TabItem value="Ollama" label="Ollama">
