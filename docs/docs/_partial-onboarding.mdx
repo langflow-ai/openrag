@@ -12,35 +12,37 @@ Most values from onboarding can be changed later in the OpenRAG **Settings** pag
 The **language model provider** and **embeddings model provider** can only be selected at onboarding.
 To change your provider selection later, you must [reinstall OpenRAG](/install#reinstall).
 
-You can use different providers for your language model and embedding model. For example, you can use Anthropic for your language model and OpenAI for embeddings.
+You can use different providers for your language model and embedding model, such as Anthropic for the language model and OpenAI for the embeddings model.
 :::
 
-Choose one LLM provider and complete only those steps:
+Choose one LLM provider and complete these steps:
 
     <Tabs groupId="Provider">
     <TabItem value="OpenAI" label="OpenAI" default>
     1. Enable **Get API key from environment variable** to automatically enter your key from the TUI-generated `.env` file.
     Alternatively, paste an OpenAI API key into the field.
-    2. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+    2. Under **Advanced settings**, select your **Language Model**.
     3. To load 2 sample PDFs, enable **Sample dataset**.
     This is recommended, but not required.
     4. Click **Complete**.
-    5. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
+    5. In the second onboarding panel, select a provider for embeddings and select your **Embedding Model**.
+    6. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
     Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-    6. Continue with the [Quickstart](/quickstart).       
+    7. Continue with the [Quickstart](/quickstart).
 
     </TabItem>
     <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
     1. Complete the fields for **watsonx.ai API Endpoint**, **IBM Project ID**, and **IBM API key**.
     These values are found in your IBM watsonx deployment.
-    2. Under **Advanced settings**, select your **Embedding Model** and **Language Model**.
+    2. Under **Advanced settings**, select your **Language Model**.
     3. To load 2 sample PDFs, enable **Sample dataset**.
     This is recommended, but not required.
     4. Click **Complete**.
-    5. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
+    5. In the second onboarding panel, select a provider for embeddings and select your **Embedding Model**.
+    6. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
     Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-    6. Continue with the [Quickstart](/quickstart).          
-       
+    7. Continue with the [Quickstart](/quickstart).
+
     </TabItem>
     <TabItem value="Anthropic" label="Anthropic">
     :::info
@@ -49,14 +51,13 @@ Choose one LLM provider and complete only those steps:
     1. Enable **Use environment Anthropic API key** to automatically use your key from the TUI-generated `.env` file.
     Alternatively, paste an Anthropic API key into the field.
     2. Under **Advanced settings**, select your **Language Model**.
-    No embedding models are available from Anthropic. Select an embedding provider in the next onboarding step.
     3. To load 2 sample PDFs, enable **Sample dataset**.
     This is recommended, but not required.
     4. Click **Complete**.
-    5. Select a provider for embeddings, and choose an embedding model.
+    5. In the second onboarding panel, select a provider for embeddings and select your **Embedding Model**.
     6. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
     Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-    7. Continue with the [Quickstart](/quickstart).       
+    7. Continue with the [Quickstart](/quickstart).
 
     </TabItem>
     <TabItem value="Ollama" label="Ollama">
@@ -66,13 +67,14 @@ Choose one LLM provider and complete only those steps:
     1. Enter your Ollama server's base URL address.
     The default Ollama server address is `http://localhost:11434`.
     OpenRAG automatically transforms `localhost` to access services outside of the container, and sends a test connection to your Ollama server to confirm connectivity.
-    2. Select the **Embedding Model** and **Language Model** your Ollama server is running.
-    OpenRAG retrieves the available models from your Ollama server.
+    2. Under **Advanced settings**, select your **Language Model** from the models available on your Ollama server.
     3. To load 2 sample PDFs, enable **Sample dataset**.
     This is recommended, but not required.
     4. Click **Complete**.
-    5. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
+    5. In the second onboarding panel, select your **Embedding Model** from the models available on your Ollama server.
+    6. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
     Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-    6. Continue with the [Quickstart](/quickstart).        
+    7. Continue with the [Quickstart](/quickstart).
+
     </TabItem>
     </Tabs>
