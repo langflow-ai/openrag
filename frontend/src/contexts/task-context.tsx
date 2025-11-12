@@ -140,12 +140,30 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 				(prev) => prev.task_id === currentTask.task_id,
 			);
 
-			// Only show toasts if we have previous data and status has changed
-			if (
+			// Check if task is in progress
+			const isTaskInProgress =
+				currentTask.status === "pending" ||
+				currentTask.status === "running" ||
+				currentTask.status === "processing";
+
+			// On initial load, previousTasksRef is empty, so we need to process all in-progress tasks
+			const isInitialLoad = previousTasksRef.current.length === 0;
+
+			// Process files if:
+			// 1. Task is in progress (always process to keep files list updated)
+			// 2. Status has changed
+			// 3. New task appeared (not on initial load)
+			const shouldProcessFiles =
+				isTaskInProgress ||
 				(previousTask && previousTask.status !== currentTask.status) ||
-				(!previousTask && previousTasksRef.current.length !== 0)
-			) {
-				// Process files from failed task and add them to files list
+				(!previousTask && !isInitialLoad);
+
+			// Only show toasts if we have previous data and status has changed
+			const shouldShowToast =
+				previousTask && previousTask.status !== currentTask.status;
+
+			if (shouldProcessFiles) {
+				// Process files from task and add them to files list
 				if (currentTask.files && typeof currentTask.files === "object") {
 					const taskFileEntries = Object.entries(currentTask.files);
 					const now = new Date().toISOString();
@@ -247,6 +265,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 					});
 				}
 				if (
+					shouldShowToast &&
 					previousTask &&
 					previousTask.status !== "completed" &&
 					currentTask.status === "completed"
@@ -283,13 +302,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 						setFiles((prevFiles) =>
 							prevFiles.filter(
 								(file) =>
-									file.task_id !== currentTask.task_id ||
+									file.status === "active" ||
 									file.status === "failed",
 							),
 						);
 						refetchSearch();
 					}, 500);
 				} else if (
+					shouldShowToast &&
 					previousTask &&
 					previousTask.status !== "failed" &&
 					previousTask.status !== "error" &&
@@ -321,7 +341,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 	);
 
 	const refreshTasks = useCallback(async () => {
-		setFiles([]);
+		setFiles((prevFiles) =>
+			prevFiles.filter(
+				(file) =>
+					file.status !== "active" &&
+					file.status !== "failed",
+			),
+		);
 		await refetchTasks();
 	}, [refetchTasks]);
 
