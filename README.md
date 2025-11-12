@@ -26,13 +26,24 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 
 ## Quickstart
 
-To quickly run OpenRAG without creating or modifying any project files, use `uvx`:
+To quickly run OpenRAG without creating or modifying any project files, use the automatic installer script.
 
-```bash
-uvx openrag
-```
-This runs OpenRAG without installing it to your project or globally.
-To run a specific version of OpenRAG, add the version to the command, such as: `uvx --from openrag==0.1.25 openrag`.
+The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, then runs OpenRAG with `uvx`.
+
+1. Create a directory to store the OpenRAG configuration files:
+
+    ```bash
+    mkdir openrag-workspace
+    cd openrag-workspace
+   ```
+
+2. Run the installer:
+
+    ```bash
+    curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
+    ```
+
+The OpenRAG Terminal User Interface (TUI) starts and guides you through setup.
 
 ## Install Python package
 
