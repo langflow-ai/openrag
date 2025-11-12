@@ -1,7 +1,7 @@
 import copy
 from typing import Any, Dict
 from agentd.tool_decorator import tool
-from config.settings import clients, INDEX_NAME, get_embedding_model
+from config.settings import EMBED_MODEL, clients, INDEX_NAME, get_embedding_model
 from auth_context import get_auth_context
 from utils.logging_config import get_logger
 
@@ -34,8 +34,8 @@ class SearchService:
 
         # Strategy: Use provided model, or default to the configured embedding
         # model. This assumes documents are embedded with that model by default.
-        # Future enhancement: Could auto-detect available models in corpus
-        embedding_model = embedding_model or get_embedding_model()
+        # Future enhancement: Could auto-detect available models in corpus.
+        embedding_model = embedding_model or get_embedding_model() or EMBED_MODEL
         embedding_field_name = get_embedding_field_name(embedding_model)
 
         logger.info(

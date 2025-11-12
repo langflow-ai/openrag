@@ -114,6 +114,8 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
     # Ensure we route uploads to traditional processor and disable startup ingest
     os.environ["DISABLE_INGEST_WITH_LANGFLOW"] = "true" if disable_langflow_ingest else "false"
     os.environ["DISABLE_STARTUP_INGEST"] = "true"
+    os.environ["EMBEDDING_MODEL"] = "text-embedding-3-small"
+    os.environ["EMBEDDING_PROVIDER"] = "openai"
     # Force no-auth mode so endpoints bypass authentication
     os.environ["GOOGLE_OAUTH_CLIENT_ID"] = ""
     os.environ["GOOGLE_OAUTH_CLIENT_SECRET"] = ""

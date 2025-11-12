@@ -588,32 +588,12 @@ function ChatPage() {
       setLoading(true);
       setIsUploading(true);
       setUploadedFile(null); // Clear previous file
-
-      // Add initial upload message
-      const uploadStartMessage: Message = {
-        role: "assistant",
-        content: `🔄 Starting upload of **${filename}**...`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, uploadStartMessage]);
     };
 
     const handleFileUploaded = (event: CustomEvent) => {
       const { result } = event.detail;
       console.log("Chat page received file upload event:", result);
 
-      // Replace the last message with upload complete message
-      const uploadMessage: Message = {
-        role: "assistant",
-        content: `📄 Document uploaded: **${result.filename}** (${
-          result.pages
-        } pages, ${result.content_length.toLocaleString()} characters)\n\n${
-          result.confirmation
-        }`,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev.slice(0, -1), uploadMessage]);
       setUploadedFile(null); // Clear file after upload
 
       // Update the response ID for this endpoint
@@ -708,8 +688,38 @@ function ChatPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Prepare filters for nudges (same as chat)
+  const processedFiltersForNudges = parsedFilterData?.filters
+    ? (() => {
+        const filters = parsedFilterData.filters;
+        const processed: SelectedFilters = {
+          data_sources: [],
+          document_types: [],
+          owners: [],
+        };
+        processed.data_sources = filters.data_sources.includes("*")
+          ? []
+          : filters.data_sources;
+        processed.document_types = filters.document_types.includes("*")
+          ? []
+          : filters.document_types;
+        processed.owners = filters.owners.includes("*") ? [] : filters.owners;
+
+        const hasFilters =
+          processed.data_sources.length > 0 ||
+          processed.document_types.length > 0 ||
+          processed.owners.length > 0;
+        return hasFilters ? processed : undefined;
+      })()
+    : undefined;
+
   const { data: nudges = [], cancel: cancelNudges } = useGetNudgesQuery(
-    previousResponseIds[endpoint],
+    {
+      chatId: previousResponseIds[endpoint],
+      filters: processedFiltersForNudges,
+      limit: parsedFilterData?.limit ?? 3,
+      scoreThreshold: parsedFilterData?.scoreThreshold ?? 0,
+    },
     {
       enabled: isOnboardingComplete, // Only fetch nudges after onboarding is complete
     },

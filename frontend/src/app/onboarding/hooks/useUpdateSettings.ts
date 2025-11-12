@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 
 interface ConfigValues {
@@ -12,40 +13,51 @@ interface ConfigValues {
 export function useUpdateSettings(
   provider: string,
   config: ConfigValues,
-  setSettings: (settings: OnboardingVariables) => void,
+  setSettings: Dispatch<SetStateAction<OnboardingVariables>>,
+  isEmbedding?: boolean,
 ) {
   useEffect(() => {
-    const updatedSettings: OnboardingVariables = {
-      model_provider: provider,
-      embedding_model: "",
-      llm_model: "",
-    };
+    setSettings((prev) => {
+      const updatedSettings: OnboardingVariables = {
+        ...prev,
+        embedding_model: config.embeddingModel || prev.embedding_model || "",
+        llm_model: config.languageModel || prev.llm_model || "",
+      };
 
-    // Set language model if provided
-    if (config.languageModel) {
-      updatedSettings.llm_model = config.languageModel;
-    }
+      // Set provider field based on whether this is for embedding or LLM
+      if (isEmbedding) {
+        updatedSettings.embedding_provider = provider;
+      } else {
+        updatedSettings.llm_provider = provider;
+      }
 
-    // Set embedding model if provided
-    if (config.embeddingModel) {
-      updatedSettings.embedding_model = config.embeddingModel;
-    }
+      // Map provider-specific API keys
+      if (config.apiKey) {
+        if (provider === "openai") {
+          updatedSettings.openai_api_key = config.apiKey;
+        } else if (provider === "anthropic") {
+          updatedSettings.anthropic_api_key = config.apiKey;
+        } else if (provider === "watsonx") {
+          updatedSettings.watsonx_api_key = config.apiKey;
+        }
+      }
 
-    // Set API key if provided
-    if (config.apiKey) {
-      updatedSettings.api_key = config.apiKey;
-    }
+      // Map provider-specific endpoints
+      if (config.endpoint) {
+        if (provider === "watsonx") {
+          updatedSettings.watsonx_endpoint = config.endpoint;
+        } else if (provider === "ollama") {
+          updatedSettings.ollama_endpoint = config.endpoint;
+        }
+      }
 
-    // Set endpoint and project ID if provided
-    if (config.endpoint) {
-      updatedSettings.endpoint = config.endpoint;
-    }
+      // Map project ID (WatsonX only)
+      if (config.projectId && provider === "watsonx") {
+        updatedSettings.watsonx_project_id = config.projectId;
+      }
 
-    if (config.projectId) {
-      updatedSettings.project_id = config.projectId;
-    }
-
-    setSettings(updatedSettings);
+      return updatedSettings;
+    });
   }, [
     provider,
     config.apiKey,
@@ -54,5 +66,6 @@ export function useUpdateSettings(
     config.languageModel,
     config.embeddingModel,
     setSettings,
+    isEmbedding,
   ]);
 }

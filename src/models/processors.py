@@ -157,6 +157,7 @@ class TaskProcessor:
         file_size: int = None,
         connector_type: str = "local",
         embedding_model: str = None,
+        is_sample_data: bool = False,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -240,6 +241,10 @@ class TaskProcessor:
                 chunk_doc["owner_name"] = owner_name
             if owner_email is not None:
                 chunk_doc["owner_email"] = owner_email
+
+            # Mark as sample data if specified
+            if is_sample_data:
+                chunk_doc["is_sample_data"] = "true"
             chunk_id = f"{file_hash}_{i}"
             try:
                 await opensearch_client.index(
@@ -286,12 +291,14 @@ class DocumentFileProcessor(TaskProcessor):
         jwt_token: str = None,
         owner_name: str = None,
         owner_email: str = None,
+        is_sample_data: bool = False,
     ):
         super().__init__(document_service)
         self.owner_user_id = owner_user_id
         self.jwt_token = jwt_token
         self.owner_name = owner_name
         self.owner_email = owner_email
+        self.is_sample_data = is_sample_data
 
     async def process_item(
         self, upload_task: UploadTask, item: str, file_task: FileTask
@@ -326,6 +333,7 @@ class DocumentFileProcessor(TaskProcessor):
                 owner_email=self.owner_email,
                 file_size=file_size,
                 connector_type="local",
+                is_sample_data=self.is_sample_data,
             )
 
             file_task.status = TaskStatus.COMPLETED

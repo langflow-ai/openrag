@@ -1,193 +1,204 @@
+import { useRouter, useSearchParams } from "next/navigation";
+import { type ReactNode, useEffect, useState } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { ModelProvider } from "../helpers/model-helpers";
-import OpenAILogo from "@/components/logo/openai-logo";
+import AnthropicLogo from "@/components/logo/anthropic-logo";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
-import { useAuth } from "@/contexts/auth-context";
-import { ReactNode, useState, useEffect } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-
-import OpenAISettingsDialog from "./openai-settings-dialog";
-import OllamaSettingsDialog from "./ollama-settings-dialog";
-import WatsonxSettingsDialog from "./watsonx-settings-dialog";
-import { cn } from "@/lib/utils";
-import Link from "next/link";
+import OpenAILogo from "@/components/logo/openai-logo";
 import { useProviderHealth } from "@/components/provider-health-banner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/contexts/auth-context";
+import { cn } from "@/lib/utils";
+import type { ModelProvider } from "../helpers/model-helpers";
+import AnthropicSettingsDialog from "./anthropic-settings-dialog";
+import OllamaSettingsDialog from "./ollama-settings-dialog";
+import OpenAISettingsDialog from "./openai-settings-dialog";
+import WatsonxSettingsDialog from "./watsonx-settings-dialog";
 
 export const ModelProviders = () => {
-  const { isAuthenticated, isNoAuthMode } = useAuth();
-  const searchParams = useSearchParams();
-  const router = useRouter();
+	const { isAuthenticated, isNoAuthMode } = useAuth();
+	const searchParams = useSearchParams();
+	const router = useRouter();
 
-  const { data: settings = {} } = useGetSettingsQuery({
-    enabled: isAuthenticated || isNoAuthMode,
-  });
+	const { data: settings = {} } = useGetSettingsQuery({
+		enabled: isAuthenticated || isNoAuthMode,
+	});
 
-  const { isUnhealthy } = useProviderHealth();
+	const { health } = useProviderHealth();
 
-  const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
+	const [dialogOpen, setDialogOpen] = useState<ModelProvider | undefined>();
 
-  const allProviderKeys: ModelProvider[] = ["openai", "ollama", "watsonx"];
+	const allProviderKeys: ModelProvider[] = [
+		"openai",
+		"ollama",
+		"watsonx",
+		"anthropic",
+	];
 
-  // Handle URL search param to open dialogs
-  useEffect(() => {
-    const searchParam = searchParams.get("setup");
-    if (searchParam && allProviderKeys.includes(searchParam as ModelProvider)) {
-      setDialogOpen(searchParam as ModelProvider);
-    }
-  }, [searchParams]);
+	// Handle URL search param to open dialogs
+	useEffect(() => {
+		const searchParam = searchParams.get("setup");
+		if (searchParam && allProviderKeys.includes(searchParam as ModelProvider)) {
+			setDialogOpen(searchParam as ModelProvider);
+		}
+	}, [searchParams]);
 
-  // Function to close dialog and remove search param
-  const handleCloseDialog = () => {
-    setDialogOpen(undefined);
-    // Remove search param from URL
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("setup");
-    const newUrl = params.toString()
-      ? `${window.location.pathname}?${params.toString()}`
-      : window.location.pathname;
-    router.replace(newUrl);
-  };
+	// Function to close dialog and remove search param
+	const handleCloseDialog = () => {
+		setDialogOpen(undefined);
+		// Remove search param from URL
+		const params = new URLSearchParams(searchParams.toString());
+		params.delete("setup");
+		const newUrl = params.toString()
+			? `${window.location.pathname}?${params.toString()}`
+			: window.location.pathname;
+		router.replace(newUrl);
+	};
 
-  const modelProvidersMap: Record<
-    ModelProvider,
-    {
-      name: string;
-      logo: (props: React.SVGProps<SVGSVGElement>) => ReactNode;
-      logoColor: string;
-      logoBgColor: string;
-    }
-  > = {
-    openai: {
-      name: "OpenAI",
-      logo: OpenAILogo,
-      logoColor: "text-black",
-      logoBgColor: "bg-white",
-    },
-    ollama: {
-      name: "Ollama",
-      logo: OllamaLogo,
-      logoColor: "text-black",
-      logoBgColor: "bg-white",
-    },
-    watsonx: {
-      name: "IBM watsonx.ai",
-      logo: IBMLogo,
-      logoColor: "text-white",
-      logoBgColor: "bg-[#1063FE]",
-    },
-  };
+	const modelProvidersMap: Record<
+		ModelProvider,
+		{
+			name: string;
+			logo: (props: React.SVGProps<SVGSVGElement>) => ReactNode;
+			logoColor: string;
+			logoBgColor: string;
+		}
+	> = {
+		openai: {
+			name: "OpenAI",
+			logo: OpenAILogo,
+			logoColor: "text-black",
+			logoBgColor: "bg-white",
+		},
+		anthropic: {
+			name: "Anthropic",
+			logo: AnthropicLogo,
+			logoColor: "text-[#D97757]",
+			logoBgColor: "bg-white",
+		},
+		ollama: {
+			name: "Ollama",
+			logo: OllamaLogo,
+			logoColor: "text-black",
+			logoBgColor: "bg-white",
+		},
+		watsonx: {
+			name: "IBM watsonx.ai",
+			logo: IBMLogo,
+			logoColor: "text-white",
+			logoBgColor: "bg-[#1063FE]",
+		},
+	};
 
-  const currentProviderKey =
-    (settings.provider?.model_provider as ModelProvider) || "openai";
+	const currentLlmProvider =
+		(settings.agent?.llm_provider as ModelProvider) || "openai";
+	const currentEmbeddingProvider =
+		(settings.knowledge?.embedding_provider as ModelProvider) || "openai";
 
-  // Get all provider keys with active provider first
-  const sortedProviderKeys = [
-    currentProviderKey,
-    ...allProviderKeys.filter((key) => key !== currentProviderKey),
-  ];
+	// Get all provider keys with active providers first
+	const activeProviders = new Set([currentLlmProvider, currentEmbeddingProvider]);
+	const sortedProviderKeys = [
+		...Array.from(activeProviders),
+		...allProviderKeys.filter((key) => !activeProviders.has(key)),
+	];
 
-  return (
-    <>
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {sortedProviderKeys.map((providerKey) => {
-          const {
-            name,
-            logo: Logo,
-            logoColor,
-            logoBgColor,
-          } = modelProvidersMap[providerKey];
-          const isCurrentProvider = providerKey === currentProviderKey;
+	return (
+		<>
+			<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+				{sortedProviderKeys.map((providerKey) => {
+					const {
+						name,
+						logo: Logo,
+						logoColor,
+						logoBgColor,
+					} = modelProvidersMap[providerKey];
+					const isLlmProvider = providerKey === currentLlmProvider;
+					const isEmbeddingProvider = providerKey === currentEmbeddingProvider;
+					const isCurrentProvider = isLlmProvider || isEmbeddingProvider;
 
-          return (
-            <Card
-              key={providerKey}
-              className={cn(
-                "relative flex flex-col",
-                !isCurrentProvider && "text-muted-foreground",
-                isCurrentProvider && isUnhealthy && "border-destructive"
-              )}
-            >
-              <CardHeader>
-                <div className="flex flex-col items-start justify-between">
-                  <div className="flex flex-col gap-3">
-                    <div className="mb-1">
-                      <div
-                        className={cn(
-                          "w-8 h-8 rounded flex items-center justify-center border",
-                          isCurrentProvider ? logoBgColor : "bg-muted"
-                        )}
-                      >
-                        {
-                          <Logo
-                            className={
-                              isCurrentProvider
-                                ? logoColor
-                                : "text-muted-foreground"
-                            }
-                          />
-                        }
-                      </div>
-                    </div>
-                    <CardTitle className="flex flex-row items-center gap-2">
-                      {name}
-                      {isCurrentProvider && (
-                        <div
-                          className={cn(
-                            "h-2 w-2 rounded-full",
-                            isUnhealthy
-                              ? "bg-destructive"
-                              : "bg-accent-emerald-foreground"
-                          )}
-                        />
-                      )}
-                    </CardTitle>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-end space-y-4">
-                {isCurrentProvider ? (
-                  <Button
-                    variant={isUnhealthy ? "default" : "outline"}
-                    onClick={() => setDialogOpen(providerKey)}
-                  >
-                    {isUnhealthy ? "Fix Setup" : "Edit Setup"}
-                  </Button>
-                ) : (
-                  <p>
-                    See{" "}
-                    <Link
-                      href="https://docs.openr.ag/install/#application-onboarding"
-                      className="text-accent-purple-foreground"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Application onboarding docs
-                    </Link>{" "}
-                    for configuration detail.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-      <OpenAISettingsDialog
-        open={dialogOpen === "openai"}
-        setOpen={handleCloseDialog}
-      />
-      <OllamaSettingsDialog
-        open={dialogOpen === "ollama"}
-        setOpen={handleCloseDialog}
-      />
-      <WatsonxSettingsDialog
-        open={dialogOpen === "watsonx"}
-        setOpen={handleCloseDialog}
-      />
-    </>
-  );
+					// Check if this specific provider is unhealthy
+					const hasLlmError = isLlmProvider && health?.llm_error;
+					const hasEmbeddingError = isEmbeddingProvider && health?.embedding_error;
+					const isProviderUnhealthy = hasLlmError || hasEmbeddingError;
+
+					return (
+						<Card
+							key={providerKey}
+							className={cn(
+								"relative flex flex-col",
+								!settings.providers?.[providerKey]?.configured && "text-muted-foreground",
+								isProviderUnhealthy && "border-destructive",
+							)}
+						>
+							<CardHeader>
+								<div className="flex flex-col items-start justify-between">
+									<div className="flex flex-col gap-3">
+										<div className="mb-1">
+											<div
+												className={cn(
+													"w-8 h-8 rounded flex items-center justify-center border",
+													settings.providers?.[providerKey]?.configured ? logoBgColor : "bg-muted",
+												)}
+											>
+												{
+													<Logo
+														className={
+															settings.providers?.[providerKey]?.configured
+																? logoColor
+																: "text-muted-foreground"
+														}
+													/>
+												}
+											</div>
+										</div>
+										<CardTitle className="flex flex-row items-center gap-2">
+											{name}
+											{isCurrentProvider && (
+												<div
+													className={cn(
+														"h-2 w-2 rounded-full",
+														isProviderUnhealthy
+															? "bg-destructive"
+															: "bg-accent-emerald-foreground",
+													)}
+												/>
+											)}
+										</CardTitle>
+									</div>
+								</div>
+							</CardHeader>
+							<CardContent className="flex-1 flex flex-col justify-end space-y-4">
+								<Button
+									variant={isProviderUnhealthy ? "default" : "outline"}
+									onClick={() => setDialogOpen(providerKey)}
+								>
+									{isProviderUnhealthy ? "Fix Setup" :
+									 settings.providers?.[providerKey]?.configured ? "Edit Setup" : "Configure"}
+								</Button>
+							</CardContent>
+						</Card>
+					);
+				})}
+			</div>
+			<AnthropicSettingsDialog
+				open={dialogOpen === "anthropic"}
+				setOpen={handleCloseDialog}
+			/>
+			<OpenAISettingsDialog
+				open={dialogOpen === "openai"}
+				setOpen={handleCloseDialog}
+			/>
+			<OllamaSettingsDialog
+				open={dialogOpen === "ollama"}
+				setOpen={handleCloseDialog}
+			/>
+			<WatsonxSettingsDialog
+				open={dialogOpen === "watsonx"}
+				setOpen={handleCloseDialog}
+			/>
+		</>
+	);
 };
 
 export default ModelProviders;

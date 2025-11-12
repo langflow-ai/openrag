@@ -4,7 +4,13 @@ import { ArrowUpRight, Loader2, Minus, PlugZap, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { useGetCurrentProviderModelsQuery } from "@/app/api/queries/useGetModelsQuery";
+import { toast } from "sonner";
+import {
+  useGetOpenAIModelsQuery,
+  useGetAnthropicModelsQuery,
+  useGetOllamaModelsQuery,
+  useGetIBMModelsQuery,
+} from "@/app/api/queries/useGetModelsQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { LabelWrapper } from "@/components/label-wrapper";
@@ -29,14 +35,13 @@ import {
   UI_CONSTANTS,
 } from "@/lib/constants";
 import { useDebounce } from "@/lib/debounce";
+import { useUpdateSettingsMutation } from "../api/mutations/useUpdateSettingsMutation";
 import { ModelSelector } from "../onboarding/components/model-selector";
+import ModelProviders from "./components/model-providers";
 import { getModelLogo, type ModelProvider } from "./helpers/model-helpers";
 import GoogleDriveIcon from "./icons/google-drive-icon";
 import OneDriveIcon from "./icons/one-drive-icon";
 import SharePointIcon from "./icons/share-point-icon";
-import ModelProviders from "./components/model-providers";
-import { useUpdateSettingsMutation } from "../api/mutations/useUpdateSettingsMutation";
-import { toast } from "sonner";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
@@ -116,12 +121,125 @@ function KnowledgeSourcesPage() {
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  // Get the current provider from settings
-  const currentProvider = (settings.provider?.model_provider ||
-    "openai") as ModelProvider;
+  // Fetch models for each provider
+  const { data: openaiModels, isLoading: openaiLoading } =
+    useGetOpenAIModelsQuery(
+      { apiKey: "" },
+      { enabled: settings?.providers?.openai?.configured === true }
+    );
 
-  const { data: modelsData, isLoading: modelsLoading } =
-    useGetCurrentProviderModelsQuery();
+  const { data: anthropicModels, isLoading: anthropicLoading } =
+    useGetAnthropicModelsQuery(
+      { apiKey: "" },
+      { enabled: settings?.providers?.anthropic?.configured === true }
+    );
+
+  const { data: ollamaModels, isLoading: ollamaLoading } =
+    useGetOllamaModelsQuery(
+      { endpoint: settings?.providers?.ollama?.endpoint },
+      {
+        enabled:
+          settings?.providers?.ollama?.configured === true &&
+          !!settings?.providers?.ollama?.endpoint,
+      }
+    );
+
+  const { data: watsonxModels, isLoading: watsonxLoading } =
+    useGetIBMModelsQuery(
+      {
+        endpoint: settings?.providers?.watsonx?.endpoint,
+        apiKey: "",
+        projectId: settings?.providers?.watsonx?.project_id,
+      },
+      {
+        enabled:
+          settings?.providers?.watsonx?.configured === true &&
+          !!settings?.providers?.watsonx?.endpoint &&
+          !!settings?.providers?.watsonx?.project_id,
+      }
+    );
+
+  // Build grouped LLM model options from all configured providers
+  const groupedLlmModels = [
+    {
+      group: "OpenAI",
+      provider: "openai",
+      icon: getModelLogo("", "openai"),
+      models: openaiModels?.language_models || [],
+      configured: settings.providers?.openai?.configured === true,
+    },
+    {
+      group: "Anthropic",
+      provider: "anthropic",
+      icon: getModelLogo("", "anthropic"),
+      models: anthropicModels?.language_models || [],
+      configured: settings.providers?.anthropic?.configured === true,
+    },
+    {
+      group: "Ollama",
+      provider: "ollama",
+      icon: getModelLogo("", "ollama"),
+      models: ollamaModels?.language_models || [],
+      configured: settings.providers?.ollama?.configured === true,
+    },
+    {
+      group: "IBM watsonx.ai",
+      provider: "watsonx",
+      icon: getModelLogo("", "watsonx"),
+      models: watsonxModels?.language_models || [],
+      configured: settings.providers?.watsonx?.configured === true,
+    },
+  ]
+    .filter((provider) => provider.configured)
+    .map((provider) => ({
+      group: provider.group,
+      icon: provider.icon,
+      options: provider.models.map((model) => ({
+        ...model,
+        provider: provider.provider,
+      })),
+    }))
+    .filter((provider) => provider.options.length > 0);
+
+  // Build grouped embedding model options from all configured providers (excluding Anthropic)
+  const groupedEmbeddingModels = [
+    {
+      group: "OpenAI",
+      provider: "openai",
+      icon: getModelLogo("", "openai"),
+      models: openaiModels?.embedding_models || [],
+      configured: settings.providers?.openai?.configured === true,
+    },
+    {
+      group: "Ollama",
+      provider: "ollama",
+      icon: getModelLogo("", "ollama"),
+      models: ollamaModels?.embedding_models || [],
+      configured: settings.providers?.ollama?.configured === true,
+    },
+    {
+      group: "IBM watsonx.ai",
+      provider: "watsonx",
+      icon: getModelLogo("", "watsonx"),
+      models: watsonxModels?.embedding_models || [],
+      configured: settings.providers?.watsonx?.configured === true,
+    },
+  ]
+    .filter((provider) => provider.configured)
+    .map((provider) => ({
+      group: provider.group,
+      icon: provider.icon,
+      options: provider.models.map((model) => ({
+        ...model,
+        provider: provider.provider,
+      })),
+    }))
+    .filter((provider) => provider.options.length > 0);
+
+  const isLoadingAnyLlmModels =
+    openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;
+  const isLoadingAnyEmbeddingModels =
+    openaiLoading || ollamaLoading || watsonxLoading;
 
   // Mutations
   const updateSettingsMutation = useUpdateSettingsMutation({
@@ -182,9 +300,16 @@ function KnowledgeSourcesPage() {
     }
   }, [settings.knowledge?.picture_descriptions]);
 
-  // Update model selection immediately
-  const handleModelChange = (newModel: string) => {
-    if (newModel) updateSettingsMutation.mutate({ llm_model: newModel });
+  // Update model selection immediately (also updates provider)
+  const handleModelChange = (newModel: string, provider?: string) => {
+    if (newModel && provider) {
+      updateSettingsMutation.mutate({
+        llm_model: newModel,
+        llm_provider: provider,
+      });
+    } else if (newModel) {
+      updateSettingsMutation.mutate({ llm_model: newModel });
+    }
   };
 
   // Update system prompt with save button
@@ -192,12 +317,17 @@ function KnowledgeSourcesPage() {
     updateSettingsMutation.mutate({ system_prompt: systemPrompt });
   };
 
-  // Update embedding model selection immediately
-  const handleEmbeddingModelChange = (newModel: string) => {
-    if (newModel) updateSettingsMutation.mutate({ embedding_model: newModel });
+  // Update embedding model selection immediately (also updates provider)
+  const handleEmbeddingModelChange = (newModel: string, provider?: string) => {
+    if (newModel && provider) {
+      updateSettingsMutation.mutate({
+        embedding_model: newModel,
+        embedding_provider: provider,
+      });
+    } else if (newModel) {
+      updateSettingsMutation.mutate({ embedding_model: newModel });
+    }
   };
-
-  const isEmbeddingModelSelectDisabled = updateSettingsMutation.isPending;
 
   // Update chunk size setting with debounce
   const handleChunkSizeChange = (value: string) => {
@@ -854,17 +984,16 @@ function KnowledgeSourcesPage() {
               <LabelWrapper
                 label="Language model"
                 helperText="Model used for chat"
-                id="embedding-model"
+                id="language-model"
                 required={true}
               >
                 <ModelSelector
-                  options={modelsData?.language_models || []}
+                  groupedOptions={groupedLlmModels}
                   noOptionsPlaceholder={
-                    modelsLoading
+                    isLoadingAnyLlmModels
                       ? "Loading models..."
-                      : "No language models detected."
+                      : "No language models detected. Configure a provider first."
                   }
-                  icon={getModelLogo("", currentProvider)}
                   value={settings.agent?.llm_model || ""}
                   onValueChange={handleModelChange}
                 />
@@ -1001,15 +1130,15 @@ function KnowledgeSourcesPage() {
                 helperText="Model used for knowledge ingest and retrieval"
                 id="embedding-model-select"
                 label="Embedding model"
+                required={true}
               >
                 <ModelSelector
-                  options={modelsData?.embedding_models || []}
+                  groupedOptions={groupedEmbeddingModels}
                   noOptionsPlaceholder={
-                    modelsLoading
+                    isLoadingAnyEmbeddingModels
                       ? "Loading models..."
-                      : "No embedding models detected."
+                      : "No embedding models detected. Configure a provider first."
                   }
-                  icon={getModelLogo("", currentProvider)}
                   value={settings.knowledge?.embedding_model || ""}
                   onValueChange={handleEmbeddingModelChange}
                 />

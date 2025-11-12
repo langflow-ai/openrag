@@ -1,8 +1,9 @@
+import AnthropicLogo from "@/components/logo/anthropic-logo";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
 import OpenAILogo from "@/components/logo/openai-logo";
 
-export type ModelProvider = "openai" | "ollama" | "watsonx";
+export type ModelProvider = "openai" | "anthropic" | "ollama" | "watsonx";
 
 export interface ModelOption {
 	value: string;
@@ -14,6 +15,8 @@ export function getModelLogo(modelValue: string, provider?: ModelProvider) {
 	// First check by provider
 	if (provider === "openai") {
 		return <OpenAILogo className="w-4 h-4" />;
+	} else if (provider === "anthropic") {
+		return <AnthropicLogo className="w-4 h-4" />;
 	} else if (provider === "ollama") {
 		return <OllamaLogo className="w-4 h-4" />;
 	} else if (provider === "watsonx") {
@@ -50,6 +53,14 @@ export function getFallbackModels(provider: ModelProvider) {
 					{ value: "text-embedding-ada-002", label: "text-embedding-ada-002" },
 					{ value: "text-embedding-3-small", label: "text-embedding-3-small" },
 					{ value: "text-embedding-3-large", label: "text-embedding-3-large" },
+				],
+			};
+		case "anthropic":
+			return {
+				language: [
+					{ value: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
+					{ value: "claude-opus-4-1-20250805", label: "Claude Opus 4.1" },
+					{ value: "claude-opus-4-20250514", label: "Claude Opus 4" },
 				],
 			};
 		case "ollama":

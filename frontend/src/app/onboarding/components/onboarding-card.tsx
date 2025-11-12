@@ -1,15 +1,19 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { Info, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
 	type OnboardingVariables,
 	useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
+import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import { useDoclingHealth } from "@/components/docling-health-banner";
+import AnthropicLogo from "@/components/logo/anthropic-logo";
 import IBMLogo from "@/components/logo/ibm-logo";
 import OllamaLogo from "@/components/logo/ollama-logo";
 import OpenAILogo from "@/components/logo/openai-logo";
@@ -22,16 +26,16 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
+import { AnthropicOnboarding } from "./anthropic-onboarding";
 import { IBMOnboarding } from "./ibm-onboarding";
 import { OllamaOnboarding } from "./ollama-onboarding";
 import { OpenAIOnboarding } from "./openai-onboarding";
 import { TabTrigger } from "./tab-trigger";
-import { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
-import { useQueryClient } from "@tanstack/react-query";
 
 interface OnboardingCardProps {
 	onComplete: () => void;
 	isCompleted?: boolean;
+	isEmbedding?: boolean;
 	setIsLoadingModels?: (isLoading: boolean) => void;
 	setLoadingStatus?: (status: string[]) => void;
 }
@@ -40,52 +44,83 @@ const STEP_LIST = [
 	"Setting up your model provider",
 	"Defining schema",
 	"Configuring Langflow",
+];
+
+const EMBEDDING_STEP_LIST = [
+	"Setting up your model provider",
+	"Defining schema",
+	"Configuring Langflow",
 	"Ingesting sample data",
 ];
 
-const TOTAL_PROVIDER_STEPS = STEP_LIST.length;
-
 const OnboardingCard = ({
 	onComplete,
+	isEmbedding = false,
 	isCompleted = false,
 }: OnboardingCardProps) => {
 	const { isHealthy: isDoclingHealthy } = useDoclingHealth();
 
-	const [modelProvider, setModelProvider] = useState<string>("openai");
+	const [modelProvider, setModelProvider] = useState<string>(isEmbedding ? "openai" : "anthropic");
 
 	const [sampleDataset, setSampleDataset] = useState<boolean>(true);
 
 	const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
 
-	const [loadingStep, setLoadingStep] = useState<number>(0);
-
 	const queryClient = useQueryClient();
 
-	// Reset loading step when models start loading
-	useEffect(() => {
-		if (isLoadingModels) {
-			setLoadingStep(0);
-		}
-	}, [isLoadingModels]);
+	// Fetch current settings to check if providers are already configured
+	const { data: currentSettings } = useGetSettingsQuery();
 
 	const handleSetModelProvider = (provider: string) => {
+		setIsLoadingModels(false);
 		setModelProvider(provider);
 		setSettings({
-			model_provider: provider,
+			[isEmbedding ? "embedding_provider" : "llm_provider"]: provider,
 			embedding_model: "",
 			llm_model: "",
 		});
 		setError(null);
 	};
 
+	// Check if the selected provider is already configured
+	const isProviderAlreadyConfigured = (provider: string): boolean => {
+		if (!isEmbedding || !currentSettings?.providers) return false;
+
+		// Check if provider has been explicitly configured (not just from env vars)
+		if (provider === "openai") {
+			return currentSettings.providers.openai?.configured === true;
+		} else if (provider === "anthropic") {
+			return currentSettings.providers.anthropic?.configured === true;
+		} else if (provider === "watsonx") {
+			return currentSettings.providers.watsonx?.configured === true;
+		} else if (provider === "ollama") {
+			return currentSettings.providers.ollama?.configured === true;
+		}
+		return false;
+	};
+
+	const showProviderConfiguredMessage = isProviderAlreadyConfigured(modelProvider);
+	const providerAlreadyConfigured = isEmbedding && showProviderConfiguredMessage;
+
+	const totalSteps = isEmbedding
+		? EMBEDDING_STEP_LIST.length
+		: STEP_LIST.length;
+
 	const [settings, setSettings] = useState<OnboardingVariables>({
-		model_provider: modelProvider,
+		[isEmbedding ? "embedding_provider" : "llm_provider"]: modelProvider,
 		embedding_model: "",
 		llm_model: "",
+		// Provider-specific fields will be set by provider components
+		openai_api_key: "",
+		anthropic_api_key: "",
+		watsonx_api_key: "",
+		watsonx_endpoint: "",
+		watsonx_project_id: "",
+		ollama_endpoint: "",
 	});
 
 	const [currentStep, setCurrentStep] = useState<number | null>(
-		isCompleted ? TOTAL_PROVIDER_STEPS : null,
+		isCompleted ? totalSteps : null,
 	);
 
 	const [processingStartTime, setProcessingStartTime] = useState<number | null>(
@@ -102,7 +137,7 @@ const OnboardingCard = ({
 
 	// Monitor tasks and call onComplete when all tasks are done
 	useEffect(() => {
-		if (currentStep === null || !tasks) {
+		if (currentStep === null || !tasks || !isEmbedding) {
 			return;
 		}
 
@@ -121,31 +156,39 @@ const OnboardingCard = ({
 			!isCompleted
 		) {
 			// Set to final step to show "Done"
-			setCurrentStep(TOTAL_PROVIDER_STEPS);
+			setCurrentStep(totalSteps);
 			// Wait a bit before completing
 			setTimeout(() => {
 				onComplete();
 			}, 1000);
 		}
-	}, [tasks, currentStep, onComplete, isCompleted]);
+	}, [tasks, currentStep, onComplete, isCompleted, isEmbedding, totalSteps]);
 
 	// Mutations
 	const onboardingMutation = useOnboardingMutation({
 		onSuccess: (data) => {
 			console.log("Onboarding completed successfully", data);
 			// Update provider health cache to healthy since backend just validated
+			const provider = (isEmbedding ? settings.embedding_provider : settings.llm_provider) || modelProvider;
 			const healthData: ProviderHealthResponse = {
 				status: "healthy",
 				message: "Provider is configured and working correctly",
-				provider: settings.model_provider,
-			  };
+				provider: provider,
+			};
 			queryClient.setQueryData(["provider", "health"], healthData);
-			setCurrentStep(0);
 			setError(null);
+			if (!isEmbedding) {
+				setCurrentStep(totalSteps);
+				setTimeout(() => {
+					onComplete();
+				}, 1000);
+			} else {
+				setCurrentStep(0);
+			}
 		},
 		onError: (error) => {
 			setError(error.message);
-			setCurrentStep(TOTAL_PROVIDER_STEPS);
+			setCurrentStep(totalSteps);
 			// Reset to provider selection after 1 second
 			setTimeout(() => {
 				setCurrentStep(null);
@@ -154,10 +197,12 @@ const OnboardingCard = ({
 	});
 
 	const handleComplete = () => {
+		const currentProvider = isEmbedding ? settings.embedding_provider : settings.llm_provider;
+
 		if (
-			!settings.model_provider ||
-			!settings.llm_model ||
-			!settings.embedding_model
+			!currentProvider ||
+			(isEmbedding && !settings.embedding_model && !showProviderConfiguredMessage) ||
+			(!isEmbedding && !settings.llm_model)
 		) {
 			toast.error("Please complete all required fields");
 			return;
@@ -166,27 +211,43 @@ const OnboardingCard = ({
 		// Clear any previous error
 		setError(null);
 
-		// Prepare onboarding data
+		// Prepare onboarding data with provider-specific fields
 		const onboardingData: OnboardingVariables = {
-			model_provider: settings.model_provider,
-			llm_model: settings.llm_model,
-			embedding_model: settings.embedding_model,
 			sample_data: sampleDataset,
 		};
 
-		// Add API key if available
-		if (settings.api_key) {
-			onboardingData.api_key = settings.api_key;
+		// Set the provider field
+		if (isEmbedding) {
+			onboardingData.embedding_provider = currentProvider;
+			// If provider is already configured, use the existing embedding model from settings
+			// Otherwise, use the embedding model from the form
+			if (showProviderConfiguredMessage && currentSettings?.knowledge?.embedding_model) {
+				onboardingData.embedding_model = currentSettings.knowledge.embedding_model;
+			} else {
+				onboardingData.embedding_model = settings.embedding_model;
+			}
+		} else {
+			onboardingData.llm_provider = currentProvider;
+			onboardingData.llm_model = settings.llm_model;
 		}
 
-		// Add endpoint if available
-		if (settings.endpoint) {
-			onboardingData.endpoint = settings.endpoint;
-		}
-
-		// Add project_id if available
-		if (settings.project_id) {
-			onboardingData.project_id = settings.project_id;
+		// Add provider-specific credentials based on the selected provider
+		if (currentProvider === "openai" && settings.openai_api_key) {
+			onboardingData.openai_api_key = settings.openai_api_key;
+		} else if (currentProvider === "anthropic" && settings.anthropic_api_key) {
+			onboardingData.anthropic_api_key = settings.anthropic_api_key;
+		} else if (currentProvider === "watsonx") {
+			if (settings.watsonx_api_key) {
+				onboardingData.watsonx_api_key = settings.watsonx_api_key;
+			}
+			if (settings.watsonx_endpoint) {
+				onboardingData.watsonx_endpoint = settings.watsonx_endpoint;
+			}
+			if (settings.watsonx_project_id) {
+				onboardingData.watsonx_project_id = settings.watsonx_project_id;
+			}
+		} else if (currentProvider === "ollama" && settings.ollama_endpoint) {
+			onboardingData.ollama_endpoint = settings.ollama_endpoint;
 		}
 
 		// Record the start time when user clicks Complete
@@ -196,7 +257,8 @@ const OnboardingCard = ({
 	};
 
 	const isComplete =
-		!!settings.llm_model && !!settings.embedding_model && isDoclingHealthy;
+		(isEmbedding && (!!settings.embedding_model || showProviderConfiguredMessage)) ||
+		(!isEmbedding && !!settings.llm_model && isDoclingHealthy);
 
 	return (
 		<AnimatePresence mode="wait">
@@ -231,6 +293,40 @@ const OnboardingCard = ({
 								onValueChange={handleSetModelProvider}
 							>
 								<TabsList className="mb-4">
+									{!isEmbedding && (
+										<TabsTrigger
+											value="anthropic"
+											className={cn(
+												error &&
+													modelProvider === "anthropic" &&
+													"data-[state=active]:border-destructive",
+											)}
+										>
+											<TabTrigger
+												selected={modelProvider === "anthropic"}
+												isLoading={isLoadingModels}
+											>
+												<div
+													className={cn(
+														"flex items-center justify-center gap-2 w-8 h-8 rounded-md",
+														modelProvider === "anthropic"
+															? "bg-[#D97757]"
+															: "bg-muted",
+													)}
+												>
+													<AnthropicLogo
+														className={cn(
+															"w-4 h-4 shrink-0",
+															modelProvider === "anthropic"
+																? "text-black"
+																: "text-muted-foreground",
+														)}
+													/>
+												</div>
+												Anthropic
+											</TabTrigger>
+										</TabsTrigger>
+									)}
 									<TabsTrigger
 										value="openai"
 										className={cn(
@@ -324,12 +420,27 @@ const OnboardingCard = ({
 										</TabTrigger>
 									</TabsTrigger>
 								</TabsList>
+								{!isEmbedding && (
+									<TabsContent value="anthropic">
+										<AnthropicOnboarding
+											setSettings={setSettings}
+											sampleDataset={sampleDataset}
+											setSampleDataset={setSampleDataset}
+											setIsLoadingModels={setIsLoadingModels}
+											isEmbedding={isEmbedding}
+											hasEnvApiKey={currentSettings?.providers?.anthropic?.has_api_key === true}
+										/>
+									</TabsContent>
+								)}
 								<TabsContent value="openai">
 									<OpenAIOnboarding
 										setSettings={setSettings}
 										sampleDataset={sampleDataset}
 										setSampleDataset={setSampleDataset}
 										setIsLoadingModels={setIsLoadingModels}
+										isEmbedding={isEmbedding}
+										hasEnvApiKey={currentSettings?.providers?.openai?.has_api_key === true}
+										alreadyConfigured={providerAlreadyConfigured}
 									/>
 								</TabsContent>
 								<TabsContent value="watsonx">
@@ -338,6 +449,8 @@ const OnboardingCard = ({
 										sampleDataset={sampleDataset}
 										setSampleDataset={setSampleDataset}
 										setIsLoadingModels={setIsLoadingModels}
+										isEmbedding={isEmbedding}
+										alreadyConfigured={providerAlreadyConfigured}
 									/>
 								</TabsContent>
 								<TabsContent value="ollama">
@@ -346,6 +459,8 @@ const OnboardingCard = ({
 										sampleDataset={sampleDataset}
 										setSampleDataset={setSampleDataset}
 										setIsLoadingModels={setIsLoadingModels}
+										isEmbedding={isEmbedding}
+										alreadyConfigured={providerAlreadyConfigured}
 									/>
 								</TabsContent>
 							</Tabs>
@@ -390,7 +505,7 @@ const OnboardingCard = ({
 						currentStep={currentStep}
 						isCompleted={isCompleted}
 						setCurrentStep={setCurrentStep}
-						steps={STEP_LIST}
+						steps={isEmbedding ? EMBEDDING_STEP_LIST : STEP_LIST}
 						processingStartTime={processingStartTime}
 						hasError={!!error}
 					/>

@@ -6,16 +6,39 @@ import {
 
 export interface AgentSettings {
   llm_model?: string;
+  llm_provider?: string;
   system_prompt?: string;
 }
 
 export interface KnowledgeSettings {
   embedding_model?: string;
+  embedding_provider?: string;
   chunk_size?: number;
   chunk_overlap?: number;
   table_structure?: boolean;
   ocr?: boolean;
   picture_descriptions?: boolean;
+}
+
+export interface ProviderSettings {
+  openai?: {
+    has_api_key?: boolean;
+    configured?: boolean;
+  };
+  anthropic?: {
+    has_api_key?: boolean;
+    configured?: boolean;
+  };
+  watsonx?: {
+    has_api_key?: boolean;
+    endpoint?: string;
+    project_id?: string;
+    configured?: boolean;
+  };
+  ollama?: {
+    endpoint?: string;
+    configured?: boolean;
+  };
 }
 
 export interface Settings {
@@ -24,12 +47,7 @@ export interface Settings {
   ingest_flow_id?: string;
   langflow_public_url?: string;
   edited?: boolean;
-  provider?: {
-    model_provider?: string;
-    // Note: api_key is never returned by the backend for security reasons
-    endpoint?: string;
-    project_id?: string;
-  };
+  providers?: ProviderSettings;
   knowledge?: KnowledgeSettings;
   agent?: AgentSettings;
   langflow_edit_url?: string;
