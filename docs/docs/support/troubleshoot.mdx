@@ -72,28 +72,30 @@ If you encounter a `langflow container already exists` error when upgrading Open
 
 1. Remove only the problematic Langflow container:
 
-<Tabs groupId="Container software">
-  <TabItem value="Podman" label="Podman">
-    ```bash
-    # Stop the langflow container
-    podman stop langflow
-    
-    # Remove the langflow container
-    podman rm langflow --force
-    ```
-  </TabItem>
-  <TabItem value="Docker" label="Docker" default>
-    ```bash
-    # Stop the langflow container
-    docker stop langflow
-    
-    # Remove the langflow container
-    docker rm langflow --force
-    ```
-  </TabItem>
-</Tabs>
+    <Tabs groupId="Container software">
+      <TabItem value="Podman" label="Podman">
+        ```bash
+        # Stop the langflow container
+        podman stop langflow
+        
+        # Remove the langflow container
+        podman rm langflow --force
+        ```
+      </TabItem>
+      <TabItem value="Docker" label="Docker" default>
+        ```bash
+        # Stop the langflow container
+        docker stop langflow
+        
+        # Remove the langflow container
+        docker rm langflow --force
+        ```
+      </TabItem>
+    </Tabs>
 
 2. After removing the container, retry the upgrade in the OpenRAG TUI by clicking **Status** > **Upgrade**.
+
+### Reinstall all containers
 
 If reinstalling the Langflow container doesn't resolve the issue, or if you want a completely fresh installation, remove all OpenRAG containers and data, and then retry the upgrade.
 :::warning Data loss
