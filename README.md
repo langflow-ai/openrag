@@ -43,7 +43,7 @@ The script detects and installs uv, Docker/Podman, and Docker Compose prerequisi
     curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
     ```
 
-The OpenRAG Terminal User Interface (TUI) starts and guides you through setup.
+    The OpenRAG Terminal User Interface (TUI) starts and guides you through setup.
 
 3. Continue with the [Quickstart](https://docs.openr.ag/quickstart).
 
