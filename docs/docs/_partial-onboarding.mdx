@@ -19,7 +19,7 @@ You can use different providers for your language model and embedding model, suc
 Choose one LLM provider and complete these steps:
 
     <Tabs groupId="Provider">
-    <TabItem value="Anthropic" label="Anthropic">
+    <TabItem value="Anthropic" label="Anthropic" default>
     :::info
     Anthropic does not provide embedding models. If you select Anthropic for your language model, you must then select a different provider for embeddings.
     :::
@@ -33,7 +33,7 @@ Choose one LLM provider and complete these steps:
     6. Continue with the [Quickstart](/quickstart).
 
     </TabItem>
-    <TabItem value="OpenAI" label="OpenAI" default>
+    <TabItem value="OpenAI" label="OpenAI">
     1. Enable **Get API key from environment variable** to automatically enter your key from the TUI-generated `.env` file.
     Alternatively, paste an OpenAI API key into the field.
     2. Under **Advanced settings**, select your **Language Model**.
