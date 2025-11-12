@@ -95,8 +95,8 @@ export function ChatRenderer({
 	};
 
 	// List of paths with smaller max-width
-	const smallWidthPaths = ["/settings/connector/new"];
-	const isSmallWidthPath = smallWidthPaths.includes(pathname);
+	const smallWidthPaths = ["/settings", "/upload"];
+	const isSmallWidthPath = smallWidthPaths.some(path => pathname.startsWith(path));
 
 	const x = showLayout ? "0px" : `calc(-${SIDEBAR_WIDTH / 2}px + 50vw)`;
 	const y = showLayout ? "0px" : `calc(-${HEADER_HEIGHT / 2}px + 50vh)`;

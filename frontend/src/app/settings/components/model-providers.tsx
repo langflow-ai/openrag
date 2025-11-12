@@ -105,7 +105,7 @@ export const ModelProviders = () => {
 
 	return (
 		<>
-			<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+			<div className="grid gap-6 xs:grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
 				{sortedProviderKeys.map((providerKey) => {
 					const {
 						name,
@@ -155,13 +155,14 @@ export const ModelProviders = () => {
 										<CardTitle className="flex flex-row items-center gap-2">
 											{name}
 											{isCurrentProvider && (
-												<div
+												<span
 													className={cn(
 														"h-2 w-2 rounded-full",
 														isProviderUnhealthy
 															? "bg-destructive"
 															: "bg-accent-emerald-foreground",
 													)}
+                          aria-label={isProviderUnhealthy ? "Error" : "Active"}
 												/>
 											)}
 										</CardTitle>
