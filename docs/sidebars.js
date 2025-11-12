@@ -21,46 +21,14 @@ const sidebars = {
       id: "get-started/what-is-openrag",
       label: "About OpenRAG"
     },
-    {
-      type: "doc",
-      id: "get-started/quickstart",
-      label: "Quickstart"
-    },
-    {
-      type: "doc",
-      id: "get-started/install",
-      label: "Install OpenRAG with TUI"
-    },
-    {
-      type: "doc",
-      id: "get-started/docker",
-      label: "Install OpenRAG containers"
-    },
-    {
-      type: "doc",
-      id: "core-components/agents",
-      label: "Langflow in OpenRAG"
-    },
-    {
-      type: "doc",
-      id: "core-components/knowledge",
-      label: "OpenSearch in OpenRAG"
-    },
-    {
-      type: "doc",
-      id: "core-components/ingestion",
-      label: "Docling in OpenRAG"
-    },
-    {
-      type: "doc",
-      id: "reference/configuration",
-      label: "Environment variables"
-    },
-    {
-      type: "doc",
-      id: "support/troubleshoot",
-      label: "Troubleshooting"
-    },
+    "get-started/quickstart",
+    "get-started/install",
+    "get-started/docker",
+    "core-components/agents",
+    "core-components/knowledge",
+    "core-components/ingestion",
+    "reference/configuration",
+    "support/troubleshoot",
   ],
 };
 
