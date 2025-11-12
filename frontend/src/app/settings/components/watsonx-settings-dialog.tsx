@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
@@ -18,7 +19,6 @@ import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettings
 import { useQueryClient } from "@tanstack/react-query";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
 import { AnimatePresence, motion } from "motion/react";
-import { useDebouncedValue } from "@/lib/debounce";
 
 const WatsonxSettingsDialog = ({
   open,
@@ -28,6 +28,8 @@ const WatsonxSettingsDialog = ({
   setOpen: (open: boolean) => void;
 }) => {
   const queryClient = useQueryClient();
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationError, setValidationError] = useState<Error | null>(null);
 
   const methods = useForm<WatsonxSettingsFormData>({
     mode: "onSubmit",
@@ -38,30 +40,21 @@ const WatsonxSettingsDialog = ({
     },
   });
 
-  const { handleSubmit, watch, formState } = methods;
+  const { handleSubmit, watch } = methods;
   const endpoint = watch("endpoint");
   const apiKey = watch("apiKey");
   const projectId = watch("projectId");
 
-  const debouncedEndpoint = useDebouncedValue(endpoint, 500);
-  const debouncedApiKey = useDebouncedValue(apiKey, 500);
-  const debouncedProjectId = useDebouncedValue(projectId, 500);
-
-  const {
-    isLoading: isLoadingModels,
-    error: modelsError,
-  } = useGetIBMModelsQuery(
+  const { refetch: validateCredentials } = useGetIBMModelsQuery(
     {
-      endpoint: debouncedEndpoint,
-      apiKey: debouncedApiKey,
-      projectId: debouncedProjectId,
+      endpoint: endpoint,
+      apiKey: apiKey,
+      projectId: projectId,
     },
     {
-      enabled: !!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId && open,
+      enabled: false,
     }
   );
-
-  const hasValidationError = !!modelsError || !!formState.errors.endpoint || !!formState.errors.apiKey || !!formState.errors.projectId;
 
   const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -72,12 +65,27 @@ const WatsonxSettingsDialog = ({
         provider: "watsonx",
       };
       queryClient.setQueryData(["provider", "health"], healthData);
-      toast.success("watsonx credentials saved. Configure models in the Settings page.");
+      toast.success(
+        "watsonx credentials saved. Configure models in the Settings page."
+      );
       setOpen(false);
     },
   });
 
-  const onSubmit = (data: WatsonxSettingsFormData) => {
+  const onSubmit = async (data: WatsonxSettingsFormData) => {
+    // Clear any previous validation errors
+    setValidationError(null);
+
+    // Validate credentials by fetching models
+    setIsValidating(true);
+    const result = await validateCredentials();
+    setIsValidating(false);
+
+    if (result.isError) {
+      setValidationError(result.error);
+      return;
+    }
+
     const payload: {
       watsonx_endpoint: string;
       watsonx_api_key?: string;
@@ -111,10 +119,10 @@ const WatsonxSettingsDialog = ({
             </DialogHeader>
 
             <WatsonxSettingsForm
-              modelsError={modelsError}
-              isLoadingModels={isLoadingModels}
+              modelsError={validationError}
+              isLoadingModels={isValidating}
             />
-           
+
             <AnimatePresence mode="wait">
               {settingsMutation.isError && (
                 <motion.div
@@ -139,9 +147,13 @@ const WatsonxSettingsDialog = ({
               </Button>
               <Button
                 type="submit"
-                disabled={settingsMutation.isPending || hasValidationError || isLoadingModels}
+                disabled={settingsMutation.isPending || isValidating}
               >
-                {settingsMutation.isPending ? "Saving..." : isLoadingModels ? "Validating..." : "Save"}
+                {settingsMutation.isPending
+                  ? "Saving..."
+                  : isValidating
+                  ? "Validating..."
+                  : "Save"}
               </Button>
             </DialogFooter>
           </form>

@@ -15,7 +15,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 	const [isUploading, setIsUploading] = useState(false);
 	const [currentStep, setCurrentStep] = useState<number | null>(null);
 
-	const STEP_LIST = ["Uploading your document", "Generating embeddings", "Ingesting document", "Processing your document"];
+	const STEP_LIST = ["Uploading your document", "Processing your document"];
 
 	// Query tasks to track completion
 	const { data: tasks } = useGetTasksQuery({

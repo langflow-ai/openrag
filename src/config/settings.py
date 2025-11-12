@@ -750,4 +750,4 @@ def get_agent_config():
 
 def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
-    return get_openrag_config().knowledge.embedding_model
+    return get_openrag_config().knowledge.embedding_model or EMBED_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""
