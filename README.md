@@ -45,6 +45,8 @@ The script detects and installs uv, Docker/Podman, and Docker Compose prerequisi
 
 The OpenRAG Terminal User Interface (TUI) starts and guides you through setup.
 
+3. Continue with the [Quickstart](https://docs.openr.ag/quickstart).
+
 ## Install Python package
 
 To first set up a project and then install the OpenRAG Python package, do the following:
