@@ -223,12 +223,10 @@ export default function UploadProviderPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-            <p>Loading {getProviderDisplayName()} connector...</p>
-          </div>
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p>Loading {getProviderDisplayName()} connector...</p>
         </div>
       </div>
     );
@@ -236,7 +234,7 @@ export default function UploadProviderPage() {
 
   if (error || !connector) {
     return (
-      <div className="container mx-auto p-6">
+      <>
         <div className="mb-6">
           <Button
             variant="ghost"
@@ -260,13 +258,13 @@ export default function UploadProviderPage() {
             </Button>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (connector.status !== "connected") {
     return (
-      <div className="container mx-auto p-6">
+      <>
         <div className="mb-6">
           <Button
             variant="ghost"
@@ -293,13 +291,13 @@ export default function UploadProviderPage() {
             </Button>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (!connector.hasAccessToken) {
     return (
-      <div className="container mx-auto p-6">
+      <>
         <div className="mb-6">
           <Button
             variant="ghost"
@@ -326,14 +324,14 @@ export default function UploadProviderPage() {
             </Button>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   const hasSelectedFiles = selectedFiles.length > 0;
 
   return (
-    <div className="container mx-auto max-w-3xl px-6">
+    <>
       <div className="mb-8 flex gap-2 items-center">
         <Button variant="ghost" onClick={() => router.back()} size="icon">
           <ArrowLeft size={18} />
@@ -394,6 +392,6 @@ export default function UploadProviderPage() {
           </Tooltip>
         </div>
       </div>
-    </div>
+    </>
   );
 }
