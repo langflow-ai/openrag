@@ -1,6 +1,7 @@
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import PartialOllama from '@site/docs/_partial-ollama.mdx'; 
 
 ## Application onboarding 
 
@@ -58,15 +59,16 @@ Choose one LLM provider and complete these steps:
     :::tip
     Ollama is not included with OpenRAG. To install Ollama, see the [Ollama documentation](https://docs.ollama.com/).
     :::   
-    1. Enter your Ollama server's base URL address.
+    1. To connect to an Ollama server running on your local machine, enter your Ollama server's base URL address.
     The default Ollama server address is `http://localhost:11434`.
-    OpenRAG automatically transforms `localhost` to access services outside of the container, and sends a test connection to your Ollama server to confirm connectivity.
-    2. Under **Advanced settings**, select your **Language Model** from the models available on your Ollama server.
+    OpenRAG connects to the Ollama server and populates the model lists with the server's available models.
+    2. Select the **Embedding Model** and **Language Model** your Ollama server is running.
+        <details closed>
+        <summary>Ollama model selection and external server configuration</summary>
+        <PartialOllama />
+        </details>
     3. Click **Complete**.
-    4. In the second onboarding panel, select your **Embedding Model** from the models available on your Ollama server.
-    5. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
-    Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-    6. Continue with the [Quickstart](/quickstart).
-
+    4. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
+    5. Continue with the [Quickstart](/quickstart).
     </TabItem>
     </Tabs>
