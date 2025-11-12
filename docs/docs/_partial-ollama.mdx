@@ -13,13 +13,12 @@ To run models in [**Ollama Cloud**](https://docs.ollama.com/cloud), follow these
     In a terminal, enter `ollama signin` to connect your local environment with Ollama Cloud.
     2. To run the model, in Ollama, select the `gpt-oss:20b-cloud` model, or run `ollama run gpt-oss:20b-cloud` in a terminal.
     Ollama Cloud models are run at the same URL as your local Ollama server at `http://localhost:11434`, and automatically offloaded to Ollama's cloud service.
-    3. Connect OpenRAG to the same local Ollama server as you would for local models in [Application onboarding](/install#application-onboarding), using the default address of `http://localhost:11434`.
+    3. Connect OpenRAG to the same local Ollama server as you would for local models in onboarding, using the default address of `http://localhost:11434`.
     4. In the **Language model** field, select the `gpt-oss:20b-cloud` model.
 
 To run models on a **remote Ollama server**, follow these steps:
 
     1. Ensure your remote Ollama server is accessible from your OpenRAG instance.
-    2. During [Application onboarding](/install#application-onboarding), select **Ollama** as your provider.
-    3. Enter your remote Ollama server's base URL (for example, `http://your-remote-server:11434`) in the **Ollama Base URL** field.
+    2. In the **Ollama Base URL** field, enter your remote Ollama server's base URL, such as `http://your-remote-server:11434`.
     OpenRAG connects to the remote Ollama server and populates the lists with the server's available models.
-    4. Select your **Embedding model** and **Language model** from the available options.
+    3. Select your **Embedding model** and **Language model** from the available options.

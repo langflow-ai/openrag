@@ -47,19 +47,16 @@ Choose one LLM provider and complete only those steps:
     :::tip
     Ollama is not included with OpenRAG. To install Ollama, see the [Ollama documentation](https://docs.ollama.com/).
     :::   
-    1. Enter your Ollama server's base URL address.
+    1. To connect to an Ollama server running on your local machine, enter your Ollama server's base URL address.
     The default Ollama server address is `http://localhost:11434`.
-    OpenRAG automatically transforms `localhost` to access services outside of the container, and sends a test connection to your Ollama server to confirm connectivity.
+    OpenRAG connects to the Ollama server and populates the model lists with the server's available models.
     2. Select the **Embedding Model** and **Language Model** your Ollama server is running.
-    OpenRAG retrieves the available models from your Ollama server.
         <details closed>
-        <summary>Ollama server configuration</summary>
+        <summary>Ollama model selection and external server configuration</summary>
         <PartialOllama />
         </details>
-    3. To load 2 sample PDFs, enable **Sample dataset**.
-    This is recommended, but not required.
-    4. Click **Complete**.
-    5. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
-    6. Continue with the [Quickstart](/quickstart).
+    3. Click **Complete**.
+    4. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
+    5. Continue with the [Quickstart](/quickstart).
     </TabItem>
     </Tabs>
