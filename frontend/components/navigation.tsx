@@ -284,19 +284,19 @@ export function Navigation({
 			label: "Chat",
 			icon: MessageSquare,
 			href: "/chat",
-			active: pathname === "/" || pathname === "/chat",
+			active: pathname === "/" || pathname.startsWith("/chat"),
 		},
 		{
 			label: "Knowledge",
 			icon: Library,
 			href: "/knowledge",
-			active: pathname === "/knowledge",
+			active: pathname.startsWith("/knowledge"),
 		},
 		{
 			label: "Settings",
 			icon: Settings2,
 			href: "/settings",
-			active: pathname === "/settings",
+			active: pathname.startsWith("/settings"),
 		},
 	];
 
