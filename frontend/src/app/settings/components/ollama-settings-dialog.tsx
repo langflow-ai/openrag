@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
@@ -14,6 +15,7 @@ import {
   type OllamaSettingsFormData,
 } from "./ollama-settings-form";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useGetOllamaModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useAuth } from "@/contexts/auth-context";
 import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -29,27 +31,35 @@ const OllamaSettingsDialog = ({
 }) => {
   const { isAuthenticated, isNoAuthMode } = useAuth();
   const queryClient = useQueryClient();
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationError, setValidationError] = useState<Error | null>(null);
 
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
   });
 
-  const isOllamaConfigured = settings.provider?.model_provider === "ollama";
+  const isOllamaConfigured = settings.providers?.ollama?.configured === true;
 
   const methods = useForm<OllamaSettingsFormData>({
     mode: "onSubmit",
     defaultValues: {
       endpoint: isOllamaConfigured
-        ? settings.provider?.endpoint
+        ? settings.providers?.ollama?.endpoint
         : "http://localhost:11434",
-      llmModel: isOllamaConfigured ? settings.agent?.llm_model : "",
-      embeddingModel: isOllamaConfigured
-        ? settings.knowledge?.embedding_model
-        : "",
     },
   });
 
-  const { handleSubmit } = methods;
+  const { handleSubmit, watch } = methods;
+  const endpoint = watch("endpoint");
+
+  const { refetch: validateCredentials } = useGetOllamaModelsQuery(
+    {
+      endpoint: endpoint,
+    },
+    {
+      enabled: false,
+    }
+  );
 
   const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -61,17 +71,29 @@ const OllamaSettingsDialog = ({
       };
       queryClient.setQueryData(["provider", "health"], healthData);
 
-      toast.success("Ollama settings updated successfully");
+      toast.success(
+        "Ollama endpoint saved. Configure models in the Settings page."
+      );
       setOpen(false);
     },
   });
 
-  const onSubmit = (data: OllamaSettingsFormData) => {
+  const onSubmit = async (data: OllamaSettingsFormData) => {
+    // Clear any previous validation errors
+    setValidationError(null);
+
+    // Validate endpoint by fetching models
+    setIsValidating(true);
+    const result = await validateCredentials();
+    setIsValidating(false);
+
+    if (result.isError) {
+      setValidationError(result.error);
+      return;
+    }
+
     settingsMutation.mutate({
-      endpoint: data.endpoint,
-      model_provider: "ollama",
-      llm_model: data.llmModel,
-      embedding_model: data.embeddingModel,
+      ollama_endpoint: data.endpoint,
     });
   };
 
@@ -89,7 +111,10 @@ const OllamaSettingsDialog = ({
               </DialogTitle>
             </DialogHeader>
 
-            <OllamaSettingsForm />
+            <OllamaSettingsForm
+              modelsError={validationError}
+              isLoadingModels={isValidating}
+            />
 
             <AnimatePresence mode="wait">
               {settingsMutation.isError && (
@@ -113,8 +138,15 @@ const OllamaSettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={settingsMutation.isPending}>
-                {settingsMutation.isPending ? "Saving..." : "Save"}
+              <Button
+                type="submit"
+                disabled={settingsMutation.isPending || isValidating}
+              >
+                {settingsMutation.isPending
+                  ? "Saving..."
+                  : isValidating
+                  ? "Validating..."
+                  : "Save"}
               </Button>
             </DialogFooter>
           </form>

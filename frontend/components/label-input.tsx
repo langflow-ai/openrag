@@ -19,6 +19,7 @@ export function LabelInput({
       helperText={helperText}
       id={id}
       required={required}
+      disabled={props.disabled}
     >
       <Input id={id} {...props} />
     </LabelWrapper>

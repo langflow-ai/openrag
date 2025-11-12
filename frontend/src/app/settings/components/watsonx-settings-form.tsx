@@ -1,21 +1,12 @@
-import { useEffect, useState } from "react";
 import { useFormContext, Controller } from "react-hook-form";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { useGetIBMModelsQuery } from "@/app/api/queries/useGetModelsQuery";
-import { useDebouncedValue } from "@/lib/debounce";
-import { AnimatedConditional } from "@/components/animated-conditional";
-import IBMLogo from "@/components/logo/ibm-logo";
-import { ModelSelectors } from "./model-selectors";
 import { ModelSelector } from "@/app/onboarding/components/model-selector";
 
 export interface WatsonxSettingsFormData {
   endpoint: string;
   apiKey: string;
   projectId: string;
-  llmModel: string;
-  embeddingModel: string;
 }
 
 const endpointOptions = [
@@ -46,65 +37,17 @@ const endpointOptions = [
 ];
 
 export function WatsonxSettingsForm({
-  isCurrentProvider = false,
+  modelsError,
+  isLoadingModels,
 }: {
-  isCurrentProvider: boolean;
+  modelsError?: Error | null;
+  isLoadingModels?: boolean;
 }) {
-  const [useExistingKey, setUseExistingKey] = useState(true);
   const {
     control,
     register,
-    watch,
-    setValue,
-    clearErrors,
     formState: { errors },
   } = useFormContext<WatsonxSettingsFormData>();
-
-  const endpoint = watch("endpoint");
-  const apiKey = watch("apiKey");
-  const projectId = watch("projectId");
-
-  const debouncedEndpoint = useDebouncedValue(endpoint, 500);
-  const debouncedApiKey = useDebouncedValue(apiKey, 500);
-  const debouncedProjectId = useDebouncedValue(projectId, 500);
-
-  // Handle switch change
-  const handleUseExistingKeyChange = (checked: boolean) => {
-    setUseExistingKey(checked);
-    if (checked) {
-      // Clear the API key field when using existing key
-      setValue("apiKey", "");
-    }
-  };
-
-  // Clear form errors when useExistingKey changes
-  useEffect(() => {
-    clearErrors("apiKey");
-  }, [useExistingKey, clearErrors]);
-
-  const shouldFetchModels = isCurrentProvider
-    ? useExistingKey
-      ? !!debouncedEndpoint && !!debouncedProjectId
-      : !!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId
-    : !!debouncedEndpoint && !!debouncedProjectId && !!debouncedApiKey;
-
-  const {
-    data: modelsData,
-    isLoading: isLoadingModels,
-    error: modelsError,
-  } = useGetIBMModelsQuery(
-    {
-      endpoint: debouncedEndpoint,
-      apiKey: useExistingKey ? "" : debouncedApiKey,
-      projectId: debouncedProjectId,
-    },
-    {
-      enabled: shouldFetchModels,
-    }
-  );
-
-  const languageModels = modelsData?.language_models || [];
-  const embeddingModels = modelsData?.embedding_models || [];
 
   return (
     <div className="space-y-4">
@@ -163,50 +106,30 @@ export function WatsonxSettingsForm({
           <p className="text-sm text-destructive">{errors.projectId.message}</p>
         )}
       </div>
-      <div className={useExistingKey ? "space-y-3" : "space-y-2"}>
-        {isCurrentProvider && (
-          <LabelWrapper
-            label="Use existing watsonx API key"
-            id="use-existing-key"
-            description="Reuse the key from your environment config. Turn off to enter a different key."
-            flex
-          >
-            <Switch
-              checked={useExistingKey}
-              onCheckedChange={handleUseExistingKeyChange}
-            />
-          </LabelWrapper>
-        )}
-        <AnimatedConditional
-          isOpen={!useExistingKey}
-          duration={0.2}
-          vertical
-          className={!useExistingKey ? "!mt-4" : "!mt-0"}
+      <div className="space-y-2">
+        <LabelWrapper
+          label="watsonx API key"
+          helperText="API key to access watsonx.ai"
+          required
+          id="api-key"
         >
-          <LabelWrapper
-            label="watsonx API key"
-            helperText="API key to access watsonx.ai"
-            required
+          <Input
+            {...register("apiKey", {
+              required: "API key is required",
+            })}
+            className={
+              errors.apiKey || modelsError ? "!border-destructive" : ""
+            }
             id="api-key"
-          >
-            <Input
-              {...register("apiKey", {
-                required: !useExistingKey ? "API key is required" : false,
-              })}
-              className={
-                errors.apiKey || modelsError ? "!border-destructive" : ""
-              }
-              id="api-key"
-              type="password"
-              placeholder="your-api-key"
-            />
-          </LabelWrapper>
-          {errors.apiKey && (
-            <p className="text-sm text-destructive mt-2">
-              {errors.apiKey.message}
-            </p>
-          )}
-        </AnimatedConditional>
+            type="password"
+            placeholder="your-api-key"
+          />
+        </LabelWrapper>
+        {errors.apiKey && (
+          <p className="text-sm text-destructive">
+            {errors.apiKey.message}
+          </p>
+        )}
         {isLoadingModels && (
           <p className="text-sm text-muted-foreground">
             Validating configuration...
@@ -218,12 +141,9 @@ export function WatsonxSettingsForm({
           </p>
         )}
       </div>
-      <ModelSelectors
-        languageModels={languageModels}
-        embeddingModels={embeddingModels}
-        isLoadingModels={isLoadingModels}
-        logo={<IBMLogo className="w-4 h-4 text-[#1063FE]" />}
-      />
+      <p className="text-sm text-muted-foreground">
+        Configure language and embedding models in the Settings page after saving your credentials.
+      </p>
     </div>
   );
 }

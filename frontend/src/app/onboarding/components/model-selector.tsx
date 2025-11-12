@@ -17,8 +17,22 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
+export type ModelOption = {
+  value: string;
+  label: string;
+  default?: boolean;
+  provider?: string;
+};
+
+export type GroupedModelOption = {
+  group: string;
+  options: ModelOption[];
+  icon?: React.ReactNode;
+};
+
 export function ModelSelector({
   options,
+  groupedOptions,
   value = "",
   onValueChange,
   icon,
@@ -28,33 +42,40 @@ export function ModelSelector({
   custom = false,
   hasError = false,
 }: {
-  options: {
-    value: string;
-    label: string;
-    default?: boolean;
-  }[];
+  options?: ModelOption[];
+  groupedOptions?: GroupedModelOption[];
   value: string;
   icon?: React.ReactNode;
   placeholder?: string;
   searchPlaceholder?: string;
   noOptionsPlaceholder?: string;
   custom?: boolean;
-  onValueChange: (value: string) => void;
+  onValueChange: (value: string, provider?: string) => void;
   hasError?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
+  // Flatten grouped options or use regular options
+  const allOptions =
+    groupedOptions?.flatMap((group) => group.options) || options || [];
+
+  // Find the group icon for the selected value
+  const selectedOptionGroup = groupedOptions?.find((group) =>
+    group.options.some((opt) => opt.value === value)
+  );
+  const selectedIcon = selectedOptionGroup?.icon || icon;
+
   useEffect(() => {
     if (
       value &&
       value !== "" &&
-      !options.find((option) => option.value === value) &&
+      !allOptions.find((option) => option.value === value) &&
       !custom
     ) {
       onValueChange("");
     }
-  }, [options, value, custom, onValueChange]);
+  }, [allOptions, value, custom, onValueChange]);
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
@@ -63,7 +84,7 @@ export function ModelSelector({
         <Button
           variant="outline"
           role="combobox"
-          disabled={options.length === 0}
+          disabled={allOptions.length === 0}
           aria-expanded={open}
           className={cn(
             "w-full gap-2 justify-between font-normal text-sm",
@@ -72,24 +93,18 @@ export function ModelSelector({
         >
           {value ? (
             <div className="flex items-center gap-2">
-              {icon && <div className="w-4 h-4">{icon}</div>}
-              {options.find((framework) => framework.value === value)?.label ||
-                value}
-              {/* {options.find((framework) => framework.value === value)
-								?.default && (
-								<span className="text-xs text-foreground p-1 rounded-md bg-muted">
-									Default
-								</span>
-							)} */}
+              {selectedIcon && <div className="w-4 h-4">{selectedIcon}</div>}
+              {allOptions.find((framework) => framework.value === value)
+                ?.label || value}
               {custom &&
                 value &&
-                !options.find((framework) => framework.value === value) && (
+                !allOptions.find((framework) => framework.value === value) && (
                   <Badge variant="outline" className="text-xs">
                     CUSTOM
                   </Badge>
                 )}
             </div>
-          ) : options.length === 0 ? (
+          ) : allOptions.length === 0 ? (
             noOptionsPlaceholder
           ) : (
             placeholder
@@ -113,42 +128,52 @@ export function ModelSelector({
             onWheel={(e) => e.stopPropagation()}
           >
             <CommandEmpty>{noOptionsPlaceholder}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={option.value}
-                  onSelect={(currentValue) => {
-                    if (currentValue !== value) {
-                      onValueChange(currentValue);
-                    }
-                    setOpen(false);
-                  }}
+            {groupedOptions ? (
+              groupedOptions.map((group) => (
+                <CommandGroup
+                  key={group.group}
+                  heading={
+                    <div className="flex items-center gap-2">
+                      {group.icon && (
+                        <div className="w-4 h-4">{group.icon}</div>
+                      )}
+                      <span>{group.group}</span>
+                    </div>
+                  }
                 >
-                  <CheckIcon
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  <div className="flex items-center gap-2">
-                    {option.label}
-                    {/* {option.default && (
-											<span className="text-xs text-foreground p-1 rounded-md bg-muted">        // DISABLING DEFAULT TAG FOR NOW
-												Default
-											</span>
-										)} */}
-                  </div>
-                </CommandItem>
-              ))}
-              {custom &&
-                searchValue &&
-                !options.find((option) => option.value === searchValue) && (
+                  {group.options.map((option) => (
+                    <CommandItem
+                      key={option.value}
+                      value={option.value}
+                      onSelect={(currentValue) => {
+                        if (currentValue !== value) {
+                          onValueChange(currentValue, option.provider);
+                        }
+                        setOpen(false);
+                      }}
+                    >
+                      <CheckIcon
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          value === option.value ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      <div className="flex items-center gap-2">
+                        {option.label}
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              ))
+            ) : (
+              <CommandGroup>
+                {allOptions.map((option) => (
                   <CommandItem
-                    value={searchValue}
+                    key={option.value}
+                    value={option.value}
                     onSelect={(currentValue) => {
                       if (currentValue !== value) {
-                        onValueChange(currentValue);
+                        onValueChange(currentValue, option.provider);
                       }
                       setOpen(false);
                     }}
@@ -156,18 +181,44 @@ export function ModelSelector({
                     <CheckIcon
                       className={cn(
                         "mr-2 h-4 w-4",
-                        value === searchValue ? "opacity-100" : "opacity-0"
+                        value === option.value ? "opacity-100" : "opacity-0"
                       )}
                     />
                     <div className="flex items-center gap-2">
-                      {searchValue}
-                      <span className="text-xs text-foreground p-1 rounded-md bg-muted">
-                        Custom
-                      </span>
+                      {option.label}
                     </div>
                   </CommandItem>
-                )}
-            </CommandGroup>
+                ))}
+                {custom &&
+                  searchValue &&
+                  !allOptions.find(
+                    (option) => option.value === searchValue
+                  ) && (
+                    <CommandItem
+                      value={searchValue}
+                      onSelect={(currentValue) => {
+                        if (currentValue !== value) {
+                          onValueChange(currentValue);
+                        }
+                        setOpen(false);
+                      }}
+                    >
+                      <CheckIcon
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          value === searchValue ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      <div className="flex items-center gap-2">
+                        {searchValue}
+                        <span className="text-xs text-foreground p-1 rounded-md bg-muted">
+                          Custom
+                        </span>
+                      </div>
+                    </CommandItem>
+                  )}
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

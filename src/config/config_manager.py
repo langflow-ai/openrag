@@ -11,20 +11,64 @@ logger = get_logger(__name__)
 
 
 @dataclass
-class ProviderConfig:
-    """Model provider configuration."""
-
-    model_provider: str = "openai"  # openai, anthropic, etc.
+class OpenAIConfig:
+    """OpenAI provider configuration."""
     api_key: str = ""
-    endpoint: str = ""  # For providers like Watson/IBM that need custom endpoints
-    project_id: str = ""  # For providers like Watson/IBM that need project IDs
+    configured: bool = False
+
+
+@dataclass
+class AnthropicConfig:
+    """Anthropic provider configuration."""
+    api_key: str = ""
+    configured: bool = False
+
+
+@dataclass
+class WatsonXConfig:
+    """IBM WatsonX provider configuration."""
+    api_key: str = ""
+    endpoint: str = ""
+    project_id: str = ""
+    configured: bool = False
+
+
+@dataclass
+class OllamaConfig:
+    """Ollama provider configuration."""
+    endpoint: str = ""
+    configured: bool = False
+
+
+@dataclass
+class ProvidersConfig:
+    """All provider configurations."""
+    openai: OpenAIConfig
+    anthropic: AnthropicConfig
+    watsonx: WatsonXConfig
+    ollama: OllamaConfig
+
+    def get_provider_config(self, provider: str):
+        """Get configuration for a specific provider."""
+        provider_lower = provider.lower()
+        if provider_lower == "openai":
+            return self.openai
+        elif provider_lower == "anthropic":
+            return self.anthropic
+        elif provider_lower == "watsonx":
+            return self.watsonx
+        elif provider_lower == "ollama":
+            return self.ollama
+        else:
+            raise ValueError(f"Unknown provider: {provider}")
 
 
 @dataclass
 class KnowledgeConfig:
     """Knowledge/ingestion configuration."""
 
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = ""
+    embedding_provider: str = "openai"  # Which provider to use for embeddings
     chunk_size: int = 1000
     chunk_overlap: int = 200
     table_structure: bool = True
@@ -36,15 +80,16 @@ class KnowledgeConfig:
 class AgentConfig:
     """Agent configuration."""
 
-    llm_model: str = "gpt-4o-mini"
-    system_prompt: str = "You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context."
+    llm_model: str = ""
+    llm_provider: str = "openai"  # Which provider to use for LLM
+    system_prompt: str = "You are the OpenRAG Agent. You answer questions using retrieval, reasoning, and tool use.\nYou have access to several tools. Your job is to determine **which tool to use and when**.\n### Available Tools\n- OpenSearch Retrieval Tool:\n  Use this to search the indexed knowledge base. Use when the user asks about product details, internal concepts, processes, architecture, documentation, roadmaps, or anything that may be stored in the index.\n- Conversation History:\n  Use this to maintain continuity when the user is referring to previous turns. \n  Do not treat history as a factual source.\n- Conversation File Context:\n  Use this when the user asks about a document they uploaded or refers directly to its contents.\n- URL Ingestion Tool:\n  Use this **only** when the user explicitly asks you to read, summarize, or analyze the content of a URL.\n  Do not ingest URLs automatically.\n- Calculator / Expression Evaluation Tool:\n  Use this when the user asks to compare numbers, compute estimates, calculate totals, analyze pricing, or answer any question requiring mathematics or quantitative reasoning.\n  If the answer requires arithmetic, call the calculator tool rather than calculating internally.\n### Retrieval Decision Rules\nUse OpenSearch **whenever**:\n1. The question may be answered from internal or indexed data.\n2. The user references team names, product names, release plans, configurations, requirements, or official information.\n3. The user needs a factual, grounded answer.\nDo **not** use retrieval if:\n- The question is purely creative (e.g., storytelling, analogies) or personal preference.\n- The user simply wants text reformatted or rewritten from what is already present in the conversation.\nWhen uncertain → **Retrieve.** Retrieval is low risk and improves grounding.\n### URL Ingestion Rules\nOnly ingest URLs when the user explicitly says:\n- \"Read this link\"\n- \"Summarize this webpage\"\n- \"What does this site say?\"\n- \"Ingest this URL\"\nIf unclear → ask a clarifying question.\n### Calculator Usage Rules\nUse the calculator when:\n- Performing arithmetic\n- Estimating totals\n- Comparing values\n- Modeling cost, time, effort, scale, or projections\nDo not perform math internally. **Call the calculator tool instead.**\n### Answer Construction Rules\n1. When asked: \"What is OpenRAG\", answer the following:\n\"OpenRAG is an open-source package for building agentic RAG systems. It supports integration with a wide range of orchestration tools, vector databases, and LLM providers. OpenRAG connects and amplifies three popular, proven open-source projects into one powerful platform:\n**Langflow** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://www.langflow.org/)\n**OpenSearch** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://opensearch.org/)\n**Docling** – Langflow is a powerful tool to build and deploy AI agents and MCP servers [Read more](https://www.docling.ai/)\"\n2. Synthesize retrieved or ingested content in your own words.\n3. Support factual claims with citations in the format:\n   (Source: <document_name_or_id>)\n4. If no supporting evidence is found:\n   Say: \"No relevant supporting sources were found for that request.\"\n5. Never invent facts or hallucinate details.\n6. Be concise, direct, and confident. \n7. Do not reveal internal chain-of-thought."
 
 
 @dataclass
 class OpenRAGConfig:
     """Complete OpenRAG configuration."""
 
-    provider: ProviderConfig
+    providers: ProvidersConfig
     knowledge: KnowledgeConfig
     agent: AgentConfig
     edited: bool = False  # Track if manually edited
@@ -52,8 +97,14 @@ class OpenRAGConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "OpenRAGConfig":
         """Create config from dictionary."""
+        providers_data = data.get("providers", {})
         return cls(
-            provider=ProviderConfig(**data.get("provider", {})),
+            providers=ProvidersConfig(
+                openai=OpenAIConfig(**providers_data.get("openai", {})),
+                anthropic=AnthropicConfig(**providers_data.get("anthropic", {})),
+                watsonx=WatsonXConfig(**providers_data.get("watsonx", {})),
+                ollama=OllamaConfig(**providers_data.get("ollama", {})),
+            ),
             knowledge=KnowledgeConfig(**data.get("knowledge", {})),
             agent=AgentConfig(**data.get("agent", {})),
             edited=data.get("edited", False),
@@ -62,6 +113,14 @@ class OpenRAGConfig:
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary."""
         return asdict(self)
+
+    def get_llm_provider_config(self):
+        """Get the provider configuration for the current LLM provider."""
+        return self.providers.get_provider_config(self.agent.llm_provider)
+
+    def get_embedding_provider_config(self):
+        """Get the provider configuration for the current embedding provider."""
+        return self.providers.get_provider_config(self.knowledge.embedding_provider)
 
 
 class ConfigManager:
@@ -88,7 +147,16 @@ class ConfigManager:
             return self._config
 
         # Start with defaults
-        config_data = {"provider": {}, "knowledge": {}, "agent": {}}
+        config_data = {
+            "providers": {
+                "openai": {},
+                "anthropic": {},
+                "watsonx": {},
+                "ollama": {},
+            },
+            "knowledge": {},
+            "agent": {},
+        }
 
         # Load from config file if it exists
         if self.config_file.exists():
@@ -97,9 +165,17 @@ class ConfigManager:
                     file_config = yaml.safe_load(f) or {}
 
                 # Merge file config
-                for section in ["provider", "knowledge", "agent"]:
+                if "providers" in file_config:
+                    for provider in ["openai", "anthropic", "watsonx", "ollama"]:
+                        if provider in file_config["providers"]:
+                            config_data["providers"][provider].update(
+                                file_config["providers"][provider]
+                            )
+
+                for section in ["knowledge", "agent"]:
                     if section in file_config:
                         config_data[section].update(file_config[section])
+
                 config_data["edited"] = file_config.get("edited", False)
 
                 logger.info(f"Loaded configuration from {self.config_file}")
@@ -128,24 +204,31 @@ class ConfigManager:
             logger.debug("Skipping all env overrides - config marked as edited")
             return
 
-        # Provider settings
-        if os.getenv("MODEL_PROVIDER"):
-            config_data["provider"]["model_provider"] = os.getenv("MODEL_PROVIDER")
-        if os.getenv("PROVIDER_API_KEY"):
-            config_data["provider"]["api_key"] = os.getenv("PROVIDER_API_KEY")
-        if os.getenv("PROVIDER_ENDPOINT"):
-            config_data["provider"]["endpoint"] = os.getenv("PROVIDER_ENDPOINT")
-        if os.getenv("PROVIDER_PROJECT_ID"):
-            config_data["provider"]["project_id"] = os.getenv("PROVIDER_PROJECT_ID")
-        # Backward compatibility for OpenAI
+        # OpenAI provider settings
         if os.getenv("OPENAI_API_KEY"):
-            config_data["provider"]["api_key"] = os.getenv("OPENAI_API_KEY")
-            if not config_data["provider"].get("model_provider"):
-                config_data["provider"]["model_provider"] = "openai"
+            config_data["providers"]["openai"]["api_key"] = os.getenv("OPENAI_API_KEY")
+
+        # Anthropic provider settings
+        if os.getenv("ANTHROPIC_API_KEY"):
+            config_data["providers"]["anthropic"]["api_key"] = os.getenv("ANTHROPIC_API_KEY")
+
+        # WatsonX provider settings
+        if os.getenv("WATSONX_API_KEY"):
+            config_data["providers"]["watsonx"]["api_key"] = os.getenv("WATSONX_API_KEY")
+        if os.getenv("WATSONX_ENDPOINT"):
+            config_data["providers"]["watsonx"]["endpoint"] = os.getenv("WATSONX_ENDPOINT")
+        if os.getenv("WATSONX_PROJECT_ID"):
+            config_data["providers"]["watsonx"]["project_id"] = os.getenv("WATSONX_PROJECT_ID")
+
+        # Ollama provider settings
+        if os.getenv("OLLAMA_ENDPOINT"):
+            config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
 
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):
             config_data["knowledge"]["embedding_model"] = os.getenv("EMBEDDING_MODEL")
+        if os.getenv("EMBEDDING_PROVIDER"):
+            config_data["knowledge"]["embedding_provider"] = os.getenv("EMBEDDING_PROVIDER")
         if os.getenv("CHUNK_SIZE"):
             config_data["knowledge"]["chunk_size"] = int(os.getenv("CHUNK_SIZE"))
         if os.getenv("CHUNK_OVERLAP"):
@@ -164,6 +247,8 @@ class ConfigManager:
         # Agent settings
         if os.getenv("LLM_MODEL"):
             config_data["agent"]["llm_model"] = os.getenv("LLM_MODEL")
+        if os.getenv("LLM_PROVIDER"):
+            config_data["agent"]["llm_provider"] = os.getenv("LLM_PROVIDER")
         if os.getenv("SYSTEM_PROMPT"):
             config_data["agent"]["system_prompt"] = os.getenv("SYSTEM_PROMPT")
 

@@ -60,7 +60,7 @@ export function OnboardingContent({
 	const displayMessage = streamingMessage || assistantMessage;
 
 	useEffect(() => {
-		if (currentStep === 1 && !isLoading && !!displayMessage) {
+		if (currentStep === 2 && !isLoading && !!displayMessage) {
 			handleStepComplete();
 		}
 	}, [isLoading, displayMessage, handleStepComplete, currentStep]);
@@ -74,12 +74,12 @@ export function OnboardingContent({
 		>
 			<StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden px-8 py-6">
 				<div className="flex flex-col place-self-center w-full space-y-6">
-					{/* Step 1 */}
+					{/* Step 1 - LLM Provider */}
 					<OnboardingStep
 						isVisible={currentStep >= 0}
 						isCompleted={currentStep > 0}
 						showCompleted={true}
-						text="Let's get started by setting up your model provider."
+						text="Let's get started by setting up your LLM provider."
 					>
 						<OnboardingCard
 							onComplete={() => {
@@ -89,10 +89,26 @@ export function OnboardingContent({
 						/>
 					</OnboardingStep>
 
-					{/* Step 2 */}
+					{/* Step 2 - Embedding provider and ingestion */}
 					<OnboardingStep
 						isVisible={currentStep >= 1}
-						isCompleted={currentStep > 1 || !!selectedNudge}
+						isCompleted={currentStep > 1}
+						showCompleted={true}
+						text="Now, let's set up your embedding provider."
+					>
+						<OnboardingCard
+							isEmbedding={true}
+							onComplete={() => {
+								handleStepComplete();
+							}}
+							isCompleted={currentStep > 1}
+						/>
+					</OnboardingStep>
+
+					{/* Step 2 */}
+					<OnboardingStep
+						isVisible={currentStep >= 2}
+						isCompleted={currentStep > 2 || !!selectedNudge}
 						text="Excellent, let's move on to learning the basics."
 					>
 						<div className="py-2">
@@ -105,15 +121,15 @@ export function OnboardingContent({
 					</OnboardingStep>
 
 					{/* User message - show when nudge is selected */}
-					{currentStep >= 1 && !!selectedNudge && (
+					{currentStep >= 2 && !!selectedNudge && (
 						<UserMessage
 							content={selectedNudge}
-							isCompleted={currentStep > 2}
+							isCompleted={currentStep > 3}
 						/>
 					)}
 
 					{/* Assistant message - show streaming or final message */}
-					{currentStep >= 1 &&
+					{currentStep >= 2 &&
 						!!selectedNudge &&
 						(displayMessage || isLoading) && (
 							<AssistantMessage
@@ -123,14 +139,14 @@ export function OnboardingContent({
 								expandedFunctionCalls={new Set()}
 								onToggle={() => {}}
 								isStreaming={!!streamingMessage}
-								isCompleted={currentStep > 2}
+								isCompleted={currentStep > 3}
 							/>
 						)}
 					
 					{/* Step 3 */}
 					<OnboardingStep
-						isVisible={currentStep >= 2 && !isLoading && !!displayMessage}
-						isCompleted={currentStep > 2}
+						isVisible={currentStep >= 3 && !isLoading && !!displayMessage}
+						isCompleted={currentStep > 3}
 						text="Lastly, let's add your data."
 						hideIcon={true}
 					>

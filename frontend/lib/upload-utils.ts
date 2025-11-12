@@ -122,11 +122,6 @@ export async function uploadFile(
   file: File,
   replace = false
 ): Promise<UploadFileResult> {
-  window.dispatchEvent(
-    new CustomEvent("fileUploadStart", {
-      detail: { filename: file.name },
-    })
-  );
 
   try {
     const formData = new FormData();

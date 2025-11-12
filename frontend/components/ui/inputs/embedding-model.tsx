@@ -56,8 +56,8 @@ export const EmbeddingModelInput = ({
         </Tooltip>
         <SelectContent>
           <ModelSelectItems
-            models={modelsData?.embedding_models}
-            fallbackModels={getFallbackModels(currentProvider).embedding}
+            models={modelsData?.embedding_models || []}
+            fallbackModels={getFallbackModels(currentProvider).embedding || []}
             provider={currentProvider}
           />
         </SelectContent>

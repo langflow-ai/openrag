@@ -7,14 +7,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import {
   WatsonxSettingsForm,
   type WatsonxSettingsFormData,
 } from "./watsonx-settings-form";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import { useAuth } from "@/contexts/auth-context";
+import { useGetIBMModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
@@ -27,31 +27,34 @@ const WatsonxSettingsDialog = ({
   open: boolean;
   setOpen: (open: boolean) => void;
 }) => {
-  const { isAuthenticated, isNoAuthMode } = useAuth();
   const queryClient = useQueryClient();
-
-  const { data: settings = {} } = useGetSettingsQuery({
-    enabled: isAuthenticated || isNoAuthMode,
-  });
-
-  const isWatsonxConfigured = settings.provider?.model_provider === "watsonx";
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationError, setValidationError] = useState<Error | null>(null);
 
   const methods = useForm<WatsonxSettingsFormData>({
     mode: "onSubmit",
     defaultValues: {
-      endpoint: isWatsonxConfigured
-        ? settings.provider?.endpoint
-        : "https://us-south.ml.cloud.ibm.com",
+      endpoint: "https://us-south.ml.cloud.ibm.com",
       apiKey: "",
-      projectId: isWatsonxConfigured ? settings.provider?.project_id : "",
-      llmModel: isWatsonxConfigured ? settings.agent?.llm_model : "",
-      embeddingModel: isWatsonxConfigured
-        ? settings.knowledge?.embedding_model
-        : "",
+      projectId: "",
     },
   });
 
-  const { handleSubmit } = methods;
+  const { handleSubmit, watch } = methods;
+  const endpoint = watch("endpoint");
+  const apiKey = watch("apiKey");
+  const projectId = watch("projectId");
+
+  const { refetch: validateCredentials } = useGetIBMModelsQuery(
+    {
+      endpoint: endpoint,
+      apiKey: apiKey,
+      projectId: projectId,
+    },
+    {
+      enabled: false,
+    }
+  );
 
   const settingsMutation = useUpdateSettingsMutation({
     onSuccess: () => {
@@ -62,30 +65,39 @@ const WatsonxSettingsDialog = ({
         provider: "watsonx",
       };
       queryClient.setQueryData(["provider", "health"], healthData);
-      toast.success("watsonx settings updated successfully");
+      toast.success(
+        "watsonx credentials saved. Configure models in the Settings page."
+      );
       setOpen(false);
     },
   });
 
-  const onSubmit = (data: WatsonxSettingsFormData) => {
+  const onSubmit = async (data: WatsonxSettingsFormData) => {
+    // Clear any previous validation errors
+    setValidationError(null);
+
+    // Validate credentials by fetching models
+    setIsValidating(true);
+    const result = await validateCredentials();
+    setIsValidating(false);
+
+    if (result.isError) {
+      setValidationError(result.error);
+      return;
+    }
+
     const payload: {
-      endpoint: string;
-      api_key?: string;
-      project_id: string;
-      model_provider: string;
-      llm_model: string;
-      embedding_model: string;
+      watsonx_endpoint: string;
+      watsonx_api_key?: string;
+      watsonx_project_id: string;
     } = {
-      endpoint: data.endpoint,
-      project_id: data.projectId,
-      model_provider: "watsonx",
-      llm_model: data.llmModel,
-      embedding_model: data.embeddingModel,
+      watsonx_endpoint: data.endpoint,
+      watsonx_project_id: data.projectId,
     };
 
     // Only include api_key if a value was entered
     if (data.apiKey) {
-      payload.api_key = data.apiKey;
+      payload.watsonx_api_key = data.apiKey;
     }
 
     // Submit the update
@@ -106,8 +118,11 @@ const WatsonxSettingsDialog = ({
               </DialogTitle>
             </DialogHeader>
 
-            <WatsonxSettingsForm isCurrentProvider={isWatsonxConfigured} />
-           
+            <WatsonxSettingsForm
+              modelsError={validationError}
+              isLoadingModels={isValidating}
+            />
+
             <AnimatePresence mode="wait">
               {settingsMutation.isError && (
                 <motion.div
@@ -130,8 +145,15 @@ const WatsonxSettingsDialog = ({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={settingsMutation.isPending}>
-                {settingsMutation.isPending ? "Saving..." : "Save"}
+              <Button
+                type="submit"
+                disabled={settingsMutation.isPending || isValidating}
+              >
+                {settingsMutation.isPending
+                  ? "Saving..."
+                  : isValidating
+                  ? "Validating..."
+                  : "Save"}
               </Button>
             </DialogFooter>
           </form>

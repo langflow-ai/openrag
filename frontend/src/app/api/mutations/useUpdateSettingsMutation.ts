@@ -9,6 +9,7 @@ import { useGetCurrentProviderModelsQuery } from "../queries/useGetModelsQuery";
 export interface UpdateSettingsRequest {
   // Agent settings
   llm_model?: string;
+  llm_provider?: string;
   system_prompt?: string;
 
   // Knowledge settings
@@ -18,12 +19,21 @@ export interface UpdateSettingsRequest {
   ocr?: boolean;
   picture_descriptions?: boolean;
   embedding_model?: string;
+  embedding_provider?: string;
 
-  // Provider settings
-  model_provider?: string;
+  // Provider-specific settings (for dialogs)
+  model_provider?: string; // Deprecated, kept for backward compatibility
   api_key?: string;
   endpoint?: string;
   project_id?: string;
+
+  // Provider-specific API keys
+  openai_api_key?: string;
+  anthropic_api_key?: string;
+  watsonx_api_key?: string;
+  watsonx_endpoint?: string;
+  watsonx_project_id?: string;
+  ollama_endpoint?: string;
 }
 
 export interface UpdateSettingsResponse {

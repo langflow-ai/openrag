@@ -4,9 +4,9 @@ import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { useUpdateSettingsMutation } from "@/app/api/mutations/useUpdateSettingsMutation";
-import { useGetOpenAIModelsQuery } from "@/app/api/queries/useGetModelsQuery";
+import { useGetAnthropicModelsQuery } from "@/app/api/queries/useGetModelsQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
-import OpenAILogo from "@/components/logo/openai-logo";
+import AnthropicLogo from "@/components/logo/anthropic-logo";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,11 +16,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  OpenAISettingsForm,
-  type OpenAISettingsFormData,
-} from "./openai-settings-form";
+  AnthropicSettingsForm,
+  type AnthropicSettingsFormData,
+} from "./anthropic-settings-form";
 
-const OpenAISettingsDialog = ({
+const AnthropicSettingsDialog = ({
   open,
   setOpen,
 }: {
@@ -31,7 +31,7 @@ const OpenAISettingsDialog = ({
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<Error | null>(null);
 
-  const methods = useForm<OpenAISettingsFormData>({
+  const methods = useForm<AnthropicSettingsFormData>({
     mode: "onSubmit",
     defaultValues: {
       apiKey: "",
@@ -41,7 +41,7 @@ const OpenAISettingsDialog = ({
   const { handleSubmit, watch } = methods;
   const apiKey = watch("apiKey");
 
-  const { refetch: validateCredentials } = useGetOpenAIModelsQuery(
+  const { refetch: validateCredentials } = useGetAnthropicModelsQuery(
     {
       apiKey: apiKey,
     },
@@ -56,18 +56,18 @@ const OpenAISettingsDialog = ({
       const healthData: ProviderHealthResponse = {
         status: "healthy",
         message: "Provider is configured and working correctly",
-        provider: "openai",
+        provider: "anthropic",
       };
       queryClient.setQueryData(["provider", "health"], healthData);
 
       toast.success(
-        "OpenAI credentials saved. Configure models in the Settings page."
+        "Anthropic credentials saved. Configure models in the Settings page."
       );
       setOpen(false);
     },
   });
 
-  const onSubmit = async (data: OpenAISettingsFormData) => {
+  const onSubmit = async (data: AnthropicSettingsFormData) => {
     // Clear any previous validation errors
     setValidationError(null);
 
@@ -84,12 +84,12 @@ const OpenAISettingsDialog = ({
     }
 
     const payload: {
-      openai_api_key?: string;
+      anthropic_api_key?: string;
     } = {};
 
     // Only include api_key if a value was entered
     if (data.apiKey) {
-      payload.openai_api_key = data.apiKey;
+      payload.anthropic_api_key = data.apiKey;
     }
 
     // Submit the update
@@ -104,13 +104,13 @@ const OpenAISettingsDialog = ({
             <DialogHeader className="mb-2">
               <DialogTitle className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded flex items-center justify-center bg-white border">
-                  <OpenAILogo className="text-black" />
+                  <AnthropicLogo className="text-black" />
                 </div>
-                OpenAI Setup
+                Anthropic Setup
               </DialogTitle>
             </DialogHeader>
 
-            <OpenAISettingsForm
+            <AnthropicSettingsForm
               modelsError={validationError}
               isLoadingModels={isValidating}
             />
@@ -155,4 +155,4 @@ const OpenAISettingsDialog = ({
   );
 };
 
-export default OpenAISettingsDialog;
+export default AnthropicSettingsDialog;

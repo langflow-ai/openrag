@@ -31,6 +31,22 @@ class ModelsService:
         "o4-mini-high",
     ]
 
+    ANTHROPIC_MODELS = [
+        "claude-sonnet-4-5-20250929",
+        "claude-opus-4-1-20250805",
+        "claude-opus-4-20250514",
+        "claude-sonnet-4-20250514",
+        "claude-3-7-sonnet-latest",
+        "claude-3-5-sonnet-latest",
+        "claude-3-5-haiku-latest",
+        "claude-3-opus-latest",
+        "claude-3-sonnet-20240229",
+        "claude-3-5-sonnet-20240620",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+        "claude-3-haiku-20240307",
+    ]
+
     def __init__(self):
         self.session_manager = None
 
@@ -98,6 +114,64 @@ class ModelsService:
 
         except Exception as e:
             logger.error(f"Error fetching OpenAI models: {str(e)}")
+            raise
+
+    async def get_anthropic_models(self, api_key: str) -> Dict[str, List[Dict[str, str]]]:
+        """Fetch available models from Anthropic API"""
+        try:
+            headers = {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            }
+
+            # Anthropic doesn't have a models list endpoint, so we'll validate the key
+            # and return our curated list of models
+            async with httpx.AsyncClient() as client:
+                # Validate the API key with a minimal messages request
+                validation_payload = {
+                    "model": "claude-3-5-haiku-latest",
+                    "max_tokens": 1,
+                    "messages": [{"role": "user", "content": "test"}],
+                }
+
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers=headers,
+                    json=validation_payload,
+                    timeout=10.0,
+                )
+
+            if response.status_code == 200:
+                # API key is valid, return our curated list
+                language_models = []
+
+                for model_id in self.ANTHROPIC_MODELS:
+                    language_models.append(
+                        {
+                            "value": model_id,
+                            "label": model_id,
+                            "default": model_id == "claude-sonnet-4-5-20250929",
+                        }
+                    )
+
+                # Sort by default first, then by name
+                language_models.sort(
+                    key=lambda x: (not x.get("default", False), x["value"])
+                )
+
+                return {
+                    "language_models": language_models,
+                    "embedding_models": [],  # Anthropic doesn't provide embedding models
+                }
+            else:
+                logger.error(f"Failed to validate Anthropic API key: {response.status_code}")
+                raise Exception(
+                    f"Anthropic API returned status code {response.status_code}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error fetching Anthropic models: {str(e)}")
             raise
 
     async def get_ollama_models(

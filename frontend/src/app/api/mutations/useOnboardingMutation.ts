@@ -5,12 +5,23 @@ import {
 } from "@tanstack/react-query";
 
 export interface OnboardingVariables {
-  model_provider: string;
-  api_key?: string;
-  endpoint?: string;
-  project_id?: string;
-  embedding_model: string;
-  llm_model: string;
+  // Provider selection
+  llm_provider?: string;
+  embedding_provider?: string;
+
+  // Models
+  embedding_model?: string;
+  llm_model?: string;
+
+  // Provider-specific credentials
+  openai_api_key?: string;
+  anthropic_api_key?: string;
+  watsonx_api_key?: string;
+  watsonx_endpoint?: string;
+  watsonx_project_id?: string;
+  ollama_endpoint?: string;
+
+  // Sample data
   sample_data?: boolean;
 }
 
