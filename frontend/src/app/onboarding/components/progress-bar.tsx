@@ -14,7 +14,7 @@ export function ProgressBar({ currentStep, totalSteps, onSkip }: ProgressBarProp
     <div className="w-full flex items-center px-6 gap-4">
       <div className="flex-1" />
       <div className="flex items-center gap-3">
-        <div className="w-48 h-1 bg-background rounded-full overflow-hidden">
+        <div className="w-48 h-1 bg-background dark:bg-muted rounded-full overflow-hidden">
           <div
             className="h-full transition-all duration-300 ease-in-out"
             style={{

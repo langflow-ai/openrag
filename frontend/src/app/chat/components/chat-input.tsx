@@ -94,7 +94,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 			<div className="w-full">
 				<form onSubmit={onSubmit} className="relative">
 					{/* Outer container - flex-col to stack file preview above input */}
-					<div className="flex flex-col w-full gap-2 rounded-xl border border-input focus-within:ring-1 focus-within:ring-ring p-2">
+					<div className="flex flex-col w-full gap-2 rounded-xl border border-input hover:[&:not(:focus-within)]:border-muted-foreground focus-within:border-foreground p-2 transition-colors">
 						{/* File Preview Section - Always above */}
 						{uploadedFile && (
 							<FilePreview

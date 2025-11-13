@@ -137,7 +137,7 @@ const WatsonxSettingsDialog = ({
                 </motion.div>
               )}
             </AnimatePresence>
-            <DialogFooter>
+            <DialogFooter className="mt-4">
               <Button
                 variant="outline"
                 type="button"
