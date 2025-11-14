@@ -333,34 +333,6 @@ class ModelsService:
             if project_id:
                 headers["Project-ID"] = project_id
 
-            # Validate credentials with a minimal completion request
-            async with httpx.AsyncClient() as client:
-                validation_url = f"{watson_endpoint}/ml/v1/text/generation"
-                validation_params = {"version": "2024-09-16"}
-                validation_payload = {
-                    "input": "test",
-                    "model_id": "ibm/granite-3-2b-instruct",
-                    "project_id": project_id,
-                    "parameters": {
-                        "max_new_tokens": 1,
-                    },
-                }
-
-                validation_response = await client.post(
-                    validation_url,
-                    headers=headers,
-                    params=validation_params,
-                    json=validation_payload,
-                    timeout=10.0,
-                )
-
-                if validation_response.status_code != 200:
-                    raise Exception(
-                        f"Invalid credentials or endpoint: {validation_response.status_code} - {validation_response.text}"
-                    )
-
-                logger.info("IBM Watson credentials validated successfully")
-
             # Fetch foundation models using the correct endpoint
             models_url = f"{watson_endpoint}/ml/v1/foundation_model_specs"
 
@@ -423,6 +395,39 @@ class ModelsService:
                                 "default": i == 0,  # First model is default
                             }
                         )
+
+            # Validate credentials with the first available LLM model
+            if language_models:
+                first_llm_model = language_models[0]["value"]
+                
+                async with httpx.AsyncClient() as client:
+                    validation_url = f"{watson_endpoint}/ml/v1/text/generation"
+                    validation_params = {"version": "2024-09-16"}
+                    validation_payload = {
+                        "input": "test",
+                        "model_id": first_llm_model,
+                        "project_id": project_id,
+                        "parameters": {
+                            "max_new_tokens": 1,
+                        },
+                    }
+
+                    validation_response = await client.post(
+                        validation_url,
+                        headers=headers,
+                        params=validation_params,
+                        json=validation_payload,
+                        timeout=10.0,
+                    )
+
+                    if validation_response.status_code != 200:
+                        raise Exception(
+                            f"Invalid credentials or endpoint: {validation_response.status_code} - {validation_response.text}"
+                        )
+
+                    logger.info(f"IBM Watson credentials validated successfully using model: {first_llm_model}")
+            else:
+                logger.warning("No language models available to validate credentials")
 
             if not language_models and not embedding_models:
                 raise Exception("No IBM models retrieved from API")
