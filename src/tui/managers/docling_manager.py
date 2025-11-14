@@ -34,6 +34,7 @@ class DoclingManager:
         # Bind to all interfaces by default (can be overridden with DOCLING_BIND_HOST env var)
         self._host = os.getenv('DOCLING_BIND_HOST', '0.0.0.0')
         self._running = False
+        self._starting = False
         self._external_process = False
 
         # PID file to track docling-serve across sessions (in current working directory)
@@ -126,6 +127,7 @@ class DoclingManager:
         if self._process is not None and self._process.poll() is None:
             self._running = True
             self._external_process = False
+            self._starting = False  # Clear starting flag if service is running
             return True
 
         # Check if we have a PID from file
@@ -133,6 +135,7 @@ class DoclingManager:
         if pid is not None and self._is_process_running(pid):
             self._running = True
             self._external_process = True
+            self._starting = False  # Clear starting flag if service is running
             return True
 
         # No running process found
@@ -142,6 +145,19 @@ class DoclingManager:
     
     def get_status(self) -> Dict[str, Any]:
         """Get current status of docling serve."""
+        # Check for starting state first
+        if self._starting:
+            display_host = "localhost" if self._host == "0.0.0.0" else self._host
+            return {
+                "status": "starting",
+                "port": self._port,
+                "host": self._host,
+                "endpoint": None,
+                "docs_url": None,
+                "ui_url": None,
+                "pid": None
+            }
+
         if self.is_running():
             # Try to get PID from process handle first, then from PID file
             pid = None
@@ -195,6 +211,9 @@ class DoclingManager:
                 return False, f"Port {self._port} on {self._host} is already in use by another process. Please stop it first."
         except Exception as e:
             self._add_log_entry(f"Error checking port availability: {e}")
+
+        # Set starting flag to show "Starting" status in UI
+        self._starting = True
 
         # Clear log buffer when starting
         self._log_buffer = []
@@ -261,6 +280,8 @@ class DoclingManager:
 
                     if result == 0:
                         self._add_log_entry(f"Docling-serve is now listening on {self._host}:{self._port}")
+                        # Service is now running, clear starting flag
+                        self._starting = False
                         break
                 except:
                     pass
@@ -294,16 +315,24 @@ class DoclingManager:
                     self._add_log_entry(f"Error reading final output: {e}")
 
                 self._running = False
+                self._starting = False
                 return False, f"Docling serve process exited immediately (code: {return_code})"
+
+            # If we get here and the process is still running but not listening yet,
+            # clear the starting flag anyway (it's running, just not ready)
+            if self._process.poll() is None:
+                self._starting = False
 
             display_host = "localhost" if self._host == "0.0.0.0" else self._host
             return True, f"Docling serve starting on http://{display_host}:{port}"
 
         except FileNotFoundError:
+            self._starting = False
             return False, "docling-serve not available. Please install: uv add docling-serve"
         except Exception as e:
             self._running = False
             self._process = None
+            self._starting = False
             return False, f"Error starting docling serve: {str(e)}"
 
     def _start_output_capture(self):

@@ -206,10 +206,21 @@ class MonitorScreen(Screen):
 
         # Add docling serve to its own table
         docling_status = self.docling_manager.get_status()
-        docling_running = docling_status["status"] == "running"
-        docling_status_text = "running" if docling_running else "stopped"
-        docling_style = "bold green" if docling_running else "bold red"
-        docling_port = f"{docling_status['host']}:{docling_status['port']}" if docling_running else "N/A"
+        docling_status_value = docling_status["status"]
+        docling_running = docling_status_value == "running"
+        docling_starting = docling_status_value == "starting"
+        
+        if docling_running:
+            docling_status_text = "running"
+            docling_style = "bold green"
+        elif docling_starting:
+            docling_status_text = "starting"
+            docling_style = "bold yellow"
+        else:
+            docling_status_text = "stopped"
+            docling_style = "bold red"
+        
+        docling_port = f"{docling_status['host']}:{docling_status['port']}" if (docling_running or docling_starting) else "N/A"
         docling_pid = str(docling_status.get("pid")) if docling_status.get("pid") else "N/A"
 
         if self.docling_table:
@@ -375,15 +386,25 @@ class MonitorScreen(Screen):
         """Start docling serve."""
         self.operation_in_progress = True
         try:
-            success, message = await self.docling_manager.start()
+            # Start the service (this sets _starting = True internally at the start)
+            # Create task and let it begin executing (which sets the flag)
+            start_task = asyncio.create_task(self.docling_manager.start())
+            # Give it a tiny moment to set the _starting flag
+            await asyncio.sleep(0.1)
+            # Refresh immediately to show "Starting" status
+            await self._refresh_services()
+            # Now wait for start to complete
+            success, message = await start_task
             if success:
                 self.notify(message, severity="information")
             else:
                 self.notify(f"Failed to start docling serve: {message}", severity="error")
-            # Refresh the services table to show updated status
+            # Refresh again to show final status (running or stopped)
             await self._refresh_services()
         except Exception as e:
             self.notify(f"Error starting docling serve: {str(e)}", severity="error")
+            # Refresh on error to clear starting status
+            await self._refresh_services()
         finally:
             self.operation_in_progress = False
 
@@ -646,7 +667,11 @@ class MonitorScreen(Screen):
             suffix = f"-{random.randint(10000, 99999)}"
 
             # Add docling serve controls
-            docling_running = self.docling_manager.is_running()
+            docling_status = self.docling_manager.get_status()
+            docling_status_value = docling_status["status"]
+            docling_running = docling_status_value == "running"
+            docling_starting = docling_status_value == "starting"
+            
             if docling_running:
                 docling_controls.mount(
                     Button("Stop", variant="error", id=f"docling-stop-btn{suffix}")
@@ -654,6 +679,11 @@ class MonitorScreen(Screen):
                 docling_controls.mount(
                     Button("Restart", variant="primary", id=f"docling-restart-btn{suffix}")
                 )
+            elif docling_starting:
+                # Show disabled button or no button when starting
+                start_btn = Button("Starting...", variant="warning", id=f"docling-start-btn{suffix}")
+                start_btn.disabled = True
+                docling_controls.mount(start_btn)
             else:
                 docling_controls.mount(
                     Button("Start", variant="success", id=f"docling-start-btn{suffix}")

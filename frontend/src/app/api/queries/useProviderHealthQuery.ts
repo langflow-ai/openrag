@@ -92,6 +92,13 @@ export const useProviderHealthQuery = (
       queryKey: ["provider", "health"],
       queryFn: checkProviderHealth,
       retry: false, // Don't retry health checks automatically
+      refetchInterval: (query) => {
+        // If healthy, check every 30 seconds; otherwise check every 3 seconds
+        return query.state.data?.status === "healthy" ? 30000 : 3000;
+      },
+      refetchOnWindowFocus: true,
+      refetchOnMount: true,
+      staleTime: 30000, // Consider data stale after 25 seconds
       enabled: !!settings?.edited && options?.enabled !== false, // Only run after onboarding is complete
       ...options,
     },

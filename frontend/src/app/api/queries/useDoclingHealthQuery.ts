@@ -56,8 +56,13 @@ export const useDoclingHealthQuery = (
       queryKey: ["docling-health"],
       queryFn: checkDoclingHealth,
       retry: 1,
-      refetchInterval: 30000, // Check every 30 seconds
-      staleTime: 25000, // Consider data stale after 25 seconds
+      refetchInterval: (query) => {
+        // If healthy, check every 30 seconds; otherwise check every 3 seconds
+        return query.state.data?.status === "healthy" ? 30000 : 3000;
+      },
+      refetchOnWindowFocus: true,
+      refetchOnMount: true,
+      staleTime: 30000, // Consider data stale after 25 seconds
       ...options,
     },
     queryClient,
