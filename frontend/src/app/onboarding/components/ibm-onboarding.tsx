@@ -73,13 +73,11 @@ export function IBMOnboarding({
     error: modelsError,
   } = useGetIBMModelsQuery(
     {
-      endpoint: debouncedEndpoint,
-      apiKey: debouncedApiKey,
-      projectId: debouncedProjectId,
+      endpoint: debouncedEndpoint ? debouncedEndpoint : undefined,
+      apiKey: debouncedApiKey ? debouncedApiKey : undefined,
+      projectId: debouncedProjectId ? debouncedProjectId : undefined,
     },
-    {
-      enabled: !!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId,
-    },
+    { enabled: !!debouncedEndpoint || !!debouncedApiKey || !!debouncedProjectId || alreadyConfigured },
   );
 
   // Use custom hook for model selection logic

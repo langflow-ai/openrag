@@ -1,6 +1,5 @@
 import httpx
 from typing import Dict, List
-from api.provider_validation import test_embedding
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -229,20 +228,14 @@ class ModelsService:
                             f"Model: {model_name}, Capabilities: {capabilities}"
                         )
 
-                        # Check if model has required capabilities
+                        # Check if model has embedding capability
+                        has_embedding = "embedding" in capabilities
+                        # Check if model has required capabilities for language models
                         has_completion = DESIRED_CAPABILITY in capabilities
                         has_tools = TOOL_CALLING_CAPABILITY in capabilities
 
-                        # Check if it's an embedding model
-                        try:
-                            await test_embedding("ollama", endpoint=endpoint, embedding_model=model_name)
-                            is_embedding = True
-                        except Exception as e:
-                            logger.warning(f"Failed to test embedding for model {model_name}: {str(e)}")
-                            is_embedding = False
-
-                        if is_embedding:
-                            # Embedding models only need completion capability
+                        if has_embedding:
+                            # Embedding models have embedding capability
                             embedding_models.append(
                                 {
                                     "value": model_name,
@@ -250,7 +243,7 @@ class ModelsService:
                                     "default": "nomic-embed-text" in model_name.lower(),
                                 }
                             )
-                        elif not is_embedding and has_completion and has_tools:
+                        if has_completion and has_tools:
                             # Language models need both completion and tool calling
                             language_models.append(
                                 {
@@ -333,34 +326,6 @@ class ModelsService:
             if project_id:
                 headers["Project-ID"] = project_id
 
-            # Validate credentials with a minimal completion request
-            async with httpx.AsyncClient() as client:
-                validation_url = f"{watson_endpoint}/ml/v1/text/generation"
-                validation_params = {"version": "2024-09-16"}
-                validation_payload = {
-                    "input": "test",
-                    "model_id": "ibm/granite-3-2b-instruct",
-                    "project_id": project_id,
-                    "parameters": {
-                        "max_new_tokens": 1,
-                    },
-                }
-
-                validation_response = await client.post(
-                    validation_url,
-                    headers=headers,
-                    params=validation_params,
-                    json=validation_payload,
-                    timeout=10.0,
-                )
-
-                if validation_response.status_code != 200:
-                    raise Exception(
-                        f"Invalid credentials or endpoint: {validation_response.status_code} - {validation_response.text}"
-                    )
-
-                logger.info("IBM Watson credentials validated successfully")
-
             # Fetch foundation models using the correct endpoint
             models_url = f"{watson_endpoint}/ml/v1/foundation_model_specs"
 
@@ -423,6 +388,39 @@ class ModelsService:
                                 "default": i == 0,  # First model is default
                             }
                         )
+
+            # Validate credentials with the first available LLM model
+            if language_models:
+                first_llm_model = language_models[0]["value"]
+                
+                async with httpx.AsyncClient() as client:
+                    validation_url = f"{watson_endpoint}/ml/v1/text/generation"
+                    validation_params = {"version": "2024-09-16"}
+                    validation_payload = {
+                        "input": "test",
+                        "model_id": first_llm_model,
+                        "project_id": project_id,
+                        "parameters": {
+                            "max_new_tokens": 1,
+                        },
+                    }
+
+                    validation_response = await client.post(
+                        validation_url,
+                        headers=headers,
+                        params=validation_params,
+                        json=validation_payload,
+                        timeout=10.0,
+                    )
+
+                    if validation_response.status_code != 200:
+                        raise Exception(
+                            f"Invalid credentials or endpoint: {validation_response.status_code} - {validation_response.text}"
+                        )
+
+                    logger.info(f"IBM Watson credentials validated successfully using model: {first_llm_model}")
+            else:
+                logger.warning("No language models available to validate credentials")
 
             if not language_models and not embedding_models:
                 raise Exception("No IBM models retrieved from API")

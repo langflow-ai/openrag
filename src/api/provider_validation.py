@@ -112,7 +112,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
         }
 
         # Simple tool calling test
-        payload = {
+        base_payload = {
             "model": llm_model,
             "messages": [
                 {"role": "user", "content": "What tools do you have available?"}
@@ -136,16 +136,28 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
                     }
                 }
             ],
-            "max_tokens": 50,
         }
 
         async with httpx.AsyncClient() as client:
+            # Try with max_tokens first
+            payload = {**base_payload, "max_tokens": 50}
             response = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers=headers,
                 json=payload,
                 timeout=30.0,
             )
+
+            # If max_tokens doesn't work, try with max_completion_tokens
+            if response.status_code != 200:
+                logger.info("max_tokens parameter failed, trying max_completion_tokens instead")
+                payload = {**base_payload, "max_completion_tokens": 50}
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=30.0,
+                )
 
             if response.status_code != 200:
                 logger.error(f"OpenAI completion test failed: {response.status_code} - {response.text}")
