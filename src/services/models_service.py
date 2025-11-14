@@ -1,6 +1,5 @@
 import httpx
 from typing import Dict, List
-from api.provider_validation import test_embedding
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -229,20 +228,14 @@ class ModelsService:
                             f"Model: {model_name}, Capabilities: {capabilities}"
                         )
 
-                        # Check if model has required capabilities
+                        # Check if model has embedding capability
+                        has_embedding = "embedding" in capabilities
+                        # Check if model has required capabilities for language models
                         has_completion = DESIRED_CAPABILITY in capabilities
                         has_tools = TOOL_CALLING_CAPABILITY in capabilities
 
-                        # Check if it's an embedding model
-                        try:
-                            await test_embedding("ollama", endpoint=endpoint, embedding_model=model_name)
-                            is_embedding = True
-                        except Exception as e:
-                            logger.warning(f"Failed to test embedding for model {model_name}: {str(e)}")
-                            is_embedding = False
-
-                        if is_embedding:
-                            # Embedding models only need completion capability
+                        if has_embedding:
+                            # Embedding models have embedding capability
                             embedding_models.append(
                                 {
                                     "value": model_name,
@@ -250,7 +243,7 @@ class ModelsService:
                                     "default": "nomic-embed-text" in model_name.lower(),
                                 }
                             )
-                        elif not is_embedding and has_completion and has_tools:
+                        if has_completion and has_tools:
                             # Language models need both completion and tool calling
                             language_models.append(
                                 {
