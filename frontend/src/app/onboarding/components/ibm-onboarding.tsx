@@ -73,12 +73,9 @@ export function IBMOnboarding({
     error: modelsError,
   } = useGetIBMModelsQuery(
     {
-      endpoint: debouncedEndpoint,
-      apiKey: debouncedApiKey,
-      projectId: debouncedProjectId,
-    },
-    {
-      enabled: !!debouncedEndpoint && !!debouncedApiKey && !!debouncedProjectId,
+      endpoint: debouncedEndpoint ? debouncedEndpoint : undefined,
+      apiKey: debouncedApiKey ? debouncedApiKey : undefined,
+      projectId: debouncedProjectId ? debouncedProjectId : undefined,
     },
   );
 
