@@ -31,7 +31,7 @@ export interface UnifiedCloudPickerProps {
 export interface GoogleAPI {
   load: (
     api: string,
-    options: { callback: () => void; onerror?: () => void }
+    options: { callback: () => void; onerror?: () => void },
   ) => void;
 }
 
@@ -93,7 +93,7 @@ export interface GooglePickerBuilder {
   addView: (view: GoogleDocsView | string) => GooglePickerBuilder;
   setOAuthToken: (token: string) => GooglePickerBuilder;
   setCallback: (
-    callback: (data: GooglePickerData) => void
+    callback: (data: GooglePickerData) => void,
   ) => GooglePickerBuilder;
   enableFeature: (feature: string) => GooglePickerBuilder;
   setTitle: (title: string) => GooglePickerBuilder;

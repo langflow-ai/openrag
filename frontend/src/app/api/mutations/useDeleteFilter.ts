@@ -19,7 +19,8 @@ async function deleteFilter(
   const json = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const errorMessage = (json && (json.error as string)) || "Failed to delete knowledge filter";
+    const errorMessage =
+      (json && (json.error as string)) || "Failed to delete knowledge filter";
     throw new Error(errorMessage);
   }
 

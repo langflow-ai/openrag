@@ -43,7 +43,7 @@ function ChunksPageContent() {
     () =>
       chunks.reduce((acc, chunk) => acc + chunk.text.length, 0) /
         chunks.length || 0,
-    [chunks]
+    [chunks],
   );
 
   // const [selectAll, setSelectAll] = useState(false);
@@ -51,7 +51,7 @@ function ChunksPageContent() {
   // Use the same search query as the knowledge page, but we'll filter for the specific file
   const { data = [], isFetching } = useGetSearchQuery(
     queryOverride,
-    parsedFilterData
+    parsedFilterData,
   );
 
   const handleCopy = useCallback((text: string, index: number) => {
@@ -62,7 +62,7 @@ function ChunksPageContent() {
   }, []);
 
   const fileData = (data as File[]).find(
-    (file: File) => file.filename === filename
+    (file: File) => file.filename === filename,
   );
 
   // Extract chunks for the specific file
@@ -73,7 +73,7 @@ function ChunksPageContent() {
     }
 
     setChunks(
-      fileData?.chunks?.map((chunk, i) => ({ ...chunk, index: i + 1 })) || []
+      fileData?.chunks?.map((chunk, i) => ({ ...chunk, index: i + 1 })) || [],
     );
   }, [data, filename]);
 

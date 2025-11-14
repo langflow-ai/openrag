@@ -1,5 +1,9 @@
 import { SelectItem } from "@/components/ui/select";
-import { getModelLogo, type ModelProvider, type ModelOption } from "./model-helpers";
+import {
+  getModelLogo,
+  type ModelProvider,
+  type ModelOption,
+} from "./model-helpers";
 
 interface ModelSelectItemProps {
   model: ModelOption;
@@ -23,7 +27,11 @@ interface ModelSelectItemsProps {
   provider: ModelProvider;
 }
 
-export function ModelSelectItems({ models, fallbackModels, provider }: ModelSelectItemsProps) {
+export function ModelSelectItems({
+  models,
+  fallbackModels,
+  provider,
+}: ModelSelectItemsProps) {
   const modelsToRender = models || fallbackModels;
 
   return (

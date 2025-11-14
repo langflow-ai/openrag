@@ -32,11 +32,7 @@ interface OnboardingResponse {
 
 export const useOnboardingMutation = (
   options?: Omit<
-    UseMutationOptions<
-      OnboardingResponse,
-      Error,
-      OnboardingVariables
-    >,
+    UseMutationOptions<OnboardingResponse, Error, OnboardingVariables>,
     "mutationFn"
   >,
 ) => {

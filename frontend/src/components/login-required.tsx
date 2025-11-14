@@ -1,22 +1,28 @@
-"use client"
+"use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { useAuth } from "@/contexts/auth-context"
-import { Lock, LogIn } from "lucide-react"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/auth-context";
+import { Lock, LogIn } from "lucide-react";
 
 interface LoginRequiredProps {
-  title?: string
-  description?: string
-  feature?: string
+  title?: string;
+  description?: string;
+  feature?: string;
 }
 
-export function LoginRequired({ 
-  title = "Authentication Required", 
+export function LoginRequired({
+  title = "Authentication Required",
   description = "You need to sign in to access this feature",
-  feature 
+  feature,
 }: LoginRequiredProps) {
-  const { login } = useAuth()
+  const { login } = useAuth();
 
   return (
     <div className="flex items-center justify-center min-h-[400px]">
@@ -38,5 +44,5 @@ export function LoginRequired({
         </CardContent>
       </Card>
     </div>
-  )
-} 
+  );
+}

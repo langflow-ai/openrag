@@ -39,7 +39,7 @@ export default function ConnectorsPage() {
         selected_files?: string[];
       } = {
         connection_id: connector.connectionId,
-        selected_files: selectedFiles.map(file => file.id),
+        selected_files: selectedFiles.map((file) => file.id),
       };
 
       const response = await fetch(`/api/connectors/${connector.type}/sync`, {

@@ -10,7 +10,10 @@ export interface DoclingHealthResponse {
 }
 
 export const useDoclingHealthQuery = (
-  options?: Omit<UseQueryOptions<DoclingHealthResponse>, "queryKey" | "queryFn">,
+  options?: Omit<
+    UseQueryOptions<DoclingHealthResponse>,
+    "queryKey" | "queryFn"
+  >,
 ) => {
   const queryClient = useQueryClient();
 

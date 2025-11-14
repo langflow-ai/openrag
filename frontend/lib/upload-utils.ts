@@ -13,16 +13,16 @@ export interface UploadFileResult {
 }
 
 export async function duplicateCheck(
-  file: File
+  file: File,
 ): Promise<DuplicateCheckResponse> {
   const response = await fetch(
-    `/api/documents/check-filename?filename=${encodeURIComponent(file.name)}`
+    `/api/documents/check-filename?filename=${encodeURIComponent(file.name)}`,
   );
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(
-      errorText || `Failed to check duplicates: ${response.statusText}`
+      errorText || `Failed to check duplicates: ${response.statusText}`,
     );
   }
 
@@ -30,12 +30,12 @@ export async function duplicateCheck(
 }
 
 export async function uploadFileForContext(
-  file: File
+  file: File,
 ): Promise<UploadFileResult> {
   window.dispatchEvent(
     new CustomEvent("fileUploadStart", {
       detail: { filename: file.name },
-    })
+    }),
   );
 
   try {
@@ -59,8 +59,7 @@ export async function uploadFileForContext(
 
     if (!uploadResponse.ok) {
       const errorMessage =
-        (uploadJson as { error?: string }).error ||
-        "Upload failed";
+        (uploadJson as { error?: string }).error || "Upload failed";
       throw new Error(errorMessage);
     }
 
@@ -69,7 +68,8 @@ export async function uploadFileForContext(
     const filePath =
       (uploadJson as { filename?: string }).filename || file.name;
     const pages = (uploadJson as { pages?: number }).pages;
-    const contentLength = (uploadJson as { content_length?: number }).content_length;
+    const contentLength = (uploadJson as { content_length?: number })
+      .content_length;
     const confirmation = (uploadJson as { confirmation?: string }).confirmation;
 
     const result: UploadFileResult = {
@@ -98,7 +98,7 @@ export async function uploadFileForContext(
             unified: false,
           },
         },
-      })
+      }),
     );
 
     return result;
@@ -107,10 +107,9 @@ export async function uploadFileForContext(
       new CustomEvent("fileUploadError", {
         detail: {
           filename: file.name,
-          error:
-            error instanceof Error ? error.message : "Upload failed",
+          error: error instanceof Error ? error.message : "Upload failed",
         },
-      })
+      }),
     );
     throw error;
   } finally {
@@ -120,9 +119,8 @@ export async function uploadFileForContext(
 
 export async function uploadFile(
   file: File,
-  replace = false
+  replace = false,
 ): Promise<UploadFileResult> {
-
   try {
     const formData = new FormData();
     formData.append("file", file);
@@ -173,10 +171,9 @@ export async function uploadFile(
       (runJson as { status?: string }).status !== "SUCCESS"
     ) {
       const errorMsg =
-        (runJson as { error?: string }).error ||
-        "Ingestion pipeline failed";
+        (runJson as { error?: string }).error || "Ingestion pipeline failed";
       throw new Error(
-        `Ingestion failed: ${errorMsg}. Try setting DISABLE_INGEST_WITH_LANGFLOW=true if you're experiencing Langflow component issues.`
+        `Ingestion failed: ${errorMsg}. Try setting DISABLE_INGEST_WITH_LANGFLOW=true if you're experiencing Langflow component issues.`,
       );
     }
 
@@ -195,10 +192,9 @@ export async function uploadFile(
       new CustomEvent("fileUploadError", {
         detail: {
           filename: file.name,
-          error:
-            error instanceof Error ? error.message : "Upload failed",
+          error: error instanceof Error ? error.message : "Upload failed",
         },
-      })
+      }),
     );
     throw error;
   } finally {

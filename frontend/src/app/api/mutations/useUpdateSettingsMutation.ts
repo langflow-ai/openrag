@@ -45,13 +45,13 @@ export const useUpdateSettingsMutation = (
   options?: Omit<
     UseMutationOptions<UpdateSettingsResponse, Error, UpdateSettingsRequest>,
     "mutationFn"
-  >
+  >,
 ) => {
   const queryClient = useQueryClient();
   const { refetch: refetchModels } = useGetCurrentProviderModelsQuery();
 
   async function updateSettings(
-    variables: UpdateSettingsRequest
+    variables: UpdateSettingsRequest,
   ): Promise<UpdateSettingsResponse> {
     const response = await fetch("/api/settings", {
       method: "POST",
@@ -72,8 +72,8 @@ export const useUpdateSettingsMutation = (
   return useMutation({
     mutationFn: updateSettings,
     onSuccess: (...args) => {
-      queryClient.invalidateQueries({ 
-        queryKey: ["settings"], 
+      queryClient.invalidateQueries({
+        queryKey: ["settings"],
       });
       refetchModels(); // Refetch models for the settings page
       options?.onSuccess?.(...args);

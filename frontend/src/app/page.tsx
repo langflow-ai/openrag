@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { ProtectedRoute } from "@/components/protected-route"
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ProtectedRoute } from "@/components/protected-route";
 
 function HomePage() {
-  const router = useRouter()
+  const router = useRouter();
 
   useEffect(() => {
     // Redirect to chat page - the new home page
-    router.replace("/chat")
-  }, [router])
+    router.replace("/chat");
+  }, [router]);
 
-  return null
+  return null;
 }
 
 export default function ProtectedHomePage() {
@@ -20,5 +20,5 @@ export default function ProtectedHomePage() {
     <ProtectedRoute>
       <HomePage />
     </ProtectedRoute>
-  )
+  );
 }

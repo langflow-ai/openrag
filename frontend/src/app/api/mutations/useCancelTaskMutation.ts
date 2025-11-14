@@ -17,7 +17,7 @@ export const useCancelTaskMutation = (
   options?: Omit<
     UseMutationOptions<CancelTaskResponse, Error, CancelTaskRequest>,
     "mutationFn"
-  >
+  >,
 ) => {
   const queryClient = useQueryClient();
 

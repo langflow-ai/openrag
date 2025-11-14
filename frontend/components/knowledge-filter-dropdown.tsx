@@ -1,54 +1,65 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useRef } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
+import { useState, useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { ChevronDown, Filter, Search, X, Loader2, Plus, Save } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  ChevronDown,
+  Filter,
+  Search,
+  X,
+  Loader2,
+  Plus,
+  Save,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface KnowledgeFilter {
-  id: string
-  name: string
-  description: string
-  query_data: string
-  owner: string
-  created_at: string
-  updated_at: string
+  id: string;
+  name: string;
+  description: string;
+  query_data: string;
+  owner: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface ParsedQueryData {
-  query: string
+  query: string;
   filters: {
-    data_sources: string[]
-    document_types: string[]
-    owners: string[]
-  }
-  limit: number
-  scoreThreshold: number
+    data_sources: string[];
+    document_types: string[];
+    owners: string[];
+  };
+  limit: number;
+  scoreThreshold: number;
 }
 
 interface KnowledgeFilterDropdownProps {
-  selectedFilter: KnowledgeFilter | null
-  onFilterSelect: (filter: KnowledgeFilter | null) => void
+  selectedFilter: KnowledgeFilter | null;
+  onFilterSelect: (filter: KnowledgeFilter | null) => void;
 }
 
-export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: KnowledgeFilterDropdownProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [filters, setFilters] = useState<KnowledgeFilter[]>([])
-  const [loading, setLoading] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [createName, setCreateName] = useState("")
-  const [createDescription, setCreateDescription] = useState("")
-  const [creating, setCreating] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+export function KnowledgeFilterDropdown({
+  selectedFilter,
+  onFilterSelect,
+}: KnowledgeFilterDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [filters, setFilters] = useState<KnowledgeFilter[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
+  const [creating, setCreating] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const loadFilters = async (query = "") => {
-    setLoading(true)
+    setLoading(true);
     try {
       const response = await fetch("/api/knowledge-filter/search", {
         method: "POST",
@@ -57,68 +68,68 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
         },
         body: JSON.stringify({
           query,
-          limit: 20 // Limit for dropdown
+          limit: 20, // Limit for dropdown
         }),
-      })
+      });
 
-      const result = await response.json()
+      const result = await response.json();
       if (response.ok && result.success) {
-        setFilters(result.filters)
+        setFilters(result.filters);
       } else {
-        console.error("Failed to load knowledge filters:", result.error)
-        setFilters([])
+        console.error("Failed to load knowledge filters:", result.error);
+        setFilters([]);
       }
     } catch (error) {
-      console.error("Error loading knowledge filters:", error)
-      setFilters([])
+      console.error("Error loading knowledge filters:", error);
+      setFilters([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const deleteFilter = async (filterId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    
+    e.stopPropagation();
+
     try {
       const response = await fetch(`/api/knowledge-filter/${filterId}`, {
         method: "DELETE",
-      })
+      });
 
       if (response.ok) {
         // Remove from local state
-        setFilters(prev => prev.filter(f => f.id !== filterId))
-        
+        setFilters((prev) => prev.filter((f) => f.id !== filterId));
+
         // If this was the selected filter, clear selection
         if (selectedFilter?.id === filterId) {
-          onFilterSelect(null)
+          onFilterSelect(null);
         }
       } else {
-        console.error("Failed to delete knowledge filter")
+        console.error("Failed to delete knowledge filter");
       }
     } catch (error) {
-      console.error("Error deleting knowledge filter:", error)
+      console.error("Error deleting knowledge filter:", error);
     }
-  }
+  };
 
   const handleFilterSelect = (filter: KnowledgeFilter) => {
-    onFilterSelect(filter)
-    setIsOpen(false)
-  }
+    onFilterSelect(filter);
+    setIsOpen(false);
+  };
 
   const handleClearFilter = () => {
-    onFilterSelect(null)
-    setIsOpen(false)
-  }
+    onFilterSelect(null);
+    setIsOpen(false);
+  };
 
   const handleCreateNew = () => {
-    setIsOpen(false)
-    setShowCreateModal(true)
-  }
+    setIsOpen(false);
+    setShowCreateModal(true);
+  };
 
   const handleCreateFilter = async () => {
-    if (!createName.trim()) return
+    if (!createName.trim()) return;
 
-    setCreating(true)
+    setCreating(true);
     try {
       // Create a basic filter with wildcards (match everything by default)
       const defaultFilterData = {
@@ -126,11 +137,11 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
         filters: {
           data_sources: ["*"],
           document_types: ["*"],
-          owners: ["*"]
+          owners: ["*"],
         },
         limit: 10,
-        scoreThreshold: 0
-      }
+        scoreThreshold: 0,
+      };
 
       const response = await fetch("/api/knowledge-filter", {
         method: "POST",
@@ -140,11 +151,11 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
         body: JSON.stringify({
           name: createName.trim(),
           description: createDescription.trim(),
-          queryData: JSON.stringify(defaultFilterData)
+          queryData: JSON.stringify(defaultFilterData),
         }),
-      })
+      });
 
-      const result = await response.json()
+      const result = await response.json();
       if (response.ok && result.success) {
         // Create the new filter object
         const newFilter: KnowledgeFilter = {
@@ -154,78 +165,84 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
           query_data: JSON.stringify(defaultFilterData),
           owner: result.filter.owner,
           created_at: result.filter.created_at,
-          updated_at: result.filter.updated_at
-        }
+          updated_at: result.filter.updated_at,
+        };
 
         // Add to local filters list
-        setFilters(prev => [newFilter, ...prev])
-        
+        setFilters((prev) => [newFilter, ...prev]);
+
         // Select the new filter
-        onFilterSelect(newFilter)
-        
+        onFilterSelect(newFilter);
+
         // Close modal and reset form
-        setShowCreateModal(false)
-        setCreateName("")
-        setCreateDescription("")
+        setShowCreateModal(false);
+        setCreateName("");
+        setCreateDescription("");
       } else {
-        console.error("Failed to create knowledge filter:", result.error)
+        console.error("Failed to create knowledge filter:", result.error);
       }
     } catch (error) {
-      console.error("Error creating knowledge filter:", error)
+      console.error("Error creating knowledge filter:", error);
     } finally {
-      setCreating(false)
+      setCreating(false);
     }
-  }
+  };
 
   const handleCancelCreate = () => {
-    setShowCreateModal(false)
-    setCreateName("")
-    setCreateDescription("")
-  }
+    setShowCreateModal(false);
+    setCreateName("");
+    setCreateDescription("");
+  };
 
   const getFilterSummary = (filter: KnowledgeFilter): string => {
     try {
-      const parsed = JSON.parse(filter.query_data) as ParsedQueryData
-      const parts = []
-      
-      if (parsed.query) parts.push(`"${parsed.query}"`)
-      if (parsed.filters.data_sources.length > 0) parts.push(`${parsed.filters.data_sources.length} sources`)
-      if (parsed.filters.document_types.length > 0) parts.push(`${parsed.filters.document_types.length} types`)
-      if (parsed.filters.owners.length > 0) parts.push(`${parsed.filters.owners.length} owners`)
-      
-      return parts.join(" • ") || "No filters"
+      const parsed = JSON.parse(filter.query_data) as ParsedQueryData;
+      const parts = [];
+
+      if (parsed.query) parts.push(`"${parsed.query}"`);
+      if (parsed.filters.data_sources.length > 0)
+        parts.push(`${parsed.filters.data_sources.length} sources`);
+      if (parsed.filters.document_types.length > 0)
+        parts.push(`${parsed.filters.document_types.length} types`);
+      if (parsed.filters.owners.length > 0)
+        parts.push(`${parsed.filters.owners.length} owners`);
+
+      return parts.join(" • ") || "No filters";
     } catch {
-      return "Invalid filter"
+      return "Invalid filter";
     }
-  }
+  };
 
   useEffect(() => {
     if (isOpen) {
-      loadFilters()
+      loadFilters();
     }
-  }, [isOpen])
+  }, [isOpen]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (isOpen) {
-        loadFilters(searchQuery)
+        loadFilters(searchQuery);
       }
-    }, 300)
+    }, 300);
 
-    return () => clearTimeout(timeoutId)
-  }, [searchQuery, isOpen])
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, isOpen]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false)
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
       }
-    }
+    };
 
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -235,9 +252,9 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
           "flex items-center gap-2 h-8 px-3",
-          selectedFilter 
-            ? "hover:bg-primary hover:text-primary-foreground" 
-            : "hover:bg-transparent hover:text-foreground hover:border-border"
+          selectedFilter
+            ? "hover:bg-primary hover:text-primary-foreground"
+            : "hover:bg-transparent hover:text-foreground hover:border-border",
         )}
       >
         <Filter className="h-3 w-3" />
@@ -246,7 +263,9 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
         ) : (
           <span>All Knowledge</span>
         )}
-        <ChevronDown className={cn("h-3 w-3 transition-transform", isOpen && "rotate-180")} />
+        <ChevronDown
+          className={cn("h-3 w-3 transition-transform", isOpen && "rotate-180")}
+        />
       </Button>
 
       {isOpen && (
@@ -272,14 +291,16 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
                 onClick={handleClearFilter}
                 className={cn(
                   "flex items-center gap-3 p-3 hover:bg-accent hover:text-accent-foreground cursor-pointer border-b border-border/30 transition-colors",
-                  !selectedFilter && "bg-accent text-accent-foreground"
+                  !selectedFilter && "bg-accent text-accent-foreground",
                 )}
               >
                 <div className="flex items-center gap-2 flex-1">
                   <Filter className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <div className="text-sm font-medium">All Knowledge</div>
-                    <div className="text-xs text-muted-foreground">No filters applied</div>
+                    <div className="text-xs text-muted-foreground">
+                      No filters applied
+                    </div>
                   </div>
                 </div>
               </div>
@@ -287,7 +308,9 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
               {loading ? (
                 <div className="flex items-center justify-center p-4">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    Loading...
+                  </span>
                 </div>
               ) : filters.length === 0 ? (
                 <div className="p-4 text-center text-sm text-muted-foreground">
@@ -300,13 +323,16 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
                     onClick={() => handleFilterSelect(filter)}
                     className={cn(
                       "flex items-center gap-3 p-3 hover:bg-accent hover:text-accent-foreground cursor-pointer group transition-colors",
-                      selectedFilter?.id === filter.id && "bg-accent text-accent-foreground"
+                      selectedFilter?.id === filter.id &&
+                        "bg-accent text-accent-foreground",
                     )}
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <Filter className="h-4 w-4 text-muted-foreground group-hover:text-accent-foreground flex-shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium truncate group-hover:text-accent-foreground">{filter.name}</div>
+                        <div className="text-sm font-medium truncate group-hover:text-accent-foreground">
+                          {filter.name}
+                        </div>
                         <div className="text-xs text-muted-foreground group-hover:text-accent-foreground/70 truncate">
                           {getFilterSummary(filter)}
                         </div>
@@ -333,8 +359,12 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
               >
                 <Plus className="h-4 w-4 text-green-500" />
                 <div>
-                  <div className="text-sm font-medium text-green-600">Create New Filter</div>
-                  <div className="text-xs text-muted-foreground">Save current search as filter</div>
+                  <div className="text-sm font-medium text-green-600">
+                    Create New Filter
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Save current search as filter
+                  </div>
                 </div>
               </div>
             </div>
@@ -360,8 +390,10 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md mx-4">
-            <h3 className="text-lg font-semibold mb-4">Create New Knowledge Filter</h3>
-            
+            <h3 className="text-lg font-semibold mb-4">
+              Create New Knowledge Filter
+            </h3>
+
             <div className="space-y-4">
               <div>
                 <Label htmlFor="filter-name" className="font-medium">
@@ -376,7 +408,7 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
                   className="mt-1"
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="filter-description" className="font-medium">
                   Description (optional)
@@ -391,7 +423,7 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
                 />
               </div>
             </div>
-            
+
             <div className="flex justify-end gap-2 mt-6">
               <Button
                 variant="outline"
@@ -422,5 +454,5 @@ export function KnowledgeFilterDropdown({ selectedFilter, onFilterSelect }: Know
         </div>
       )}
     </div>
-  )
+  );
 }

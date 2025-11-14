@@ -13,20 +13,14 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const redirect =  searchParams.get("redirect") || "/chat";
+  const redirect = searchParams.get("redirect") || "/chat";
 
   // Redirect if already authenticated or in no-auth mode
   useEffect(() => {
     if (!isLoading && (isAuthenticated || isNoAuthMode)) {
       router.push(redirect);
     }
-  }, [
-    isLoading,
-    isAuthenticated,
-    isNoAuthMode,
-    router,
-    redirect,
-  ]);
+  }, [isLoading, isAuthenticated, isNoAuthMode, router, redirect]);
 
   if (isLoading) {
     return (
@@ -48,11 +42,14 @@ function LoginPageContent() {
       <div className="flex flex-col items-center justify-center gap-4 z-10 ">
         <Logo className="fill-primary" width={50} height={40} />
         <div className="flex flex-col items-center justify-center gap-16">
-        <h1 className="text-2xl font-medium font-chivo">Welcome to OpenRAG</h1>
-        <Button onClick={login} className="w-80 gap-1.5" size="lg">
-          <GoogleLogo className="h-4 w-4" />
-          Continue with Google
-        </Button></div>
+          <h1 className="text-2xl font-medium font-chivo">
+            Welcome to OpenRAG
+          </h1>
+          <Button onClick={login} className="w-80 gap-1.5" size="lg">
+            <GoogleLogo className="h-4 w-4" />
+            Continue with Google
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -136,7 +136,7 @@ export function KnowledgeFilterPanel() {
   // Load available facets using search aggregations hook
   const { data: aggregations } = useGetSearchAggregations("*", 1, 0, {
     enabled: isPanelOpen,
-    placeholderData: prev => prev,
+    placeholderData: (prev) => prev,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
   });
@@ -212,9 +212,9 @@ export function KnowledgeFilterPanel() {
 
   const handleFilterChange = (
     facetType: keyof typeof selectedFilters,
-    newValues: string[]
+    newValues: string[],
   ) => {
-    setSelectedFilters(prev => ({
+    setSelectedFilters((prev) => ({
       ...prev,
       [facetType]: newValues,
     }));
@@ -271,7 +271,7 @@ export function KnowledgeFilterPanel() {
                 <Input
                   id="filter-name"
                   value={name}
-                  onChange={e => {
+                  onChange={(e) => {
                     const v = e.target.value;
                     setName(v);
                     if (nameError && v.trim()) {
@@ -302,7 +302,7 @@ export function KnowledgeFilterPanel() {
               <Textarea
                 id="filter-description"
                 value={description}
-                onChange={e => setDescription(e.target.value)}
+                onChange={(e) => setDescription(e.target.value)}
                 placeholder="Provide a brief description of your knowledge filter..."
                 rows={3}
               />
@@ -319,7 +319,7 @@ export function KnowledgeFilterPanel() {
               placeholder="Enter your search query..."
               value={query}
               className="font-mono placeholder:font-mono"
-              onChange={e => setQuery(e.target.value)}
+              onChange={(e) => setQuery(e.target.value)}
               rows={2}
               disabled={!!queryOverride && !createMode}
             />
@@ -329,13 +329,13 @@ export function KnowledgeFilterPanel() {
           <div className="space-y-4">
             <div className="space-y-2">
               <MultiSelect
-                options={(availableFacets.data_sources || []).map(bucket => ({
+                options={(availableFacets.data_sources || []).map((bucket) => ({
                   value: bucket.key,
                   label: bucket.key,
                   count: bucket.count,
                 }))}
                 value={selectedFilters.data_sources}
-                onValueChange={values =>
+                onValueChange={(values) =>
                   handleFilterChange("data_sources", values)
                 }
                 placeholder="Select sources..."
@@ -345,13 +345,15 @@ export function KnowledgeFilterPanel() {
 
             <div className="space-y-2">
               <MultiSelect
-                options={(availableFacets.document_types || []).map(bucket => ({
-                  value: bucket.key,
-                  label: bucket.key,
-                  count: bucket.count,
-                }))}
+                options={(availableFacets.document_types || []).map(
+                  (bucket) => ({
+                    value: bucket.key,
+                    label: bucket.key,
+                    count: bucket.count,
+                  }),
+                )}
                 value={selectedFilters.document_types}
-                onValueChange={values =>
+                onValueChange={(values) =>
                   handleFilterChange("document_types", values)
                 }
                 placeholder="Select types..."
@@ -361,13 +363,13 @@ export function KnowledgeFilterPanel() {
 
             <div className="space-y-2">
               <MultiSelect
-                options={(availableFacets.owners || []).map(bucket => ({
+                options={(availableFacets.owners || []).map((bucket) => ({
                   value: bucket.key,
                   label: bucket.key,
                   count: bucket.count,
                 }))}
                 value={selectedFilters.owners}
-                onValueChange={values => handleFilterChange("owners", values)}
+                onValueChange={(values) => handleFilterChange("owners", values)}
                 placeholder="Select owners..."
                 allOptionLabel="All Owners"
               />
@@ -376,14 +378,14 @@ export function KnowledgeFilterPanel() {
             <div className="space-y-2">
               <MultiSelect
                 options={(availableFacets.connector_types || []).map(
-                  bucket => ({
+                  (bucket) => ({
                     value: bucket.key,
                     label: bucket.key,
                     count: bucket.count,
-                  })
+                  }),
                 )}
                 value={selectedFilters.connector_types}
-                onValueChange={values =>
+                onValueChange={(values) =>
                   handleFilterChange("connector_types", values)
                 }
                 placeholder="Select connectors..."
@@ -403,10 +405,10 @@ export function KnowledgeFilterPanel() {
                     min="1"
                     max="1000"
                     value={resultLimit}
-                    onChange={e => {
+                    onChange={(e) => {
                       const newLimit = Math.max(
                         1,
-                        Math.min(1000, parseInt(e.target.value) || 1)
+                        Math.min(1000, parseInt(e.target.value) || 1),
                       );
                       setResultLimit(newLimit);
                     }}
@@ -416,7 +418,7 @@ export function KnowledgeFilterPanel() {
                 </div>
                 <Slider
                   value={[resultLimit]}
-                  onValueChange={values => setResultLimit(values[0])}
+                  onValueChange={(values) => setResultLimit(values[0])}
                   max={1000}
                   min={1}
                   step={1}
@@ -436,7 +438,7 @@ export function KnowledgeFilterPanel() {
                     max="5"
                     step="0.1"
                     value={scoreThreshold}
-                    onChange={e =>
+                    onChange={(e) =>
                       setScoreThreshold(parseFloat(e.target.value) || 0)
                     }
                     className="h-6 text-xs text-right px-2 bg-muted/30 !border-0 rounded ml-auto focus:ring-0 focus:outline-none"
@@ -445,7 +447,7 @@ export function KnowledgeFilterPanel() {
                 </div>
                 <Slider
                   value={[scoreThreshold]}
-                  onValueChange={values => setScoreThreshold(values[0])}
+                  onValueChange={(values) => setScoreThreshold(values[0])}
                   max={5}
                   min={0}
                   step={0.1}

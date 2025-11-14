@@ -31,7 +31,8 @@ async function createFilter(
   const json = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const errorMessage = (json && (json.error as string)) || "Failed to create knowledge filter";
+    const errorMessage =
+      (json && (json.error as string)) || "Failed to create knowledge filter";
     throw new Error(errorMessage);
   }
 
@@ -44,7 +45,7 @@ export const useCreateFilter = () => {
   return useMutation({
     mutationFn: createFilter,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["knowledge-filters"]});
+      queryClient.invalidateQueries({ queryKey: ["knowledge-filters"] });
     },
   });
 };

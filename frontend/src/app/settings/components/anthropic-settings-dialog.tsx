@@ -47,7 +47,7 @@ const AnthropicSettingsDialog = ({
     },
     {
       enabled: false,
-    }
+    },
   );
 
   const settingsMutation = useUpdateSettingsMutation({
@@ -61,7 +61,7 @@ const AnthropicSettingsDialog = ({
       queryClient.setQueryData(["provider", "health"], healthData);
 
       toast.success(
-        "Anthropic credentials saved. Configure models in the Settings page."
+        "Anthropic credentials saved. Configure models in the Settings page.",
       );
       setOpen(false);
     },
@@ -144,8 +144,8 @@ const AnthropicSettingsDialog = ({
                 {settingsMutation.isPending
                   ? "Saving..."
                   : isValidating
-                  ? "Validating..."
-                  : "Save"}
+                    ? "Validating..."
+                    : "Save"}
               </Button>
             </DialogFooter>
           </form>

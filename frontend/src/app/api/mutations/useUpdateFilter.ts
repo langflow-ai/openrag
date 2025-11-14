@@ -14,11 +14,14 @@ export interface UpdateFilterResponse {
   message?: string;
 }
 
-async function updateFilter(data: UpdateFilterRequest): Promise<UpdateFilterResponse> {
+async function updateFilter(
+  data: UpdateFilterRequest,
+): Promise<UpdateFilterResponse> {
   // Build a body with only provided fields
   const body: Record<string, unknown> = {};
   if (typeof data.name !== "undefined") body.name = data.name;
-  if (typeof data.description !== "undefined") body.description = data.description;
+  if (typeof data.description !== "undefined")
+    body.description = data.description;
   if (typeof data.queryData !== "undefined") body.queryData = data.queryData;
 
   const response = await fetch(`/api/knowledge-filter/${data.id}`, {
@@ -32,7 +35,8 @@ async function updateFilter(data: UpdateFilterRequest): Promise<UpdateFilterResp
   const json = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const errorMessage = (json && (json.error as string)) || "Failed to update knowledge filter";
+    const errorMessage =
+      (json && (json.error as string)) || "Failed to update knowledge filter";
     throw new Error(errorMessage);
   }
 

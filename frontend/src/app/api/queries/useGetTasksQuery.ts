@@ -52,13 +52,13 @@ export interface TasksResponse {
 }
 
 export const useGetTasksQuery = (
-  options?: Omit<UseQueryOptions<Task[]>, "queryKey" | "queryFn">
+  options?: Omit<UseQueryOptions<Task[]>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
 
   async function getTasks(): Promise<Task[]> {
     const response = await fetch("/api/tasks");
-    
+
     if (!response.ok) {
       throw new Error("Failed to fetch tasks");
     }
@@ -79,10 +79,10 @@ export const useGetTasksQuery = (
         }
 
         const hasActiveTasks = data.some(
-          (task: Task) => 
-            task.status === "pending" || 
-            task.status === "running" || 
-            task.status === "processing"
+          (task: Task) =>
+            task.status === "pending" ||
+            task.status === "running" ||
+            task.status === "processing",
         );
 
         return hasActiveTasks ? 3000 : false; // Poll every 3 seconds if active tasks exist

@@ -91,13 +91,13 @@ export function CloudConnectorsDialog({
 
       // Filter to only cloud connectors
       const cloudConnectorTypes = connectorTypes.filter(
-        type =>
+        (type) =>
           ["google_drive", "onedrive", "sharepoint"].includes(type) &&
-          connectorsResult.connectors[type].available
+          connectorsResult.connectors[type].available,
       );
 
       // Initialize connectors list
-      const initialConnectors = cloudConnectorTypes.map(type => ({
+      const initialConnectors = cloudConnectorTypes.map((type) => ({
         id: type,
         name: connectorsResult.connectors[type].name,
         description: connectorsResult.connectors[type].description,
@@ -115,14 +115,14 @@ export function CloudConnectorsDialog({
       for (const connectorType of cloudConnectorTypes) {
         try {
           const response = await fetch(
-            `/api/connectors/${connectorType}/status`
+            `/api/connectors/${connectorType}/status`,
           );
           if (response.ok) {
             const data = await response.json();
             const connections = data.connections || [];
             const activeConnection = connections.find(
               (conn: { connection_id: string; is_active: boolean }) =>
-                conn.is_active
+                conn.is_active,
             );
             const isConnected = activeConnection !== undefined;
 
@@ -133,13 +133,13 @@ export function CloudConnectorsDialog({
             if (isConnected && activeConnection) {
               try {
                 const tokenResponse = await fetch(
-                  `/api/connectors/${connectorType}/token?connection_id=${activeConnection.connection_id}`
+                  `/api/connectors/${connectorType}/token?connection_id=${activeConnection.connection_id}`,
                 );
                 if (tokenResponse.ok) {
                   const tokenData = await tokenResponse.json();
                   if (tokenData.access_token) {
                     hasAccessToken = true;
-                    setConnectorAccessTokens(prev => ({
+                    setConnectorAccessTokens((prev) => ({
                       ...prev,
                       [connectorType]: tokenData.access_token,
                     }));
@@ -156,8 +156,8 @@ export function CloudConnectorsDialog({
               }
             }
 
-            setConnectors(prev =>
-              prev.map(c =>
+            setConnectors((prev) =>
+              prev.map((c) =>
                 c.type === connectorType
                   ? {
                       ...c,
@@ -167,8 +167,8 @@ export function CloudConnectorsDialog({
                       hasAccessToken,
                       accessTokenError,
                     }
-                  : c
-              )
+                  : c,
+              ),
             );
           }
         } catch (error) {
@@ -183,7 +183,7 @@ export function CloudConnectorsDialog({
   }, [isOpen]);
 
   const handleFileSelection = (connectorId: string, files: CloudFile[]) => {
-    setSelectedFiles(prev => ({
+    setSelectedFiles((prev) => ({
       ...prev,
       [connectorId]: files,
     }));
@@ -220,8 +220,8 @@ export function CloudConnectorsDialog({
               {/* Service Buttons Row */}
               <div className="flex flex-wrap gap-3 justify-center">
                 {connectors
-                  .filter(connector => connector.status === "connected")
-                  .map(connector => (
+                  .filter((connector) => connector.status === "connected")
+                  .map((connector) => (
                     <Button
                       key={connector.id}
                       variant={
@@ -234,7 +234,7 @@ export function CloudConnectorsDialog({
                             "Access token required - try reconnecting your account"
                           : `Select files or folders from ${connector.name}`
                       }
-                      onClick={e => {
+                      onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         if (connector.hasAccessToken) {
@@ -248,7 +248,7 @@ export function CloudConnectorsDialog({
                   ))}
               </div>
 
-              {connectors.every(c => c.status !== "connected") && (
+              {connectors.every((c) => c.status !== "connected") && (
                 <div className="text-center py-8 text-muted-foreground">
                   <p>No connected cloud providers found.</p>
                   <p className="text-sm mt-1">
@@ -259,10 +259,10 @@ export function CloudConnectorsDialog({
 
               {/* Render unified picker inside dialog */}
               {activePickerType &&
-                connectors.find(c => c.id === activePickerType) &&
+                connectors.find((c) => c.id === activePickerType) &&
                 (() => {
                   const connector = connectors.find(
-                    c => c.id === activePickerType
+                    (c) => c.id === activePickerType,
                   )!;
 
                   return (
@@ -274,7 +274,7 @@ export function CloudConnectorsDialog({
                             | "onedrive"
                             | "sharepoint"
                         }
-                        onFileSelected={files => {
+                        onFileSelected={(files) => {
                           handleFileSelection(connector.id, files);
                           setActivePickerType(null);
                         }}

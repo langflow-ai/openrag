@@ -71,7 +71,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         className={cn(
           "app-grid-arrangement relative",
           isPanelOpen && isOnKnowledgePage && !isMenuOpen && "filters-open",
-          isMenuOpen && "notifications-open"
+          isMenuOpen && "notifications-open",
         )}
       >
         <div className="w-full z-10 bg-background [grid-area:banner]">

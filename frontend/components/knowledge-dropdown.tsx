@@ -117,7 +117,7 @@ export function KnowledgeDropdown() {
                   const connections = statusData.connections || [];
                   const activeConnection = connections.find(
                     (conn: { is_active: boolean; connection_id: string }) =>
-                      conn.is_active
+                      conn.is_active,
                   );
                   const isConnected = activeConnection !== undefined;
 
@@ -127,7 +127,7 @@ export function KnowledgeDropdown() {
                     // Check token availability
                     try {
                       const tokenRes = await fetch(
-                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`
+                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
                       );
                       if (tokenRes.ok) {
                         const tokenData = await tokenRes.json();
@@ -166,7 +166,7 @@ export function KnowledgeDropdown() {
   };
 
   const handleFileChange = async (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const files = event.target.files;
 
@@ -225,7 +225,7 @@ export function KnowledgeDropdown() {
         if (!oldData) return oldData;
         // Filter out the file that's being overwritten
         return oldData.filter(
-          (file: SearchFile) => file.filename !== pendingFile.name
+          (file: SearchFile) => file.filename !== pendingFile.name,
         );
       });
 
@@ -397,19 +397,19 @@ export function KnowledgeDropdown() {
                 ? fileUploading
                   ? "Uploading..."
                   : folderLoading
-                  ? "Processing Folder..."
-                  : s3Loading
-                  ? "Processing S3..."
-                  : isNavigatingToCloud
-                  ? "Loading..."
-                  : "Processing..."
+                    ? "Processing Folder..."
+                    : s3Loading
+                      ? "Processing S3..."
+                      : isNavigatingToCloud
+                        ? "Loading..."
+                        : "Processing..."
                 : "Add Knowledge"}
             </span>
             {!isLoading && (
               <ChevronDown
                 className={cn(
                   "h-4 w-4 transition-transform duration-200",
-                  isMenuOpen && "rotate-180"
+                  isMenuOpen && "rotate-180",
                 )}
               />
             )}

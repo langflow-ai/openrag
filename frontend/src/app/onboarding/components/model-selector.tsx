@@ -62,7 +62,7 @@ export function ModelSelector({
 
   // Find the group icon for the selected value
   const selectedOptionGroup = groupedOptions?.find((group) =>
-    group.options.some((opt) => opt.value === value)
+    group.options.some((opt) => opt.value === value),
   );
   const selectedIcon = selectedOptionGroup?.icon || icon;
 
@@ -88,7 +88,7 @@ export function ModelSelector({
           aria-expanded={open}
           className={cn(
             "w-full gap-2 justify-between font-normal text-sm",
-            hasError && "!border-destructive"
+            hasError && "!border-destructive",
           )}
         >
           {value ? (
@@ -155,7 +155,7 @@ export function ModelSelector({
                       <CheckIcon
                         className={cn(
                           "mr-2 h-4 w-4",
-                          value === option.value ? "opacity-100" : "opacity-0"
+                          value === option.value ? "opacity-100" : "opacity-0",
                         )}
                       />
                       <div className="flex items-center gap-2">
@@ -181,7 +181,7 @@ export function ModelSelector({
                     <CheckIcon
                       className={cn(
                         "mr-2 h-4 w-4",
-                        value === option.value ? "opacity-100" : "opacity-0"
+                        value === option.value ? "opacity-100" : "opacity-0",
                       )}
                     />
                     <div className="flex items-center gap-2">
@@ -192,7 +192,7 @@ export function ModelSelector({
                 {custom &&
                   searchValue &&
                   !allOptions.find(
-                    (option) => option.value === searchValue
+                    (option) => option.value === searchValue,
                   ) && (
                     <CommandItem
                       value={searchValue}
@@ -206,7 +206,7 @@ export function ModelSelector({
                       <CheckIcon
                         className={cn(
                           "mr-2 h-4 w-4",
-                          value === searchValue ? "opacity-100" : "opacity-0"
+                          value === searchValue ? "opacity-100" : "opacity-0",
                         )}
                       />
                       <div className="flex items-center gap-2">

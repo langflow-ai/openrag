@@ -13,14 +13,14 @@ export class GoogleDriveHandler {
 
   constructor(
     accessToken: string,
-    onPickerStateChange?: (isOpen: boolean) => void
+    onPickerStateChange?: (isOpen: boolean) => void,
   ) {
     this.accessToken = accessToken;
     this.onPickerStateChange = onPickerStateChange;
   }
 
   async loadPickerApi(): Promise<boolean> {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       if (typeof window !== "undefined" && window.gapi) {
         window.gapi.load("picker", {
           callback: () => resolve(true),
@@ -62,7 +62,7 @@ export class GoogleDriveHandler {
         .setOAuthToken(this.accessToken)
         .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
         .setTitle("Select files or folders from Google Drive")
-        .setCallback(data => this.pickerCallback(data, onFileSelected))
+        .setCallback((data) => this.pickerCallback(data, onFileSelected))
         .build();
 
       picker.setVisible(true);
@@ -70,15 +70,15 @@ export class GoogleDriveHandler {
       // Apply z-index fix
       setTimeout(() => {
         const pickerElements = document.querySelectorAll(
-          ".picker-dialog, .goog-modalpopup"
+          ".picker-dialog, .goog-modalpopup",
         );
-        pickerElements.forEach(el => {
+        pickerElements.forEach((el) => {
           (el as HTMLElement).style.zIndex = "10000";
         });
         const bgElements = document.querySelectorAll(
-          ".picker-dialog-bg, .goog-modalpopup-bg"
+          ".picker-dialog-bg, .goog-modalpopup-bg",
         );
-        bgElements.forEach(el => {
+        bgElements.forEach((el) => {
           (el as HTMLElement).style.zIndex = "9999";
         });
       }, 100);
@@ -90,7 +90,7 @@ export class GoogleDriveHandler {
 
   private async pickerCallback(
     data: GooglePickerData,
-    onFileSelected: (files: CloudFile[]) => void
+    onFileSelected: (files: CloudFile[]) => void,
   ): Promise<void> {
     if (data.action === window.google.picker.Action.PICKED) {
       const files: CloudFile[] = data.docs.map((doc: GooglePickerDocument) => ({
@@ -107,10 +107,10 @@ export class GoogleDriveHandler {
       }));
 
       // Enrich with additional file data if needed
-      if (files.some(f => !f.size && !f.isFolder)) {
+      if (files.some((f) => !f.size && !f.isFolder)) {
         try {
           const enrichedFiles = await Promise.all(
-            files.map(async file => {
+            files.map(async (file) => {
               if (!file.size && !file.isFolder) {
                 try {
                   const response = await fetch(
@@ -119,7 +119,7 @@ export class GoogleDriveHandler {
                       headers: {
                         Authorization: `Bearer ${this.accessToken}`,
                       },
-                    }
+                    },
                   );
                   if (response.ok) {
                     const fileDetails = await response.json();
@@ -137,7 +137,7 @@ export class GoogleDriveHandler {
                 }
               }
               return file;
-            })
+            }),
           );
           onFileSelected(enrichedFiles);
         } catch (error) {
@@ -163,7 +163,7 @@ export class OneDriveHandler {
     accessToken: string,
     clientId: string,
     provider: CloudProvider = "onedrive",
-    baseUrl?: string
+    baseUrl?: string,
   ) {
     this.accessToken = accessToken;
     this.clientId = clientId;
@@ -172,7 +172,7 @@ export class OneDriveHandler {
   }
 
   async loadPickerApi(): Promise<boolean> {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       const script = document.createElement("script");
       script.src = "https://js.live.net/v7.2/OneDrive.js";
       script.onload = () => resolve(true);
@@ -201,7 +201,7 @@ export class OneDriveHandler {
             name:
               item.name ||
               `${this.getProviderName()} File ${index + 1} (${item.id.slice(
-                -8
+                -8,
               )})`,
             mimeType: item.file?.mimeType || "application/octet-stream",
             webUrl: item.webUrl || "",
@@ -232,7 +232,7 @@ export const createProviderHandler = (
   accessToken: string,
   onPickerStateChange?: (isOpen: boolean) => void,
   clientId?: string,
-  baseUrl?: string
+  baseUrl?: string,
 ) => {
   switch (provider) {
     case "google_drive":

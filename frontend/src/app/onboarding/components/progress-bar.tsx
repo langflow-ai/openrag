@@ -1,5 +1,5 @@
-import { ArrowRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface ProgressBarProps {
   currentStep: number;
@@ -7,7 +7,11 @@ interface ProgressBarProps {
   onSkip?: () => void;
 }
 
-export function ProgressBar({ currentStep, totalSteps, onSkip }: ProgressBarProps) {
+export function ProgressBar({
+  currentStep,
+  totalSteps,
+  onSkip,
+}: ProgressBarProps) {
   const progressPercentage = ((currentStep + 1) / totalSteps) * 100;
 
   return (
@@ -19,7 +23,7 @@ export function ProgressBar({ currentStep, totalSteps, onSkip }: ProgressBarProp
             className="h-full transition-all duration-300 ease-in-out"
             style={{
               width: `${progressPercentage}%`,
-              background: 'linear-gradient(to right, #773EFF, #22A7AF)'
+              background: "linear-gradient(to right, #773EFF, #22A7AF)",
             }}
           />
         </div>

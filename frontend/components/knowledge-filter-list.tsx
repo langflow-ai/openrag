@@ -42,7 +42,7 @@ export function KnowledgeFilterList({
 
   const { data, isFetching: loading } = useGetFiltersSearchQuery(
     searchQuery,
-    20
+    20,
   );
 
   const filters = data || [];
@@ -90,21 +90,21 @@ export function KnowledgeFilterList({
                 {searchQuery ? "No filters found" : "No saved filters"}
               </div>
             ) : (
-              filters.map(filter => (
+              filters.map((filter) => (
                 <div
                   key={filter.id}
                   onClick={() => handleFilterSelect(filter)}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 w-full rounded-lg hover:bg-accent hover:text-accent-foreground cursor-pointer group transition-colors",
                     selectedFilter?.id === filter.id &&
-                      "active bg-accent text-accent-foreground"
+                      "active bg-accent text-accent-foreground",
                   )}
                 >
                   <div className="flex flex-col gap-1 flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       {(() => {
                         const parsed = parseQueryData(
-                          filter.query_data
+                          filter.query_data,
                         ) as ParsedQueryData;
                         const Icon = iconKeyToComponent(parsed.icon);
                         return (
@@ -113,7 +113,7 @@ export function KnowledgeFilterList({
                               "flex items-center justify-center w-5 h-5 rounded transition-colors",
                               filterAccentClasses[parsed.color],
                               parsed.color === "zinc" &&
-                                "group-hover:bg-background group-[.active]:bg-background"
+                                "group-hover:bg-background group-[.active]:bg-background",
                             )}
                           >
                             {Icon && <Icon className="h-3 w-3" />}
@@ -137,7 +137,7 @@ export function KnowledgeFilterList({
                             month: "short",
                             day: "numeric",
                             year: "numeric",
-                          }
+                          },
                         )}
                       </div>
                       <span className="text-xs bg-muted text-muted-foreground px-1 py-0.5 rounded-sm group-hover:bg-background group-[.active]:bg-background transition-colors">

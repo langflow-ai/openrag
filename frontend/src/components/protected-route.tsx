@@ -32,13 +32,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       router.push(redirectUrl);
       return;
     }
-  }, [
-    isLoading,
-    isAuthenticated,
-    isNoAuthMode,
-    router,
-    pathname,
-  ]);
+  }, [isLoading, isAuthenticated, isNoAuthMode, router, pathname]);
 
   // Show loading state while checking authentication
   if (isLoading) {

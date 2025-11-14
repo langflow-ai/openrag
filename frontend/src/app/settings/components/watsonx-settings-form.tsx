@@ -126,9 +126,7 @@ export function WatsonxSettingsForm({
           />
         </LabelWrapper>
         {errors.apiKey && (
-          <p className="text-sm text-destructive">
-            {errors.apiKey.message}
-          </p>
+          <p className="text-sm text-destructive">{errors.apiKey.message}</p>
         )}
         {isLoadingModels && (
           <p className="text-sm text-muted-foreground">
@@ -142,7 +140,8 @@ export function WatsonxSettingsForm({
         )}
       </div>
       <p className="text-sm text-muted-foreground">
-        Configure language and embedding models in the Settings page after saving your credentials.
+        Configure language and embedding models in the Settings page after
+        saving your credentials.
       </p>
     </div>
   );

@@ -40,7 +40,7 @@ export default function UploadProviderPage() {
   const [selectedFiles, setSelectedFiles] = useState<CloudFile[]>([]);
   const [isIngesting, setIsIngesting] = useState<boolean>(false);
   const [currentSyncTaskId, setCurrentSyncTaskId] = useState<string | null>(
-    null
+    null,
   );
   const [ingestSettings, setIngestSettings] = useState<IngestSettings>({
     chunkSize: 1000,
@@ -67,14 +67,14 @@ export default function UploadProviderPage() {
 
         if (!providerInfo || !providerInfo.available) {
           setError(
-            `Cloud provider "${provider}" is not available or configured.`
+            `Cloud provider "${provider}" is not available or configured.`,
           );
           return;
         }
 
         // Check connector status
         const statusResponse = await fetch(
-          `/api/connectors/${provider}/status`
+          `/api/connectors/${provider}/status`,
         );
         if (!statusResponse.ok) {
           throw new Error(`Failed to check ${provider} status`);
@@ -84,7 +84,7 @@ export default function UploadProviderPage() {
         const connections = statusData.connections || [];
         const activeConnection = connections.find(
           (conn: { is_active: boolean; connection_id: string }) =>
-            conn.is_active
+            conn.is_active,
         );
         const isConnected = activeConnection !== undefined;
 
@@ -95,7 +95,7 @@ export default function UploadProviderPage() {
         if (isConnected && activeConnection) {
           try {
             const tokenResponse = await fetch(
-              `/api/connectors/${provider}/token?connection_id=${activeConnection.connection_id}`
+              `/api/connectors/${provider}/token?connection_id=${activeConnection.connection_id}`,
             );
             if (tokenResponse.ok) {
               const tokenData = await tokenResponse.json();
@@ -130,7 +130,7 @@ export default function UploadProviderPage() {
         setError(
           error instanceof Error
             ? error.message
-            : "Failed to load connector information"
+            : "Failed to load connector information",
         );
       } finally {
         setIsLoading(false);
@@ -147,7 +147,7 @@ export default function UploadProviderPage() {
     if (!currentSyncTaskId) return;
 
     const currentTask = tasks.find(
-      (task) => task.task_id === currentSyncTaskId
+      (task) => task.task_id === currentSyncTaskId,
     );
 
     if (currentTask && currentTask.status === "completed") {

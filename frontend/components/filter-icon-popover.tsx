@@ -66,7 +66,7 @@ const ICON_MAP = {
 export type IconKey = keyof typeof ICON_MAP;
 
 export function iconKeyToComponent(
-  key?: string
+  key?: string,
 ): React.ComponentType<SVGProps<SVGSVGElement>> | undefined {
   if (!key) return undefined;
   return (
@@ -118,7 +118,7 @@ export function FilterIconPopover({
           className={cn(
             "h-10 w-10 min-w-10 min-h-10 rounded-md flex items-center justify-center transition-colors",
             filterAccentClasses[color],
-            triggerClassName
+            triggerClassName,
           )}
         >
           {Icon && <Icon className="h-5 w-5" />}
@@ -134,7 +134,7 @@ export function FilterIconPopover({
                 onClick={() => onColorChange(c)}
                 className={cn(
                   "flex items-center justify-center h-6 w-6 rounded-sm transition-colors text-white",
-                  colorSwatchClasses[c]
+                  colorSwatchClasses[c],
                 )}
                 aria-label={c}
               >

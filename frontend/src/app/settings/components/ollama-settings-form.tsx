@@ -51,7 +51,8 @@ export function OllamaSettingsForm({
         )}
       </div>
       <p className="text-sm text-muted-foreground">
-        Configure language and embedding models in the Settings page after saving your endpoint.
+        Configure language and embedding models in the Settings page after
+        saving your endpoint.
       </p>
     </div>
   );

@@ -24,9 +24,7 @@ export function FunctionCalls({
 
         // Determine display name - show both name and type if available
         const displayName =
-          fc.type && fc.type !== fc.name
-            ? `${fc.name} (${fc.type})`
-            : fc.name;
+          fc.type && fc.type !== fc.name ? `${fc.name} (${fc.type})` : fc.name;
 
         return (
           <div
@@ -51,8 +49,8 @@ export function FunctionCalls({
                   fc.status === "completed"
                     ? "bg-green-500/20 text-green-400"
                     : fc.status === "error"
-                    ? "bg-red-500/20 text-red-400"
-                    : "bg-yellow-500/20 text-yellow-400"
+                      ? "bg-red-500/20 text-red-400"
+                      : "bg-yellow-500/20 text-yellow-400"
                 }`}
               >
                 {fc.status}
@@ -159,8 +157,7 @@ export function FunctionCalls({
                               {result.data?.text && (
                                 <div className="text-xs text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
                                   {result.data.text.length > 300
-                                    ? result.data.text.substring(0, 300) +
-                                      "..."
+                                    ? result.data.text.substring(0, 300) + "..."
                                     : result.data.text}
                                 </div>
                               )}
@@ -197,8 +194,7 @@ export function FunctionCalls({
                           ));
                         })()}
                         <div className="text-xs text-muted-foreground">
-                          Found{" "}
-                          {(() => {
+                          Found {(() => {
                             let resultsToCount = fc.result;
                             if (
                               fc.result.length > 0 &&
@@ -209,8 +205,7 @@ export function FunctionCalls({
                               resultsToCount = fc.result[0].results;
                             }
                             return resultsToCount.length;
-                          })()}{" "}
-                          result
+                          })()} result
                           {(() => {
                             let resultsToCount = fc.result;
                             if (

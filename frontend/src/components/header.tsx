@@ -23,7 +23,12 @@ export function Header() {
         {/* Logo/Title */}
         <div className="flex items-center">
           <Logo className="fill-primary" width={24} height={22} />
-          <span className="text-lg font-semibold pl-2.5" style={{ fontFamily: '"IBM Plex Mono", monospace' }}>OpenRAG</span>
+          <span
+            className="text-lg font-semibold pl-2.5"
+            style={{ fontFamily: '"IBM Plex Mono", monospace' }}
+          >
+            OpenRAG
+          </span>
         </div>
       </div>
       <div className="header-end-division">

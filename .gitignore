@@ -20,6 +20,7 @@ wheels/
 !flows/*.json
 !src/tui/_assets/flows/*.json
 !src/tui/_assets/flows/components/*.json
+!frontend/*.json
 .DS_Store
 
 config/

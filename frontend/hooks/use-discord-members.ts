@@ -24,9 +24,9 @@ export const useDiscordMembers = (inviteCode: string) => {
           `https://discord.com/api/v10/invites/${inviteCode}?with_counts=true&with_expiration=true`,
           {
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
             },
-          }
+          },
         );
 
         if (!response.ok) {
@@ -36,8 +36,10 @@ export const useDiscordMembers = (inviteCode: string) => {
         const discordData = await response.json();
         setData(discordData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch Discord data');
-        console.error('Discord API Error:', err);
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch Discord data",
+        );
+        console.error("Discord API Error:", err);
       } finally {
         setIsLoading(false);
       }

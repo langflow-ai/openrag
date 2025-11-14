@@ -1,32 +1,32 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from 'react'
-import { Check } from 'lucide-react'
+import { useState, useEffect } from "react";
+import { Check } from "lucide-react";
 
 interface ToastProps {
-  message: string
-  show: boolean
-  onHide?: () => void
-  duration?: number
+  message: string;
+  show: boolean;
+  onHide?: () => void;
+  duration?: number;
 }
 
 export function Toast({ message, show, onHide, duration = 3000 }: ToastProps) {
-  const [isVisible, setIsVisible] = useState(show)
+  const [isVisible, setIsVisible] = useState(show);
 
   useEffect(() => {
-    setIsVisible(show)
-    
+    setIsVisible(show);
+
     if (show && duration > 0) {
       const timer = setTimeout(() => {
-        setIsVisible(false)
-        onHide?.()
-      }, duration)
-      
-      return () => clearTimeout(timer)
-    }
-  }, [show, duration, onHide])
+        setIsVisible(false);
+        onHide?.();
+      }, duration);
 
-  if (!isVisible) return null
+      return () => clearTimeout(timer);
+    }
+  }, [show, duration, onHide]);
+
+  if (!isVisible) return null;
 
   return (
     <div className="fixed bottom-4 left-4 z-50 animate-in slide-in-from-bottom-full">
@@ -35,5 +35,5 @@ export function Toast({ message, show, onHide, duration = 3000 }: ToastProps) {
         <span className="text-sm font-medium">{message}</span>
       </div>
     </div>
-  )
+  );
 }

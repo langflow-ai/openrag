@@ -126,7 +126,7 @@ export function DoclingHealthBanner({ className }: DoclingHealthBannerProps) {
         <Banner
           className={cn(
             "bg-amber-50 dark:bg-amber-950 text-foreground border-accent-amber border-b w-full",
-            className
+            className,
           )}
         >
           <BannerIcon

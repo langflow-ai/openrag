@@ -49,7 +49,8 @@ export function OpenAISettingsForm({
         )}
       </div>
       <p className="text-sm text-muted-foreground">
-        Configure language and embedding models in the Settings page after saving your API key.
+        Configure language and embedding models in the Settings page after
+        saving your API key.
       </p>
     </div>
   );

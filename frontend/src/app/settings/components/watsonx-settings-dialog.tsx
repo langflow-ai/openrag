@@ -53,7 +53,7 @@ const WatsonxSettingsDialog = ({
     },
     {
       enabled: false,
-    }
+    },
   );
 
   const settingsMutation = useUpdateSettingsMutation({
@@ -66,7 +66,7 @@ const WatsonxSettingsDialog = ({
       };
       queryClient.setQueryData(["provider", "health"], healthData);
       toast.success(
-        "watsonx credentials saved. Configure models in the Settings page."
+        "watsonx credentials saved. Configure models in the Settings page.",
       );
       setOpen(false);
     },
@@ -152,8 +152,8 @@ const WatsonxSettingsDialog = ({
                 {settingsMutation.isPending
                   ? "Saving..."
                   : isValidating
-                  ? "Validating..."
-                  : "Save"}
+                    ? "Validating..."
+                    : "Save"}
               </Button>
             </DialogFooter>
           </form>

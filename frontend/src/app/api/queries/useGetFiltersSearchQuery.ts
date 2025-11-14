@@ -17,7 +17,7 @@ export interface KnowledgeFilter {
 export const useGetFiltersSearchQuery = (
   search: string,
   limit = 20,
-  options?: Omit<UseQueryOptions<KnowledgeFilter[]>, "queryKey" | "queryFn">
+  options?: Omit<UseQueryOptions<KnowledgeFilter[]>, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
 
@@ -42,6 +42,6 @@ export const useGetFiltersSearchQuery = (
       queryFn: getFilters,
       ...options,
     },
-    queryClient
+    queryClient,
   );
 };

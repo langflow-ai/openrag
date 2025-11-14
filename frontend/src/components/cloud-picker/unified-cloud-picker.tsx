@@ -80,7 +80,7 @@ export const UnifiedCloudPicker = ({
           accessToken,
           onPickerStateChange,
           clientId,
-          effectiveBaseUrl
+          effectiveBaseUrl,
         );
         const loaded = await handler.loadPickerApi();
         setIsPickerLoaded(loaded);
@@ -122,7 +122,7 @@ export const UnifiedCloudPicker = ({
           onPickerStateChange?.(isOpen);
         },
         clientId,
-        effectiveBaseUrl
+        effectiveBaseUrl,
       );
 
       handler.openPicker((files: CloudFile[]) => {

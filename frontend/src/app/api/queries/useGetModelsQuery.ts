@@ -196,7 +196,7 @@ export const useGetCurrentProviderModelsQuery = (
     {
       enabled: currentProvider === "openai" && options?.enabled !== false,
       ...options,
-    }
+    },
   );
 
   const anthropicModels = useGetAnthropicModelsQuery(
@@ -204,15 +204,18 @@ export const useGetCurrentProviderModelsQuery = (
     {
       enabled: currentProvider === "anthropic" && options?.enabled !== false,
       ...options,
-    }
+    },
   );
 
   const ollamaModels = useGetOllamaModelsQuery(
     { endpoint: settings?.providers?.ollama?.endpoint },
     {
-      enabled: currentProvider === "ollama" && !!settings?.providers?.ollama?.endpoint && options?.enabled !== false,
+      enabled:
+        currentProvider === "ollama" &&
+        !!settings?.providers?.ollama?.endpoint &&
+        options?.enabled !== false,
       ...options,
-    }
+    },
   );
 
   const ibmModels = useGetIBMModelsQuery(
@@ -228,7 +231,7 @@ export const useGetCurrentProviderModelsQuery = (
         !!settings?.providers?.watsonx?.project_id &&
         options?.enabled !== false,
       ...options,
-    }
+    },
   );
 
   // Return the appropriate query result based on current provider

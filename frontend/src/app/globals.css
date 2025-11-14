@@ -102,7 +102,9 @@
 
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
     font-family: Inter, system-ui, sans-serif;
   }
 }
@@ -136,7 +138,8 @@
       "banner banner banner banner"
       "header header header header"
       "nav main notifications filters";
-    transition: grid-template-columns 0.25s ease-in-out,
+    transition:
+      grid-template-columns 0.25s ease-in-out,
       grid-template-rows 0.25s ease-in-out;
   }
 

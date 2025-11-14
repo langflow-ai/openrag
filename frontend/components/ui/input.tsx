@@ -11,7 +11,7 @@ export interface InputProps
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, inputClassName, icon, type, placeholder, ...props }, ref) => {
     const [hasValue, setHasValue] = React.useState(
-      Boolean(props.value || props.defaultValue)
+      Boolean(props.value || props.defaultValue),
     );
     const [showPassword, setShowPassword] = React.useState(false);
 
@@ -46,7 +46,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             "primary-input",
             icon && "!pl-9",
             (type === "password" || props.disabled) && "!pr-8",
-            icon ? inputClassName : className
+            icon ? inputClassName : className,
           )}
           ref={ref}
           {...props}
@@ -73,7 +73,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         )}
       </label>
     );
-  }
+  },
 );
 
 Input.displayName = "Input";

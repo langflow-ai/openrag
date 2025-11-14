@@ -23,15 +23,15 @@ export const AnimatedConditional = ({
       ? "translateY"
       : "translateX"
     : vertical
-    ? "height"
-    : "width";
+      ? "height"
+      : "width";
   const animationValue = isOpen
     ? slide
       ? "0px"
       : "auto"
     : slide
-    ? "-100%"
-    : "0px";
+      ? "-100%"
+      : "0px";
 
   return (
     <motion.div

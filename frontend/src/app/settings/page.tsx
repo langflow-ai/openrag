@@ -125,13 +125,13 @@ function KnowledgeSourcesPage() {
   const { data: openaiModels, isLoading: openaiLoading } =
     useGetOpenAIModelsQuery(
       { apiKey: "" },
-      { enabled: settings?.providers?.openai?.configured === true }
+      { enabled: settings?.providers?.openai?.configured === true },
     );
 
   const { data: anthropicModels, isLoading: anthropicLoading } =
     useGetAnthropicModelsQuery(
       { apiKey: "" },
-      { enabled: settings?.providers?.anthropic?.configured === true }
+      { enabled: settings?.providers?.anthropic?.configured === true },
     );
 
   const { data: ollamaModels, isLoading: ollamaLoading } =
@@ -141,7 +141,7 @@ function KnowledgeSourcesPage() {
         enabled:
           settings?.providers?.ollama?.configured === true &&
           !!settings?.providers?.ollama?.endpoint,
-      }
+      },
     );
 
   const { data: watsonxModels, isLoading: watsonxLoading } =
@@ -156,7 +156,7 @@ function KnowledgeSourcesPage() {
           settings?.providers?.watsonx?.configured === true &&
           !!settings?.providers?.watsonx?.endpoint &&
           !!settings?.providers?.watsonx?.project_id,
-      }
+      },
     );
 
   // Build grouped LLM model options from all configured providers
@@ -258,7 +258,7 @@ function KnowledgeSourcesPage() {
     (variables: Parameters<typeof updateSettingsMutation.mutate>[0]) => {
       updateSettingsMutation.mutate(variables);
     },
-    500
+    500,
   );
 
   // Sync system prompt state with settings data
@@ -410,7 +410,7 @@ function KnowledgeSourcesPage() {
           const data = await response.json();
           const connections = data.connections || [];
           const activeConnection = connections.find(
-            (conn: Connection) => conn.is_active
+            (conn: Connection) => conn.is_active,
           );
           const isConnected = activeConnection !== undefined;
 
@@ -422,8 +422,8 @@ function KnowledgeSourcesPage() {
                     status: isConnected ? "connected" : "not_connected",
                     connectionId: activeConnection?.connection_id,
                   }
-                : c
-            )
+                : c,
+            ),
           );
         }
       }
@@ -466,7 +466,7 @@ function KnowledgeSourcesPage() {
             `response_type=code&` +
             `scope=${result.oauth_config.scopes.join(" ")}&` +
             `redirect_uri=${encodeURIComponent(
-              result.oauth_config.redirect_uri
+              result.oauth_config.redirect_uri,
             )}&` +
             `access_type=offline&` +
             `prompt=consent&` +
@@ -605,7 +605,7 @@ function KnowledgeSourcesPage() {
 
   const handleEditInLangflow = (
     flowType: "chat" | "ingest",
-    closeDialog: () => void
+    closeDialog: () => void,
   ) => {
     // Select the appropriate flow ID and edit URL based on flow type
     const targetFlowId =
@@ -1209,7 +1209,7 @@ function KnowledgeSourcesPage() {
                           size="iconSm"
                           onClick={() =>
                             handleChunkOverlapChange(
-                              (chunkOverlap + 1).toString()
+                              (chunkOverlap + 1).toString(),
                             )
                           }
                         >
@@ -1222,7 +1222,7 @@ function KnowledgeSourcesPage() {
                           size="iconSm"
                           onClick={() =>
                             handleChunkOverlapChange(
-                              (chunkOverlap - 1).toString()
+                              (chunkOverlap - 1).toString(),
                             )
                           }
                         >

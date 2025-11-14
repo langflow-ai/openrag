@@ -32,7 +32,7 @@ export const KnowledgeActionsDropdown = ({
       setShowDeleteDialog(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete document"
+        error instanceof Error ? error.message : "Failed to delete document",
       );
     }
   };
@@ -50,7 +50,7 @@ export const KnowledgeActionsDropdown = ({
             className="text-primary focus:text-primary"
             onClick={() => {
               router.push(
-                `/knowledge/chunks?filename=${encodeURIComponent(filename)}`
+                `/knowledge/chunks?filename=${encodeURIComponent(filename)}`,
               );
             }}
           >

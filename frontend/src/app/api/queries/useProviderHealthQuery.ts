@@ -31,7 +31,7 @@ export const useProviderHealthQuery = (
   options?: Omit<
     UseQueryOptions<ProviderHealthResponse, Error>,
     "queryKey" | "queryFn"
-  >
+  >,
 ) => {
   const queryClient = useQueryClient();
 
@@ -95,9 +95,8 @@ export const useProviderHealthQuery = (
       enabled: !!settings?.edited && options?.enabled !== false, // Only run after onboarding is complete
       ...options,
     },
-    queryClient
+    queryClient,
   );
 
   return queryResult;
 };
-

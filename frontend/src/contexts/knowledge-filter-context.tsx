@@ -57,7 +57,7 @@ export function useKnowledgeFilter() {
   const context = useContext(KnowledgeFilterContext);
   if (context === undefined) {
     throw new Error(
-      "useKnowledgeFilter must be used within a KnowledgeFilterProvider"
+      "useKnowledgeFilter must be used within a KnowledgeFilterProvider",
     );
   }
   return context;

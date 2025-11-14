@@ -47,7 +47,7 @@ const OpenAISettingsDialog = ({
     },
     {
       enabled: false,
-    }
+    },
   );
 
   const settingsMutation = useUpdateSettingsMutation({
@@ -61,7 +61,7 @@ const OpenAISettingsDialog = ({
       queryClient.setQueryData(["provider", "health"], healthData);
 
       toast.success(
-        "OpenAI credentials saved. Configure models in the Settings page."
+        "OpenAI credentials saved. Configure models in the Settings page.",
       );
       setOpen(false);
     },
@@ -144,8 +144,8 @@ const OpenAISettingsDialog = ({
                 {settingsMutation.isPending
                   ? "Saving..."
                   : isValidating
-                  ? "Validating..."
-                  : "Save"}
+                    ? "Validating..."
+                    : "Save"}
               </Button>
             </DialogFooter>
           </form>

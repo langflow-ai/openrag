@@ -58,7 +58,7 @@ const OllamaSettingsDialog = ({
     },
     {
       enabled: false,
-    }
+    },
   );
 
   const settingsMutation = useUpdateSettingsMutation({
@@ -72,7 +72,7 @@ const OllamaSettingsDialog = ({
       queryClient.setQueryData(["provider", "health"], healthData);
 
       toast.success(
-        "Ollama endpoint saved. Configure models in the Settings page."
+        "Ollama endpoint saved. Configure models in the Settings page.",
       );
       setOpen(false);
     },
@@ -145,8 +145,8 @@ const OllamaSettingsDialog = ({
                 {settingsMutation.isPending
                   ? "Saving..."
                   : isValidating
-                  ? "Validating..."
-                  : "Save"}
+                    ? "Validating..."
+                    : "Save"}
               </Button>
             </DialogFooter>
           </form>

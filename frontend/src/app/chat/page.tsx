@@ -244,12 +244,11 @@ function ChatPage() {
           timestamp: new Date(),
         };
 
-		const confirmationMessage: Message = {
-			role: "assistant",
-			content: `Confirmed`,
-			timestamp: new Date(),
-		  };
-  
+        const confirmationMessage: Message = {
+          role: "assistant",
+          content: `Confirmed`,
+          timestamp: new Date(),
+        };
 
         setMessages((prev) => [...prev, uploadMessage, confirmationMessage]);
 
@@ -923,7 +922,10 @@ function ChatPage() {
     // Only send message if there's input text
     if (input.trim() || uploadedFile) {
       // Pass the responseId from upload (if any) to handleSendMessage
-      handleSendMessage(!input.trim() ? FILE_CONFIRMATION : input, uploadedResponseId || undefined);
+      handleSendMessage(
+        !input.trim() ? FILE_CONFIRMATION : input,
+        uploadedResponseId || undefined,
+      );
     }
   };
 
@@ -1246,15 +1248,21 @@ function ChatPage() {
                               ? message.source !== "langflow"
                               : false
                           }
-                          content={index >= 2
-							&& (messages[index - 2]?.content.match(
-								FILES_REGEX,
-							  )?.[0] ?? undefined) && message.content === FILE_CONFIRMATION ? undefined : message.content}
+                          content={
+                            index >= 2 &&
+                            (messages[index - 2]?.content.match(
+                              FILES_REGEX,
+                            )?.[0] ??
+                              undefined) &&
+                            message.content === FILE_CONFIRMATION
+                              ? undefined
+                              : message.content
+                          }
                           files={
                             index >= 2
-                              ? messages[index - 2]?.content.match(
+                              ? (messages[index - 2]?.content.match(
                                   FILES_REGEX,
-                                )?.[0] ?? undefined
+                                )?.[0] ?? undefined)
                               : undefined
                           }
                         />
