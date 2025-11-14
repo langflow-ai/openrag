@@ -36,6 +36,7 @@ export function OllamaOnboarding({
     error: modelsError,
   } = useGetOllamaModelsQuery(
     debouncedEndpoint ? { endpoint: debouncedEndpoint } : undefined,
+    { enabled: !!debouncedEndpoint || alreadyConfigured },
   );
 
   // Use custom hook for model selection logic
