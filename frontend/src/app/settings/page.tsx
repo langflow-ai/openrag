@@ -1009,22 +1009,20 @@ function KnowledgeSourcesPage() {
                   rows={6}
                   className={`resize-none ${
                     systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-                      ? "border-red-500 focus:border-red-500"
+                      ? "!border-destructive focus:border-destructive"
                       : ""
                   }`}
                 />
-                <div className="flex justify-start">
-                  <span
-                    className={`text-xs ${
-                      systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-                        ? "text-red-500"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
-                  </span>
-                </div>
               </LabelWrapper>
+              <span
+                className={`text-xs ${
+                  systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
+                    ? "text-destructive"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
+              </span>
             </div>
             <div className="flex justify-end pt-2">
               <Button
@@ -1147,7 +1145,7 @@ function KnowledgeSourcesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <LabelWrapper id="chunk-size" label="Chunk size">
-                  <div className="relative">
+                  <div className="relative [&:has(input:hover):not(:has(input:focus))_button]:border-muted-foreground [&:has(input:focus)_button]:border-foreground">
                     <Input
                       id="chunk-size"
                       type="number"
@@ -1163,7 +1161,7 @@ function KnowledgeSourcesPage() {
                       <div className="flex flex-col">
                         <Button
                           aria-label="Increase value"
-                          className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative"
+                          className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative transition-colors"
                           variant="outline"
                           size="iconSm"
                           onClick={() =>
@@ -1174,7 +1172,7 @@ function KnowledgeSourcesPage() {
                         </Button>
                         <Button
                           aria-label="Decrease value"
-                          className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative"
+                          className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative transition-colors"
                           variant="outline"
                           size="iconSm"
                           onClick={() =>
@@ -1190,7 +1188,7 @@ function KnowledgeSourcesPage() {
               </div>
               <div className="space-y-2">
                 <LabelWrapper id="chunk-overlap" label="Chunk overlap">
-                  <div className="relative">
+                  <div className="relative [&:has(input:hover):not(:has(input:focus))_button]:border-muted-foreground [&:has(input:focus)_button]:border-foreground">
                     <Input
                       id="chunk-overlap"
                       type="number"
@@ -1206,7 +1204,7 @@ function KnowledgeSourcesPage() {
                       <div className="flex flex-col">
                         <Button
                           aria-label="Increase value"
-                          className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative"
+                          className="h-5 rounded-l-none rounded-br-none border-input border-b-[0.5px] focus-visible:relative transition-colors"
                           variant="outline"
                           size="iconSm"
                           onClick={() =>
@@ -1219,7 +1217,7 @@ function KnowledgeSourcesPage() {
                         </Button>
                         <Button
                           aria-label="Decrease value"
-                          className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative"
+                          className="h-5 rounded-l-none rounded-tr-none border-input border-t-[0.5px] focus-visible:relative transition-colors"
                           variant="outline"
                           size="iconSm"
                           onClick={() =>
