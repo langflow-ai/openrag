@@ -77,6 +77,7 @@ export function IBMOnboarding({
       apiKey: debouncedApiKey ? debouncedApiKey : undefined,
       projectId: debouncedProjectId ? debouncedProjectId : undefined,
     },
+    { enabled: !!debouncedEndpoint || !!debouncedApiKey || !!debouncedProjectId || alreadyConfigured },
   );
 
   // Use custom hook for model selection logic
