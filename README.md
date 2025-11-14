@@ -30,6 +30,8 @@ To quickly run OpenRAG without creating or modifying any project files, use the 
 
 The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, then runs OpenRAG with `uvx`.
 
+> **Note:** When the script runs `uvx openrag`, `uv` automatically downloads and installs Python 3.10-3.13 if it's not already on your system. You don't need Python pre-installed when using the automatic installer, but having it pre-installed is recommended for better reliability.
+
 1. Create a directory to store the OpenRAG configuration files:
 
     ```bash
