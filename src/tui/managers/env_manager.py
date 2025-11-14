@@ -72,9 +72,25 @@ class EnvManager:
 
     def generate_secure_password(self) -> str:
         """Generate a secure password for OpenSearch."""
-        # Generate a 16-character password with letters, digits, and symbols
-        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-        return "".join(secrets.choice(alphabet) for _ in range(16))
+        # Ensure at least one character from each category
+        symbols = "!@#$%^&*"
+
+        # Guarantee at least one of each type
+        password_chars = [
+            secrets.choice(string.ascii_uppercase),
+            secrets.choice(string.ascii_lowercase),
+            secrets.choice(string.digits),
+            secrets.choice(symbols),
+        ]
+
+        # Fill remaining 12 characters with random choices from all categories
+        alphabet = string.ascii_letters + string.digits + symbols
+        password_chars.extend(secrets.choice(alphabet) for _ in range(12))
+
+        # Shuffle to avoid predictable patterns
+        secrets.SystemRandom().shuffle(password_chars)
+
+        return "".join(password_chars)
 
     def generate_langflow_secret_key(self) -> str:
         """Generate a secure secret key for Langflow."""

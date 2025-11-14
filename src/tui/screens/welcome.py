@@ -73,10 +73,11 @@ class WelcomeScreen(Screen):
             return
 
         try:
-            # Use synchronous docker command to check services
+            # Use detected runtime command to check services
             import subprocess
+            compose_cmd = self.container_manager.runtime_info.compose_command + ["ps", "--format", "json"]
             result = subprocess.run(
-                ["docker", "compose", "ps", "--format", "json"],
+                compose_cmd,
                 capture_output=True,
                 text=True,
                 timeout=5
