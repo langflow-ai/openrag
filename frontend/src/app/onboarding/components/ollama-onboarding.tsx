@@ -25,7 +25,7 @@ export function OllamaOnboarding({
   isEmbedding?: boolean;
   alreadyConfigured?: boolean;
 }) {
-  const [endpoint, setEndpoint] = useState(`http://localhost:11434`);
+  const [endpoint, setEndpoint] = useState(alreadyConfigured ? undefined : `http://localhost:11434`);
   const [showConnecting, setShowConnecting] = useState(false);
   const debouncedEndpoint = useDebouncedValue(endpoint, 500);
 

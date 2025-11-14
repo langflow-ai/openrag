@@ -26,7 +26,7 @@ export function IBMOnboarding({
   setIsLoadingModels?: (isLoading: boolean) => void;
   alreadyConfigured?: boolean;
 }) {
-  const [endpoint, setEndpoint] = useState("https://us-south.ml.cloud.ibm.com");
+  const [endpoint, setEndpoint] = useState(alreadyConfigured ? "" : "https://us-south.ml.cloud.ibm.com");
   const [apiKey, setApiKey] = useState("");
   const [projectId, setProjectId] = useState("");
 
