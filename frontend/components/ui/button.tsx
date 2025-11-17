@@ -1,9 +1,10 @@
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
+import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none disabled:select-none active:scale-[0.97] [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none disabled:select-none [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -38,14 +39,14 @@ const buttonVariants = cva(
       variant: "default",
       size: "default",
     },
-  }
+  },
 );
 
 function toTitleCase(text: string) {
   return text
     ?.split(" ")
     ?.map(
-      (word) => word?.charAt(0)?.toUpperCase() + word?.slice(1)?.toLowerCase()
+      (word) => word?.charAt(0)?.toUpperCase() + word?.slice(1)?.toLowerCase(),
     )
     ?.join(" ");
 }
@@ -71,17 +72,21 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       ignoreTitleCase = false,
       ...props
     },
-    ref
+    ref,
   ) => {
     const Comp = asChild ? Slot : "button";
     let newChildren = children;
     if (typeof children === "string") {
       newChildren = ignoreTitleCase ? children : toTitleCase(children);
     }
+    const shouldScale = props["aria-haspopup"] !== "dialog";
 
     return (
       <Comp
-        className={buttonVariants({ variant, size, className })}
+        className={cn(
+          buttonVariants({ variant, size, className }),
+          shouldScale && "active:scale-[0.97]",
+        )}
         disabled={loading || disabled}
         ref={ref}
         {...props}
@@ -100,7 +105,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         )}
       </Comp>
     );
-  }
+  },
 );
 
 Button.displayName = "Button";

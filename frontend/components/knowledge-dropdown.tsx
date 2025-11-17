@@ -13,8 +13,13 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
+import AwsIcon from "@/components/icons/aws-logo";
+import GoogleDriveIcon from "@/components/icons/google-drive-logo";
+import OneDriveIcon from "@/components/icons/one-drive-logo";
+import SharePointIcon from "@/components/icons/share-point-logo";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,16 +37,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTask } from "@/contexts/task-context";
-import { cn } from "@/lib/utils";
 import {
   duplicateCheck,
   uploadFile as uploadFileUtil,
 } from "@/lib/upload-utils";
-import type { File as SearchFile } from "@/src/app/api/queries/useGetSearchQuery";
-import GoogleDriveIcon from "@/app/settings/icons/google-drive-icon";
-import OneDriveIcon from "@/app/settings/icons/one-drive-icon";
-import SharePointIcon from "@/app/settings/icons/share-point-icon";
-import AwsIcon from "@/app/settings/icons/aws-icon";
+import { cn } from "@/lib/utils";
 
 export function KnowledgeDropdown() {
   const { addTask } = useTask();
@@ -117,7 +117,7 @@ export function KnowledgeDropdown() {
                   const connections = statusData.connections || [];
                   const activeConnection = connections.find(
                     (conn: { is_active: boolean; connection_id: string }) =>
-                      conn.is_active
+                      conn.is_active,
                   );
                   const isConnected = activeConnection !== undefined;
 
@@ -127,7 +127,7 @@ export function KnowledgeDropdown() {
                     // Check token availability
                     try {
                       const tokenRes = await fetch(
-                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`
+                        `/api/connectors/${type}/token?connection_id=${activeConnection.connection_id}`,
                       );
                       if (tokenRes.ok) {
                         const tokenData = await tokenRes.json();
@@ -166,7 +166,7 @@ export function KnowledgeDropdown() {
   };
 
   const handleFileChange = async (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const files = event.target.files;
 
@@ -225,7 +225,7 @@ export function KnowledgeDropdown() {
         if (!oldData) return oldData;
         // Filter out the file that's being overwritten
         return oldData.filter(
-          (file: SearchFile) => file.filename !== pendingFile.name
+          (file: SearchFile) => file.filename !== pendingFile.name,
         );
       });
 
@@ -397,19 +397,19 @@ export function KnowledgeDropdown() {
                 ? fileUploading
                   ? "Uploading..."
                   : folderLoading
-                  ? "Processing Folder..."
-                  : s3Loading
-                  ? "Processing S3..."
-                  : isNavigatingToCloud
-                  ? "Loading..."
-                  : "Processing..."
+                    ? "Processing Folder..."
+                    : s3Loading
+                      ? "Processing S3..."
+                      : isNavigatingToCloud
+                        ? "Loading..."
+                        : "Processing..."
                 : "Add Knowledge"}
             </span>
             {!isLoading && (
               <ChevronDown
                 className={cn(
                   "h-4 w-4 transition-transform duration-200",
-                  isMenuOpen && "rotate-180"
+                  isMenuOpen && "rotate-180",
                 )}
               />
             )}

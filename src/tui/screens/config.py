@@ -553,11 +553,17 @@ class ConfigScreen(Screen):
         # First, check Textual input validators
         validation_errors = []
         for field_name, input_widget in self.inputs.items():
-            if hasattr(input_widget, "validate") and input_widget.value:
-                result = input_widget.validate(input_widget.value)
-                if result and not result.is_valid:
-                    for failure in result.failures:
-                        validation_errors.append(f"{field_name}: {failure.description}")
+            # Skip empty values as they may be optional or auto-generated
+            if not input_widget.value:
+                continue
+
+            # Check if input has validators and manually validate
+            if hasattr(input_widget, "validators") and input_widget.validators:
+                for validator in input_widget.validators:
+                    result = validator.validate(input_widget.value)
+                    if result and not result.is_valid:
+                        for failure in result.failures:
+                            validation_errors.append(f"{field_name}: {failure.description}")
 
         if validation_errors:
             self.notify(
@@ -569,6 +575,9 @@ class ConfigScreen(Screen):
         # Update config from input fields
         for field_name, input_widget in self.inputs.items():
             setattr(self.env_manager.config, field_name, input_widget.value)
+
+        # Generate secure defaults for empty passwords/keys BEFORE validation
+        self.env_manager.setup_secure_defaults()
 
         # Validate the configuration
         if not self.env_manager.validate_config(self.mode):

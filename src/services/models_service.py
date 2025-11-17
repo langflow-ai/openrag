@@ -1,6 +1,5 @@
 import httpx
 from typing import Dict, List
-from api.provider_validation import test_embedding
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -29,6 +28,22 @@ class ModelsService:
         "o3-pro",
         "o4-mini",
         "o4-mini-high",
+    ]
+
+    ANTHROPIC_MODELS = [
+        "claude-sonnet-4-5-20250929",
+        "claude-opus-4-1-20250805",
+        "claude-opus-4-20250514",
+        "claude-sonnet-4-20250514",
+        "claude-3-7-sonnet-latest",
+        "claude-3-5-sonnet-latest",
+        "claude-3-5-haiku-latest",
+        "claude-3-opus-latest",
+        "claude-3-sonnet-20240229",
+        "claude-3-5-sonnet-20240620",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+        "claude-3-haiku-20240307",
     ]
 
     def __init__(self):
@@ -100,6 +115,64 @@ class ModelsService:
             logger.error(f"Error fetching OpenAI models: {str(e)}")
             raise
 
+    async def get_anthropic_models(self, api_key: str) -> Dict[str, List[Dict[str, str]]]:
+        """Fetch available models from Anthropic API"""
+        try:
+            headers = {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            }
+
+            # Anthropic doesn't have a models list endpoint, so we'll validate the key
+            # and return our curated list of models
+            async with httpx.AsyncClient() as client:
+                # Validate the API key with a minimal messages request
+                validation_payload = {
+                    "model": "claude-3-5-haiku-latest",
+                    "max_tokens": 1,
+                    "messages": [{"role": "user", "content": "test"}],
+                }
+
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers=headers,
+                    json=validation_payload,
+                    timeout=10.0,
+                )
+
+            if response.status_code == 200:
+                # API key is valid, return our curated list
+                language_models = []
+
+                for model_id in self.ANTHROPIC_MODELS:
+                    language_models.append(
+                        {
+                            "value": model_id,
+                            "label": model_id,
+                            "default": model_id == "claude-sonnet-4-5-20250929",
+                        }
+                    )
+
+                # Sort by default first, then by name
+                language_models.sort(
+                    key=lambda x: (not x.get("default", False), x["value"])
+                )
+
+                return {
+                    "language_models": language_models,
+                    "embedding_models": [],  # Anthropic doesn't provide embedding models
+                }
+            else:
+                logger.error(f"Failed to validate Anthropic API key: {response.status_code}")
+                raise Exception(
+                    f"Anthropic API returned status code {response.status_code}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error fetching Anthropic models: {str(e)}")
+            raise
+
     async def get_ollama_models(
         self, endpoint: str = None
     ) -> Dict[str, List[Dict[str, str]]]:
@@ -155,20 +228,14 @@ class ModelsService:
                             f"Model: {model_name}, Capabilities: {capabilities}"
                         )
 
-                        # Check if model has required capabilities
+                        # Check if model has embedding capability
+                        has_embedding = "embedding" in capabilities
+                        # Check if model has required capabilities for language models
                         has_completion = DESIRED_CAPABILITY in capabilities
                         has_tools = TOOL_CALLING_CAPABILITY in capabilities
 
-                        # Check if it's an embedding model
-                        try:
-                            await test_embedding("ollama", endpoint=endpoint, embedding_model=model_name)
-                            is_embedding = True
-                        except Exception as e:
-                            logger.warning(f"Failed to test embedding for model {model_name}: {str(e)}")
-                            is_embedding = False
-
-                        if is_embedding:
-                            # Embedding models only need completion capability
+                        if has_embedding:
+                            # Embedding models have embedding capability
                             embedding_models.append(
                                 {
                                     "value": model_name,
@@ -176,7 +243,7 @@ class ModelsService:
                                     "default": "nomic-embed-text" in model_name.lower(),
                                 }
                             )
-                        elif not is_embedding and has_completion and has_tools:
+                        if has_completion and has_tools:
                             # Language models need both completion and tool calling
                             language_models.append(
                                 {
@@ -259,34 +326,6 @@ class ModelsService:
             if project_id:
                 headers["Project-ID"] = project_id
 
-            # Validate credentials with a minimal completion request
-            async with httpx.AsyncClient() as client:
-                validation_url = f"{watson_endpoint}/ml/v1/text/generation"
-                validation_params = {"version": "2024-09-16"}
-                validation_payload = {
-                    "input": "test",
-                    "model_id": "ibm/granite-3-2b-instruct",
-                    "project_id": project_id,
-                    "parameters": {
-                        "max_new_tokens": 1,
-                    },
-                }
-
-                validation_response = await client.post(
-                    validation_url,
-                    headers=headers,
-                    params=validation_params,
-                    json=validation_payload,
-                    timeout=10.0,
-                )
-
-                if validation_response.status_code != 200:
-                    raise Exception(
-                        f"Invalid credentials or endpoint: {validation_response.status_code} - {validation_response.text}"
-                    )
-
-                logger.info("IBM Watson credentials validated successfully")
-
             # Fetch foundation models using the correct endpoint
             models_url = f"{watson_endpoint}/ml/v1/foundation_model_specs"
 
@@ -349,6 +388,39 @@ class ModelsService:
                                 "default": i == 0,  # First model is default
                             }
                         )
+
+            # Validate credentials with the first available LLM model
+            if language_models:
+                first_llm_model = language_models[0]["value"]
+                
+                async with httpx.AsyncClient() as client:
+                    validation_url = f"{watson_endpoint}/ml/v1/text/generation"
+                    validation_params = {"version": "2024-09-16"}
+                    validation_payload = {
+                        "input": "test",
+                        "model_id": first_llm_model,
+                        "project_id": project_id,
+                        "parameters": {
+                            "max_new_tokens": 1,
+                        },
+                    }
+
+                    validation_response = await client.post(
+                        validation_url,
+                        headers=headers,
+                        params=validation_params,
+                        json=validation_payload,
+                        timeout=10.0,
+                    )
+
+                    if validation_response.status_code != 200:
+                        raise Exception(
+                            f"Invalid credentials or endpoint: {validation_response.status_code} - {validation_response.text}"
+                        )
+
+                    logger.info(f"IBM Watson credentials validated successfully using model: {first_llm_model}")
+            else:
+                logger.warning("No language models available to validate credentials")
 
             if not language_models and not embedding_models:
                 raise Exception("No IBM models retrieved from API")

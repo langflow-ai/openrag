@@ -66,19 +66,46 @@ On macOS, this cache directory is typically a user cache directory such as `/Use
 
 If you do not need OCR, you can disable OCR-based processing in your ingestion settings to avoid requiring `easyocr`.
 
-## Langflow container already exists
+## Langflow container already exists {#langflow-container-already-exists-during-upgrade}
 
-If you are running other versions of Langflow containers on your machine, you may encounter an issue where Docker or Podman  thinks Langflow is already up.
+If you encounter a `langflow container already exists` error when upgrading OpenRAG, this typically means you upgraded OpenRAG with `uv`, but didn't remove or upgrade containers from a previous installation.
 
-Remove just the problem container, or clean up all containers and start fresh. 
+1. Remove only the problematic Langflow container:
 
-To reset your local containers and pull new images, do the following:
+    <Tabs groupId="Container software">
+      <TabItem value="Podman" label="Podman">
+        ```bash
+        # Stop the langflow container
+        podman stop langflow
+        
+        # Remove the langflow container
+        podman rm langflow --force
+        ```
+      </TabItem>
+      <TabItem value="Docker" label="Docker" default>
+        ```bash
+        # Stop the langflow container
+        docker stop langflow
+        
+        # Remove the langflow container
+        docker rm langflow --force
+        ```
+      </TabItem>
+    </Tabs>
+
+2. After removing the container, retry the upgrade in the OpenRAG TUI by clicking **Status** > **Upgrade**.
+
+### Reinstall all containers
+
+If reinstalling the Langflow container doesn't resolve the issue, or if you want a completely fresh installation, remove all OpenRAG containers and data, and then retry the upgrade.
+:::warning Data loss
+The complete reset removes all your data, including OpenSearch data, uploaded documents, and authentication. Your `.env` file is preserved, so your configuration settings remain intact.
+:::
 
 1. Stop your containers and completely remove them.
 
     <Tabs groupId="Container software">
-    <TabItem value="Podman" label="Podman">
-    
+      <TabItem value="Podman" label="Podman">
         ```bash
         # Stop all running containers
         podman stop --all
@@ -98,10 +125,8 @@ To reset your local containers and pull new images, do the following:
         # Clean up any leftover data
         podman system prune --all --force --volumes
         ```
-    
       </TabItem>
       <TabItem value="Docker" label="Docker" default>
-    
         ```bash
         # Stop all running containers
         docker stop $(docker ps -q)
@@ -121,16 +146,7 @@ To reset your local containers and pull new images, do the following:
         # Clean up any leftover data
         docker system prune --all --force --volumes
         ```
-    
-       </TabItem>
+      </TabItem>
     </Tabs>
 
-2. Restart OpenRAG and upgrade to get the latest images for your containers.
-   ```bash
-   uv sync
-   uv run openrag
-   ```
-
-3. In the OpenRAG TUI, click **Status**, and then click **Upgrade**.
-When the **Close** button is active, the upgrade is complete.
-Close the window and open the OpenRAG appplication.
+2. After removing the containers, retry the upgrade in the OpenRAG TUI by clicking **Status** > **Upgrade**.

@@ -700,6 +700,10 @@ OPENAI_LLM_COMPONENT_DISPLAY_NAME = os.getenv(
     "OPENAI_LLM_COMPONENT_DISPLAY_NAME", "Language Model"
 )
 
+AGENT_COMPONENT_DISPLAY_NAME = os.getenv(
+    "AGENT_COMPONENT_DISPLAY_NAME", "Agent"
+)
+
 # Provider-specific component IDs
 WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME = os.getenv(
     "WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME", "IBM watsonx.ai Embeddings"
@@ -746,4 +750,4 @@ def get_agent_config():
 
 def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
-    return get_openrag_config().knowledge.embedding_model
+    return get_openrag_config().knowledge.embedding_model or EMBED_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""

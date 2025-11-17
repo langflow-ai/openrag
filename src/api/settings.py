@@ -21,7 +21,9 @@ logger = get_logger(__name__)
 
 
 # Docling preset configurations
-def get_docling_preset_configs(table_structure=False, ocr=False, picture_descriptions=False):
+def get_docling_preset_configs(
+    table_structure=False, ocr=False, picture_descriptions=False
+):
     """Get docling preset configurations based on toggle settings
 
     Args:
@@ -40,7 +42,7 @@ def get_docling_preset_configs(table_structure=False, ocr=False, picture_descrip
         "picture_description_local": {
             "repo_id": "HuggingFaceTB/SmolVLM-256M-Instruct",
             "prompt": "Describe this image in a few sentences.",
-        }
+        },
     }
 
     return config
@@ -51,9 +53,9 @@ async def get_settings(request, session_manager):
     try:
         openrag_config = get_openrag_config()
 
-        provider_config = openrag_config.provider
         knowledge_config = openrag_config.knowledge
         agent_config = openrag_config.agent
+
         # Return public settings that are safe to expose to frontend
         settings = {
             "langflow_url": LANGFLOW_URL,
@@ -62,14 +64,30 @@ async def get_settings(request, session_manager):
             "langflow_public_url": LANGFLOW_PUBLIC_URL,
             "edited": openrag_config.edited,
             # OpenRAG configuration
-            "provider": {
-                "model_provider": provider_config.model_provider,
-                "endpoint": provider_config.endpoint if provider_config.endpoint else None,
-                "project_id": provider_config.project_id if provider_config.project_id else None,
-                # Note: API key is not exposed for security
+            "providers": {
+                "openai": {
+                    "has_api_key": bool(openrag_config.providers.openai.api_key),
+                    "configured": openrag_config.providers.openai.configured,
+                    # Note: API key is not exposed for security
+                },
+                "anthropic": {
+                    "has_api_key": bool(openrag_config.providers.anthropic.api_key),
+                    "configured": openrag_config.providers.anthropic.configured,
+                },
+                "watsonx": {
+                    "has_api_key": bool(openrag_config.providers.watsonx.api_key),
+                    "endpoint": openrag_config.providers.watsonx.endpoint or None,
+                    "project_id": openrag_config.providers.watsonx.project_id or None,
+                    "configured": openrag_config.providers.watsonx.configured,
+                },
+                "ollama": {
+                    "endpoint": openrag_config.providers.ollama.endpoint or None,
+                    "configured": openrag_config.providers.ollama.configured,
+                },
             },
             "knowledge": {
                 "embedding_model": knowledge_config.embedding_model,
+                "embedding_provider": knowledge_config.embedding_provider,
                 "chunk_size": knowledge_config.chunk_size,
                 "chunk_overlap": knowledge_config.chunk_overlap,
                 "table_structure": knowledge_config.table_structure,
@@ -78,6 +96,7 @@ async def get_settings(request, session_manager):
             },
             "agent": {
                 "llm_model": agent_config.llm_model,
+                "llm_provider": agent_config.llm_provider,
                 "system_prompt": agent_config.system_prompt,
             },
             "localhost_url": LOCALHOST_URL,
@@ -179,6 +198,7 @@ async def update_settings(request, session_manager):
         # Validate allowed fields
         allowed_fields = {
             "llm_model",
+            "llm_provider",
             "system_prompt",
             "chunk_size",
             "chunk_overlap",
@@ -186,10 +206,14 @@ async def update_settings(request, session_manager):
             "ocr",
             "picture_descriptions",
             "embedding_model",
-            "model_provider",
-            "api_key",
-            "endpoint",
-            "project_id",
+            "embedding_provider",
+            # Provider-specific fields (structured as provider_name.field_name)
+            "openai_api_key",
+            "anthropic_api_key",
+            "watsonx_api_key",
+            "watsonx_endpoint",
+            "watsonx_project_id",
+            "ollama_endpoint",
         }
 
         # Check for invalid fields
@@ -212,102 +236,171 @@ async def update_settings(request, session_manager):
                     {"error": "embedding_model must be a non-empty string"},
                     status_code=400,
                 )
-        
+
         if "table_structure" in body:
             if not isinstance(body["table_structure"], bool):
                 return JSONResponse(
                     {"error": "table_structure must be a boolean"}, status_code=400
                 )
-        
+
         if "ocr" in body:
             if not isinstance(body["ocr"], bool):
-                return JSONResponse(
-                    {"error": "ocr must be a boolean"}, status_code=400
-                )
-        
+                return JSONResponse({"error": "ocr must be a boolean"}, status_code=400)
+
         if "picture_descriptions" in body:
             if not isinstance(body["picture_descriptions"], bool):
                 return JSONResponse(
                     {"error": "picture_descriptions must be a boolean"}, status_code=400
                 )
-        
+
         if "chunk_size" in body:
             if not isinstance(body["chunk_size"], int) or body["chunk_size"] <= 0:
                 return JSONResponse(
                     {"error": "chunk_size must be a positive integer"}, status_code=400
                 )
-        
+
         if "chunk_overlap" in body:
             if not isinstance(body["chunk_overlap"], int) or body["chunk_overlap"] < 0:
                 return JSONResponse(
                     {"error": "chunk_overlap must be a non-negative integer"},
                     status_code=400,
                 )
-        
-        if "model_provider" in body:
+
+        if "llm_provider" in body:
             if (
-                not isinstance(body["model_provider"], str)
-                or not body["model_provider"].strip()
+                not isinstance(body["llm_provider"], str)
+                or not body["llm_provider"].strip()
             ):
                 return JSONResponse(
-                    {"error": "model_provider must be a non-empty string"},
+                    {"error": "llm_provider must be a non-empty string"},
                     status_code=400,
                 )
-        
-        if "api_key" in body:
-            if not isinstance(body["api_key"], str):
+            if body["llm_provider"] not in ["openai", "anthropic", "watsonx", "ollama"]:
                 return JSONResponse(
-                    {"error": "api_key must be a string"}, status_code=400
+                    {"error": "llm_provider must be one of: openai, anthropic, watsonx, ollama"},
+                    status_code=400,
                 )
-        
-        if "endpoint" in body:
-            if not isinstance(body["endpoint"], str) or not body["endpoint"].strip():
-                return JSONResponse(
-                    {"error": "endpoint must be a non-empty string"}, status_code=400
-                )
-        
-        if "project_id" in body:
+
+        if "embedding_provider" in body:
             if (
-                not isinstance(body["project_id"], str)
-                or not body["project_id"].strip()
+                not isinstance(body["embedding_provider"], str)
+                or not body["embedding_provider"].strip()
             ):
                 return JSONResponse(
-                    {"error": "project_id must be a non-empty string"}, status_code=400
+                    {"error": "embedding_provider must be a non-empty string"},
+                    status_code=400,
+                )
+            # Anthropic doesn't have embeddings
+            if body["embedding_provider"] not in ["openai", "watsonx", "ollama"]:
+                return JSONResponse(
+                    {"error": "embedding_provider must be one of: openai, watsonx, ollama"},
+                    status_code=400,
+                )
+
+        # Validate provider-specific fields
+        for key in ["openai_api_key", "anthropic_api_key", "watsonx_api_key"]:
+            if key in body and not isinstance(body[key], str):
+                return JSONResponse(
+                    {"error": f"{key} must be a string"}, status_code=400
+                )
+
+        for key in ["watsonx_endpoint", "ollama_endpoint"]:
+            if key in body:
+                if not isinstance(body[key], str) or not body[key].strip():
+                    return JSONResponse(
+                        {"error": f"{key} must be a non-empty string"}, status_code=400
+                    )
+
+        if "watsonx_project_id" in body:
+            if (
+                not isinstance(body["watsonx_project_id"], str)
+                or not body["watsonx_project_id"].strip()
+            ):
+                return JSONResponse(
+                    {"error": "watsonx_project_id must be a non-empty string"}, status_code=400
                 )
 
         # Validate provider setup if provider-related fields are being updated
         # Do this BEFORE modifying any config
-        provider_fields = ["model_provider", "api_key", "endpoint", "project_id", "llm_model", "embedding_model"]
+        provider_fields = [
+            "llm_provider",
+            "embedding_provider",
+            "llm_model",
+            "embedding_model",
+            "openai_api_key",
+            "anthropic_api_key",
+            "watsonx_api_key",
+            "watsonx_endpoint",
+            "watsonx_project_id",
+            "ollama_endpoint",
+        ]
         should_validate = any(field in body for field in provider_fields)
-        
+
         if should_validate:
             try:
                 logger.info("Running provider validation before modifying config")
-                
-                provider = body.get("model_provider", current_config.provider.model_provider)
-                api_key = body.get("api_key") if "api_key" in body and body["api_key"].strip() else current_config.provider.api_key
-                endpoint = body.get("endpoint", current_config.provider.endpoint)
-                project_id = body.get("project_id", current_config.provider.project_id)
-                llm_model = body.get("llm_model", current_config.agent.llm_model)
-                embedding_model = body.get("embedding_model", current_config.knowledge.embedding_model)
-        
-                await validate_provider_setup(
-                    provider=provider,
-                    api_key=api_key,
-                    embedding_model=embedding_model,
-                    llm_model=llm_model,
-                    endpoint=endpoint,
-                    project_id=project_id,
-                )
-                
-                logger.info(f"Provider validation successful for {provider}")
-                
+
+                # Validate LLM provider if being changed
+                if "llm_provider" in body or "llm_model" in body:
+                    llm_provider = body.get("llm_provider", current_config.agent.llm_provider)
+                    llm_model = body.get("llm_model", current_config.agent.llm_model)
+
+                    # Get the provider config (with any updates from the request)
+                    llm_provider_config = current_config.providers.get_provider_config(llm_provider)
+
+                    # Apply any updates from the request
+                    api_key = getattr(llm_provider_config, "api_key", None)
+                    endpoint = getattr(llm_provider_config, "endpoint", None)
+                    project_id = getattr(llm_provider_config, "project_id", None)
+
+                    if f"{llm_provider}_api_key" in body and body[f"{llm_provider}_api_key"].strip():
+                        api_key = body[f"{llm_provider}_api_key"]
+                    if f"{llm_provider}_endpoint" in body:
+                        endpoint = body[f"{llm_provider}_endpoint"]
+                    if f"{llm_provider}_project_id" in body:
+                        project_id = body[f"{llm_provider}_project_id"]
+
+                    await validate_provider_setup(
+                        provider=llm_provider,
+                        api_key=api_key,
+                        llm_model=llm_model,
+                        endpoint=endpoint,
+                        project_id=project_id,
+                    )
+                    logger.info(f"LLM provider validation successful for {llm_provider}")
+
+                # Validate embedding provider if being changed
+                if "embedding_provider" in body or "embedding_model" in body:
+                    embedding_provider = body.get("embedding_provider", current_config.knowledge.embedding_provider)
+                    embedding_model = body.get("embedding_model", current_config.knowledge.embedding_model)
+
+                    # Get the provider config (with any updates from the request)
+                    embedding_provider_config = current_config.providers.get_provider_config(embedding_provider)
+
+                    # Apply any updates from the request
+                    api_key = getattr(embedding_provider_config, "api_key", None)
+                    endpoint = getattr(embedding_provider_config, "endpoint", None)
+                    project_id = getattr(embedding_provider_config, "project_id", None)
+
+                    if f"{embedding_provider}_api_key" in body and body[f"{embedding_provider}_api_key"].strip():
+                        api_key = body[f"{embedding_provider}_api_key"]
+                    if f"{embedding_provider}_endpoint" in body:
+                        endpoint = body[f"{embedding_provider}_endpoint"]
+                    if f"{embedding_provider}_project_id" in body:
+                        project_id = body[f"{embedding_provider}_project_id"]
+
+                    await validate_provider_setup(
+                        provider=embedding_provider,
+                        api_key=api_key,
+                        embedding_model=embedding_model,
+                        endpoint=endpoint,
+                        project_id=project_id,
+                    )
+                    logger.info(f"Embedding provider validation successful for {embedding_provider}")
+
             except Exception as e:
                 logger.error(f"Provider validation failed: {str(e)}")
-                return JSONResponse(
-                    {"error": f"{str(e)}"}, 
-                    status_code=400
-                )
+                return JSONResponse({"error": f"{str(e)}"}, status_code=400)
 
         # Update configuration
         # Only reached if validation passed or wasn't needed
@@ -318,17 +411,9 @@ async def update_settings(request, session_manager):
             current_config.agent.llm_model = body["llm_model"]
             config_updated = True
 
-            # Also update the chat flow with the new model
-            try:
-                flows_service = _get_flows_service()
-                await flows_service.update_chat_flow_model(body["llm_model"], current_config.provider.model_provider.lower())
-                logger.info(
-                    f"Successfully updated chat flow model to '{body['llm_model']}'"
-                )
-            except Exception as e:
-                logger.error(f"Failed to update chat flow model: {str(e)}")
-                # Don't fail the entire settings update if flow update fails
-                # The config will still be saved
+        if "llm_provider" in body:
+            current_config.agent.llm_provider = body["llm_provider"]
+            config_updated = True
 
         if "system_prompt" in body:
             current_config.agent.system_prompt = body["system_prompt"]
@@ -338,8 +423,7 @@ async def update_settings(request, session_manager):
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_chat_flow_system_prompt(
-                    body["system_prompt"],
-                    current_config.agent.system_prompt
+                    body["system_prompt"], current_config.agent.system_prompt
                 )
                 logger.info(f"Successfully updated chat flow system prompt")
             except Exception as e:
@@ -353,49 +437,9 @@ async def update_settings(request, session_manager):
             current_config.knowledge.embedding_model = new_embedding_model
             config_updated = True
 
-            # Also update the ingest flow with the new embedding model
-            try:
-                flows_service = _get_flows_service()
-                await flows_service.update_ingest_flow_embedding_model(
-                    new_embedding_model,
-                    current_config.provider.model_provider.lower()
-                )
-                logger.info(
-                    f"Successfully updated ingest flow embedding model to '{body['embedding_model'].strip()}'"
-                )
-
-                provider = (
-                    current_config.provider.model_provider.lower()
-                    if current_config.provider.model_provider
-                    else "openai"
-                )
-                endpoint = current_config.provider.endpoint or None
-                llm_model = current_config.agent.llm_model
-
-                change_result = await flows_service.change_langflow_model_value(
-                    provider=provider,
-                    embedding_model=new_embedding_model,
-                    llm_model=llm_model,
-                    endpoint=endpoint,
-                )
-
-                if not change_result.get("success", False):
-                    logger.warning(
-                        "Change embedding model across flows completed with issues",
-                        provider=provider,
-                        embedding_model=new_embedding_model,
-                        change_result=change_result,
-                    )
-                else:
-                    logger.info(
-                        "Successfully updated embedding model across Langflow flows",
-                        provider=provider,
-                        embedding_model=new_embedding_model,
-                    )
-            except Exception as e:
-                logger.error(f"Failed to update ingest flow embedding model: {str(e)}")
-                # Don't fail the entire settings update if flow update fails
-                # The config will still be saved
+        if "embedding_provider" in body:
+            current_config.knowledge.embedding_provider = body["embedding_provider"]
+            config_updated = True
 
         if "table_structure" in body:
             current_config.knowledge.table_structure = body["table_structure"]
@@ -407,7 +451,7 @@ async def update_settings(request, session_manager):
                 preset_config = get_docling_preset_configs(
                     table_structure=body["table_structure"],
                     ocr=current_config.knowledge.ocr,
-                    picture_descriptions=current_config.knowledge.picture_descriptions
+                    picture_descriptions=current_config.knowledge.picture_descriptions,
                 )
                 await flows_service.update_flow_docling_preset("custom", preset_config)
                 logger.info(f"Successfully updated table_structure setting in flow")
@@ -424,7 +468,7 @@ async def update_settings(request, session_manager):
                 preset_config = get_docling_preset_configs(
                     table_structure=current_config.knowledge.table_structure,
                     ocr=body["ocr"],
-                    picture_descriptions=current_config.knowledge.picture_descriptions
+                    picture_descriptions=current_config.knowledge.picture_descriptions,
                 )
                 await flows_service.update_flow_docling_preset("custom", preset_config)
                 logger.info(f"Successfully updated ocr setting in flow")
@@ -441,10 +485,12 @@ async def update_settings(request, session_manager):
                 preset_config = get_docling_preset_configs(
                     table_structure=current_config.knowledge.table_structure,
                     ocr=current_config.knowledge.ocr,
-                    picture_descriptions=body["picture_descriptions"]
+                    picture_descriptions=body["picture_descriptions"],
                 )
                 await flows_service.update_flow_docling_preset("custom", preset_config)
-                logger.info(f"Successfully updated picture_descriptions setting in flow")
+                logger.info(
+                    f"Successfully updated picture_descriptions setting in flow"
+                )
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
@@ -482,23 +528,35 @@ async def update_settings(request, session_manager):
                 # Don't fail the entire settings update if flow update fails
                 # The config will still be saved
 
-        # Update provider settings
-        if "model_provider" in body:
-            current_config.provider.model_provider = body["model_provider"].strip()
+        # Update provider-specific settings
+        if "openai_api_key" in body and body["openai_api_key"].strip():
+            current_config.providers.openai.api_key = body["openai_api_key"]
+            current_config.providers.openai.configured = True
             config_updated = True
 
-        if "api_key" in body:
-            # Only update if non-empty string (empty string means keep current value)
-            if body["api_key"].strip():
-                current_config.provider.api_key = body["api_key"]
-                config_updated = True
-
-        if "endpoint" in body:
-            current_config.provider.endpoint = body["endpoint"].strip()
+        if "anthropic_api_key" in body and body["anthropic_api_key"].strip():
+            current_config.providers.anthropic.api_key = body["anthropic_api_key"]
+            current_config.providers.anthropic.configured = True
             config_updated = True
 
-        if "project_id" in body:
-            current_config.provider.project_id = body["project_id"].strip()
+        if "watsonx_api_key" in body and body["watsonx_api_key"].strip():
+            current_config.providers.watsonx.api_key = body["watsonx_api_key"]
+            current_config.providers.watsonx.configured = True
+            config_updated = True
+
+        if "watsonx_endpoint" in body:
+            current_config.providers.watsonx.endpoint = body["watsonx_endpoint"].strip()
+            current_config.providers.watsonx.configured = True
+            config_updated = True
+
+        if "watsonx_project_id" in body:
+            current_config.providers.watsonx.project_id = body["watsonx_project_id"].strip()
+            current_config.providers.watsonx.configured = True
+            config_updated = True
+
+        if "ollama_endpoint" in body:
+            current_config.providers.ollama.endpoint = body["ollama_endpoint"].strip()
+            current_config.providers.ollama.configured = True
             config_updated = True
 
         if not config_updated:
@@ -513,52 +571,77 @@ async def update_settings(request, session_manager):
             )
 
         # Update Langflow global variables if provider settings changed
-        if any(key in body for key in ["model_provider", "api_key", "endpoint", "project_id"]):
+        provider_fields_to_check = [
+            "llm_provider", "embedding_provider",
+            "openai_api_key", "anthropic_api_key",
+            "watsonx_api_key", "watsonx_endpoint", "watsonx_project_id",
+            "ollama_endpoint"
+        ]
+        if any(key in body for key in provider_fields_to_check):
             try:
-                provider = current_config.provider.model_provider.lower() if current_config.provider.model_provider else "openai"
-                
-                # Set API key for IBM/Watson providers
-                if (provider == "watsonx") and "api_key" in body:
-                    api_key = body["api_key"]
+                # Update WatsonX global variables if changed
+                if "watsonx_api_key" in body:
                     await clients._create_langflow_global_variable(
-                        "WATSONX_API_KEY", api_key, modify=True
+                        "WATSONX_API_KEY", current_config.providers.watsonx.api_key, modify=True
                     )
                     logger.info("Set WATSONX_API_KEY global variable in Langflow")
 
-                # Set project ID for IBM/Watson providers
-                if (provider == "watsonx") and "project_id" in body:
-                    project_id = body["project_id"]
+                if "watsonx_project_id" in body:
                     await clients._create_langflow_global_variable(
-                        "WATSONX_PROJECT_ID", project_id, modify=True
+                        "WATSONX_PROJECT_ID", current_config.providers.watsonx.project_id, modify=True
                     )
                     logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
 
-                # Set API key for OpenAI provider
-                if provider == "openai" and "api_key" in body:
-                    api_key = body["api_key"]
+                # Update OpenAI global variables if changed
+                if "openai_api_key" in body:
                     await clients._create_langflow_global_variable(
-                        "OPENAI_API_KEY", api_key, modify=True
+                        "OPENAI_API_KEY", current_config.providers.openai.api_key, modify=True
                     )
                     logger.info("Set OPENAI_API_KEY global variable in Langflow")
 
-                # Set base URL for Ollama provider
-                if provider == "ollama" and "endpoint" in body:
-                    endpoint = transform_localhost_url(body["endpoint"])
+                # Update Anthropic global variables if changed
+                if "anthropic_api_key" in body:
+                    await clients._create_langflow_global_variable(
+                        "ANTHROPIC_API_KEY", current_config.providers.anthropic.api_key, modify=True
+                    )
+                    logger.info("Set ANTHROPIC_API_KEY global variable in Langflow")
+
+                # Update Ollama global variables if changed
+                if "ollama_endpoint" in body:
+                    endpoint = transform_localhost_url(current_config.providers.ollama.endpoint)
                     await clients._create_langflow_global_variable(
                         "OLLAMA_BASE_URL", endpoint, modify=True
                     )
                     logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
 
-                # Update model values across flows if provider changed
-                if "model_provider" in body:
+                # Update model values across flows if provider or model changed
+                if "llm_provider" in body or "llm_model" in body:
                     flows_service = _get_flows_service()
+                    llm_provider = current_config.agent.llm_provider.lower()
+                    llm_provider_config = current_config.get_llm_provider_config()
+                    llm_endpoint = getattr(llm_provider_config, "endpoint", None)
                     await flows_service.change_langflow_model_value(
-                        provider,
-                        current_config.knowledge.embedding_model,
-                        current_config.agent.llm_model,
-                        current_config.provider.endpoint,
+                        llm_provider,
+                        llm_model=current_config.agent.llm_model,
+                        endpoint=llm_endpoint,
                     )
-                    logger.info(f"Successfully updated Langflow flows for provider {provider}")
+                    logger.info(
+                        f"Successfully updated Langflow flows for LLM provider {llm_provider}"
+                    )
+
+                if "embedding_provider" in body or "embedding_model" in body:
+                    flows_service = _get_flows_service()
+                    embedding_provider = current_config.knowledge.embedding_provider.lower()
+                    embedding_provider_config = current_config.get_embedding_provider_config()
+                    embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
+                    await flows_service.change_langflow_model_value(
+                        embedding_provider,
+                        embedding_model=current_config.knowledge.embedding_model,
+                        endpoint=embedding_endpoint,
+                    )
+                    logger.info(
+                        f"Successfully updated Langflow flows for embedding provider {embedding_provider}"
+                    )
 
             except Exception as e:
                 logger.error(f"Failed to update Langflow settings: {str(e)}")
@@ -594,13 +677,18 @@ async def onboarding(request, flows_service):
 
         # Validate allowed fields
         allowed_fields = {
-            "model_provider",
-            "api_key",
-            "embedding_model",
+            "llm_provider",
             "llm_model",
+            "embedding_provider",
+            "embedding_model",
             "sample_data",
-            "endpoint",
-            "project_id",
+            # Provider-specific fields
+            "openai_api_key",
+            "anthropic_api_key",
+            "watsonx_api_key",
+            "watsonx_endpoint",
+            "watsonx_project_id",
+            "ollama_endpoint",
         }
 
         # Check for invalid fields
@@ -616,28 +704,33 @@ async def onboarding(request, flows_service):
         # Update configuration
         config_updated = False
 
-        # Update provider settings
-        if "model_provider" in body:
+        # Update agent settings (LLM)
+        if "llm_model" in body:
+            if not isinstance(body["llm_model"], str) or not body["llm_model"].strip():
+                return JSONResponse(
+                    {"error": "llm_model must be a non-empty string"}, status_code=400
+                )
+            current_config.agent.llm_model = body["llm_model"].strip()
+            config_updated = True
+
+        if "llm_provider" in body:
             if (
-                not isinstance(body["model_provider"], str)
-                or not body["model_provider"].strip()
+                not isinstance(body["llm_provider"], str)
+                or not body["llm_provider"].strip()
             ):
                 return JSONResponse(
-                    {"error": "model_provider must be a non-empty string"},
+                    {"error": "llm_provider must be a non-empty string"},
                     status_code=400,
                 )
-            current_config.provider.model_provider = body["model_provider"].strip()
-            config_updated = True
-
-        if "api_key" in body:
-            if not isinstance(body["api_key"], str):
+            if body["llm_provider"] not in ["openai", "anthropic", "watsonx", "ollama"]:
                 return JSONResponse(
-                    {"error": "api_key must be a string"}, status_code=400
+                    {"error": "llm_provider must be one of: openai, anthropic, watsonx, ollama"},
+                    status_code=400,
                 )
-            current_config.provider.api_key = body["api_key"]
+            current_config.agent.llm_provider = body["llm_provider"].strip()
             config_updated = True
 
-        # Update knowledge settings
+        # Update knowledge settings (embedding)
         if "embedding_model" in body and not DISABLE_INGEST_WITH_LANGFLOW:
             if (
                 not isinstance(body["embedding_model"], str)
@@ -650,33 +743,99 @@ async def onboarding(request, flows_service):
             current_config.knowledge.embedding_model = body["embedding_model"].strip()
             config_updated = True
 
-        # Update agent settings
-        if "llm_model" in body:
-            if not isinstance(body["llm_model"], str) or not body["llm_model"].strip():
-                return JSONResponse(
-                    {"error": "llm_model must be a non-empty string"}, status_code=400
-                )
-            current_config.agent.llm_model = body["llm_model"].strip()
-            config_updated = True
-
-        if "endpoint" in body:
-            if not isinstance(body["endpoint"], str) or not body["endpoint"].strip():
-                return JSONResponse(
-                    {"error": "endpoint must be a non-empty string"}, status_code=400
-                )
-            current_config.provider.endpoint = body["endpoint"].strip()
-            config_updated = True
-
-        if "project_id" in body:
+        if "embedding_provider" in body:
             if (
-                not isinstance(body["project_id"], str)
-                or not body["project_id"].strip()
+                not isinstance(body["embedding_provider"], str)
+                or not body["embedding_provider"].strip()
             ):
                 return JSONResponse(
-                    {"error": "project_id must be a non-empty string"}, status_code=400
+                    {"error": "embedding_provider must be a non-empty string"},
+                    status_code=400,
                 )
-            current_config.provider.project_id = body["project_id"].strip()
+            # Anthropic doesn't have embeddings
+            if body["embedding_provider"] not in ["openai", "watsonx", "ollama"]:
+                return JSONResponse(
+                    {"error": "embedding_provider must be one of: openai, watsonx, ollama"},
+                    status_code=400,
+                )
+            current_config.knowledge.embedding_provider = body["embedding_provider"].strip()
             config_updated = True
+
+        # Update provider-specific credentials
+        if "openai_api_key" in body and body["openai_api_key"].strip():
+            current_config.providers.openai.api_key = body["openai_api_key"]
+            current_config.providers.openai.configured = True
+            config_updated = True
+
+        if "anthropic_api_key" in body and body["anthropic_api_key"].strip():
+            current_config.providers.anthropic.api_key = body["anthropic_api_key"]
+            current_config.providers.anthropic.configured = True
+            config_updated = True
+
+        if "watsonx_api_key" in body and body["watsonx_api_key"].strip():
+            current_config.providers.watsonx.api_key = body["watsonx_api_key"]
+            current_config.providers.watsonx.configured = True
+            config_updated = True
+
+        if "watsonx_endpoint" in body:
+            if not isinstance(body["watsonx_endpoint"], str) or not body["watsonx_endpoint"].strip():
+                return JSONResponse(
+                    {"error": "watsonx_endpoint must be a non-empty string"}, status_code=400
+                )
+            current_config.providers.watsonx.endpoint = body["watsonx_endpoint"].strip()
+            current_config.providers.watsonx.configured = True
+            config_updated = True
+
+        if "watsonx_project_id" in body:
+            if (
+                not isinstance(body["watsonx_project_id"], str)
+                or not body["watsonx_project_id"].strip()
+            ):
+                return JSONResponse(
+                    {"error": "watsonx_project_id must be a non-empty string"}, status_code=400
+                )
+            current_config.providers.watsonx.project_id = body["watsonx_project_id"].strip()
+            current_config.providers.watsonx.configured = True
+            config_updated = True
+
+        if "ollama_endpoint" in body:
+            if not isinstance(body["ollama_endpoint"], str) or not body["ollama_endpoint"].strip():
+                return JSONResponse(
+                    {"error": "ollama_endpoint must be a non-empty string"}, status_code=400
+                )
+            current_config.providers.ollama.endpoint = body["ollama_endpoint"].strip()
+            current_config.providers.ollama.configured = True
+            config_updated = True
+
+        # Mark providers as configured if they were chosen during onboarding
+        # Check LLM provider
+        if "llm_provider" in body:
+            llm_provider = body["llm_provider"].strip().lower()
+            if llm_provider == "openai" and current_config.providers.openai.api_key:
+                current_config.providers.openai.configured = True
+                logger.info("Marked OpenAI as configured (chosen as LLM provider)")
+            elif llm_provider == "anthropic" and current_config.providers.anthropic.api_key:
+                current_config.providers.anthropic.configured = True
+                logger.info("Marked Anthropic as configured (chosen as LLM provider)")
+            elif llm_provider == "watsonx" and current_config.providers.watsonx.api_key and current_config.providers.watsonx.endpoint and current_config.providers.watsonx.project_id:
+                current_config.providers.watsonx.configured = True
+                logger.info("Marked WatsonX as configured (chosen as LLM provider)")
+            elif llm_provider == "ollama" and current_config.providers.ollama.endpoint:
+                current_config.providers.ollama.configured = True
+                logger.info("Marked Ollama as configured (chosen as LLM provider)")
+
+        # Check embedding provider
+        if "embedding_provider" in body:
+            embedding_provider = body["embedding_provider"].strip().lower()
+            if embedding_provider == "openai" and current_config.providers.openai.api_key:
+                current_config.providers.openai.configured = True
+                logger.info("Marked OpenAI as configured (chosen as embedding provider)")
+            elif embedding_provider == "watsonx" and current_config.providers.watsonx.api_key and current_config.providers.watsonx.endpoint and current_config.providers.watsonx.project_id:
+                current_config.providers.watsonx.configured = True
+                logger.info("Marked WatsonX as configured (chosen as embedding provider)")
+            elif embedding_provider == "ollama" and current_config.providers.ollama.endpoint:
+                current_config.providers.ollama.configured = True
+                logger.info("Marked Ollama as configured (chosen as embedding provider)")
 
         # Handle sample_data
         should_ingest_sample_data = False
@@ -696,18 +855,35 @@ async def onboarding(request, flows_service):
         try:
             from api.provider_validation import validate_provider_setup
 
-            provider = current_config.provider.model_provider.lower() if current_config.provider.model_provider else "openai"
+            # Validate LLM provider if set
+            if "llm_provider" in body or "llm_model" in body:
+                llm_provider = current_config.agent.llm_provider.lower()
+                llm_provider_config = current_config.get_llm_provider_config()
 
-            logger.info(f"Validating provider setup for {provider}")
-            await validate_provider_setup(
-                provider=provider,
-                api_key=current_config.provider.api_key,
-                embedding_model=current_config.knowledge.embedding_model,
-                llm_model=current_config.agent.llm_model,
-                endpoint=current_config.provider.endpoint,
-                project_id=current_config.provider.project_id,
-            )
-            logger.info(f"Provider setup validation completed successfully for {provider}")
+                logger.info(f"Validating LLM provider setup for {llm_provider}")
+                await validate_provider_setup(
+                    provider=llm_provider,
+                    api_key=getattr(llm_provider_config, "api_key", None),
+                    llm_model=current_config.agent.llm_model,
+                    endpoint=getattr(llm_provider_config, "endpoint", None),
+                    project_id=getattr(llm_provider_config, "project_id", None),
+                )
+                logger.info(f"LLM provider setup validation completed successfully for {llm_provider}")
+
+            # Validate embedding provider if set
+            if "embedding_provider" in body or "embedding_model" in body:
+                embedding_provider = current_config.knowledge.embedding_provider.lower()
+                embedding_provider_config = current_config.get_embedding_provider_config()
+
+                logger.info(f"Validating embedding provider setup for {embedding_provider}")
+                await validate_provider_setup(
+                    provider=embedding_provider,
+                    api_key=getattr(embedding_provider_config, "api_key", None),
+                    embedding_model=current_config.knowledge.embedding_model,
+                    endpoint=getattr(embedding_provider_config, "endpoint", None),
+                    project_id=getattr(embedding_provider_config, "project_id", None),
+                )
+                logger.info(f"Embedding provider setup validation completed successfully for {embedding_provider}")
         except Exception as e:
             logger.error(f"Provider validation failed: {str(e)}")
             return JSONResponse(
@@ -715,142 +891,131 @@ async def onboarding(request, flows_service):
                 status_code=400,
             )
 
-        # Initialize the OpenSearch index now that we have the embedding model configured
+        # Set Langflow global variables based on provider configuration
         try:
-            # Import here to avoid circular imports
-            from main import init_index
+            # Set WatsonX global variables
+            if "watsonx_api_key" in body:
+                await clients._create_langflow_global_variable(
+                    "WATSONX_API_KEY", current_config.providers.watsonx.api_key, modify=True
+                )
+                logger.info("Set WATSONX_API_KEY global variable in Langflow")
 
-            logger.info(
-                "Initializing OpenSearch index after onboarding configuration"
-            )
-            await init_index()
-            logger.info("OpenSearch index initialization completed successfully")
+            if "watsonx_project_id" in body:
+                await clients._create_langflow_global_variable(
+                    "WATSONX_PROJECT_ID", current_config.providers.watsonx.project_id, modify=True
+                )
+                logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
+
+            # Set OpenAI global variables
+            if "openai_api_key" in body or current_config.providers.openai.api_key != "":
+                await clients._create_langflow_global_variable(
+                    "OPENAI_API_KEY", current_config.providers.openai.api_key, modify=True
+                )
+                logger.info("Set OPENAI_API_KEY global variable in Langflow")
+
+            # Set Anthropic global variables
+            if "anthropic_api_key" in body or current_config.providers.anthropic.api_key != "":
+                await clients._create_langflow_global_variable(
+                    "ANTHROPIC_API_KEY", current_config.providers.anthropic.api_key, modify=True
+                )
+                logger.info("Set ANTHROPIC_API_KEY global variable in Langflow")
+
+            # Set Ollama global variables
+            if "ollama_endpoint" in body:
+                endpoint = transform_localhost_url(current_config.providers.ollama.endpoint)
+                await clients._create_langflow_global_variable(
+                    "OLLAMA_BASE_URL", endpoint, modify=True
+                )
+                logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
+
+            # Update flows with model values
+            if "llm_provider" in body or "llm_model" in body:
+                llm_provider = current_config.agent.llm_provider.lower()
+                llm_provider_config = current_config.get_llm_provider_config()
+                llm_endpoint = getattr(llm_provider_config, "endpoint", None)
+                await flows_service.change_langflow_model_value(
+                    provider=llm_provider,
+                    llm_model=current_config.agent.llm_model,
+                    endpoint=llm_endpoint,
+                )
+                logger.info(f"Updated Langflow flows for LLM provider {llm_provider}")
+
+            if "embedding_provider" in body or "embedding_model" in body:
+                embedding_provider = current_config.knowledge.embedding_provider.lower()
+                embedding_provider_config = current_config.get_embedding_provider_config()
+                embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
+                await flows_service.change_langflow_model_value(
+                    provider=embedding_provider,
+                    embedding_model=current_config.knowledge.embedding_model,
+                    endpoint=embedding_endpoint,
+                )
+                logger.info(f"Updated Langflow flows for embedding provider {embedding_provider}")
+
         except Exception as e:
-            if isinstance(e, ValueError):
+            logger.error(
+                "Failed to set Langflow global variables",
+                error=str(e),
+            )
+            raise
+
+        # Initialize the OpenSearch index if embedding model is configured
+        if "embedding_model" in body or "embedding_provider" in body:
+            try:
+                # Import here to avoid circular imports
+                from main import init_index
+
+                logger.info(
+                    "Initializing OpenSearch index after onboarding configuration"
+                )
+                await init_index()
+                logger.info("OpenSearch index initialization completed successfully")
+            except Exception as e:
+                if isinstance(e, ValueError):
+                    logger.error(
+                        "Failed to initialize OpenSearch index after onboarding",
+                        error=str(e),
+                    )
+                    return JSONResponse(
+                        {
+                            "error": str(e),
+                            "edited": True,
+                        },
+                        status_code=400,
+                    )
                 logger.error(
                     "Failed to initialize OpenSearch index after onboarding",
                     error=str(e),
                 )
-                return JSONResponse(
-                    {
-                        "error": str(e),
-                        "edited": True,
-                    },
-                    status_code=400,
-                )
-            logger.error(
-                "Failed to initialize OpenSearch index after onboarding",
-                error=str(e),
-            )
-            # Don't fail the entire onboarding process if index creation fails
-            # The application can still work, but document operations may fail
+                # Don't fail the entire onboarding process if index creation fails
+                # The application can still work, but document operations may fail
 
-        # Save the updated configuration (this will mark it as edited)
-        
-        # If model_provider was updated, assign the new provider to flows
-        if "model_provider" in body:
-            provider = body["model_provider"].strip().lower()
-            try:
-                flow_result = await flows_service.assign_model_provider(provider)
+            # Handle sample data ingestion if requested
+            if should_ingest_sample_data:
+                try:
+                    # Import the function here to avoid circular imports
+                    from main import ingest_default_documents_when_ready
 
-                if flow_result.get("success"):
-                    logger.info(
-                        f"Successfully assigned {provider} to flows",
-                        flow_result=flow_result,
-                    )
-                else:
-                    logger.warning(
-                        f"Failed to assign {provider} to flows",
-                        flow_result=flow_result,
-                    )
-                    # Continue even if flow assignment fails - configuration was still saved
+                    # Get services from the current app state
+                    # We need to access the app instance to get services
+                    app = request.scope.get("app")
+                    if app and hasattr(app.state, "services"):
+                        services = app.state.services
+                        logger.info(
+                            "Starting sample data ingestion as requested in onboarding"
+                        )
+                        await ingest_default_documents_when_ready(services)
+                        logger.info("Sample data ingestion completed successfully")
+                    else:
+                        logger.error(
+                            "Could not access services for sample data ingestion"
+                        )
 
-            except Exception as e:
-                logger.error(
-                    "Error assigning model provider to flows",
-                    provider=provider,
-                    error=str(e),
-                )
-                raise
-
-            # Set Langflow global variables based on provider
-            try:
-                # Set API key for IBM/Watson providers
-                if (provider == "watsonx") and "api_key" in body:
-                    api_key = body["api_key"]
-                    await clients._create_langflow_global_variable(
-                        "WATSONX_API_KEY", api_key, modify=True
-                    )
-                    logger.info("Set WATSONX_API_KEY global variable in Langflow")
-
-                # Set project ID for IBM/Watson providers
-                if (provider == "watsonx") and "project_id" in body:
-                    project_id = body["project_id"]
-                    await clients._create_langflow_global_variable(
-                        "WATSONX_PROJECT_ID", project_id, modify=True
-                    )
-                    logger.info(
-                        "Set WATSONX_PROJECT_ID global variable in Langflow"
-                    )
-
-                # Set API key for OpenAI provider
-                if provider == "openai" and "api_key" in body:
-                    api_key = body["api_key"]
-                    await clients._create_langflow_global_variable(
-                        "OPENAI_API_KEY", api_key, modify=True
-                    )
-                    logger.info("Set OPENAI_API_KEY global variable in Langflow")
-
-                # Set base URL for Ollama provider
-                if provider == "ollama" and "endpoint" in body:
-                    endpoint = transform_localhost_url(body["endpoint"])
-
-                    await clients._create_langflow_global_variable(
-                        "OLLAMA_BASE_URL", endpoint, modify=True
-                    )
-                    logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
-
-                await flows_service.change_langflow_model_value(
-                    provider,
-                    body.get("embedding_model"),
-                    body.get("llm_model"),
-                    body.get("endpoint"),
-                )
-
-            except Exception as e:
-                logger.error(
-                    "Failed to set Langflow global variables",
-                    provider=provider,
-                    error=str(e),
-                )
-                raise
-
-        # Handle sample data ingestion if requested
-        if should_ingest_sample_data:
-            try:
-                # Import the function here to avoid circular imports
-                from main import ingest_default_documents_when_ready
-
-                # Get services from the current app state
-                # We need to access the app instance to get services
-                app = request.scope.get("app")
-                if app and hasattr(app.state, "services"):
-                    services = app.state.services
-                    logger.info(
-                        "Starting sample data ingestion as requested in onboarding"
-                    )
-                    await ingest_default_documents_when_ready(services)
-                    logger.info("Sample data ingestion completed successfully")
-                else:
+                except Exception as e:
                     logger.error(
-                        "Could not access services for sample data ingestion"
+                        "Failed to complete sample data ingestion", error=str(e)
                     )
+                    # Don't fail the entire onboarding process if sample data fails
 
-            except Exception as e:
-                logger.error(
-                    "Failed to complete sample data ingestion", error=str(e)
-                )
-                # Don't fail the entire onboarding process if sample data fails
         if config_manager.save_config_file(current_config):
             updated_fields = [
                 k for k in body.keys() if k != "sample_data"
@@ -898,16 +1063,34 @@ async def update_docling_preset(request, session_manager):
         if "preset" in body:
             # Map old presets to new toggle settings
             preset_map = {
-                "standard": {"table_structure": False, "ocr": False, "picture_descriptions": False},
-                "ocr": {"table_structure": False, "ocr": True, "picture_descriptions": False},
-                "picture_description": {"table_structure": False, "ocr": True, "picture_descriptions": True},
-                "VLM": {"table_structure": False, "ocr": False, "picture_descriptions": False},
+                "standard": {
+                    "table_structure": False,
+                    "ocr": False,
+                    "picture_descriptions": False,
+                },
+                "ocr": {
+                    "table_structure": False,
+                    "ocr": True,
+                    "picture_descriptions": False,
+                },
+                "picture_description": {
+                    "table_structure": False,
+                    "ocr": True,
+                    "picture_descriptions": True,
+                },
+                "VLM": {
+                    "table_structure": False,
+                    "ocr": False,
+                    "picture_descriptions": False,
+                },
             }
 
             preset = body["preset"]
             if preset not in preset_map:
                 return JSONResponse(
-                    {"error": f"Invalid preset '{preset}'. Valid presets: {', '.join(preset_map.keys())}"},
+                    {
+                        "error": f"Invalid preset '{preset}'. Valid presets: {', '.join(preset_map.keys())}"
+                    },
                     status_code=400,
                 )
 

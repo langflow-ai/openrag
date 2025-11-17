@@ -1,18 +1,18 @@
 "use client";
 
+import { EllipsisVertical } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
+import { useDeleteDocument } from "@/app/api/mutations/useDeleteDocument";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { EllipsisVertical } from "lucide-react";
+import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { Button } from "./ui/button";
-import { DeleteConfirmationDialog } from "./confirmation-dialog";
-import { useDeleteDocument } from "@/app/api/mutations/useDeleteDocument";
-import { toast } from "sonner";
-import { useRouter } from "next/navigation";
 
 interface KnowledgeActionsDropdownProps {
   filename: string;
@@ -32,7 +32,7 @@ export const KnowledgeActionsDropdown = ({
       setShowDeleteDialog(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete document"
+        error instanceof Error ? error.message : "Failed to delete document",
       );
     }
   };
@@ -50,7 +50,7 @@ export const KnowledgeActionsDropdown = ({
             className="text-primary focus:text-primary"
             onClick={() => {
               router.push(
-                `/knowledge/chunks?filename=${encodeURIComponent(filename)}`
+                `/knowledge/chunks?filename=${encodeURIComponent(filename)}`,
               );
             }}
           >

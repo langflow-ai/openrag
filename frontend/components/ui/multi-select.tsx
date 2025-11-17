@@ -53,7 +53,7 @@ export function MultiSelect({
   const isAllSelected = value.includes("*");
 
   const filteredOptions = options.filter((option) =>
-    option.label.toLowerCase().includes(searchValue.toLowerCase())
+    option.label.toLowerCase().includes(searchValue.toLowerCase()),
   );
 
   const handleSelect = (optionValue: string) => {
@@ -106,10 +106,7 @@ export function MultiSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className={cn(
-            "w-full justify-between h-8 py-0 text-left",
-            className
-          )}
+          className={cn("w-full justify-between h-8 py-0 text-left", className)}
         >
           <span className="text-foreground text-sm">{getDisplayText()}</span>
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -135,7 +132,7 @@ export function MultiSelect({
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4",
-                      isAllSelected ? "opacity-100" : "opacity-0"
+                      isAllSelected ? "opacity-100" : "opacity-0",
                     )}
                   />
                 </CommandItem>
@@ -155,7 +152,9 @@ export function MultiSelect({
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4",
-                      value.includes(option.value) ? "opacity-100" : "opacity-0"
+                      value.includes(option.value)
+                        ? "opacity-100"
+                        : "opacity-0",
                     )}
                   />
                 </CommandItem>

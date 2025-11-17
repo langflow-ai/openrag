@@ -49,7 +49,10 @@ export const cleanupTableEmptyCells = (text: string): string => {
     })
     .join("\n");
 };
-export const MarkdownRenderer = ({ chatMessage, className }: MarkdownRendererProps) => {
+export const MarkdownRenderer = ({
+  chatMessage,
+  className,
+}: MarkdownRendererProps) => {
   // Process the chat message to handle <think> tags and clean up tables
   const processedChatMessage = preprocessChatMessage(chatMessage);
 
@@ -67,7 +70,11 @@ export const MarkdownRenderer = ({ chatMessage, className }: MarkdownRendererPro
         urlTransform={(url) => url}
         components={{
           p({ node, ...props }) {
-            return <p className="w-fit max-w-full first:mt-0 last:mb-0 my-2">{props.children}</p>;
+            return (
+              <p className="w-fit max-w-full first:mt-0 last:mb-0 my-2">
+                {props.children}
+              </p>
+            );
           },
           ol({ node, ...props }) {
             return <ol className="max-w-full">{props.children}</ol>;
@@ -103,7 +110,11 @@ export const MarkdownRenderer = ({ chatMessage, className }: MarkdownRendererPro
             );
           },
           a({ node, ...props }) {
-            return <a {...props} target="_blank" rel="noopener noreferrer">{props.children}</a>;
+            return (
+              <a {...props} target="_blank" rel="noopener noreferrer">
+                {props.children}
+              </a>
+            );
           },
 
           code(props) {

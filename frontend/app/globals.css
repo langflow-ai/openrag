@@ -1,0 +1,386 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: "Inter", sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+    --font-chivo: "Chivo", sans-serif;
+
+    /* Core Theme Colors */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
+    --primary: 0 0% 0%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 240 4% 16%;
+    --secondary: 0 0% 100%;
+    --secondary-foreground: 240 4% 16%;
+    --secondary-hover: 240 6% 90%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 0 0% 0%;
+    --border: 240 4.8% 95.9%;
+    --input: 240 6% 90%;
+    --ring: 0 0% 0%;
+    --placeholder-foreground: 240 5% 65%;
+
+    --accent-amber: 48 96% 89%; /* amber-100 #fef3c7 */
+    --accent-amber-foreground: 26 90% 37%; /* amber-700 #b45309 */
+    --accent-emerald: 149 80% 90%; /* emerald-100 #d1fae5 */
+    --accent-emerald-foreground: 161 94% 30%; /* emerald-600 #059669 */
+    --accent-red: 0 93% 94%; /* red-100 #fee2e2 */
+    --accent-red-foreground: 0 72% 51%; /* red-600 #dc2626 */
+    --accent-indigo: 226 100% 94%; /* indigo-100 #e0e7ff */
+    --accent-indigo-foreground: 243 75% 59%; /* indigo-600 #4f46e5 */
+    --accent-pink: 326 78% 95%; /* pink-100 #fce7f3 */
+    --accent-pink-foreground: 333 71% 51%; /* pink-600 #db2777 */
+    --accent-purple: 269 100% 95%; /* purple-100 #f3e8ff */
+    --accent-purple-foreground: 271 81% 56%; /* purple-600 #7c3aed */
+
+    --destructive: 0 72% 51%; /* red-600 #dc2626 */
+    --destructive-foreground: 0 0% 100%;
+    --warning: 26 90% 37%; /* amber-700 #b45309 */
+    --warning-foreground: 0 0% 100%;
+
+    /* Component Colors */
+    --component-icon: #d8598a;
+    --flow-icon: #2f67d0;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 240 6% 10%;
+    --foreground: 0 0% 100%;
+    --card: 240 6% 10%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 6% 10%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    --primary-hover: 240 6% 90%;
+    --secondary: 0 0% 0%;
+    --secondary-foreground: 240 6% 90%;
+    --secondary-hover: 240 4% 16%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 100%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 5% 34%;
+    --ring: 0 0% 100%;
+    --placeholder-foreground: 240 4% 46%;
+
+    --accent-amber: 22 78% 26%; /* amber-900 #78350f */
+    --accent-amber-foreground: 46 97% 65%; /* amber-300 #fcd34d */
+    --accent-emerald: 164 86% 16%; /* emerald-900 #064e3b */
+    --accent-emerald-foreground: 158 64% 52%; /* emerald-400 #34d399 */
+    --accent-red: 0 63% 31%; /* red-900 #7f1d1d */
+    --accent-red-foreground: 0 91% 71%; /* red-400 #f87171 */
+    --accent-indigo: 242 47% 34%; /* indigo-900 #312e81 */
+    --accent-indigo-foreground: 234 89% 74%; /* indigo-400 #818cf8 */
+    --accent-pink: 336 69% 30%; /* pink-900 #831843 */
+    --accent-pink-foreground: 329 86% 70%; /* pink-400 #f472b6 */
+    --accent-purple: 274 66% 32%; /* purple-900 #4c1d95 */
+    --accent-purple-foreground: 270 95% 75%; /* purple-400 #a78bfa */
+
+    --destructive: 0 84% 60%; /* red-500 #ef4444 */
+    --destructive-foreground: 0 0% 100%;
+    --warning: 46 97% 65%; /* amber-300 #fcd34d */
+    --warning-foreground: 0 0% 0%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+    font-family: Inter, system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .app-grid-arrangement {
+    --notifications-width: 0px;
+    --filters-width: 0px;
+    --header-height: 54px;
+    --sidebar-width: 280px;
+
+    &.notifications-open {
+      --notifications-width: 320px;
+    }
+    &.filters-open {
+      --filters-width: 320px;
+    }
+    display: grid;
+    height: 100%;
+    width: 100%;
+    grid-template-rows:
+      auto
+      var(--header-height)
+      1fr;
+    grid-template-columns:
+      var(--sidebar-width)
+      1fr
+      var(--notifications-width)
+      var(--filters-width);
+    grid-template-areas:
+      "banner banner banner banner"
+      "header header header header"
+      "nav main notifications filters";
+    transition:
+      grid-template-columns 0.25s ease-in-out,
+      grid-template-rows 0.25s ease-in-out;
+  }
+
+  .header-start-display {
+    @apply flex items-center gap-2;
+  }
+
+  .header-end-division {
+    @apply flex justify-end px-2;
+  }
+
+  .header-end-display {
+    @apply ml-auto mr-2 flex items-center gap-5;
+  }
+
+  .header-github-link {
+    @apply inline-flex h-8 items-center justify-center rounded-md border border-input px-2 text-sm font-medium text-muted-foreground shadow-sm ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .header-notifications {
+    @apply absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive;
+  }
+
+  .header-menu-bar {
+    @apply flex items-center rounded-md py-1 text-sm font-medium;
+  }
+
+  .header-menu-bar-display {
+    @apply flex max-w-[110px] cursor-pointer items-center gap-2 lg:max-w-[150px];
+  }
+
+  .header-menu-flow-name {
+    @apply flex-1 truncate;
+  }
+
+  .header-menu-options {
+    @apply mr-2 h-4 w-4;
+  }
+
+  .side-bar-arrangement {
+    @apply flex h-full w-[18rem] flex-col overflow-hidden border-r scrollbar-hide;
+  }
+
+  .side-bar-search-div-placement {
+    @apply relative mx-auto flex items-center py-3;
+  }
+
+  .side-bar-components-icon {
+    @apply h-6 w-4 text-ring;
+  }
+
+  .side-bar-components-text {
+    @apply w-full truncate pr-1 text-xs text-foreground;
+  }
+
+  .side-bar-components-div-form {
+    @apply flex w-full items-center justify-between rounded-md rounded-l-none border border-l-0 border-dashed border-ring px-3 py-1 text-sm;
+  }
+
+  .side-bar-components-border {
+    @apply cursor-grab rounded-l-md border-l-8;
+  }
+
+  .side-bar-components-gap {
+    @apply flex flex-col gap-2 p-2;
+  }
+
+  .side-bar-components-div-arrangement {
+    @apply w-full overflow-auto pb-10 scrollbar-hide;
+  }
+
+  .side-bar-button-size {
+    @apply h-5 w-5;
+  }
+
+  .side-bar-button-size:hover {
+    @apply hover:text-accent-foreground;
+  }
+
+  .side-bar-buttons-arrangement {
+    @apply mb-2 mt-2 flex w-full items-center justify-between gap-2 px-2;
+  }
+
+  .side-bar-button {
+    @apply flex w-full;
+  }
+
+  .components-disclosure-arrangement {
+    @apply -mt-px flex w-full select-none items-center justify-between border-y border-y-input bg-primary-foreground px-3 py-2;
+  }
+
+  .components-disclosure-title {
+    @apply flex items-center text-sm text-primary;
+  }
+
+  .toolbar-wrapper {
+    @apply flex h-10 items-center gap-1 rounded-xl border border-border bg-background p-1 shadow-sm;
+  }
+
+  .playground-btn-flow-toolbar {
+    @apply relative inline-flex h-8 w-full items-center justify-center gap-1.5 rounded px-3 py-1.5 text-sm font-normal transition-all duration-500 ease-in-out;
+  }
+
+  .input-search {
+    @apply primary-input mx-2 pr-7;
+  }
+
+  /* GitHub Star Button */
+  .github-star-link {
+    @apply inline-flex h-8 items-center rounded-md text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+
+  .github-star-content {
+    @apply flex items-center px-2 pr-1;
+  }
+
+  .github-star-icon {
+    @apply h-4 w-4;
+  }
+
+  .github-star-text {
+    @apply ml-1;
+  }
+
+  .github-star-count-section {
+    @apply border-l bg-muted/80 px-2 py-1;
+  }
+
+  .github-star-display {
+    @apply flex items-center gap-1;
+  }
+
+  .github-star-count-icon {
+    @apply h-3 w-3 fill-current;
+  }
+
+  .github-star-count {
+    @apply text-xs font-medium text-foreground;
+  }
+
+  .github-star-loading {
+    @apply flex items-center justify-center;
+  }
+
+  .github-star-skeleton {
+    @apply h-3 w-8 animate-pulse bg-muted-foreground/20 rounded;
+  }
+
+  .github-star-error {
+    @apply text-xs text-muted-foreground;
+  }
+
+  /* Discord Link */
+  .discord-link {
+    @apply inline-flex h-8 items-center rounded-md text-sm font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    background-color: #5865f2;
+    border-color: #5865f2;
+    color: white;
+  }
+
+  .discord-link:hover {
+    @apply opacity-90;
+  }
+
+  .discord-content {
+    @apply flex items-center px-2 pr-1;
+  }
+
+  .discord-icon {
+    @apply flex items-center justify-center;
+  }
+
+  .discord-text {
+    @apply ml-1;
+  }
+
+  .discord-member-section {
+    @apply border-l border-white/20 bg-black/10 px-2 py-1;
+  }
+
+  .discord-member-display {
+    @apply flex items-center gap-1;
+  }
+
+  .discord-member-icon {
+    @apply h-3 w-3;
+  }
+
+  .discord-member-count {
+    @apply text-xs font-medium;
+  }
+
+  .discord-loading {
+    @apply flex items-center justify-center;
+  }
+
+  .discord-skeleton {
+    @apply h-3 w-8 animate-pulse bg-white/20 rounded;
+  }
+
+  .discord-error {
+    @apply text-xs opacity-70;
+  }
+
+  .prose
+    :where(strong):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+    @apply text-current;
+  }
+
+  .prose :where(a):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+    @apply text-current;
+  }
+
+  .box-shadow-inner::after {
+    content: " ";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    background: linear-gradient(to top, hsl(var(--background)), transparent);
+    display: block;
+    width: 100%;
+    height: 30px;
+  }
+
+  .thinking-dots::after {
+    content: ".";
+    animation: thinking-dots 1.4s steps(3, end) infinite;
+  }
+
+  @keyframes thinking-dots {
+    0% {
+      content: ".";
+    }
+    33.33% {
+      content: "..";
+    }
+    66.66%,
+    100% {
+      content: "...";
+    }
+  }
+}

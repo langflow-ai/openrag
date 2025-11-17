@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import { ReactNode, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,77 +8,65 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "./ui/dialog";
-import { Button } from "./ui/button";
-import { AlertTriangle } from "lucide-react";
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface ConfirmationDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title?: string;
-  description?: string;
+  trigger: ReactNode;
+  title: string;
+  description: ReactNode;
   confirmText?: string;
   cancelText?: string;
-  onConfirm: () => void | Promise<void>;
-  isLoading?: boolean;
-  variant?: "destructive" | "default";
+  onConfirm: (closeDialog: () => void) => void;
+  onCancel?: () => void;
+  variant?: "default" | "destructive" | "warning";
+  confirmIcon?: ReactNode | null;
 }
 
-export const DeleteConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
-  open,
-  onOpenChange,
-  title = "Are you sure?",
-  description = "This action cannot be undone.",
-  confirmText = "Confirm",
+export function ConfirmationDialog({
+  trigger,
+  title,
+  description,
+  confirmText = "Continue",
   cancelText = "Cancel",
   onConfirm,
-  isLoading = false,
-  variant = "destructive",
-}) => {
-  const handleConfirm = async () => {
-    try {
-      await onConfirm();
-    } finally {
-      // Only close if not in loading state (let the parent handle this)
-      if (!isLoading) {
-        onOpenChange(false);
-      }
-    }
+  onCancel,
+  variant = "default",
+  confirmIcon = null,
+}: ConfirmationDialogProps) {
+  const [open, setOpen] = useState(false);
+
+  const handleConfirm = () => {
+    const closeDialog = () => setOpen(false);
+    onConfirm(closeDialog);
+  };
+
+  const handleCancel = () => {
+    onCancel?.();
+    setOpen(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
         <DialogHeader>
-          <div className="flex items-center gap-3">
-            {variant === "destructive" && (
-              <AlertTriangle className="h-6 w-6 text-destructive" />
-            )}
-            <DialogTitle>{title}</DialogTitle>
-          </div>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogTitle className="mb-4">{title}</DialogTitle>
+          <DialogDescription className="text-left">
+            {description}
+          </DialogDescription>
         </DialogHeader>
-
         <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isLoading}
-          >
+          <Button variant="ghost" onClick={handleCancel} size="sm">
             {cancelText}
           </Button>
-          <Button
-            type="button"
-            variant={variant}
-            onClick={handleConfirm}
-            loading={isLoading}
-            disabled={isLoading}
-          >
+          <Button variant={variant} onClick={handleConfirm} size="sm">
             {confirmText}
+            {confirmIcon}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
-};
+}

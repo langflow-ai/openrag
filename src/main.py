@@ -167,13 +167,15 @@ async def init_index():
     # Get the configured embedding model from user configuration
     config = get_openrag_config()
     embedding_model = config.knowledge.embedding_model
+    embedding_provider = config.knowledge.embedding_provider
+    embedding_provider_config = config.get_embedding_provider_config()
 
     # Create dynamic index body based on the configured embedding model
     # Pass provider and endpoint for dynamic dimension resolution (Ollama probing)
     dynamic_index_body = await create_dynamic_index_body(
         embedding_model,
-        provider=config.provider.model_provider,
-        endpoint=config.provider.endpoint
+        provider=embedding_provider,
+        endpoint=getattr(embedding_provider_config, "endpoint", None)
     )
 
     # Create documents index
@@ -370,6 +372,7 @@ async def _ingest_default_documents_langflow(services, file_paths):
                 {"key": "owner_name", "value": anonymous_user.name},
                 {"key": "owner_email", "value": anonymous_user.email},
                 {"key": "connector_type", "value": "system_default"},
+                {"key": "is_sample_data", "value": "true"},
             ]
         }
     }
@@ -413,6 +416,7 @@ async def _ingest_default_documents_openrag(services, file_paths):
         jwt_token=None,
         owner_name=None,
         owner_email=None,
+        is_sample_data=True,  # Mark as sample data
     )
 
     task_id = await services["task_service"].create_custom_task(
@@ -1008,6 +1012,17 @@ async def create_app():
             methods=["GET"],
         ),
         Route(
+            "/models/anthropic",
+            require_auth(services["session_manager"])(
+                partial(
+                    models.get_anthropic_models,
+                    models_service=services["models_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
             "/models/ollama",
             require_auth(services["session_manager"])(
                 partial(
@@ -1057,7 +1072,7 @@ async def create_app():
                     session_manager=services["session_manager"],
                 )
             ),
-            methods=["GET"],
+            methods=["POST"],
         ),
         Route(
             "/nudges/{chat_id}",
@@ -1068,7 +1083,7 @@ async def create_app():
                     session_manager=services["session_manager"],
                 )
             ),
-            methods=["GET"],
+            methods=["POST"],
         ),
         Route(
             "/reset-flow/{flow_type}",

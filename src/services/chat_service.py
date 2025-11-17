@@ -158,8 +158,11 @@ class ChatService:
         user_id: str = None,
         jwt_token: str = None,
         previous_response_id: str = None,
+        filters: dict = None,
+        limit: int = None,
+        score_threshold: float = None,
     ):
-        """Handle Langflow chat requests"""
+        """Handle Langflow nudges chat requests with knowledge filters"""
 
         if not LANGFLOW_URL or not NUDGES_FLOW_ID:
             raise ValueError(
@@ -170,6 +173,67 @@ class ChatService:
         extra_headers = {}
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
+
+        # Build the complete filter expression like the chat service does
+        filter_expression = {}
+        has_user_filters = False
+        filter_clauses = []
+
+        if filters:
+            # Map frontend filter names to backend field names
+            field_mapping = {
+                "data_sources": "filename",
+                "document_types": "mimetype",
+                "owners": "owner",
+            }
+
+            for filter_key, values in filters.items():
+                if values is not None and isinstance(values, list) and len(values) > 0:
+                    # Map frontend key to backend field name
+                    field_name = field_mapping.get(filter_key, filter_key)
+
+                    if len(values) == 1:
+                        # Single value filter
+                        filter_clauses.append({"term": {field_name: values[0]}})
+                    else:
+                        # Multiple values filter
+                        filter_clauses.append({"terms": {field_name: values}})
+
+            if filter_clauses:
+                has_user_filters = True
+
+        # If no user filters are active, exclude sample data from nudges
+        if not has_user_filters:
+            # Add a bool query with must_not to exclude sample data
+            filter_clauses.append({
+                "bool": {
+                    "must_not": [
+                        {"term": {"is_sample_data": "true"}}
+                    ]
+                }
+            })
+            logger.info("Excluding sample data from nudges (no user filters active)")
+
+        # Set the filter clauses if we have any
+        if filter_clauses:
+            filter_expression["filter"] = filter_clauses
+
+        # Add limit and score threshold to the filter expression (only if different from defaults)
+        if limit and limit != 10:  # 10 is the default limit
+            filter_expression["limit"] = limit
+
+        if score_threshold and score_threshold != 0:  # 0 is the default threshold
+            filter_expression["score_threshold"] = score_threshold
+
+        # Pass the complete filter expression as a single header to Langflow (only if we have something to send)
+        logger.info(
+            "Sending OpenRAG query filter to Langflow nudges",
+            filter_expression=filter_expression,
+        )
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-OPENRAG-QUERY-FILTER"] = json.dumps(
+            filter_expression
+        )
+        logger.info(f"[NUDGES] Extra headers {extra_headers}")
 
         # Ensure the Langflow client exists; try lazy init if needed
         langflow_client = await clients.ensure_langflow_client()

@@ -47,7 +47,8 @@ async def onboard_system():
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         onboarding_payload = {
-            "model_provider": "openai",
+            "llm_provider": "openai",
+            "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
             "llm_model": "gpt-4o-mini",
             "sample_data": False,

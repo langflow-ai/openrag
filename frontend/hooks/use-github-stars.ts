@@ -19,7 +19,7 @@ export const useGitHubStars = (repo: string) => {
 
         const response = await fetch(`https://api.github.com/repos/${repo}`, {
           headers: {
-            'Accept': 'application/vnd.github.v3+json',
+            Accept: "application/vnd.github.v3+json",
             // Optional: Add your GitHub token for higher rate limits
             // 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_GITHUB_TOKEN}`,
           },
@@ -32,8 +32,10 @@ export const useGitHubStars = (repo: string) => {
         const repoData = await response.json();
         setData(repoData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch GitHub data');
-        console.error('GitHub API Error:', err);
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch GitHub data",
+        );
+        console.error("GitHub API Error:", err);
       } finally {
         setIsLoading(false);
       }

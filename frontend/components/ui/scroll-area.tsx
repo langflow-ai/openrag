@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export type ScrollAreaProps = React.HTMLAttributes<HTMLDivElement>
+export type ScrollAreaProps = React.HTMLAttributes<HTMLDivElement>;
 
 const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
   ({ className, children, ...props }, ref) => {
@@ -14,7 +14,7 @@ const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
         {children}
       </div>
     );
-  }
+  },
 );
 
 ScrollArea.displayName = "ScrollArea";
