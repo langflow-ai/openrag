@@ -1,7 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { X, RefreshCw } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useCreateFilter } from "@/app/api/mutations/useCreateFilter";
+import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
+import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
+import { useGetSearchAggregations } from "@/app/api/queries/useGetSearchAggregations";
+import {
+  type FilterColor,
+  FilterIconPopover,
+  type IconKey,
+} from "@/components/filter-icon-popover";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -12,19 +21,10 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
-import { useDeleteFilter } from "@/app/api/mutations/useDeleteFilter";
-import { useUpdateFilter } from "@/app/api/mutations/useUpdateFilter";
-import { useCreateFilter } from "@/app/api/mutations/useCreateFilter";
-import { useGetSearchAggregations } from "@/src/app/api/queries/useGetSearchAggregations";
-import {
-  FilterColor,
-  FilterIconPopover,
-  IconKey,
-} from "@/components/filter-icon-popover";
 
 interface FacetBucket {
   key: string;

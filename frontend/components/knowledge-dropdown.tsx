@@ -13,8 +13,13 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { File as SearchFile } from "@/app/api/queries/useGetSearchQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { DuplicateHandlingDialog } from "@/components/duplicate-handling-dialog";
+import AwsIcon from "@/components/icons/aws-logo";
+import GoogleDriveIcon from "@/components/icons/google-drive-logo";
+import OneDriveIcon from "@/components/icons/one-drive-logo";
+import SharePointIcon from "@/components/icons/share-point-logo";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,16 +37,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTask } from "@/contexts/task-context";
-import { cn } from "@/lib/utils";
 import {
   duplicateCheck,
   uploadFile as uploadFileUtil,
 } from "@/lib/upload-utils";
-import type { File as SearchFile } from "@/src/app/api/queries/useGetSearchQuery";
-import GoogleDriveIcon from "@/app/settings/icons/google-drive-icon";
-import OneDriveIcon from "@/app/settings/icons/one-drive-icon";
-import SharePointIcon from "@/app/settings/icons/share-point-icon";
-import AwsIcon from "@/app/settings/icons/aws-icon";
+import { cn } from "@/lib/utils";
 
 export function KnowledgeDropdown() {
   const { addTask } = useTask();

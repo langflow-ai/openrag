@@ -1,18 +1,18 @@
 "use client";
 
+import { EllipsisVertical } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
+import { useDeleteDocument } from "@/app/api/mutations/useDeleteDocument";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { EllipsisVertical } from "lucide-react";
+import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { Button } from "./ui/button";
-import { DeleteConfirmationDialog } from "./confirmation-dialog";
-import { useDeleteDocument } from "@/app/api/mutations/useDeleteDocument";
-import { toast } from "sonner";
-import { useRouter } from "next/navigation";
 
 interface KnowledgeActionsDropdownProps {
   filename: string;

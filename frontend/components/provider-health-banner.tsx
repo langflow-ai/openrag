@@ -2,10 +2,10 @@
 
 import { AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { ModelProvider } from "@/app/settings/helpers/model-helpers";
+import { useProviderHealthQuery } from "@/app/api/queries/useProviderHealthQuery";
+import type { ModelProvider } from "@/app/settings/_helpers/model-helpers";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { cn } from "@/lib/utils";
-import { useProviderHealthQuery } from "@/src/app/api/queries/useProviderHealthQuery";
 import { Button } from "./ui/button";
 
 interface ProviderHealthBannerProps {

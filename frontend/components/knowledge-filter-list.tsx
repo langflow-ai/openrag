@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
 import { Plus } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useState } from "react";
 import {
-  useGetFiltersSearchQuery,
   type KnowledgeFilter,
-} from "@/src/app/api/queries/useGetFiltersSearchQuery";
-import { useKnowledgeFilter } from "@/src/contexts/knowledge-filter-context";
+  useGetFiltersSearchQuery,
+} from "@/app/api/queries/useGetFiltersSearchQuery";
+import { cn } from "@/lib/utils";
+import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import {
-  FilterColor,
-  IconKey,
+  type FilterColor,
+  type IconKey,
   iconKeyToComponent,
 } from "./filter-icon-popover";
 import { filterAccentClasses } from "./knowledge-filter-panel";

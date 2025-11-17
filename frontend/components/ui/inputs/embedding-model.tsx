@@ -1,10 +1,3 @@
-import { ModelOption } from "@/app/api/queries/useGetModelsQuery";
-import {
-  getFallbackModels,
-  ModelProvider,
-} from "@/app/settings/helpers/model-helpers";
-import { ModelSelectItems } from "@/app/settings/helpers/model-select-item";
-import { LabelWrapper } from "@/components/label-wrapper";
 import {
   Select,
   SelectContent,
@@ -16,6 +9,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@radix-ui/react-tooltip";
+import type { ModelOption } from "@/app/api/queries/useGetModelsQuery";
+import {
+  getFallbackModels,
+  type ModelProvider,
+} from "@/app/settings/_helpers/model-helpers";
+import { ModelSelectItems } from "@/app/settings/_helpers/model-select-item";
+import { LabelWrapper } from "@/components/label-wrapper";
 
 interface EmbeddingModelInputProps {
   disabled?: boolean;

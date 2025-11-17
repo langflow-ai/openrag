@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Copy, ExternalLink } from "lucide-react";
 import { useState } from "react";
+import { useDoclingHealthQuery } from "@/app/api/queries/useDoclingHealthQuery";
 import {
   Banner,
   BannerAction,
@@ -18,7 +19,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { useDoclingHealthQuery } from "@/src/app/api/queries/useDoclingHealthQuery";
 
 interface DoclingHealthBannerProps {
   className?: string;
