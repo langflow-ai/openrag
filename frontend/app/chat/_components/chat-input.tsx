@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import TextareaAutosize from "react-textarea-autosize";
+import { toast } from "sonner";
 import type { FilterColor } from "@/components/filter-icon-popover";
 import { Button } from "@/components/ui/button";
 import {
@@ -75,7 +76,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [textareaHeight, setTextareaHeight] = useState(0);
-    const [fileUploadError, setFileUploadError] = useState<Error | null>(null);
     const isDragging = useFileDrag();
 
     const { getRootProps, getInputProps } = useDropzone({
@@ -89,11 +89,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       maxFiles: 1,
       disabled: !isDragging,
       onDrop: (acceptedFiles, fileRejections) => {
-        setFileUploadError(null);
         if (fileRejections.length > 0) {
-          console.log(fileRejections);
           const message = fileRejections.at(0)?.errors.at(0)?.message;
-          setFileUploadError(new Error(message));
+          toast.error(message || "Failed to upload file");
           return;
         }
         onFileSelected(acceptedFiles[0]);
@@ -110,7 +108,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }));
 
     const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      setFileUploadError(null);
       const files = e.target.files;
       if (files && files.length > 0) {
         onFileSelected(files[0]);
@@ -149,18 +146,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                     }}
                   />
                 </motion.div>
-              )}
-            </AnimatePresence>
-            <AnimatePresence>
-              {fileUploadError && (
-                <motion.p
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="text-sm text-destructive overflow-hidden"
-                >
-                  {fileUploadError.message}
-                </motion.p>
               )}
             </AnimatePresence>
             <AnimatePresence>
