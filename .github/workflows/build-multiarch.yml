@@ -56,7 +56,7 @@ jobs:
             tag: phact/openrag-backend
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest
+            runs-on: ubuntu-latest-16-cores
           - image: backend
             file: ./Dockerfile.backend
             tag: phact/openrag-backend
@@ -70,7 +70,7 @@ jobs:
             tag: phact/openrag-frontend
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest
+            runs-on: ubuntu-latest-16-cores
           - image: frontend
             file: ./Dockerfile.frontend
             tag: phact/openrag-frontend
@@ -84,7 +84,7 @@ jobs:
             tag: phact/openrag-langflow
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest
+            runs-on: ubuntu-latest-16-cores
           - image: langflow
             file: ./Dockerfile.langflow
             tag: phact/openrag-langflow
@@ -98,7 +98,7 @@ jobs:
             tag: phact/openrag-opensearch
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest
+            runs-on: ubuntu-latest-16-cores
           - image: opensearch
             file: ./Dockerfile
             tag: phact/openrag-opensearch
