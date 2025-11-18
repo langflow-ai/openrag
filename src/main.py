@@ -85,6 +85,9 @@ logger.info(
     cuda_version=torch.version.cuda,
 )
 
+# Files to exclude from startup ingestion
+EXCLUDED_INGESTION_FILES = {"warmup_ocr.pdf"}
+
 
 async def wait_for_opensearch():
     """Wait for OpenSearch to be ready with retries"""
@@ -312,11 +315,12 @@ async def ingest_default_documents_when_ready(services):
             )
             return
 
-        # Collect files recursively
+        # Collect files recursively, excluding warmup files
         file_paths = [
             os.path.join(root, fn)
             for root, _, files in os.walk(base_dir)
             for fn in files
+            if fn not in EXCLUDED_INGESTION_FILES
         ]
 
         if not file_paths:

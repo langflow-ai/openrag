@@ -5,6 +5,9 @@ from pathlib import Path
 import httpx
 import pytest
 
+# Files to exclude from ingestion (should match src/main.py)
+EXCLUDED_INGESTION_FILES = {"warmup_ocr.pdf"}
+
 
 async def wait_for_ready(client: httpx.AsyncClient, timeout_s: float = 30.0):
     deadline = asyncio.get_event_loop().time() + timeout_s
@@ -29,7 +32,7 @@ def count_files_in_documents() -> int:
     base_dir = Path(os.getcwd()) / "documents"
     if not base_dir.is_dir():
         return 0
-    return sum(1 for _ in base_dir.rglob("*") if _.is_file())
+    return sum(1 for _ in base_dir.rglob("*") if _.is_file() and _.name not in EXCLUDED_INGESTION_FILES)
 
 
 @pytest.mark.parametrize("disable_langflow_ingest", [True, False])
