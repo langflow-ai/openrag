@@ -41,6 +41,7 @@ export function ModelSelector({
   noOptionsPlaceholder = "No models available",
   custom = false,
   hasError = false,
+  defaultOpen = false,
 }: {
   options?: ModelOption[];
   groupedOptions?: GroupedModelOption[];
@@ -52,8 +53,9 @@ export function ModelSelector({
   custom?: boolean;
   onValueChange: (value: string, provider?: string) => void;
   hasError?: boolean;
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [searchValue, setSearchValue] = useState("");
 
   // Flatten grouped options or use regular options
@@ -76,6 +78,13 @@ export function ModelSelector({
       onValueChange("");
     }
   }, [allOptions, value, custom, onValueChange]);
+
+  // Update open state when defaultOpen changes
+  useEffect(() => {
+    if (defaultOpen) {
+      setOpen(true);
+    }
+  }, [defaultOpen]);
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
