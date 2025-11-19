@@ -71,6 +71,7 @@ function ChatPage() {
     y: number;
   } | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [waitingTooLong, setWaitingTooLong] = useState(false);
 
   const chatInputRef = useRef<ChatInputHandle>(null);
 
@@ -87,11 +88,13 @@ function ChatPage() {
     streamingMessage,
     sendMessage: sendStreamingMessage,
     abortStream,
+    isLoading: isStreamLoading,
   } = useChatStreaming({
     endpoint: apiEndpoint,
     onComplete: (message, responseId) => {
       setMessages((prev) => [...prev, message]);
       setLoading(false);
+      setWaitingTooLong(false);
 
       if (responseId) {
         cancelNudges();
@@ -111,6 +114,7 @@ function ChatPage() {
     onError: (error) => {
       console.error("Streaming error:", error);
       setLoading(false);
+      setWaitingTooLong(false);
       const errorMessage: Message = {
         role: "assistant",
         content:
@@ -120,6 +124,23 @@ function ChatPage() {
       setMessages((prev) => [...prev, errorMessage]);
     },
   });
+  
+  // Show warning if waiting too long (20 seconds)
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    
+    if (isStreamLoading && !streamingMessage) {
+      timeoutId = setTimeout(() => {
+        setWaitingTooLong(true);
+      }, 20000); // 20 seconds
+    } else {
+      setWaitingTooLong(false);
+    }
+    
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isStreamLoading, streamingMessage]);
 
   const getCursorPosition = (textarea: HTMLTextAreaElement) => {
     // Create a hidden div with the same styles as the textarea
@@ -1309,6 +1330,19 @@ function ChatPage() {
                   isStreaming
                   isCompleted={false}
                 />
+              )}
+              
+              {/* Waiting too long indicator */}
+              {waitingTooLong && !streamingMessage && loading && (
+                <div className="pl-10 space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>The server is taking longer than expected...</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    This may be due to high server load. The request will timeout after 60 seconds.
+                  </p>
+                </div>
               )}
             </>
           )}
