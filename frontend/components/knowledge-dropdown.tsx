@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   Cloud,
-  File,
+  File as FileIcon,
   Folder,
   FolderOpen,
   Loader2,
@@ -439,7 +439,7 @@ export function KnowledgeDropdown() {
     {
       label: "File",
       icon: ({ className }: { className?: string }) => (
-        <File className={cn(className, "text-muted-foreground")} />
+        <FileIcon className={cn(className, "text-muted-foreground")} />
       ),
       onClick: handleFileUpload,
     },
