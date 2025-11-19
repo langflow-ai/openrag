@@ -19,6 +19,7 @@ import {
   WatsonxSettingsForm,
   type WatsonxSettingsFormData,
 } from "./watsonx-settings-form";
+import { useRouter } from "next/navigation";
 
 const WatsonxSettingsDialog = ({
   open,
@@ -30,6 +31,7 @@ const WatsonxSettingsDialog = ({
   const queryClient = useQueryClient();
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<Error | null>(null);
+  const router = useRouter();
 
   const methods = useForm<WatsonxSettingsFormData>({
     mode: "onSubmit",
@@ -65,9 +67,20 @@ const WatsonxSettingsDialog = ({
         provider: "watsonx",
       };
       queryClient.setQueryData(["provider", "health"], healthData);
-      toast.success(
-        "watsonx credentials saved. Configure models in the Settings page.",
-      );
+
+      toast.message("IBM watsonx.ai successfully configured", {
+        description:
+          "You can now access the provided language and embedding models.",
+        duration: Infinity,
+        closeButton: true,
+        icon: <IBMLogo className="w-4 h-4 text-[#1063FE]" />,
+        action: {
+          label: "Settings",
+          onClick: () => {
+            router.push("/settings?focusLlmModel=true");
+          },
+        },
+      });
       setOpen(false);
     },
   });

@@ -42,6 +42,7 @@ import { useUpdateSettingsMutation } from "../api/mutations/useUpdateSettingsMut
 import { ModelSelector } from "../onboarding/_components/model-selector";
 import ModelProviders from "./_components/model-providers";
 import { getModelLogo, type ModelProvider } from "./_helpers/model-helpers";
+import { cn } from "@/lib/utils";
 
 const { MAX_SYSTEM_PROMPT_CHARS } = UI_CONSTANTS;
 
@@ -96,6 +97,11 @@ function KnowledgeSourcesPage() {
   const { addTask, tasks } = useTask();
   const searchParams = useSearchParams();
   const router = useRouter();
+
+  // Check if we should auto-open the LLM model selector
+  const focusLlmModel = searchParams.get("focusLlmModel") === "true";
+  // Use a trigger state that changes each time we detect the query param
+  const [openLlmSelector, setOpenLlmSelector] = useState(false);
 
   // Connectors state
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -300,6 +306,30 @@ function KnowledgeSourcesPage() {
     }
   }, [settings.knowledge?.picture_descriptions]);
 
+  // Handle auto-focus on LLM model selector when coming from provider setup
+  useEffect(() => {
+    if (focusLlmModel) {
+      // Trigger the selector to open
+      setOpenLlmSelector(true);
+
+      // Scroll to the agent card
+      const agentCard = document.getElementById("agent-card");
+      if (agentCard) {
+        agentCard.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      // Clear the query parameter
+      const newSearchParams = new URLSearchParams(searchParams.toString());
+      newSearchParams.delete("focusLlmModel");
+      router.replace(`/settings?${newSearchParams.toString()}`, {
+        scroll: false,
+      });
+
+      // Reset the trigger after a brief delay so it can be triggered again
+      setTimeout(() => setOpenLlmSelector(false), 100);
+    }
+  }, [focusLlmModel, searchParams, router]);
+
   // Update model selection immediately (also updates provider)
   const handleModelChange = (newModel: string, provider?: string) => {
     if (newModel && provider) {
@@ -389,7 +419,7 @@ function KnowledgeSourcesPage() {
 
       // Initialize connectors list with metadata from backend
       const initialConnectors = connectorTypes
-        .filter((type) => connectorsResult.connectors[type].available) // Only show available connectors
+        // .filter((type) => connectorsResult.connectors[type].available) // Only show available connectors
         .map((type) => ({
           id: type,
           name: connectorsResult.connectors[type].name,
@@ -537,25 +567,6 @@ function KnowledgeSourcesPage() {
   //   }
   // };
 
-  const getStatusBadge = (status: Connector["status"]) => {
-    switch (status) {
-      case "connected":
-        return (
-          <div className="h-2 w-2 bg-accent-emerald-foreground rounded-full" />
-        );
-      case "connecting":
-        return (
-          <div className="h-2 w-2 bg-accent-amber-foreground rounded-full" />
-        );
-      case "error":
-        return (
-          <div className="h-2 w-2 bg-accent-red-foreground rounded-full" />
-        );
-      default:
-        return <div className="h-2 w-2 bg-muted rounded-full" />;
-    }
-  };
-
   const navigateToKnowledgePage = (connector: Connector) => {
     const provider = connector.type.replace(/-/g, "_");
     router.push(`/upload/${provider}`);
@@ -693,7 +704,7 @@ function KnowledgeSourcesPage() {
         {/* Conditional Sync Settings or No-Auth Message */}
         {
           isNoAuthMode ? (
-            <Card className="border-yellow-500">
+            <Card className="border-accent-amber-foreground">
               <CardHeader>
                 <CardTitle className="text-lg">
                   Cloud connectors require authentication
@@ -798,26 +809,28 @@ function KnowledgeSourcesPage() {
           {connectors.map((connector) => {
             return (
               <Card key={connector.id} className="relative flex flex-col">
-                <CardHeader>
+                <CardHeader className="pb-2">
                   <div className="flex flex-col items-start justify-between">
                     <div className="flex flex-col gap-3">
                       <div className="mb-1">
                         <div
-                          className={`w-8 h-8 ${
-                            connector ? "bg-white" : "bg-muted grayscale"
-                          } rounded flex items-center justify-center border`}
+                          className={cn(
+                            "w-8 h-8 rounded flex items-center justify-center border",
+                            connector?.available
+                              ? "bg-white"
+                              : "bg-muted grayscale",
+                          )}
                         >
                           {connector.icon}
                         </div>
                       </div>
                       <CardTitle className="flex flex-row items-center gap-2">
                         {connector.name}
-                        {connector && getStatusBadge(connector.status)}
                       </CardTitle>
-                      <CardDescription className="text-[13px]">
-                        {connector?.description
+                      <CardDescription className="text-sm">
+                        {connector?.available
                           ? `${connector.name} is configured.`
-                          : connector.description}
+                          : "Not configured."}
                       </CardDescription>
                     </div>
                   </div>
@@ -876,12 +889,14 @@ function KnowledgeSourcesPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="text-[13px] text-muted-foreground">
+                    <div className="text-sm text-muted-foreground">
                       <p>
                         See our{" "}
                         <Link
                           className="text-accent-pink-foreground"
-                          href="https://github.com/langflow-ai/openrag/pull/96/files#diff-06889aa94ccf8dac64e70c8cc30a2ceed32cc3c0c2c14a6ff0336fe882a9c2ccR41"
+                          href="https://docs.openr.ag/knowledge#oauth-ingestion"
+                          target="_blank"
+                          rel="noopener noreferrer"
                         >
                           Cloud Connectors installation guide
                         </Link>{" "}
@@ -907,7 +922,7 @@ function KnowledgeSourcesPage() {
       </div>
 
       {/* Agent Behavior Section */}
-      <Card>
+      <Card id="agent-card">
         <CardHeader>
           <div className="flex items-center justify-between mb-3">
             <CardTitle className="text-lg">Agent</CardTitle>
@@ -996,6 +1011,7 @@ function KnowledgeSourcesPage() {
                   }
                   value={settings.agent?.llm_model || ""}
                   onValueChange={handleModelChange}
+                  defaultOpen={openLlmSelector}
                 />
               </LabelWrapper>
             </div>

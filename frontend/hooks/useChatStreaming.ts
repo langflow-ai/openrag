@@ -38,6 +38,10 @@ export function useChatStreaming({
     limit = 10,
     scoreThreshold = 0,
   }: SendMessageOptions) => {
+    // Set up timeout to detect stuck/hanging requests
+    let timeoutId: NodeJS.Timeout | null = null;
+    let hasReceivedData = false;
+
     try {
       setIsLoading(true);
 
@@ -49,6 +53,20 @@ export function useChatStreaming({
       const controller = new AbortController();
       streamAbortRef.current = controller;
       const thisStreamId = ++streamIdRef.current;
+
+      // Set up timeout (60 seconds for initial response, then extended as data comes in)
+      const startTimeout = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          if (!hasReceivedData) {
+            console.error("Chat request timed out - no response received");
+            controller.abort();
+            throw new Error("Request timed out. The server is not responding.");
+          }
+        }, 60000); // 60 second timeout
+      };
+
+      startTimeout();
 
       const requestBody: {
         prompt: string;
@@ -81,8 +99,13 @@ export function useChatStreaming({
         signal: controller.signal,
       });
 
+      // Clear timeout once we get initial response
+      if (timeoutId) clearTimeout(timeoutId);
+      hasReceivedData = true;
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text().catch(() => "Unknown error");
+        throw new Error(`Server error (${response.status}): ${errorText}`);
       }
 
       const reader = response.body?.getReader();
@@ -112,6 +135,10 @@ export function useChatStreaming({
           if (controller.signal.aborted || thisStreamId !== streamIdRef.current)
             break;
           if (done) break;
+
+          // Reset timeout on each chunk received
+          hasReceivedData = true;
+          if (timeoutId) clearTimeout(timeoutId);
 
           buffer += decoder.decode(value, { stream: true });
 
@@ -435,6 +462,17 @@ export function useChatStreaming({
         }
       } finally {
         reader.releaseLock();
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+
+      // Check if we got any content at all
+      if (
+        !hasReceivedData ||
+        (!currentContent && currentFunctionCalls.length === 0)
+      ) {
+        throw new Error(
+          "No response received from the server. Please try again.",
+        );
       }
 
       // Finalize the message
@@ -456,25 +494,52 @@ export function useChatStreaming({
 
       return null;
     } catch (error) {
-      // If stream was aborted, don't handle as error
-      if (streamAbortRef.current?.signal.aborted) {
+      // Clean up timeout
+      if (timeoutId) clearTimeout(timeoutId);
+
+      // If stream was aborted by user, don't handle as error
+      if (
+        streamAbortRef.current?.signal.aborted &&
+        !(error as Error).message?.includes("timed out")
+      ) {
         return null;
       }
 
-      console.error("SSE Stream error:", error);
+      console.error("Chat stream error:", error);
       setStreamingMessage(null);
+
+      // Create user-friendly error message
+      let errorContent =
+        "Sorry, I couldn't connect to the chat service. Please try again.";
+
+      const errorMessage = (error as Error).message;
+      if (errorMessage?.includes("timed out")) {
+        errorContent =
+          "The request timed out. The server took too long to respond. Please try again.";
+      } else if (errorMessage?.includes("No response")) {
+        errorContent = "The server didn't return a response. Please try again.";
+      } else if (
+        errorMessage?.includes("NetworkError") ||
+        errorMessage?.includes("Failed to fetch")
+      ) {
+        errorContent =
+          "Network error. Please check your connection and try again.";
+      } else if (errorMessage?.includes("Server error")) {
+        errorContent = errorMessage; // Use the detailed server error message
+      }
+
       onError?.(error as Error);
 
-      const errorMessage: Message = {
+      const errorMessageObj: Message = {
         role: "assistant",
-        content:
-          "Sorry, I couldn't connect to the chat service. Please try again.",
+        content: errorContent,
         timestamp: new Date(),
         isStreaming: false,
       };
 
-      return errorMessage;
+      return errorMessageObj;
     } finally {
+      if (timeoutId) clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };

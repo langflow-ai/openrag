@@ -19,6 +19,7 @@ import {
   AnthropicSettingsForm,
   type AnthropicSettingsFormData,
 } from "./anthropic-settings-form";
+import { useRouter } from "next/navigation";
 
 const AnthropicSettingsDialog = ({
   open,
@@ -30,6 +31,7 @@ const AnthropicSettingsDialog = ({
   const queryClient = useQueryClient();
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<Error | null>(null);
+  const router = useRouter();
 
   const methods = useForm<AnthropicSettingsFormData>({
     mode: "onSubmit",
@@ -60,9 +62,18 @@ const AnthropicSettingsDialog = ({
       };
       queryClient.setQueryData(["provider", "health"], healthData);
 
-      toast.success(
-        "Anthropic credentials saved. Configure models in the Settings page.",
-      );
+      toast.message("Anthropic successfully configured", {
+        description: "You can now access the provided language models.",
+        duration: Infinity,
+        closeButton: true,
+        icon: <AnthropicLogo className="w-4 h-4 text-[#D97757]" />,
+        action: {
+          label: "Settings",
+          onClick: () => {
+            router.push("/settings?focusLlmModel=true");
+          },
+        },
+      });
       setOpen(false);
     },
   });

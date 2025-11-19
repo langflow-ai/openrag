@@ -816,7 +816,7 @@ class FlowsService:
         if not DISABLE_INGEST_WITH_LANGFLOW and embedding_model:
             embedding_node, _ = self._find_node_in_flow(flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME)
             if embedding_node:
-                if self._update_component_fields(
+                if await self._update_component_fields(
                     embedding_node, provider, embedding_model, endpoint
                 ):
                     updates_made.append(f"embedding model: {embedding_model}")
@@ -825,14 +825,14 @@ class FlowsService:
         if llm_model:
             llm_node, _ = self._find_node_in_flow(flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME)
             if llm_node:
-                if self._update_component_fields(
+                if await self._update_component_fields(
                     llm_node, provider, llm_model, endpoint
                 ):
                     updates_made.append(f"llm model: {llm_model}")
             # Update LLM component (if exists in this flow)
             agent_node, _ = self._find_node_in_flow(flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME)
             if agent_node:
-                if self._update_component_fields(
+                if await self._update_component_fields(
                     agent_node, provider, llm_model, endpoint
                 ):
                     updates_made.append(f"agent model: {llm_model}")
@@ -865,7 +865,7 @@ class FlowsService:
             "flow_id": flow_id,
         }
 
-    def _update_component_fields(
+    async def _update_component_fields(
         self,
         component_node,
         provider: str,
@@ -881,13 +881,54 @@ class FlowsService:
         updated = False
 
         provider_name = "IBM watsonx.ai" if provider == "watsonx" else "Ollama" if provider == "ollama" else "Anthropic" if provider == "anthropic" else "OpenAI"
-        if "agent_llm" in template:
-            template["agent_llm"]["value"] = provider_name
-            updated = True
 
-        if "provider" in template:
-            template["provider"]["value"] = provider_name
+        field_name = "provider" if "provider" in template else "agent_llm"
+        
+        # Update provider field and call custom_component/update endpoint
+        if field_name in template:
+            # First, update the provider value
+            template[field_name]["value"] = provider_name
+            
+            # Call custom_component/update endpoint to get updated template
+            # Only call if code field exists (custom components should have code)
+            if "code" in template and "value" in template["code"]:
+                code_value = template["code"]["value"]
+                field_value = provider_name
+                                
+                try:
+                    update_payload = {
+                        "code": code_value,
+                        "template": template,
+                        "field": field_name,
+                        "field_value": field_value,
+                        "tool_mode": False,
+                    }
+                    
+                    response = await clients.langflow_request(
+                        "POST", "/api/v1/custom_component/update", json=update_payload
+                    )
+                    
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        # Update template with the new template from response.data
+                        if "template" in response_data:
+                            # Update the template in component_node
+                            component_node["data"]["node"]["template"] = response_data["template"]
+                            # Update local template reference
+                            template = response_data["template"]
+                            logger.info(f"Successfully updated template via custom_component/update for provider: {provider_name}")
+                        else:
+                            logger.warning("Response from custom_component/update missing 'data' field")
+                    else:
+                        logger.warning(
+                            f"Failed to call custom_component/update: HTTP {response.status_code} - {response.text}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error calling custom_component/update: {str(e)}")
+                    # Continue with manual updates even if API call fails
+            
             updated = True
+        
 
         # Update model_name field (common to all providers)
         if "model" in template:

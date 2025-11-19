@@ -166,6 +166,10 @@ class GoogleDriveConnector(BaseConnector):
     # -------------------------
     # Helpers
     # -------------------------
+    def _clear_shortcut_cache(self) -> None:
+        """Clear the shortcut resolution cache to prevent stale data."""
+        self._shortcut_cache.clear()
+
     @property
     def _drives_get_flags(self) -> Dict[str, Any]:
         """
@@ -208,6 +212,10 @@ class GoogleDriveConnector(BaseConnector):
         if target_id in self._shortcut_cache:
             return self._shortcut_cache[target_id]
 
+        if self.service is None:
+            logger.warning("Cannot resolve shortcut - service not initialized")
+            return file_obj
+
         try:
             meta = (
                 self.service.files()
@@ -231,6 +239,11 @@ class GoogleDriveConnector(BaseConnector):
         """
         List immediate children of a folder.
         """
+        if self.service is None:
+            raise RuntimeError(
+                "Google Drive service is not initialized. Please authenticate first."
+            )
+
         query = f"'{folder_id}' in parents and trashed = false"
         page_token = None
         results: List[Dict[str, Any]] = []
@@ -332,6 +345,9 @@ class GoogleDriveConnector(BaseConnector):
           - items inside folder_ids (with optional recursion)
         Shortcuts are resolved to their targets automatically.
         """
+        # Clear shortcut cache to ensure fresh data
+        self._clear_shortcut_cache()
+
         seen: Set[str] = set()
         items: List[Dict[str, Any]] = []
         folders_to_expand: List[str] = []
@@ -374,6 +390,10 @@ class GoogleDriveConnector(BaseConnector):
         #  - OR default to entire drive.
         # Here we choose to require explicit selection:
         if not self.cfg.file_ids and not self.cfg.folder_ids:
+            logger.warning(
+                "No file_ids or folder_ids specified - returning empty result. "
+                "Explicit selection is required."
+            )
             return []
 
         items = self._filter_by_mime(items)
@@ -383,6 +403,16 @@ class GoogleDriveConnector(BaseConnector):
             for m in items
             if m.get("mimeType") != "application/vnd.google-apps.folder"
         ]
+
+        # Log a warning if we ended up with no files after expansion/filtering
+        if not items and (self.cfg.file_ids or self.cfg.folder_ids):
+            logger.warning(
+                f"No files found after expanding and filtering. "
+                f"file_ids={self.cfg.file_ids}, folder_ids={self.cfg.folder_ids}. "
+                f"This could mean: (1) folders are empty, (2) all files were filtered by mime types, "
+                f"or (3) permissions prevent access to the files."
+            )
+
         return items
 
     # -------------------------
@@ -416,6 +446,11 @@ class GoogleDriveConnector(BaseConnector):
         Download bytes for a given file (exporting if Google-native).
         Raises ValueError if the item is a folder (folders cannot be downloaded).
         """
+        if self.service is None:
+            raise RuntimeError(
+                "Google Drive service is not initialized. Please authenticate first."
+            )
+
         file_id = file_meta["id"]
         file_name = file_meta.get("name", "unknown")
         mime_type = file_meta.get("mimeType") or ""
@@ -543,6 +578,12 @@ class GoogleDriveConnector(BaseConnector):
         - If page_token is None: return all files in one batch.
         - Otherwise: return {} and no next_page_token.
         """
+        # Ensure service is initialized
+        if self.service is None:
+            raise RuntimeError(
+                "Google Drive service is not initialized. Please authenticate first."
+            )
+
         try:
             items = self._iter_selected_items()
 
@@ -560,12 +601,12 @@ class GoogleDriveConnector(BaseConnector):
                 "next_page_token": None,  # no more pages
             }
         except Exception as e:
-            # Log the error
-            try:
-                logger.error(f"GoogleDriveConnector.list_files failed: {e}")
-            except Exception:
-                pass
-            return {"files": [], "next_page_token": None}
+            # Log the error and re-raise to surface authentication/permission issues
+            logger.error(
+                f"GoogleDriveConnector.list_files failed: {e}",
+                exc_info=True
+            )
+            raise
 
     async def get_file_content(self, file_id: str) -> ConnectorDocument:
         """

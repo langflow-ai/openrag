@@ -21,6 +21,7 @@ import {
   OllamaSettingsForm,
   type OllamaSettingsFormData,
 } from "./ollama-settings-form";
+import { useRouter } from "next/navigation";
 
 const OllamaSettingsDialog = ({
   open,
@@ -33,6 +34,7 @@ const OllamaSettingsDialog = ({
   const queryClient = useQueryClient();
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<Error | null>(null);
+  const router = useRouter();
 
   const { data: settings = {} } = useGetSettingsQuery({
     enabled: isAuthenticated || isNoAuthMode,
@@ -71,9 +73,19 @@ const OllamaSettingsDialog = ({
       };
       queryClient.setQueryData(["provider", "health"], healthData);
 
-      toast.success(
-        "Ollama endpoint saved. Configure models in the Settings page.",
-      );
+      toast.message("Ollama successfully configured", {
+        description:
+          "You can now access the provided language and embedding models.",
+        duration: Infinity,
+        closeButton: true,
+        icon: <OllamaLogo className="w-4 h-4" />,
+        action: {
+          label: "Settings",
+          onClick: () => {
+            router.push("/settings?focusLlmModel=true");
+          },
+        },
+      });
       setOpen(false);
     },
   });

@@ -119,9 +119,9 @@ function AuthCallbackContent() {
             localStorage.removeItem("connecting_connector_type");
             localStorage.removeItem("auth_purpose");
 
-            // Redirect to connectors page with success indicator
+            // Redirect to settings page with success indicator
             setTimeout(() => {
-              router.push("/connectors?oauth_success=true");
+              router.push("/settings?oauth_success=true");
             }, 2000);
           }
         } else {
@@ -206,14 +206,12 @@ function AuthCallbackContent() {
                 <p className="text-sm text-red-600">{error}</p>
               </div>
               <Button
-                onClick={() =>
-                  router.push(isAppAuth ? "/login" : "/connectors")
-                }
+                onClick={() => router.push(isAppAuth ? "/login" : "/settings")}
                 variant="outline"
                 className="w-full"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                {isAppAuth ? "Back to Login" : "Back to Connectors"}
+                {isAppAuth ? "Back to Login" : "Back to Settings"}
               </Button>
             </div>
           )}
@@ -223,7 +221,7 @@ function AuthCallbackContent() {
                 <p className="text-sm text-green-600">
                   {isAppAuth
                     ? "Redirecting you to the app..."
-                    : "Redirecting to connectors..."}
+                    : "Redirecting to settings..."}
                 </p>
               </div>
             </div>
