@@ -273,18 +273,31 @@ export function KnowledgeDropdown() {
 
       for (const originalFile of filteredFiles) {
         try {
-          // Create a new File object with just the basename (no folder path)
-          // The webkitRelativePath property includes the folder name which causes issues
+          // Extract just the filename without the folder path
           const fileName = originalFile.name.split('/').pop() || originalFile.name;
-          const file = new File([originalFile], fileName, { type: originalFile.type });
+          console.log(`[Folder Upload] Processing file: ${originalFile.name} -> ${fileName}`);
           
+          // Create a new File object with just the basename (no folder path)
+          // This is necessary because the webkitRelativePath includes the folder name
+          const file = new File([originalFile], fileName, { 
+            type: originalFile.type,
+            lastModified: originalFile.lastModified 
+          });
+          console.log(`[Folder Upload] Created new File object:`, { name: file.name, type: file.type, size: file.size });
+          
+          // Check for duplicates using the clean filename
           const checkData = await duplicateCheck(file);
+          console.log(`[Folder Upload] Duplicate check result:`, checkData);
           
           if (!checkData.exists) {
+            console.log(`[Folder Upload] Uploading file: ${fileName}`);
             await uploadFileUtil(file, false);
+            console.log(`[Folder Upload] Successfully uploaded: ${fileName}`);
+          } else {
+            console.log(`[Folder Upload] Skipping duplicate: ${fileName}`);
           }
         } catch (error) {
-          console.error(`Failed to upload ${originalFile.name}:`, error);
+          console.error(`[Folder Upload] Failed to upload ${originalFile.name}:`, error);
         }
       }
 
