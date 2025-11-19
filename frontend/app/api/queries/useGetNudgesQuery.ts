@@ -76,6 +76,11 @@ export const useGetNudgesQuery = (
     {
       queryKey: ["nudges", chatId, filters, limit, scoreThreshold],
       queryFn: getNudges,
+      refetchInterval: (query) => {
+        // If data is empty, refetch every 5 seconds
+        const data = query.state.data;
+        return Array.isArray(data) && data.length === 0 ? 5000 : false;
+      },
       ...options,
     },
     queryClient,

@@ -32,7 +32,7 @@ export function ProgressBar({
         </span>
       </div>
       <div className="flex-1 flex justify-end">
-        {currentStep > 0 && onSkip && (
+        {currentStep > 1 && onSkip && (
           <Button
             variant="link"
             size="sm"
