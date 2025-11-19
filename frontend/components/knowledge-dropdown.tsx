@@ -271,15 +271,20 @@ export function KnowledgeDropdown() {
 
       toast.info(`Processing ${filteredFiles.length} file(s)...`);
 
-      for (const file of filteredFiles) {
+      for (const originalFile of filteredFiles) {
         try {
+          // Create a new File object with just the basename (no folder path)
+          // The webkitRelativePath property includes the folder name which causes issues
+          const fileName = originalFile.name.split('/').pop() || originalFile.name;
+          const file = new File([originalFile], fileName, { type: originalFile.type });
+          
           const checkData = await duplicateCheck(file);
           
           if (!checkData.exists) {
             await uploadFileUtil(file, false);
           }
         } catch (error) {
-          console.error(`Failed to upload ${file.name}:`, error);
+          console.error(`Failed to upload ${originalFile.name}:`, error);
         }
       }
 
