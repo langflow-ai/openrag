@@ -95,6 +95,12 @@ class OneDriveConnector(BaseConnector):
         self._default_params = {
             "$select": "id,name,size,lastModifiedDateTime,createdDateTime,webUrl,file,folder,@microsoft.graph.downloadUrl"
         }
+        
+        # Selective sync support (similar to Google Drive)
+        self.cfg = type('OneDriveConfig', (), {
+            'file_ids': config.get('file_ids') or config.get('selected_files') or config.get('selected_file_ids'),
+            'folder_ids': config.get('folder_ids') or config.get('selected_folders') or config.get('selected_folder_ids'),
+        })()
 
     @property
     def _graph_base_url(self) -> str:
@@ -251,6 +257,10 @@ class OneDriveConnector(BaseConnector):
             if not await self.authenticate():
                 raise RuntimeError("OneDrive authentication failed during file listing")
 
+            # If file_ids or folder_ids are specified in config, use selective sync
+            if self.cfg.file_ids or self.cfg.folder_ids:
+                return await self._list_selected_files()
+
             files: List[Dict[str, Any]] = []
             max_files_value = max_files if max_files is not None else 100
 
@@ -349,6 +359,14 @@ class OneDriveConnector(BaseConnector):
             response = await self._make_graph_request(url, params=params)
             item = response.json()
 
+            # Check if it's a folder
+            if item.get("folder"):
+                return {
+                    "id": file_id,
+                    "name": item.get("name", ""),
+                    "isFolder": True,
+                }
+
             if item.get("file"):
                 return {
                     "id": file_id,
@@ -360,6 +378,7 @@ class OneDriveConnector(BaseConnector):
                     "mime_type": item.get("file", {}).get("mimeType", self._get_mime_type(item.get("name", ""))),
                     "url": item.get("webUrl", ""),
                     "download_url": item.get("@microsoft.graph.downloadUrl"),
+                    "isFolder": False,
                 }
 
             return None
@@ -428,6 +447,62 @@ class OneDriveConnector(BaseConnector):
 
             response.raise_for_status()
             return response
+
+    async def _list_selected_files(self) -> Dict[str, Any]:
+        """List only selected files/folders (selective sync)."""
+        files: List[Dict[str, Any]] = []
+        
+        # Process selected file IDs
+        if self.cfg.file_ids:
+            for file_id in self.cfg.file_ids:
+                try:
+                    file_meta = await self._get_file_metadata_by_id(file_id)
+                    if file_meta and not file_meta.get('isFolder', False):
+                        files.append(file_meta)
+                    elif file_meta and file_meta.get('isFolder', False):
+                        # If it's a folder, expand its contents
+                        folder_files = await self._list_folder_contents(file_id)
+                        files.extend(folder_files)
+                except Exception as e:
+                    logger.warning(f"Failed to get file {file_id}: {e}")
+                    continue
+        
+        # Process selected folder IDs
+        if self.cfg.folder_ids:
+            for folder_id in self.cfg.folder_ids:
+                try:
+                    folder_files = await self._list_folder_contents(folder_id)
+                    files.extend(folder_files)
+                except Exception as e:
+                    logger.warning(f"Failed to list folder {folder_id}: {e}")
+                    continue
+        
+        return {"files": files, "next_page_token": None}
+    
+    async def _list_folder_contents(self, folder_id: str) -> List[Dict[str, Any]]:
+        """List all files in a folder recursively."""
+        files: List[Dict[str, Any]] = []
+        
+        try:
+            url = f"{self._graph_base_url}/me/drive/items/{folder_id}/children"
+            params = dict(self._default_params)
+            
+            response = await self._make_graph_request(url, params=params)
+            data = response.json()
+            
+            items = data.get("value", [])
+            for item in items:
+                if item.get("file"):  # It's a file
+                    file_meta = await self._get_file_metadata_by_id(item.get("id"))
+                    if file_meta:
+                        files.append(file_meta)
+                elif item.get("folder"):  # It's a subfolder, recurse
+                    subfolder_files = await self._list_folder_contents(item.get("id"))
+                    files.extend(subfolder_files)
+        except Exception as e:
+            logger.error(f"Failed to list folder contents for {folder_id}: {e}")
+        
+        return files
 
     def _get_mime_type(self, filename: str) -> str:
         """Get MIME type based on file extension."""

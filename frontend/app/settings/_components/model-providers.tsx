@@ -96,20 +96,10 @@ export const ModelProviders = () => {
   const currentEmbeddingProvider =
     (settings.knowledge?.embedding_provider as ModelProvider) || "openai";
 
-  // Get all provider keys with active providers first
-  const activeProviders = new Set([
-    currentLlmProvider,
-    currentEmbeddingProvider,
-  ]);
-  const sortedProviderKeys = [
-    ...Array.from(activeProviders),
-    ...allProviderKeys.filter((key) => !activeProviders.has(key)),
-  ];
-
   return (
     <>
       <div className="grid gap-6 xs:grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        {sortedProviderKeys.map((providerKey) => {
+        {allProviderKeys.map((providerKey) => {
           const {
             name,
             logo: Logo,
@@ -118,7 +108,6 @@ export const ModelProviders = () => {
           } = modelProvidersMap[providerKey];
           const isLlmProvider = providerKey === currentLlmProvider;
           const isEmbeddingProvider = providerKey === currentEmbeddingProvider;
-          const isCurrentProvider = isLlmProvider || isEmbeddingProvider;
 
           // Check if this specific provider is unhealthy
           const hasLlmError = isLlmProvider && health?.llm_error;
@@ -161,16 +150,8 @@ export const ModelProviders = () => {
                     </div>
                     <CardTitle className="flex flex-row items-center gap-2">
                       {name}
-                      {isCurrentProvider && (
-                        <span
-                          className={cn(
-                            "h-2 w-2 rounded-full",
-                            isProviderUnhealthy
-                              ? "bg-destructive"
-                              : "bg-accent-emerald-foreground",
-                          )}
-                          aria-label={isProviderUnhealthy ? "Error" : "Active"}
-                        />
+                      {isProviderUnhealthy && (
+                        <span className="h-2 w-2 rounded-full bg-destructive" />
                       )}
                     </CardTitle>
                   </div>

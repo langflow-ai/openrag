@@ -1,6 +1,9 @@
 import { ArrowRight, Check, Funnel, Loader2, Plus } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { useDropzone } from "react-dropzone";
 import TextareaAutosize from "react-textarea-autosize";
+import { toast } from "sonner";
 import type { FilterColor } from "@/components/filter-icon-popover";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,6 +11,8 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/components/ui/popover";
+import { useFileDrag } from "@/hooks/use-file-drag";
+import { cn } from "@/lib/utils";
 import type { KnowledgeFilterData } from "../_types/types";
 import { FilePreview } from "./file-preview";
 import { SelectedKnowledgeFilter } from "./selected-knowledge-filter";
@@ -71,6 +76,27 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [textareaHeight, setTextareaHeight] = useState(0);
+    const isDragging = useFileDrag();
+
+    const { getRootProps, getInputProps } = useDropzone({
+      accept: {
+        "application/pdf": [".pdf"],
+        "application/msword": [".doc"],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+          [".docx"],
+        "text/markdown": [".md"],
+      },
+      maxFiles: 1,
+      disabled: !isDragging,
+      onDrop: (acceptedFiles, fileRejections) => {
+        if (fileRejections.length > 0) {
+          const message = fileRejections.at(0)?.errors.at(0)?.message;
+          toast.error(message || "Failed to upload file");
+          return;
+        }
+        onFileSelected(acceptedFiles[0]);
+      },
+    });
 
     useImperativeHandle(ref, () => ({
       focusInput: () => {
@@ -94,17 +120,53 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       <div className="w-full">
         <form onSubmit={onSubmit} className="relative">
           {/* Outer container - flex-col to stack file preview above input */}
-          <div className="flex flex-col w-full gap-2 rounded-xl border border-input hover:[&:not(:focus-within)]:border-muted-foreground focus-within:border-foreground p-2 transition-colors">
-            {/* File Preview Section - Always above */}
-            {uploadedFile && (
-              <FilePreview
-                uploadedFile={uploadedFile}
-                onClear={() => {
-                  onFileSelected(null);
-                }}
-              />
+          <div
+            {...getRootProps()}
+            className={cn(
+              "flex flex-col w-full p-2 rounded-xl border border-input transition-all",
+              !isDragging &&
+                "hover:[&:not(:focus-within)]:border-muted-foreground focus-within:border-foreground",
+              isDragging && "border-dashed",
             )}
-
+          >
+            <input {...getInputProps()} />
+            {/* File Preview Section - Always above */}
+            <AnimatePresence>
+              {uploadedFile && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                  animate={{ opacity: 1, height: "auto", marginBottom: 8 }}
+                  exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                  className="overflow-hidden"
+                >
+                  <FilePreview
+                    uploadedFile={uploadedFile}
+                    onClear={() => {
+                      onFileSelected(null);
+                    }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {isDragging && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 100 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden w-full flex flex-col items-center justify-center gap-2"
+                >
+                  <p className="text-md font-medium text-primary">
+                    Add files to conversation
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Text formats and image files.{" "}
+                    <span className="font-semibold">10</span> files per chat,{" "}
+                    <span className="font-semibold">150 MB</span> each.
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
             {/* Main Input Container - flex-row or flex-col based on textarea height */}
             <div
               className={`relative flex w-full gap-2 ${
