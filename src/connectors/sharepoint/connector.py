@@ -100,6 +100,12 @@ class SharePointConnector(BaseConnector):
         self._default_params = {
             "$select": "id,name,size,lastModifiedDateTime,createdDateTime,webUrl,file,folder,@microsoft.graph.downloadUrl"
         }
+        
+        # Selective sync support (similar to Google Drive and OneDrive)
+        self.cfg = type('SharePointConfig', (), {
+            'file_ids': config.get('file_ids') or config.get('selected_files') or config.get('selected_file_ids'),
+            'folder_ids': config.get('folder_ids') or config.get('selected_folders') or config.get('selected_folder_ids'),
+        })()
     
     @property
     def _graph_base_url(self) -> str:
@@ -293,6 +299,10 @@ class SharePointConnector(BaseConnector):
             if not await self.authenticate():
                 raise RuntimeError("SharePoint authentication failed during file listing")
             
+            # If file_ids or folder_ids are specified in config, use selective sync
+            if self.cfg.file_ids or self.cfg.folder_ids:
+                return await self._list_selected_files()
+            
             files = []
             max_files_value = max_files if max_files is not None else 100
             
@@ -426,6 +436,14 @@ class SharePointConnector(BaseConnector):
                     "download_url": item.get("@microsoft.graph.downloadUrl")
                 }
             
+            # Check if it's a folder
+            if item.get("folder"):
+                return {
+                    "id": file_id,
+                    "name": item.get("name", ""),
+                    "isFolder": True,
+                }
+            
             return None
             
         except Exception as e:
@@ -452,6 +470,67 @@ class SharePointConnector(BaseConnector):
         except Exception as e:
             logger.error(f"Failed to download file content for {file_id}: {e}")
             raise
+    
+    async def _list_selected_files(self) -> Dict[str, Any]:
+        """List only selected files/folders (selective sync)."""
+        files: List[Dict[str, Any]] = []
+        
+        # Process selected file IDs
+        if self.cfg.file_ids:
+            for file_id in self.cfg.file_ids:
+                try:
+                    file_meta = await self._get_file_metadata_by_id(file_id)
+                    if file_meta and not file_meta.get('isFolder', False):
+                        files.append(file_meta)
+                    elif file_meta and file_meta.get('isFolder', False):
+                        # If it's a folder, expand its contents
+                        folder_files = await self._list_folder_contents(file_id)
+                        files.extend(folder_files)
+                except Exception as e:
+                    logger.warning(f"Failed to get file {file_id}: {e}")
+                    continue
+        
+        # Process selected folder IDs
+        if self.cfg.folder_ids:
+            for folder_id in self.cfg.folder_ids:
+                try:
+                    folder_files = await self._list_folder_contents(folder_id)
+                    files.extend(folder_files)
+                except Exception as e:
+                    logger.warning(f"Failed to list folder {folder_id}: {e}")
+                    continue
+        
+        return {"files": files, "next_page_token": None}
+    
+    async def _list_folder_contents(self, folder_id: str) -> List[Dict[str, Any]]:
+        """List all files in a folder recursively."""
+        files: List[Dict[str, Any]] = []
+        
+        try:
+            site_info = self._parse_sharepoint_url()
+            if site_info:
+                url = f"{self._graph_base_url}/sites/{site_info['host_name']}:/sites/{site_info['site_name']}:/drive/items/{folder_id}/children"
+            else:
+                url = f"{self._graph_base_url}/me/drive/items/{folder_id}/children"
+            
+            params = dict(self._default_params)
+            
+            response = await self._make_graph_request(url, params=params)
+            data = response.json()
+            
+            items = data.get("value", [])
+            for item in items:
+                if item.get("file"):  # It's a file
+                    file_meta = await self._get_file_metadata_by_id(item.get("id"))
+                    if file_meta:
+                        files.append(file_meta)
+                elif item.get("folder"):  # It's a subfolder, recurse
+                    subfolder_files = await self._list_folder_contents(item.get("id"))
+                    files.extend(subfolder_files)
+        except Exception as e:
+            logger.error(f"Failed to list folder contents for {folder_id}: {e}")
+        
+        return files
     
     async def _download_file_from_url(self, download_url: str) -> bytes:
         """Download file content from direct download URL"""
