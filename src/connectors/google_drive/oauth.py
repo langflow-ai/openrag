@@ -60,8 +60,24 @@ class GoogleDriveOAuth:
 
         # If credentials are expired, refresh them
         if self.creds and self.creds.expired and self.creds.refresh_token:
-            self.creds.refresh(Request())
-            await self.save_credentials()
+            try:
+                self.creds.refresh(Request())
+                await self.save_credentials()
+            except Exception as e:
+                # Refresh failed - likely refresh token expired or revoked
+                # Clear credentials and raise a clear error
+                self.creds = None
+                # Try to clean up the invalid token file
+                if os.path.exists(self.token_file):
+                    try:
+                        os.remove(self.token_file)
+                    except Exception:
+                        pass
+                raise ValueError(
+                    f"Failed to refresh Google Drive credentials. "
+                    f"The refresh token may have expired or been revoked. "
+                    f"Please re-authenticate: {str(e)}"
+                ) from e
 
         return self.creds
 
