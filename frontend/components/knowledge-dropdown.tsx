@@ -53,7 +53,7 @@ export function KnowledgeDropdown() {
   const [showS3Dialog, setShowS3Dialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [awsEnabled, setAwsEnabled] = useState(false);
-  const [folderPath, setFolderPath] = useState("/app/documents/");
+  const [folderPath, setFolderPath] = useState("");
   const [bucketUrl, setBucketUrl] = useState("s3://");
   const [folderLoading, setFolderLoading] = useState(false);
   const [s3Loading, setS3Loading] = useState(false);
@@ -70,6 +70,7 @@ export function KnowledgeDropdown() {
     };
   }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   // Check AWS availability and cloud connectors on mount
   useEffect(() => {
@@ -236,6 +237,67 @@ export function KnowledgeDropdown() {
     }
   };
 
+  const handleFolderSelect = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setFolderLoading(true);
+
+    try {
+      const fileList = Array.from(files);
+      const supportedExtensions = [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".txt",
+        ".md",
+        ".rtf",
+        ".odt",
+      ];
+      
+      const filteredFiles = fileList.filter((file) => {
+        const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+        return supportedExtensions.includes(ext);
+      });
+
+      if (filteredFiles.length === 0) {
+        toast.error("No supported files found", {
+          description: "Please select a folder containing PDF, DOC, DOCX, TXT, MD, RTF, or ODT files.",
+        });
+        return;
+      }
+
+      toast.info(`Processing ${filteredFiles.length} file(s)...`);
+
+      for (const file of filteredFiles) {
+        try {
+          const checkData = await duplicateCheck(file);
+          
+          if (!checkData.exists) {
+            await uploadFileUtil(file, false);
+          }
+        } catch (error) {
+          console.error(`Failed to upload ${file.name}:`, error);
+        }
+      }
+
+      refetchTasks();
+      toast.success(`Successfully processed ${filteredFiles.length} file(s)`);
+    } catch (error) {
+      console.error("Folder upload error:", error);
+      toast.error("Folder upload failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setFolderLoading(false);
+      if (folderInputRef.current) {
+        folderInputRef.current.value = "";
+      }
+    }
+  };
+
   const handleFolderUpload = async () => {
     if (!folderPath.trim()) return;
 
@@ -368,7 +430,7 @@ export function KnowledgeDropdown() {
       icon: ({ className }: { className?: string }) => (
         <Folder className={cn(className, "text-muted-foreground")} />
       ),
-      onClick: () => setShowFolderDialog(true),
+      onClick: () => folderInputRef.current?.click(),
     },
     ...(awsEnabled
       ? [
@@ -435,6 +497,17 @@ export function KnowledgeDropdown() {
         onChange={handleFileChange}
         className="hidden"
         accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
+      />
+      
+      <input
+        ref={folderInputRef}
+        type="file"
+        // @ts-ignore - webkitdirectory is not in TypeScript types but is widely supported
+        webkitdirectory=""
+        directory=""
+        multiple
+        onChange={handleFolderSelect}
+        className="hidden"
       />
 
       {/* Process Folder Dialog */}
