@@ -366,7 +366,7 @@ export default function UploadProviderPage() {
             Back
           </Button>
           <Tooltip>
-            <TooltipTrigger>
+            <TooltipTrigger asChild>
               <Button
                 className="bg-foreground text-background hover:bg-foreground/90 font-semibold"
                 variant={!hasSelectedFiles ? "secondary" : undefined}

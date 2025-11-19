@@ -8,7 +8,7 @@ const SharePointLogo = ({ className }: { className?: string }) => (
     className={className}
   >
     <title>SharePoint Logo</title>
-    <g clip-path="url(#clip0_3016_409)">
+    <g clipPath="url(#clip0_3016_409)">
       <path
         d="M6.1335 9.6C8.78446 9.6 10.9335 7.45096 10.9335 4.8C10.9335 2.14903 8.78446 0 6.1335 0C3.48254 0 1.3335 2.14903 1.3335 4.8C1.3335 7.45096 3.48254 9.6 6.1335 9.6Z"
         fill="url(#paint0_linear_3016_409)"
@@ -16,17 +16,17 @@ const SharePointLogo = ({ className }: { className?: string }) => (
       <path
         d="M6.1335 9.6C8.78446 9.6 10.9335 7.45096 10.9335 4.8C10.9335 2.14903 8.78446 0 6.1335 0C3.48254 0 1.3335 2.14903 1.3335 4.8C1.3335 7.45096 3.48254 9.6 6.1335 9.6Z"
         fill="url(#paint1_radial_3016_409)"
-        fill-opacity="0.2"
+        fillOpacity="0.2"
       />
       <path
         d="M6.1335 9.6C8.78446 9.6 10.9335 7.45096 10.9335 4.8C10.9335 2.14903 8.78446 0 6.1335 0C3.48254 0 1.3335 2.14903 1.3335 4.8C1.3335 7.45096 3.48254 9.6 6.1335 9.6Z"
         fill="url(#paint2_radial_3016_409)"
-        fill-opacity="0.31"
+        fillOpacity="0.31"
       />
       <path
         d="M6.1335 9.6C8.78446 9.6 10.9335 7.45096 10.9335 4.8C10.9335 2.14903 8.78446 0 6.1335 0C3.48254 0 1.3335 2.14903 1.3335 4.8C1.3335 7.45096 3.48254 9.6 6.1335 9.6Z"
         fill="url(#paint3_radial_3016_409)"
-        fill-opacity="0.7"
+        fillOpacity="0.7"
       />
       <path
         d="M10.5117 12.8C12.7209 12.8 14.5117 11.0091 14.5117 8.8C14.5117 6.59088 12.7209 4.8 10.5117 4.8C8.3026 4.8 6.51172 6.59088 6.51172 8.8C6.51172 11.0091 8.3026 12.8 10.5117 12.8Z"
@@ -35,12 +35,12 @@ const SharePointLogo = ({ className }: { className?: string }) => (
       <path
         d="M10.5117 12.8C12.7209 12.8 14.5117 11.0091 14.5117 8.8C14.5117 6.59088 12.7209 4.8 10.5117 4.8C8.3026 4.8 6.51172 6.59088 6.51172 8.8C6.51172 11.0091 8.3026 12.8 10.5117 12.8Z"
         fill="url(#paint5_radial_3016_409)"
-        fill-opacity="0.5"
+        fillOpacity="0.5"
       />
       <path
         d="M10.5117 12.8C12.7209 12.8 14.5117 11.0091 14.5117 8.8C14.5117 6.59088 12.7209 4.8 10.5117 4.8C8.3026 4.8 6.51172 6.59088 6.51172 8.8C6.51172 11.0091 8.3026 12.8 10.5117 12.8Z"
         fill="url(#paint6_radial_3016_409)"
-        fill-opacity="0.7"
+        fillOpacity="0.7"
       />
       <path
         d="M6.7335 16C8.61126 16 10.1335 14.4778 10.1335 12.6C10.1335 10.7222 8.61126 9.2 6.7335 9.2C4.85574 9.2 3.3335 10.7222 3.3335 12.6C3.3335 14.4778 4.85574 16 6.7335 16Z"
@@ -49,7 +49,7 @@ const SharePointLogo = ({ className }: { className?: string }) => (
       <path
         d="M6.7335 16C8.61126 16 10.1335 14.4778 10.1335 12.6C10.1335 10.7222 8.61126 9.2 6.7335 9.2C4.85574 9.2 3.3335 10.7222 3.3335 12.6C3.3335 14.4778 4.85574 16 6.7335 16Z"
         fill="url(#paint8_linear_3016_409)"
-        fill-opacity="0.32"
+        fillOpacity="0.32"
       />
       <path
         d="M5.23354 7.60001H1.43354C0.715575 7.60001 0.133545 8.18204 0.133545 8.90001V12.7C0.133545 13.418 0.715575 14 1.43354 14H5.23354C5.95151 14 6.53354 13.418 6.53354 12.7V8.90001C6.53354 8.18204 5.95151 7.60001 5.23354 7.60001Z"
@@ -58,7 +58,7 @@ const SharePointLogo = ({ className }: { className?: string }) => (
       <path
         d="M5.23354 7.60001H1.43354C0.715575 7.60001 0.133545 8.18204 0.133545 8.90001V12.7C0.133545 13.418 0.715575 14 1.43354 14H5.23354C5.95151 14 6.53354 13.418 6.53354 12.7V8.90001C6.53354 8.18204 5.95151 7.60001 5.23354 7.60001Z"
         fill="url(#paint10_radial_3016_409)"
-        fill-opacity="0.6"
+        fillOpacity="0.6"
       />
       <path
         d="M1.95581 11.8734L2.64917 11.523C2.72733 11.676 2.82929 11.7887 2.95505 11.8611C3.08249 11.9335 3.22185 11.9697 3.37309 11.9697C3.54133 11.9697 3.66965 11.9368 3.75801 11.871C3.84641 11.8036 3.89057 11.7024 3.89057 11.5675C3.89057 11.4622 3.84809 11.3733 3.76313 11.301C3.67817 11.2269 3.52777 11.171 3.31193 11.1332C2.90069 11.0608 2.60157 10.9341 2.41465 10.7531C2.22941 10.5722 2.13679 10.3468 2.13679 10.077C2.13679 9.74136 2.25915 9.4732 2.50387 9.27248C2.74857 9.0718 3.07145 8.97144 3.47253 8.97144C3.74273 8.97144 3.98065 9.02492 4.18629 9.13184C4.39189 9.23876 4.55505 9.39176 4.67569 9.59084L3.99765 9.92892C3.92285 9.81704 3.84213 9.73644 3.75549 9.68708C3.66881 9.63608 3.56005 9.61056 3.42917 9.61056C3.27285 9.61056 3.15389 9.64348 3.07233 9.70928C2.99245 9.77508 2.95249 9.86064 2.95249 9.96592C2.95249 10.0564 2.99073 10.1362 3.06721 10.2053C3.14537 10.2727 3.30173 10.3278 3.53625 10.3706C3.93053 10.443 4.22449 10.5746 4.41825 10.7654C4.61369 10.9546 4.71137 11.194 4.71137 11.4836C4.71137 11.8356 4.59497 12.1145 4.36217 12.3201C4.12933 12.5258 3.79713 12.6286 3.36545 12.6286C3.05277 12.6286 2.77065 12.5628 2.51916 12.4312C2.26935 12.2979 2.08157 12.112 1.95581 11.8734Z"
@@ -78,9 +78,9 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         y2="9.6"
         gradientUnits="userSpaceOnUse"
       >
-        <stop stop-color="#00E3DF" />
-        <stop offset="0.410156" stop-color="#0097A8" />
-        <stop offset="1" stop-color="#007791" />
+        <stop stopColor="#00E3DF" />
+        <stop offset="0.410156" stopColor="#0097A8" />
+        <stop offset="1" stopColor="#007791" />
       </linearGradient>
       <radialGradient
         id="paint1_radial_3016_409"
@@ -90,9 +90,9 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         gradientUnits="userSpaceOnUse"
         gradientTransform="translate(7.60222 10.9279) rotate(-112.448) scale(7.37044 13.2516)"
       >
-        <stop offset="0.28573" stop-color="#003B5D" />
-        <stop offset="0.612265" stop-color="#004A6C" stop-opacity="0.688298" />
-        <stop offset="0.968041" stop-color="#006F94" stop-opacity="0" />
+        <stop offset="0.28573" stopColor="#003B5D" />
+        <stop offset="0.612265" stopColor="#004A6C" stopOpacity="0.688298" />
+        <stop offset="0.968041" stopColor="#006F94" stopOpacity="0" />
       </radialGradient>
       <radialGradient
         id="paint2_radial_3016_409"
@@ -102,9 +102,9 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         gradientUnits="userSpaceOnUse"
         gradientTransform="translate(7.77166 8.81012) rotate(-112.063) scale(6.22076 11.1709)"
       >
-        <stop offset="0.259744" stop-color="#002A42" />
-        <stop offset="0.612265" stop-color="#004261" stop-opacity="0.688298" />
-        <stop offset="0.968041" stop-color="#006F94" stop-opacity="0" />
+        <stop offset="0.259744" stopColor="#002A42" />
+        <stop offset="0.612265" stopColor="#004261" stopOpacity="0.688298" />
+        <stop offset="0.968041" stopColor="#006F94" stopOpacity="0" />
       </radialGradient>
       <radialGradient
         id="paint3_radial_3016_409"
@@ -114,8 +114,8 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         gradientUnits="userSpaceOnUse"
         gradientTransform="translate(8.87294 0.508276) rotate(124.447) scale(5.20428)"
       >
-        <stop stop-color="#78EDFF" />
-        <stop offset="1" stop-color="#2CCFCA" stop-opacity="0" />
+        <stop stopColor="#78EDFF" />
+        <stop offset="1" stopColor="#2CCFCA" stopOpacity="0" />
       </radialGradient>
       <linearGradient
         id="paint4_linear_3016_409"
@@ -125,9 +125,9 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         y2="12.8"
         gradientUnits="userSpaceOnUse"
       >
-        <stop stop-color="#00E3DF" />
-        <stop offset="0.476427" stop-color="#00A2B8" />
-        <stop offset="0.945063" stop-color="#00637C" />
+        <stop stopColor="#00E3DF" />
+        <stop offset="0.476427" stopColor="#00A2B8" />
+        <stop offset="0.945063" stopColor="#00637C" />
       </linearGradient>
       <radialGradient
         id="paint5_radial_3016_409"
@@ -137,9 +137,9 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         gradientUnits="userSpaceOnUse"
         gradientTransform="translate(8.22004 12.1333) rotate(-70.8012) scale(4.94148 8.90348)"
       >
-        <stop stop-color="#003B5D" />
-        <stop offset="0.492035" stop-color="#004C6C" stop-opacity="0.72" />
-        <stop offset="0.968041" stop-color="#007A86" stop-opacity="0" />
+        <stop stopColor="#003B5D" />
+        <stop offset="0.492035" stopColor="#004C6C" stopOpacity="0.72" />
+        <stop offset="0.968041" stopColor="#007A86" stopOpacity="0" />
       </radialGradient>
       <radialGradient
         id="paint6_radial_3016_409"
@@ -149,8 +149,8 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         gradientUnits="userSpaceOnUse"
         gradientTransform="translate(12.7946 5.22356) rotate(124.447) scale(4.33692)"
       >
-        <stop stop-color="#78EDFF" />
-        <stop offset="1" stop-color="#2CCFCA" stop-opacity="0" />
+        <stop stopColor="#78EDFF" />
+        <stop offset="1" stopColor="#2CCFCA" stopOpacity="0" />
       </radialGradient>
       <linearGradient
         id="paint7_linear_3016_409"
@@ -160,9 +160,9 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         y2="16.34"
         gradientUnits="userSpaceOnUse"
       >
-        <stop offset="0.0534989" stop-color="#75FFF6" />
-        <stop offset="0.51144" stop-color="#00C7D1" />
-        <stop offset="0.96002" stop-color="#0096AD" />
+        <stop offset="0.0534989" stopColor="#75FFF6" />
+        <stop offset="0.51144" stopColor="#00C7D1" />
+        <stop offset="0.96002" stopColor="#0096AD" />
       </linearGradient>
       <linearGradient
         id="paint8_linear_3016_409"
@@ -172,9 +172,9 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         y2="13.4503"
         gradientUnits="userSpaceOnUse"
       >
-        <stop offset="0.259744" stop-color="#0E5A5D" />
-        <stop offset="0.535716" stop-color="#126C6B" stop-opacity="0.688298" />
-        <stop offset="0.968041" stop-color="#1C948A" stop-opacity="0" />
+        <stop offset="0.259744" stopColor="#0E5A5D" />
+        <stop offset="0.535716" stopColor="#126C6B" stopOpacity="0.688298" />
+        <stop offset="0.968041" stopColor="#1C948A" stopOpacity="0" />
       </linearGradient>
       <radialGradient
         id="paint9_radial_3016_409"
@@ -184,8 +184,8 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         gradientUnits="userSpaceOnUse"
         gradientTransform="translate(0.133545 7.60001) rotate(45) scale(9.05096)"
       >
-        <stop offset="0.0625" stop-color="#00B6BD" />
-        <stop offset="0.890131" stop-color="#00495C" />
+        <stop offset="0.0625" stopColor="#00B6BD" />
+        <stop offset="0.890131" stopColor="#00495C" />
       </radialGradient>
       <radialGradient
         id="paint10_radial_3016_409"
@@ -195,8 +195,8 @@ const SharePointLogo = ({ className }: { className?: string }) => (
         gradientUnits="userSpaceOnUse"
         gradientTransform="translate(3.33354 11.44) rotate(90) scale(4.48 5.1)"
       >
-        <stop offset="0.566964" stop-color="#1E8581" stop-opacity="0" />
-        <stop offset="0.973806" stop-color="#1ECBE6" />
+        <stop offset="0.566964" stopColor="#1E8581" stopOpacity="0" />
+        <stop offset="0.973806" stopColor="#1ECBE6" />
       </radialGradient>
       <clipPath id="clip0_3016_409">
         <rect
