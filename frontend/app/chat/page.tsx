@@ -782,7 +782,11 @@ function ChatPage() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    if (messages.length === 1) {
+      setMessages([userMessage]);
+    } else {
+      setMessages((prev) => [...prev, userMessage]);
+    }
     setInput("");
     setLoading(true);
     setIsFilterHighlighted(false);

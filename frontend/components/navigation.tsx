@@ -83,7 +83,6 @@ export function Navigation({
     startNewConversation,
     conversationDocs,
     conversationData,
-    addConversationDoc,
     refreshConversations,
     placeholderConversation,
     setPlaceholderConversation,
@@ -92,12 +91,12 @@ export function Navigation({
 
   const { loading } = useLoadingStore();
 
-  const [loadingNewConversation, setLoadingNewConversation] = useState(false);
   const [previousConversationCount, setPreviousConversationCount] = useState(0);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [conversationToDelete, setConversationToDelete] =
     useState<ChatConversation | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasCompletedInitialLoad = useRef(false);
+  const mountTimeRef = useRef<number | null>(null);
 
   const { selectedFilter, setSelectedFilter } = useKnowledgeFilter();
 
@@ -140,8 +139,6 @@ export function Navigation({
   });
 
   const handleNewConversation = () => {
-    setLoadingNewConversation(true);
-
     // Use the prop callback if provided, otherwise use the context method
     if (onNewConversation) {
       onNewConversation();
@@ -153,96 +150,8 @@ export function Navigation({
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("newConversation"));
     }
-    // Clear loading state after a short delay to show the new conversation is created
-    setTimeout(() => {
-      setLoadingNewConversation(false);
-    }, 300);
   };
 
-  const handleFileUpload = async (file: File) => {
-    console.log("Navigation file upload:", file.name);
-
-    // Trigger loading start event for chat page
-    window.dispatchEvent(
-      new CustomEvent("fileUploadStart", {
-        detail: { filename: file.name },
-      }),
-    );
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("endpoint", endpoint);
-
-      const response = await fetch("/api/upload_context", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Upload failed:", errorText);
-
-        // Trigger error event for chat page to handle
-        window.dispatchEvent(
-          new CustomEvent("fileUploadError", {
-            detail: {
-              filename: file.name,
-              error: "Failed to process document",
-            },
-          }),
-        );
-
-        // Trigger loading end event
-        window.dispatchEvent(new CustomEvent("fileUploadComplete"));
-        return;
-      }
-
-      const result = await response.json();
-      console.log("Upload result:", result);
-
-      // Add the file to conversation docs
-      if (result.filename) {
-        addConversationDoc(result.filename);
-      }
-
-      // Trigger file upload event for chat page to handle
-      window.dispatchEvent(
-        new CustomEvent("fileUploaded", {
-          detail: { file, result },
-        }),
-      );
-
-      // Trigger loading end event
-      window.dispatchEvent(new CustomEvent("fileUploadComplete"));
-    } catch (error) {
-      console.error("Upload failed:", error);
-      // Trigger loading end event even on error
-      window.dispatchEvent(new CustomEvent("fileUploadComplete"));
-
-      // Trigger error event for chat page to handle
-      window.dispatchEvent(
-        new CustomEvent("fileUploadError", {
-          detail: { filename: file.name, error: "Failed to process document" },
-        }),
-      );
-    }
-  };
-
-  const handleFilePickerClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFilePickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      handleFileUpload(files[0]);
-    }
-    // Reset the input so the same file can be selected again
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
 
   const handleDeleteConversation = (
     conversation: ChatConversation,
@@ -303,15 +212,43 @@ export function Navigation({
   const isOnChatPage = pathname === "/" || pathname === "/chat";
   const isOnKnowledgePage = pathname.startsWith("/knowledge");
 
+  // Track mount time to prevent auto-selection right after component mounts (e.g., after onboarding)
+  useEffect(() => {
+    if (mountTimeRef.current === null) {
+      mountTimeRef.current = Date.now();
+    }
+  }, []);
+
+  // Track when initial load completes
+  useEffect(() => {
+    if (!isConversationsLoading && !hasCompletedInitialLoad.current) {
+      hasCompletedInitialLoad.current = true;
+      // Set initial count after first load completes
+      setPreviousConversationCount(conversations.length);
+    }
+  }, [isConversationsLoading, conversations.length]);
+
   // Clear placeholder when conversation count increases (new conversation was created)
   useEffect(() => {
     const currentCount = conversations.length;
+    const timeSinceMount = mountTimeRef.current
+      ? Date.now() - mountTimeRef.current
+      : Infinity;
+    const MIN_TIME_AFTER_MOUNT = 2000; // 2 seconds - prevents selection right after onboarding
 
-    // If we had a placeholder and the conversation count increased, clear the placeholder and highlight the new conversation
+    // Only select if:
+    // 1. We have a placeholder (new conversation was created)
+    // 2. Initial load has completed (prevents selection on browser refresh)
+    // 3. Count increased (new conversation appeared)
+    // 4. Not currently loading
+    // 5. Enough time has passed since mount (prevents selection after onboarding completes)
     if (
       placeholderConversation &&
+      hasCompletedInitialLoad.current &&
       currentCount > previousConversationCount &&
-      conversations.length > 0
+      conversations.length > 0 &&
+      !isConversationsLoading &&
+      timeSinceMount >= MIN_TIME_AFTER_MOUNT
     ) {
       setPlaceholderConversation(null);
       // Highlight the most recent conversation (first in sorted array) without loading its messages
@@ -321,8 +258,10 @@ export function Navigation({
       }
     }
 
-    // Update the previous count
-    setPreviousConversationCount(currentCount);
+    // Update the previous count only after initial load
+    if (hasCompletedInitialLoad.current) {
+      setPreviousConversationCount(currentCount);
+    }
   }, [
     conversations.length,
     placeholderConversation,
@@ -330,6 +269,7 @@ export function Navigation({
     previousConversationCount,
     conversations,
     setCurrentConversationId,
+    isConversationsLoading,
   ]);
 
   useEffect(() => {
@@ -341,10 +281,10 @@ export function Navigation({
       );
     }
 
-    if (isOnChatPage) {
+    if (isOnChatPage && !isConversationsLoading) {
       if (conversations.length === 0 && !placeholderConversation) {
         handleNewConversation();
-      } else if (activeConvo && !conversationLoaded) {
+      } else if (activeConvo) {
         loadConversation(activeConvo);
         refreshConversations();
       } else if (
@@ -431,35 +371,22 @@ export function Navigation({
 
           <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide">
             <div className="space-y-1 flex flex-col">
-              {loadingNewConversation || isConversationsLoading ? (
-                <div className="text-[13px] text-muted-foreground p-2">
-                  Loading...
-                </div>
+              {/* Show skeleton loaders when loading and no conversations exist */}
+              {isConversationsLoading && conversations.length === 0 ? (
+
+                  [0,1].map((skeletonIndex) => (
+                    <div
+                      key={`conversation-skeleton-${skeletonIndex}`}
+                      className={cn("w-full px-3 h-11 rounded-lg animate-pulse", skeletonIndex === 0 ? "bg-accent/50" : "")}
+                    >
+                      <div className="h-3 bg-muted-foreground/20 rounded w-3/4 mt-3.5" />
+                    </div>
+                  ))
               ) : (
                 <>
-                  {/* Show placeholder conversation if it exists */}
-                  {placeholderConversation && (
-                    <button
-                      type="button"
-                      className="w-full px-3 rounded-lg bg-accent border border-dashed border-accent cursor-pointer group text-left h-[44px]"
-                      onClick={() => {
-                        // Don't load placeholder as a real conversation, just focus the input
-                        if (typeof window !== "undefined") {
-                          window.dispatchEvent(new CustomEvent("focusInput"));
-                        }
-                      }}
-                    >
-                      <div className="text-[13px] font-medium text-foreground truncate">
-                        {placeholderConversation.title}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Start typing to begin...
-                      </div>
-                    </button>
-                  )}
 
                   {/* Show regular conversations */}
-                  {conversations.length === 0 && !placeholderConversation ? (
+                  {conversations.length === 0 && !isConversationsLoading ? (
                     <div className="text-[13px] text-muted-foreground py-2 pl-3">
                       No conversations yet
                     </div>
@@ -469,7 +396,7 @@ export function Navigation({
                         key={conversation.response_id}
                         type="button"
                         className={`w-full px-3 h-11 rounded-lg group relative text-left ${
-                          loading
+                          loading || isConversationsLoading
                             ? "opacity-50 cursor-not-allowed"
                             : "hover:bg-accent cursor-pointer"
                         } ${
@@ -478,11 +405,11 @@ export function Navigation({
                             : ""
                         }`}
                         onClick={() => {
-                          if (loading) return;
+                          if (loading || isConversationsLoading) return;
                           loadConversation(conversation);
                           refreshConversations();
                         }}
-                        disabled={loading}
+                        disabled={loading || isConversationsLoading}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0">
@@ -493,7 +420,7 @@ export function Navigation({
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               disabled={
-                                loading || deleteSessionMutation.isPending
+                                loading || isConversationsLoading || deleteSessionMutation.isPending
                               }
                               asChild
                             >
@@ -543,51 +470,6 @@ export function Navigation({
                 </>
               )}
             </div>
-
-            {/* Conversation Knowledge Section - appears right after last conversation
-            <div className="flex-shrink-0 mt-4">
-              <div className="flex items-center justify-between mb-3 mx-3">
-                <h3 className="text-xs font-medium text-muted-foreground">
-                  Conversation knowledge
-                </h3>
-                <button
-                  type="button"
-                  onClick={handleFilePickerClick}
-                  className="p-1 hover:bg-accent rounded"
-                  disabled={loading}
-                >
-                  <Plus className="h-4 w-4 text-muted-foreground" />
-                </button>
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                onChange={handleFilePickerChange}
-                className="hidden"
-                accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
-              />
-              <div className="overflow-y-auto scrollbar-hide space-y-1">
-                {conversationDocs.length === 0 ? (
-                  <div className="text-[13px] text-muted-foreground py-2 px-3">
-                    No documents yet
-                  </div>
-                ) : (
-                  conversationDocs.map(doc => (
-                    <div
-                      key={`${doc.filename}-${doc.uploadTime.getTime()}`}
-                      className="w-full px-3 h-11 rounded-lg hover:bg-accent cursor-pointer group flex items-center"
-                    >
-                      <FileText className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-foreground truncate">
-                          {doc.filename}
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div> */}
             <div className="flex-shrink-0 mt-4">
               <div className="flex items-center justify-between mb-3 mx-3">
                 <h3 className="text-xs font-medium text-muted-foreground">
@@ -595,7 +477,7 @@ export function Navigation({
                 </h3>
               </div>
               <div className="overflow-y-auto scrollbar-hide space-y-1">
-                {newConversationFiles?.length === 0 ? (
+                {(newConversationFiles?.length ?? 0) === 0 ? (
                   <div className="text-[13px] text-muted-foreground py-2 px-3">
                     No documents yet
                   </div>
