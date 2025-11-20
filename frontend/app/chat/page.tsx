@@ -1,12 +1,11 @@
 "use client";
 
 import { Loader2, Zap } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { type EndpointType, useChat } from "@/contexts/chat-context";
-import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
@@ -40,6 +39,8 @@ function ChatPage() {
     previousResponseIds,
     setPreviousResponseIds,
     placeholderConversation,
+    conversationFilter,
+    setConversationFilter,
   } = useChat();
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -56,20 +57,9 @@ function ChatPage() {
   >(new Set());
   // previousResponseIds now comes from useChat context
   const [isUploading, setIsUploading] = useState(false);
-  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
-  const [availableFilters, setAvailableFilters] = useState<
-    KnowledgeFilterData[]
-  >([]);
-  const [filterSearchTerm, setFilterSearchTerm] = useState("");
-  const [selectedFilterIndex, setSelectedFilterIndex] = useState(0);
   const [isFilterHighlighted, setIsFilterHighlighted] = useState(false);
-  const [dropdownDismissed, setDropdownDismissed] = useState(false);
   const [isUserInteracting, setIsUserInteracting] = useState(false);
   const [isForkingInProgress, setIsForkingInProgress] = useState(false);
-  const [anchorPosition, setAnchorPosition] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [waitingTooLong, setWaitingTooLong] = useState(false);
 
@@ -79,8 +69,20 @@ function ChatPage() {
 
   const lastLoadedConversationRef = useRef<string | null>(null);
   const { addTask } = useTask();
-  const { selectedFilter, parsedFilterData, setSelectedFilter } =
-    useKnowledgeFilter();
+
+  // Use conversation-specific filter instead of global filter
+  const selectedFilter = conversationFilter;
+
+  // Parse the conversation filter data
+  const parsedFilterData = useMemo(() => {
+    if (!selectedFilter?.query_data) return null;
+    try {
+      return JSON.parse(selectedFilter.query_data);
+    } catch (error) {
+      console.error("Error parsing filter data:", error);
+      return null;
+    }
+  }, [selectedFilter]);
 
   // Use the chat streaming hook
   const apiEndpoint = endpoint === "chat" ? "/api/chat" : "/api/langflow";
@@ -95,7 +97,6 @@ function ChatPage() {
       setMessages((prev) => [...prev, message]);
       setLoading(false);
       setWaitingTooLong(false);
-
       if (responseId) {
         cancelNudges();
         setPreviousResponseIds((prev) => ({
@@ -124,11 +125,11 @@ function ChatPage() {
       setMessages((prev) => [...prev, errorMessage]);
     },
   });
-  
+
   // Show warning if waiting too long (20 seconds)
   useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
-    
+
     if (isStreamLoading && !streamingMessage) {
       timeoutId = setTimeout(() => {
         setWaitingTooLong(true);
@@ -136,65 +137,11 @@ function ChatPage() {
     } else {
       setWaitingTooLong(false);
     }
-    
+
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
   }, [isStreamLoading, streamingMessage]);
-
-  const getCursorPosition = (textarea: HTMLTextAreaElement) => {
-    // Create a hidden div with the same styles as the textarea
-    const div = document.createElement("div");
-    const computedStyle = getComputedStyle(textarea);
-
-    // Copy all computed styles to the hidden div
-    for (const style of computedStyle) {
-      (div.style as unknown as Record<string, string>)[style] =
-        computedStyle.getPropertyValue(style);
-    }
-
-    // Set the div to be hidden but not un-rendered
-    div.style.position = "absolute";
-    div.style.visibility = "hidden";
-    div.style.whiteSpace = "pre-wrap";
-    div.style.wordWrap = "break-word";
-    div.style.overflow = "hidden";
-    div.style.height = "auto";
-    div.style.width = `${textarea.getBoundingClientRect().width}px`;
-
-    // Get the text up to the cursor position
-    const cursorPos = textarea.selectionStart || 0;
-    const textBeforeCursor = textarea.value.substring(0, cursorPos);
-
-    // Add the text before cursor
-    div.textContent = textBeforeCursor;
-
-    // Create a span to mark the end position
-    const span = document.createElement("span");
-    span.textContent = "|"; // Cursor marker
-    div.appendChild(span);
-
-    // Add the text after cursor to handle word wrapping
-    const textAfterCursor = textarea.value.substring(cursorPos);
-    div.appendChild(document.createTextNode(textAfterCursor));
-
-    // Add the div to the document temporarily
-    document.body.appendChild(div);
-
-    // Get positions
-    const inputRect = textarea.getBoundingClientRect();
-    const divRect = div.getBoundingClientRect();
-    const spanRect = span.getBoundingClientRect();
-
-    // Calculate the cursor position relative to the input
-    const x = inputRect.left + (spanRect.left - divRect.left);
-    const y = inputRect.top + (spanRect.top - divRect.top);
-
-    // Clean up
-    document.body.removeChild(div);
-
-    return { x, y };
-  };
 
   const handleEndpointChange = (newEndpoint: EndpointType) => {
     setEndpoint(newEndpoint);
@@ -317,53 +264,11 @@ function ChatPage() {
     chatInputRef.current?.clickFileInput();
   };
 
-  const loadAvailableFilters = async () => {
-    try {
-      const response = await fetch("/api/knowledge-filter/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query: "",
-          limit: 20,
-        }),
-      });
-
-      const result = await response.json();
-      if (response.ok && result.success) {
-        setAvailableFilters(result.filters);
-      } else {
-        console.error("Failed to load knowledge filters:", result.error);
-        setAvailableFilters([]);
-      }
-    } catch (error) {
-      console.error("Failed to load knowledge filters:", error);
-      setAvailableFilters([]);
-    }
-  };
-
   const handleFilterSelect = (filter: KnowledgeFilterData | null) => {
-    setSelectedFilter(filter);
-    setIsFilterDropdownOpen(false);
-    setFilterSearchTerm("");
+    // Update conversation-specific filter
+    setConversationFilter(filter);
     setIsFilterHighlighted(false);
-
-    // Remove the @searchTerm from the input and replace with filter pill
-    const words = input.split(" ");
-    const lastWord = words[words.length - 1];
-
-    if (lastWord.startsWith("@")) {
-      // Remove the @search term
-      words.pop();
-      setInput(words.join(" ") + (words.length > 0 ? " " : ""));
-    }
   };
-
-  // Reset selected index when search term changes
-  useEffect(() => {
-    setSelectedFilterIndex(0);
-  }, []);
 
   // Auto-focus the input on component mount
   useEffect(() => {
@@ -388,6 +293,11 @@ function ChatPage() {
       setIsFilterHighlighted(false);
       setLoading(false);
       lastLoadedConversationRef.current = null;
+
+      // Focus input after a short delay to ensure rendering is complete
+      setTimeout(() => {
+        chatInputRef.current?.focusInput();
+      }, 100);
     };
 
     const handleFocusInput = () => {
@@ -409,8 +319,7 @@ function ChatPage() {
     // 2. It's different from the last loaded conversation AND
     // 3. User is not in the middle of an interaction
     if (
-      conversationData &&
-      conversationData.messages &&
+      conversationData?.messages &&
       lastLoadedConversationRef.current !== conversationData.response_id &&
       !isUserInteracting &&
       !isForkingInProgress
@@ -576,6 +485,11 @@ function ChatPage() {
         ...prev,
         [conversationData.endpoint]: conversationData.response_id,
       }));
+
+      // Focus input when loading a conversation
+      setTimeout(() => {
+        chatInputRef.current?.focusInput();
+      }, 100);
     }
   }, [
     conversationData,
@@ -596,6 +510,11 @@ function ChatPage() {
         },
       ]);
       lastLoadedConversationRef.current = null;
+
+      // Focus input when starting a new conversation
+      setTimeout(() => {
+        chatInputRef.current?.focusInput();
+      }, 100);
     }
   }, [placeholderConversation, currentConversationId]);
 
@@ -1035,162 +954,6 @@ function ChatPage() {
     handleSendMessage(suggestion);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Handle backspace for filter clearing
-    if (e.key === "Backspace" && selectedFilter && input.trim() === "") {
-      e.preventDefault();
-
-      if (isFilterHighlighted) {
-        // Second backspace - remove the filter
-        setSelectedFilter(null);
-        setIsFilterHighlighted(false);
-      } else {
-        // First backspace - highlight the filter
-        setIsFilterHighlighted(true);
-      }
-      return;
-    }
-
-    if (isFilterDropdownOpen) {
-      const filteredFilters = availableFilters.filter((filter) =>
-        filter.name.toLowerCase().includes(filterSearchTerm.toLowerCase()),
-      );
-
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setIsFilterDropdownOpen(false);
-        setFilterSearchTerm("");
-        setSelectedFilterIndex(0);
-        setDropdownDismissed(true);
-
-        // Keep focus on the textarea so user can continue typing normally
-        chatInputRef.current?.focusInput();
-        return;
-      }
-
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedFilterIndex((prev) =>
-          prev < filteredFilters.length - 1 ? prev + 1 : 0,
-        );
-        return;
-      }
-
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedFilterIndex((prev) =>
-          prev > 0 ? prev - 1 : filteredFilters.length - 1,
-        );
-        return;
-      }
-
-      if (e.key === "Enter") {
-        // Check if we're at the end of an @ mention (space before cursor or end of input)
-        const cursorPos = e.currentTarget.selectionStart || 0;
-        const textBeforeCursor = input.slice(0, cursorPos);
-        const words = textBeforeCursor.split(" ");
-        const lastWord = words[words.length - 1];
-
-        if (lastWord.startsWith("@") && filteredFilters[selectedFilterIndex]) {
-          e.preventDefault();
-          handleFilterSelect(filteredFilters[selectedFilterIndex]);
-          return;
-        }
-      }
-
-      if (e.key === " ") {
-        // Select filter on space if we're typing an @ mention
-        const cursorPos = e.currentTarget.selectionStart || 0;
-        const textBeforeCursor = input.slice(0, cursorPos);
-        const words = textBeforeCursor.split(" ");
-        const lastWord = words[words.length - 1];
-
-        if (lastWord.startsWith("@") && filteredFilters[selectedFilterIndex]) {
-          e.preventDefault();
-          handleFilterSelect(filteredFilters[selectedFilterIndex]);
-          return;
-        }
-      }
-    }
-
-    if (e.key === "Enter" && !e.shiftKey && !isFilterDropdownOpen) {
-      e.preventDefault();
-      if (input.trim() && !loading) {
-        // Trigger form submission by finding the form and calling submit
-        const form = e.currentTarget.closest("form");
-        if (form) {
-          form.requestSubmit();
-        }
-      }
-    }
-  };
-
-  const onChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
-    setInput(newValue);
-
-    // Clear filter highlight when user starts typing
-    if (isFilterHighlighted) {
-      setIsFilterHighlighted(false);
-    }
-
-    // Find if there's an @ at the start of the last word
-    const words = newValue.split(" ");
-    const lastWord = words[words.length - 1];
-
-    if (lastWord.startsWith("@") && !dropdownDismissed) {
-      const searchTerm = lastWord.slice(1); // Remove the @
-      console.log("Setting search term:", searchTerm);
-      setFilterSearchTerm(searchTerm);
-      setSelectedFilterIndex(0);
-
-      // Only set anchor position when @ is first detected (search term is empty)
-      if (searchTerm === "") {
-        const pos = getCursorPosition(e.target);
-        setAnchorPosition(pos);
-      }
-
-      if (!isFilterDropdownOpen) {
-        loadAvailableFilters();
-        setIsFilterDropdownOpen(true);
-      }
-    } else if (isFilterDropdownOpen) {
-      // Close dropdown if @ is no longer present
-      console.log("Closing dropdown - no @ found");
-      setIsFilterDropdownOpen(false);
-      setFilterSearchTerm("");
-    }
-
-    // Reset dismissed flag when user moves to a different word
-    if (dropdownDismissed && !lastWord.startsWith("@")) {
-      setDropdownDismissed(false);
-    }
-  };
-
-  const onAtClick = () => {
-    if (!isFilterDropdownOpen) {
-      loadAvailableFilters();
-      setIsFilterDropdownOpen(true);
-      setFilterSearchTerm("");
-      setSelectedFilterIndex(0);
-
-      // Get button position for popover anchoring
-      const button = document.querySelector(
-        "[data-filter-button]",
-      ) as HTMLElement;
-      if (button) {
-        const rect = button.getBoundingClientRect();
-        setAnchorPosition({
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2 - 12,
-        });
-      }
-    } else {
-      setIsFilterDropdownOpen(false);
-      setAnchorPosition(null);
-    }
-  };
-
   return (
     <>
       {/* Debug header - only show in debug mode */}
@@ -1313,6 +1076,11 @@ function ChatPage() {
                           onFork={(e) => handleForkConversation(index, e)}
                           animate={false}
                           isInactive={index < messages.length - 1}
+                          isInitialGreeting={
+                            index === 0 &&
+                            messages.length === 1 &&
+                            message.content === "How can I assist?"
+                          }
                         />
                       </div>
                     ),
@@ -1331,7 +1099,7 @@ function ChatPage() {
                   isCompleted={false}
                 />
               )}
-              
+
               {/* Waiting too long indicator */}
               {waitingTooLong && !streamingMessage && loading && (
                 <div className="pl-10 space-y-2">
@@ -1340,7 +1108,8 @@ function ChatPage() {
                     <span>The server is taking longer than expected...</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    This may be due to high server load. The request will timeout after 60 seconds.
+                    This may be due to high server load. The request will
+                    timeout after 60 seconds.
                   </p>
                 </div>
               )}
@@ -1364,23 +1133,46 @@ function ChatPage() {
           loading={loading}
           isUploading={isUploading}
           selectedFilter={selectedFilter}
-          isFilterDropdownOpen={isFilterDropdownOpen}
-          availableFilters={availableFilters}
-          filterSearchTerm={filterSearchTerm}
-          selectedFilterIndex={selectedFilterIndex}
-          anchorPosition={anchorPosition}
           parsedFilterData={parsedFilterData}
           uploadedFile={uploadedFile}
           onSubmit={handleSubmit}
-          onChange={onChange}
-          onKeyDown={handleKeyDown}
+          onChange={setInput}
+          onKeyDown={(e) => {
+            // Handle backspace for filter clearing
+            if (
+              e.key === "Backspace" &&
+              selectedFilter &&
+              input.trim() === ""
+            ) {
+              e.preventDefault();
+              if (isFilterHighlighted) {
+                // Second backspace - remove the filter
+                setConversationFilter(null);
+                setIsFilterHighlighted(false);
+              } else {
+                // First backspace - highlight the filter
+                setIsFilterHighlighted(true);
+              }
+              return;
+            }
+
+            // Handle Enter key for form submission
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (input.trim() && !loading) {
+                // Trigger form submission by finding the form and calling submit
+                const form = e.currentTarget.closest("form");
+                if (form) {
+                  form.requestSubmit();
+                }
+              }
+            }
+          }}
           onFilterSelect={handleFilterSelect}
-          onAtClick={onAtClick}
           onFilePickerClick={handleFilePickerClick}
           onFileSelected={setUploadedFile}
-          setSelectedFilter={setSelectedFilter}
+          setSelectedFilter={setConversationFilter}
           setIsFilterHighlighted={setIsFilterHighlighted}
-          setIsFilterDropdownOpen={setIsFilterDropdownOpen}
         />
       </div>
     </>

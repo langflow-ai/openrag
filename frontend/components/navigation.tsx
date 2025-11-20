@@ -152,7 +152,6 @@ export function Navigation({
     }
   };
 
-
   const handleDeleteConversation = (
     conversation: ChatConversation,
     event?: React.MouseEvent,
@@ -373,18 +372,19 @@ export function Navigation({
             <div className="space-y-1 flex flex-col">
               {/* Show skeleton loaders when loading and no conversations exist */}
               {isConversationsLoading && conversations.length === 0 ? (
-
-                  [0,1].map((skeletonIndex) => (
-                    <div
-                      key={`conversation-skeleton-${skeletonIndex}`}
-                      className={cn("w-full px-3 h-11 rounded-lg animate-pulse", skeletonIndex === 0 ? "bg-accent/50" : "")}
-                    >
-                      <div className="h-3 bg-muted-foreground/20 rounded w-3/4 mt-3.5" />
-                    </div>
-                  ))
+                [0, 1].map((skeletonIndex) => (
+                  <div
+                    key={`conversation-skeleton-${skeletonIndex}`}
+                    className={cn(
+                      "w-full px-3 h-11 rounded-lg animate-pulse",
+                      skeletonIndex === 0 ? "bg-accent/50" : "",
+                    )}
+                  >
+                    <div className="h-3 bg-muted-foreground/20 rounded w-3/4 mt-3.5" />
+                  </div>
+                ))
               ) : (
                 <>
-
                   {/* Show regular conversations */}
                   {conversations.length === 0 && !isConversationsLoading ? (
                     <div className="text-[13px] text-muted-foreground py-2 pl-3">
@@ -420,7 +420,9 @@ export function Navigation({
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               disabled={
-                                loading || isConversationsLoading || deleteSessionMutation.isPending
+                                loading ||
+                                isConversationsLoading ||
+                                deleteSessionMutation.isPending
                               }
                               asChild
                             >
