@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   Cloud,
-  File,
+  File as FileIcon,
   Folder,
   FolderOpen,
   Loader2,
@@ -53,7 +53,7 @@ export function KnowledgeDropdown() {
   const [showS3Dialog, setShowS3Dialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [awsEnabled, setAwsEnabled] = useState(false);
-  const [folderPath, setFolderPath] = useState("/app/documents/");
+  const [folderPath, setFolderPath] = useState("");
   const [bucketUrl, setBucketUrl] = useState("s3://");
   const [folderLoading, setFolderLoading] = useState(false);
   const [s3Loading, setS3Loading] = useState(false);
@@ -70,6 +70,7 @@ export function KnowledgeDropdown() {
     };
   }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   // Check AWS availability and cloud connectors on mount
   useEffect(() => {
@@ -236,6 +237,98 @@ export function KnowledgeDropdown() {
     }
   };
 
+  const handleFolderSelect = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setFolderLoading(true);
+
+    try {
+      const fileList = Array.from(files);
+      const supportedExtensions = [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".txt",
+        ".md",
+        ".rtf",
+        ".odt",
+      ];
+
+      const filteredFiles = fileList.filter((file) => {
+        const ext = file.name
+          .substring(file.name.lastIndexOf("."))
+          .toLowerCase();
+        return supportedExtensions.includes(ext);
+      });
+
+      if (filteredFiles.length === 0) {
+        toast.error("No supported files found", {
+          description:
+            "Please select a folder containing PDF, DOC, DOCX, TXT, MD, RTF, or ODT files.",
+        });
+        return;
+      }
+
+      toast.info(`Processing ${filteredFiles.length} file(s)...`);
+
+      for (const originalFile of filteredFiles) {
+        try {
+          // Extract just the filename without the folder path
+          const fileName =
+            originalFile.name.split("/").pop() || originalFile.name;
+          console.log(
+            `[Folder Upload] Processing file: ${originalFile.name} -> ${fileName}`,
+          );
+
+          // Create a new File object with just the basename (no folder path)
+          // This is necessary because the webkitRelativePath includes the folder name
+          const file = new File([originalFile], fileName, {
+            type: originalFile.type,
+            lastModified: originalFile.lastModified,
+          });
+          console.log(`[Folder Upload] Created new File object:`, {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+          });
+
+          // Check for duplicates using the clean filename
+          const checkData = await duplicateCheck(file);
+          console.log(`[Folder Upload] Duplicate check result:`, checkData);
+
+          if (!checkData.exists) {
+            console.log(`[Folder Upload] Uploading file: ${fileName}`);
+            await uploadFileUtil(file, false);
+            console.log(`[Folder Upload] Successfully uploaded: ${fileName}`);
+          } else {
+            console.log(`[Folder Upload] Skipping duplicate: ${fileName}`);
+          }
+        } catch (error) {
+          console.error(
+            `[Folder Upload] Failed to upload ${originalFile.name}:`,
+            error,
+          );
+        }
+      }
+
+      refetchTasks();
+      toast.success(`Successfully processed ${filteredFiles.length} file(s)`);
+    } catch (error) {
+      console.error("Folder upload error:", error);
+      toast.error("Folder upload failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setFolderLoading(false);
+      if (folderInputRef.current) {
+        folderInputRef.current.value = "";
+      }
+    }
+  };
+
   const handleFolderUpload = async () => {
     if (!folderPath.trim()) return;
 
@@ -359,7 +452,7 @@ export function KnowledgeDropdown() {
     {
       label: "File",
       icon: ({ className }: { className?: string }) => (
-        <File className={cn(className, "text-muted-foreground")} />
+        <FileIcon className={cn(className, "text-muted-foreground")} />
       ),
       onClick: handleFileUpload,
     },
@@ -368,7 +461,7 @@ export function KnowledgeDropdown() {
       icon: ({ className }: { className?: string }) => (
         <Folder className={cn(className, "text-muted-foreground")} />
       ),
-      onClick: () => setShowFolderDialog(true),
+      onClick: () => folderInputRef.current?.click(),
     },
     ...(awsEnabled
       ? [
@@ -435,6 +528,17 @@ export function KnowledgeDropdown() {
         onChange={handleFileChange}
         className="hidden"
         accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
+      />
+
+      <input
+        ref={folderInputRef}
+        type="file"
+        // @ts-ignore - webkitdirectory is not in TypeScript types but is widely supported
+        webkitdirectory=""
+        directory=""
+        multiple
+        onChange={handleFolderSelect}
+        className="hidden"
       />
 
       {/* Process Folder Dialog */}
