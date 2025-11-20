@@ -2,7 +2,7 @@
 
 import {
   createContext,
-  ReactNode,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -25,11 +25,22 @@ interface ConversationMessage {
   response_id?: string;
 }
 
+interface KnowledgeFilter {
+  id: string;
+  name: string;
+  description: string;
+  query_data: string;
+  owner: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface ConversationData {
   messages: ConversationMessage[];
   endpoint: EndpointType;
   response_id: string;
   title: string;
+  filter?: KnowledgeFilter | null;
   [key: string]: unknown;
 }
 
@@ -65,6 +76,8 @@ interface ChatContextType {
   setPlaceholderConversation: (conversation: ConversationData | null) => void;
   conversationLoaded: boolean;
   setConversationLoaded: (loaded: boolean) => void;
+  conversationFilter: KnowledgeFilter | null;
+  setConversationFilter: (filter: KnowledgeFilter | null) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -92,6 +105,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [placeholderConversation, setPlaceholderConversation] =
     useState<ConversationData | null>(null);
   const [conversationLoaded, setConversationLoaded] = useState(false);
+  const [conversationFilter, setConversationFilterState] =
+    useState<KnowledgeFilter | null>(null);
 
   // Debounce refresh requests to prevent excessive reloads
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -129,17 +144,31 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setRefreshTriggerSilent((prev) => prev + 1);
   }, []);
 
-  const loadConversation = useCallback((conversation: ConversationData) => {
-    setCurrentConversationId(conversation.response_id);
-    setEndpoint(conversation.endpoint);
-    // Store the full conversation data for the chat page to use
-    setConversationData(conversation);
-    // Clear placeholder when loading a real conversation
-    setPlaceholderConversation(null);
-    setConversationLoaded(true);
-    // Clear conversation docs to prevent duplicates when switching conversations
-    setConversationDocs([]);
-  }, []);
+  const loadConversation = useCallback(
+    (conversation: ConversationData) => {
+      setCurrentConversationId(conversation.response_id);
+      setEndpoint(conversation.endpoint);
+      // Store the full conversation data for the chat page to use
+      setConversationData(conversation);
+      // Load the filter if one exists for this conversation
+      // Only update the filter if this is a different conversation (to preserve user's filter selection)
+      setConversationFilterState((currentFilter) => {
+        // If we're loading a different conversation, load its filter
+        // Otherwise keep the current filter (don't reset it when conversation refreshes)
+        const isDifferentConversation =
+          conversation.response_id !== conversationData?.response_id;
+        return isDifferentConversation
+          ? conversation.filter || null
+          : currentFilter;
+      });
+      // Clear placeholder when loading a real conversation
+      setPlaceholderConversation(null);
+      setConversationLoaded(true);
+      // Clear conversation docs to prevent duplicates when switching conversations
+      setConversationDocs([]);
+    },
+    [conversationData?.response_id],
+  );
 
   const startNewConversation = useCallback(() => {
     // Clear current conversation data and reset state
@@ -148,6 +177,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setConversationData(null);
     setConversationDocs([]);
     setConversationLoaded(false);
+    // Clear the filter when starting a new conversation
+    setConversationFilterState(null);
 
     // Create a temporary placeholder conversation to show in sidebar
     const placeholderConversation: ConversationData = {
@@ -198,6 +229,21 @@ export function ChatProvider({ children }: ChatProviderProps) {
     [endpoint],
   );
 
+  const setConversationFilter = useCallback(
+    (filter: KnowledgeFilter | null) => {
+      setConversationFilterState(filter);
+      // Update the conversation data to include the filter
+      setConversationData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          filter,
+        };
+      });
+    },
+    [],
+  );
+
   const value = useMemo<ChatContextType>(
     () => ({
       endpoint,
@@ -221,6 +267,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       setPlaceholderConversation,
       conversationLoaded,
       setConversationLoaded,
+      conversationFilter,
+      setConversationFilter,
     }),
     [
       endpoint,
@@ -239,7 +287,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       clearConversationDocs,
       placeholderConversation,
       conversationLoaded,
-      setConversationLoaded,
+      conversationFilter,
+      setConversationFilter,
     ],
   );
 

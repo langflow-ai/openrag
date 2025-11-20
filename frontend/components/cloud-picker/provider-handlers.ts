@@ -201,29 +201,29 @@ export class OneDriveHandler {
             let mimeType = item.file?.mimeType;
             if (!mimeType && item.name) {
               // Infer from extension if mimeType not provided
-              const ext = item.name.split('.').pop()?.toLowerCase();
+              const ext = item.name.split(".").pop()?.toLowerCase();
               const mimeTypes: { [key: string]: string } = {
-                pdf: 'application/pdf',
-                doc: 'application/msword',
-                docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                xls: 'application/vnd.ms-excel',
-                xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                ppt: 'application/vnd.ms-powerpoint',
-                pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-                txt: 'text/plain',
-                csv: 'text/csv',
-                json: 'application/json',
-                xml: 'application/xml',
-                html: 'text/html',
-                jpg: 'image/jpeg',
-                jpeg: 'image/jpeg',
-                png: 'image/png',
-                gif: 'image/gif',
-                svg: 'image/svg+xml',
+                pdf: "application/pdf",
+                doc: "application/msword",
+                docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                xls: "application/vnd.ms-excel",
+                xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ppt: "application/vnd.ms-powerpoint",
+                pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                txt: "text/plain",
+                csv: "text/csv",
+                json: "application/json",
+                xml: "application/xml",
+                html: "text/html",
+                jpg: "image/jpeg",
+                jpeg: "image/jpeg",
+                png: "image/png",
+                gif: "image/gif",
+                svg: "image/svg+xml",
               };
-              mimeType = mimeTypes[ext || ''] || 'application/octet-stream';
+              mimeType = mimeTypes[ext || ""] || "application/octet-stream";
             }
-            
+
             return {
               id: item.id,
               name: item.name || `${this.getProviderName()} File`,

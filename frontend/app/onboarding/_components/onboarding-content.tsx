@@ -36,7 +36,9 @@ export function OnboardingContent({
     () => {
       // Retrieve assistant message from localStorage on mount
       if (typeof window === "undefined") return null;
-      const savedMessage = localStorage.getItem(ONBOARDING_ASSISTANT_MESSAGE_KEY);
+      const savedMessage = localStorage.getItem(
+        ONBOARDING_ASSISTANT_MESSAGE_KEY,
+      );
       if (savedMessage) {
         try {
           const parsed = JSON.parse(savedMessage);
@@ -78,7 +80,10 @@ export function OnboardingContent({
             JSON.stringify(message),
           );
         } catch (error) {
-          console.error("Failed to save assistant message to localStorage:", error);
+          console.error(
+            "Failed to save assistant message to localStorage:",
+            error,
+          );
         }
       }
       if (newResponseId) {

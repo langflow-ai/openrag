@@ -44,6 +44,7 @@ const DogIcon = ({ disabled = false, stroke, ...props }: DogIconProps) => {
       fill={fillColor}
       {...props}
     >
+      <title>Dog Icon</title>
       <path d="M8 18H2V16H8V18Z" />
       <path
         fillRule="evenodd"
@@ -58,7 +59,9 @@ const DogIcon = ({ disabled = false, stroke, ...props }: DogIconProps) => {
       viewBox="0 0 105 77"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      {...props}
     >
+      <title>Dog Icon</title>
       <defs>
         <style dangerouslySetInnerHTML={{ __html: animationCSS }} />
       </defs>

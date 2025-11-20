@@ -206,9 +206,7 @@ function AuthCallbackContent() {
                 <p className="text-sm text-red-600">{error}</p>
               </div>
               <Button
-                onClick={() =>
-                  router.push(isAppAuth ? "/login" : "/settings")
-                }
+                onClick={() => router.push(isAppAuth ? "/login" : "/settings")}
                 variant="outline"
                 className="w-full"
               >
