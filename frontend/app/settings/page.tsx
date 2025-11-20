@@ -204,8 +204,7 @@ function KnowledgeSourcesPage() {
         ...model,
         provider: provider.provider,
       })),
-    }))
-    .filter((provider) => provider.options.length > 0);
+    }));
 
   // Build grouped embedding model options from all configured providers (excluding Anthropic)
   const groupedEmbeddingModels = [
@@ -239,8 +238,7 @@ function KnowledgeSourcesPage() {
         ...model,
         provider: provider.provider,
       })),
-    }))
-    .filter((provider) => provider.options.length > 0);
+    }));
 
   const isLoadingAnyLlmModels =
     openaiLoading || anthropicLoading || ollamaLoading || watsonxLoading;

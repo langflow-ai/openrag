@@ -89,7 +89,6 @@ export function ModelSelector({
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
-        {/** biome-ignore lint/a11y/useSemanticElements: has to be a Button */}
         <Button
           variant="outline"
           role="combobox"
@@ -150,28 +149,36 @@ export function ModelSelector({
                     </div>
                   }
                 >
-                  {group.options.map((option) => (
-                    <CommandItem
-                      key={option.value}
-                      value={option.value}
-                      onSelect={(currentValue) => {
-                        if (currentValue !== value) {
-                          onValueChange(currentValue, option.provider);
-                        }
-                        setOpen(false);
-                      }}
-                    >
-                      <CheckIcon
-                        className={cn(
-                          "mr-2 h-4 w-4",
-                          value === option.value ? "opacity-100" : "opacity-0",
-                        )}
-                      />
-                      <div className="flex items-center gap-2">
-                        {option.label}
-                      </div>
+                  {group.options.length === 0 ? (
+                    <CommandItem disabled className="text-muted-foreground ml-6">
+                      No models available
                     </CommandItem>
-                  ))}
+                  ) : (
+                    group.options.map((option) => (
+                      <CommandItem
+                        key={option.value}
+                        value={option.value}
+                        onSelect={(currentValue) => {
+                          if (currentValue !== value) {
+                            onValueChange(currentValue, option.provider);
+                          }
+                          setOpen(false);
+                        }}
+                      >
+                        <CheckIcon
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            value === option.value
+                              ? "opacity-100"
+                              : "opacity-0",
+                          )}
+                        />
+                        <div className="flex items-center gap-2">
+                          {option.label}
+                        </div>
+                      </CommandItem>
+                    ))
+                  )}
                 </CommandGroup>
               ))
             ) : (
