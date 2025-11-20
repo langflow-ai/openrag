@@ -54,6 +54,7 @@ export function AssistantMessage({
           <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 select-none">
             {/* Dog icon with bark animation when greeting */}
             <motion.div
+              initial={isInitialGreeting ? { rotate: -5, y: -1 } : false}
               animate={
                 isInitialGreeting
                   ? {
@@ -100,25 +101,26 @@ export function AssistantMessage({
         />
         <div className="relative">
           {/* Slide animation for initial greeting */}
-          {isInitialGreeting ? (
-            <motion.div
-              initial={{ opacity: 0, x: -16 }}
-              animate={{
-                opacity: [0, 0, 1, 1],
-                x: [-16, -8, 0, 0],
-              }}
-              transition={{
-                duration: 0.8,
-                times: [0, 0.3, 0.6, 1],
-                ease: "easeOut",
-              }}
-            >
-              <MarkdownRenderer
-                className="text-sm py-1.5 text-foreground"
-                chatMessage={content}
-              />
-            </motion.div>
-          ) : (
+          <motion.div
+            initial={isInitialGreeting ? { opacity: 0, x: -16 } : false}
+            animate={
+              isInitialGreeting
+                ? {
+                    opacity: [0, 0, 1, 1],
+                    x: [-16, -8, 0, 0],
+                  }
+                : {}
+            }
+            transition={
+              isInitialGreeting
+                ? {
+                    duration: 0.8,
+                    times: [0, 0.3, 0.6, 1],
+                    ease: "easeOut",
+                  }
+                : {}
+            }
+          >
             <MarkdownRenderer
               className={cn(
                 "text-sm py-1.5 transition-colors duration-300",
@@ -133,7 +135,7 @@ export function AssistantMessage({
                   : content
               }
             />
-          )}
+          </motion.div>
         </div>
       </Message>
     </motion.div>
