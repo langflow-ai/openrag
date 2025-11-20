@@ -293,6 +293,11 @@ function ChatPage() {
       setIsFilterHighlighted(false);
       setLoading(false);
       lastLoadedConversationRef.current = null;
+
+      // Focus input after a short delay to ensure rendering is complete
+      setTimeout(() => {
+        chatInputRef.current?.focusInput();
+      }, 100);
     };
 
     const handleFocusInput = () => {
@@ -480,6 +485,11 @@ function ChatPage() {
         ...prev,
         [conversationData.endpoint]: conversationData.response_id,
       }));
+
+      // Focus input when loading a conversation
+      setTimeout(() => {
+        chatInputRef.current?.focusInput();
+      }, 100);
     }
   }, [
     conversationData,
@@ -500,6 +510,11 @@ function ChatPage() {
         },
       ]);
       lastLoadedConversationRef.current = null;
+
+      // Focus input when starting a new conversation
+      setTimeout(() => {
+        chatInputRef.current?.focusInput();
+      }, 100);
     }
   }, [placeholderConversation, currentConversationId]);
 
@@ -1061,6 +1076,11 @@ function ChatPage() {
                           onFork={(e) => handleForkConversation(index, e)}
                           animate={false}
                           isInactive={index < messages.length - 1}
+                          isInitialGreeting={
+                            index === 0 &&
+                            messages.length === 1 &&
+                            message.content === "How can I assist?"
+                          }
                         />
                       </div>
                     ),

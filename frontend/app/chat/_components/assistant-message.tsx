@@ -20,6 +20,7 @@ interface AssistantMessageProps {
   isInactive?: boolean;
   animate?: boolean;
   delay?: number;
+  isInitialGreeting?: boolean;
 }
 
 export function AssistantMessage({
@@ -35,6 +36,7 @@ export function AssistantMessage({
   isInactive = false,
   animate = true,
   delay = 0.2,
+  isInitialGreeting = false,
 }: AssistantMessageProps) {
   return (
     <motion.div
@@ -50,10 +52,31 @@ export function AssistantMessage({
       <Message
         icon={
           <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 select-none">
-            <DogIcon
-              className="h-6 w-6 transition-colors duration-300"
-              disabled={isCompleted || isInactive}
-            />
+            {/* Dog icon with bark animation when greeting */}
+            <motion.div
+              animate={
+                isInitialGreeting
+                  ? {
+                      rotate: [-5, -8, -5, 0],
+                      y: [-1, -2, -1, 0],
+                    }
+                  : {}
+              }
+              transition={
+                isInitialGreeting
+                  ? {
+                      duration: 0.8,
+                      times: [0, 0.4, 0.7, 1],
+                      ease: "easeInOut",
+                    }
+                  : {}
+              }
+            >
+              <DogIcon
+                className="h-6 w-6 transition-colors duration-300"
+                disabled={isCompleted || isInactive}
+              />
+            </motion.div>
           </div>
         }
         actions={
@@ -76,20 +99,41 @@ export function AssistantMessage({
           onToggle={onToggle}
         />
         <div className="relative">
-          <MarkdownRenderer
-            className={cn(
-              "text-sm py-1.5 transition-colors duration-300",
-              isCompleted ? "text-placeholder-foreground" : "text-foreground",
-            )}
-            chatMessage={
-              isStreaming
-                ? content.trim()
-                  ? content +
-                    ' <span class="inline-block w-1 h-4 bg-primary ml-1 animate-pulse"></span>'
-                  : '<span class="text-muted-foreground italic">Thinking<span class="thinking-dots"></span></span>'
-                : content
-            }
-          />
+          {/* Slide animation for initial greeting */}
+          {isInitialGreeting ? (
+            <motion.div
+              initial={{ opacity: 0, x: -16 }}
+              animate={{
+                opacity: [0, 0, 1, 1],
+                x: [-16, -8, 0, 0],
+              }}
+              transition={{
+                duration: 0.8,
+                times: [0, 0.3, 0.6, 1],
+                ease: "easeOut",
+              }}
+            >
+              <MarkdownRenderer
+                className="text-sm py-1.5 text-foreground"
+                chatMessage={content}
+              />
+            </motion.div>
+          ) : (
+            <MarkdownRenderer
+              className={cn(
+                "text-sm py-1.5 transition-colors duration-300",
+                isCompleted ? "text-placeholder-foreground" : "text-foreground",
+              )}
+              chatMessage={
+                isStreaming
+                  ? content.trim()
+                    ? content +
+                      ' <span class="inline-block w-1 h-4 bg-primary ml-1 animate-pulse"></span>'
+                    : '<span class="text-muted-foreground italic">Thinking<span class="thinking-dots"></span></span>'
+                  : content
+              }
+            />
+          )}
         </div>
       </Message>
     </motion.div>
