@@ -387,6 +387,28 @@ class ConfigScreen(Screen):
         self.inputs["openrag_documents_paths"] = input_widget
         yield Static(" ")
 
+        # OpenSearch Data Path
+        yield Label("OpenSearch Data Path")
+        yield Static(
+            "Directory to persist OpenSearch indices across upgrades",
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "opensearch_data_path", "./opensearch-data")
+        input_widget = Input(
+            placeholder="./opensearch-data",
+            value=current_value,
+            id="input-opensearch_data_path",
+        )
+        yield input_widget
+        # Actions row with pick button
+        yield Horizontal(
+            Button("Pick…", id="pick-opensearch-data-btn"),
+            id="opensearch-data-path-actions",
+            classes="controls-row",
+        )
+        self.inputs["opensearch_data_path"] = input_widget
+        yield Static(" ")
+
         # Langflow Auth Settings - These are automatically configured based on password presence
         # Not shown in UI; set in env_manager.setup_secure_defaults()
 
@@ -514,6 +536,8 @@ class ConfigScreen(Screen):
             self.action_back()
         elif event.button.id == "pick-docs-btn":
             self.action_pick_documents_path()
+        elif event.button.id == "pick-opensearch-data-btn":
+            self.action_pick_opensearch_data_path()
         elif event.button.id == "toggle-opensearch-password":
             # Toggle OpenSearch password visibility
             input_widget = self.inputs.get("opensearch_password")
@@ -658,6 +682,62 @@ class ConfigScreen(Screen):
             self._docs_pick_callback = _append_path  # type: ignore[attr-defined]
             self.app.push_screen(picker)
 
+    def action_pick_opensearch_data_path(self) -> None:
+        """Open textual-fspicker to select OpenSearch data directory."""
+        try:
+            import importlib
+
+            fsp = importlib.import_module("textual_fspicker")
+        except Exception:
+            self.notify("textual-fspicker not available", severity="warning")
+            return
+
+        # Determine starting path from current input if possible
+        input_widget = self.inputs.get("opensearch_data_path")
+        start = Path.home()
+        if input_widget and input_widget.value:
+            path_str = input_widget.value.strip()
+            if path_str:
+                candidate = Path(path_str).expanduser()
+                # If path doesn't exist, use parent or fallback to home
+                if candidate.exists():
+                    start = candidate
+                elif candidate.parent.exists():
+                    start = candidate.parent
+
+        # Prefer SelectDirectory for directories; fallback to FileOpen
+        PickerClass = getattr(fsp, "SelectDirectory", None) or getattr(
+            fsp, "FileOpen", None
+        )
+        if PickerClass is None:
+            self.notify(
+                "No compatible picker found in textual-fspicker", severity="warning"
+            )
+            return
+        try:
+            picker = PickerClass(location=start)
+        except Exception:
+            try:
+                picker = PickerClass(start)
+            except Exception:
+                self.notify("Could not initialize textual-fspicker", severity="warning")
+                return
+
+        def _set_path(result) -> None:
+            if not result:
+                return
+            path_str = str(result)
+            if input_widget is None:
+                return
+            input_widget.value = path_str
+
+        # Push with callback when supported; otherwise, use on_screen_dismissed fallback
+        try:
+            self.app.push_screen(picker, _set_path)  # type: ignore[arg-type]
+        except TypeError:
+            self._opensearch_data_pick_callback = _set_path  # type: ignore[attr-defined]
+            self.app.push_screen(picker)
+
     def on_screen_dismissed(self, event) -> None:  # type: ignore[override]
         try:
             # textual-fspicker screens should dismiss with a result; hand to callback if present
@@ -666,6 +746,15 @@ class ConfigScreen(Screen):
                 cb(getattr(event, "result", None))
                 try:
                     delattr(self, "_docs_pick_callback")
+                except Exception:
+                    pass
+            
+            # Handle OpenSearch data path picker callback
+            cb = getattr(self, "_opensearch_data_pick_callback", None)
+            if cb is not None:
+                cb(getattr(event, "result", None))
+                try:
+                    delattr(self, "_opensearch_data_pick_callback")
                 except Exception:
                     pass
         except Exception:

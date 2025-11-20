@@ -26,3 +26,6 @@ wheels/
 config/
 
 .docling.pid
+
+# OpenSearch data directory
+opensearch-data/
