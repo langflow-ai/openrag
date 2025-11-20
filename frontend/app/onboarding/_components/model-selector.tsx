@@ -150,7 +150,10 @@ export function ModelSelector({
                   }
                 >
                   {group.options.length === 0 ? (
-                    <CommandItem disabled className="text-muted-foreground ml-6">
+                    <CommandItem
+                      disabled
+                      className="text-muted-foreground ml-6"
+                    >
                       No models available
                     </CommandItem>
                   ) : (
