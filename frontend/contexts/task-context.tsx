@@ -299,9 +299,13 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
             });
           }
           setTimeout(() => {
+            // Only remove files from THIS specific task that completed
             setFiles((prevFiles) =>
               prevFiles.filter(
-                (file) => file.status === "active" || file.status === "failed",
+                (file) =>
+                  file.task_id !== currentTask.task_id ||
+                  file.status === "active" ||
+                  file.status === "failed",
               ),
             );
             refetchSearch();

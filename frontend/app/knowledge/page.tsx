@@ -97,20 +97,14 @@ function SearchPage() {
     taskFilesAsFiles.map((file) => [file.filename, file]),
   );
   // Override backend files with task file status if they exist
-  const backendFiles = (searchData as File[])
-    .map((file) => {
-      const taskFile = taskFileMap.get(file.filename);
-      if (taskFile) {
-        // Override backend file with task file data (includes status)
-        return { ...file, ...taskFile };
-      }
-      return file;
-    })
-    .filter((file) => {
-      // Only filter out files that are currently processing AND in taskFiles
-      const taskFile = taskFileMap.get(file.filename);
-      return !taskFile || taskFile.status !== "processing";
-    });
+  const backendFiles = (searchData as File[]).map((file) => {
+    const taskFile = taskFileMap.get(file.filename);
+    if (taskFile) {
+      // Override backend file with task file data (includes status)
+      return { ...file, ...taskFile };
+    }
+    return file;
+  });
 
   const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
     return (

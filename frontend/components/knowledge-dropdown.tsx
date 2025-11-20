@@ -256,15 +256,18 @@ export function KnowledgeDropdown() {
         ".rtf",
         ".odt",
       ];
-      
+
       const filteredFiles = fileList.filter((file) => {
-        const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+        const ext = file.name
+          .substring(file.name.lastIndexOf("."))
+          .toLowerCase();
         return supportedExtensions.includes(ext);
       });
 
       if (filteredFiles.length === 0) {
         toast.error("No supported files found", {
-          description: "Please select a folder containing PDF, DOC, DOCX, TXT, MD, RTF, or ODT files.",
+          description:
+            "Please select a folder containing PDF, DOC, DOCX, TXT, MD, RTF, or ODT files.",
         });
         return;
       }
@@ -274,21 +277,28 @@ export function KnowledgeDropdown() {
       for (const originalFile of filteredFiles) {
         try {
           // Extract just the filename without the folder path
-          const fileName = originalFile.name.split('/').pop() || originalFile.name;
-          console.log(`[Folder Upload] Processing file: ${originalFile.name} -> ${fileName}`);
-          
+          const fileName =
+            originalFile.name.split("/").pop() || originalFile.name;
+          console.log(
+            `[Folder Upload] Processing file: ${originalFile.name} -> ${fileName}`,
+          );
+
           // Create a new File object with just the basename (no folder path)
           // This is necessary because the webkitRelativePath includes the folder name
-          const file = new File([originalFile], fileName, { 
+          const file = new File([originalFile], fileName, {
             type: originalFile.type,
-            lastModified: originalFile.lastModified 
+            lastModified: originalFile.lastModified,
           });
-          console.log(`[Folder Upload] Created new File object:`, { name: file.name, type: file.type, size: file.size });
-          
+          console.log(`[Folder Upload] Created new File object:`, {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+          });
+
           // Check for duplicates using the clean filename
           const checkData = await duplicateCheck(file);
           console.log(`[Folder Upload] Duplicate check result:`, checkData);
-          
+
           if (!checkData.exists) {
             console.log(`[Folder Upload] Uploading file: ${fileName}`);
             await uploadFileUtil(file, false);
@@ -297,7 +307,10 @@ export function KnowledgeDropdown() {
             console.log(`[Folder Upload] Skipping duplicate: ${fileName}`);
           }
         } catch (error) {
-          console.error(`[Folder Upload] Failed to upload ${originalFile.name}:`, error);
+          console.error(
+            `[Folder Upload] Failed to upload ${originalFile.name}:`,
+            error,
+          );
         }
       }
 
@@ -516,7 +529,7 @@ export function KnowledgeDropdown() {
         className="hidden"
         accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
       />
-      
+
       <input
         ref={folderInputRef}
         type="file"
