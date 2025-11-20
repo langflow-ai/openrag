@@ -28,11 +28,21 @@ async def onboard_system():
     so that tests can use the /settings endpoint.
     """
     from pathlib import Path
+    import shutil
 
     # Delete any existing config to ensure clean onboarding
     config_file = Path("config/config.yaml")
     if config_file.exists():
         config_file.unlink()
+    
+    # Clean up OpenSearch data directory to ensure fresh state for tests
+    opensearch_data_path = Path(os.getenv("OPENSEARCH_DATA_PATH", "./opensearch-data"))
+    if opensearch_data_path.exists():
+        try:
+            shutil.rmtree(opensearch_data_path)
+            print(f"[DEBUG] Cleaned up OpenSearch data directory: {opensearch_data_path}")
+        except Exception as e:
+            print(f"[DEBUG] Could not clean OpenSearch data directory: {e}")
 
     # Initialize clients
     await clients.initialize()
