@@ -17,20 +17,23 @@ This quickstart requires an [OpenAI API key](https://platform.openai.com/api-key
 
 For this quickstart, install OpenRAG with the automatic installer script and basic setup:
 
-1. Create a directory to store the OpenRAG configuration files:
+1. Create a directory to store the OpenRAG configuration files, and then change to that directory:
 
     ```bash
     mkdir openrag-workspace
     cd openrag-workspace
     ```
 
-2. Run the installer:
+2. [Download the OpenRAG install script](https://docs.openr.ag/files/run_openrag_with_prereqs.sh), move it to your OpenRAG directory, and then run it:
 
    ```bash
-   curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
+   bash run_openrag_with_prereqs.sh
    ```
 
-   The TUI creates a `.env` file and docker-compose files in the current working directory, and then starts OpenRAG.
+   This script installs OpenRAG and its dependencies, including Docker or Podman, and it creates a `.env` file and `docker-compose` files in the current working directory.
+   You might be prompted to install certain dependencies if they aren't already present in your environment.
+   This process can take a few minutes.
+   Once the environment is ready, OpenRAG starts.
 
 3. Select **Basic Setup**.
 
