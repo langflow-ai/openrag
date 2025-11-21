@@ -76,36 +76,6 @@ flowchart LR
 ```
 
 ```mermaid
-%%{init: {'theme': 'dark', 'flowchart': {'useMaxWidth': true, 'width': '100%'}}}%%
-architecture-beta
-    group ext(cloud)[External connectors]
-    service drive1(disk)[Google Drive] in ext
-    service drive2(disk)[OneDrive] in ext
-    service drive3(disk)[SharePoint] in ext
-    service drive4(disk)[Other] in ext
-
-    group local(server)[Local services]
-    service docling(database)[Docling Serve] in local
-
-    group containers(server)[OpenRAG containers]
-    service backend(database)[OpenRAG backend] in containers
-    service langflow(database)[Langflow] in containers
-    service opensearch(database)[OpenSearch] in containers
-    service frontend(database)[OpenRAG frontend] in containers
-    junction junctionCenter
-    junction junctionRight
-
-    backend:R -- L:junctionCenter
-    frontend:T -- B:junctionCenter
-    junctionCenter:R -- L:junctionRight
-    langflow:B -- T:junctionRight
-    opensearch:T -- B:junctionRight
-
-    docling{group}:R -- L:backend{group}
-    drive1{group}:B -- T:backend{group}
-```
-
-```mermaid
 flowchart TD
     subgraph Containers
     backend[OpenRAG Backend] --> langflow[Langflow]
