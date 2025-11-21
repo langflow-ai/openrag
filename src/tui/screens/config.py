@@ -145,6 +145,9 @@ class ConfigScreen(Screen):
         self.mode = mode  # "no_auth" or "full"
         self.env_manager = EnvManager()
         self.inputs = {}
+        
+        # Check if .env file exists
+        self.has_env_file = self.env_manager.env_file.exists()
 
         # Load existing config if available
         self.env_manager.load_existing_env()
@@ -156,12 +159,15 @@ class ConfigScreen(Screen):
             with ScrollableContainer(id="config-scroll"):
                 with Vertical(id="config-form"):
                     yield from self._create_all_fields()
-            yield Horizontal(
+            # Create button row - conditionally include Back button
+            buttons = [
                 Button("Generate Passwords", variant="default", id="generate-btn"),
                 Button("Save Configuration", variant="success", id="save-btn"),
-                Button("Back", variant="default", id="back-btn"),
-                classes="button-row",
-            )
+            ]
+            # Only show Back button if .env file exists
+            if self.has_env_file:
+                buttons.append(Button("Back", variant="default", id="back-btn"))
+            yield Horizontal(*buttons, classes="button-row")
         yield Footer()
 
     def _create_header_text(self) -> Text:
