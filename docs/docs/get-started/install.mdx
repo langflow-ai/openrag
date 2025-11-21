@@ -226,22 +226,23 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
        This connection enables real-time document synchronization with external services.
        Supported webhook endpoints:
        - Google Drive: `/connectors/google_drive/webhook`
-       - OneDrive: `/connectors/onedrive/webhook`  
+       - OneDrive: `/connectors/onedrive/webhook`
        - SharePoint: `/connectors/sharepoint/webhook`
-       
+
    10. Continue with [Application Onboarding](#application-onboarding).
   </TabItem>
 </Tabs>
 
 <PartialOnboarding />
 
-## Close the OpenRAG TUI
+## Exit the OpenRAG TUI
 
-To close the OpenRAG TUI, press <kbd>q</kbd>.
-The OpenRAG containers will continue to be served until the containers are stopped.
+To exit the OpenRAG TUI, press <kbd>q</kbd>.
+The OpenRAG containers continue to run until they are stopped.
 For more information, see [Manage OpenRAG containers with the TUI ](#tui-container-management).
 
-To start the TUI again, run `uv run openrag`.
+To relaunch the TUI, run `uv run openrag`.
+If you installed OpenRAG with `uvx`, run `uvx openrag`.
 
 ## Manage OpenRAG containers with the TUI {#tui-container-management}
 
