@@ -24,58 +24,6 @@ Ready to get started? [Install OpenRAG](/install) and then run the [Quickstart](
 OpenRAG deploys and orchestrates a lightweight, container-based architecture that combines **Langflow**, **OpenSearch**, and **Docling** into a cohesive RAG platform.
 
 ```mermaid
-%%{init: {'theme': 'dark', 'flowchart': {'useMaxWidth': true, 'width': '100%'}}}%%
-flowchart LR
-    %% Encapsulate the entire diagram in a rectangle with black background
-    subgraph DiagramContainer["OpenRAG Architecture"]
-        style DiagramContainer fill:#000000,stroke:#ffffff,color:white,stroke-width:2px
-
-        %% Define subgraphs for the different sections
-        subgraph LocalService["Local Service"]
-            DoclingSrv[Docling Serve]
-            style DoclingSrv fill:#a8d1ff,stroke:#0066cc,color:black,stroke-width:2px
-        end
-
-        subgraph Containers
-            Backend["OpenRAG Backend"]
-            style Backend fill:#e6ffe6,stroke:#006600,color:black,stroke-width:2px
-            Langflow
-            style Langflow fill:#e6ffe6,stroke:#006600,color:black,stroke-width:2px
-            OpenSearch
-            style OpenSearch fill:#e6ffe6,stroke:#006600,color:black,stroke-width:2px
-            Frontend["OpenRAG Frontend"]
-            style Frontend fill:#ffcc99,stroke:#ff6600,color:black,stroke-width:2px
-        end
-
-        subgraph ThirdParty["Third Party Services"]
-            GoogleDrive["Google Drive"]
-            style GoogleDrive fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
-            OneDrive
-            style OneDrive fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
-            SharePoint["SharePoint"]
-            style SharePoint fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
-            More[...]
-            style More fill:#f2e6ff,stroke:#6600cc,color:black,stroke-width:2px
-        end
-
-        %% Define connections
-        DoclingSrv --> Backend
-        GoogleDrive --> Backend
-        OneDrive --> Backend
-        SharePoint --> Backend
-        More --> Backend
-        Backend --> Langflow
-        Langflow <--> OpenSearch
-        Backend <--> Frontend
-
-        %% Style subgraphs
-        style LocalService fill:#333333,stroke:#666666,color:white,stroke-width:2px
-        style Containers fill:#444444,stroke:#666666,color:white,stroke-width:2px
-        style ThirdParty fill:#333333,stroke:#666666,color:white,stroke-width:2px
-    end
-```
-
-```mermaid
 flowchart TD
     subgraph Containers
     backend[OpenRAG Backend] --> langflow[Langflow]
