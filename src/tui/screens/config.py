@@ -248,14 +248,13 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
         # OpenAI API Key
-        yield Label("OpenAI API Key")
-        # Where to create OpenAI keys (helper above the box)
+        yield Label("OpenAI API Key (optional)")
         yield Static(
             Text("Get a key: https://platform.openai.com/api-keys", style="dim"),
             classes="helper-text",
         )
         yield Static(
-            Text("Can also be provided during onboarding", style="dim italic"),
+            Text("Can be configured later in the UI", style="dim italic"),
             classes="helper-text",
         )
         current_value = getattr(self.env_manager.config, "openai_api_key", "")
@@ -273,13 +272,13 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
         # Anthropic API Key
-        yield Label("Anthropic API Key")
+        yield Label("Anthropic API Key (optional)")
         yield Static(
             Text("Get a key: https://console.anthropic.com/settings/keys", style="dim"),
             classes="helper-text",
         )
         yield Static(
-            Text("Can also be provided during onboarding", style="dim italic"),
+            Text("Can be configured later in the UI", style="dim italic"),
             classes="helper-text",
         )
         current_value = getattr(self.env_manager.config, "anthropic_api_key", "")
@@ -297,13 +296,13 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
         # Ollama Endpoint
-        yield Label("Ollama Base URL")
+        yield Label("Ollama Base URL (optional)")
         yield Static(
             Text("Endpoint of your Ollama server", style="dim"),
             classes="helper-text",
         )
         yield Static(
-            Text("Can also be provided during onboarding", style="dim italic"),
+            Text("Can be configured later in the UI", style="dim italic"),
             classes="helper-text",
         )
         current_value = getattr(self.env_manager.config, "ollama_endpoint", "")
@@ -318,13 +317,13 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
         # IBM watsonx.ai API Key
-        yield Label("IBM watsonx.ai API Key")
+        yield Label("IBM watsonx.ai API Key (optional)")
         yield Static(
             Text("Get a key: https://cloud.ibm.com/iam/apikeys", style="dim"),
             classes="helper-text",
         )
         yield Static(
-            Text("Can also be provided during onboarding", style="dim italic"),
+            Text("Can be configured later in the UI", style="dim italic"),
             classes="helper-text",
         )
         current_value = getattr(self.env_manager.config, "watsonx_api_key", "")
