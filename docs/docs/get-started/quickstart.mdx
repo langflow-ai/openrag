@@ -35,7 +35,7 @@ For this quickstart, install OpenRAG with the automatic installer script and bas
    This process can take a few minutes.
    Once the environment is ready, OpenRAG starts.
 
-3. Select **Basic Setup**.
+3. Click **Basic Setup**.
 
 4. Create passwords for your OpenRAG installation's OpenSearch and Langflow services. You can click **Generate Passwords** to automatically generate passwords.
 
@@ -151,7 +151,7 @@ This key doesn't grant access to OpenRAG.
 
    These code snippets construct API requests with your Langflow server URL (`LANGFLOW_SERVER_ADDRESS`), the flow to run (`FLOW_ID`), required headers (`LANGFLOW_API_KEY`, `Content-Type`), and a payload containing the required inputs to run the flow, including a default chat input message.
 
-   In production, you might modify the inputs to suit your application logic. For example, you might replace the default chat input message with dynamic user input.
+   In production, you would modify the inputs to suit your application logic. For example, you could replace the default chat input message with dynamic user input.
 
    <Tabs>
    <TabItem value="python" label="Python">
@@ -234,7 +234,7 @@ This key doesn't grant access to OpenRAG.
    </TabItem>
    </Tabs>
 
-4. Copy your preferred snippet (Python, TypeScript, or curl), and then run it:
+4. Copy your preferred snippet, and then run it:
 
    * **Python**: Paste the snippet into a `.py` file, save it, and then run it with `python filename.py`.
    * **TypeScript**: Paste the snippet into a `.ts` file, save it, and then run it with `ts-node filename.ts`.
@@ -243,7 +243,7 @@ This key doesn't grant access to OpenRAG.
 If the request is successful, the response includes many details about the flow run, including the session ID, inputs, outputs, components, durations, and more.
 
 In production, you won't pass the raw response to the user in its entirety.
-Instead, you extract and reformat relevant fields for different use cases, as demonstrated in the [Langflow quickstart](https://docs.langflow.org/quickstart#extract-data-from-the-response)
+Instead, you extract and reformat relevant fields for different use cases, as demonstrated in the [Langflow quickstart](https://docs.langflow.org/quickstart#extract-data-from-the-response).
 For example, you could pass the chat output text to a front-end user-facing application, and store specific fields in logs and backend data stores for monitoring, chat history, or analytics.
 You could also pass the output from one flow as input to another flow.
 
