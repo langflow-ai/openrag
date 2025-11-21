@@ -7,122 +7,147 @@ import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-Get started with OpenRAG by loading your knowledge, swapping out your language model, and then chatting with the Langflow API.
+Use this quickstart to install OpenRAG, and then try some of OpenRAG's core features.
 
 ## Prerequisites
 
-:::tip
-This quickstart uses a minimal setup to demonstrate OpenRAG's core functionality. After you complete the quickstart, it is recommended that you reinstall OpenRAG with your preferred configuration because some settings are immutable after initial setup. For all installation options, see [Install OpenRAG with TUI](/install) and [Install OpenRAG with containers](/docker).
-:::
+This quickstart requires an [OpenAI API key](https://platform.openai.com/api-keys) and [Python](https://www.python.org/downloads/release/python-3100/) version 3.10 to 3.13.
 
-Install OpenRAG with the automatic installer.
-The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, and then starts OpenRAG with `uvx`.
+## Install OpenRAG
 
-    1. Create a directory to store the OpenRAG configuration files:
-       ```bash
-       mkdir openrag-workspace
-       cd openrag-workspace
-       ```
+For this quickstart, install OpenRAG with the automatic installer script and basic setup:
 
-    2. Run the installer:
-       ```bash
-       curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
-       ```
+1. Create a directory to store the OpenRAG configuration files:
 
-        The TUI creates a `.env` file and docker-compose files in the current working directory, and then starts OpenRAG.
+    ```bash
+    mkdir openrag-workspace
+    cd openrag-workspace
+    ```
 
-    3. Select **Basic Setup**.
-    4. To generate a password for OpenSearch, click **Generate Passwords**.
-    The other fields aren't required.
-    5. To start OpenRAG, click **Start All Services**.
-      Startup pulls container images and runs them, so it can take some time.
-      When startup is complete, the TUI displays the following:
-          ```bash
-          Services started successfully
-          Command completed successfully
-          ```
-    6. To open the OpenRAG application, navigate to the TUI main menu, and then click **Open App**.
-    Alternatively, in your browser, navigate to `localhost:3000`.
-    7. For your model provider, select **OpenAI**.
-    8. In the **OpenAI API key** field, paste your OpenAI API key.
-    The default model settings are fine for the quickstart.
-    9. To confirm your provider settings, click **Complete**.
-    10. To complete onboarding, click **What is OpenRAG**, and then click **Add a document**.
-    Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+ 2. Run the installer:
 
-    To quit OpenRAG, navigate to the TUI main menu and press <kbd>q</kbd>.
-    To start OpenRAG again, run `uvx openrag`.
+    ```bash
+    curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
+    ```
 
-## Load and chat with your own documents
+   The TUI creates a `.env` file and docker-compose files in the current working directory, and then starts OpenRAG.
+
+3. Select **Basic Setup**.
+
+4. Click **Generate Passwords** to automatically generated OpenRAG passwords.
+
+5. Click **Start All Services**, and then wait while the startup process pulls and runs the necessary container images.
+This can take a few minutes.
+Proceed when you see the following messages in the TUI:
+
+    ```bash
+    Services started successfully
+    Command completed successfully
+    ```
+
+6. To open the OpenRAG application, navigate to the TUI main menu, and then click **Open App**.
+Alternatively, in your browser, navigate to `localhost:3000`.
+
+   :::tip
+   To quit OpenRAG, go to the TUI main menu, and then press <kbd>q</kbd>.
+
+   To restart OpenRAG, run `uvx openrag`.
+   :::
+
+7. Select the **OpenAI** model provider, enter your OpenAI API key, and then click **Complete**.
+
+   For this quickstart, you can use the default options for the model settings.
+
+8. Click through the overview slides for a brief introduction to OpenRAG and basic setup, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+You can complete this quickstart without going through the overview.
+
+## Load and chat with documents {#chat-with-documents}
+
+OpenRAG's knowledge base chat is powered by the [OpenRAG OpenSearch Agent](/agents).
+Some documents are included by default to get you started, and you can load your own documents.
 
 1. In OpenRAG, click <Icon name="MessageSquare" aria-hidden="true"/> **Chat**.
-   The chat is powered by the OpenRAG OpenSearch Agent.
-   For more information, see [Langflow in OpenRAG](/agents).
-2. Ask `What documents are available to you?`
-   The agent responds with a message summarizing the documents that OpenRAG loads by default.
-   Knowledge is stored in OpenSearch.
-   For more information, see [OpenSearch in OpenRAG](/knowledge).
-3. To confirm the agent is correct about the default knowledge, click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
-   The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database.
-   Click on a document to display the chunks derived from splitting the default documents into the OpenSearch vector database.
-4. To add documents to your knowledge base, click **Add Knowledge**.
-   * Select <Icon name="File" aria-hidden="true"/> **File** to add a single file from your local machine.
-   * Select <Icon name="Folder" aria-hidden="true"/> **Folder** to process an entire folder of documents from your local machine. The default directory is `/documents` in your OpenRAG directory.
-   * Select your cloud storage provider to add knowledge from an OAuth-connected storage provider. For more information, see [OAuth ingestion](/knowledge#oauth-ingestion).
-5. Return to the Chat window and ask a question about your loaded data.
-   For example, with a manual about a PC tablet loaded, ask `How do I connect this device to WiFi?`
-   The agent responds with a message indicating it now has your knowledge as context for answering questions.
-6. Click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)**.
-This log describes how the agent uses tools.
-This is helpful for troubleshooting when the agent isn't responding as expected.
 
-## Swap out the language model to modify agent behavior {#change-components}
+2. For this quickstart, ask the agent what documents are available.
+For example: `What documents are available to you?`
 
-To modify the knowledge ingestion or Agent behavior, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+   The agent responds with a summary of OpenRAG's default documents.
 
-In this example, you'll try a different LLM to demonstrate how the Agent's response changes.
+3. To verify the agent's response, click <Icon name="Library" aria-hidden="true"/> **Knowledge** to view the documents stored in the OpenRAG OpenSearch vector database.
+You can click a document to view the chunks of the document as they are stored in the database.
 
-1. To edit the Agent's behavior, click **Edit in Langflow**.
-You can more quickly access these parameters in the **Language model** and **Agent Instructions** fields in this page, but for illustration purposes, navigate to the Langflow visual builder.
-To revert the flow to its initial state, click **Restore flow**.
-2. OpenRAG warns you that you're entering Langflow. Click **Proceed**.
+4. Click **Add Knowledge** to add your own documents to your OpenRAG knowledge base.
 
-    If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from the `.env` file in your OpenRAG directory.
+   For this quickstart, use either the <Icon name="File" aria-hidden="true"/> **File** or <Icon name="Folder" aria-hidden="true"/> **Folder** upload options to load documents from your local machine.
+   **Folder** uploads an entire directory.
+   The default directory is the `/documents` subdirectory in your OpenRAG installation directory.
 
-    The OpenRAG OpenSearch Agent flow appears in a new browser window.
-   ![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
+   For information about the cloud storage provider options, see [Ingest files through OAuth connectors](/knowledge#oauth-ingestion).
 
-3. Find the **Language Model** component, and then change the **Model Name** field to a different OpenAI model.
-4. Save your flow with <kbd>Command+S</kbd> (Mac) or <kbd>Ctrl+S</kbd> (Windows).
-5. Return to the OpenRAG browser window, and start a new conversation by clicking <Icon name="Plus" aria-hidden="true"/> in the **Conversations** tab.
-6. Ask the same question you asked before to see how the response differs between models.
+5. Return to the **Chat** window, and then ask a question related to the documents that you just uploaded.
 
-## Integrate OpenRAG into your application
+   If the agent's response doesn't seem to reference your documents correctly, try the following:
 
-Langflow in OpenRAG includes pre-built flows that you can integrate into your applications using the [Langflow API](https://docs.langflow.org/api-reference-api-examples). 
+   * Click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** to view the log of tool calls made by the agent. This is helpful for troubleshooting because it shows you how the agent used particular tools.
 
-The Langflow API accepts Python, TypeScript, or curl requests to run flows and get responses. You can use these flows as-is or modify them to better suit your needs.
+   * Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to confirm that the documents are present in the OpenRAG OpenSearch vector database, and then click each document to see how the document was chunked.
+   If a document was chunked improperly, you might need to tweak the ingestion or modify and reupload the document.
 
-In this section, you'll run the OpenRAG OpenSearch Agent flow and get a response using the API.
+   * Click <Icon name="Settings2" aria-hidden="true"/> **Settings** to modify the knowledge ingestion settings.
 
-1. To navigate to the OpenRAG OpenSearch Agent flow in Langflow, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then click **Edit in Langflow** in the OpenRAG OpenSearch Agent flow.
-2. Create a [Langflow API key](https://docs.langflow.org/api-keys-and-authentication).
+   For more information about knowledge bases and knowledge ingestion, see [OpenSearch in OpenRAG](/knowledge).
 
-    A Langflow API key is a user-specific token you can use with Langflow.
-    It is **only** used for sending requests to the Langflow server.
-    It does **not** access OpenRAG.
+## Change the language model and chat settings {#change-components}
 
-    To create a Langflow API key, do the following:
+1. To change the knowledge ingestion settings, agent behavior, or language model, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
 
-    1. Open Langflow, click your user icon, and then select **Settings**.
+   The **Settings** page provides quick access to commonly used parameters like the **Language model** and **Agent Instructions**.
+
+2. For greater insight into the underlying [Langflow flow](/agents) that drives the OpenRAG chat, click **Edit in Langflow** and then click **Proceed** to launch the Langflow visual editor in a new browser window.
+
+   If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from the `.env` file in your OpenRAG installation directory.
+
+   The OpenRAG OpenSearch Agent flow opens in a new browser window.
+
+   ![OpenRAG OpenSearch Agent flow](/img/opensearch-agent-flow.png)
+
+3. For this quickstart, try changing the model.
+Click the **Language Model** component, and then change the **Model Name** to a different OpenAI model.
+
+   When editing built-in flows, you can click **Restore flow** to revert the flow to its initial state.
+
+4. Press <kbd>Command+S</kbd> (<kbd>Ctrl+S</kbd>) to save your changes.
+
+   You can close the Langflow browser window, or leave it open if you want to continue experimenting with the flow editor.
+
+5. Switch to your OpenRAG browser window, and then click <Icon name="Plus" aria-hidden="true"/> in the **Conversations** tab to start a new conversation.
+This ensures that the chat doesn't persist any context from the previous conversation with the original model.
+
+6. Ask the same question you asked in [Load and chat with documents](#chat-with-documents) to see how the response differs from the original model.
+
+## Integrate OpenRAG into an application
+
+Langflow in OpenRAG includes pre-built flows that you can integrate into your applications using the [Langflow API](https://docs.langflow.org/api-reference-api-examples).
+You can use these flows as-is or modify them to better suit your needs, as demonstrated in [Change the language model and chat settings](#change-components).
+
+You can send and receive requests with the Langflow API using Python, TypeScript, or curl.
+
+1. Open the OpenRAG OpenSearch Agent flow in the Langflow visual editor: From the **Chat** window, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, click **Edit in Langflow**, and then click **Proceed**.
+
+2. Create a [Langflow API key](https://docs.langflow.org/api-keys-and-authentication), which is a user-specific token required to send requests to the Langflow server.
+This key doesn't grant access to OpenRAG.
+
+    1. In the Langflow visual editor, click your user icon in the header, and then select **Settings**.
     2. Click **Langflow API Keys**, and then click <Icon name="Plus" aria-hidden="true"/> **Add New**.
     3. Name your key, and then click **Create API Key**.
     4. Copy the API key and store it securely.
+    5. Exit the Langflow **Settings** page to return to the visual editor.
 
-3. Langflow includes code snippets for the request to the Langflow API.
-To retrieve the code snippet, click **Share**, and then click **API access**.
+3. Click **Share**, and then select **API access** to get pregenerated code snippets that call the Langflow API and run the flow.
 
-    The default code in the API access pane constructs a request with the Langflow server `url`, `headers`, and a `payload` of request data. The code snippets automatically include the `LANGFLOW_SERVER_ADDRESS` and `FLOW_ID` values for the flow.
+    These code snippets construct API requests with your Langflow server URL (`LANGFLOW_SERVER_ADDRESS`), the flow to run (`FLOW_ID`), required headers (`LANGFLOW_API_KEY`, `Content-Type`), and a payload containing the required inputs to run the flow, including a default chat input message.
+
+    In production, you might modify the inputs to suit your application logic. For example, you might replace the default chat input message with dynamic user input.
 
     <Tabs>
     <TabItem value="python" label="Python">
@@ -205,11 +230,25 @@ To retrieve the code snippet, click **Share**, and then click **API access**.
     </TabItem>
     </Tabs>
 
-4. Copy the snippet, paste it in a script file, and then run the script to send the request. If you are using the curl snippet, you can run the command directly in your terminal.
+4. Copy your preferred snippet (Python, TypeScript, or curl), and then run it:
+
+   * **Python**: Paste the snippet into a `.py` file, save it, and then run it with `python filename.py`.
+   * **TypeScript**: Paste the snippet into a `.ts` file, save it, and then run it with `ts-node filename.ts`.
+   * **curl**: Paste and run snippet directly in your terminal.
 
 If the request is successful, the response includes many details about the flow run, including the session ID, inputs, outputs, components, durations, and more.
 
-To further explore the API, see:
+In production, you won't pass the raw response to the user in its entirety.
+Instead, you extract and reformat relevant fields for different use cases, as demonstrated in the [Langflow quickstart](https://docs.langflow.org/quickstart#extract-data-from-the-response)
+For example, you could pass the chat output text to a front-end user-facing application, and store specific fields in logs and backend data stores for monitoring, chat history, or analytics.
+You could also pass the output from one flow as input to another flow.
 
-* The Langflow [Quickstart](https://docs.langflow.org/quickstart#extract-data-from-the-response) extends this example with extracting fields from the response.
-* [Get started with the Langflow API](https://docs.langflow.org/api-reference-api-examples)
+## Next steps
+
+* **Reinstall OpenRAG with your preferred settings**: This quickstart used a minimal setup to demonstrate OpenRAG's core functionality.
+It is recommended that you reinstall OpenRAG with your preferred configuration because some settings are immutable after initial setup.
+For all installation options, see [Install OpenRAG with TUI](/install) and [Install OpenRAG with containers](/docker).
+
+* **Learn more about OpenRAG**: Explore OpenRAG and the OpenRAG documentation to learn more about its features and functionality.
+
+* **Learn more about the Langflow**: For a deep dive on the Langflow API and visual editor, see the [Langflow documentation](https://docs.langflow.org/).
