@@ -35,6 +35,13 @@ class EnvConfig:
     langflow_ingest_flow_id: str = "5488df7c-b93f-4f87-a446-b67028bc0813"
     langflow_url_ingest_flow_id: str = "72c3d17c-2dac-4a73-b48a-6518473d7830"
 
+    # Provider API keys and endpoints
+    anthropic_api_key: str = ""
+    ollama_endpoint: str = ""
+    watsonx_api_key: str = ""
+    watsonx_endpoint: str = ""
+    watsonx_project_id: str = ""
+
     # OAuth settings
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
@@ -128,6 +135,11 @@ class EnvManager:
                         # Map env vars to config attributes
                         attr_map = {
                             "OPENAI_API_KEY": "openai_api_key",
+                            "ANTHROPIC_API_KEY": "anthropic_api_key",
+                            "OLLAMA_ENDPOINT": "ollama_endpoint",
+                            "WATSONX_API_KEY": "watsonx_api_key",
+                            "WATSONX_ENDPOINT": "watsonx_endpoint",
+                            "WATSONX_PROJECT_ID": "watsonx_project_id",
                             "OPENSEARCH_PASSWORD": "opensearch_password",
                             "LANGFLOW_SECRET_KEY": "langflow_secret_key",
                             "LANGFLOW_SUPERUSER": "langflow_superuser",
@@ -196,6 +208,30 @@ class EnvManager:
             self.config.validation_errors["openai_api_key"] = (
                 "Invalid OpenAI API key format (should start with sk-)"
             )
+
+        # Import validation functions for new provider fields
+        from ..utils.validation import validate_anthropic_api_key
+
+        # Validate Anthropic API key format if provided
+        if self.config.anthropic_api_key:
+            if not validate_anthropic_api_key(self.config.anthropic_api_key):
+                self.config.validation_errors["anthropic_api_key"] = (
+                    "Invalid Anthropic API key format (should start with sk-ant-)"
+                )
+
+        # Validate Ollama endpoint if provided
+        if self.config.ollama_endpoint:
+            if not validate_url(self.config.ollama_endpoint):
+                self.config.validation_errors["ollama_endpoint"] = (
+                    "Invalid Ollama endpoint URL format"
+                )
+
+        # Validate IBM watsonx.ai endpoint if provided
+        if self.config.watsonx_endpoint:
+            if not validate_url(self.config.watsonx_endpoint):
+                self.config.validation_errors["watsonx_endpoint"] = (
+                    "Invalid IBM watsonx.ai endpoint URL format"
+                )
 
         # Validate documents paths only if provided (optional)
         if self.config.openrag_documents_paths:
@@ -289,9 +325,6 @@ class EnvManager:
                 f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
-                # Only write OpenAI API key if provided (can be set during onboarding instead)
-                if self.config.openai_api_key:
-                    f.write(f"OPENAI_API_KEY={self._quote_env_value(self.config.openai_api_key)}\n")
                 f.write(
                     f"OPENRAG_DOCUMENTS_PATHS={self._quote_env_value(self.config.openrag_documents_paths)}\n"
                 )
@@ -299,6 +332,27 @@ class EnvManager:
                     f"OPENSEARCH_DATA_PATH={self._quote_env_value(self.config.opensearch_data_path)}\n"
                 )
                 f.write("\n")
+
+                # Provider API keys and endpoints (optional - can be set during onboarding)
+                provider_vars = []
+                if self.config.openai_api_key:
+                    provider_vars.append(("OPENAI_API_KEY", self.config.openai_api_key))
+                if self.config.anthropic_api_key:
+                    provider_vars.append(("ANTHROPIC_API_KEY", self.config.anthropic_api_key))
+                if self.config.ollama_endpoint:
+                    provider_vars.append(("OLLAMA_ENDPOINT", self.config.ollama_endpoint))
+                if self.config.watsonx_api_key:
+                    provider_vars.append(("WATSONX_API_KEY", self.config.watsonx_api_key))
+                if self.config.watsonx_endpoint:
+                    provider_vars.append(("WATSONX_ENDPOINT", self.config.watsonx_endpoint))
+                if self.config.watsonx_project_id:
+                    provider_vars.append(("WATSONX_PROJECT_ID", self.config.watsonx_project_id))
+                
+                if provider_vars:
+                    f.write("# AI Provider API Keys and Endpoints\n")
+                    for var_name, var_value in provider_vars:
+                        f.write(f"{var_name}={self._quote_env_value(var_value)}\n")
+                    f.write("\n")
 
                 # Ingestion settings
                 f.write("# Ingestion settings\n")
