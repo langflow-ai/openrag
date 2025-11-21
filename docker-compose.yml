@@ -103,7 +103,7 @@ services:
   langflow:
     volumes:
       - ./flows:/app/flows:U,z
-    image: langflowai/langflow-nightly:${LANGFLOW_VERSION:-1.7.0.dev5}
+    image: phact/openrag-langflow:${LANGFLOW_VERSION:-latest}
     # build:
     #   context: .
     #   dockerfile: Dockerfile.langflow
