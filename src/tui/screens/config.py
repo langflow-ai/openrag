@@ -20,7 +20,13 @@ from rich.text import Text
 from pathlib import Path
 
 from ..managers.env_manager import EnvManager
-from ..utils.validation import validate_openai_api_key, validate_documents_paths
+from ..utils.validation import (
+    validate_openai_api_key,
+    validate_anthropic_api_key,
+    validate_ollama_endpoint,
+    validate_watsonx_endpoint,
+    validate_documents_paths,
+)
 from pathlib import Path
 
 
@@ -35,6 +41,45 @@ class OpenAIKeyValidator(Validator):
             return self.success()
         else:
             return self.failure("Invalid OpenAI API key format (should start with sk-)")
+
+
+class AnthropicKeyValidator(Validator):
+    """Validator for Anthropic API keys."""
+
+    def validate(self, value: str) -> ValidationResult:
+        if not value:
+            return self.success()
+
+        if validate_anthropic_api_key(value):
+            return self.success()
+        else:
+            return self.failure("Invalid Anthropic API key format (should start with sk-ant-)")
+
+
+class OllamaEndpointValidator(Validator):
+    """Validator for Ollama endpoint URLs."""
+
+    def validate(self, value: str) -> ValidationResult:
+        if not value:
+            return self.success()
+
+        if validate_ollama_endpoint(value):
+            return self.success()
+        else:
+            return self.failure("Invalid Ollama endpoint URL format")
+
+
+class WatsonxEndpointValidator(Validator):
+    """Validator for IBM watsonx.ai endpoint URLs."""
+
+    def validate(self, value: str) -> ValidationResult:
+        if not value:
+            return self.success()
+
+        if validate_watsonx_endpoint(value):
+            return self.success()
+        else:
+            return self.failure("Invalid watsonx.ai endpoint URL format")
 
 
 class DocumentsPathValidator(Validator):
@@ -225,6 +270,107 @@ class ConfigScreen(Screen):
             yield input_widget
             self.inputs["openai_api_key"] = input_widget
             yield Button("Show", id="toggle-openai-key", variant="default")
+        yield Static(" ")
+
+        # Anthropic API Key
+        yield Label("Anthropic API Key")
+        yield Static(
+            Text("Get a key: https://console.anthropic.com/settings/keys", style="dim"),
+            classes="helper-text",
+        )
+        yield Static(
+            Text("Can also be provided during onboarding", style="dim italic"),
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "anthropic_api_key", "")
+        with Horizontal(id="anthropic-key-row"):
+            input_widget = Input(
+                placeholder="sk-ant-...",
+                value=current_value,
+                password=True,
+                validators=[AnthropicKeyValidator()],
+                id="input-anthropic_api_key",
+            )
+            yield input_widget
+            self.inputs["anthropic_api_key"] = input_widget
+            yield Button("Show", id="toggle-anthropic-key", variant="default")
+        yield Static(" ")
+
+        # Ollama Endpoint
+        yield Label("Ollama Base URL")
+        yield Static(
+            Text("Endpoint of your Ollama server", style="dim"),
+            classes="helper-text",
+        )
+        yield Static(
+            Text("Can also be provided during onboarding", style="dim italic"),
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "ollama_endpoint", "")
+        input_widget = Input(
+            placeholder="http://localhost:11434",
+            value=current_value,
+            validators=[OllamaEndpointValidator()],
+            id="input-ollama_endpoint",
+        )
+        yield input_widget
+        self.inputs["ollama_endpoint"] = input_widget
+        yield Static(" ")
+
+        # IBM watsonx.ai API Key
+        yield Label("IBM watsonx.ai API Key")
+        yield Static(
+            Text("Get a key: https://cloud.ibm.com/iam/apikeys", style="dim"),
+            classes="helper-text",
+        )
+        yield Static(
+            Text("Can also be provided during onboarding", style="dim italic"),
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "watsonx_api_key", "")
+        with Horizontal(id="watsonx-key-row"):
+            input_widget = Input(
+                placeholder="",
+                value=current_value,
+                password=True,
+                id="input-watsonx_api_key",
+            )
+            yield input_widget
+            self.inputs["watsonx_api_key"] = input_widget
+            yield Button("Show", id="toggle-watsonx-key", variant="default")
+        yield Static(" ")
+
+        # IBM watsonx.ai Endpoint
+        yield Label("IBM watsonx.ai Endpoint")
+        yield Static(
+            Text("Example: https://us-south.ml.cloud.ibm.com", style="dim"),
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "watsonx_endpoint", "")
+        input_widget = Input(
+            placeholder="https://us-south.ml.cloud.ibm.com",
+            value=current_value,
+            validators=[WatsonxEndpointValidator()],
+            id="input-watsonx_endpoint",
+        )
+        yield input_widget
+        self.inputs["watsonx_endpoint"] = input_widget
+        yield Static(" ")
+
+        # IBM watsonx.ai Project ID
+        yield Label("IBM watsonx.ai Project ID")
+        yield Static(
+            Text("Find in your IBM Cloud project settings", style="dim"),
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "watsonx_project_id", "")
+        input_widget = Input(
+            placeholder="",
+            value=current_value,
+            id="input-watsonx_project_id",
+        )
+        yield input_widget
+        self.inputs["watsonx_project_id"] = input_widget
         yield Static(" ")
 
         # Add OAuth fields only in full mode
@@ -550,6 +696,18 @@ class ConfigScreen(Screen):
             if input_widget:
                 input_widget.password = not input_widget.password
                 event.button.label = "🙈" if not input_widget.password else "👁"
+        elif event.button.id == "toggle-anthropic-key":
+            # Toggle Anthropic API key visibility
+            input_widget = self.inputs.get("anthropic_api_key")
+            if input_widget:
+                input_widget.password = not input_widget.password
+                event.button.label = "Hide" if not input_widget.password else "Show"
+        elif event.button.id == "toggle-watsonx-key":
+            # Toggle watsonx API key visibility
+            input_widget = self.inputs.get("watsonx_api_key")
+            if input_widget:
+                input_widget.password = not input_widget.password
+                event.button.label = "Hide" if not input_widget.password else "Show"
 
     def action_generate(self) -> None:
         """Generate secure passwords for admin accounts."""
