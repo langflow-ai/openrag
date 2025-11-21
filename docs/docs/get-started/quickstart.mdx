@@ -24,11 +24,11 @@ For this quickstart, install OpenRAG with the automatic installer script and bas
     cd openrag-workspace
     ```
 
- 2. Run the installer:
+2. Run the installer:
 
-    ```bash
-    curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
-    ```
+   ```bash
+   curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
+   ```
 
    The TUI creates a `.env` file and docker-compose files in the current working directory, and then starts OpenRAG.
 
@@ -116,7 +116,7 @@ Click the **Language Model** component, and then change the **Model Name** to a 
 
    When editing built-in flows, you can click **Restore flow** to revert the flow to its initial state.
 
-4. Press <kbd>Command+S</kbd> (<kbd>Ctrl+S</kbd>) to save your changes.
+4. Press <kbd>Command</kbd>+<kbd>S</kbd> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to save your changes.
 
    You can close the Langflow browser window, or leave it open if you want to continue experimenting with the flow editor.
 
@@ -151,15 +151,15 @@ This key doesn't grant access to OpenRAG.
 
     <Tabs>
     <TabItem value="python" label="Python">
-    
+
     ```python
     import requests
     import os
     import uuid
-    
+
     api_key = 'LANGFLOW_API_KEY'
     url = "http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID"  # The complete API endpoint URL for this flow
-    
+
     # Request payload configuration
     payload = {
         "output_type": "chat",
@@ -167,26 +167,26 @@ This key doesn't grant access to OpenRAG.
         "input_value": "hello world!"
     }
     payload["session_id"] = str(uuid.uuid4())
-    
+
     headers = {"x-api-key": api_key}
-    
+
     try:
         # Send API request
         response = requests.request("POST", url, json=payload, headers=headers)
         response.raise_for_status()  # Raise exception for bad status codes
-    
+
         # Print response
         print(response.text)
-    
+
     except requests.exceptions.RequestException as e:
         print(f"Error making API request: {e}")
     except ValueError as e:
         print(f"Error parsing response: {e}")
     ```
-    
+
     </TabItem>
     <TabItem value="typescript" label="TypeScript">
-    
+
     ```typescript
     const crypto = require('crypto');
     const apiKey = 'LANGFLOW_API_KEY';
@@ -196,7 +196,7 @@ This key doesn't grant access to OpenRAG.
         "input_value": "hello world!"
     };
     payload.session_id = crypto.randomUUID();
-    
+
     const options = {
         method: 'POST',
         headers: {
@@ -205,16 +205,16 @@ This key doesn't grant access to OpenRAG.
         },
         body: JSON.stringify(payload)
     };
-    
+
     fetch('http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID', options)
         .then(response => response.json())
         .then(response => console.warn(response))
         .catch(err => console.error(err));
     ```
-    
+
     </TabItem>
     <TabItem value="curl" label="curl">
-    
+
     ```bash
     curl --request POST \
          --url 'http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID?stream=false' \
@@ -226,7 +226,7 @@ This key doesn't grant access to OpenRAG.
            "input_value": "hello world!"
          }'
     ```
-    
+
     </TabItem>
     </Tabs>
 
@@ -251,4 +251,4 @@ For all installation options, see [Install OpenRAG with TUI](/install) and [Inst
 
 * **Learn more about OpenRAG**: Explore OpenRAG and the OpenRAG documentation to learn more about its features and functionality.
 
-* **Learn more about the Langflow**: For a deep dive on the Langflow API and visual editor, see the [Langflow documentation](https://docs.langflow.org/).
+* **Learn more about Langflow**: For a deep dive on the Langflow API and visual editor, see the [Langflow documentation](https://docs.langflow.org/).
