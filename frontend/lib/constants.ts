@@ -28,7 +28,7 @@ export const UI_CONSTANTS = {
 export const ANIMATION_DURATION = 0.4;
 export const SIDEBAR_WIDTH = 280;
 export const HEADER_HEIGHT = 54;
-export const TOTAL_ONBOARDING_STEPS = 5;
+export const TOTAL_ONBOARDING_STEPS = 4;
 
 /**
  * Local Storage Keys
