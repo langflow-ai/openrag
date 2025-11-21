@@ -76,6 +76,7 @@ flowchart LR
 ```
 
 ```mermaid
+%%{init: {'theme': 'dark', 'flowchart': {'useMaxWidth': true, 'width': '100%'}}}%%
 architecture-beta
     group ext(cloud)[External connectors]
     service drive1(disk)[Google Drive] in ext
@@ -102,21 +103,6 @@ architecture-beta
 
     docling{group}:R -- L:backend{group}
     drive1{group}:B -- T:backend{group}
-```
-
-```mermaid
-mindmap
-  root((OpenRAG backend container))
-    Langflow
-      OpenSearch
-    OpenRAG frontend
-    Local services
-      Docling Serve
-    External connectors
-      Google Drive
-      OneDrive
-      SharePoint
-      Others
 ```
 
 ```mermaid
