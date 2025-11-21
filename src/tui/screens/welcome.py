@@ -22,13 +22,6 @@ class WelcomeScreen(Screen):
 
     BINDINGS = [
         ("q", "quit", "Quit"),
-        ("enter", "default_action", "Continue"),
-        ("1", "no_auth_setup", "Basic Setup"),
-        ("2", "full_setup", "Advanced Setup"),
-        ("3", "monitor", "Status"),
-        ("4", "diagnostics", "Diagnostics"),
-        ("5", "start_stop_services", "Start/Stop Services"),
-        ("6", "open_app", "Open App"),
     ]
 
     def __init__(self):
@@ -41,6 +34,9 @@ class WelcomeScreen(Screen):
         self.has_oauth_config = False
         self.default_button_id = "basic-setup-btn"
         self._state_checked = False
+        
+        # Check if .env file exists
+        self.has_env_file = self.env_manager.env_file.exists()
 
         # Load .env file if it exists
         load_dotenv()
@@ -161,6 +157,23 @@ class WelcomeScreen(Screen):
 
         buttons = []
 
+        # If no .env file exists, only show setup buttons
+        if not self.has_env_file:
+            if has_oauth:
+                # If OAuth is configured, only show advanced setup
+                buttons.append(
+                    Button("Advanced Setup", variant="success", id="advanced-setup-btn")
+                )
+            else:
+                # If no OAuth, show both options with basic as primary
+                buttons.append(
+                    Button("Basic Setup", variant="success", id="basic-setup-btn")
+                )
+                buttons.append(
+                    Button("Advanced Setup", variant="default", id="advanced-setup-btn")
+                )
+            return Horizontal(*buttons, classes="button-row")
+
         # Check if all services (native + container) are running
         all_services_running = self.services_running and self.docling_running
 
@@ -189,7 +202,7 @@ class WelcomeScreen(Screen):
                 )
 
             buttons.append(
-                Button("Start All Services", variant="primary", id="start-all-services-btn")
+                Button("Start OpenRAG", variant="primary", id="start-all-services-btn")
             )
 
         # Always show status option
@@ -253,6 +266,9 @@ class WelcomeScreen(Screen):
 
     async def on_screen_resume(self) -> None:
         """Called when returning from another screen (e.g., config screen)."""
+        # Check if .env file exists (may have been created)
+        self.has_env_file = self.env_manager.env_file.exists()
+        
         # Reload environment variables
         load_dotenv(override=True)
 

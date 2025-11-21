@@ -365,6 +365,21 @@ class OpenRAGTUI(App):
         self.container_manager = ContainerManager()
         self.env_manager = EnvManager()
         self.docling_manager = DoclingManager()  # Initialize singleton instance
+    
+    def notify(
+        self,
+        message: str,
+        *,
+        title: str = "",
+        severity: str = "information",
+        timeout: float | None = None,
+        markup: bool = True,
+    ) -> None:
+        """Override notify to make notifications last 20 seconds by default."""
+        # If timeout is None (default), make it 20 seconds
+        if timeout is None:
+            timeout = 20.0
+        super().notify(message, title=title, severity=severity, timeout=timeout, markup=markup)
 
     def on_mount(self) -> None:
         """Initialize the application."""
