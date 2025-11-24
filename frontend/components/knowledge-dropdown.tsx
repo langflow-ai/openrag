@@ -43,6 +43,33 @@ import {
 } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
 
+// Supported file extensions - single source of truth
+const SUPPORTED_EXTENSIONS = [
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".pptx",
+  ".ppt",
+  ".xlsx",
+  ".xls",
+  ".csv",
+  ".txt",
+  ".md",
+  ".html",
+  ".htm",
+  ".rtf",
+  ".odt",
+  ".asciidoc",
+  ".adoc",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".bmp",
+  ".tiff",
+  ".webp",
+];
+
 export function KnowledgeDropdown() {
   const { addTask } = useTask();
   const { refetch: refetchTasks } = useGetTasksQuery();
@@ -247,27 +274,18 @@ export function KnowledgeDropdown() {
 
     try {
       const fileList = Array.from(files);
-      const supportedExtensions = [
-        ".pdf",
-        ".doc",
-        ".docx",
-        ".txt",
-        ".md",
-        ".rtf",
-        ".odt",
-      ];
 
       const filteredFiles = fileList.filter((file) => {
         const ext = file.name
           .substring(file.name.lastIndexOf("."))
           .toLowerCase();
-        return supportedExtensions.includes(ext);
+        return SUPPORTED_EXTENSIONS.includes(ext);
       });
 
       if (filteredFiles.length === 0) {
         toast.error("No supported files found", {
           description:
-            "Please select a folder containing PDF, DOC, DOCX, TXT, MD, RTF, or ODT files.",
+            "Please select a folder containing supported document files (PDF, DOCX, PPTX, XLSX, CSV, HTML, images, etc.).",
         });
         return;
       }
@@ -527,7 +545,7 @@ export function KnowledgeDropdown() {
         type="file"
         onChange={handleFileChange}
         className="hidden"
-        accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
+        accept={SUPPORTED_EXTENSIONS.join(",")}
       />
 
       <input
