@@ -6,12 +6,29 @@ slug: /quickstart
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import PartialWsl from '@site/docs/_partial-wsl-install.mdx';
 
 Use this quickstart to install OpenRAG, and then try some of OpenRAG's core features.
 
 ## Prerequisites
 
-This quickstart requires an [OpenAI API key](https://platform.openai.com/api-keys) and [Python](https://www.python.org/downloads/release/python-3100/) version 3.10 to 3.13.
+This quickstart requires the following:
+
+- An [OpenAI API key](https://platform.openai.com/api-keys).
+This quickstart uses OpenAI for simplicity.
+For other providers, see the complete [installation guide](/install).
+
+- [Python](https://www.python.org/downloads/release/python-3100/) version 3.10 to 3.13.
+
+- Microsoft Windows only: To run OpenRAG on Windows, you must use the Windows Subsystem for Linux (WSL).
+
+   <details>
+   <summary>Install WSL for OpenRAG</summary>
+
+   <PartialWsl />
+
+   </details>
+
 
 ## Install OpenRAG
 
