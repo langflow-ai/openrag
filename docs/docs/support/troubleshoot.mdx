@@ -1,5 +1,5 @@
 ---
-title: Troubleshooting
+title: Troubleshoot OpenRAG
 slug: /support/troubleshoot
 ---
 
@@ -13,7 +13,7 @@ This page provides troubleshooting advice for issues you might encounter when us
 Check that `OPENSEARCH_PASSWORD` set in [Environment variables](/reference/configuration) meets requirements.
 The password must contain at least 8 characters, and must contain at least one uppercase letter, one lowercase letter, one digit, and one special character that is strong.
 
-## OpenRAG fails to start from the TUI with "Operation not supported" error
+## OpenRAG fails to start from the TUI with operation not supported
 
 This error occurs when starting OpenRAG with the TUI in [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
 
@@ -21,27 +21,36 @@ The error occurs because OpenRAG is running within a WSL environment, so `webbro
 
 To access the OpenRAG application, open a web browser and enter `http://localhost:3000` in the address bar.
 
+## OpenRAG installation fails with unable to get local issuer certificate
+
+If you are installing OpenRAG on macOS, and the installation fails with `unable to get local issuer certificate`, run the following command, and then retry the installation:
+
+```bash
+open "/Applications/Python VERSION/Install Certificates.command"
+```
+
+Replace `VERSION` with your installed Python version, such as `3.13`.
+
 ## Langflow connection issues
 
 Verify the `LANGFLOW_SUPERUSER` credentials set in [Environment variables](/reference/configuration) are correct.
 
-## Memory errors
-
-### Container out of memory errors
+## Container out of memory errors
 
 Increase Docker memory allocation or use [docker-compose-cpu.yml](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) to deploy OpenRAG.
 
-### Podman on macOS memory issues
+## Memory issue with Podman on macOS
 
-If you're using Podman on macOS, you may need to increase VM memory on your Podman machine.
+If you're using Podman on macOS, you might need to increase VM memory on your Podman machine.
 This example increases the machine size to 8 GB of RAM, which should be sufficient to run OpenRAG.
-   ```bash
-   podman machine stop
-   podman machine rm
-   podman machine init --memory 8192   # 8 GB example
-   podman machine start
-   ```
-   
+
+```bash
+podman machine stop
+podman machine rm
+podman machine init --memory 8192   # 8 GB example
+podman machine start
+```
+
 ## Port conflicts
 
 Ensure ports 3000, 7860, 8000, 9200, 5601 are available.
@@ -52,101 +61,153 @@ If Docling ingestion fails with an OCR-related error and mentions `easyocr` is m
 
 `easyocr` is already included as a dependency in OpenRAG's `pyproject.toml`. Project-managed installations using `uv sync` and `uv run` always sync dependencies directly from your `pyproject.toml`, so they should have `easyocr` installed.
 
-If you're running OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project. This cache may become stale. 
+If you're running OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project. This cache can become stale.
 
 On macOS, this cache directory is typically a user cache directory such as `/Users/USER_NAME/.cache/uv`.
+
 1. To clear the uv cache, run:
-    ```bash
-    uv cache clean
-    ```
+
+   ```bash
+   uv cache clean
+   ```
+
 2. Start OpenRAG:
-    ```bash
-    uvx openrag
-    ```
+
+   ```bash
+   uvx openrag
+   ```
 
 If you do not need OCR, you can disable OCR-based processing in your ingestion settings to avoid requiring `easyocr`.
 
-## Langflow container already exists {#langflow-container-already-exists-during-upgrade}
+## Upgrade fails due to Langflow container already exists {#langflow-container-already-exists-during-upgrade}
 
-If you encounter a `langflow container already exists` error when upgrading OpenRAG, this typically means you upgraded OpenRAG with `uv`, but didn't remove or upgrade containers from a previous installation.
+If you encounter a `langflow container already exists` error when upgrading OpenRAG, this typically means you upgraded OpenRAG with `uv`, but you didn't remove or upgrade containers from a previous installation.
 
-1. Remove only the problematic Langflow container:
+To resolve this issue, do the following:
 
-    <Tabs groupId="Container software">
-      <TabItem value="Podman" label="Podman">
-        ```bash
-        # Stop the langflow container
-        podman stop langflow
-        
-        # Remove the langflow container
-        podman rm langflow --force
-        ```
-      </TabItem>
-      <TabItem value="Docker" label="Docker" default>
-        ```bash
-        # Stop the langflow container
-        docker stop langflow
-        
-        # Remove the langflow container
-        docker rm langflow --force
-        ```
-      </TabItem>
-    </Tabs>
+First, try removing only the Langflow container, and then retry the upgrade in the OpenRAG TUI by clicking **Status** and then **Upgrade**.
 
-2. After removing the container, retry the upgrade in the OpenRAG TUI by clicking **Status** > **Upgrade**.
+<Tabs groupId="Container software">
+<TabItem value="Podman" label="Podman">
 
-### Reinstall all containers
+1. Stop the Langflow container:
 
-If reinstalling the Langflow container doesn't resolve the issue, or if you want a completely fresh installation, remove all OpenRAG containers and data, and then retry the upgrade.
-:::warning Data loss
-The complete reset removes all your data, including OpenSearch data, uploaded documents, and authentication. Your `.env` file is preserved, so your configuration settings remain intact.
+   ```bash
+   podman stop langflow
+   ```
+
+2. Remove the Langflow container:
+
+   ```bash
+   podman rm langflow --force
+   ```
+
+</TabItem>
+<TabItem value="Docker" label="Docker" default>
+
+1. Stop the Langflow container:
+
+   ```bash
+   docker stop langflow
+   ```
+
+2. Remove the Langflow container:
+
+   ```bash
+   docker rm langflow --force
+   ```
+
+</TabItem>
+</Tabs>
+
+If reinstalling the Langflow container doesn't resolve the issue, you must reset to a fresh installation by removing all OpenRAG containers and data.
+Then, you can retry the upgrade.
+
+:::warning
+This is a destructive operation that completely resets your OpenRAG containers and removes all OpenRAG data, including OpenSearch data, uploaded documents, and authentication details.
+Your `.env` file is preserved, so your configuration settings remain intact, but all other data is lost.
 :::
 
-1. Stop your containers and completely remove them.
+To reset your installation, stop your containers, and then completely remove them.
+After removing the containers, retry the upgrade in the OpenRAG TUI by clicking **Status** and then **Upgrade**.
 
-    <Tabs groupId="Container software">
-      <TabItem value="Podman" label="Podman">
-        ```bash
-        # Stop all running containers
-        podman stop --all
-        
-        # Remove all containers (including stopped ones)
-        podman rm --all --force
-        
-        # Remove all images
-        podman rmi --all --force
-        
-        # Remove all volumes
-        podman volume prune --force
-        
-        # Remove all networks (except default)
-        podman network prune --force
-        
-        # Clean up any leftover data
-        podman system prune --all --force --volumes
-        ```
-      </TabItem>
-      <TabItem value="Docker" label="Docker" default>
-        ```bash
-        # Stop all running containers
-        docker stop $(docker ps -q)
-        
-        # Remove all containers (including stopped ones)
-        docker rm --force $(docker ps -aq)
-        
-        # Remove all images
-        docker rmi --force $(docker images -q)
-        
-        # Remove all volumes
-        docker volume prune --force
-        
-        # Remove all networks (except default)
-        docker network prune --force
-        
-        # Clean up any leftover data
-        docker system prune --all --force --volumes
-        ```
-      </TabItem>
-    </Tabs>
+<Tabs groupId="Container software">
+<TabItem value="Podman" label="Podman">
 
-2. After removing the containers, retry the upgrade in the OpenRAG TUI by clicking **Status** > **Upgrade**.
+1. Stop all running containers:
+
+   ```bash
+   podman stop --all
+   ```
+
+2. Remove all containers, including stopped containers:
+
+   ```bash
+   podman rm --all --force
+   ```
+
+3. Remove all images:
+
+   ```bash
+   podman rmi --all --force
+   ```
+
+4. Remove all volumes:
+
+   ```bash
+   podman volume prune --force
+   ```
+
+5. Remove all networks except the default network:
+
+   ```bash
+   podman network prune --force
+   ```
+
+6. Clean up any leftover data:
+
+   ```bash
+   podman system prune --all --force --volumes
+   ```
+
+</TabItem>
+<TabItem value="Docker" label="Docker" default>
+
+1. Stop all running containers:
+
+   ```bash
+   docker stop $(docker ps -q)
+   ```
+
+2. Remove all containers, including stopped containers:
+
+   ```bash
+   docker rm --force $(docker ps -aq)
+   ```
+
+3. Remove all images:
+
+   ```bash
+   docker rmi --force $(docker images -q)
+   ```
+
+4. Remove all volumes:
+
+   ```bash
+   docker volume prune --force
+   ```
+
+5. Remove all networks except the default network:
+
+   ```bash
+   docker network prune --force
+   ```
+
+6. Clean up any leftover data:
+
+   ```bash
+   docker system prune --all --force --volumes
+   ```
+
+</TabItem>
+</Tabs>
