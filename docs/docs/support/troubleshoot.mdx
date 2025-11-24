@@ -64,14 +64,18 @@ If Docling ingestion fails with an OCR-related error and mentions `easyocr` is m
 If you're running OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project. This cache can become stale.
 
 On macOS, this cache directory is typically a user cache directory such as `/Users/USER_NAME/.cache/uv`.
+
 1. To clear the uv cache, run:
-    ```bash
-    uv cache clean
-    ```
+
+   ```bash
+   uv cache clean
+   ```
+
 2. Start OpenRAG:
-    ```bash
-    uvx openrag
-    ```
+
+   ```bash
+   uvx openrag
+   ```
 
 If you do not need OCR, you can disable OCR-based processing in your ingestion settings to avoid requiring `easyocr`.
 
@@ -88,30 +92,30 @@ First, try removing only the Langflow container, and then retry the upgrade in t
 
 1. Stop the Langflow container:
 
-  ```bash
-  podman stop langflow
-  ```
+   ```bash
+   podman stop langflow
+   ```
 
 2. Remove the Langflow container:
 
-  ```bash
-  podman rm langflow --force
-  ```
+   ```bash
+   podman rm langflow --force
+   ```
 
 </TabItem>
 <TabItem value="Docker" label="Docker" default>
 
 1. Stop the Langflow container:
 
-  ```bash
-  docker stop langflow
-  ```
+   ```bash
+   docker stop langflow
+   ```
 
 2. Remove the Langflow container:
 
-  ```bash
-  docker rm langflow --force
-  ```
+   ```bash
+   docker rm langflow --force
+   ```
 
 </TabItem>
 </Tabs>
@@ -132,78 +136,78 @@ After removing the containers, retry the upgrade in the OpenRAG TUI by clicking 
 
 1. Stop all running containers:
 
-  ```bash
-  podman stop --all
-  ```
+   ```bash
+   podman stop --all
+   ```
 
 2. Remove all containers, including stopped containers:
 
-  ```bash
-  podman rm --all --force
-  ```
+   ```bash
+   podman rm --all --force
+   ```
 
 3. Remove all images:
 
-  ```bash
-  podman rmi --all --force
-  ```
+   ```bash
+   podman rmi --all --force
+   ```
 
 4. Remove all volumes:
 
-  ```bash
-  podman volume prune --force
-  ```
+   ```bash
+   podman volume prune --force
+   ```
 
 5. Remove all networks except the default network:
 
-  ```bash
-  podman network prune --force
-  ```
+   ```bash
+   podman network prune --force
+   ```
 
 6. Clean up any leftover data:
 
-  ```bash
-  podman system prune --all --force --volumes
-  ```
+   ```bash
+   podman system prune --all --force --volumes
+   ```
 
 </TabItem>
 <TabItem value="Docker" label="Docker" default>
 
 1. Stop all running containers:
 
-  ```bash
-  docker stop $(docker ps -q)
-  ```
+   ```bash
+   docker stop $(docker ps -q)
+   ```
 
 2. Remove all containers, including stopped containers:
 
-  ```bash
-  docker rm --force $(docker ps -aq)
-  ```
+   ```bash
+   docker rm --force $(docker ps -aq)
+   ```
 
 3. Remove all images:
 
-  ```bash
-  docker rmi --force $(docker images -q)
-  ```
+   ```bash
+   docker rmi --force $(docker images -q)
+   ```
 
 4. Remove all volumes:
 
-  ```bash
-  docker volume prune --force
-  ```
+   ```bash
+   docker volume prune --force
+   ```
 
 5. Remove all networks except the default network:
 
-  ```bash
-  docker network prune --force
-  ```
+   ```bash
+   docker network prune --force
+   ```
 
 6. Clean up any leftover data:
 
-  ```bash
-  docker system prune --all --force --volumes
-  ```
+   ```bash
+   docker system prune --all --force --volumes
+   ```
 
 </TabItem>
 </Tabs>
