@@ -334,7 +334,7 @@ class AppClients:
 
         # Initialize Langflow HTTP client
         self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL, timeout=300.0
+            base_url=LANGFLOW_URL, timeout=1200.0
         )
 
         return self
