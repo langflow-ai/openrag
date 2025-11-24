@@ -1,10 +1,11 @@
-import { X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 
 interface FilePreviewProps {
   uploadedFile: File;
   onClear: () => void;
+  isUploading?: boolean;
 }
 
 const formatFileSize = (bytes: number): string => {
@@ -22,12 +23,14 @@ const getFilePreviewUrl = (file: File): string => {
   return "";
 };
 
-export const FilePreview = ({ uploadedFile, onClear }: FilePreviewProps) => {
+export const FilePreview = ({ uploadedFile, onClear, isUploading = false }: FilePreviewProps) => {
   return (
     <div className="max-w-[250px] flex items-center gap-2 p-2 bg-muted rounded-lg">
       {/* File Image Preview */}
       <div className="flex-shrink-0 w-8 h-8 bg-background rounded border border-input flex items-center justify-center overflow-hidden">
-        {getFilePreviewUrl(uploadedFile) ? (
+        {isUploading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : getFilePreviewUrl(uploadedFile) ? (
           <Image
             src={getFilePreviewUrl(uploadedFile)}
             alt="File preview"

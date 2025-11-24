@@ -472,19 +472,15 @@ export function Navigation({
                 </>
               )}
             </div>
-            <div className="flex-shrink-0 mt-4">
-              <div className="flex items-center justify-between mb-3 mx-3">
-                <h3 className="text-xs font-medium text-muted-foreground">
-                  Files
-                </h3>
-              </div>
-              <div className="overflow-y-auto scrollbar-hide space-y-1">
-                {(newConversationFiles?.length ?? 0) === 0 ? (
-                  <div className="text-[13px] text-muted-foreground py-2 px-3">
-                    No documents yet
-                  </div>
-                ) : (
-                  newConversationFiles?.map((file, index) => (
+            {(newConversationFiles?.length ?? 0) !== 0 && (
+              <div className="flex-shrink-0 mt-4">
+                <div className="flex items-center justify-between mb-3 mx-3">
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    Files
+                  </h3>
+                </div>
+                <div className="overflow-y-auto scrollbar-hide space-y-1">
+                  {newConversationFiles?.map((file, index) => (
                     <div
                       key={`${file}-${index}`}
                       className="flex-1 min-w-0 px-3"
@@ -493,10 +489,10 @@ export function Navigation({
                         {file}
                       </div>
                     </div>
-                  ))
-                )}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
