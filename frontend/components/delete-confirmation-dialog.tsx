@@ -12,6 +12,26 @@ import {
 import { Button } from "./ui/button";
 import { AlertTriangle } from "lucide-react";
 
+/**
+ * Formats a list of files to be deleted, truncating if necessary.
+ * @param files - Array of files with a `filename` property
+ * @param maxVisible - Maximum number of items to show before truncating (default: 5)
+ * @returns Formatted string with bullet points, truncated if needed
+ */
+export function formatFilesToDelete(
+  files: Array<{ filename: string }>,
+  maxVisible = 5,
+): string {
+  const visibleFiles = files.slice(0, maxVisible);
+  const remainingCount = files.length - maxVisible;
+  const fileList = visibleFiles.map((file) => `• ${file.filename}`).join("\n");
+  return remainingCount > 0
+    ? `${fileList}\n• ... and ${remainingCount} more document${
+        remainingCount > 1 ? "s" : ""
+      }`
+    : fileList;
+}
+
 interface DeleteConfirmationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
