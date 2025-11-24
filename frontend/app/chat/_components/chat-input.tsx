@@ -350,6 +350,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                     onClear={() => {
                       onFileSelected(null);
                     }}
+                    isUploading={isUploading}
                   />
                 </motion.div>
               )}
