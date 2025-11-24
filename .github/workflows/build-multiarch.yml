@@ -53,13 +53,13 @@ jobs:
           # backend
           - image: backend
             file: ./Dockerfile.backend
-            tag: phact/openrag-backend
+            tag: langflowai/openrag-backend
             platform: linux/amd64
             arch: amd64
             runs-on: ubuntu-latest-16-cores
           - image: backend
             file: ./Dockerfile.backend
-            tag: phact/openrag-backend
+            tag: langflowai/openrag-backend
             platform: linux/arm64
             arch: arm64
             runs-on: [self-hosted, linux, ARM64, langflow-ai-arm64-2]
@@ -67,13 +67,13 @@ jobs:
           # frontend
           - image: frontend
             file: ./Dockerfile.frontend
-            tag: phact/openrag-frontend
+            tag: langflowai/openrag-frontend
             platform: linux/amd64
             arch: amd64
             runs-on: ubuntu-latest-16-cores
           - image: frontend
             file: ./Dockerfile.frontend
-            tag: phact/openrag-frontend
+            tag: langflowai/openrag-frontend
             platform: linux/arm64
             arch: arm64
             runs-on: [self-hosted, linux, ARM64, langflow-ai-arm64-2]
@@ -81,13 +81,13 @@ jobs:
           # langflow
           - image: langflow
             file: ./Dockerfile.langflow
-            tag: phact/openrag-langflow
+            tag: langflowai/openrag-langflow
             platform: linux/amd64
             arch: amd64
             runs-on: ubuntu-latest-16-cores
           - image: langflow
             file: ./Dockerfile.langflow
-            tag: phact/openrag-langflow
+            tag: langflowai/openrag-langflow
             platform: linux/arm64
             arch: arm64
             runs-on: self-hosted
@@ -95,13 +95,13 @@ jobs:
           # opensearch
           - image: opensearch
             file: ./Dockerfile
-            tag: phact/openrag-opensearch
+            tag: langflowai/openrag-opensearch
             platform: linux/amd64
             arch: amd64
             runs-on: ubuntu-latest-16-cores
           - image: opensearch
             file: ./Dockerfile
-            tag: phact/openrag-opensearch
+            tag: langflowai/openrag-opensearch
             platform: linux/arm64
             arch: arm64
             runs-on: [self-hosted, linux, ARM64, langflow-ai-arm64-2]
@@ -165,40 +165,40 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
 
           # Create versioned tags
-          docker buildx imagetools create -t phact/openrag-backend:$VERSION \
-            phact/openrag-backend:$VERSION-amd64 \
-            phact/openrag-backend:$VERSION-arm64
+          docker buildx imagetools create -t langflowai/openrag-backend:$VERSION \
+            langflowai/openrag-backend:$VERSION-amd64 \
+            langflowai/openrag-backend:$VERSION-arm64
 
-          docker buildx imagetools create -t phact/openrag-frontend:$VERSION \
-            phact/openrag-frontend:$VERSION-amd64 \
-            phact/openrag-frontend:$VERSION-arm64
+          docker buildx imagetools create -t langflowai/openrag-frontend:$VERSION \
+            langflowai/openrag-frontend:$VERSION-amd64 \
+            langflowai/openrag-frontend:$VERSION-arm64
 
-          docker buildx imagetools create -t phact/openrag-langflow:$VERSION \
-            phact/openrag-langflow:$VERSION-amd64 \
-            phact/openrag-langflow:$VERSION-arm64
+          docker buildx imagetools create -t langflowai/openrag-langflow:$VERSION \
+            langflowai/openrag-langflow:$VERSION-amd64 \
+            langflowai/openrag-langflow:$VERSION-arm64
 
-          docker buildx imagetools create -t phact/openrag-opensearch:$VERSION \
-            phact/openrag-opensearch:$VERSION-amd64 \
-            phact/openrag-opensearch:$VERSION-arm64
+          docker buildx imagetools create -t langflowai/openrag-opensearch:$VERSION \
+            langflowai/openrag-opensearch:$VERSION-amd64 \
+            langflowai/openrag-opensearch:$VERSION-arm64
 
           # Only update latest tags if version is numeric
           if [[ "$VERSION" =~ ^[0-9.-]+$ ]]; then
             echo "Updating latest tags for production release: $VERSION"
-            docker buildx imagetools create -t phact/openrag-backend:latest \
-              phact/openrag-backend:$VERSION-amd64 \
-              phact/openrag-backend:$VERSION-arm64
+            docker buildx imagetools create -t langflowai/openrag-backend:latest \
+              langflowai/openrag-backend:$VERSION-amd64 \
+              langflowai/openrag-backend:$VERSION-arm64
 
-            docker buildx imagetools create -t phact/openrag-frontend:latest \
-              phact/openrag-frontend:$VERSION-amd64 \
-              phact/openrag-frontend:$VERSION-arm64
+            docker buildx imagetools create -t langflowai/openrag-frontend:latest \
+              langflowai/openrag-frontend:$VERSION-amd64 \
+              langflowai/openrag-frontend:$VERSION-arm64
 
-            docker buildx imagetools create -t phact/openrag-langflow:latest \
-              phact/openrag-langflow:$VERSION-amd64 \
-              phact/openrag-langflow:$VERSION-arm64
+            docker buildx imagetools create -t langflowai/openrag-langflow:latest \
+              langflowai/openrag-langflow:$VERSION-amd64 \
+              langflowai/openrag-langflow:$VERSION-arm64
 
-            docker buildx imagetools create -t phact/openrag-opensearch:latest \
-              phact/openrag-opensearch:$VERSION-amd64 \
-              phact/openrag-opensearch:$VERSION-arm64
+            docker buildx imagetools create -t langflowai/openrag-opensearch:latest \
+              langflowai/openrag-opensearch:$VERSION-amd64 \
+              langflowai/openrag-opensearch:$VERSION-arm64
           else
             echo "Skipping latest tags - version: $VERSION (not numeric)"
           fi
