@@ -171,7 +171,7 @@ export function OnboardingContent({
             />
           </OnboardingStep>
 
-          {/* Step 2 */}
+          {/* Step 3 */}
           <OnboardingStep
             isVisible={currentStep >= 2}
             isCompleted={currentStep > 2 || !!selectedNudge}
@@ -209,7 +209,7 @@ export function OnboardingContent({
               />
             )}
 
-          {/* Step 3 */}
+          {/* Step 4 */}
           <OnboardingStep
             isVisible={currentStep >= 3 && !isLoading && !!displayMessage}
             isCompleted={currentStep > 3}
