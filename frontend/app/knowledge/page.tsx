@@ -32,6 +32,11 @@ import {
 } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   DeleteConfirmationDialog,
   formatFilesToDelete,
 } from "../../components/delete-confirmation-dialog";
@@ -156,9 +161,14 @@ function SearchPage() {
               }}
             >
               {getSourceIcon(data?.connector_type)}
-              <span className="font-medium text-foreground truncate">
-                {value}
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="font-medium text-foreground truncate">
+                    {value}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{value}</TooltipContent>
+              </Tooltip>
             </button>
           </div>
         );
