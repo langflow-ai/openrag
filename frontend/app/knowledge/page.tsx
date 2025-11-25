@@ -167,7 +167,9 @@ function SearchPage() {
                     {value}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>{value}</TooltipContent>
+                <TooltipContent side="top" align="start">
+                  {value}
+                </TooltipContent>
               </Tooltip>
             </button>
           </div>
