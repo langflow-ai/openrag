@@ -24,9 +24,27 @@ const sidebars = {
     "get-started/quickstart",
     "get-started/install",
     "get-started/docker",
-    "core-components/agents",
-    "core-components/knowledge",
-    "core-components/ingestion",
+    {
+      type: "category",
+      label: "Langflow in OpenRAG",
+      items: [
+        "core-components/agents",
+      ],
+    },
+    {
+      type: "category",
+      label: "OpenSearch in OpenRAG",
+      items: [
+        "core-components/knowledge",
+      ],
+    },
+    {
+      type: "category",
+      label: "Docling in OpenRAG",
+      items: [
+        "core-components/ingestion",
+      ],
+    },
     "reference/configuration",
     "support/troubleshoot",
   ],
