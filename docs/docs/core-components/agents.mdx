@@ -58,6 +58,15 @@ This filter is the [Knowledge filter](/knowledge#create-knowledge-filters), and 
 
 * An [**MCP Tools** component](https://docs.langflow.org/mcp-client) is connected to the Agent's **Tools** port. This component calls the [**OpenSearch URL Ingestion** flow](/ingestion#url-flow), which Langflow uses as a [Model Context Protocol (MCP) server](https://docs.langflow.org/mcp-server) to fetch content from URLs and store in OpenSearch.
 
+### Nudges
+
+When you use the OpenRAG **Chat**, the **OpenRAG OpenSearch Nudges** flow runs in the background to pull additional context from your knowledge base and chat history.
+
+Nudges appear as prompts in the chat.
+Click a nudge to accept it and provide the nudge's context to the OpenRAG **Chat** agent (the **OpenRAG OpenSearch Agent** flow).
+
+Like OpenRAG's other built-in flows, you can [inspect the flow in Langflow](#inspect-and-modify-flows), and you can customize it if you want to change the nudge behavior.
+
 ## Inspect and modify flows {#inspect-and-modify-flows}
 
 All OpenRAG flows are designed to be modular, performant, and provider-agnostic.

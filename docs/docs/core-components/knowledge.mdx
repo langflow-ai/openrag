@@ -26,9 +26,7 @@ To configure the knowledge ingestion pipeline parameters, see [Docling Ingestion
 
 ### Direct file ingestion
 
-<!-- is this a separate flow or same as the OpenSearch Ingestion flow? -->
-
-The **Knowledge Ingest** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
+The **OpenSearch Ingestion** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
 
 The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#setup) menu or in the `.env` used by Docker Compose.
 
@@ -109,7 +107,7 @@ The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSea
 To explore the raw contents of your knowledge base, click <Icon name="Library" aria-hidden="true"/> **Knowledge** to get a list of all ingested documents.
 Click a document to view the chunks produced from splitting the documents during ingestion into the vector database.
 
-Documents are processed with the default **Knowledge Ingest** flow. If you want to split your documents differently, edit the **Knowledge Ingest** flow, as explained in [Inspect and modify flows](/agents#inspect-and-modify-flows).
+Documents are processed with the default **OpenSearch Ingestion** flow. If you want to split your documents differently, edit the **OpenSearch Ingestion** flow, as explained in [Inspect and modify flows](/agents#inspect-and-modify-flows).
 
 ## Chat with knowledge
 
