@@ -45,9 +45,9 @@ services:
 
   openrag-backend:
     image: phact/openrag-backend:${OPENRAG_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.backend
     container_name: openrag-backend
     depends_on:
       - langflow
@@ -89,9 +89,9 @@ services:
 
   openrag-frontend:
     image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
     depends_on:
       - openrag-backend
@@ -104,9 +104,9 @@ services:
     volumes:
       - ./flows:/app/flows:U,z
     image: phact/openrag-langflow:${LANGFLOW_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile.langflow
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.langflow
     container_name: langflow
     ports:
       - "7860:7860"
