@@ -83,7 +83,7 @@ The **Add Cloud Knowledge** page opens.
 Select the files or folders you want and click **Select**.
 You can select multiple files.
 3. When your files are selected, click **Ingest Files**.
-The ingestion process may take some time, depending on the size of your documents.
+The ingestion process can take some time depending on the size of your documents.
 4. When ingestion is complete, your documents are available in the Knowledge screen.
 
 If ingestion fails, click **Status** to view the logged error.
@@ -151,7 +151,7 @@ The complete list of supported models is available at [`models_service.py` in th
 
 You can use custom embedding models by specifying them in your configuration.
 
-If you use an unknown embedding model, OpenRAG will automatically fall back to `1536` dimensions and log a warning. The system will continue to work, but search quality may be affected if the actual model dimensions differ from `1536`.
+If you use an unknown embedding model, OpenRAG automatically falls back to `1536` dimensions and logs a warning. The system continues to work, but search quality can be affected if the actual model dimensions differ from `1536`.
 
 The default embedding dimension is `1536` and the default model is `text-embedding-3-small`.
 

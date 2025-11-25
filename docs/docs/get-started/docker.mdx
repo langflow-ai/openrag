@@ -6,8 +6,9 @@ slug: /docker
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
+import PartialWsl from '@site/docs/_partial-wsl-install.mdx';
 
-OpenRAG has two Docker Compose files. Both files deploy the same applications and containers locally, but they are for different environments.
+OpenRAG has two Docker Compose files. Both files deploy the same applications and containers locally, but they are for different environments:
 
 - [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing. This Docker Compose file requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support.
 
@@ -15,12 +16,36 @@ OpenRAG has two Docker Compose files. Both files deploy the same applications an
 
 ## Prerequisites
 
-- Install [Python Version 3.10 to 3.13](https://www.python.org/downloads/release/python-3100/)
-- Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- Install [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/)
-- Install [Docker Compose](https://docs.docker.com/compose/install/). If using Podman, use [podman-compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or alias Docker compose commands to Podman commands.
-- Optional: Create an [OpenAI API key](https://platform.openai.com/api-keys). You can provide this key during [Application Onboarding](#application-onboarding) or choose a different model provider.
-- Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
+- Install the following:
+
+   - [Python](https://www.python.org/downloads/release/python-3100/) version 3.10 to 3.13.
+   - [uv](https://docs.astral.sh/uv/getting-started/installation/).
+   - [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/).
+   - [`podman-compose`](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or [Docker Compose](https://docs.docker.com/compose/install/). To use Docker Compose with Podman, you must alias Docker Compose commands to Podman commands.
+
+- Microsoft Windows only: To run OpenRAG on Windows, you must use the Windows Subsystem for Linux (WSL).
+
+   <details>
+   <summary>Install WSL for OpenRAG</summary>
+
+   <PartialWsl />
+
+   </details>
+
+- Prepare model providers and credentials.
+
+   During [Application Onboarding](#application-onboarding), you must select language model and embedding model providers.
+   If your chosen provider offers both types, you can use the same provider for both selections.
+   If your provider offers only one type, such as Anthropic, you must select two providers.
+
+   Gather the credentials and connection details for your chosen model providers before starting onboarding:
+
+   - OpenAI: Create an [OpenAI API key](https://platform.openai.com/api-keys).
+   - Anthropic language models: Create an [Anthropic API key](https://www.anthropic.com/docs/api/reference).
+   - IBM watsonx.ai: Get your watsonx.ai API endpoint, IBM project ID, and IBM API key from your watsonx deployment.
+   - Ollama: Use the [Ollama documentation](https://docs.ollama.com/) to set up your Ollama instance locally, in the cloud, or on a remote server, and then get your Ollama server's base URL.
+
+- Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. This is required to use the GPU-accelerated Docker Compose file. If you choose not to use GPU support, you must use the CPU-only Docker Compose file instead.
 
 ## Install OpenRAG with Docker Compose
 
