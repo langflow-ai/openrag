@@ -614,7 +614,7 @@ async def update_settings(request, session_manager):
                     )
                     logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
 
-                # Update model values across flows if provider or model changed
+                # Update LLM model values across flows if provider or model changed
                 if "llm_provider" in body or "llm_model" in body:
                     flows_service = _get_flows_service()
                     llm_provider = current_config.agent.llm_provider.lower()
@@ -629,18 +629,13 @@ async def update_settings(request, session_manager):
                         f"Successfully updated Langflow flows for LLM provider {llm_provider}"
                     )
 
+                # Update SELECTED_EMBEDDING_MODEL global variable (no flow updates needed)
                 if "embedding_provider" in body or "embedding_model" in body:
-                    flows_service = _get_flows_service()
-                    embedding_provider = current_config.knowledge.embedding_provider.lower()
-                    embedding_provider_config = current_config.get_embedding_provider_config()
-                    embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
-                    await flows_service.change_langflow_model_value(
-                        embedding_provider,
-                        embedding_model=current_config.knowledge.embedding_model,
-                        endpoint=embedding_endpoint,
+                    await clients._create_langflow_global_variable(
+                        "SELECTED_EMBEDDING_MODEL", current_config.knowledge.embedding_model, modify=True
                     )
                     logger.info(
-                        f"Successfully updated Langflow flows for embedding provider {embedding_provider}"
+                        f"Set SELECTED_EMBEDDING_MODEL global variable to {current_config.knowledge.embedding_model}"
                     )
 
             except Exception as e:
@@ -928,7 +923,7 @@ async def onboarding(request, flows_service):
                 )
                 logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
 
-            # Update flows with model values
+            # Update flows with LLM model values
             if "llm_provider" in body or "llm_model" in body:
                 llm_provider = current_config.agent.llm_provider.lower()
                 llm_provider_config = current_config.get_llm_provider_config()
@@ -940,16 +935,14 @@ async def onboarding(request, flows_service):
                 )
                 logger.info(f"Updated Langflow flows for LLM provider {llm_provider}")
 
+            # Set SELECTED_EMBEDDING_MODEL global variable (no flow updates needed)
             if "embedding_provider" in body or "embedding_model" in body:
-                embedding_provider = current_config.knowledge.embedding_provider.lower()
-                embedding_provider_config = current_config.get_embedding_provider_config()
-                embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
-                await flows_service.change_langflow_model_value(
-                    provider=embedding_provider,
-                    embedding_model=current_config.knowledge.embedding_model,
-                    endpoint=embedding_endpoint,
+                await clients._create_langflow_global_variable(
+                    "SELECTED_EMBEDDING_MODEL", current_config.knowledge.embedding_model, modify=True
                 )
-                logger.info(f"Updated Langflow flows for embedding provider {embedding_provider}")
+                logger.info(
+                    f"Set SELECTED_EMBEDDING_MODEL global variable to {current_config.knowledge.embedding_model}"
+                )
 
         except Exception as e:
             logger.error(

@@ -140,6 +140,11 @@ class LangflowFileService:
         filename = str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
         mimetype = str(file_tuples[0][2]) if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2 else ""
 
+        # Get the current embedding model from config
+        from config.config_manager import get_openrag_config
+        config = get_openrag_config()
+        embedding_model = config.knowledge.embedding_model
+
         headers={
                 "X-Langflow-Global-Var-JWT": str(jwt_token),
                 "X-Langflow-Global-Var-OWNER": str(owner),
@@ -149,6 +154,7 @@ class LangflowFileService:
                 "X-Langflow-Global-Var-FILENAME": filename,
                 "X-Langflow-Global-Var-MIMETYPE": mimetype,
                 "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
+                "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
             }
         logger.info(f"[LF] Headers {headers}")
         logger.info(f"[LF] Payload {payload}")
