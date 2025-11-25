@@ -485,7 +485,7 @@ def copy_compose_files(*, force: bool = False) -> None:
         logger.debug(f"Could not access compose assets: {e}")
         return
 
-    for filename in ("docker-compose.yml", "docker-compose-cpu.yml"):
+    for filename in ("docker-compose.yml", "docker-compose.gpu.yml"):
         destination = Path(filename)
         if destination.exists() and not force:
             continue
