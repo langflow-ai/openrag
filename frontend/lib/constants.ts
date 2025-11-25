@@ -25,6 +25,13 @@ export const UI_CONSTANTS = {
   MAX_SYSTEM_PROMPT_CHARS: 4000,
 } as const;
 
+/**
+ * Search Constants
+ */
+export const SEARCH_CONSTANTS = {
+  WILDCARD_QUERY_LIMIT: 10000, // Maximum allowed limit for wildcard searches
+} as const;
+
 export const ANIMATION_DURATION = 0.4;
 export const SIDEBAR_WIDTH = 280;
 export const HEADER_HEIGHT = 54;
