@@ -300,14 +300,35 @@ def process_document_sync(file_path: str):
 
         except Exception as e:
             current_memory = process.memory_info().rss / 1024 / 1024
+            error_str = str(e)
+            
+            # Enhance error message for common issues
+            enhanced_error = error_str
+            if "unsupported" in error_str.lower() or "not supported" in error_str.lower():
+                file_ext = Path(original_file_path).suffix.lower()
+                enhanced_error = (
+                    f"File format '{file_ext}' processing failed: {error_str}. "
+                    f"This file type may not be supported by the document processor."
+                )
+            elif "format" in error_str.lower() and "unknown" in error_str.lower():
+                file_ext = Path(original_file_path).suffix.lower()
+                enhanced_error = (
+                    f"Unknown file format '{file_ext}': {error_str}. "
+                    f"Please ensure the file is a supported document type (PDF, DOCX, TXT, MD, etc.)."
+                )
+            
             logger.error(
                 "Failed during docling conversion",
                 worker_pid=os.getpid(),
-                error=str(e),
+                error=enhanced_error,
+                original_error=error_str,
+                file_extension=Path(original_file_path).suffix.lower(),
                 current_memory_mb=f"{current_memory:.1f}",
             )
             traceback.print_exc()
-            raise
+            
+            # Raise enhanced error for better user feedback
+            raise RuntimeError(enhanced_error) from e
 
         # Extract relevant content (same logic as extract_relevant)
         try:

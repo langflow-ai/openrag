@@ -342,10 +342,57 @@ class DocumentFileProcessor(TaskProcessor):
             upload_task.successful_files += 1
 
         except Exception as e:
+            # Create user-friendly error message
+            error_msg = str(e)
+            
+            # Check for common error patterns and enhance the message
+            if "unsupported" in error_msg.lower() or "not supported" in error_msg.lower():
+                file_ext = os.path.splitext(item)[1].lower()
+                user_friendly_error = (
+                    f"File '{os.path.basename(item)}' could not be processed. "
+                    f"The file format '{file_ext}' may not be supported or the file may be corrupted."
+                )
+            elif "format" in error_msg.lower() and "unknown" in error_msg.lower():
+                file_ext = os.path.splitext(item)[1].lower()
+                user_friendly_error = (
+                    f"Unknown file format '{file_ext}' for '{os.path.basename(item)}'. "
+                    f"Supported formats include: PDF, DOCX, TXT, MD, HTML, and various image formats."
+                )
+            elif "docling" in error_msg.lower():
+                user_friendly_error = (
+                    f"Document conversion failed for '{os.path.basename(item)}': {error_msg}"
+                )
+            elif "memory" in error_msg.lower() or "MemoryError" in type(e).__name__:
+                user_friendly_error = (
+                    f"File '{os.path.basename(item)}' is too large to process. "
+                    f"Please try with a smaller file or contact support."
+                )
+            elif "permission" in error_msg.lower() or "PermissionError" in type(e).__name__:
+                user_friendly_error = (
+                    f"Permission denied when accessing '{os.path.basename(item)}'. "
+                    f"Please check file permissions."
+                )
+            else:
+                # For other errors, include more context
+                user_friendly_error = (
+                    f"Failed to process '{os.path.basename(item)}': {error_msg}"
+                )
+            
             file_task.status = TaskStatus.FAILED
-            file_task.error = str(e)
+            file_task.error = user_friendly_error
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
+            
+            # Log the original technical error for debugging
+            logger.error(
+                "File processing failed",
+                filename=os.path.basename(item),
+                file_path=item,
+                error_type=type(e).__name__,
+                original_error=error_msg,
+                user_message=user_friendly_error,
+            )
+            
             raise
         finally:
             upload_task.processed_files += 1
