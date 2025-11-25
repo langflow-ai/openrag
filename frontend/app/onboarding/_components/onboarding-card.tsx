@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Info, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -73,6 +73,42 @@ const OnboardingCard = ({
 
   // Fetch current settings to check if providers are already configured
   const { data: currentSettings } = useGetSettingsQuery();
+
+  // Auto-select the first provider that has an API key set in env vars
+  useEffect(() => {
+    if (!currentSettings?.providers) return;
+
+    // Define provider order based on whether it's embedding or not
+    const providerOrder = isEmbedding
+      ? ["openai", "watsonx", "ollama"]
+      : ["anthropic", "openai", "watsonx", "ollama"];
+
+    // Find the first provider with an API key
+    for (const provider of providerOrder) {
+      if (
+        provider === "anthropic" &&
+        currentSettings.providers.anthropic?.has_api_key
+      ) {
+        setModelProvider("anthropic");
+        return;
+      } else if (provider === "openai" && currentSettings.providers.openai?.has_api_key) {
+        setModelProvider("openai");
+        return;
+      } else if (
+        provider === "watsonx" &&
+        currentSettings.providers.watsonx?.has_api_key
+      ) {
+        setModelProvider("watsonx");
+        return;
+      } else if (
+        provider === "ollama" &&
+        currentSettings.providers.ollama?.endpoint
+      ) {
+        setModelProvider("ollama");
+        return;
+      }
+    }
+  }, [currentSettings, isEmbedding]);
 
   const handleSetModelProvider = (provider: string) => {
     setIsLoadingModels(false);
@@ -305,7 +341,7 @@ const OnboardingCard = ({
             </AnimatePresence>
             <div className={`w-full flex flex-col gap-6`}>
               <Tabs
-                defaultValue={modelProvider}
+                value={modelProvider}
                 onValueChange={handleSetModelProvider}
               >
                 <TabsList className="mb-4">
