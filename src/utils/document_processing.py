@@ -1,7 +1,4 @@
-import hashlib
 import os
-import sys
-import platform
 from collections import defaultdict
 from .gpu_detection import detect_gpu_devices
 from utils.logging_config import get_logger
@@ -60,6 +57,16 @@ def create_document_converter(ocr_engine: str | None = None):
         format_options[getattr(InputFormat, "IMAGE")] = PdfFormatOption(
             pipeline_options=pipeline_options
         )
+    
+    # Add markdown support (used for .txt files converted to .md)
+    # Docling doesn't natively support .txt, but can handle .md with plain text
+    try:
+        from docling.document_converter import FormatOption
+        if hasattr(InputFormat, "MD"):
+            format_options[getattr(InputFormat, "MD")] = FormatOption()
+            logger.debug("Added markdown format support for TXT file handling")
+    except Exception as e:
+        logger.debug("Could not add markdown format option", error=str(e))
 
     try:
         converter = DocumentConverter(
@@ -186,9 +193,28 @@ def process_document_sync(file_path: str):
     import psutil
     import sys
     from collections import defaultdict
+    from pathlib import Path
+    import shutil
 
     process = psutil.Process()
     start_memory = process.memory_info().rss / 1024 / 1024  # MB
+    
+    # Handle .txt files by creating a temporary .md copy
+    # Docling doesn't natively support .txt, but can handle .md with plain text
+    temp_md_file = None
+    original_file_path = file_path
+    file_path_obj = Path(file_path)
+    
+    if file_path_obj.suffix.lower() == ".txt":
+        logger.info(
+            "Converting .txt to .md for Docling processing",
+            worker_pid=os.getpid(),
+            original_file=file_path_obj.name,
+        )
+        # Create a temp .md file with the same content
+        temp_md_file = file_path_obj.with_suffix(".md")
+        shutil.copy2(file_path, temp_md_file)
+        file_path = str(temp_md_file)
 
     try:
         logger.info(
@@ -329,15 +355,40 @@ def process_document_sync(file_path: str):
             memory_delta_mb=f"{memory_delta:.1f}",
         )
 
-        return {
+        result = {
             "id": file_hash,
             "filename": origin.get("filename"),
             "mimetype": origin.get("mimetype"),
             "chunks": chunks,
-            "file_path": file_path,
+            "file_path": original_file_path,
         }
+        
+        # Clean up temporary .md file if we created one
+        if temp_md_file and temp_md_file.exists():
+            try:
+                temp_md_file.unlink()
+                logger.debug(
+                    "Cleaned up temporary .md file",
+                    worker_pid=os.getpid(),
+                    temp_file=str(temp_md_file),
+                )
+            except Exception as cleanup_error:
+                logger.warning(
+                    "Failed to cleanup temp .md file",
+                    worker_pid=os.getpid(),
+                    temp_file=str(temp_md_file),
+                    error=str(cleanup_error),
+                )
+        
+        return result
 
     except Exception as e:
+        # Clean up temporary .md file on error too
+        if temp_md_file and temp_md_file.exists():
+            try:
+                temp_md_file.unlink()
+            except:
+                pass
         final_memory = process.memory_info().rss / 1024 / 1024
         memory_delta = final_memory - start_memory
         logger.error(

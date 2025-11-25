@@ -179,9 +179,21 @@ class DocumentService:
     async def process_upload_context(self, upload_file, filename: str = None):
         """Process uploaded file and return content for context"""
         import io
+        import os
 
         if not filename:
             filename = upload_file.filename or "uploaded_document"
+        
+        # Handle .txt files by treating them as .md for Docling
+        # Docling doesn't natively support .txt, but can handle .md with plain text
+        original_filename = filename
+        if filename.lower().endswith(".txt"):
+            filename = os.path.splitext(filename)[0] + ".md"
+            logger.info(
+                "Converting .txt to .md for Docling processing",
+                original_filename=original_filename,
+                converted_filename=filename,
+            )
 
         # Stream file content into BytesIO
         content = io.BytesIO()
