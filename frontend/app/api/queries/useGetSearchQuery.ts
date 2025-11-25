@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { ParsedQueryData } from "@/contexts/knowledge-filter-context";
+import { SEARCH_CONSTANTS } from "@/lib/constants";
 
 export interface SearchPayload {
   query: string;
@@ -70,13 +71,16 @@ export const useGetSearchQuery = (
 
   async function getFiles(): Promise<File[]> {
     try {
+      // For wildcard queries, use a high limit to get all files
+      // Otherwise use the limit from queryData or default to 100
+      const isWildcardQuery = effectiveQuery.trim() === "*" || effectiveQuery.trim() === "";
+      const searchLimit = isWildcardQuery
+        ? SEARCH_CONSTANTS.WILDCARD_QUERY_LIMIT
+        : (queryData?.limit || 100);
+
       const searchPayload: SearchPayload = {
         query: effectiveQuery,
-        limit:
-          queryData?.limit ||
-          (effectiveQuery.trim() === "*" || effectiveQuery.trim() === ""
-            ? 10000
-            : 10), // Maximum allowed limit for wildcard searches
+        limit: searchLimit,
         scoreThreshold: queryData?.scoreThreshold || 0,
       };
       if (queryData?.filters) {
