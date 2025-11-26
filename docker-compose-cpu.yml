@@ -2,8 +2,8 @@ services:
   opensearch:
     image: langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
     #build:
-    #context: .
-    #dockerfile: Dockerfile
+    #  context: .
+    #  dockerfile: Dockerfile
     container_name: os
     depends_on:
       - openrag-backend
@@ -138,3 +138,4 @@ services:
       - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI}
       # - DEFAULT_FOLDER_NAME=OpenRAG
       - HIDE_GETTING_STARTED_PROGRESS=true
+
