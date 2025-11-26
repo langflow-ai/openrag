@@ -375,6 +375,7 @@
       },
       {
         "animated": false,
+        "className": "",
         "data": {
           "sourceHandle": {
             "dataType": "EmbeddingModel",
@@ -399,6 +400,36 @@
         "sourceHandle": "{œdataTypeœ:œEmbeddingModelœ,œidœ:œEmbeddingModel-EAo9iœ,œnameœ:œembeddingsœ,œoutput_typesœ:[œEmbeddingsœ]}",
         "target": "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4",
         "targetHandle": "{œfieldNameœ:œembeddingœ,œidœ:œOpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4œ,œinputTypesœ:[œEmbeddingsœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "AdvancedDynamicFormBuilder",
+            "id": "AdvancedDynamicFormBuilder-81Exw",
+            "name": "form_data",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "input_value",
+            "id": "ChatOutput-4Bw8A",
+            "inputTypes": [
+              "Data",
+              "DataFrame",
+              "Message"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "xy-edge__AdvancedDynamicFormBuilder-81Exw{œdataTypeœ:œAdvancedDynamicFormBuilderœ,œidœ:œAdvancedDynamicFormBuilder-81Exwœ,œnameœ:œform_dataœ,œoutput_typesœ:[œDataœ]}-ChatOutput-4Bw8A{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-4Bw8Aœ,œinputTypesœ:[œDataœ,œDataFrameœ,œMessageœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "AdvancedDynamicFormBuilder-81Exw",
+        "sourceHandle": "{œdataTypeœ:œAdvancedDynamicFormBuilderœ,œidœ:œAdvancedDynamicFormBuilder-81Exwœ,œnameœ:œform_dataœ,œoutput_typesœ:[œDataœ]}",
+        "target": "ChatOutput-4Bw8A",
+        "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-4Bw8Aœ,œinputTypesœ:[œDataœ,œDataFrameœ,œMessageœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
@@ -429,7 +460,7 @@
             "frozen": false,
             "icon": "scissors-line-dashed",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {
               "code_hash": "f2867efda61f",
               "dependencies": {
@@ -666,9 +697,9 @@
             ],
             "frozen": false,
             "icon": "braces",
-            "last_updated": "2025-11-26T00:02:32.601Z",
+            "last_updated": "2025-11-26T04:04:23.261Z",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {},
             "minimized": false,
             "output_types": [],
@@ -716,7 +747,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dd32f417-a152-4076-b7cb-f0a44b2f19a4"
+                "value": "a7d8cc21-8de6-4cc6-a617-3494cb304e08"
               },
               "_type": "Component",
               "code": {
@@ -1005,7 +1036,7 @@
             "frozen": false,
             "icon": "type",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {},
             "minimized": false,
             "output_types": [],
@@ -1105,7 +1136,7 @@
             "frozen": false,
             "icon": "type",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {},
             "minimized": false,
             "output_types": [],
@@ -1205,7 +1236,7 @@
             "frozen": false,
             "icon": "type",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {},
             "minimized": false,
             "output_types": [],
@@ -1305,7 +1336,7 @@
             "frozen": false,
             "icon": "type",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {},
             "minimized": false,
             "output_types": [],
@@ -1416,7 +1447,7 @@
             "frozen": false,
             "icon": "Docling",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {
               "code_hash": "26eeb513dded",
               "dependencies": {
@@ -1692,9 +1723,7 @@
                   "bz2",
                   "gz"
                 ],
-                "file_path": [
-                  "167c86ee-113b-4286-990c-b9566c363215/IBM Recognition Center Home.pdf"
-                ],
+                "file_path": [],
                 "info": "Supported file extensions: adoc, asciidoc, asc, bmp, csv, dotx, dotm, docm, docx, htm, html, jpeg, json, md, pdf, png, potx, ppsx, pptm, potm, ppsm, pptx, tiff, txt, xls, xlsx, xhtml, xml, webp; optionally bundled in file extensions: zip, tar, tgz, bz2, gz",
                 "list": true,
                 "list_add_label": "Add More",
@@ -1754,7 +1783,7 @@
         "dragging": false,
         "id": "DoclingRemote-Dp3PX",
         "measured": {
-          "height": 479,
+          "height": 475,
           "width": 320
         },
         "position": {
@@ -1791,7 +1820,7 @@
             "icon": "Docling",
             "last_updated": "2025-10-04T01:42:10.290Z",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {
               "code_hash": "4de16ddd37ac",
               "dependencies": {
@@ -2053,9 +2082,9 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-11-26T00:02:32.725Z",
+            "last_updated": "2025-11-26T04:04:23.363Z",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {
               "code_hash": "904f4eaebccd",
               "dependencies": {
@@ -2100,7 +2129,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dd32f417-a152-4076-b7cb-f0a44b2f19a4"
+                "value": "a7d8cc21-8de6-4cc6-a617-3494cb304e08"
               },
               "_type": "Component",
               "ascending": {
@@ -2504,9 +2533,9 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-11-26T00:02:32.726Z",
+            "last_updated": "2025-11-26T04:04:23.363Z",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {
               "code_hash": "904f4eaebccd",
               "dependencies": {
@@ -2551,7 +2580,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dd32f417-a152-4076-b7cb-f0a44b2f19a4"
+                "value": "a7d8cc21-8de6-4cc6-a617-3494cb304e08"
               },
               "_type": "Component",
               "ascending": {
@@ -2955,9 +2984,9 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-11-26T00:02:32.727Z",
+            "last_updated": "2025-11-26T04:04:23.364Z",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {
               "code_hash": "904f4eaebccd",
               "dependencies": {
@@ -3002,7 +3031,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dd32f417-a152-4076-b7cb-f0a44b2f19a4"
+                "value": "a7d8cc21-8de6-4cc6-a617-3494cb304e08"
               },
               "_type": "Component",
               "ascending": {
@@ -3445,8 +3474,9 @@
             ],
             "frozen": false,
             "icon": "OpenSearch",
-            "last_updated": "2025-11-26T00:02:57.256Z",
+            "last_updated": "2025-11-26T03:03:10.896Z",
             "legacy": false,
+            "lf_version": "1.7.0.dev21",
             "metadata": {
               "code_hash": "8c78d799fef4",
               "dependencies": {
@@ -3526,7 +3556,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dd32f417-a152-4076-b7cb-f0a44b2f19a4"
+                "value": "a7d8cc21-8de6-4cc6-a617-3494cb304e08"
               },
               "_type": "Component",
               "auth_mode": {
@@ -3830,7 +3860,7 @@
                 "dynamic": false,
                 "info": "Valid JSON Web Token for authentication. Will be sent in the Authorization header (with optional 'Bearer ' prefix).",
                 "input_types": [],
-                "load_from_db": true,
+                "load_from_db": false,
                 "name": "jwt_token",
                 "override_skip": false,
                 "password": true,
@@ -3840,7 +3870,7 @@
                 "title_case": false,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "JWT"
+                "value": "jwt"
               },
               "m": {
                 "_input_type": "IntInput",
@@ -3965,7 +3995,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "query",
-                "value": ""
+                "value": "langflow"
               },
               "should_cache_vector_store": {
                 "_input_type": "BoolInput",
@@ -4116,7 +4146,7 @@
           "x": 2261.865622928042,
           "y": 1349.2821108833643
         },
-        "selected": false,
+        "selected": true,
         "type": "genericNode"
       },
       {
@@ -4132,7 +4162,7 @@
             "description": "Generate embeddings using a specified provider.",
             "display_name": "Embedding Model",
             "documentation": "https://docs.langflow.org/components-embedding-models",
-            "edited": false,
+            "edited": true,
             "field_order": [
               "provider",
               "api_base",
@@ -4148,15 +4178,16 @@
               "show_progress_bar",
               "model_kwargs",
               "truncate_input_tokens",
-              "input_text"
+              "input_text",
+              "fail_safe_mode"
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-11-26T00:02:32.604Z",
+            "last_updated": "2025-11-26T04:04:42.856Z",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {
-              "code_hash": "9e44c83a5058",
+              "code_hash": "0e2d6fe67a26",
               "dependencies": {
                 "dependencies": [
                   {
@@ -4173,7 +4204,7 @@
                   },
                   {
                     "name": "lfx",
-                    "version": null
+                    "version": "0.2.0.dev21"
                   },
                   {
                     "name": "langchain_ollama",
@@ -4190,7 +4221,7 @@
                 ],
                 "total_dependencies": 7
               },
-              "module": "lfx.components.models_and_agents.embedding_model.EmbeddingModelComponent"
+              "module": "custom_components.embedding_model"
             },
             "minimized": false,
             "output_types": [],
@@ -4200,6 +4231,7 @@
                 "cache": true,
                 "display_name": "Embedding Model",
                 "group_outputs": false,
+                "hidden": null,
                 "loop_types": null,
                 "method": "build_embeddings",
                 "name": "embeddings",
@@ -4219,7 +4251,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dd32f417-a152-4076-b7cb-f0a44b2f19a4"
+                "value": "a7d8cc21-8de6-4cc6-a617-3494cb304e08"
               },
               "_type": "Component",
               "api_base": {
@@ -4260,7 +4292,7 @@
                 "password": true,
                 "placeholder": "",
                 "real_time_refresh": true,
-                "required": true,
+                "required": false,
                 "show": true,
                 "title_case": false,
                 "track_in_telemetry": false,
@@ -4335,7 +4367,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from typing import Any\n\nimport requests\nfrom ibm_watsonx_ai.metanames import EmbedTextParamsMetaNames\nfrom langchain_openai import OpenAIEmbeddings\n\nfrom lfx.base.embeddings.embeddings_class import EmbeddingsWithModels\nfrom lfx.base.embeddings.model import LCEmbeddingsModel\nfrom lfx.base.models.model_utils import get_ollama_models, is_valid_ollama_url\nfrom lfx.base.models.openai_constants import OPENAI_EMBEDDING_MODEL_NAMES\nfrom lfx.base.models.watsonx_constants import (\n    IBM_WATSONX_URLS,\n    WATSONX_EMBEDDING_MODEL_NAMES,\n)\nfrom lfx.field_typing import Embeddings\nfrom lfx.io import (\n    BoolInput,\n    DictInput,\n    DropdownInput,\n    FloatInput,\n    IntInput,\n    MessageTextInput,\n    SecretStrInput,\n)\nfrom lfx.log.logger import logger\nfrom lfx.schema.dotdict import dotdict\nfrom lfx.utils.util import transform_localhost_url\n\n# Ollama API constants\nHTTP_STATUS_OK = 200\nJSON_MODELS_KEY = \"models\"\nJSON_NAME_KEY = \"name\"\nJSON_CAPABILITIES_KEY = \"capabilities\"\nDESIRED_CAPABILITY = \"embedding\"\nDEFAULT_OLLAMA_URL = \"http://localhost:11434\"\n\n\nclass EmbeddingModelComponent(LCEmbeddingsModel):\n    display_name = \"Embedding Model\"\n    description = \"Generate embeddings using a specified provider.\"\n    documentation: str = \"https://docs.langflow.org/components-embedding-models\"\n    icon = \"binary\"\n    name = \"EmbeddingModel\"\n    category = \"models\"\n\n    inputs = [\n        DropdownInput(\n            name=\"provider\",\n            display_name=\"Model Provider\",\n            options=[\"OpenAI\", \"Ollama\", \"IBM watsonx.ai\"],\n            value=\"OpenAI\",\n            info=\"Select the embedding model provider\",\n            real_time_refresh=True,\n            options_metadata=[{\"icon\": \"OpenAI\"}, {\"icon\": \"Ollama\"}, {\"icon\": \"WatsonxAI\"}],\n        ),\n        MessageTextInput(\n            name=\"api_base\",\n            display_name=\"API Base URL\",\n            info=\"Base URL for the API. Leave empty for default.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"ollama_base_url\",\n            display_name=\"Ollama API URL\",\n            info=f\"Endpoint of the Ollama API (Ollama only). Defaults to {DEFAULT_OLLAMA_URL}\",\n            value=DEFAULT_OLLAMA_URL,\n            show=False,\n            real_time_refresh=True,\n            load_from_db=True,\n        ),\n        DropdownInput(\n            name=\"base_url_ibm_watsonx\",\n            display_name=\"watsonx API Endpoint\",\n            info=\"The base URL of the API (IBM watsonx.ai only)\",\n            options=IBM_WATSONX_URLS,\n            value=IBM_WATSONX_URLS[0],\n            show=False,\n            real_time_refresh=True,\n        ),\n        DropdownInput(\n            name=\"model\",\n            display_name=\"Model Name\",\n            options=OPENAI_EMBEDDING_MODEL_NAMES,\n            value=OPENAI_EMBEDDING_MODEL_NAMES[0],\n            info=\"Select the embedding model to use\",\n            real_time_refresh=True,\n            refresh_button=True,\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"OpenAI API Key\",\n            info=\"Model Provider API key\",\n            required=True,\n            show=True,\n            real_time_refresh=True,\n        ),\n        # Watson-specific inputs\n        MessageTextInput(\n            name=\"project_id\",\n            display_name=\"Project ID\",\n            info=\"IBM watsonx.ai Project ID (required for IBM watsonx.ai)\",\n            show=False,\n        ),\n        IntInput(\n            name=\"dimensions\",\n            display_name=\"Dimensions\",\n            info=\"The number of dimensions the resulting output embeddings should have. \"\n            \"Only supported by certain models.\",\n            advanced=True,\n        ),\n        IntInput(name=\"chunk_size\", display_name=\"Chunk Size\", advanced=True, value=1000),\n        FloatInput(name=\"request_timeout\", display_name=\"Request Timeout\", advanced=True),\n        IntInput(name=\"max_retries\", display_name=\"Max Retries\", advanced=True, value=3),\n        BoolInput(name=\"show_progress_bar\", display_name=\"Show Progress Bar\", advanced=True),\n        DictInput(\n            name=\"model_kwargs\",\n            display_name=\"Model Kwargs\",\n            advanced=True,\n            info=\"Additional keyword arguments to pass to the model.\",\n        ),\n        IntInput(\n            name=\"truncate_input_tokens\",\n            display_name=\"Truncate Input Tokens\",\n            advanced=True,\n            value=200,\n            show=False,\n        ),\n        BoolInput(\n            name=\"input_text\",\n            display_name=\"Include the original text in the output\",\n            value=True,\n            advanced=True,\n            show=False,\n        ),\n    ]\n\n    @staticmethod\n    def fetch_ibm_models(base_url: str) -> list[str]:\n        \"\"\"Fetch available models from the watsonx.ai API.\"\"\"\n        try:\n            endpoint = f\"{base_url}/ml/v1/foundation_model_specs\"\n            params = {\n                \"version\": \"2024-09-16\",\n                \"filters\": \"function_embedding,!lifecycle_withdrawn:and\",\n            }\n            response = requests.get(endpoint, params=params, timeout=10)\n            response.raise_for_status()\n            data = response.json()\n            models = [model[\"model_id\"] for model in data.get(\"resources\", [])]\n            return sorted(models)\n        except Exception:  # noqa: BLE001\n            logger.exception(\"Error fetching models\")\n            return WATSONX_EMBEDDING_MODEL_NAMES\n\n    async def build_embeddings(self) -> Embeddings:\n        provider = self.provider\n        model = self.model\n        api_key = self.api_key\n        api_base = self.api_base\n        base_url_ibm_watsonx = self.base_url_ibm_watsonx\n        ollama_base_url = self.ollama_base_url\n        dimensions = self.dimensions\n        chunk_size = self.chunk_size\n        request_timeout = self.request_timeout\n        max_retries = self.max_retries\n        show_progress_bar = self.show_progress_bar\n        model_kwargs = self.model_kwargs or {}\n\n        if provider == \"OpenAI\":\n            if not api_key:\n                msg = \"OpenAI API key is required when using OpenAI provider\"\n                raise ValueError(msg)\n\n            # Create the primary embedding instance\n            embeddings_instance = OpenAIEmbeddings(\n                model=model,\n                dimensions=dimensions or None,\n                base_url=api_base or None,\n                api_key=api_key,\n                chunk_size=chunk_size,\n                max_retries=max_retries,\n                timeout=request_timeout or None,\n                show_progress_bar=show_progress_bar,\n                model_kwargs=model_kwargs,\n            )\n\n            # Create dedicated instances for each available model\n            available_models_dict = {}\n            for model_name in OPENAI_EMBEDDING_MODEL_NAMES:\n                available_models_dict[model_name] = OpenAIEmbeddings(\n                    model=model_name,\n                    dimensions=dimensions or None,  # Use same dimensions config for all\n                    base_url=api_base or None,\n                    api_key=api_key,\n                    chunk_size=chunk_size,\n                    max_retries=max_retries,\n                    timeout=request_timeout or None,\n                    show_progress_bar=show_progress_bar,\n                    model_kwargs=model_kwargs,\n                )\n\n            return EmbeddingsWithModels(\n                embeddings=embeddings_instance,\n                available_models=available_models_dict,\n            )\n\n        if provider == \"Ollama\":\n            try:\n                from langchain_ollama import OllamaEmbeddings\n            except ImportError:\n                try:\n                    from langchain_community.embeddings import OllamaEmbeddings\n                except ImportError:\n                    msg = \"Please install langchain-ollama: pip install langchain-ollama\"\n                    raise ImportError(msg) from None\n\n            transformed_base_url = transform_localhost_url(ollama_base_url)\n\n            # Check if URL contains /v1 suffix (OpenAI-compatible mode)\n            if transformed_base_url and transformed_base_url.rstrip(\"/\").endswith(\"/v1\"):\n                # Strip /v1 suffix and log warning\n                transformed_base_url = transformed_base_url.rstrip(\"/\").removesuffix(\"/v1\")\n                logger.warning(\n                    \"Detected '/v1' suffix in base URL. The Ollama component uses the native Ollama API, \"\n                    \"not the OpenAI-compatible API. The '/v1' suffix has been automatically removed. \"\n                    \"If you want to use the OpenAI-compatible API, please use the OpenAI component instead. \"\n                    \"Learn more at https://docs.ollama.com/openai#openai-compatibility\"\n                )\n\n            final_base_url = transformed_base_url or \"http://localhost:11434\"\n\n            # Create the primary embedding instance\n            embeddings_instance = OllamaEmbeddings(\n                model=model,\n                base_url=final_base_url,\n                **model_kwargs,\n            )\n\n            # Fetch available Ollama models\n            available_model_names = await get_ollama_models(\n                base_url_value=self.ollama_base_url,\n                desired_capability=DESIRED_CAPABILITY,\n                json_models_key=JSON_MODELS_KEY,\n                json_name_key=JSON_NAME_KEY,\n                json_capabilities_key=JSON_CAPABILITIES_KEY,\n            )\n\n            # Create dedicated instances for each available model\n            available_models_dict = {}\n            for model_name in available_model_names:\n                available_models_dict[model_name] = OllamaEmbeddings(\n                    model=model_name,\n                    base_url=final_base_url,\n                    **model_kwargs,\n                )\n\n            return EmbeddingsWithModels(\n                embeddings=embeddings_instance,\n                available_models=available_models_dict,\n            )\n\n        if provider == \"IBM watsonx.ai\":\n            try:\n                from langchain_ibm import WatsonxEmbeddings\n            except ImportError:\n                msg = \"Please install langchain-ibm: pip install langchain-ibm\"\n                raise ImportError(msg) from None\n\n            if not api_key:\n                msg = \"IBM watsonx.ai API key is required when using IBM watsonx.ai provider\"\n                raise ValueError(msg)\n\n            project_id = self.project_id\n\n            if not project_id:\n                msg = \"Project ID is required for IBM watsonx.ai provider\"\n                raise ValueError(msg)\n\n            from ibm_watsonx_ai import APIClient, Credentials\n\n            final_url = base_url_ibm_watsonx or \"https://us-south.ml.cloud.ibm.com\"\n\n            credentials = Credentials(\n                api_key=self.api_key,\n                url=final_url,\n            )\n\n            api_client = APIClient(credentials)\n\n            params = {\n                EmbedTextParamsMetaNames.TRUNCATE_INPUT_TOKENS: self.truncate_input_tokens,\n                EmbedTextParamsMetaNames.RETURN_OPTIONS: {\"input_text\": self.input_text},\n            }\n\n            # Create the primary embedding instance\n            embeddings_instance = WatsonxEmbeddings(\n                model_id=model,\n                params=params,\n                watsonx_client=api_client,\n                project_id=project_id,\n            )\n\n            # Fetch available IBM watsonx.ai models\n            available_model_names = self.fetch_ibm_models(final_url)\n\n            # Create dedicated instances for each available model\n            available_models_dict = {}\n            for model_name in available_model_names:\n                available_models_dict[model_name] = WatsonxEmbeddings(\n                    model_id=model_name,\n                    params=params,\n                    watsonx_client=api_client,\n                    project_id=project_id,\n                )\n\n            return EmbeddingsWithModels(\n                embeddings=embeddings_instance,\n                available_models=available_models_dict,\n            )\n\n        msg = f\"Unknown provider: {provider}\"\n        raise ValueError(msg)\n\n    async def update_build_config(\n        self, build_config: dotdict, field_value: Any, field_name: str | None = None\n    ) -> dotdict:\n        if field_name == \"provider\":\n            if field_value == \"OpenAI\":\n                build_config[\"model\"][\"options\"] = OPENAI_EMBEDDING_MODEL_NAMES\n                build_config[\"model\"][\"value\"] = OPENAI_EMBEDDING_MODEL_NAMES[0]\n                build_config[\"api_key\"][\"display_name\"] = \"OpenAI API Key\"\n                build_config[\"api_key\"][\"required\"] = True\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"display_name\"] = \"OpenAI API Base URL\"\n                build_config[\"api_base\"][\"advanced\"] = True\n                build_config[\"api_base\"][\"show\"] = True\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n            elif field_value == \"Ollama\":\n                build_config[\"ollama_base_url\"][\"show\"] = True\n\n                if await is_valid_ollama_url(url=self.ollama_base_url):\n                    try:\n                        models = await get_ollama_models(\n                            base_url_value=self.ollama_base_url,\n                            desired_capability=DESIRED_CAPABILITY,\n                            json_models_key=JSON_MODELS_KEY,\n                            json_name_key=JSON_NAME_KEY,\n                            json_capabilities_key=JSON_CAPABILITIES_KEY,\n                        )\n                        build_config[\"model\"][\"options\"] = models\n                        build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                    except ValueError:\n                        build_config[\"model\"][\"options\"] = []\n                        build_config[\"model\"][\"value\"] = \"\"\n                else:\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n                build_config[\"api_key\"][\"display_name\"] = \"API Key (Optional)\"\n                build_config[\"api_key\"][\"required\"] = False\n                build_config[\"api_key\"][\"show\"] = False\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n\n            elif field_value == \"IBM watsonx.ai\":\n                build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)\n                build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)[0]\n                build_config[\"api_key\"][\"display_name\"] = \"IBM watsonx.ai API Key\"\n                build_config[\"api_key\"][\"required\"] = True\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = True\n                build_config[\"project_id\"][\"show\"] = True\n                build_config[\"truncate_input_tokens\"][\"show\"] = True\n                build_config[\"input_text\"][\"show\"] = True\n        elif field_name == \"base_url_ibm_watsonx\":\n            build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=field_value)\n            build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=field_value)[0]\n        elif field_name == \"ollama_base_url\":\n            # # Refresh Ollama models when base URL changes\n            # if hasattr(self, \"provider\") and self.provider == \"Ollama\":\n            # Use field_value if provided, otherwise fall back to instance attribute\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await get_ollama_models(\n                        base_url_value=ollama_url,\n                        desired_capability=DESIRED_CAPABILITY,\n                        json_models_key=JSON_MODELS_KEY,\n                        json_name_key=JSON_NAME_KEY,\n                        json_capabilities_key=JSON_CAPABILITIES_KEY,\n                    )\n                    build_config[\"model\"][\"options\"] = models\n                    build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                except ValueError:\n                    await logger.awarning(\"Failed to fetch Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n\n        elif field_name == \"model\" and self.provider == \"Ollama\":\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await get_ollama_models(\n                        base_url_value=ollama_url,\n                        desired_capability=DESIRED_CAPABILITY,\n                        json_models_key=JSON_MODELS_KEY,\n                        json_name_key=JSON_NAME_KEY,\n                        json_capabilities_key=JSON_CAPABILITIES_KEY,\n                    )\n                    build_config[\"model\"][\"options\"] = models\n                except ValueError:\n                    await logger.awarning(\"Failed to refresh Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n\n        return build_config\n"
+                "value": "from typing import Any\n\nimport requests\nfrom ibm_watsonx_ai.metanames import EmbedTextParamsMetaNames\nfrom langchain_openai import OpenAIEmbeddings\n\nfrom lfx.base.embeddings.embeddings_class import EmbeddingsWithModels\nfrom lfx.base.embeddings.model import LCEmbeddingsModel\nfrom lfx.base.models.model_utils import get_ollama_models, is_valid_ollama_url\nfrom lfx.base.models.openai_constants import OPENAI_EMBEDDING_MODEL_NAMES\nfrom lfx.base.models.watsonx_constants import (\n    IBM_WATSONX_URLS,\n    WATSONX_EMBEDDING_MODEL_NAMES,\n)\nfrom lfx.field_typing import Embeddings\nfrom lfx.io import (\n    BoolInput,\n    DictInput,\n    DropdownInput,\n    FloatInput,\n    IntInput,\n    MessageTextInput,\n    SecretStrInput,\n)\nfrom lfx.log.logger import logger\nfrom lfx.schema.dotdict import dotdict\nfrom lfx.utils.util import transform_localhost_url\n\n# Ollama API constants\nHTTP_STATUS_OK = 200\nJSON_MODELS_KEY = \"models\"\nJSON_NAME_KEY = \"name\"\nJSON_CAPABILITIES_KEY = \"capabilities\"\nDESIRED_CAPABILITY = \"embedding\"\nDEFAULT_OLLAMA_URL = \"http://localhost:11434\"\n\n\nclass EmbeddingModelComponent(LCEmbeddingsModel):\n    display_name = \"Embedding Model\"\n    description = \"Generate embeddings using a specified provider.\"\n    documentation: str = \"https://docs.langflow.org/components-embedding-models\"\n    icon = \"binary\"\n    name = \"EmbeddingModel\"\n    category = \"models\"\n\n    inputs = [\n        DropdownInput(\n            name=\"provider\",\n            display_name=\"Model Provider\",\n            options=[\"OpenAI\", \"Ollama\", \"IBM watsonx.ai\"],\n            value=\"OpenAI\",\n            info=\"Select the embedding model provider\",\n            real_time_refresh=True,\n            options_metadata=[{\"icon\": \"OpenAI\"}, {\"icon\": \"Ollama\"}, {\"icon\": \"WatsonxAI\"}],\n        ),\n        MessageTextInput(\n            name=\"api_base\",\n            display_name=\"API Base URL\",\n            info=\"Base URL for the API. Leave empty for default.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"ollama_base_url\",\n            display_name=\"Ollama API URL\",\n            info=f\"Endpoint of the Ollama API (Ollama only). Defaults to {DEFAULT_OLLAMA_URL}\",\n            value=DEFAULT_OLLAMA_URL,\n            show=False,\n            real_time_refresh=True,\n            load_from_db=True,\n        ),\n        DropdownInput(\n            name=\"base_url_ibm_watsonx\",\n            display_name=\"watsonx API Endpoint\",\n            info=\"The base URL of the API (IBM watsonx.ai only)\",\n            options=IBM_WATSONX_URLS,\n            value=IBM_WATSONX_URLS[0],\n            show=False,\n            real_time_refresh=True,\n        ),\n        DropdownInput(\n            name=\"model\",\n            display_name=\"Model Name\",\n            options=OPENAI_EMBEDDING_MODEL_NAMES,\n            value=OPENAI_EMBEDDING_MODEL_NAMES[0],\n            info=\"Select the embedding model to use\",\n            real_time_refresh=True,\n            refresh_button=True,\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"OpenAI API Key\",\n            info=\"Model Provider API key\",\n            required=True,\n            show=True,\n            real_time_refresh=True,\n        ),\n        # Watson-specific inputs\n        MessageTextInput(\n            name=\"project_id\",\n            display_name=\"Project ID\",\n            info=\"IBM watsonx.ai Project ID (required for IBM watsonx.ai)\",\n            show=False,\n        ),\n        IntInput(\n            name=\"dimensions\",\n            display_name=\"Dimensions\",\n            info=\"The number of dimensions the resulting output embeddings should have. \"\n            \"Only supported by certain models.\",\n            advanced=True,\n        ),\n        IntInput(name=\"chunk_size\", display_name=\"Chunk Size\", advanced=True, value=1000),\n        FloatInput(name=\"request_timeout\", display_name=\"Request Timeout\", advanced=True),\n        IntInput(name=\"max_retries\", display_name=\"Max Retries\", advanced=True, value=3),\n        BoolInput(name=\"show_progress_bar\", display_name=\"Show Progress Bar\", advanced=True),\n        DictInput(\n            name=\"model_kwargs\",\n            display_name=\"Model Kwargs\",\n            advanced=True,\n            info=\"Additional keyword arguments to pass to the model.\",\n        ),\n        IntInput(\n            name=\"truncate_input_tokens\",\n            display_name=\"Truncate Input Tokens\",\n            advanced=True,\n            value=200,\n            show=False,\n        ),\n        BoolInput(\n            name=\"input_text\",\n            display_name=\"Include the original text in the output\",\n            value=True,\n            advanced=True,\n            show=False,\n        ),\n        BoolInput(\n            name=\"fail_safe_mode\",\n            display_name=\"Fail-Safe Mode\",\n            value=False,\n            advanced=True,\n            info=\"When enabled, errors will be logged instead of raising exceptions. \"\n            \"The component will return None on error.\",\n            real_time_refresh=True,\n        ),\n    ]\n\n    @staticmethod\n    def fetch_ibm_models(base_url: str) -> list[str]:\n        \"\"\"Fetch available models from the watsonx.ai API.\"\"\"\n        try:\n            endpoint = f\"{base_url}/ml/v1/foundation_model_specs\"\n            params = {\n                \"version\": \"2024-09-16\",\n                \"filters\": \"function_embedding,!lifecycle_withdrawn:and\",\n            }\n            response = requests.get(endpoint, params=params, timeout=10)\n            response.raise_for_status()\n            data = response.json()\n            models = [model[\"model_id\"] for model in data.get(\"resources\", [])]\n            return sorted(models)\n        except Exception:  # noqa: BLE001\n            logger.exception(\"Error fetching models\")\n            return WATSONX_EMBEDDING_MODEL_NAMES\n    async def fetch_ollama_models(self) -> list[str]:\n        try:\n            return await get_ollama_models(\n                base_url_value=self.ollama_base_url,\n                desired_capability=DESIRED_CAPABILITY,\n                json_models_key=JSON_MODELS_KEY,\n                json_name_key=JSON_NAME_KEY,\n                json_capabilities_key=JSON_CAPABILITIES_KEY,\n            )\n        except Exception:  # noqa: BLE001\n\n            logger.exception(\"Error fetching models\")\n            return []\n    async def build_embeddings(self) -> Embeddings:\n        provider = self.provider\n        model = self.model\n        api_key = self.api_key\n        api_base = self.api_base\n        base_url_ibm_watsonx = self.base_url_ibm_watsonx\n        ollama_base_url = self.ollama_base_url\n        dimensions = self.dimensions\n        chunk_size = self.chunk_size\n        request_timeout = self.request_timeout\n        max_retries = self.max_retries\n        show_progress_bar = self.show_progress_bar\n        model_kwargs = self.model_kwargs or {}\n\n        if provider == \"OpenAI\":\n            if not api_key:\n                msg = \"OpenAI API key is required when using OpenAI provider\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ValueError(msg)\n\n            try:\n                # Create the primary embedding instance\n                embeddings_instance = OpenAIEmbeddings(\n                    model=model,\n                    dimensions=dimensions or None,\n                    base_url=api_base or None,\n                    api_key=api_key,\n                    chunk_size=chunk_size,\n                    max_retries=max_retries,\n                    timeout=request_timeout or None,\n                    show_progress_bar=show_progress_bar,\n                    model_kwargs=model_kwargs,\n                )\n\n                # Create dedicated instances for each available model\n                available_models_dict = {}\n                for model_name in OPENAI_EMBEDDING_MODEL_NAMES:\n                    available_models_dict[model_name] = OpenAIEmbeddings(\n                        model=model_name,\n                        dimensions=dimensions or None,  # Use same dimensions config for all\n                        base_url=api_base or None,\n                        api_key=api_key,\n                        chunk_size=chunk_size,\n                        max_retries=max_retries,\n                        timeout=request_timeout or None,\n                        show_progress_bar=show_progress_bar,\n                        model_kwargs=model_kwargs,\n                    )\n\n                return EmbeddingsWithModels(\n                    embeddings=embeddings_instance,\n                    available_models=available_models_dict,\n                )\n            except Exception as e:\n                msg = f\"Failed to initialize OpenAI embeddings: {e}\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise\n\n        if provider == \"Ollama\":\n            try:\n                from langchain_ollama import OllamaEmbeddings\n            except ImportError:\n                try:\n                    from langchain_community.embeddings import OllamaEmbeddings\n                except ImportError:\n                    msg = \"Please install langchain-ollama: pip install langchain-ollama\"\n                    if self.fail_safe_mode:\n                        logger.error(msg)\n                        return None\n                    raise ImportError(msg) from None\n\n            try:\n                transformed_base_url = transform_localhost_url(ollama_base_url)\n\n                # Check if URL contains /v1 suffix (OpenAI-compatible mode)\n                if transformed_base_url and transformed_base_url.rstrip(\"/\").endswith(\"/v1\"):\n                    # Strip /v1 suffix and log warning\n                    transformed_base_url = transformed_base_url.rstrip(\"/\").removesuffix(\"/v1\")\n                    logger.warning(\n                        \"Detected '/v1' suffix in base URL. The Ollama component uses the native Ollama API, \"\n                        \"not the OpenAI-compatible API. The '/v1' suffix has been automatically removed. \"\n                        \"If you want to use the OpenAI-compatible API, please use the OpenAI component instead. \"\n                        \"Learn more at https://docs.ollama.com/openai#openai-compatibility\"\n                    )\n\n                final_base_url = transformed_base_url or \"http://localhost:11434\"\n\n                # Create the primary embedding instance\n                embeddings_instance = OllamaEmbeddings(\n                    model=model,\n                    base_url=final_base_url,\n                    **model_kwargs,\n                )\n\n                # Fetch available Ollama models\n                available_model_names = await self.fetch_ollama_models()\n\n                # Create dedicated instances for each available model\n                available_models_dict = {}\n                for model_name in available_model_names:\n                    available_models_dict[model_name] = OllamaEmbeddings(\n                        model=model_name,\n                        base_url=final_base_url,\n                        **model_kwargs,\n                    )\n\n                return EmbeddingsWithModels(\n                    embeddings=embeddings_instance,\n                    available_models=available_models_dict,\n                )\n            except Exception as e:\n                msg = f\"Failed to initialize Ollama embeddings: {e}\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise\n\n        if provider == \"IBM watsonx.ai\":\n            try:\n                from langchain_ibm import WatsonxEmbeddings\n            except ImportError:\n                msg = \"Please install langchain-ibm: pip install langchain-ibm\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ImportError(msg) from None\n\n            if not api_key:\n                msg = \"IBM watsonx.ai API key is required when using IBM watsonx.ai provider\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ValueError(msg)\n\n            project_id = self.project_id\n\n            if not project_id:\n                msg = \"Project ID is required for IBM watsonx.ai provider\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ValueError(msg)\n\n            try:\n                from ibm_watsonx_ai import APIClient, Credentials\n\n                final_url = base_url_ibm_watsonx or \"https://us-south.ml.cloud.ibm.com\"\n\n                credentials = Credentials(\n                    api_key=self.api_key,\n                    url=final_url,\n                )\n\n                api_client = APIClient(credentials)\n\n                params = {\n                    EmbedTextParamsMetaNames.TRUNCATE_INPUT_TOKENS: self.truncate_input_tokens,\n                    EmbedTextParamsMetaNames.RETURN_OPTIONS: {\"input_text\": self.input_text},\n                }\n\n                # Create the primary embedding instance\n                embeddings_instance = WatsonxEmbeddings(\n                    model_id=model,\n                    params=params,\n                    watsonx_client=api_client,\n                    project_id=project_id,\n                )\n\n                # Fetch available IBM watsonx.ai models\n                available_model_names = self.fetch_ibm_models(final_url)\n\n                # Create dedicated instances for each available model\n                available_models_dict = {}\n                for model_name in available_model_names:\n                    available_models_dict[model_name] = WatsonxEmbeddings(\n                        model_id=model_name,\n                        params=params,\n                        watsonx_client=api_client,\n                        project_id=project_id,\n                    )\n\n                return EmbeddingsWithModels(\n                    embeddings=embeddings_instance,\n                    available_models=available_models_dict,\n                )\n            except Exception as e:\n                msg = f\"Failed to authenticate with IBM watsonx.ai: {e}\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise\n\n        msg = f\"Unknown provider: {provider}\"\n        if self.fail_safe_mode:\n            logger.error(msg)\n            return None\n        raise ValueError(msg)\n\n    async def update_build_config(\n        self, build_config: dotdict, field_value: Any, field_name: str | None = None\n    ) -> dotdict:\n        # Handle fail_safe_mode changes first - set all required fields to False if enabled\n        if field_name == \"fail_safe_mode\":\n            if field_value:  # If fail_safe_mode is enabled\n                build_config[\"api_key\"][\"required\"] = False\n            elif hasattr(self, \"provider\"):\n                # If fail_safe_mode is disabled, restore required flags based on provider\n                if self.provider in [\"OpenAI\", \"IBM watsonx.ai\"]:\n                    build_config[\"api_key\"][\"required\"] = True\n                else:  # Ollama\n                    build_config[\"api_key\"][\"required\"] = False\n\n        if field_name == \"provider\":\n            if field_value == \"OpenAI\":\n                build_config[\"model\"][\"options\"] = OPENAI_EMBEDDING_MODEL_NAMES\n                build_config[\"model\"][\"value\"] = OPENAI_EMBEDDING_MODEL_NAMES[0]\n                build_config[\"api_key\"][\"display_name\"] = \"OpenAI API Key\"\n                # Only set required=True if fail_safe_mode is not enabled\n                build_config[\"api_key\"][\"required\"] = not (hasattr(self, \"fail_safe_mode\") and self.fail_safe_mode)\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"display_name\"] = \"OpenAI API Base URL\"\n                build_config[\"api_base\"][\"advanced\"] = True\n                build_config[\"api_base\"][\"show\"] = True\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n            elif field_value == \"Ollama\":\n                build_config[\"ollama_base_url\"][\"show\"] = True\n\n                if await is_valid_ollama_url(url=self.ollama_base_url):\n                    try:\n                        models = await self.fetch_ollama_models()\n                        build_config[\"model\"][\"options\"] = models\n                        build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                    except ValueError:\n                        build_config[\"model\"][\"options\"] = []\n                        build_config[\"model\"][\"value\"] = \"\"\n                else:\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n                build_config[\"api_key\"][\"display_name\"] = \"API Key (Optional)\"\n                build_config[\"api_key\"][\"required\"] = False\n                build_config[\"api_key\"][\"show\"] = False\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n\n            elif field_value == \"IBM watsonx.ai\":\n                build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)\n                build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)[0]\n                build_config[\"api_key\"][\"display_name\"] = \"IBM watsonx.ai API Key\"\n                # Only set required=True if fail_safe_mode is not enabled\n                build_config[\"api_key\"][\"required\"] = not (hasattr(self, \"fail_safe_mode\") and self.fail_safe_mode)\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = True\n                build_config[\"project_id\"][\"show\"] = True\n                build_config[\"truncate_input_tokens\"][\"show\"] = True\n                build_config[\"input_text\"][\"show\"] = True\n        elif field_name == \"base_url_ibm_watsonx\":\n            build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=field_value)\n            build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=field_value)[0]\n        elif field_name == \"ollama_base_url\":\n            # # Refresh Ollama models when base URL changes\n            # if hasattr(self, \"provider\") and self.provider == \"Ollama\":\n            # Use field_value if provided, otherwise fall back to instance attribute\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await self.fetch_ollama_models()\n                    build_config[\"model\"][\"options\"] = models\n                    build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                except ValueError:\n                    await logger.awarning(\"Failed to fetch Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n\n        elif field_name == \"model\" and self.provider == \"Ollama\":\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await self.fetch_ollama_models()\n                    build_config[\"model\"][\"options\"] = models\n                except ValueError:\n                    await logger.awarning(\"Failed to refresh Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n\n        return build_config\n"
               },
               "dimensions": {
                 "_input_type": "IntInput",
@@ -4356,6 +4388,28 @@
                 "track_in_telemetry": true,
                 "type": "int",
                 "value": ""
+              },
+              "fail_safe_mode": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Fail-Safe Mode",
+                "dynamic": false,
+                "info": "When enabled, errors will be logged instead of raising exceptions. The component will return None on error.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "fail_safe_mode",
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
               },
               "input_text": {
                 "_input_type": "BoolInput",
@@ -4407,6 +4461,7 @@
                 "dynamic": false,
                 "external_options": {},
                 "info": "Select the embedding model to use",
+                "load_from_db": false,
                 "name": "model",
                 "options": [
                   "ibm/granite-embedding-278m-multilingual",
@@ -4510,6 +4565,7 @@
                 "dynamic": false,
                 "external_options": {},
                 "info": "Select the embedding model provider",
+                "load_from_db": false,
                 "name": "provider",
                 "options": [
                   "OpenAI",
@@ -4531,6 +4587,9 @@
                 "placeholder": "",
                 "real_time_refresh": true,
                 "required": false,
+                "selected_metadata": {
+                  "icon": "WatsonxAI"
+                },
                 "show": true,
                 "title_case": false,
                 "toggle": false,
@@ -4632,7 +4691,7 @@
             "description": "Generate embeddings using a specified provider.",
             "display_name": "Embedding Model",
             "documentation": "https://docs.langflow.org/components-embedding-models",
-            "edited": false,
+            "edited": true,
             "field_order": [
               "provider",
               "api_base",
@@ -4648,15 +4707,16 @@
               "show_progress_bar",
               "model_kwargs",
               "truncate_input_tokens",
-              "input_text"
+              "input_text",
+              "fail_safe_mode"
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-11-26T00:02:32.605Z",
+            "last_updated": "2025-11-26T04:04:40.931Z",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {
-              "code_hash": "9e44c83a5058",
+              "code_hash": "0e2d6fe67a26",
               "dependencies": {
                 "dependencies": [
                   {
@@ -4673,7 +4733,7 @@
                   },
                   {
                     "name": "lfx",
-                    "version": null
+                    "version": "0.2.0.dev21"
                   },
                   {
                     "name": "langchain_ollama",
@@ -4690,7 +4750,7 @@
                 ],
                 "total_dependencies": 7
               },
-              "module": "lfx.components.models_and_agents.embedding_model.EmbeddingModelComponent"
+              "module": "custom_components.embedding_model"
             },
             "minimized": false,
             "output_types": [],
@@ -4700,6 +4760,7 @@
                 "cache": true,
                 "display_name": "Embedding Model",
                 "group_outputs": false,
+                "hidden": null,
                 "loop_types": null,
                 "method": "build_embeddings",
                 "name": "embeddings",
@@ -4719,7 +4780,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dd32f417-a152-4076-b7cb-f0a44b2f19a4"
+                "value": "a7d8cc21-8de6-4cc6-a617-3494cb304e08"
               },
               "_type": "Component",
               "api_base": {
@@ -4835,7 +4896,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from typing import Any\n\nimport requests\nfrom ibm_watsonx_ai.metanames import EmbedTextParamsMetaNames\nfrom langchain_openai import OpenAIEmbeddings\n\nfrom lfx.base.embeddings.embeddings_class import EmbeddingsWithModels\nfrom lfx.base.embeddings.model import LCEmbeddingsModel\nfrom lfx.base.models.model_utils import get_ollama_models, is_valid_ollama_url\nfrom lfx.base.models.openai_constants import OPENAI_EMBEDDING_MODEL_NAMES\nfrom lfx.base.models.watsonx_constants import (\n    IBM_WATSONX_URLS,\n    WATSONX_EMBEDDING_MODEL_NAMES,\n)\nfrom lfx.field_typing import Embeddings\nfrom lfx.io import (\n    BoolInput,\n    DictInput,\n    DropdownInput,\n    FloatInput,\n    IntInput,\n    MessageTextInput,\n    SecretStrInput,\n)\nfrom lfx.log.logger import logger\nfrom lfx.schema.dotdict import dotdict\nfrom lfx.utils.util import transform_localhost_url\n\n# Ollama API constants\nHTTP_STATUS_OK = 200\nJSON_MODELS_KEY = \"models\"\nJSON_NAME_KEY = \"name\"\nJSON_CAPABILITIES_KEY = \"capabilities\"\nDESIRED_CAPABILITY = \"embedding\"\nDEFAULT_OLLAMA_URL = \"http://localhost:11434\"\n\n\nclass EmbeddingModelComponent(LCEmbeddingsModel):\n    display_name = \"Embedding Model\"\n    description = \"Generate embeddings using a specified provider.\"\n    documentation: str = \"https://docs.langflow.org/components-embedding-models\"\n    icon = \"binary\"\n    name = \"EmbeddingModel\"\n    category = \"models\"\n\n    inputs = [\n        DropdownInput(\n            name=\"provider\",\n            display_name=\"Model Provider\",\n            options=[\"OpenAI\", \"Ollama\", \"IBM watsonx.ai\"],\n            value=\"OpenAI\",\n            info=\"Select the embedding model provider\",\n            real_time_refresh=True,\n            options_metadata=[{\"icon\": \"OpenAI\"}, {\"icon\": \"Ollama\"}, {\"icon\": \"WatsonxAI\"}],\n        ),\n        MessageTextInput(\n            name=\"api_base\",\n            display_name=\"API Base URL\",\n            info=\"Base URL for the API. Leave empty for default.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"ollama_base_url\",\n            display_name=\"Ollama API URL\",\n            info=f\"Endpoint of the Ollama API (Ollama only). Defaults to {DEFAULT_OLLAMA_URL}\",\n            value=DEFAULT_OLLAMA_URL,\n            show=False,\n            real_time_refresh=True,\n            load_from_db=True,\n        ),\n        DropdownInput(\n            name=\"base_url_ibm_watsonx\",\n            display_name=\"watsonx API Endpoint\",\n            info=\"The base URL of the API (IBM watsonx.ai only)\",\n            options=IBM_WATSONX_URLS,\n            value=IBM_WATSONX_URLS[0],\n            show=False,\n            real_time_refresh=True,\n        ),\n        DropdownInput(\n            name=\"model\",\n            display_name=\"Model Name\",\n            options=OPENAI_EMBEDDING_MODEL_NAMES,\n            value=OPENAI_EMBEDDING_MODEL_NAMES[0],\n            info=\"Select the embedding model to use\",\n            real_time_refresh=True,\n            refresh_button=True,\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"OpenAI API Key\",\n            info=\"Model Provider API key\",\n            required=True,\n            show=True,\n            real_time_refresh=True,\n        ),\n        # Watson-specific inputs\n        MessageTextInput(\n            name=\"project_id\",\n            display_name=\"Project ID\",\n            info=\"IBM watsonx.ai Project ID (required for IBM watsonx.ai)\",\n            show=False,\n        ),\n        IntInput(\n            name=\"dimensions\",\n            display_name=\"Dimensions\",\n            info=\"The number of dimensions the resulting output embeddings should have. \"\n            \"Only supported by certain models.\",\n            advanced=True,\n        ),\n        IntInput(name=\"chunk_size\", display_name=\"Chunk Size\", advanced=True, value=1000),\n        FloatInput(name=\"request_timeout\", display_name=\"Request Timeout\", advanced=True),\n        IntInput(name=\"max_retries\", display_name=\"Max Retries\", advanced=True, value=3),\n        BoolInput(name=\"show_progress_bar\", display_name=\"Show Progress Bar\", advanced=True),\n        DictInput(\n            name=\"model_kwargs\",\n            display_name=\"Model Kwargs\",\n            advanced=True,\n            info=\"Additional keyword arguments to pass to the model.\",\n        ),\n        IntInput(\n            name=\"truncate_input_tokens\",\n            display_name=\"Truncate Input Tokens\",\n            advanced=True,\n            value=200,\n            show=False,\n        ),\n        BoolInput(\n            name=\"input_text\",\n            display_name=\"Include the original text in the output\",\n            value=True,\n            advanced=True,\n            show=False,\n        ),\n    ]\n\n    @staticmethod\n    def fetch_ibm_models(base_url: str) -> list[str]:\n        \"\"\"Fetch available models from the watsonx.ai API.\"\"\"\n        try:\n            endpoint = f\"{base_url}/ml/v1/foundation_model_specs\"\n            params = {\n                \"version\": \"2024-09-16\",\n                \"filters\": \"function_embedding,!lifecycle_withdrawn:and\",\n            }\n            response = requests.get(endpoint, params=params, timeout=10)\n            response.raise_for_status()\n            data = response.json()\n            models = [model[\"model_id\"] for model in data.get(\"resources\", [])]\n            return sorted(models)\n        except Exception:  # noqa: BLE001\n            logger.exception(\"Error fetching models\")\n            return WATSONX_EMBEDDING_MODEL_NAMES\n\n    async def build_embeddings(self) -> Embeddings:\n        provider = self.provider\n        model = self.model\n        api_key = self.api_key\n        api_base = self.api_base\n        base_url_ibm_watsonx = self.base_url_ibm_watsonx\n        ollama_base_url = self.ollama_base_url\n        dimensions = self.dimensions\n        chunk_size = self.chunk_size\n        request_timeout = self.request_timeout\n        max_retries = self.max_retries\n        show_progress_bar = self.show_progress_bar\n        model_kwargs = self.model_kwargs or {}\n\n        if provider == \"OpenAI\":\n            if not api_key:\n                msg = \"OpenAI API key is required when using OpenAI provider\"\n                raise ValueError(msg)\n\n            # Create the primary embedding instance\n            embeddings_instance = OpenAIEmbeddings(\n                model=model,\n                dimensions=dimensions or None,\n                base_url=api_base or None,\n                api_key=api_key,\n                chunk_size=chunk_size,\n                max_retries=max_retries,\n                timeout=request_timeout or None,\n                show_progress_bar=show_progress_bar,\n                model_kwargs=model_kwargs,\n            )\n\n            # Create dedicated instances for each available model\n            available_models_dict = {}\n            for model_name in OPENAI_EMBEDDING_MODEL_NAMES:\n                available_models_dict[model_name] = OpenAIEmbeddings(\n                    model=model_name,\n                    dimensions=dimensions or None,  # Use same dimensions config for all\n                    base_url=api_base or None,\n                    api_key=api_key,\n                    chunk_size=chunk_size,\n                    max_retries=max_retries,\n                    timeout=request_timeout or None,\n                    show_progress_bar=show_progress_bar,\n                    model_kwargs=model_kwargs,\n                )\n\n            return EmbeddingsWithModels(\n                embeddings=embeddings_instance,\n                available_models=available_models_dict,\n            )\n\n        if provider == \"Ollama\":\n            try:\n                from langchain_ollama import OllamaEmbeddings\n            except ImportError:\n                try:\n                    from langchain_community.embeddings import OllamaEmbeddings\n                except ImportError:\n                    msg = \"Please install langchain-ollama: pip install langchain-ollama\"\n                    raise ImportError(msg) from None\n\n            transformed_base_url = transform_localhost_url(ollama_base_url)\n\n            # Check if URL contains /v1 suffix (OpenAI-compatible mode)\n            if transformed_base_url and transformed_base_url.rstrip(\"/\").endswith(\"/v1\"):\n                # Strip /v1 suffix and log warning\n                transformed_base_url = transformed_base_url.rstrip(\"/\").removesuffix(\"/v1\")\n                logger.warning(\n                    \"Detected '/v1' suffix in base URL. The Ollama component uses the native Ollama API, \"\n                    \"not the OpenAI-compatible API. The '/v1' suffix has been automatically removed. \"\n                    \"If you want to use the OpenAI-compatible API, please use the OpenAI component instead. \"\n                    \"Learn more at https://docs.ollama.com/openai#openai-compatibility\"\n                )\n\n            final_base_url = transformed_base_url or \"http://localhost:11434\"\n\n            # Create the primary embedding instance\n            embeddings_instance = OllamaEmbeddings(\n                model=model,\n                base_url=final_base_url,\n                **model_kwargs,\n            )\n\n            # Fetch available Ollama models\n            available_model_names = await get_ollama_models(\n                base_url_value=self.ollama_base_url,\n                desired_capability=DESIRED_CAPABILITY,\n                json_models_key=JSON_MODELS_KEY,\n                json_name_key=JSON_NAME_KEY,\n                json_capabilities_key=JSON_CAPABILITIES_KEY,\n            )\n\n            # Create dedicated instances for each available model\n            available_models_dict = {}\n            for model_name in available_model_names:\n                available_models_dict[model_name] = OllamaEmbeddings(\n                    model=model_name,\n                    base_url=final_base_url,\n                    **model_kwargs,\n                )\n\n            return EmbeddingsWithModels(\n                embeddings=embeddings_instance,\n                available_models=available_models_dict,\n            )\n\n        if provider == \"IBM watsonx.ai\":\n            try:\n                from langchain_ibm import WatsonxEmbeddings\n            except ImportError:\n                msg = \"Please install langchain-ibm: pip install langchain-ibm\"\n                raise ImportError(msg) from None\n\n            if not api_key:\n                msg = \"IBM watsonx.ai API key is required when using IBM watsonx.ai provider\"\n                raise ValueError(msg)\n\n            project_id = self.project_id\n\n            if not project_id:\n                msg = \"Project ID is required for IBM watsonx.ai provider\"\n                raise ValueError(msg)\n\n            from ibm_watsonx_ai import APIClient, Credentials\n\n            final_url = base_url_ibm_watsonx or \"https://us-south.ml.cloud.ibm.com\"\n\n            credentials = Credentials(\n                api_key=self.api_key,\n                url=final_url,\n            )\n\n            api_client = APIClient(credentials)\n\n            params = {\n                EmbedTextParamsMetaNames.TRUNCATE_INPUT_TOKENS: self.truncate_input_tokens,\n                EmbedTextParamsMetaNames.RETURN_OPTIONS: {\"input_text\": self.input_text},\n            }\n\n            # Create the primary embedding instance\n            embeddings_instance = WatsonxEmbeddings(\n                model_id=model,\n                params=params,\n                watsonx_client=api_client,\n                project_id=project_id,\n            )\n\n            # Fetch available IBM watsonx.ai models\n            available_model_names = self.fetch_ibm_models(final_url)\n\n            # Create dedicated instances for each available model\n            available_models_dict = {}\n            for model_name in available_model_names:\n                available_models_dict[model_name] = WatsonxEmbeddings(\n                    model_id=model_name,\n                    params=params,\n                    watsonx_client=api_client,\n                    project_id=project_id,\n                )\n\n            return EmbeddingsWithModels(\n                embeddings=embeddings_instance,\n                available_models=available_models_dict,\n            )\n\n        msg = f\"Unknown provider: {provider}\"\n        raise ValueError(msg)\n\n    async def update_build_config(\n        self, build_config: dotdict, field_value: Any, field_name: str | None = None\n    ) -> dotdict:\n        if field_name == \"provider\":\n            if field_value == \"OpenAI\":\n                build_config[\"model\"][\"options\"] = OPENAI_EMBEDDING_MODEL_NAMES\n                build_config[\"model\"][\"value\"] = OPENAI_EMBEDDING_MODEL_NAMES[0]\n                build_config[\"api_key\"][\"display_name\"] = \"OpenAI API Key\"\n                build_config[\"api_key\"][\"required\"] = True\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"display_name\"] = \"OpenAI API Base URL\"\n                build_config[\"api_base\"][\"advanced\"] = True\n                build_config[\"api_base\"][\"show\"] = True\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n            elif field_value == \"Ollama\":\n                build_config[\"ollama_base_url\"][\"show\"] = True\n\n                if await is_valid_ollama_url(url=self.ollama_base_url):\n                    try:\n                        models = await get_ollama_models(\n                            base_url_value=self.ollama_base_url,\n                            desired_capability=DESIRED_CAPABILITY,\n                            json_models_key=JSON_MODELS_KEY,\n                            json_name_key=JSON_NAME_KEY,\n                            json_capabilities_key=JSON_CAPABILITIES_KEY,\n                        )\n                        build_config[\"model\"][\"options\"] = models\n                        build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                    except ValueError:\n                        build_config[\"model\"][\"options\"] = []\n                        build_config[\"model\"][\"value\"] = \"\"\n                else:\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n                build_config[\"api_key\"][\"display_name\"] = \"API Key (Optional)\"\n                build_config[\"api_key\"][\"required\"] = False\n                build_config[\"api_key\"][\"show\"] = False\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n\n            elif field_value == \"IBM watsonx.ai\":\n                build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)\n                build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)[0]\n                build_config[\"api_key\"][\"display_name\"] = \"IBM watsonx.ai API Key\"\n                build_config[\"api_key\"][\"required\"] = True\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = True\n                build_config[\"project_id\"][\"show\"] = True\n                build_config[\"truncate_input_tokens\"][\"show\"] = True\n                build_config[\"input_text\"][\"show\"] = True\n        elif field_name == \"base_url_ibm_watsonx\":\n            build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=field_value)\n            build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=field_value)[0]\n        elif field_name == \"ollama_base_url\":\n            # # Refresh Ollama models when base URL changes\n            # if hasattr(self, \"provider\") and self.provider == \"Ollama\":\n            # Use field_value if provided, otherwise fall back to instance attribute\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await get_ollama_models(\n                        base_url_value=ollama_url,\n                        desired_capability=DESIRED_CAPABILITY,\n                        json_models_key=JSON_MODELS_KEY,\n                        json_name_key=JSON_NAME_KEY,\n                        json_capabilities_key=JSON_CAPABILITIES_KEY,\n                    )\n                    build_config[\"model\"][\"options\"] = models\n                    build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                except ValueError:\n                    await logger.awarning(\"Failed to fetch Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n\n        elif field_name == \"model\" and self.provider == \"Ollama\":\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await get_ollama_models(\n                        base_url_value=ollama_url,\n                        desired_capability=DESIRED_CAPABILITY,\n                        json_models_key=JSON_MODELS_KEY,\n                        json_name_key=JSON_NAME_KEY,\n                        json_capabilities_key=JSON_CAPABILITIES_KEY,\n                    )\n                    build_config[\"model\"][\"options\"] = models\n                except ValueError:\n                    await logger.awarning(\"Failed to refresh Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n\n        return build_config\n"
+                "value": "from typing import Any\n\nimport requests\nfrom ibm_watsonx_ai.metanames import EmbedTextParamsMetaNames\nfrom langchain_openai import OpenAIEmbeddings\n\nfrom lfx.base.embeddings.embeddings_class import EmbeddingsWithModels\nfrom lfx.base.embeddings.model import LCEmbeddingsModel\nfrom lfx.base.models.model_utils import get_ollama_models, is_valid_ollama_url\nfrom lfx.base.models.openai_constants import OPENAI_EMBEDDING_MODEL_NAMES\nfrom lfx.base.models.watsonx_constants import (\n    IBM_WATSONX_URLS,\n    WATSONX_EMBEDDING_MODEL_NAMES,\n)\nfrom lfx.field_typing import Embeddings\nfrom lfx.io import (\n    BoolInput,\n    DictInput,\n    DropdownInput,\n    FloatInput,\n    IntInput,\n    MessageTextInput,\n    SecretStrInput,\n)\nfrom lfx.log.logger import logger\nfrom lfx.schema.dotdict import dotdict\nfrom lfx.utils.util import transform_localhost_url\n\n# Ollama API constants\nHTTP_STATUS_OK = 200\nJSON_MODELS_KEY = \"models\"\nJSON_NAME_KEY = \"name\"\nJSON_CAPABILITIES_KEY = \"capabilities\"\nDESIRED_CAPABILITY = \"embedding\"\nDEFAULT_OLLAMA_URL = \"http://localhost:11434\"\n\n\nclass EmbeddingModelComponent(LCEmbeddingsModel):\n    display_name = \"Embedding Model\"\n    description = \"Generate embeddings using a specified provider.\"\n    documentation: str = \"https://docs.langflow.org/components-embedding-models\"\n    icon = \"binary\"\n    name = \"EmbeddingModel\"\n    category = \"models\"\n\n    inputs = [\n        DropdownInput(\n            name=\"provider\",\n            display_name=\"Model Provider\",\n            options=[\"OpenAI\", \"Ollama\", \"IBM watsonx.ai\"],\n            value=\"OpenAI\",\n            info=\"Select the embedding model provider\",\n            real_time_refresh=True,\n            options_metadata=[{\"icon\": \"OpenAI\"}, {\"icon\": \"Ollama\"}, {\"icon\": \"WatsonxAI\"}],\n        ),\n        MessageTextInput(\n            name=\"api_base\",\n            display_name=\"API Base URL\",\n            info=\"Base URL for the API. Leave empty for default.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"ollama_base_url\",\n            display_name=\"Ollama API URL\",\n            info=f\"Endpoint of the Ollama API (Ollama only). Defaults to {DEFAULT_OLLAMA_URL}\",\n            value=DEFAULT_OLLAMA_URL,\n            show=False,\n            real_time_refresh=True,\n            load_from_db=True,\n        ),\n        DropdownInput(\n            name=\"base_url_ibm_watsonx\",\n            display_name=\"watsonx API Endpoint\",\n            info=\"The base URL of the API (IBM watsonx.ai only)\",\n            options=IBM_WATSONX_URLS,\n            value=IBM_WATSONX_URLS[0],\n            show=False,\n            real_time_refresh=True,\n        ),\n        DropdownInput(\n            name=\"model\",\n            display_name=\"Model Name\",\n            options=OPENAI_EMBEDDING_MODEL_NAMES,\n            value=OPENAI_EMBEDDING_MODEL_NAMES[0],\n            info=\"Select the embedding model to use\",\n            real_time_refresh=True,\n            refresh_button=True,\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"OpenAI API Key\",\n            info=\"Model Provider API key\",\n            required=True,\n            show=True,\n            real_time_refresh=True,\n        ),\n        # Watson-specific inputs\n        MessageTextInput(\n            name=\"project_id\",\n            display_name=\"Project ID\",\n            info=\"IBM watsonx.ai Project ID (required for IBM watsonx.ai)\",\n            show=False,\n        ),\n        IntInput(\n            name=\"dimensions\",\n            display_name=\"Dimensions\",\n            info=\"The number of dimensions the resulting output embeddings should have. \"\n            \"Only supported by certain models.\",\n            advanced=True,\n        ),\n        IntInput(name=\"chunk_size\", display_name=\"Chunk Size\", advanced=True, value=1000),\n        FloatInput(name=\"request_timeout\", display_name=\"Request Timeout\", advanced=True),\n        IntInput(name=\"max_retries\", display_name=\"Max Retries\", advanced=True, value=3),\n        BoolInput(name=\"show_progress_bar\", display_name=\"Show Progress Bar\", advanced=True),\n        DictInput(\n            name=\"model_kwargs\",\n            display_name=\"Model Kwargs\",\n            advanced=True,\n            info=\"Additional keyword arguments to pass to the model.\",\n        ),\n        IntInput(\n            name=\"truncate_input_tokens\",\n            display_name=\"Truncate Input Tokens\",\n            advanced=True,\n            value=200,\n            show=False,\n        ),\n        BoolInput(\n            name=\"input_text\",\n            display_name=\"Include the original text in the output\",\n            value=True,\n            advanced=True,\n            show=False,\n        ),\n        BoolInput(\n            name=\"fail_safe_mode\",\n            display_name=\"Fail-Safe Mode\",\n            value=False,\n            advanced=True,\n            info=\"When enabled, errors will be logged instead of raising exceptions. \"\n            \"The component will return None on error.\",\n            real_time_refresh=True,\n        ),\n    ]\n\n    @staticmethod\n    def fetch_ibm_models(base_url: str) -> list[str]:\n        \"\"\"Fetch available models from the watsonx.ai API.\"\"\"\n        try:\n            endpoint = f\"{base_url}/ml/v1/foundation_model_specs\"\n            params = {\n                \"version\": \"2024-09-16\",\n                \"filters\": \"function_embedding,!lifecycle_withdrawn:and\",\n            }\n            response = requests.get(endpoint, params=params, timeout=10)\n            response.raise_for_status()\n            data = response.json()\n            models = [model[\"model_id\"] for model in data.get(\"resources\", [])]\n            return sorted(models)\n        except Exception:  # noqa: BLE001\n            logger.exception(\"Error fetching models\")\n            return WATSONX_EMBEDDING_MODEL_NAMES\n    async def fetch_ollama_models(self) -> list[str]:\n        try:\n            return await get_ollama_models(\n                base_url_value=self.ollama_base_url,\n                desired_capability=DESIRED_CAPABILITY,\n                json_models_key=JSON_MODELS_KEY,\n                json_name_key=JSON_NAME_KEY,\n                json_capabilities_key=JSON_CAPABILITIES_KEY,\n            )\n        except Exception:  # noqa: BLE001\n\n            logger.exception(\"Error fetching models\")\n            return []\n    async def build_embeddings(self) -> Embeddings:\n        provider = self.provider\n        model = self.model\n        api_key = self.api_key\n        api_base = self.api_base\n        base_url_ibm_watsonx = self.base_url_ibm_watsonx\n        ollama_base_url = self.ollama_base_url\n        dimensions = self.dimensions\n        chunk_size = self.chunk_size\n        request_timeout = self.request_timeout\n        max_retries = self.max_retries\n        show_progress_bar = self.show_progress_bar\n        model_kwargs = self.model_kwargs or {}\n\n        if provider == \"OpenAI\":\n            if not api_key:\n                msg = \"OpenAI API key is required when using OpenAI provider\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ValueError(msg)\n\n            try:\n                # Create the primary embedding instance\n                embeddings_instance = OpenAIEmbeddings(\n                    model=model,\n                    dimensions=dimensions or None,\n                    base_url=api_base or None,\n                    api_key=api_key,\n                    chunk_size=chunk_size,\n                    max_retries=max_retries,\n                    timeout=request_timeout or None,\n                    show_progress_bar=show_progress_bar,\n                    model_kwargs=model_kwargs,\n                )\n\n                # Create dedicated instances for each available model\n                available_models_dict = {}\n                for model_name in OPENAI_EMBEDDING_MODEL_NAMES:\n                    available_models_dict[model_name] = OpenAIEmbeddings(\n                        model=model_name,\n                        dimensions=dimensions or None,  # Use same dimensions config for all\n                        base_url=api_base or None,\n                        api_key=api_key,\n                        chunk_size=chunk_size,\n                        max_retries=max_retries,\n                        timeout=request_timeout or None,\n                        show_progress_bar=show_progress_bar,\n                        model_kwargs=model_kwargs,\n                    )\n\n                return EmbeddingsWithModels(\n                    embeddings=embeddings_instance,\n                    available_models=available_models_dict,\n                )\n            except Exception as e:\n                msg = f\"Failed to initialize OpenAI embeddings: {e}\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise\n\n        if provider == \"Ollama\":\n            try:\n                from langchain_ollama import OllamaEmbeddings\n            except ImportError:\n                try:\n                    from langchain_community.embeddings import OllamaEmbeddings\n                except ImportError:\n                    msg = \"Please install langchain-ollama: pip install langchain-ollama\"\n                    if self.fail_safe_mode:\n                        logger.error(msg)\n                        return None\n                    raise ImportError(msg) from None\n\n            try:\n                transformed_base_url = transform_localhost_url(ollama_base_url)\n\n                # Check if URL contains /v1 suffix (OpenAI-compatible mode)\n                if transformed_base_url and transformed_base_url.rstrip(\"/\").endswith(\"/v1\"):\n                    # Strip /v1 suffix and log warning\n                    transformed_base_url = transformed_base_url.rstrip(\"/\").removesuffix(\"/v1\")\n                    logger.warning(\n                        \"Detected '/v1' suffix in base URL. The Ollama component uses the native Ollama API, \"\n                        \"not the OpenAI-compatible API. The '/v1' suffix has been automatically removed. \"\n                        \"If you want to use the OpenAI-compatible API, please use the OpenAI component instead. \"\n                        \"Learn more at https://docs.ollama.com/openai#openai-compatibility\"\n                    )\n\n                final_base_url = transformed_base_url or \"http://localhost:11434\"\n\n                # Create the primary embedding instance\n                embeddings_instance = OllamaEmbeddings(\n                    model=model,\n                    base_url=final_base_url,\n                    **model_kwargs,\n                )\n\n                # Fetch available Ollama models\n                available_model_names = await self.fetch_ollama_models()\n\n                # Create dedicated instances for each available model\n                available_models_dict = {}\n                for model_name in available_model_names:\n                    available_models_dict[model_name] = OllamaEmbeddings(\n                        model=model_name,\n                        base_url=final_base_url,\n                        **model_kwargs,\n                    )\n\n                return EmbeddingsWithModels(\n                    embeddings=embeddings_instance,\n                    available_models=available_models_dict,\n                )\n            except Exception as e:\n                msg = f\"Failed to initialize Ollama embeddings: {e}\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise\n\n        if provider == \"IBM watsonx.ai\":\n            try:\n                from langchain_ibm import WatsonxEmbeddings\n            except ImportError:\n                msg = \"Please install langchain-ibm: pip install langchain-ibm\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ImportError(msg) from None\n\n            if not api_key:\n                msg = \"IBM watsonx.ai API key is required when using IBM watsonx.ai provider\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ValueError(msg)\n\n            project_id = self.project_id\n\n            if not project_id:\n                msg = \"Project ID is required for IBM watsonx.ai provider\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ValueError(msg)\n\n            try:\n                from ibm_watsonx_ai import APIClient, Credentials\n\n                final_url = base_url_ibm_watsonx or \"https://us-south.ml.cloud.ibm.com\"\n\n                credentials = Credentials(\n                    api_key=self.api_key,\n                    url=final_url,\n                )\n\n                api_client = APIClient(credentials)\n\n                params = {\n                    EmbedTextParamsMetaNames.TRUNCATE_INPUT_TOKENS: self.truncate_input_tokens,\n                    EmbedTextParamsMetaNames.RETURN_OPTIONS: {\"input_text\": self.input_text},\n                }\n\n                # Create the primary embedding instance\n                embeddings_instance = WatsonxEmbeddings(\n                    model_id=model,\n                    params=params,\n                    watsonx_client=api_client,\n                    project_id=project_id,\n                )\n\n                # Fetch available IBM watsonx.ai models\n                available_model_names = self.fetch_ibm_models(final_url)\n\n                # Create dedicated instances for each available model\n                available_models_dict = {}\n                for model_name in available_model_names:\n                    available_models_dict[model_name] = WatsonxEmbeddings(\n                        model_id=model_name,\n                        params=params,\n                        watsonx_client=api_client,\n                        project_id=project_id,\n                    )\n\n                return EmbeddingsWithModels(\n                    embeddings=embeddings_instance,\n                    available_models=available_models_dict,\n                )\n            except Exception as e:\n                msg = f\"Failed to authenticate with IBM watsonx.ai: {e}\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise\n\n        msg = f\"Unknown provider: {provider}\"\n        if self.fail_safe_mode:\n            logger.error(msg)\n            return None\n        raise ValueError(msg)\n\n    async def update_build_config(\n        self, build_config: dotdict, field_value: Any, field_name: str | None = None\n    ) -> dotdict:\n        # Handle fail_safe_mode changes first - set all required fields to False if enabled\n        if field_name == \"fail_safe_mode\":\n            if field_value:  # If fail_safe_mode is enabled\n                build_config[\"api_key\"][\"required\"] = False\n            elif hasattr(self, \"provider\"):\n                # If fail_safe_mode is disabled, restore required flags based on provider\n                if self.provider in [\"OpenAI\", \"IBM watsonx.ai\"]:\n                    build_config[\"api_key\"][\"required\"] = True\n                else:  # Ollama\n                    build_config[\"api_key\"][\"required\"] = False\n\n        if field_name == \"provider\":\n            if field_value == \"OpenAI\":\n                build_config[\"model\"][\"options\"] = OPENAI_EMBEDDING_MODEL_NAMES\n                build_config[\"model\"][\"value\"] = OPENAI_EMBEDDING_MODEL_NAMES[0]\n                build_config[\"api_key\"][\"display_name\"] = \"OpenAI API Key\"\n                # Only set required=True if fail_safe_mode is not enabled\n                build_config[\"api_key\"][\"required\"] = not (hasattr(self, \"fail_safe_mode\") and self.fail_safe_mode)\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"display_name\"] = \"OpenAI API Base URL\"\n                build_config[\"api_base\"][\"advanced\"] = True\n                build_config[\"api_base\"][\"show\"] = True\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n            elif field_value == \"Ollama\":\n                build_config[\"ollama_base_url\"][\"show\"] = True\n\n                if await is_valid_ollama_url(url=self.ollama_base_url):\n                    try:\n                        models = await self.fetch_ollama_models()\n                        build_config[\"model\"][\"options\"] = models\n                        build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                    except ValueError:\n                        build_config[\"model\"][\"options\"] = []\n                        build_config[\"model\"][\"value\"] = \"\"\n                else:\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n                build_config[\"api_key\"][\"display_name\"] = \"API Key (Optional)\"\n                build_config[\"api_key\"][\"required\"] = False\n                build_config[\"api_key\"][\"show\"] = False\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n\n            elif field_value == \"IBM watsonx.ai\":\n                build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)\n                build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)[0]\n                build_config[\"api_key\"][\"display_name\"] = \"IBM watsonx.ai API Key\"\n                # Only set required=True if fail_safe_mode is not enabled\n                build_config[\"api_key\"][\"required\"] = not (hasattr(self, \"fail_safe_mode\") and self.fail_safe_mode)\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = True\n                build_config[\"project_id\"][\"show\"] = True\n                build_config[\"truncate_input_tokens\"][\"show\"] = True\n                build_config[\"input_text\"][\"show\"] = True\n        elif field_name == \"base_url_ibm_watsonx\":\n            build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=field_value)\n            build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=field_value)[0]\n        elif field_name == \"ollama_base_url\":\n            # # Refresh Ollama models when base URL changes\n            # if hasattr(self, \"provider\") and self.provider == \"Ollama\":\n            # Use field_value if provided, otherwise fall back to instance attribute\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await self.fetch_ollama_models()\n                    build_config[\"model\"][\"options\"] = models\n                    build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                except ValueError:\n                    await logger.awarning(\"Failed to fetch Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n\n        elif field_name == \"model\" and self.provider == \"Ollama\":\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await self.fetch_ollama_models()\n                    build_config[\"model\"][\"options\"] = models\n                except ValueError:\n                    await logger.awarning(\"Failed to refresh Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n\n        return build_config\n"
               },
               "dimensions": {
                 "_input_type": "IntInput",
@@ -4856,6 +4917,28 @@
                 "track_in_telemetry": true,
                 "type": "int",
                 "value": ""
+              },
+              "fail_safe_mode": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Fail-Safe Mode",
+                "dynamic": false,
+                "info": "When enabled, errors will be logged instead of raising exceptions. The component will return None on error.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "fail_safe_mode",
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
               },
               "input_text": {
                 "_input_type": "BoolInput",
@@ -4907,11 +4990,9 @@
                 "dynamic": false,
                 "external_options": {},
                 "info": "Select the embedding model to use",
+                "load_from_db": false,
                 "name": "model",
-                "options": [
-                  "bge-large:latest",
-                  "qwen3-embedding:4b"
-                ],
+                "options": [],
                 "options_metadata": [],
                 "override_skip": false,
                 "placeholder": "",
@@ -4925,7 +5006,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": true,
                 "type": "str",
-                "value": "bge-large:latest"
+                "value": ""
               },
               "model_kwargs": {
                 "_input_type": "DictInput",
@@ -5007,6 +5088,7 @@
                 "dynamic": false,
                 "external_options": {},
                 "info": "Select the embedding model provider",
+                "load_from_db": false,
                 "name": "provider",
                 "options": [
                   "OpenAI",
@@ -5028,6 +5110,9 @@
                 "placeholder": "",
                 "real_time_refresh": true,
                 "required": false,
+                "selected_metadata": {
+                  "icon": "Ollama"
+                },
                 "show": true,
                 "title_case": false,
                 "toggle": false,
@@ -5129,7 +5214,7 @@
             "description": "Generate embeddings using a specified provider.",
             "display_name": "Embedding Model",
             "documentation": "https://docs.langflow.org/components-embedding-models",
-            "edited": false,
+            "edited": true,
             "field_order": [
               "provider",
               "api_base",
@@ -5145,15 +5230,16 @@
               "show_progress_bar",
               "model_kwargs",
               "truncate_input_tokens",
-              "input_text"
+              "input_text",
+              "fail_safe_mode"
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-11-26T00:02:32.606Z",
+            "last_updated": "2025-11-26T04:04:37.496Z",
             "legacy": false,
-            "lf_version": "1.7.0",
+            "lf_version": "1.7.0.dev21",
             "metadata": {
-              "code_hash": "9e44c83a5058",
+              "code_hash": "0e2d6fe67a26",
               "dependencies": {
                 "dependencies": [
                   {
@@ -5170,7 +5256,7 @@
                   },
                   {
                     "name": "lfx",
-                    "version": null
+                    "version": "0.2.0.dev21"
                   },
                   {
                     "name": "langchain_ollama",
@@ -5187,7 +5273,7 @@
                 ],
                 "total_dependencies": 7
               },
-              "module": "lfx.components.models_and_agents.embedding_model.EmbeddingModelComponent"
+              "module": "custom_components.embedding_model"
             },
             "minimized": false,
             "output_types": [],
@@ -5197,6 +5283,7 @@
                 "cache": true,
                 "display_name": "Embedding Model",
                 "group_outputs": false,
+                "hidden": null,
                 "loop_types": null,
                 "method": "build_embeddings",
                 "name": "embeddings",
@@ -5216,13 +5303,13 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "dd32f417-a152-4076-b7cb-f0a44b2f19a4"
+                "value": "a7d8cc21-8de6-4cc6-a617-3494cb304e08"
               },
               "_type": "Component",
               "api_base": {
                 "_input_type": "MessageTextInput",
                 "advanced": true,
-                "display_name": "API Base URL",
+                "display_name": "OpenAI API Base URL",
                 "dynamic": false,
                 "info": "Base URL for the API. Leave empty for default.",
                 "input_types": [
@@ -5257,7 +5344,7 @@
                 "password": true,
                 "placeholder": "",
                 "real_time_refresh": true,
-                "required": true,
+                "required": false,
                 "show": true,
                 "title_case": false,
                 "track_in_telemetry": false,
@@ -5332,7 +5419,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from typing import Any\n\nimport requests\nfrom ibm_watsonx_ai.metanames import EmbedTextParamsMetaNames\nfrom langchain_openai import OpenAIEmbeddings\n\nfrom lfx.base.embeddings.embeddings_class import EmbeddingsWithModels\nfrom lfx.base.embeddings.model import LCEmbeddingsModel\nfrom lfx.base.models.model_utils import get_ollama_models, is_valid_ollama_url\nfrom lfx.base.models.openai_constants import OPENAI_EMBEDDING_MODEL_NAMES\nfrom lfx.base.models.watsonx_constants import (\n    IBM_WATSONX_URLS,\n    WATSONX_EMBEDDING_MODEL_NAMES,\n)\nfrom lfx.field_typing import Embeddings\nfrom lfx.io import (\n    BoolInput,\n    DictInput,\n    DropdownInput,\n    FloatInput,\n    IntInput,\n    MessageTextInput,\n    SecretStrInput,\n)\nfrom lfx.log.logger import logger\nfrom lfx.schema.dotdict import dotdict\nfrom lfx.utils.util import transform_localhost_url\n\n# Ollama API constants\nHTTP_STATUS_OK = 200\nJSON_MODELS_KEY = \"models\"\nJSON_NAME_KEY = \"name\"\nJSON_CAPABILITIES_KEY = \"capabilities\"\nDESIRED_CAPABILITY = \"embedding\"\nDEFAULT_OLLAMA_URL = \"http://localhost:11434\"\n\n\nclass EmbeddingModelComponent(LCEmbeddingsModel):\n    display_name = \"Embedding Model\"\n    description = \"Generate embeddings using a specified provider.\"\n    documentation: str = \"https://docs.langflow.org/components-embedding-models\"\n    icon = \"binary\"\n    name = \"EmbeddingModel\"\n    category = \"models\"\n\n    inputs = [\n        DropdownInput(\n            name=\"provider\",\n            display_name=\"Model Provider\",\n            options=[\"OpenAI\", \"Ollama\", \"IBM watsonx.ai\"],\n            value=\"OpenAI\",\n            info=\"Select the embedding model provider\",\n            real_time_refresh=True,\n            options_metadata=[{\"icon\": \"OpenAI\"}, {\"icon\": \"Ollama\"}, {\"icon\": \"WatsonxAI\"}],\n        ),\n        MessageTextInput(\n            name=\"api_base\",\n            display_name=\"API Base URL\",\n            info=\"Base URL for the API. Leave empty for default.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"ollama_base_url\",\n            display_name=\"Ollama API URL\",\n            info=f\"Endpoint of the Ollama API (Ollama only). Defaults to {DEFAULT_OLLAMA_URL}\",\n            value=DEFAULT_OLLAMA_URL,\n            show=False,\n            real_time_refresh=True,\n            load_from_db=True,\n        ),\n        DropdownInput(\n            name=\"base_url_ibm_watsonx\",\n            display_name=\"watsonx API Endpoint\",\n            info=\"The base URL of the API (IBM watsonx.ai only)\",\n            options=IBM_WATSONX_URLS,\n            value=IBM_WATSONX_URLS[0],\n            show=False,\n            real_time_refresh=True,\n        ),\n        DropdownInput(\n            name=\"model\",\n            display_name=\"Model Name\",\n            options=OPENAI_EMBEDDING_MODEL_NAMES,\n            value=OPENAI_EMBEDDING_MODEL_NAMES[0],\n            info=\"Select the embedding model to use\",\n            real_time_refresh=True,\n            refresh_button=True,\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"OpenAI API Key\",\n            info=\"Model Provider API key\",\n            required=True,\n            show=True,\n            real_time_refresh=True,\n        ),\n        # Watson-specific inputs\n        MessageTextInput(\n            name=\"project_id\",\n            display_name=\"Project ID\",\n            info=\"IBM watsonx.ai Project ID (required for IBM watsonx.ai)\",\n            show=False,\n        ),\n        IntInput(\n            name=\"dimensions\",\n            display_name=\"Dimensions\",\n            info=\"The number of dimensions the resulting output embeddings should have. \"\n            \"Only supported by certain models.\",\n            advanced=True,\n        ),\n        IntInput(name=\"chunk_size\", display_name=\"Chunk Size\", advanced=True, value=1000),\n        FloatInput(name=\"request_timeout\", display_name=\"Request Timeout\", advanced=True),\n        IntInput(name=\"max_retries\", display_name=\"Max Retries\", advanced=True, value=3),\n        BoolInput(name=\"show_progress_bar\", display_name=\"Show Progress Bar\", advanced=True),\n        DictInput(\n            name=\"model_kwargs\",\n            display_name=\"Model Kwargs\",\n            advanced=True,\n            info=\"Additional keyword arguments to pass to the model.\",\n        ),\n        IntInput(\n            name=\"truncate_input_tokens\",\n            display_name=\"Truncate Input Tokens\",\n            advanced=True,\n            value=200,\n            show=False,\n        ),\n        BoolInput(\n            name=\"input_text\",\n            display_name=\"Include the original text in the output\",\n            value=True,\n            advanced=True,\n            show=False,\n        ),\n    ]\n\n    @staticmethod\n    def fetch_ibm_models(base_url: str) -> list[str]:\n        \"\"\"Fetch available models from the watsonx.ai API.\"\"\"\n        try:\n            endpoint = f\"{base_url}/ml/v1/foundation_model_specs\"\n            params = {\n                \"version\": \"2024-09-16\",\n                \"filters\": \"function_embedding,!lifecycle_withdrawn:and\",\n            }\n            response = requests.get(endpoint, params=params, timeout=10)\n            response.raise_for_status()\n            data = response.json()\n            models = [model[\"model_id\"] for model in data.get(\"resources\", [])]\n            return sorted(models)\n        except Exception:  # noqa: BLE001\n            logger.exception(\"Error fetching models\")\n            return WATSONX_EMBEDDING_MODEL_NAMES\n\n    async def build_embeddings(self) -> Embeddings:\n        provider = self.provider\n        model = self.model\n        api_key = self.api_key\n        api_base = self.api_base\n        base_url_ibm_watsonx = self.base_url_ibm_watsonx\n        ollama_base_url = self.ollama_base_url\n        dimensions = self.dimensions\n        chunk_size = self.chunk_size\n        request_timeout = self.request_timeout\n        max_retries = self.max_retries\n        show_progress_bar = self.show_progress_bar\n        model_kwargs = self.model_kwargs or {}\n\n        if provider == \"OpenAI\":\n            if not api_key:\n                msg = \"OpenAI API key is required when using OpenAI provider\"\n                raise ValueError(msg)\n\n            # Create the primary embedding instance\n            embeddings_instance = OpenAIEmbeddings(\n                model=model,\n                dimensions=dimensions or None,\n                base_url=api_base or None,\n                api_key=api_key,\n                chunk_size=chunk_size,\n                max_retries=max_retries,\n                timeout=request_timeout or None,\n                show_progress_bar=show_progress_bar,\n                model_kwargs=model_kwargs,\n            )\n\n            # Create dedicated instances for each available model\n            available_models_dict = {}\n            for model_name in OPENAI_EMBEDDING_MODEL_NAMES:\n                available_models_dict[model_name] = OpenAIEmbeddings(\n                    model=model_name,\n                    dimensions=dimensions or None,  # Use same dimensions config for all\n                    base_url=api_base or None,\n                    api_key=api_key,\n                    chunk_size=chunk_size,\n                    max_retries=max_retries,\n                    timeout=request_timeout or None,\n                    show_progress_bar=show_progress_bar,\n                    model_kwargs=model_kwargs,\n                )\n\n            return EmbeddingsWithModels(\n                embeddings=embeddings_instance,\n                available_models=available_models_dict,\n            )\n\n        if provider == \"Ollama\":\n            try:\n                from langchain_ollama import OllamaEmbeddings\n            except ImportError:\n                try:\n                    from langchain_community.embeddings import OllamaEmbeddings\n                except ImportError:\n                    msg = \"Please install langchain-ollama: pip install langchain-ollama\"\n                    raise ImportError(msg) from None\n\n            transformed_base_url = transform_localhost_url(ollama_base_url)\n\n            # Check if URL contains /v1 suffix (OpenAI-compatible mode)\n            if transformed_base_url and transformed_base_url.rstrip(\"/\").endswith(\"/v1\"):\n                # Strip /v1 suffix and log warning\n                transformed_base_url = transformed_base_url.rstrip(\"/\").removesuffix(\"/v1\")\n                logger.warning(\n                    \"Detected '/v1' suffix in base URL. The Ollama component uses the native Ollama API, \"\n                    \"not the OpenAI-compatible API. The '/v1' suffix has been automatically removed. \"\n                    \"If you want to use the OpenAI-compatible API, please use the OpenAI component instead. \"\n                    \"Learn more at https://docs.ollama.com/openai#openai-compatibility\"\n                )\n\n            final_base_url = transformed_base_url or \"http://localhost:11434\"\n\n            # Create the primary embedding instance\n            embeddings_instance = OllamaEmbeddings(\n                model=model,\n                base_url=final_base_url,\n                **model_kwargs,\n            )\n\n            # Fetch available Ollama models\n            available_model_names = await get_ollama_models(\n                base_url_value=self.ollama_base_url,\n                desired_capability=DESIRED_CAPABILITY,\n                json_models_key=JSON_MODELS_KEY,\n                json_name_key=JSON_NAME_KEY,\n                json_capabilities_key=JSON_CAPABILITIES_KEY,\n            )\n\n            # Create dedicated instances for each available model\n            available_models_dict = {}\n            for model_name in available_model_names:\n                available_models_dict[model_name] = OllamaEmbeddings(\n                    model=model_name,\n                    base_url=final_base_url,\n                    **model_kwargs,\n                )\n\n            return EmbeddingsWithModels(\n                embeddings=embeddings_instance,\n                available_models=available_models_dict,\n            )\n\n        if provider == \"IBM watsonx.ai\":\n            try:\n                from langchain_ibm import WatsonxEmbeddings\n            except ImportError:\n                msg = \"Please install langchain-ibm: pip install langchain-ibm\"\n                raise ImportError(msg) from None\n\n            if not api_key:\n                msg = \"IBM watsonx.ai API key is required when using IBM watsonx.ai provider\"\n                raise ValueError(msg)\n\n            project_id = self.project_id\n\n            if not project_id:\n                msg = \"Project ID is required for IBM watsonx.ai provider\"\n                raise ValueError(msg)\n\n            from ibm_watsonx_ai import APIClient, Credentials\n\n            final_url = base_url_ibm_watsonx or \"https://us-south.ml.cloud.ibm.com\"\n\n            credentials = Credentials(\n                api_key=self.api_key,\n                url=final_url,\n            )\n\n            api_client = APIClient(credentials)\n\n            params = {\n                EmbedTextParamsMetaNames.TRUNCATE_INPUT_TOKENS: self.truncate_input_tokens,\n                EmbedTextParamsMetaNames.RETURN_OPTIONS: {\"input_text\": self.input_text},\n            }\n\n            # Create the primary embedding instance\n            embeddings_instance = WatsonxEmbeddings(\n                model_id=model,\n                params=params,\n                watsonx_client=api_client,\n                project_id=project_id,\n            )\n\n            # Fetch available IBM watsonx.ai models\n            available_model_names = self.fetch_ibm_models(final_url)\n\n            # Create dedicated instances for each available model\n            available_models_dict = {}\n            for model_name in available_model_names:\n                available_models_dict[model_name] = WatsonxEmbeddings(\n                    model_id=model_name,\n                    params=params,\n                    watsonx_client=api_client,\n                    project_id=project_id,\n                )\n\n            return EmbeddingsWithModels(\n                embeddings=embeddings_instance,\n                available_models=available_models_dict,\n            )\n\n        msg = f\"Unknown provider: {provider}\"\n        raise ValueError(msg)\n\n    async def update_build_config(\n        self, build_config: dotdict, field_value: Any, field_name: str | None = None\n    ) -> dotdict:\n        if field_name == \"provider\":\n            if field_value == \"OpenAI\":\n                build_config[\"model\"][\"options\"] = OPENAI_EMBEDDING_MODEL_NAMES\n                build_config[\"model\"][\"value\"] = OPENAI_EMBEDDING_MODEL_NAMES[0]\n                build_config[\"api_key\"][\"display_name\"] = \"OpenAI API Key\"\n                build_config[\"api_key\"][\"required\"] = True\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"display_name\"] = \"OpenAI API Base URL\"\n                build_config[\"api_base\"][\"advanced\"] = True\n                build_config[\"api_base\"][\"show\"] = True\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n            elif field_value == \"Ollama\":\n                build_config[\"ollama_base_url\"][\"show\"] = True\n\n                if await is_valid_ollama_url(url=self.ollama_base_url):\n                    try:\n                        models = await get_ollama_models(\n                            base_url_value=self.ollama_base_url,\n                            desired_capability=DESIRED_CAPABILITY,\n                            json_models_key=JSON_MODELS_KEY,\n                            json_name_key=JSON_NAME_KEY,\n                            json_capabilities_key=JSON_CAPABILITIES_KEY,\n                        )\n                        build_config[\"model\"][\"options\"] = models\n                        build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                    except ValueError:\n                        build_config[\"model\"][\"options\"] = []\n                        build_config[\"model\"][\"value\"] = \"\"\n                else:\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n                build_config[\"api_key\"][\"display_name\"] = \"API Key (Optional)\"\n                build_config[\"api_key\"][\"required\"] = False\n                build_config[\"api_key\"][\"show\"] = False\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n\n            elif field_value == \"IBM watsonx.ai\":\n                build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)\n                build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)[0]\n                build_config[\"api_key\"][\"display_name\"] = \"IBM watsonx.ai API Key\"\n                build_config[\"api_key\"][\"required\"] = True\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = True\n                build_config[\"project_id\"][\"show\"] = True\n                build_config[\"truncate_input_tokens\"][\"show\"] = True\n                build_config[\"input_text\"][\"show\"] = True\n        elif field_name == \"base_url_ibm_watsonx\":\n            build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=field_value)\n            build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=field_value)[0]\n        elif field_name == \"ollama_base_url\":\n            # # Refresh Ollama models when base URL changes\n            # if hasattr(self, \"provider\") and self.provider == \"Ollama\":\n            # Use field_value if provided, otherwise fall back to instance attribute\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await get_ollama_models(\n                        base_url_value=ollama_url,\n                        desired_capability=DESIRED_CAPABILITY,\n                        json_models_key=JSON_MODELS_KEY,\n                        json_name_key=JSON_NAME_KEY,\n                        json_capabilities_key=JSON_CAPABILITIES_KEY,\n                    )\n                    build_config[\"model\"][\"options\"] = models\n                    build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                except ValueError:\n                    await logger.awarning(\"Failed to fetch Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n\n        elif field_name == \"model\" and self.provider == \"Ollama\":\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await get_ollama_models(\n                        base_url_value=ollama_url,\n                        desired_capability=DESIRED_CAPABILITY,\n                        json_models_key=JSON_MODELS_KEY,\n                        json_name_key=JSON_NAME_KEY,\n                        json_capabilities_key=JSON_CAPABILITIES_KEY,\n                    )\n                    build_config[\"model\"][\"options\"] = models\n                except ValueError:\n                    await logger.awarning(\"Failed to refresh Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n\n        return build_config\n"
+                "value": "from typing import Any\n\nimport requests\nfrom ibm_watsonx_ai.metanames import EmbedTextParamsMetaNames\nfrom langchain_openai import OpenAIEmbeddings\n\nfrom lfx.base.embeddings.embeddings_class import EmbeddingsWithModels\nfrom lfx.base.embeddings.model import LCEmbeddingsModel\nfrom lfx.base.models.model_utils import get_ollama_models, is_valid_ollama_url\nfrom lfx.base.models.openai_constants import OPENAI_EMBEDDING_MODEL_NAMES\nfrom lfx.base.models.watsonx_constants import (\n    IBM_WATSONX_URLS,\n    WATSONX_EMBEDDING_MODEL_NAMES,\n)\nfrom lfx.field_typing import Embeddings\nfrom lfx.io import (\n    BoolInput,\n    DictInput,\n    DropdownInput,\n    FloatInput,\n    IntInput,\n    MessageTextInput,\n    SecretStrInput,\n)\nfrom lfx.log.logger import logger\nfrom lfx.schema.dotdict import dotdict\nfrom lfx.utils.util import transform_localhost_url\n\n# Ollama API constants\nHTTP_STATUS_OK = 200\nJSON_MODELS_KEY = \"models\"\nJSON_NAME_KEY = \"name\"\nJSON_CAPABILITIES_KEY = \"capabilities\"\nDESIRED_CAPABILITY = \"embedding\"\nDEFAULT_OLLAMA_URL = \"http://localhost:11434\"\n\n\nclass EmbeddingModelComponent(LCEmbeddingsModel):\n    display_name = \"Embedding Model\"\n    description = \"Generate embeddings using a specified provider.\"\n    documentation: str = \"https://docs.langflow.org/components-embedding-models\"\n    icon = \"binary\"\n    name = \"EmbeddingModel\"\n    category = \"models\"\n\n    inputs = [\n        DropdownInput(\n            name=\"provider\",\n            display_name=\"Model Provider\",\n            options=[\"OpenAI\", \"Ollama\", \"IBM watsonx.ai\"],\n            value=\"OpenAI\",\n            info=\"Select the embedding model provider\",\n            real_time_refresh=True,\n            options_metadata=[{\"icon\": \"OpenAI\"}, {\"icon\": \"Ollama\"}, {\"icon\": \"WatsonxAI\"}],\n        ),\n        MessageTextInput(\n            name=\"api_base\",\n            display_name=\"API Base URL\",\n            info=\"Base URL for the API. Leave empty for default.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"ollama_base_url\",\n            display_name=\"Ollama API URL\",\n            info=f\"Endpoint of the Ollama API (Ollama only). Defaults to {DEFAULT_OLLAMA_URL}\",\n            value=DEFAULT_OLLAMA_URL,\n            show=False,\n            real_time_refresh=True,\n            load_from_db=True,\n        ),\n        DropdownInput(\n            name=\"base_url_ibm_watsonx\",\n            display_name=\"watsonx API Endpoint\",\n            info=\"The base URL of the API (IBM watsonx.ai only)\",\n            options=IBM_WATSONX_URLS,\n            value=IBM_WATSONX_URLS[0],\n            show=False,\n            real_time_refresh=True,\n        ),\n        DropdownInput(\n            name=\"model\",\n            display_name=\"Model Name\",\n            options=OPENAI_EMBEDDING_MODEL_NAMES,\n            value=OPENAI_EMBEDDING_MODEL_NAMES[0],\n            info=\"Select the embedding model to use\",\n            real_time_refresh=True,\n            refresh_button=True,\n        ),\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"OpenAI API Key\",\n            info=\"Model Provider API key\",\n            required=True,\n            show=True,\n            real_time_refresh=True,\n        ),\n        # Watson-specific inputs\n        MessageTextInput(\n            name=\"project_id\",\n            display_name=\"Project ID\",\n            info=\"IBM watsonx.ai Project ID (required for IBM watsonx.ai)\",\n            show=False,\n        ),\n        IntInput(\n            name=\"dimensions\",\n            display_name=\"Dimensions\",\n            info=\"The number of dimensions the resulting output embeddings should have. \"\n            \"Only supported by certain models.\",\n            advanced=True,\n        ),\n        IntInput(name=\"chunk_size\", display_name=\"Chunk Size\", advanced=True, value=1000),\n        FloatInput(name=\"request_timeout\", display_name=\"Request Timeout\", advanced=True),\n        IntInput(name=\"max_retries\", display_name=\"Max Retries\", advanced=True, value=3),\n        BoolInput(name=\"show_progress_bar\", display_name=\"Show Progress Bar\", advanced=True),\n        DictInput(\n            name=\"model_kwargs\",\n            display_name=\"Model Kwargs\",\n            advanced=True,\n            info=\"Additional keyword arguments to pass to the model.\",\n        ),\n        IntInput(\n            name=\"truncate_input_tokens\",\n            display_name=\"Truncate Input Tokens\",\n            advanced=True,\n            value=200,\n            show=False,\n        ),\n        BoolInput(\n            name=\"input_text\",\n            display_name=\"Include the original text in the output\",\n            value=True,\n            advanced=True,\n            show=False,\n        ),\n        BoolInput(\n            name=\"fail_safe_mode\",\n            display_name=\"Fail-Safe Mode\",\n            value=False,\n            advanced=True,\n            info=\"When enabled, errors will be logged instead of raising exceptions. \"\n            \"The component will return None on error.\",\n            real_time_refresh=True,\n        ),\n    ]\n\n    @staticmethod\n    def fetch_ibm_models(base_url: str) -> list[str]:\n        \"\"\"Fetch available models from the watsonx.ai API.\"\"\"\n        try:\n            endpoint = f\"{base_url}/ml/v1/foundation_model_specs\"\n            params = {\n                \"version\": \"2024-09-16\",\n                \"filters\": \"function_embedding,!lifecycle_withdrawn:and\",\n            }\n            response = requests.get(endpoint, params=params, timeout=10)\n            response.raise_for_status()\n            data = response.json()\n            models = [model[\"model_id\"] for model in data.get(\"resources\", [])]\n            return sorted(models)\n        except Exception:  # noqa: BLE001\n            logger.exception(\"Error fetching models\")\n            return WATSONX_EMBEDDING_MODEL_NAMES\n    async def fetch_ollama_models(self) -> list[str]:\n        try:\n            return await get_ollama_models(\n                base_url_value=self.ollama_base_url,\n                desired_capability=DESIRED_CAPABILITY,\n                json_models_key=JSON_MODELS_KEY,\n                json_name_key=JSON_NAME_KEY,\n                json_capabilities_key=JSON_CAPABILITIES_KEY,\n            )\n        except Exception:  # noqa: BLE001\n\n            logger.exception(\"Error fetching models\")\n            return []\n    async def build_embeddings(self) -> Embeddings:\n        provider = self.provider\n        model = self.model\n        api_key = self.api_key\n        api_base = self.api_base\n        base_url_ibm_watsonx = self.base_url_ibm_watsonx\n        ollama_base_url = self.ollama_base_url\n        dimensions = self.dimensions\n        chunk_size = self.chunk_size\n        request_timeout = self.request_timeout\n        max_retries = self.max_retries\n        show_progress_bar = self.show_progress_bar\n        model_kwargs = self.model_kwargs or {}\n\n        if provider == \"OpenAI\":\n            if not api_key:\n                msg = \"OpenAI API key is required when using OpenAI provider\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ValueError(msg)\n\n            try:\n                # Create the primary embedding instance\n                embeddings_instance = OpenAIEmbeddings(\n                    model=model,\n                    dimensions=dimensions or None,\n                    base_url=api_base or None,\n                    api_key=api_key,\n                    chunk_size=chunk_size,\n                    max_retries=max_retries,\n                    timeout=request_timeout or None,\n                    show_progress_bar=show_progress_bar,\n                    model_kwargs=model_kwargs,\n                )\n\n                # Create dedicated instances for each available model\n                available_models_dict = {}\n                for model_name in OPENAI_EMBEDDING_MODEL_NAMES:\n                    available_models_dict[model_name] = OpenAIEmbeddings(\n                        model=model_name,\n                        dimensions=dimensions or None,  # Use same dimensions config for all\n                        base_url=api_base or None,\n                        api_key=api_key,\n                        chunk_size=chunk_size,\n                        max_retries=max_retries,\n                        timeout=request_timeout or None,\n                        show_progress_bar=show_progress_bar,\n                        model_kwargs=model_kwargs,\n                    )\n\n                return EmbeddingsWithModels(\n                    embeddings=embeddings_instance,\n                    available_models=available_models_dict,\n                )\n            except Exception as e:\n                msg = f\"Failed to initialize OpenAI embeddings: {e}\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise\n\n        if provider == \"Ollama\":\n            try:\n                from langchain_ollama import OllamaEmbeddings\n            except ImportError:\n                try:\n                    from langchain_community.embeddings import OllamaEmbeddings\n                except ImportError:\n                    msg = \"Please install langchain-ollama: pip install langchain-ollama\"\n                    if self.fail_safe_mode:\n                        logger.error(msg)\n                        return None\n                    raise ImportError(msg) from None\n\n            try:\n                transformed_base_url = transform_localhost_url(ollama_base_url)\n\n                # Check if URL contains /v1 suffix (OpenAI-compatible mode)\n                if transformed_base_url and transformed_base_url.rstrip(\"/\").endswith(\"/v1\"):\n                    # Strip /v1 suffix and log warning\n                    transformed_base_url = transformed_base_url.rstrip(\"/\").removesuffix(\"/v1\")\n                    logger.warning(\n                        \"Detected '/v1' suffix in base URL. The Ollama component uses the native Ollama API, \"\n                        \"not the OpenAI-compatible API. The '/v1' suffix has been automatically removed. \"\n                        \"If you want to use the OpenAI-compatible API, please use the OpenAI component instead. \"\n                        \"Learn more at https://docs.ollama.com/openai#openai-compatibility\"\n                    )\n\n                final_base_url = transformed_base_url or \"http://localhost:11434\"\n\n                # Create the primary embedding instance\n                embeddings_instance = OllamaEmbeddings(\n                    model=model,\n                    base_url=final_base_url,\n                    **model_kwargs,\n                )\n\n                # Fetch available Ollama models\n                available_model_names = await self.fetch_ollama_models()\n\n                # Create dedicated instances for each available model\n                available_models_dict = {}\n                for model_name in available_model_names:\n                    available_models_dict[model_name] = OllamaEmbeddings(\n                        model=model_name,\n                        base_url=final_base_url,\n                        **model_kwargs,\n                    )\n\n                return EmbeddingsWithModels(\n                    embeddings=embeddings_instance,\n                    available_models=available_models_dict,\n                )\n            except Exception as e:\n                msg = f\"Failed to initialize Ollama embeddings: {e}\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise\n\n        if provider == \"IBM watsonx.ai\":\n            try:\n                from langchain_ibm import WatsonxEmbeddings\n            except ImportError:\n                msg = \"Please install langchain-ibm: pip install langchain-ibm\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ImportError(msg) from None\n\n            if not api_key:\n                msg = \"IBM watsonx.ai API key is required when using IBM watsonx.ai provider\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ValueError(msg)\n\n            project_id = self.project_id\n\n            if not project_id:\n                msg = \"Project ID is required for IBM watsonx.ai provider\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise ValueError(msg)\n\n            try:\n                from ibm_watsonx_ai import APIClient, Credentials\n\n                final_url = base_url_ibm_watsonx or \"https://us-south.ml.cloud.ibm.com\"\n\n                credentials = Credentials(\n                    api_key=self.api_key,\n                    url=final_url,\n                )\n\n                api_client = APIClient(credentials)\n\n                params = {\n                    EmbedTextParamsMetaNames.TRUNCATE_INPUT_TOKENS: self.truncate_input_tokens,\n                    EmbedTextParamsMetaNames.RETURN_OPTIONS: {\"input_text\": self.input_text},\n                }\n\n                # Create the primary embedding instance\n                embeddings_instance = WatsonxEmbeddings(\n                    model_id=model,\n                    params=params,\n                    watsonx_client=api_client,\n                    project_id=project_id,\n                )\n\n                # Fetch available IBM watsonx.ai models\n                available_model_names = self.fetch_ibm_models(final_url)\n\n                # Create dedicated instances for each available model\n                available_models_dict = {}\n                for model_name in available_model_names:\n                    available_models_dict[model_name] = WatsonxEmbeddings(\n                        model_id=model_name,\n                        params=params,\n                        watsonx_client=api_client,\n                        project_id=project_id,\n                    )\n\n                return EmbeddingsWithModels(\n                    embeddings=embeddings_instance,\n                    available_models=available_models_dict,\n                )\n            except Exception as e:\n                msg = f\"Failed to authenticate with IBM watsonx.ai: {e}\"\n                if self.fail_safe_mode:\n                    logger.error(msg)\n                    return None\n                raise\n\n        msg = f\"Unknown provider: {provider}\"\n        if self.fail_safe_mode:\n            logger.error(msg)\n            return None\n        raise ValueError(msg)\n\n    async def update_build_config(\n        self, build_config: dotdict, field_value: Any, field_name: str | None = None\n    ) -> dotdict:\n        # Handle fail_safe_mode changes first - set all required fields to False if enabled\n        if field_name == \"fail_safe_mode\":\n            if field_value:  # If fail_safe_mode is enabled\n                build_config[\"api_key\"][\"required\"] = False\n            elif hasattr(self, \"provider\"):\n                # If fail_safe_mode is disabled, restore required flags based on provider\n                if self.provider in [\"OpenAI\", \"IBM watsonx.ai\"]:\n                    build_config[\"api_key\"][\"required\"] = True\n                else:  # Ollama\n                    build_config[\"api_key\"][\"required\"] = False\n\n        if field_name == \"provider\":\n            if field_value == \"OpenAI\":\n                build_config[\"model\"][\"options\"] = OPENAI_EMBEDDING_MODEL_NAMES\n                build_config[\"model\"][\"value\"] = OPENAI_EMBEDDING_MODEL_NAMES[0]\n                build_config[\"api_key\"][\"display_name\"] = \"OpenAI API Key\"\n                # Only set required=True if fail_safe_mode is not enabled\n                build_config[\"api_key\"][\"required\"] = not (hasattr(self, \"fail_safe_mode\") and self.fail_safe_mode)\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"display_name\"] = \"OpenAI API Base URL\"\n                build_config[\"api_base\"][\"advanced\"] = True\n                build_config[\"api_base\"][\"show\"] = True\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n            elif field_value == \"Ollama\":\n                build_config[\"ollama_base_url\"][\"show\"] = True\n\n                if await is_valid_ollama_url(url=self.ollama_base_url):\n                    try:\n                        models = await self.fetch_ollama_models()\n                        build_config[\"model\"][\"options\"] = models\n                        build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                    except ValueError:\n                        build_config[\"model\"][\"options\"] = []\n                        build_config[\"model\"][\"value\"] = \"\"\n                else:\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n                build_config[\"truncate_input_tokens\"][\"show\"] = False\n                build_config[\"input_text\"][\"show\"] = False\n                build_config[\"api_key\"][\"display_name\"] = \"API Key (Optional)\"\n                build_config[\"api_key\"][\"required\"] = False\n                build_config[\"api_key\"][\"show\"] = False\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"project_id\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = False\n\n            elif field_value == \"IBM watsonx.ai\":\n                build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)\n                build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=self.base_url_ibm_watsonx)[0]\n                build_config[\"api_key\"][\"display_name\"] = \"IBM watsonx.ai API Key\"\n                # Only set required=True if fail_safe_mode is not enabled\n                build_config[\"api_key\"][\"required\"] = not (hasattr(self, \"fail_safe_mode\") and self.fail_safe_mode)\n                build_config[\"api_key\"][\"show\"] = True\n                build_config[\"api_base\"][\"show\"] = False\n                build_config[\"ollama_base_url\"][\"show\"] = False\n                build_config[\"base_url_ibm_watsonx\"][\"show\"] = True\n                build_config[\"project_id\"][\"show\"] = True\n                build_config[\"truncate_input_tokens\"][\"show\"] = True\n                build_config[\"input_text\"][\"show\"] = True\n        elif field_name == \"base_url_ibm_watsonx\":\n            build_config[\"model\"][\"options\"] = self.fetch_ibm_models(base_url=field_value)\n            build_config[\"model\"][\"value\"] = self.fetch_ibm_models(base_url=field_value)[0]\n        elif field_name == \"ollama_base_url\":\n            # # Refresh Ollama models when base URL changes\n            # if hasattr(self, \"provider\") and self.provider == \"Ollama\":\n            # Use field_value if provided, otherwise fall back to instance attribute\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await self.fetch_ollama_models()\n                    build_config[\"model\"][\"options\"] = models\n                    build_config[\"model\"][\"value\"] = models[0] if models else \"\"\n                except ValueError:\n                    await logger.awarning(\"Failed to fetch Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n                    build_config[\"model\"][\"value\"] = \"\"\n\n        elif field_name == \"model\" and self.provider == \"Ollama\":\n            ollama_url = self.ollama_base_url\n            if await is_valid_ollama_url(url=ollama_url):\n                try:\n                    models = await self.fetch_ollama_models()\n                    build_config[\"model\"][\"options\"] = models\n                except ValueError:\n                    await logger.awarning(\"Failed to refresh Ollama embedding models.\")\n                    build_config[\"model\"][\"options\"] = []\n\n        return build_config\n"
               },
               "dimensions": {
                 "_input_type": "IntInput",
@@ -5353,6 +5440,28 @@
                 "track_in_telemetry": true,
                 "type": "int",
                 "value": ""
+              },
+              "fail_safe_mode": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Fail-Safe Mode",
+                "dynamic": false,
+                "info": "When enabled, errors will be logged instead of raising exceptions. The component will return None on error.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "fail_safe_mode",
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
               },
               "input_text": {
                 "_input_type": "BoolInput",
@@ -5526,6 +5635,9 @@
                 "placeholder": "",
                 "real_time_refresh": true,
                 "required": false,
+                "selected_metadata": {
+                  "icon": "OpenAI"
+                },
                 "show": true,
                 "title_case": false,
                 "toggle": false,
@@ -5613,19 +5725,317 @@
         },
         "selected": false,
         "type": "genericNode"
+      },
+      {
+        "data": {
+          "id": "ChatOutput-4Bw8A",
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Display a chat message in the Playground.",
+            "display_name": "Chat Output",
+            "documentation": "https://docs.langflow.org/chat-input-and-output",
+            "edited": false,
+            "field_order": [
+              "input_value",
+              "should_store_message",
+              "sender",
+              "sender_name",
+              "session_id",
+              "context_id",
+              "data_template",
+              "clean_data"
+            ],
+            "frozen": false,
+            "icon": "MessagesSquare",
+            "legacy": false,
+            "lf_version": "1.7.0.dev21",
+            "metadata": {
+              "code_hash": "cae45e2d53f6",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "orjson",
+                    "version": "3.10.15"
+                  },
+                  {
+                    "name": "fastapi",
+                    "version": "0.120.0"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "0.2.0.dev21"
+                  }
+                ],
+                "total_dependencies": 3
+              },
+              "module": "lfx.components.input_output.chat_output.ChatOutput"
+            },
+            "minimized": true,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Output Message",
+                "group_outputs": false,
+                "method": "message_response",
+                "name": "message",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "clean_data": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Basic Clean Data",
+                "dynamic": false,
+                "info": "Whether to clean data before converting to string.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "clean_data",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              },
+              "code": {
+                "advanced": true,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "from collections.abc import Generator\nfrom typing import Any\n\nimport orjson\nfrom fastapi.encoders import jsonable_encoder\n\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.helpers.data import safe_convert\nfrom lfx.inputs.inputs import BoolInput, DropdownInput, HandleInput, MessageTextInput\nfrom lfx.schema.data import Data\nfrom lfx.schema.dataframe import DataFrame\nfrom lfx.schema.message import Message\nfrom lfx.schema.properties import Source\nfrom lfx.template.field.base import Output\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_AI,\n    MESSAGE_SENDER_USER,\n)\n\n\nclass ChatOutput(ChatComponent):\n    display_name = \"Chat Output\"\n    description = \"Display a chat message in the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatOutput\"\n    minimized = True\n\n    inputs = [\n        HandleInput(\n            name=\"input_value\",\n            display_name=\"Inputs\",\n            info=\"Message to be passed as output.\",\n            input_types=[\"Data\", \"DataFrame\", \"Message\"],\n            required=True,\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_AI,\n            advanced=True,\n            info=\"Type of sender.\",\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_AI,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"data_template\",\n            display_name=\"Data Template\",\n            value=\"{text}\",\n            advanced=True,\n            info=\"Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.\",\n        ),\n        BoolInput(\n            name=\"clean_data\",\n            display_name=\"Basic Clean Data\",\n            value=True,\n            advanced=True,\n            info=\"Whether to clean data before converting to string.\",\n        ),\n    ]\n    outputs = [\n        Output(\n            display_name=\"Output Message\",\n            name=\"message\",\n            method=\"message_response\",\n        ),\n    ]\n\n    def _build_source(self, id_: str | None, display_name: str | None, source: str | None) -> Source:\n        source_dict = {}\n        if id_:\n            source_dict[\"id\"] = id_\n        if display_name:\n            source_dict[\"display_name\"] = display_name\n        if source:\n            # Handle case where source is a ChatOpenAI object\n            if hasattr(source, \"model_name\"):\n                source_dict[\"source\"] = source.model_name\n            elif hasattr(source, \"model\"):\n                source_dict[\"source\"] = str(source.model)\n            else:\n                source_dict[\"source\"] = str(source)\n        return Source(**source_dict)\n\n    async def message_response(self) -> Message:\n        # First convert the input to string if needed\n        text = self.convert_to_string()\n\n        # Get source properties\n        source, _, display_name, source_id = self.get_properties_from_source_component()\n\n        # Create or use existing Message object\n        if isinstance(self.input_value, Message) and not self.is_connected_to_chat_input():\n            message = self.input_value\n            # Update message properties\n            message.text = text\n        else:\n            message = Message(text=text)\n\n        # Set message properties\n        message.sender = self.sender\n        message.sender_name = self.sender_name\n        message.session_id = self.session_id or self.graph.session_id or \"\"\n        message.context_id = self.context_id\n        message.flow_id = self.graph.flow_id if hasattr(self, \"graph\") else None\n        message.properties.source = self._build_source(source_id, display_name, source)\n\n        # Store message if needed\n        if message.session_id and self.should_store_message:\n            stored_message = await self.send_message(message)\n            self.message.value = stored_message\n            message = stored_message\n\n        self.status = message\n        return message\n\n    def _serialize_data(self, data: Data) -> str:\n        \"\"\"Serialize Data object to JSON string.\"\"\"\n        # Convert data.data to JSON-serializable format\n        serializable_data = jsonable_encoder(data.data)\n        # Serialize with orjson, enabling pretty printing with indentation\n        json_bytes = orjson.dumps(serializable_data, option=orjson.OPT_INDENT_2)\n        # Convert bytes to string and wrap in Markdown code blocks\n        return \"```json\\n\" + json_bytes.decode(\"utf-8\") + \"\\n```\"\n\n    def _validate_input(self) -> None:\n        \"\"\"Validate the input data and raise ValueError if invalid.\"\"\"\n        if self.input_value is None:\n            msg = \"Input data cannot be None\"\n            raise ValueError(msg)\n        if isinstance(self.input_value, list) and not all(\n            isinstance(item, Message | Data | DataFrame | str) for item in self.input_value\n        ):\n            invalid_types = [\n                type(item).__name__\n                for item in self.input_value\n                if not isinstance(item, Message | Data | DataFrame | str)\n            ]\n            msg = f\"Expected Data or DataFrame or Message or str, got {invalid_types}\"\n            raise TypeError(msg)\n        if not isinstance(\n            self.input_value,\n            Message | Data | DataFrame | str | list | Generator | type(None),\n        ):\n            type_name = type(self.input_value).__name__\n            msg = f\"Expected Data or DataFrame or Message or str, Generator or None, got {type_name}\"\n            raise TypeError(msg)\n\n    def convert_to_string(self) -> str | Generator[Any, None, None]:\n        \"\"\"Convert input data to string with proper error handling.\"\"\"\n        self._validate_input()\n        if isinstance(self.input_value, list):\n            clean_data: bool = getattr(self, \"clean_data\", False)\n            return \"\\n\".join([safe_convert(item, clean_data=clean_data) for item in self.input_value])\n        if isinstance(self.input_value, Generator):\n            return self.input_value\n        return safe_convert(self.input_value)\n"
+              },
+              "context_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "display_name": "Context ID",
+                "dynamic": false,
+                "info": "The context ID of the chat. Adds an extra layer to the local memory.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "context_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "data_template": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "display_name": "Data Template",
+                "dynamic": false,
+                "info": "Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "data_template",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "{text}"
+              },
+              "input_value": {
+                "_input_type": "HandleInput",
+                "advanced": false,
+                "display_name": "Inputs",
+                "dynamic": false,
+                "info": "Message to be passed as output.",
+                "input_types": [
+                  "Data",
+                  "DataFrame",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "input_value",
+                "override_skip": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "other",
+                "value": ""
+              },
+              "sender": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Sender Type",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Type of sender.",
+                "name": "sender",
+                "options": [
+                  "Machine",
+                  "User"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "Machine"
+              },
+              "sender_name": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "display_name": "Sender Name",
+                "dynamic": false,
+                "info": "Name of the sender.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "sender_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "AI"
+              },
+              "session_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "display_name": "Session ID",
+                "dynamic": false,
+                "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "session_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "should_store_message": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Store Messages",
+                "dynamic": false,
+                "info": "Store the message in the history.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "should_store_message",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "ChatOutput"
+        },
+        "dragging": false,
+        "id": "ChatOutput-4Bw8A",
+        "measured": {
+          "height": 166,
+          "width": 320
+        },
+        "position": {
+          "x": 2752.913624839253,
+          "y": 1380.5717174281178
+        },
+        "selected": false,
+        "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": -243.6538442549829,
-      "y": -690.8048310343635,
-      "zoom": 0.5802295280329295
+      "x": 139.09990607716156,
+      "y": -141.6960761147153,
+      "zoom": 0.40088991892418724
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
   "endpoint_name": null,
   "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
-  "last_tested_version": "1.7.0",
+  "last_tested_version": "1.7.0.dev21",
   "name": "OpenSearch Ingestion Flow",
   "tags": [
     "openai",
