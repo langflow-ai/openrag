@@ -32,23 +32,11 @@ jobs:
     steps:
       - run: df -h
       
-      - name: Disk space troubleshooting
+      - name: Cleanup Docker cache
         run: |
-          echo "=== Top-level disk usage ==="
-          sudo du -h -d1 / 2>/dev/null | sort -h
-          echo ""
-          echo "=== Docker disk usage ==="
-          docker system df
-      
-      - name: Clean runner workspace
-        run: |
-          # Save current workspace path
-          CURRENT_WORKSPACE="${GITHUB_WORKSPACE}"
-          # Clean old job workspaces except current one
-          find ${GITHUB_WORKSPACE}/../../../_work -maxdepth 2 -type d -mtime +1 -not -path "${CURRENT_WORKSPACE}*" -exec rm -rf {} + 2>/dev/null || true
-          # Clean runner logs older than 1 day
-          find ${GITHUB_WORKSPACE}/../../../_diag -type f -mtime +1 -delete 2>/dev/null || true
-        
+          docker system prune -af || true
+          docker builder prune -af || true
+
       - run: df -h
       
       - name: Checkout
