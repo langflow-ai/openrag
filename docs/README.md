@@ -42,7 +42,7 @@ If you are using GitHub pages for hosting, this command is a convenient way to b
 
 ## Update the OpenRAG documentation PDF
 
-The documentation PDF at `openrag/documents/openrag-documentation.pdf` is used by the OpenRAG application, so keep it up to date.
+The documentation PDF at `openrag/openrag-documents/openrag-documentation.pdf` is used by the OpenRAG application, so keep it up to date.
 
 To update the PDF, do the following:
 
@@ -68,7 +68,7 @@ To remove these items, give the following prompt or something similar to your ID
 2. Check your `.mdx` files to confirm these elements are removed.
 Don't commit the changes.
 
-3. From `openrag/docs`, run this command to build the site with the changes, and create a PDF at `openrag/documents`.
+3. From `openrag/docs`, run this command to build the site with the changes, and create a PDF at `openrag/openrag-documents`.
 
    ```
    npm run build:pdf

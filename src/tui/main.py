@@ -455,7 +455,7 @@ def _copy_assets(resource_tree, destination: Path, allowed_suffixes: Optional[It
 
 def copy_sample_documents(*, force: bool = False) -> None:
     """Copy sample documents from package to current directory if they don't exist."""
-    documents_dir = Path("documents")
+    documents_dir = Path("openrag-documents")
 
     try:
         assets_files = files("tui._assets.documents")

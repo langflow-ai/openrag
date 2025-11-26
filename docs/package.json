@@ -6,7 +6,7 @@
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
     "build": "docusaurus build",
-    "build:pdf": "rm -f ../documents/openrag-documentation.pdf && npm run build && npm run serve & sleep 10 && npx docusaurus-to-pdf && pkill -f 'docusaurus serve'",
+    "build:pdf": "rm -f ../openrag-documents/openrag-documentation.pdf && npm run build && npm run serve & sleep 10 && npx docusaurus-to-pdf && pkill -f 'docusaurus serve'",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",
