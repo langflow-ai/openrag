@@ -39,8 +39,8 @@ jobs:
 
       - run: df -h
       
-      #- name: Cleanup
-      #  run: sudo rm -rf opensearch-data
+      - name: Fix permissions for opensearch-data
+        run: sudo chown -R $(whoami) opensearch-data && chmod -R u+w opensearch-data
 
       - name: Checkout
         uses: actions/checkout@v4
