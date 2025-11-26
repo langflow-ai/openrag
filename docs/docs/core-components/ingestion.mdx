@@ -6,57 +6,34 @@ slug: /ingestion
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 
-The documents in your OpenRAG [OpenSearch knowledge base](/knowledge) provide specialized context in addition to the general knowledge available to the language model that you select when you [install OpenRAG](/install).
-Upload documents to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
-Then, the [OpenRAG **Chat**](/chat) can retrieve relevant content from your knowledge base to provide context-aware responses.
+Upload documents to your [OpenRAG OpenSearch instance](/knowledge) to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
+Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
 
-<!-- reuse for ingestion sources and flows. Reuse knowledge.mdx for browse & general info about what knowledge is and the role of Docling & OpenSearch. -->
+OpenRAG can ingest knowledge from direct file uploads, URLs, and OAuth authenticated connections.
 
-
- To verify the agent's response, click <Icon name="Library" aria-hidden="true"/> **Knowledge** to view the documents stored in the OpenRAG OpenSearch vector database.
-You can click a document to view the chunks of the document as they are stored in the database.
-
-4. Click **Add Knowledge** to add your own documents to your OpenRAG knowledge base.
-
-   For this quickstart, use either the <Icon name="File" aria-hidden="true"/> **File** or <Icon name="Folder" aria-hidden="true"/> **Folder** upload options to load documents from your local machine.
-   **Folder** uploads an entire directory.
-   The default directory is the `/documents` subdirectory in your OpenRAG installation directory.
-
-   For information about the cloud storage provider options, see [Ingest files through OAuth connectors](/ingestion#oauth-ingestion).
-
-
-
-
-
-
-
-## ingest
-
-OpenRAG can ingest knowledge from direct file uploads, URLs, and OAuth connectors.
-
-Knowledge ingestion is powered by OpenRAG's built-in [knowledge ingestion flows](/ingestion#knowledge-ingestion-flows) that use Docling Serve to process documents before storing the documents in your OpenSearch database.
-
+Knowledge ingestion is powered by OpenRAG's built-in knowledge ingestion flows that use Docling to process documents before storing the documents in your OpenSearch database.
 During ingestion, documents are broken into smaller chunks of content that are then embedded using your selected [embedding model](/knowledge#set-the-embedding-model-and-dimensions).
-The chunks, embeddings, and associated metadata (which connects chunks of the same document) are stored in your OpenSearch database.
+Then, the chunks, embeddings, and associated metadata (which connects chunks of the same document) are stored in your OpenSearch database.
 
-Like all [OpenRAG flows](/agents), you can [inspect the flows in Langflow](/agents#inspect-and-modify-flows), and you can customize them if you want to change the [ingestion settings](/ingestion#knowledge-ingestion-settings).
+Like all [OpenRAG flows](/agents), you can [inspect the flows in Langflow](/agents#inspect-and-modify-flows), and you can customize them if you want to change the knowledge ingestion settings.
 
-## Ingest local files and folders {#knowledge-ingestion-flows}
+## Ingest local files and folders
 
-<!-- You can upload files and folders from your local machine to your knowledge base. When you do this, the OpenSearch Ingestion flow runs in the background -->
+You can upload files and folders from your local machine to your knowledge base. When you do this, the **OpenSearch Ingestion** flow runs in the background.
 
-The **OpenSearch Ingestion** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
+1. Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to view your OpenSearch knowledge base.
 
-The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#setup) menu or in the `.env` used by Docker Compose.
+2. Click **Add Knowledge** to add your own documents to your OpenRAG knowledge base.
 
-To load and process a single file from the mapped location, click **Add Knowledge**, and then click <Icon name="File" aria-hidden="true"/> **File**.
-The file is loaded into your OpenSearch database, and appears in the Knowledge page.
+3. To upload one file, click <Icon name="File" aria-hidden="true"/> **File**. To upload all documents in a folder, click <Icon name="Folder" aria-hidden="true"/> **Folder**.
 
-To load and process a directory from the mapped location, click **Add Knowledge**, and then click <Icon name="Folder" aria-hidden="true"/> **Folder**.
-The files are loaded into your OpenSearch database, and appear in the Knowledge page.
+   The default path for either **File** or **Folder** uploads is the `/documents` subdirectory in your OpenRAG installation directory.
 
-To add files directly to a chat session, click <Icon name="Plus" aria-hidden="true"/> in the chat input and select the files you want to include. Files added this way are processed and made available to the agent for the current conversation, and are not permanently added to the knowledge base.
+### Ingest local files temporarily
+
+<PartialTempKnowledge />
 
 ### OpenSearch Ingestion flow
 
@@ -66,6 +43,8 @@ The **OpenSearch Ingestion** flow is the default knowledge ingestion flow in Ope
 
 If you [inspect the flow in Langflow](/agents#inspect-and-modify-flows), you'll see that it is comprised of ten components that work together to process and store documents in your knowledge base:
 
+* The **OpenSearch Ingestion** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
+The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#setup) menu or in the `.env` used by Docker Compose.
 * The [**Docling Serve** component](https://docs.langflow.org/bundles-docling) processes input documents by connecting to your instance of Docling Serve.
 * The [**Export DoclingDocument** component](https://docs.langflow.org/components-docling) exports the processed DoclingDocument to markdown format with image export mode set to placeholder. This conversion makes the structured document data into a standardized format for further processing.
 * Three [**DataFrame Operations** components](https://docs.langflow.org/components-processing#dataframe-operations) sequentially add metadata columns to the document data of `filename`, `file_size`, and `mimetype`.
@@ -152,10 +131,11 @@ For each active task, depending on its state, you can find the task ID, start ti
 * **Processing**: The task is performing ingestion operations.
 
 * **Failed**: Something went wrong during ingestion, or the task was manually canceled.
+For troubleshooting advice, see [Troubleshoot ingestion](#troubleshoot-ingestion).
 
 To stop an active task, click <Icon name="X" aria-hidden="true"/> **Cancel**. Canceling a task stops processing immediately and marks the task as **Failed**.
 
-## Troubleshoot ingestion (#troubleshoot-ingestion)
+## Troubleshoot ingestion {#troubleshoot-ingestion}
 
 If an ingestion task fails, do the following:
 
@@ -176,20 +156,24 @@ For example:
 * Make sure scanned documents are legible enough for extraction, and enable the **OCR** option. Poorly scanned documents might require additional preparation or rescanning before ingestion.
 * Adjust the **Chunk Size** and **Chunk Overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
 
-For more information about modifying ingestion parameters and flows, see [Docling Serve for knowledge ingestion](/knowledge#docling-serve-for-knowledge-ingestion).
+For more information about modifying ingestion parameters and flows, see [Knowledge ingestion settings](#knowledge-ingestion-settings).
 
-## Docling Serve for knowledge ingestion {#docling-serve-for-knowledge-ingestion}
-
-<!-- revise this section and subsections. Move to the knowledge-configure page and rename that page to "Configure knowledge". -->
+## Knowledge ingestion settings {#knowledge-ingestion-settings}
 
 OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion.
-More specifically, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve), which starts a `docling serve` process on your local machine and runs Docling ingestion through an API service.
+
+You can use either Docling Serve or OpenRAG's built-in Docling ingestion pipeline to process documents.
+
+<Tabs>
+<TabItem value="serve" label="Docling Serve ingestion" default>
+
+When OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve), it starts a `docling serve` process on your local machine and runs Docling ingestion through an API service.
 
 Docling ingests documents from your local machine or OAuth connectors, splits them into chunks, and stores them as separate, structured documents in the OpenSearch `documents` index.
 
 OpenRAG chose Docling for its support for a wide variety of file formats, high performance, and advanced understanding of tables and images.
 
-### Knowledge ingestion settings {#knowledge-ingestion-settings}
+The following knowledge ingestion settings only apply to the Docling Serve option:
 
 To modify OpenRAG's ingestion settings, including the Docling settings and ingestion flows, <Icon name="Settings2" aria-hidden="true"/> **Settings**.
 
@@ -219,23 +203,29 @@ If OpenRAG detects that the local machine is running on macOS, OpenRAG uses the 
 
 **Picture descriptions** adds image descriptions generated by the [SmolVLM-256M-Instruct](https://huggingface.co/HuggingFaceTB/SmolVLM-Instruct) model to OCR processing. Enabling picture descriptions can slow ingestion performance.
 
-### Use OpenRAG default ingestion instead of Docling serve
+</TabItem>
+<TabItem value="docling" label="Built-in Docling ingestion">
 
-If you want to use OpenRAG's built-in pipeline instead of Docling serve, set `DISABLE_INGEST_WITH_LANGFLOW=true` in [Environment variables](/reference/configuration#document-processing).
+If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG environment variables](/reference/configuration#document-processing).
 
-The built-in pipeline still uses the Docling processor, but uses it directly without the Docling Serve API.
+The built-in pipeline uses the Docling processor directly instead of through the Docling Serve API.
 
-For more information, see [`processors.py` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58).
+For the underlying functionality, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
+
+</TabItem>
+</Tabs>
 
 ## Ingestion performance expectations
+
+The following performance test was conducted with Docling Serve.
 
 On a local VM with 7 vCPUs and 8 GiB RAM, OpenRAG ingested approximately 5.03 GB across 1,083 files in about 42 minutes.
 This equates to approximately 2.4 documents per second.
 
-You can generally expect equal or better performance on developer laptops and significantly faster on servers.
-Throughput scales with CPU cores, memory, storage speed, and configuration choices such as embedding model, chunk size and overlap, and concurrency.
+You can generally expect equal or better performance on developer laptops, and significantly faster performance on servers.
+Throughput scales with CPU cores, memory, storage speed, and configuration choices, such as the embedding model, chunk size, overlap, and concurrency.
 
-This test returned 12 errors (approximately 1.1 percent).
+This test returned 12 error, approximately 1.1 percent of the total files ingested.
 All errors were file-specific, and they didn't stop the pipeline.
 
 * Ingestion dataset:
@@ -247,8 +237,8 @@ All errors were file-specific, and they didn't stop the pipeline.
 
    * Machine: Apple M4 Pro
    * Podman VM:
-     * Name: `podman-machine-default`
-     * Type: `applehv`
+     * Name: podman-machine-default
+     * Type: applehv
      * vCPUs: 7
      * Memory: 8 GiB
      * Disk size: 100 GiB
@@ -264,4 +254,10 @@ All errors were file-specific, and they didn't stop the pipeline.
 
 * Elapsed time: Approximately 42 minutes 15 seconds (2,535 seconds)
 
-* Throughput: Approximately 2.4 documents/second
+* Throughput: Approximately 2.4 documents per second
+
+## See also
+
+* [Configure knowledge](/knowledge)
+* [Filter knowledge](/knowledge-filters)
+* [Chat with knowledge](/chat)

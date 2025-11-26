@@ -10,10 +10,12 @@ import TabItem from '@theme/TabItem';
 OpenRAG includes a built-in [OpenSearch](https://docs.opensearch.org/latest/) instance that serves as the underlying datastore for your _knowledge_ (documents).
 This specialized database is used to store and retrieve your documents and the associated vector data (embeddings).
 
-You can [upload documents](/ingestion) from a variety of sources.
+The documents in your OpenSearch knowledge base provide specialized context in addition to the general knowledge available to the language model that you select when you [install OpenRAG](/install) or [edit a flow](/agents).
+
+You can [upload documents](/ingestion) from a variety of sources to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
 Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
 
-The [OpenRAG **Chat**](/chat) runs [similarity searches](https://www.ibm.com/think/topics/vector-search) against your OpenSearch database to retrieve relevant information and generate context-aware responses.
+Then, the [OpenRAG **Chat**](/chat) can run [similarity searches](https://www.ibm.com/think/topics/vector-search) against your OpenSearch database to retrieve relevant information and generate context-aware responses.
 
 You can configure how documents are ingested and how the **Chat** interacts with your knowledge base.
 
@@ -61,7 +63,7 @@ To change the embedding model, you must [reinstall OpenRAG](/install#reinstall).
 
 ## Set ingestion parameters
 
-For information about modifying ingestion parameters and flows, see [Knowledge ingestion settings](/ingestion#knowledge-ingestion-settings) and [Knowledge ingestion flows](/ingestion#knowledge-ingestion-flows).
+For information about modifying ingestion parameters and flows, see [Ingest knowledge](/ingestion).
 
 ## Delete knowledge
 
