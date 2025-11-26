@@ -43,6 +43,7 @@ class ServiceInfo:
     image: Optional[str] = None
     image_digest: Optional[str] = None
     created: Optional[str] = None
+    error_message: Optional[str] = None
 
     def __post_init__(self):
         if self.ports is None:
@@ -134,6 +135,96 @@ class ContainerManager:
         if self.runtime_info.has_runtime_without_compose:
             return self.platform_detector.get_compose_installation_instructions()
         return self.platform_detector.get_installation_instructions()
+
+    def _extract_ports_from_compose(self) -> Dict[str, List[int]]:
+        """Extract port mappings from compose files.
+        
+        Returns:
+            Dict mapping service name to list of host ports
+        """
+        service_ports: Dict[str, List[int]] = {}
+        
+        compose_files = [self.compose_file]
+        if hasattr(self, 'cpu_compose_file') and self.cpu_compose_file and self.cpu_compose_file.exists():
+            compose_files.append(self.cpu_compose_file)
+        
+        for compose_file in compose_files:
+            if not compose_file.exists():
+                continue
+                
+            try:
+                import re
+                content = compose_file.read_text()
+                current_service = None
+                in_ports_section = False
+                
+                for line in content.splitlines():
+                    # Detect service names
+                    service_match = re.match(r'^  (\w[\w-]*):$', line)
+                    if service_match:
+                        current_service = service_match.group(1)
+                        in_ports_section = False
+                        if current_service not in service_ports:
+                            service_ports[current_service] = []
+                        continue
+                    
+                    # Detect ports section
+                    if current_service and re.match(r'^    ports:$', line):
+                        in_ports_section = True
+                        continue
+                    
+                    # Exit ports section on new top-level key
+                    if in_ports_section and re.match(r'^    \w+:', line):
+                        in_ports_section = False
+                    
+                    # Extract port mappings
+                    if in_ports_section and current_service:
+                        # Match patterns like: - "3000:3000", - "9200:9200", - 7860:7860
+                        port_match = re.search(r'["\']?(\d+):\d+["\']?', line)
+                        if port_match:
+                            host_port = int(port_match.group(1))
+                            if host_port not in service_ports[current_service]:
+                                service_ports[current_service].append(host_port)
+                                
+            except Exception as e:
+                logger.debug(f"Error parsing {compose_file} for ports: {e}")
+                continue
+        
+        return service_ports
+
+    async def check_ports_available(self) -> tuple[bool, List[tuple[str, int, str]]]:
+        """Check if required ports are available.
+        
+        Returns:
+            Tuple of (all_available, conflicts) where conflicts is a list of
+            (service_name, port, error_message) tuples
+        """
+        import socket
+        
+        service_ports = self._extract_ports_from_compose()
+        conflicts: List[tuple[str, int, str]] = []
+        
+        for service_name, ports in service_ports.items():
+            for port in ports:
+                try:
+                    # Try to bind to the port to check if it's available
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(0.5)
+                    result = sock.connect_ex(('127.0.0.1', port))
+                    sock.close()
+                    
+                    if result == 0:
+                        # Port is in use
+                        conflicts.append((
+                            service_name,
+                            port,
+                            f"Port {port} is already in use"
+                        ))
+                except Exception as e:
+                    logger.debug(f"Error checking port {port}: {e}")
+                    continue
+        
+        return (len(conflicts) == 0, conflicts)
 
     async def _run_compose_command(
         self, args: List[str], cpu_mode: Optional[bool] = None
@@ -655,6 +746,17 @@ class ContainerManager:
             yield False, f"ERROR: Compose file not found at {compose_file.absolute()}", False
             return
 
+        # Check for port conflicts before starting
+        yield False, "Checking port availability...", False
+        ports_available, conflicts = await self.check_ports_available()
+        if not ports_available:
+            yield False, "ERROR: Port conflicts detected:", False
+            for service_name, port, error_msg in conflicts:
+                yield False, f"  - {service_name}: {error_msg}", False
+            yield False, "Please stop the conflicting services and try again.", False
+            yield False, "Services not started due to port conflicts.", False
+            return
+
         yield False, "Starting OpenRAG services...", False
 
         missing_images: List[str] = []
@@ -677,13 +779,37 @@ class ContainerManager:
 
         yield False, "Creating and starting containers...", False
         up_success = {"value": True}
+        error_messages = []
+        
         async for message, replace_last in self._stream_compose_command(["up", "-d"], up_success, cpu_mode):
+            # Detect error patterns in the output
+            import re
+            lower_msg = message.lower()
+            
+            # Check for common error patterns
+            if any(pattern in lower_msg for pattern in [
+                "port.*already.*allocated",
+                "address already in use",
+                "bind.*address already in use",
+                "port is already allocated"
+            ]):
+                error_messages.append("Port conflict detected")
+                up_success["value"] = False
+            elif "error" in lower_msg or "failed" in lower_msg:
+                # Generic error detection
+                if message not in error_messages:
+                    error_messages.append(message)
+            
             yield False, message, replace_last
 
         if up_success["value"]:
             yield True, "Services started successfully", False
         else:
             yield False, "Failed to start services. See output above for details.", False
+            if error_messages:
+                yield False, "\nDetected errors:", False
+                for err in error_messages[:5]:  # Limit to first 5 errors
+                    yield False, f"  - {err}", False
 
     async def stop_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Stop all services and yield progress updates."""
