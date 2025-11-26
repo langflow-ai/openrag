@@ -101,9 +101,22 @@ class WelcomeScreen(Screen):
                             except json.JSONDecodeError:
                                 continue
 
-                # Check if any services are running
-                running_services = [s for s in services if isinstance(s, dict) and s.get('State') == 'running']
-                self.services_running = len(running_services) > 0
+                # Check if services are running (exclude starting/created states)
+                # State can be lowercase or mixed case, so normalize it
+                running_services = []
+                starting_services = []
+                for s in services:
+                    if not isinstance(s, dict):
+                        continue
+                    state = str(s.get('State', '')).lower()
+                    if state == 'running':
+                        running_services.append(s)
+                    elif 'starting' in state or 'created' in state:
+                        starting_services.append(s)
+                
+                # Only consider services running if we have running services AND no starting services
+                # This prevents showing the button when containers are still coming up
+                self.services_running = len(running_services) > 0 and len(starting_services) == 0
             else:
                 self.services_running = False
         except Exception:
@@ -220,7 +233,12 @@ class WelcomeScreen(Screen):
             running_services = [
                 s.name for s in services.values() if s.status == ServiceStatus.RUNNING
             ]
-            self.services_running = len(running_services) > 0
+            starting_services = [
+                s.name for s in services.values() if s.status == ServiceStatus.STARTING
+            ]
+            # Only consider services running if we have running services AND no starting services
+            # This prevents showing the button when containers are still coming up
+            self.services_running = len(running_services) > 0 and len(starting_services) == 0
         else:
             self.services_running = False
 
