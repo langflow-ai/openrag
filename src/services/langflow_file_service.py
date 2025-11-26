@@ -94,7 +94,7 @@ class LangflowFileService:
         # Pass JWT token via tweaks using the x-langflow-global-var- pattern
         if jwt_token:
             # Using the global variable pattern that Langflow expects for OpenSearch components
-            tweaks["OpenSearchHybrid-Ve6bS"] = {"jwt_token": jwt_token}
+            tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"] = {"jwt_token": jwt_token}
             logger.debug("[LF] Added JWT token to tweaks for OpenSearch components")
         else:
             logger.warning("[LF] No JWT token provided")
@@ -112,9 +112,9 @@ class LangflowFileService:
         logger.info(f"[LF] Metadata tweaks {metadata_tweaks}")
         # if metadata_tweaks:
         #     # Initialize the OpenSearch component tweaks if not already present
-        #     if "OpenSearchHybrid-Ve6bS" not in tweaks:
-        #         tweaks["OpenSearchHybrid-Ve6bS"] = {}
-        #     tweaks["OpenSearchHybrid-Ve6bS"]["docs_metadata"] = metadata_tweaks
+        #     if "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4" not in tweaks:
+        #         tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"] = {}
+        #     tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"]["docs_metadata"] = metadata_tweaks
         #     logger.debug(
         #         "[LF] Added metadata to tweaks", metadata_count=len(metadata_tweaks)
         #     )
@@ -140,6 +140,13 @@ class LangflowFileService:
         filename = str(file_tuples[0][0]) if file_tuples and len(file_tuples) > 0 else ""
         mimetype = str(file_tuples[0][2]) if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2 else ""
 
+        # Get the current embedding model and provider credentials from config
+        from config.settings import get_openrag_config
+        from utils.langflow_headers import add_provider_credentials_to_headers
+        
+        config = get_openrag_config()
+        embedding_model = config.knowledge.embedding_model
+
         headers={
                 "X-Langflow-Global-Var-JWT": str(jwt_token),
                 "X-Langflow-Global-Var-OWNER": str(owner),
@@ -149,7 +156,11 @@ class LangflowFileService:
                 "X-Langflow-Global-Var-FILENAME": filename,
                 "X-Langflow-Global-Var-MIMETYPE": mimetype,
                 "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
+                "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
             }
+        
+        # Add provider credentials as global variables for ingestion
+        add_provider_credentials_to_headers(headers, config)
         logger.info(f"[LF] Headers {headers}")
         logger.info(f"[LF] Payload {payload}")
         resp = await clients.langflow_request(

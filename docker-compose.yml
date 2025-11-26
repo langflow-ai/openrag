@@ -45,9 +45,9 @@ services:
 
   openrag-backend:
     image: langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile.backend
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
     container_name: openrag-backend
     depends_on:
       - langflow
@@ -86,9 +86,9 @@ services:
 
   openrag-frontend:
     image: langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile.frontend
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
     container_name: openrag-frontend
     depends_on:
       - openrag-backend
@@ -101,20 +101,20 @@ services:
     volumes:
       - ./flows:/app/flows:U,z
     image: langflowai/openrag-langflow:${LANGFLOW_VERSION:-latest}
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile.langflow
+    build:
+      context: .
+      dockerfile: Dockerfile.langflow
     container_name: langflow
     ports:
       - "7860:7860"
     environment:
       - LANGFLOW_DEACTIVATE_TRACING=true
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - WATSONX_API_KEY=${WATSONX_API_KEY}
-      - WATSONX_ENDPOINT=${WATSONX_ENDPOINT}
-      - WATSONX_PROJECT_ID=${WATSONX_PROJECT_ID}
-      - OLLAMA_BASE_URL=${OLLAMA_ENDPOINT}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-None}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-None}
+      - WATSONX_API_KEY=${WATSONX_API_KEY:-None}
+      - WATSONX_ENDPOINT=${WATSONX_ENDPOINT:-None}
+      - WATSONX_PROJECT_ID=${WATSONX_PROJECT_ID:-None}
+      - OLLAMA_BASE_URL=${OLLAMA_ENDPOINT:-None}
       - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
       - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
       - JWT=None  
@@ -128,7 +128,9 @@ services:
       - FILENAME=None
       - MIMETYPE=None
       - FILESIZE=0
-      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,FILENAME,MIMETYPE,FILESIZE
+      - SELECTED_EMBEDDING_MODEL=${SELECTED_EMBEDDING_MODEL:-}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_API_KEY,WATSONX_ENDPOINT,WATSONX_PROJECT_ID,OLLAMA_BASE_URL
       - LANGFLOW_LOG_LEVEL=DEBUG
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
