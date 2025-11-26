@@ -14,6 +14,7 @@ from config.settings import (
     clients,
     get_openrag_config,
     config_manager,
+    is_no_auth_mode,
 )
 from api.provider_validation import validate_provider_setup
 
@@ -637,6 +638,41 @@ async def update_settings(request, session_manager):
                     logger.info(
                         f"Set SELECTED_EMBEDDING_MODEL global variable to {current_config.knowledge.embedding_model}"
                     )
+                
+                # Update MCP servers with provider credentials
+                try:
+                    from services.langflow_mcp_service import LangflowMCPService
+                    from utils.langflow_headers import build_mcp_global_vars_from_config
+                    
+                    mcp_service = LangflowMCPService()
+                    
+                    # Build global vars using utility function
+                    mcp_global_vars = build_mcp_global_vars_from_config(current_config)
+                    
+                    # In no-auth mode, add the anonymous JWT token and user details
+                    if is_no_auth_mode() and session_manager:
+                        from session_manager import AnonymousUser
+                        
+                        # Create/get anonymous JWT for no-auth mode
+                        anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
+                        if anonymous_jwt:
+                            mcp_global_vars["JWT"] = anonymous_jwt
+                        
+                        # Add anonymous user details
+                        anonymous_user = AnonymousUser()
+                        mcp_global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
+                        mcp_global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted)
+                        mcp_global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
+                        
+                        logger.debug("Added anonymous JWT and user details to MCP servers for no-auth mode")
+                    
+                    if mcp_global_vars:
+                        result = await mcp_service.update_mcp_servers_with_global_vars(mcp_global_vars)
+                        logger.info("Updated MCP servers with provider credentials after settings change", **result)
+                    
+                except Exception as mcp_error:
+                    logger.warning(f"Failed to update MCP servers after settings change: {str(mcp_error)}")
+                    # Don't fail the entire settings update if MCP update fails
 
             except Exception as e:
                 logger.error(f"Failed to update Langflow settings: {str(e)}")
@@ -655,7 +691,7 @@ async def update_settings(request, session_manager):
         )
 
 
-async def onboarding(request, flows_service):
+async def onboarding(request, flows_service, session_manager=None):
     """Handle onboarding configuration setup"""
     try:
         # Get current configuration
@@ -943,6 +979,41 @@ async def onboarding(request, flows_service):
                 logger.info(
                     f"Set SELECTED_EMBEDDING_MODEL global variable to {current_config.knowledge.embedding_model}"
                 )
+            
+            # Update MCP servers with provider credentials during onboarding
+            try:
+                from services.langflow_mcp_service import LangflowMCPService
+                from utils.langflow_headers import build_mcp_global_vars_from_config
+                
+                mcp_service = LangflowMCPService()
+                
+                # Build global vars using utility function
+                mcp_global_vars = build_mcp_global_vars_from_config(current_config)
+                
+                # In no-auth mode, add the anonymous JWT token and user details
+                if is_no_auth_mode() and session_manager:
+                    from session_manager import AnonymousUser
+                    
+                    # Create/get anonymous JWT for no-auth mode
+                    anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
+                    if anonymous_jwt:
+                        mcp_global_vars["JWT"] = anonymous_jwt
+                    
+                    # Add anonymous user details
+                    anonymous_user = AnonymousUser()
+                    mcp_global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
+                    mcp_global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted)
+                    mcp_global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
+                    
+                    logger.debug("Added anonymous JWT and user details to MCP servers for no-auth mode during onboarding")
+                
+                if mcp_global_vars:
+                    result = await mcp_service.update_mcp_servers_with_global_vars(mcp_global_vars)
+                    logger.info("Updated MCP servers with provider credentials during onboarding", **result)
+                
+            except Exception as mcp_error:
+                logger.warning(f"Failed to update MCP servers during onboarding: {str(mcp_error)}")
+                # Don't fail onboarding if MCP update fails
 
         except Exception as e:
             logger.error(

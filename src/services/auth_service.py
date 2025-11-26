@@ -308,6 +308,16 @@ class AuthService:
                                 global_vars["OWNER_NAME"] = str(f"\"{owner_name}\"")
                         if user_info.get("email"):
                             global_vars["OWNER_EMAIL"] = user_info.get("email")
+                    
+                    # Add provider credentials to MCP servers using utility function
+                    from config.settings import get_openrag_config
+                    from utils.langflow_headers import build_mcp_global_vars_from_config
+                    
+                    config = get_openrag_config()
+                    provider_vars = build_mcp_global_vars_from_config(config)
+                    
+                    # Merge provider credentials with user info
+                    global_vars.update(provider_vars)
 
                     # Run in background to avoid delaying login flow
                     task = asyncio.create_task(
