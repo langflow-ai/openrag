@@ -523,7 +523,7 @@ class ConfigScreen(Screen):
         yield Label("Documents Paths")
         current_value = getattr(self.env_manager.config, "openrag_documents_paths", "")
         input_widget = Input(
-            placeholder="./documents,/path/to/more/docs",
+            placeholder="./openrag-documents,/path/to/more/docs",
             value=current_value,
             validators=[DocumentsPathValidator()],
             id="input-openrag_documents_paths",

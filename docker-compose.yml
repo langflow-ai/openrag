@@ -80,7 +80,7 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     volumes:
-      - ./documents:/app/documents:Z
+      - ./openrag-documents:/app/documents:Z
       - ./keys:/app/keys:Z
       - ./flows:/app/flows:U,z
 

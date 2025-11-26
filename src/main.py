@@ -2,6 +2,7 @@
 from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
 from services.flows_service import FlowsService
+from utils.container_utils import detect_container_environment
 from utils.embeddings import create_dynamic_index_body
 from utils.logging_config import configure_from_env, get_logger
 
@@ -13,6 +14,7 @@ import atexit
 import mimetypes
 import multiprocessing
 import os
+import shutil
 import subprocess
 from functools import partial
 
@@ -300,6 +302,21 @@ async def init_index_when_ready():
         )
 
 
+def _get_documents_dir():
+    """Get the documents directory path, handling both Docker and local environments."""
+    # In Docker, the volume is mounted at /app/documents
+    # Locally, we use openrag-documents
+    container_env = detect_container_environment()
+    if container_env:
+        path = os.path.abspath("/app/documents")
+        logger.debug(f"Running in {container_env}, using container path: {path}")
+        return path
+    else:
+        path = os.path.abspath(os.path.join(os.getcwd(), "openrag-documents"))
+        logger.debug(f"Running locally, using local path: {path}")
+        return path
+
+
 async def ingest_default_documents_when_ready(services):
     """Scan the local documents folder and ingest files like a non-auth upload."""
     try:
@@ -307,7 +324,7 @@ async def ingest_default_documents_when_ready(services):
             "Ingesting default documents when ready",
             disable_langflow_ingest=DISABLE_INGEST_WITH_LANGFLOW,
         )
-        base_dir = os.path.abspath(os.path.join(os.getcwd(), "documents"))
+        base_dir = _get_documents_dir()
         if not os.path.isdir(base_dir):
             logger.info(
                 "Default documents directory not found; skipping ingestion",
