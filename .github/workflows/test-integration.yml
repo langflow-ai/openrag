@@ -34,14 +34,23 @@ jobs:
       
       - name: Clean runner workspace
         run: |
-          # Clean old job workspaces
-          rm -rf ${GITHUB_WORKSPACE}/../../../_work/* || true
-          # Clean runner logs
-          rm -rf ${GITHUB_WORKSPACE}/../../../_diag/* || true
+          # Save current workspace path
+          CURRENT_WORKSPACE="${GITHUB_WORKSPACE}"
+          # Clean old job workspaces except current one
+          find ${GITHUB_WORKSPACE}/../../../_work -maxdepth 2 -type d -mtime +1 -not -path "${CURRENT_WORKSPACE}*" -exec rm -rf {} + 2>/dev/null || true
+          # Clean runner logs older than 1 day
+          find ${GITHUB_WORKSPACE}/../../../_diag -type f -mtime +1 -delete 2>/dev/null || true
         
       - run: df -h
+      
       - name: Checkout
         uses: actions/checkout@v4
+        
+      - name: Verify workspace
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Workspace: ${GITHUB_WORKSPACE}"
+          ls -la
 
       - name: Set up UV
         uses: astral-sh/setup-uv@v3
