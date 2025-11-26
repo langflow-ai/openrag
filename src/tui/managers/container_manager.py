@@ -57,15 +57,15 @@ class ContainerManager:
         self.platform_detector = PlatformDetector()
         self.runtime_info = self.platform_detector.detect_runtime()
         self.compose_file = compose_file or self._find_compose_file("docker-compose.yml")
-        self.cpu_compose_file = self._find_compose_file("docker-compose-cpu.yml")
+        self.gpu_compose_file = self._find_compose_file("docker-compose.gpu.yml")
         self.services_cache: Dict[str, ServiceInfo] = {}
         self.last_status_update = 0
-        # Auto-select CPU compose if no GPU available
+        # Auto-select GPU override if GPU is available
         try:
             has_gpu, _ = detect_gpu_devices()
-            self.use_cpu_compose = not has_gpu
+            self.use_gpu_compose = has_gpu
         except Exception:
-            self.use_cpu_compose = True
+            self.use_gpu_compose = False
 
         # Expected services based on compose files
         self.expected_services = [
@@ -234,9 +234,15 @@ class ContainerManager:
             return False, "", "No container runtime available"
 
         if cpu_mode is None:
-            cpu_mode = self.use_cpu_compose
-        compose_file = self.cpu_compose_file if cpu_mode else self.compose_file
-        cmd = self.runtime_info.compose_command + ["-f", str(compose_file)] + args
+            use_gpu = self.use_gpu_compose
+        else:
+            use_gpu = not cpu_mode
+        
+        # Build compose command with override pattern
+        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        if use_gpu and self.gpu_compose_file.exists():
+            cmd.extend(["-f", str(self.gpu_compose_file)])
+        cmd.extend(args)
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -270,9 +276,15 @@ class ContainerManager:
             return
 
         if cpu_mode is None:
-            cpu_mode = self.use_cpu_compose
-        compose_file = self.cpu_compose_file if cpu_mode else self.compose_file
-        cmd = self.runtime_info.compose_command + ["-f", str(compose_file)] + args
+            use_gpu = self.use_gpu_compose
+        else:
+            use_gpu = not cpu_mode
+        
+        # Build compose command with override pattern
+        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        if use_gpu and self.gpu_compose_file.exists():
+            cmd.extend(["-f", str(self.gpu_compose_file)])
+        cmd.extend(args)
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -333,9 +345,15 @@ class ContainerManager:
             return
 
         if cpu_mode is None:
-            cpu_mode = self.use_cpu_compose
-        compose_file = self.cpu_compose_file if cpu_mode else self.compose_file
-        cmd = self.runtime_info.compose_command + ["-f", str(compose_file)] + args
+            use_gpu = self.use_gpu_compose
+        else:
+            use_gpu = not cpu_mode
+        
+        # Build compose command with override pattern
+        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        if use_gpu and self.gpu_compose_file.exists():
+            cmd.extend(["-f", str(self.gpu_compose_file)])
+        cmd.extend(args)
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -642,44 +660,61 @@ class ContainerManager:
         """Get resolved image names from compose files using docker/podman compose, with robust fallbacks."""
         images: set[str] = set()
 
-        compose_files = [self.compose_file, self.cpu_compose_file]
-        for compose_file in compose_files:
+        # Try both GPU and CPU modes to get all images
+        for use_gpu in [True, False]:
             try:
-                if not compose_file or not compose_file.exists():
-                    continue
+                # Build compose command with override pattern
+                cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+                if use_gpu and self.gpu_compose_file.exists():
+                    cmd.extend(["-f", str(self.gpu_compose_file)])
+                cmd.extend(["config", "--format", "json"])
 
-                cpu_mode = (compose_file == self.cpu_compose_file)
-
-                # Try JSON format first
-                success, stdout, _ = await self._run_compose_command(
-                    ["config", "--format", "json"],
-                    cpu_mode=cpu_mode
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=Path.cwd(),
                 )
+                stdout, stderr = await process.communicate()
+                stdout_text = stdout.decode() if stdout else ""
 
-                if success and stdout.strip():
-                    from_cfg = self._extract_images_from_compose_config(stdout, tried_json=True)
+                if process.returncode == 0 and stdout_text.strip():
+                    from_cfg = self._extract_images_from_compose_config(stdout_text, tried_json=True)
                     if from_cfg:
                         images.update(from_cfg)
-                        continue  # this compose file succeeded; move to next file
+                        continue
 
                 # Fallback to YAML output (for older compose versions)
-                success, stdout, _ = await self._run_compose_command(
-                    ["config"],
-                    cpu_mode=cpu_mode
-                )
+                cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+                if use_gpu and self.gpu_compose_file.exists():
+                    cmd.extend(["-f", str(self.gpu_compose_file)])
+                cmd.append("config")
 
-                if success and stdout.strip():
-                    from_cfg = self._extract_images_from_compose_config(stdout, tried_json=False)
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=Path.cwd(),
+                )
+                stdout, stderr = await process.communicate()
+                stdout_text = stdout.decode() if stdout else ""
+
+                if process.returncode == 0 and stdout_text.strip():
+                    from_cfg = self._extract_images_from_compose_config(stdout_text, tried_json=False)
                     if from_cfg:
                         images.update(from_cfg)
                         continue
 
             except Exception:
-                # Keep behavior resilient—just continue to next file
+                # Keep behavior resilient—just continue to next mode
                 continue
 
         # Fallback: manual parsing if compose config didn't work
         if not images:
+            compose_files = [self.compose_file]
+            if self.gpu_compose_file.exists():
+                compose_files.append(self.gpu_compose_file)
+            
             for compose in compose_files:
                 try:
                     if not compose.exists():
@@ -729,8 +764,11 @@ class ContainerManager:
             yield False, "No container runtime available"
             return
 
-        # Diagnostic info about compose files
-        compose_file = self.cpu_compose_file if (cpu_mode if cpu_mode is not None else self.use_cpu_compose) else self.compose_file
+        # Determine GPU mode
+        if cpu_mode is None:
+            use_gpu = self.use_gpu_compose
+        else:
+            use_gpu = not cpu_mode
 
         # Show the search process for debugging
         if hasattr(self, '_compose_search_log'):
@@ -741,9 +779,12 @@ class ContainerManager:
         # Show runtime detection info
         runtime_cmd_str = " ".join(self.runtime_info.compose_command)
         yield False, f"Using compose command: {runtime_cmd_str}", False
-        yield False, f"Final compose file: {compose_file.absolute()}", False
-        if not compose_file.exists():
-            yield False, f"ERROR: Compose file not found at {compose_file.absolute()}", False
+        compose_files_str = str(self.compose_file.absolute())
+        if use_gpu and self.gpu_compose_file.exists():
+            compose_files_str += f" + {self.gpu_compose_file.absolute()}"
+        yield False, f"Compose files: {compose_files_str}", False
+        if not self.compose_file.exists():
+            yield False, f"ERROR: Base compose file not found at {self.compose_file.absolute()}", False
             return
 
         # Check for port conflicts before starting
@@ -912,16 +953,11 @@ class ContainerManager:
             yield "No container runtime available"
             return
 
-        compose_file = (
-            self.cpu_compose_file if self.use_cpu_compose else self.compose_file
-        )
-        cmd = self.runtime_info.compose_command + [
-            "-f",
-            str(compose_file),
-            "logs",
-            "-f",
-            service_name,
-        ]
+        # Build compose command with override pattern
+        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        if self.use_gpu_compose and self.gpu_compose_file.exists():
+            cmd.extend(["-f", str(self.gpu_compose_file)])
+        cmd.extend(["logs", "-f", service_name])
 
         try:
             process = await asyncio.create_subprocess_exec(

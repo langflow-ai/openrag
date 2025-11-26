@@ -72,8 +72,6 @@ services:
       - WATSONX_ENDPOINT=${WATSONX_ENDPOINT}
       - WATSONX_PROJECT_ID=${WATSONX_PROJECT_ID}
       - OLLAMA_ENDPOINT=${OLLAMA_ENDPOINT}
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - NVIDIA_VISIBLE_DEVICES=all
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
       - MICROSOFT_GRAPH_OAUTH_CLIENT_ID=${MICROSOFT_GRAPH_OAUTH_CLIENT_ID}
@@ -85,7 +83,6 @@ services:
       - ./documents:/app/documents:Z
       - ./keys:/app/keys:Z
       - ./flows:/app/flows:U,z
-    gpus: all
 
   openrag-frontend:
     image: langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
@@ -127,6 +124,7 @@ services:
       - CONNECTOR_TYPE=system
       - CONNECTOR_TYPE_URL=url
       - OPENRAG-QUERY-FILTER="{}"
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - FILENAME=None
       - MIMETYPE=None
       - FILESIZE=0
