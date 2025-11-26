@@ -39,8 +39,8 @@ jobs:
 
       - run: df -h
       
-      - name: Cleanup
-        run: sudo rm -rf opensearch-data
+      #- name: Cleanup
+      #  run: sudo rm -rf opensearch-data
 
       - name: Checkout
         uses: actions/checkout@v4
