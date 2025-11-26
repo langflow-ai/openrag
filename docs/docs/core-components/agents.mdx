@@ -7,35 +7,30 @@ import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-OpenRAG includes a built-in [Langflow](https://docs.langflow.org/) instance for creating and managing application workflows called [_flows_](https://docs.langflow.org/concepts-overview).
+OpenRAG includes a built-in [Langflow](https://docs.langflow.org/) instance for creating and managing functional application workflows called _flows_.
 In a flow, the individual workflow steps are represented by [_components_](https://docs.langflow.org/concepts-components) that are connected together to form a complete process.
 
-OpenRAG includes several built-in flows that you can customize.
-You can also create your own flows using OpenRAG's embedded Langflow visual editor.
-
-## Built-in flows
+OpenRAG includes several built-in flows:
 
 * The [**OpenRAG OpenSearch Agent** flow](/chat#flow) powers the **Chat** feature in OpenRAG.
 * The [**OpenSearch Ingestion** and **OpenSearch URL Ingestion** flows](/knowledge#knowledge-ingestion-flows) process documents and web content for storage in your OpenSearch knowledge base.
 * The [**OpenRAG OpenSearch Nudges** flow](/chat#nudges) provides optional contextual suggestions in the OpenRAG **Chat**.
 
+You can customize these flows and create your own flows using OpenRAG's embedded Langflow visual editor.
+
 ## Inspect and modify flows {#inspect-and-modify-flows}
 
 All OpenRAG flows are designed to be modular, performant, and provider-agnostic.
 
-OpenRAG provides quick access to common settings and an embedded [Langflow visual editor](https://docs.langflow.org/concepts-overview) where you can fully customize the flows to suit your use case.
-
-To modify a flow, click <Icon name="Settings2" aria-hidden="true"/> **Settings**. Then, to launch the embedded Langflow visual editor, click **Edit in Langflow**.
+To modify a flow in OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+From here, you can quickly edit commonly used parameters, such as the **Language model** and **Agent Instructions**.
+To further explore and edit the flow, click **Edit in Langflow** to launch the embedded [Langflow visual editor](https://docs.langflow.org/concepts-overview) where you can fully [customize the flow](https://docs.langflow.org/concepts-flows) to suit your use case.
 
 For example, to view and edit the built-in **Chat** flow (the **OpenRAG OpenSearch Agent** flow), do the following:
 
 1. In OpenRAG, click <Icon name="MessageSquare" aria-hidden="true"/> **Chat**.
 
-2. Click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
-
-   On the **Settings** page, you can edit commonly used parameters like the **Language model** and **Agent Instructions**.
-
-3. For more detail and customization options, click **Edit in Langflow** to launch the Langflow visual editor in a new browser window.
+2. Click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then click **Edit in Langflow** to launch the Langflow visual editor in a new browser window.
 
    If prompted to acknowledge that you are entering Langflow, click **Proceed**.
 
@@ -43,22 +38,22 @@ For example, to view and edit the built-in **Chat** flow (the **OpenRAG OpenSear
 
    ![OpenRAG OpenSearch Agent flow](/img/opensearch-agent-flow.png)
 
-4. Modify the flow as desired, and then press <kbd>Command</kbd>+<kbd>S</kbd> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to save your changes.
+3. Modify the flow as desired, and then press <kbd>Command</kbd>+<kbd>S</kbd> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to save your changes.
 
    You can close the Langflow browser window, or leave it open if you want to continue experimenting with the flow editor.
 
    :::tip
-   If you modify the built-in **Chat** flow, make sure you click <Icon name="Plus" aria-hidden="true"/> in the **Conversations** tab to start a new conversation. This ensures that the chat doesn't persist any context from the previous conversation with the original model.
+   If you modify the built-in **Chat** flow, make sure you click <Icon name="Plus" aria-hidden="true"/> in the **Conversations** tab to start a new conversation. This ensures that the chat doesn't persist any context from the previous conversation with the original flow settings.
    :::
 
-## Revert a built-in flow to its default state
+### Revert a built-in flow to its default state
 
 After you edit a built-in flow, you can click **Restore flow** on the **Settings** page to revert the flow to its original state when you first installed OpenRAG.
 This is a destructive action that discards all customizations to the flow.
 
-## Custom flows and additional Langflow functionality
+## Build custom flows and use other Langflow functionality
 
-In addition to OpenRAG's built-in flows, all Langflow features are available through OpenRAG, including popular extensibility features such as the following:
+In addition to OpenRAG's built-in flows, all Langflow features are available through OpenRAG, including the ability to [create your own flows](https://docs.langflow.org/concepts-flows) and popular extensibility features such as the following:
 
 * [Create custom components](https://docs.langflow.org/components-custom-components).
 * Integrate with many third-party services through [bundles](https://docs.langflow.org/components-bundle-components).
@@ -70,7 +65,7 @@ Explore the [Langflow documentation](https://docs.langflow.org/) to learn more a
 
 By default, OpenRAG is pinned to the latest Langflow Docker image for stability.
 
-You can set a specific Langflow version with the [`LANGFLOW_VERSION`](/reference/configuration). However, there are risks to changing this setting:
+If necessary, you can set a specific Langflow version with the [`LANGFLOW_VERSION`](/reference/configuration). However, there are risks to changing this setting:
 
 * The [Langflow documentation](https://docs.langflow.org/) describes the functionality present in the latest release of the Langflow OSS Python package. If your `LANGFLOW_VERSION` is different, the Langflow documentation might not align with the features and default settings in your OpenRAG installation.
 
