@@ -31,11 +31,14 @@ jobs:
 
     steps:
       - run: df -h
-        #- name: "node-cleanup"
-        #run: |
-        #  sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-        #  sudo docker image prune --all --force
-        #  sudo docker builder prune -a
+      
+      - name: Clean runner workspace
+        run: |
+          # Clean old job workspaces
+          rm -rf ${GITHUB_WORKSPACE}/../../../_work/* || true
+          # Clean runner logs
+          rm -rf ${GITHUB_WORKSPACE}/../../../_diag/* || true
+        
       - run: df -h
       - name: Checkout
         uses: actions/checkout@v4
