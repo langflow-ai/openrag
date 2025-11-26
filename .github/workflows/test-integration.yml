@@ -40,7 +40,7 @@ jobs:
       - run: df -h
       
       - name: Fix permissions for opensearch-data
-        run: sudo chown -R $(whoami) opensearch-data && chmod -R u+w opensearch-data
+        run: sudo rm -rf /opt/actions-runner/_work/openrag/openrag/opensearch-data/*
 
       - name: Checkout
         uses: actions/checkout@v4
