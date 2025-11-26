@@ -33,13 +33,14 @@ class MonitorScreen(Screen):
         ("u", "upgrade", "Upgrade"),
         ("x", "reset", "Reset"),
         ("l", "logs", "View Logs"),
+        ("g", "toggle_mode", "Toggle GPU/CPU"),
         ("j", "cursor_down", "Move Down"),
         ("k", "cursor_up", "Move Up"),
     ]
 
     def __init__(self):
         super().__init__()
-        self.container_manager = ContainerManager()
+        self._container_manager = None  # Use app's shared instance
         self.docling_manager = DoclingManager()
         self.services_table = None
         self.docling_table = None
@@ -51,6 +52,13 @@ class MonitorScreen(Screen):
 
         # Track which table was last selected for mutual exclusion
         self._last_selected_table = None
+
+    @property
+    def container_manager(self) -> ContainerManager:
+        """Get the shared container manager from the app."""
+        if self._container_manager is None:
+            self._container_manager = self.app.container_manager
+        return self._container_manager
 
     def on_unmount(self) -> None:
         """Clean up when the screen is unmounted."""
@@ -69,10 +77,10 @@ class MonitorScreen(Screen):
 
     def _create_services_tab(self) -> ComposeResult:
         """Create the services monitoring tab."""
-        # Current mode indicator + toggle
+        # GPU/CPU mode section
+        yield Static("GPU Mode", id="mode-indicator", classes="tab-header")
         yield Horizontal(
-            Static("", id="mode-indicator"),
-            Button("Toggle Mode", id="toggle-mode-btn"),
+            Button("Switch to CPU Mode", id="toggle-mode-btn"),
             classes="button-row",
             id="mode-row",
         )
@@ -583,8 +591,7 @@ class MonitorScreen(Screen):
         try:
             use_gpu = getattr(self.container_manager, "use_gpu_compose", False)
             indicator = self.query_one("#mode-indicator", Static)
-            mode_text = "Mode: GPU" if use_gpu else "Mode: CPU (no GPU detected)"
-            indicator.update(mode_text)
+            indicator.update("GPU Mode" if use_gpu else "CPU Mode")
             toggle_btn = self.query_one("#toggle-mode-btn", Button)
             toggle_btn.label = "Switch to CPU Mode" if use_gpu else "Switch to GPU Mode"
         except Exception:
