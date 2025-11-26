@@ -35,6 +35,7 @@ const sidebars = {
       items: [
         "core-components/knowledge-configure",
         "core-components/knowledge",
+        "core-components/ingestion",
         "core-components/knowledge-filters",
       ],
     },
