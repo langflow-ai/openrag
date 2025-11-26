@@ -29,7 +29,7 @@ async def wait_for_ready(client: httpx.AsyncClient, timeout_s: float = 30.0):
 
 
 def count_files_in_documents() -> int:
-    base_dir = Path(os.getcwd()) / "documents"
+    base_dir = Path(os.getcwd()) / "openrag-documents"
     if not base_dir.is_dir():
         return 0
     return sum(1 for _ in base_dir.rglob("*") if _.is_file() and _.name not in EXCLUDED_INGESTION_FILES)

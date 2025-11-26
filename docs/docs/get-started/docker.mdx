@@ -187,7 +187,7 @@ docker compose up -d --force-recreate
 
 Reset state by rebuilding all of your containers.
 Your OpenSearch and Langflow databases will be lost.
-Documents stored in the `./documents` directory will persist, since the directory is mounted as a volume in the OpenRAG backend container.
+Documents stored in the `./openrag-documents` directory will persist, since the directory is mounted as a volume in the OpenRAG backend container.
 
 ```bash
 docker compose up --build --force-recreate --remove-orphans

@@ -29,7 +29,7 @@ To configure the knowledge ingestion pipeline parameters, see [Docling Ingestion
 
 The **Knowledge Ingest** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
 
-The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#setup) menu or in the `.env` used by Docker Compose.
+The default path to your local folder is mounted from the `./openrag-documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#setup) menu or in the `.env` used by Docker Compose.
 
 To load and process a single file from the mapped location, click **Add Knowledge**, and then click <Icon name="File" aria-hidden="true"/> **File**.
 The file is loaded into your OpenSearch database, and appears in the Knowledge page.
