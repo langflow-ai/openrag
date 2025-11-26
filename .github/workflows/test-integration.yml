@@ -32,6 +32,14 @@ jobs:
     steps:
       - run: df -h
       
+      - name: Disk space troubleshooting
+        run: |
+          echo "=== Top-level disk usage ==="
+          sudo du -h -d1 / 2>/dev/null | sort -h
+          echo ""
+          echo "=== Docker disk usage ==="
+          docker system df
+      
       - name: Clean runner workspace
         run: |
           # Save current workspace path
