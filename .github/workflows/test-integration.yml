@@ -36,12 +36,10 @@ jobs:
         run: |
           docker system prune -af || true
           docker builder prune -af || true
+          docker-compose -f docker-compose.yml down -v --remove-orphans || true
 
       - run: df -h
       
-      - name: Fix permissions for opensearch-data
-        run: sudo rm -rf /opt/actions-runner/_work/openrag/openrag/opensearch-data/*
-
       - name: Checkout
         uses: actions/checkout@v4
         
