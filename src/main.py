@@ -387,7 +387,7 @@ async def _ingest_default_documents_langflow(services, file_paths):
 
     # Prepare tweaks for default documents with anonymous user metadata
     default_tweaks = {
-        "OpenSearchHybrid-Ve6bS": {
+        "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
             "docs_metadata": [
                 {"key": "owner", "value": None},
                 {"key": "owner_name", "value": anonymous_user.name},
@@ -450,6 +450,55 @@ async def _ingest_default_documents_openrag(services, file_paths):
     )
 
 
+async def _update_mcp_servers_with_provider_credentials(services):
+    """Update MCP servers with provider credentials at startup.
+    
+    This is especially important for no-auth mode where users don't go through
+    the OAuth login flow that would normally set these credentials.
+    """
+    try:
+        auth_service = services.get("auth_service")
+        session_manager = services.get("session_manager")
+        
+        if not auth_service or not auth_service.langflow_mcp_service:
+            logger.debug("MCP service not available, skipping credential update")
+            return
+        
+        config = get_openrag_config()
+        
+        # Build global vars with provider credentials using utility function
+        from utils.langflow_headers import build_mcp_global_vars_from_config
+        
+        global_vars = build_mcp_global_vars_from_config(config)
+        
+        # In no-auth mode, add the anonymous JWT token and user details
+        if is_no_auth_mode() and session_manager:
+            from session_manager import AnonymousUser
+            
+            # Create/get anonymous JWT for no-auth mode
+            anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
+            if anonymous_jwt:
+                global_vars["JWT"] = anonymous_jwt
+            
+            # Add anonymous user details
+            anonymous_user = AnonymousUser()
+            global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
+            global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted for spaces)
+            global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
+            
+            logger.info("Added anonymous JWT and user details to MCP servers for no-auth mode")
+        
+        if global_vars:
+            result = await auth_service.langflow_mcp_service.update_mcp_servers_with_global_vars(global_vars)
+            logger.info("Updated MCP servers with provider credentials at startup", **result)
+        else:
+            logger.debug("No provider credentials configured, skipping MCP server update")
+            
+    except Exception as e:
+        logger.warning("Failed to update MCP servers with provider credentials at startup", error=str(e))
+        # Don't fail startup if MCP update fails
+
+
 async def startup_tasks(services):
     """Startup tasks"""
     logger.info("Starting startup tasks")
@@ -462,6 +511,9 @@ async def startup_tasks(services):
 
     # Configure alerting security
     await configure_alerting_security()
+    
+    # Update MCP servers with provider credentials (especially important for no-auth mode)
+    await _update_mcp_servers_with_provider_credentials(services)
 
 
 async def initialize_services():
@@ -1069,7 +1121,11 @@ async def create_app():
         Route(
             "/onboarding",
             require_auth(services["session_manager"])(
-                partial(settings.onboarding, flows_service=services["flows_service"])
+                partial(
+                    settings.onboarding,
+                    flows_service=services["flows_service"],
+                    session_manager=services["session_manager"]
+                )
             ),
             methods=["POST"],
         ),
