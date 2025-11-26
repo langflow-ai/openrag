@@ -66,7 +66,7 @@ class ChatService:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
         # Pass the selected embedding model as a global variable
-        from config.config_manager import get_openrag_config
+        from config.settings import get_openrag_config
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
@@ -181,7 +181,7 @@ class ChatService:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
         # Pass the selected embedding model as a global variable
-        from config.config_manager import get_openrag_config
+        from config.settings import get_openrag_config
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
         extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
@@ -305,7 +305,7 @@ class ChatService:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
             # Pass the selected embedding model as a global variable
-            from config.config_manager import get_openrag_config
+            from config.settings import get_openrag_config
             config = get_openrag_config()
             embedding_model = config.knowledge.embedding_model
             extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model

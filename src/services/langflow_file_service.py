@@ -141,7 +141,7 @@ class LangflowFileService:
         mimetype = str(file_tuples[0][2]) if file_tuples and len(file_tuples) > 0 and len(file_tuples[0]) > 2 else ""
 
         # Get the current embedding model from config
-        from config.config_manager import get_openrag_config
+        from config.settings import get_openrag_config
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
 
