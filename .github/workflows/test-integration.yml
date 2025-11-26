@@ -36,6 +36,7 @@ jobs:
         run: |
           docker system prune -af || true
           docker builder prune -af || true
+          docker-compose -f docker-compose.yml down -v --remove-orphans || true
 
       - run: df -h
       
