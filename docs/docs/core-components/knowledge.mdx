@@ -1,5 +1,5 @@
 ---
-title: OpenSearch in OpenRAG
+title: Ingest knowledge
 slug: /knowledge
 ---
 
@@ -7,24 +7,22 @@ import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-OpenRAG uses [OpenSearch](https://docs.opensearch.org/latest/) for its vector-backed knowledge store.
-This is a specialized database for storing and retrieving embeddings, which helps your Agent efficiently find relevant information.
-OpenSearch provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
+The documents in your OpenRAG [OpenSearch knowledge base](/knowledge-configure) provide specialized context in addition to the general knowledge available to the language model that you select when you [install OpenRAG](/install).
+Upload documents to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
+Then, the [OpenRAG **Chat**](/chat) can retrieve relevant content from your knowledge base to provide context-aware responses.
 
-## Authentication and document access {#auth}
+OpenRAG can ingest knowledge from direct file uploads, URLs, and OAuth connectors.
 
-OpenRAG supports two authentication modes based on how you [install OpenRAG](/install), and which mode you choose affects document access.
+Knowledge ingestion is powered by OpenRAG's built-in [knowledge ingestion flows](/knowledge#knowledge-ingestion-flows) that use Docling Serve to process documents before storing the documents in your OpenSearch database.
 
-**No-auth mode (Basic Setup)**: This mode uses a single anonymous JWT token for OpenSearch authentication, so documents uploaded to the `documents` index by one user are visible to all other users on the OpenRAG server.
+During ingestion, documents are broken into smaller chunks of content that are then embedded using your selected [embedding model](/knowledge-configure#set-the-embedding-model-and-dimensions).
+The chunks, embeddings, and associated metadata (which connects chunks of the same document) are stored in your OpenSearch database.
 
-**OAuth mode (Advanced Setup)**: Each OpenRAG user is granted a JWT token, and each document is tagged with user ownership. Documents are filtered by user ownership, ensuring users only see documents they uploaded or have access to. 
+Like all [OpenRAG flows](/agents), you can [inspect the flows in Langflow](/agents#inspect-and-modify-flows), and you can customize them if you want to change the [ingestion settings](/knowledge#knowledge-ingestion-settings).
 
-## Ingest knowledge
+## Ingest local files and folders {#knowledge-ingestion-flows}
 
-OpenRAG supports knowledge ingestion through direct file uploads and OAuth connectors.
-To configure the knowledge ingestion pipeline parameters, see [Docling Ingestion](/ingestion).
-
-### Direct file ingestion
+<!-- You can upload files and folders from your local machine to your knowledge base. When you do this, the OpenSearch Ingestion flow runs in the background -->
 
 The **OpenSearch Ingestion** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
 
@@ -38,9 +36,35 @@ The files are loaded into your OpenSearch database, and appear in the Knowledge 
 
 To add files directly to a chat session, click <Icon name="Plus" aria-hidden="true"/> in the chat input and select the files you want to include. Files added this way are processed and made available to the agent for the current conversation, and are not permanently added to the knowledge base.
 
-<!-- missing URL ingestion -->
+### OpenSearch Ingestion flow
 
-### Ingest files through OAuth connectors {#oauth-ingestion}
+<!-- combine with above -->
+
+The **OpenSearch Ingestion** flow is the default knowledge ingestion flow in OpenRAG. When you **Add Knowledge** in OpenRAG, the **OpenSearch Ingestion** flow runs in the background. The flow ingests documents using Docling Serve to import and process documents.
+
+If you [inspect the flow in Langflow](/agents#inspect-and-modify-flows), you'll see that it is comprised of ten components that work together to process and store documents in your knowledge base:
+
+* The [**Docling Serve** component](https://docs.langflow.org/bundles-docling) processes input documents by connecting to your instance of Docling Serve.
+* The [**Export DoclingDocument** component](https://docs.langflow.org/components-docling) exports the processed DoclingDocument to markdown format with image export mode set to placeholder. This conversion makes the structured document data into a standardized format for further processing.
+* Three [**DataFrame Operations** components](https://docs.langflow.org/components-processing#dataframe-operations) sequentially add metadata columns to the document data of `filename`, `file_size`, and `mimetype`.
+* The [**Split Text** component](https://docs.langflow.org/components-processing#split-text) splits the processed text into chunks with a chunk size of 1000 characters and an overlap of 200 characters.
+* Four **Secret Input** components provide secure access to configuration variables: `CONNECTOR_TYPE`, `OWNER`, `OWNER_EMAIL`, and `OWNER_NAME`. These are runtime variables populated from OAuth login.
+* The **Create Data** component combines the secret inputs into a structured data object that will be associated with the document embeddings.
+* The [**Embedding Model** component](https://docs.langflow.org/components-embedding-models) generates vector embeddings using OpenAI's `text-embedding-3-small` model. The embedding model is selected at [Application onboarding] and cannot be changed.
+* The [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch) stores the processed documents and their embeddings in the `documents` index at `https://opensearch:9200`. By default, the component is authenticated with a JWT token, but you can also select `basic` auth mode, and enter your OpenSearch admin username and password.
+
+To customize this flow, see [Inspect and modify flows](/agents#inspect-and-modify-flows).
+
+## Ingest knowledge from URLs {#url-flow}
+
+The **OpenSearch URL Ingestion** flow is used to ingest web content from URLs.
+This flow isn't directly accessible from the OpenRAG user interface.
+Instead, this flow is called by the [**OpenRAG OpenSearch Agent** flow](/chat#flow) as a Model Context Protocol (MCP) tool.
+The agent can call this component to fetch web content from a given URL, and then ingest that content into your OpenSearch knowledge base.
+
+For more information about MCP in Langflow, see the Langflow documentation on [MCP clients](https://docs.langflow.org/mcp-client) and [MCP servers](https://docs.langflow.org/mcp-tutorial).
+
+## Ingest files through OAuth connectors {#oauth-ingestion}
 
 OpenRAG supports Google Drive, OneDrive, and Sharepoint as OAuth connectors for seamless document synchronization.
 
@@ -89,75 +113,145 @@ The ingestion process can take some time depending on the size of your documents
 
 If ingestion fails, click **Status** to view the logged error.
 
-### Monitor ingestion tasks
+## Monitor ingestion
 
-When you upload files, process folders, or sync documents, OpenRAG processes them as background tasks.
-A badge appears on the <Icon name="Bell" aria-hidden="true"/> **Tasks** icon when there are active tasks running.
-To open the Tasks menu, click <Icon name="Bell" aria-hidden="true"/> **Tasks**.
+Document ingestion tasks run in the background.
 
-**Active Tasks** shows tasks that are currently processing.
-A **Pending** task is queued and waiting to start, a **Running** task is actively processing files, and a **Processing** task is performing ingestion operations. For each active task, you can find the task ID, start time, duration, the number of files processed so far, and the total files.
+In the OpenRAG UI, a badge is shown on <Icon name="Bell" aria-hidden="true"/> **Tasks** when OpenRAG tasks are active.
+Click <Icon name="Bell" aria-hidden="true"/> **Tasks** to inspect and cancel tasks:
 
-You can cancel active tasks by clicking <Icon name="X" aria-hidden="true"/> **Cancel**. Canceling a task stops processing immediately and marks the task as failed.
+* **Active Tasks**: All tasks that are **Pending**, **Running**, or **Processing**.
+For each active task, depending on its state, you can find the task ID, start time, duration, number of files processed, and the total files enqueued for processing.
 
-## Browse knowledge
+* **Pending**: The task is queued and waiting to start.
 
-The **Knowledge** page lists the documents OpenRAG has ingested into the OpenSearch vector database's `documents` index.
+* **Running**: The task is actively processing files.
+
+* **Processing**: The task is performing ingestion operations.
+
+* **Failed**: Something went wrong during ingestion, or the task was manually canceled.
+
+To stop an active task, click <Icon name="X" aria-hidden="true"/> **Cancel**. Canceling a task stops processing immediately and marks the task as **Failed**.
+
+## Browse knowledge {#browse-knowledge}
+
+The **Knowledge** page lists the documents OpenRAG has ingested into your OpenSearch database, specifically in the `documents` index.
 
 To explore the raw contents of your knowledge base, click <Icon name="Library" aria-hidden="true"/> **Knowledge** to get a list of all ingested documents.
-Click a document to view the chunks produced from splitting the documents during ingestion into the vector database.
+Click a document to view the chunks produced from splitting the document during ingestion.
 
-Documents are processed with the default **OpenSearch Ingestion** flow. If you want to split your documents differently, edit the **OpenSearch Ingestion** flow, as explained in [Inspect and modify flows](/agents#inspect-and-modify-flows).
+## Troubleshoot ingestion
 
-## Chat with knowledge
+If an ingestion task fails, do the following:
 
-<!-- move content from /agents -->
+* Make sure you are uploading supported file types.
+* Split excessively large files into smaller files before uploading.
+* Remove unusual embedded content, such as videos or animations, before uploading. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
 
-<!-- can also ingest while chatting -->
+If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](#browse-knowledge) to confirm that the documents are uploaded in full, and the chunks are correct.
 
-## Create knowledge filters
+If the documents are present and well-formed, check your [knowledge filters](/knowledge-filters).
+If a global filter is applied, make sure the expected documents are included in the global filter.
+If the global filter excludes any documents, the agent cannot access those documents unless you apply a chat-level filter or change the global filter.
 
-OpenRAG includes a knowledge filter system for organizing and managing document collections.
-Knowledge filters are saved search configurations that allow you to create custom views of your document collection. They store search queries, filter criteria, and display settings that can be reused across different parts of OpenRAG.
+If text is missing or incorrectly processed, you need to reupload the documents after modifying the ingestion parameters or the documents themselves.
+For example:
 
-Knowledge filters help agents work more efficiently with large document collections by focusing their context within relevant documents sets.
+* Break combined documents into separate files for better metadata context.
+* Make sure scanned documents are legible enough for extraction, and enable the **OCR** option. Poorly scanned documents might require additional preparation or rescanning before ingestion.
+* Adjust the **Chunk Size** and **Chunk Overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
 
-To create a knowledge filter, do the following:
+For more information about modifying ingestion parameters and flows, see [Docling Serve for knowledge ingestion](/knowledge#docling-serve-for-knowledge-ingestion).
 
-1. Click **Knowledge**, and then click <Icon name="Plus" aria-hidden="true"/> **Knowledge Filters**.
-    The **Knowledge Filter** pane appears.
-2. Enter a **Name** and **Description**, and then click **Create Filter**.
-A new filter is created with default settings that match all documents.
-3. To modify the filter, click <Icon name="Library" aria-hidden="true"/> **Knowledge**, and then click your new filter to edit it in the **Knowledge Filter** pane.
+## Docling Serve for knowledge ingestion {#docling-serve-for-knowledge-ingestion}
 
-   The following filter options are configurable.
-   
-   * **Search Query**: Enter text for semantic search, such as "financial reports from Q4".
-   * **Data Sources**: Select specific data sources or folders to include.
-   * **Document Types**: Filter by file type.
-   * **Owners**: Filter by who uploaded the documents.
-   * **Connectors**: Filter by connector types, such as local upload or Google Drive.
-   * **Response Limit**: Set maximum number of results. The default is `10`.
-   * **Score Threshold**: Set minimum relevance score. The default score is `0`.
+<!-- revise this section and subsections. Move to the knowledge-configure page and rename that page to "Configure knowledge". -->
 
-4. When you're done editing the filter, click **Update Filter**.
+OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion.
+More specifically, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve), which starts a `docling serve` process on your local machine and runs Docling ingestion through an API service.
 
-5. To apply the filter to OpenRAG globally, click <Icon name="Library" aria-hidden="true"/> **Knowledge**, and then select the filter to apply. One filter can be enabled at a time.
+Docling ingests documents from your local machine or OAuth connectors, splits them into chunks, and stores them as separate, structured documents in the OpenSearch `documents` index.
 
-    To apply the filter to a single chat session, in the <Icon name="MessageSquare" aria-hidden="true"/> **Chat** window, click <Icon name="Funnel" aria-hidden="true"/>, and then select the filter to apply.
+OpenRAG chose Docling for its support for a wide variety of file formats, high performance, and advanced understanding of tables and images.
 
-    To delete the filter, in the **Knowledge Filter** pane, click **Delete Filter**.
+### Knowledge ingestion settings {#knowledge-ingestion-settings}
 
-## OpenRAG default configuration
+To modify OpenRAG's ingestion settings, including the Docling settings and ingestion flows, <Icon name="Settings2" aria-hidden="true"/> **Settings**.
 
-OpenRAG automatically detects and configures the correct vector dimensions for embedding models, ensuring optimal search performance and compatibility.
+These settings configure the Docling ingestion parameters.
 
-The complete list of supported models is available at [`models_service.py` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py).
+OpenRAG will warn you if `docling serve` is not running.
+To start or stop `docling serve` or any other native services, in the TUI main menu, click **Start Native Services** or **Stop Native Services**.
 
-You can use custom embedding models by specifying them in your configuration.
+**Embedding model** determines which AI model is used to create vector embeddings. The default is the OpenAI `text-embedding-3-small` model.
 
-If you use an unknown embedding model, OpenRAG automatically falls back to `1536` dimensions and logs a warning. The system continues to work, but search quality can be affected if the actual model dimensions differ from `1536`.
+**Chunk size** determines how large each text chunk is in number of characters.
+Larger chunks yield more context per chunk, but can include irrelevant information. Smaller chunks yield more precise semantic search, but can lack context.
+The default value of `1000` characters provides a good starting point that balances these considerations.
 
-The default embedding dimension is `1536` and the default model is `text-embedding-3-small`.
+**Chunk overlap** controls the number of characters that overlap over chunk boundaries.
+Use larger overlap values for documents where context is most important, and use smaller overlap values for simpler documents, or when optimization is most important.
+The default value of 200 characters of overlap with a chunk size of 1000 (20% overlap) is suitable for general use cases. Decrease the overlap to 10% for a more efficient pipeline, or increase to 40% for more complex documents.
 
-For models with known vector dimensions, see [`settings.py` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
+**Table Structure** enables Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/) tool for parsing tables. Instead of treating tables as plain text, tables are output as structured table data with preserved relationships and metadata. **Table Structure** is enabled by default.
+
+**OCR** enables or disabled OCR processing when extracting text from images and scanned documents.
+OCR is disabled by default. This setting is best suited for processing text-based documents as quickly as possible with Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/). Images are ignored and not processed.
+
+Enable OCR when you are processing documents containing images with text that requires extraction, or for scanned documents. Enabling OCR can slow ingestion performance.
+
+If OpenRAG detects that the local machine is running on macOS, OpenRAG uses the [ocrmac](https://www.piwheels.org/project/ocrmac/) OCR engine. Other platforms use [easyocr](https://www.jaided.ai/easyocr/).
+
+**Picture descriptions** adds image descriptions generated by the [SmolVLM-256M-Instruct](https://huggingface.co/HuggingFaceTB/SmolVLM-Instruct) model to OCR processing. Enabling picture descriptions can slow ingestion performance.
+
+### Use OpenRAG default ingestion instead of Docling serve
+
+If you want to use OpenRAG's built-in pipeline instead of Docling serve, set `DISABLE_INGEST_WITH_LANGFLOW=true` in [Environment variables](/reference/configuration#document-processing).
+
+The built-in pipeline still uses the Docling processor, but uses it directly without the Docling Serve API.
+
+For more information, see [`processors.py` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58).
+
+## Ingestion performance expectations
+
+On a local VM with 7 vCPUs and 8 GiB RAM, OpenRAG ingested approximately 5.03 GB across 1,083 files in about 42 minutes.
+This equates to approximately 2.4 documents per second.
+
+You can generally expect equal or better performance on developer laptops and significantly faster on servers.
+Throughput scales with CPU cores, memory, storage speed, and configuration choices such as embedding model, chunk size and overlap, and concurrency.
+
+This test returned 12 errors (approximately 1.1 percent).
+All errors were file-specific, and they didn't stop the pipeline.
+
+* Ingestion dataset:
+
+   * Total files: 1,083 items mounted
+   * Total size on disk: 5,026,474,862 bytes (approximately 5.03 GB)
+
+* Hardware specifications:
+
+   * Machine: Apple M4 Pro
+   * Podman VM:
+     * Name: `podman-machine-default`
+     * Type: `applehv`
+     * vCPUs: 7
+     * Memory: 8 GiB
+     * Disk size: 100 GiB
+
+* Test results:
+
+   ```text
+   2025-09-24T22:40:45.542190Z /app/src/main.py:231 Ingesting default documents when ready disable_langflow_ingest=False
+   2025-09-24T22:40:45.546385Z /app/src/main.py:270 Using Langflow ingestion pipeline for default documents file_count=1082
+   ...
+   2025-09-24T23:19:44.866365Z /app/src/main.py:351 Langflow ingestion completed success_count=1070 error_count=12 total_files=1082
+   ```
+
+* Elapsed time: Approximately 42 minutes 15 seconds (2,535 seconds)
+
+* Throughput: Approximately 2.4 documents/second
+
+## See also
+
+* [Configure OpenSearch in OpenRAG](/knowledge-configure)
+* [Filter knowledge](/knowledge-filters)

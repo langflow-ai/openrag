@@ -190,14 +190,14 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
     **Basic Setup** can generate all of the required values for OpenRAG. The OpenAI API key is optional and can be provided during onboarding.
     **Basic Setup** does not set up OAuth connections for ingestion from cloud providers.
     For OAuth setup, use **Advanced Setup**.
-    For information about the difference between basic (no auth) and OAuth in OpenRAG, see [Authentication and document access](/knowledge#auth).
+    For information about the difference between basic (no auth) and OAuth in OpenRAG, see [OpenSearch authentication and document access](/knowledge-configure#auth).
 
-   1. To install OpenRAG with **Basic Setup**, click **Basic Setup** or press <kbd>1</kbd>. 
+   1. To install OpenRAG with **Basic Setup**, click **Basic Setup** or press <kbd>1</kbd>.
    2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
-   
+
        The OpenSearch password is required. The Langflow admin password is optional.
        If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
-   
+
    3. Optional: Paste your OpenAI API key in the OpenAI API key field. You can also provide this during onboarding or choose a different model provider.
    4. Click **Save Configuration**.
    Your passwords are saved in the `.env` file used to start OpenRAG.

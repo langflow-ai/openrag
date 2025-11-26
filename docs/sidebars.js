@@ -25,25 +25,23 @@ const sidebars = {
     "get-started/install",
     "get-started/docker",
     {
-      type: "category",
-      label: "Langflow in OpenRAG",
-      items: [
-        "core-components/agents",
-      ],
+      type: "doc",
+      id: "core-components/agents",
+      label: "Flows",
     },
     {
       type: "category",
-      label: "OpenSearch in OpenRAG",
+      label: "Knowledge",
       items: [
+        "core-components/knowledge-configure",
         "core-components/knowledge",
+        "core-components/knowledge-filters",
       ],
     },
     {
-      type: "category",
-      label: "Docling in OpenRAG",
-      items: [
-        "core-components/ingestion",
-      ],
+      type: "doc",
+      id: "core-components/chat",
+      label: "Chat",
     },
     "reference/configuration",
     "support/troubleshoot",

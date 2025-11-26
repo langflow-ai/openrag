@@ -1,0 +1,53 @@
+---
+title: Filter knowledge
+slug: /knowledge-filters
+---
+
+import Icon from "@site/src/components/icon/icon";
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+OpenRAG's knowledge filters help you organize and manage your [knowledge base](/knowledge-configure) by creating pre-defined views of your documents.
+
+Each knowledge filter captures a specific subset of documents based on given a search query and filters.
+
+Knowledge filters can be used with different OpenRAG functionality.
+For example, knowledge filters can help agents access large knowledge bases efficiently by narrowing the scope of documents that you want the agent to use.
+
+## Create a filter
+
+To create a knowledge filter, do the following:
+
+1. Click **Knowledge**, and then click <Icon name="Plus" aria-hidden="true"/> **Knowledge Filters**.
+
+2. Enter a **Name** and **Description**, and then click **Create Filter**.
+
+   By default, new filters match all documents in your knowledge base.
+   Modify the filter to customize it.
+
+3. To modify the filter, click <Icon name="Library" aria-hidden="true"/> **Knowledge**, and then click your new filter. You can edit the following settings:
+
+   * **Search Query**: Enter text for semantic search, such as `financial reports from Q4`.
+   * **Data Sources**: Select specific data sources or folders to include.
+   * **Document Types**: Filter by file type.
+   * **Owners**: Filter by the user that uploaded the documents.
+   * **Connectors**: Filter by [upload source](/knowledge), such as the local file system or a Google Drive OAuth connector.
+   * **Response Limit**: Set the maximum number of results to return from the knowledge base. The default is `10`.
+   * **Score Threshold**: Set the minimum relevance score for similarity search. The default score is `0`.
+
+4. To save your changes, click **Update Filter**.
+
+## Apply a filter {#apply-a-filter}
+
+* **Apply a global filter**: Click <Icon name="Library" aria-hidden="true"/> **Knowledge**, and then enable the toggle next to your preferred filter. Only one filter can be the global filter. The global filter applies to all chat sessions.
+
+* **Apply a chat filter**: In the <Icon name="MessageSquare" aria-hidden="true"/> **Chat** window, click <Icon name="Funnel" aria-hidden="true"/> **Filter**, and then select the filter to apply.
+Chat filters apply to one chat session only.
+
+## Delete a filter
+
+1. Click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
+
+2. Click the filter that you want to delete.
+
+3. Click **Delete Filter**.

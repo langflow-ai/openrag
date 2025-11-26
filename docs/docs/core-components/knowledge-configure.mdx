@@ -1,0 +1,58 @@
+---
+title: Configure OpenSearch in OpenRAG
+slug: /knowledge-configure
+---
+
+import Icon from "@site/src/components/icon/icon";
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+OpenRAG includes a built-in [OpenSearch](https://docs.opensearch.org/latest/) instance that serves as the underlying datastore for your knowledge.
+This specialized database is used to store and retrieve your documents and the associated vector data (embeddings).
+
+The [OpenRAG **Chat**](/chat) runs [similarity searches](https://www.ibm.com/think/topics/vector-search) against your OpenSearch database to retrieve relevant information and generate context-aware responses.
+
+Additionally, OpenSearch provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
+
+## OpenSearch authentication and document access {#auth}
+
+When you [install OpenRAG](/install), you can choose between two setup modes: **Basic Setup** and **Advanced Setup**.
+The mode you choose determines how OpenRAG authenticates with OpenSearch and controls access to documents:
+
+* **Basic Setup (no-auth mode)**: If you choose **Basic Setup**, then OpenRAG is installed in no-auth mode.
+This mode uses one, anonymous JWT token for OpenSearch authentication.
+There is no differentiation between users.
+All users that access your OpenRAG instance can access all documents uploaded to your OpenSearch `documents` index.
+
+* **Advanced Setup (OAuth mode)**: If you choose **Advanced Setup**, then OpenRAG is installed in OAuth mode.
+This mode uses a unique JWT token for each OpenRAG user, and each document is tagged with user ownership. Documents are filtered by user owner.
+This means users see only the documents that they uploaded or have access to.
+
+You can enable OAuth mode after installation.
+For more information, see [Ingest files through OAuth connectors](/knowledge#oauth-ingestion).
+
+## Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
+
+When you [install OpenRAG](/install), you select an embedding model during **Application Onboarding**.
+OpenRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
+
+In the OpenRAG repository, you can find the complete list of supported models in [`models_service.py`](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py) and the corresponding vector dimensions in [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
+
+The default embedding dimension is `1536` and the default model is `text-embedding-3-small`.
+
+You can use any supported or unsupported embedding model by specifying the model in your OpenRAG configuration during installation.
+
+If you use an unsupported embedding model that doesn't have defined dimensions in `settings.py`, then OpenRAG falls back to the default dimensions (1536) and logs a warning. OpenRAG's OpenSearch instance and flows continue to work, but [similarity search](https://www.ibm.com/think/topics/vector-search) quality can be affected if the actual model dimensions aren't 1536.
+
+The embedding model setting is immutable.
+To change the embedding model, you must [reinstall OpenRAG](/install#reinstall).
+
+## Set ingestion parameters
+
+For information about modifying ingestion parameters and flows, see [Knowledge ingestion settings](/knowledge#knowledge-ingestion-settings) and [Knowledge ingestion flows](/knowledge#knowledge-ingestion-flows).
+
+## See also
+
+* [Ingest knowledge](/knowledge)
+* [Filter knowledge](/knowledge-filters)
+* [Chat with knowledge](/chat)

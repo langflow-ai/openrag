@@ -1,5 +1,5 @@
 ---
-title: Langflow in OpenRAG
+title: Use Langflow in OpenRAG
 slug: /agents
 ---
 
@@ -10,62 +10,14 @@ import TabItem from '@theme/TabItem';
 OpenRAG includes a built-in [Langflow](https://docs.langflow.org/) instance for creating and managing application workflows called [_flows_](https://docs.langflow.org/concepts-overview).
 In a flow, the individual workflow steps are represented by [_components_](https://docs.langflow.org/concepts-components) that are connected together to form a complete process.
 
-OpenRAG includes several built-in flows:
+OpenRAG includes several built-in flows that you can customize.
+You can also create your own flows using OpenRAG's embedded Langflow visual editor.
 
-* The [**OpenRAG OpenSearch Agent** flow](/agents#flow) powers the **Chat** feature in OpenRAG.
-* The [**OpenSearch Ingestion** and **OpenSearch URL Ingestion** flows](/ingestion#knowledge-ingestion-flows) process documents and web content for storage in your OpenSearch knowledge bases.
+## Built-in flows
 
-You can customize the built-in flows or create your own flows using OpenRAG's embedded Langflow visual editor.
-
-## About the OpenRAG Chat flow (OpenRAG OpenSearch Agent flow) {#flow}
-
-When you **Chat** with your knowledge in OpenRAG, the **OpenRAG OpenSearch Agent** flow runs in the background.
-
-If you [inspect the flow in Langflow](#inspect-and-modify-flows), you'll see that it is comprised of eight components that work together to ingest chat messages, retrieve relevant information from your knowledge base, and then generate responses.
-
-![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
-
-* The [**Agent** component](https://docs.langflow.org/agents) orchestrates the entire flow by deciding when to search the knowledge base, how to formulate search queries, and how to combine retrieved information with the user's question to generate a comprehensive response.
-The **Agent** behaves according to the prompt in the **Agent Instructions** field.
-
-   The Agent component is the star of this flow because it powers decision making, tool calling, and an LLM-driven conversational experience.
-
-   <details>
-   <summary>How do agents work?</summary>
-
-   Agents extend Large Language Models (LLMs) by integrating tools, which are functions that provide additional context and enable autonomous task execution. These integrations make agents more specialized and powerful than standalone LLMs.
-
-   Whereas an LLM might generate acceptable, inert responses to general queries and tasks, an agent can leverage the integrated context and tools to provide more relevant responses and even take action. For example, you might create an agent that can access your company's documentation, repositories, and other resources to help your team with tasks that require knowledge of your specific products, customers, and code.
-
-   Agents use LLMs as a reasoning engine to process input, determine which actions to take to address the query, and then generate a response. The response could be a typical text-based LLM response, or it could involve an action, like editing a file, running a script, or calling an external API.
-
-   In an agentic context, tools are functions that the agent can run to perform tasks or access external resources. A function is wrapped as a Tool object with a common interface that the agent understands. Agents become aware of tools through tool registration, which is when the agent is provided a list of available tools typically at agent initialization. The Tool object's description tells the agent what the tool can do so that it can decide whether the tool is appropriate for a given request.
-
-   </details>
-
-* The [**Chat Input** component](https://docs.langflow.org/components-io) is connected to the Agent component's Input port. This allows to flow to be triggered by an incoming prompt from a user or application.
-
-* The [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch) is connected to the Agent component's Tools port. The agent might not use this database for every request; the agent only uses this connection if it decides the knowledge can help respond to the prompt.
-
-* The [**Language Model** component](https://docs.langflow.org/components-models) is connected to the Agent component's Language Model port. The agent uses the connected LLM to reason through the request sent through Chat Input.
-
-* The [**Embedding Model** component](https://docs.langflow.org/components-embedding-models) is connected to the OpenSearch component's Embedding port. This component converts text queries into vector representations that are compared with document embeddings stored in OpenSearch for semantic similarity matching. This gives your Agent's queries context.
-
-* The [**Text Input** component](https://docs.langflow.org/components-io) is populated with the global variable `OPENRAG-QUERY-FILTER`.
-This filter is the [Knowledge filter](/knowledge#create-knowledge-filters), and filters which knowledge sources to search through.
-
-* The **Agent** component's Output port is connected to the [**Chat Output** component](https://docs.langflow.org/components-io), which returns the final response to the user or application.
-
-* An [**MCP Tools** component](https://docs.langflow.org/mcp-client) is connected to the Agent's **Tools** port. This component calls the [**OpenSearch URL Ingestion** flow](/ingestion#url-flow), which Langflow uses as a [Model Context Protocol (MCP) server](https://docs.langflow.org/mcp-server) to fetch content from URLs and store in OpenSearch.
-
-### Nudges
-
-When you use the OpenRAG **Chat**, the **OpenRAG OpenSearch Nudges** flow runs in the background to pull additional context from your knowledge base and chat history.
-
-Nudges appear as prompts in the chat.
-Click a nudge to accept it and provide the nudge's context to the OpenRAG **Chat** agent (the **OpenRAG OpenSearch Agent** flow).
-
-Like OpenRAG's other built-in flows, you can [inspect the flow in Langflow](#inspect-and-modify-flows), and you can customize it if you want to change the nudge behavior.
+* The [**OpenRAG OpenSearch Agent** flow](/chat#flow) powers the **Chat** feature in OpenRAG.
+* The [**OpenSearch Ingestion** and **OpenSearch URL Ingestion** flows](/knowledge#knowledge-ingestion-flows) process documents and web content for storage in your OpenSearch knowledge base.
+* The [**OpenRAG OpenSearch Nudges** flow](/chat#nudges) provides optional contextual suggestions in the OpenRAG **Chat**.
 
 ## Inspect and modify flows {#inspect-and-modify-flows}
 
@@ -99,12 +51,12 @@ For example, to view and edit the built-in **Chat** flow (the **OpenRAG OpenSear
    If you modify the built-in **Chat** flow, make sure you click <Icon name="Plus" aria-hidden="true"/> in the **Conversations** tab to start a new conversation. This ensures that the chat doesn't persist any context from the previous conversation with the original model.
    :::
 
-## Revert a built-in flow to the default state
+## Revert a built-in flow to its default state
 
 After you edit a built-in flow, you can click **Restore flow** on the **Settings** page to revert the flow to its original state when you first installed OpenRAG.
 This is a destructive action that discards all customizations to the flow.
 
-## Additional Langflow functionality
+## Custom flows and additional Langflow functionality
 
 In addition to OpenRAG's built-in flows, all Langflow features are available through OpenRAG, including popular extensibility features such as the following:
 
