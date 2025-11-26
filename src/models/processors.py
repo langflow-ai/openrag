@@ -743,9 +743,9 @@ class LangflowFileProcessor(TaskProcessor):
 
             if metadata_tweaks:
                 # Initialize the OpenSearch component tweaks if not already present
-                if "OpenSearchHybrid-Ve6bS" not in final_tweaks:
-                    final_tweaks["OpenSearchHybrid-Ve6bS"] = {}
-                final_tweaks["OpenSearchHybrid-Ve6bS"]["docs_metadata"] = metadata_tweaks
+                if "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4" not in final_tweaks:
+                    final_tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"] = {}
+                final_tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"]["docs_metadata"] = metadata_tweaks
 
             # Process file using langflow service
             result = await self.langflow_file_service.upload_and_ingest_file(
