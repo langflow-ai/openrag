@@ -415,6 +415,19 @@ class MonitorScreen(Screen):
         """Start docling serve."""
         self.operation_in_progress = True
         try:
+            # Check for port conflicts before attempting to start
+            port_available, error_msg = self.docling_manager.check_port_available()
+            if not port_available:
+                self.notify(
+                    f"Cannot start docling serve: {error_msg}. "
+                    f"Please stop the conflicting service first.",
+                    severity="error",
+                    timeout=10
+                )
+                # Refresh to show current state
+                await self._refresh_services()
+                return
+
             # Start the service (this sets _starting = True internally at the start)
             # Create task and let it begin executing (which sets the flag)
             start_task = asyncio.create_task(self.docling_manager.start())

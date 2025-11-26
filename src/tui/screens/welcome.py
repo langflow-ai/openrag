@@ -385,6 +385,34 @@ class WelcomeScreen(Screen):
 
     async def _start_all_services(self) -> None:
         """Start all services: containers first, then native services."""
+        # Check for port conflicts before attempting to start anything
+        conflicts = []
+
+        # Check container ports
+        if self.container_manager.is_available():
+            ports_available, port_conflicts = await self.container_manager.check_ports_available()
+            if not ports_available:
+                for service_name, port, error_msg in port_conflicts[:3]:  # Show first 3
+                    conflicts.append(f"{service_name} (port {port})")
+                if len(port_conflicts) > 3:
+                    conflicts.append(f"and {len(port_conflicts) - 3} more")
+
+        # Check native service port
+        port_available, error_msg = self.docling_manager.check_port_available()
+        if not port_available:
+            conflicts.append(f"docling (port {self.docling_manager._port})")
+
+        # If there are any conflicts, show error and return
+        if conflicts:
+            conflict_str = ", ".join(conflicts)
+            self.notify(
+                f"Cannot start services: Port conflicts detected for {conflict_str}. "
+                f"Please stop the conflicting services first.",
+                severity="error",
+                timeout=10
+            )
+            return
+
         # Step 1: Start container services first (to create the network)
         if self.container_manager.is_available():
             command_generator = self.container_manager.start_services()
@@ -410,6 +438,20 @@ class WelcomeScreen(Screen):
     async def _start_native_services_after_containers(self) -> None:
         """Start native services after containers have been started."""
         if not self.docling_manager.is_running():
+            # Check for port conflicts before attempting to start
+            port_available, error_msg = self.docling_manager.check_port_available()
+            if not port_available:
+                self.notify(
+                    f"Cannot start native services: {error_msg}. "
+                    f"Please stop the conflicting service first.",
+                    severity="error",
+                    timeout=10
+                )
+                # Update state and return
+                self.docling_running = False
+                await self._refresh_welcome_content()
+                return
+
             self.notify("Starting native services...", severity="information")
             success, message = await self.docling_manager.start()
             if success:
