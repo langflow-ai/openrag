@@ -33,13 +33,14 @@ class MonitorScreen(Screen):
         ("u", "upgrade", "Upgrade"),
         ("x", "reset", "Reset"),
         ("l", "logs", "View Logs"),
+        ("g", "toggle_mode", "Toggle GPU/CPU"),
         ("j", "cursor_down", "Move Down"),
         ("k", "cursor_up", "Move Up"),
     ]
 
     def __init__(self):
         super().__init__()
-        self.container_manager = ContainerManager()
+        self._container_manager = None  # Use app's shared instance
         self.docling_manager = DoclingManager()
         self.services_table = None
         self.docling_table = None
@@ -51,6 +52,13 @@ class MonitorScreen(Screen):
 
         # Track which table was last selected for mutual exclusion
         self._last_selected_table = None
+
+    @property
+    def container_manager(self) -> ContainerManager:
+        """Get the shared container manager from the app."""
+        if self._container_manager is None:
+            self._container_manager = self.app.container_manager
+        return self._container_manager
 
     def on_unmount(self) -> None:
         """Clean up when the screen is unmounted."""
@@ -69,10 +77,10 @@ class MonitorScreen(Screen):
 
     def _create_services_tab(self) -> ComposeResult:
         """Create the services monitoring tab."""
-        # Current mode indicator + toggle
+        # GPU/CPU mode section
+        yield Static("GPU Mode", id="mode-indicator", classes="tab-header")
         yield Horizontal(
-            Static("", id="mode-indicator"),
-            Button("Toggle Mode", id="toggle-mode-btn"),
+            Button("Switch to CPU Mode", id="toggle-mode-btn"),
             classes="button-row",
             id="mode-row",
         )
@@ -311,16 +319,45 @@ class MonitorScreen(Screen):
         """Start services with progress updates."""
         self.operation_in_progress = True
         try:
+            # Check for port conflicts before attempting to start
+            ports_available, conflicts = await self.container_manager.check_ports_available()
+            if not ports_available:
+                # Show error notification instead of modal
+                conflict_msgs = []
+                for service_name, port, error_msg in conflicts[:3]:  # Show first 3
+                    conflict_msgs.append(f"{service_name} (port {port})")
+                
+                conflict_str = ", ".join(conflict_msgs)
+                if len(conflicts) > 3:
+                    conflict_str += f" and {len(conflicts) - 3} more"
+                
+                self.notify(
+                    f"Cannot start services: Port conflicts detected for {conflict_str}. "
+                    f"Please stop the conflicting services first.",
+                    severity="error",
+                    timeout=10
+                )
+                # Refresh to show current state
+                await self._refresh_services()
+                return
+            
             # Show command output in modal dialog
             command_generator = self.container_manager.start_services(cpu_mode)
             modal = CommandOutputModal(
                 "Starting Services",
                 command_generator,
-                on_complete=None,  # We'll refresh in on_screen_resume instead
+                on_complete=self._on_start_complete,  # Refresh after completion
             )
             self.app.push_screen(modal)
+        except Exception as e:
+            self.notify(f"Error starting services: {str(e)}", severity="error")
+            await self._refresh_services()
         finally:
             self.operation_in_progress = False
+
+    async def _on_start_complete(self) -> None:
+        """Callback after service start completes."""
+        await self._refresh_services()
 
     async def _stop_services(self) -> None:
         """Stop services with progress updates."""
@@ -386,6 +423,19 @@ class MonitorScreen(Screen):
         """Start docling serve."""
         self.operation_in_progress = True
         try:
+            # Check for port conflicts before attempting to start
+            port_available, error_msg = self.docling_manager.check_port_available()
+            if not port_available:
+                self.notify(
+                    f"Cannot start docling serve: {error_msg}. "
+                    f"Please stop the conflicting service first.",
+                    severity="error",
+                    timeout=10
+                )
+                # Refresh to show current state
+                await self._refresh_services()
+                return
+
             # Start the service (this sets _starting = True internally at the start)
             # Create task and let it begin executing (which sets the flag)
             start_task = asyncio.create_task(self.docling_manager.start())
@@ -583,8 +633,7 @@ class MonitorScreen(Screen):
         try:
             use_gpu = getattr(self.container_manager, "use_gpu_compose", False)
             indicator = self.query_one("#mode-indicator", Static)
-            mode_text = "Mode: GPU" if use_gpu else "Mode: CPU (no GPU detected)"
-            indicator.update(mode_text)
+            indicator.update("GPU Mode" if use_gpu else "CPU Mode")
             toggle_btn = self.query_one("#toggle-mode-btn", Button)
             toggle_btn.label = "Switch to CPU Mode" if use_gpu else "Switch to GPU Mode"
         except Exception:

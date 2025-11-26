@@ -2,8 +2,8 @@ services:
   opensearch:
     image: langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
     #build:
-    #context: .
-    #dockerfile: Dockerfile
+    #  context: .
+    #  dockerfile: Dockerfile
     container_name: os
     depends_on:
       - openrag-backend
@@ -56,6 +56,7 @@ services:
       - LANGFLOW_URL=http://langflow:7860
       - LANGFLOW_PUBLIC_URL=${LANGFLOW_PUBLIC_URL}
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
+      - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
       - LANGFLOW_CHAT_FLOW_ID=${LANGFLOW_CHAT_FLOW_ID}
@@ -137,3 +138,4 @@ services:
       - LANGFLOW_ENABLE_SUPERUSER_CLI=${LANGFLOW_ENABLE_SUPERUSER_CLI}
       # - DEFAULT_FOLDER_NAME=OpenRAG
       - HIDE_GETTING_STARTED_PROGRESS=true
+

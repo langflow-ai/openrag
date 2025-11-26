@@ -143,6 +143,29 @@ class DoclingManager:
         self._external_process = False
         return False
     
+    def check_port_available(self) -> tuple[bool, Optional[str]]:
+        """Check if the native service port is available.
+
+        Returns:
+            Tuple of (available, error_message)
+        """
+        import socket
+
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.5)
+            result = sock.connect_ex(('127.0.0.1', self._port))
+            sock.close()
+
+            if result == 0:
+                # Port is in use
+                return False, f"Port {self._port} is already in use"
+            return True, None
+        except Exception as e:
+            logger.debug(f"Error checking port {self._port}: {e}")
+            # If we can't check, assume it's available
+            return True, None
+
     def get_status(self) -> Dict[str, Any]:
         """Get current status of docling serve."""
         # Check for starting state first

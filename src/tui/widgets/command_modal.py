@@ -23,6 +23,7 @@ class CommandOutputModal(ModalScreen):
         ("p", "pause_waves", "Pause"),
         ("f", "speed_up", "Faster"),
         ("s", "speed_down", "Slower"),
+        ("escape", "close_modal", "Close"),
     ]
 
     DEFAULT_CSS = """
@@ -188,6 +189,8 @@ class CommandOutputModal(ModalScreen):
         self._output_lines: list[str] = []
         self._layer_line_map: dict[str, int] = {}  # Maps layer ID to line index
         self._status_task: Optional[asyncio.Task] = None
+        self._error_detected = False
+        self._command_complete = False
 
     def compose(self) -> ComposeResult:
         """Create the modal dialog layout."""
@@ -254,6 +257,12 @@ class CommandOutputModal(ModalScreen):
         for w in waves.wavelets:
             w.speed = max(0.1, w.speed * 0.8)
 
+    def action_close_modal(self) -> None:
+        """Close the modal (only if error detected or command complete)."""
+        close_btn = self.query_one("#close-btn", Button)
+        if not close_btn.disabled:
+            self.dismiss()
+
     async def _run_command(self) -> None:
         """Run the command and update the output in real-time."""
         output = self.query_one("#command-output", TextArea)
@@ -273,8 +282,25 @@ class CommandOutputModal(ModalScreen):
                 # Move cursor to end to trigger scroll
                 output.move_cursor((len(self._output_lines), 0))
 
+                # Detect error patterns in messages
+                import re
+                lower_msg = message.lower() if message else ""
+                if not self._error_detected and any(pattern in lower_msg for pattern in [
+                    "error:",
+                    "failed",
+                    "port.*already.*allocated",
+                    "address already in use",
+                    "not found",
+                    "permission denied"
+                ]):
+                    self._error_detected = True
+                    # Enable close button when error detected
+                    close_btn = self.query_one("#close-btn", Button)
+                    close_btn.disabled = False
+                
                 # If command is complete, update UI
                 if is_complete:
+                    self._command_complete = True
                     self._update_output("Command completed successfully", False)
                     output.text = "\n".join(self._output_lines)
                     output.move_cursor((len(self._output_lines), 0))
