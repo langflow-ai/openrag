@@ -304,17 +304,14 @@ async def init_index_when_ready():
 
 def _get_documents_dir():
     """Get the documents directory path, handling both Docker and local environments."""
-    # In Docker, the volume is mounted at /app/documents
-    # Locally, we use openrag-documents
+    # Always use openrag-documents regardless of environment
+    path = os.path.abspath(os.path.join(os.getcwd(), "openrag-documents"))
     container_env = detect_container_environment()
     if container_env:
-        path = os.path.abspath("/app/documents")
-        logger.debug(f"Running in {container_env}, using container path: {path}")
-        return path
+        logger.debug(f"Running in {container_env}, using path: {path}")
     else:
-        path = os.path.abspath(os.path.join(os.getcwd(), "openrag-documents"))
-        logger.debug(f"Running locally, using local path: {path}")
-        return path
+        logger.debug(f"Running locally, using path: {path}")
+    return path
 
 
 async def ingest_default_documents_when_ready(services):
