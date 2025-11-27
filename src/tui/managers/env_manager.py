@@ -64,7 +64,7 @@ class EnvConfig:
     nudges_flow_id: str = "ebc01d31-1976-46ce-a385-b0240327226c"
 
     # Document paths (comma-separated)
-    openrag_documents_paths: str = "./documents"
+    openrag_documents_paths: str = "./openrag-documents"
 
     # OpenSearch data path
     opensearch_data_path: str = "./opensearch-data"
@@ -454,7 +454,7 @@ class EnvManager:
             (
                 "openrag_documents_paths",
                 "Documents Paths",
-                "./documents,/path/to/more/docs",
+                "./openrag-documents,/path/to/more/docs",
                 False,
             ),
         ]
@@ -521,7 +521,7 @@ class EnvManager:
         )
 
         if not is_valid:
-            return ["./documents:/app/documents:Z"]  # fallback
+            return ["./openrag-documents:/app/documents:Z"]  # fallback
 
         volume_mounts = []
         for i, path in enumerate(validated_paths):

@@ -1,7 +1,7 @@
 {
   "baseUrl": "http://localhost:3000",
   "entryPoint": "http://localhost:3000",
-  "outputDir": "../documents/openrag-documentation.pdf",
+  "outputDir": "../openrag-documents/openrag-documentation.pdf",
   "customStyles": "table { max-width: 3500px !important; } .navbar, .footer, .breadcrumbs { display: none !important; }",
   "forceImages": true
 }

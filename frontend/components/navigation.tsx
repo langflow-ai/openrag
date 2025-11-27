@@ -91,6 +91,10 @@ export function Navigation({
 
   const { loading } = useLoadingStore();
 
+  useEffect(() => {
+    console.log("loading", loading);
+  }, [loading]);
+
   const [previousConversationCount, setPreviousConversationCount] = useState(0);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [conversationToDelete, setConversationToDelete] =
@@ -391,8 +395,70 @@ export function Navigation({
                       No conversations yet
                     </div>
                   ) : (
-                    conversations.map((conversation) => (
-                      <button
+                    <>
+                      {/* Optimistic rendering: Show placeholder conversation button while loading */}
+                      {(() => {
+                        // Show placeholder when:
+                        // 1. Loading is true AND conversation doesn't exist yet (creating new conversation), OR
+                        // 2. currentConversationId exists but isn't in conversations yet (gap between response and list update)
+                        const conversationExists = currentConversationId
+                          ? conversations.some(
+                              (conv) => conv.response_id === currentConversationId,
+                            )
+                          : false;
+
+                        const shouldShowPlaceholder =
+                          !conversationExists &&
+                          (loading ||
+                            (currentConversationId !== null &&
+                              currentConversationId !== undefined));
+
+                        // Use placeholderConversation if available
+                        // Otherwise create a placeholder with currentConversationId if it exists
+                        // Or use a temporary ID if we're loading but don't have an ID yet
+                        const placeholderToShow =
+                          placeholderConversation
+                            ? placeholderConversation
+                            : currentConversationId
+                              ? {
+                                  response_id: currentConversationId,
+                                  title: "",
+                                  endpoint: endpoint,
+                                  messages: [],
+                                  total_messages: 0,
+                                }
+                              : loading
+                                ? {
+                                    response_id: `loading-${Date.now()}`,
+                                    title: "",
+                                    endpoint: endpoint,
+                                    messages: [],
+                                    total_messages: 0,
+                                  }
+                                : null;
+
+                        return (
+                          shouldShowPlaceholder &&
+                          placeholderToShow && (
+                            <button
+                              key={placeholderToShow.response_id}
+                              type="button"
+                              className="w-full px-3 h-11 rounded-lg bg-accent group relative text-left cursor-not-allowed"
+                              disabled
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-muted-foreground truncate">
+                                    <span className="thinking-dots"></span>
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+                          )
+                        );
+                      })()}
+                      {conversations.map((conversation) => (
+                        <button
                         key={conversation.response_id}
                         type="button"
                         className={`w-full px-3 h-11 rounded-lg group relative text-left ${
@@ -467,7 +533,8 @@ export function Navigation({
                           </DropdownMenu>
                         </div>
                       </button>
-                    ))
+                    ))}
+                    </>
                   )}
                 </>
               )}

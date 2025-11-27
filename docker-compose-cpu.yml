@@ -1,6 +1,6 @@
 services:
   opensearch:
-    image: phact/openrag-opensearch:${OPENRAG_VERSION:-latest}
+    image: langflowai/openrag-opensearch:${OPENRAG_VERSION:-latest}
     #build:
     #  context: .
     #  dockerfile: Dockerfile
@@ -44,7 +44,7 @@ services:
       - "5601:5601"
 
   openrag-backend:
-    image: phact/openrag-backend:${OPENRAG_VERSION:-latest}
+    image: langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
     # build:
     #   context: .
     #   dockerfile: Dockerfile.backend
@@ -81,12 +81,12 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     volumes:
-      - ./documents:/app/documents:Z
+      - ./openrag-documents:/app/documents:Z
       - ./keys:/app/keys:Z
       - ./flows:/app/flows:U,z
 
   openrag-frontend:
-    image: phact/openrag-frontend:${OPENRAG_VERSION:-latest}
+    image: langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
     # build:
     #   context: .
     #   dockerfile: Dockerfile.frontend
@@ -101,7 +101,7 @@ services:
   langflow:
     volumes:
       - ./flows:/app/flows:U,z
-    image: phact/openrag-langflow:${LANGFLOW_VERSION:-latest}
+    image: langflowai/openrag-langflow:${LANGFLOW_VERSION:-latest}
     # build:
     #   context: .
     #   dockerfile: Dockerfile.langflow
@@ -129,7 +129,8 @@ services:
       - FILENAME=None
       - MIMETYPE=None
       - FILESIZE=0
-      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,FILENAME,MIMETYPE,FILESIZE
+      - SELECTED_EMBEDDING_MODEL=${SELECTED_EMBEDDING_MODEL:-}
+      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL
       - LANGFLOW_LOG_LEVEL=DEBUG
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}

@@ -210,7 +210,7 @@ test-ci:
 	echo "Pulling latest images..."; \
 	docker compose -f docker-compose-cpu.yml pull; \
 	echo "Building OpenSearch image override..."; \
-	docker build --no-cache -t phact/openrag-opensearch:latest -f Dockerfile .; \
+	docker build --no-cache -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
 	echo "Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
 	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow; \
 	echo "Starting docling-serve..."; \
@@ -288,10 +288,10 @@ test-ci-local:
 	echo "Cleaning up old containers and volumes..."; \
 	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
 	echo "Building all images locally..."; \
-	docker build -t phact/openrag-opensearch:latest -f Dockerfile .; \
-	docker build -t phact/openrag-backend:latest -f Dockerfile.backend .; \
-	docker build -t phact/openrag-frontend:latest -f Dockerfile.frontend .; \
-	docker build -t phact/openrag-langflow:latest -f Dockerfile.langflow .; \
+	docker build -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
+	docker build -t langflowai/openrag-backend:latest -f Dockerfile.backend .; \
+	docker build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
+	docker build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
 	echo "Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
 	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow; \
 	echo "Starting docling-serve..."; \

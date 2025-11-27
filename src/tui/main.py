@@ -455,7 +455,7 @@ def _copy_assets(resource_tree, destination: Path, allowed_suffixes: Optional[It
 
 def copy_sample_documents(*, force: bool = False) -> None:
     """Copy sample documents from package to current directory if they don't exist."""
-    documents_dir = Path("documents")
+    documents_dir = Path("openrag-documents")
 
     try:
         assets_files = files("tui._assets.documents")
@@ -485,7 +485,7 @@ def copy_compose_files(*, force: bool = False) -> None:
         logger.debug(f"Could not access compose assets: {e}")
         return
 
-    for filename in ("docker-compose.yml", "docker-compose-cpu.yml"):
+    for filename in ("docker-compose.yml", "docker-compose.gpu.yml"):
         destination = Path(filename)
         if destination.exists() and not force:
             continue

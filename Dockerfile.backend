@@ -21,7 +21,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync
 
 # Copy sample document and warmup script for docling
-COPY documents/warmup_ocr.pdf ./
+COPY openrag-documents/warmup_ocr.pdf ./
 COPY warm_up_docling.py ./
 RUN uv run docling-tools models download 
 RUN uv run python - <<'PY'

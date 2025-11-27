@@ -101,9 +101,22 @@ class WelcomeScreen(Screen):
                             except json.JSONDecodeError:
                                 continue
 
-                # Check if any services are running
-                running_services = [s for s in services if isinstance(s, dict) and s.get('State') == 'running']
-                self.services_running = len(running_services) > 0
+                # Check if services are running (exclude starting/created states)
+                # State can be lowercase or mixed case, so normalize it
+                running_services = []
+                starting_services = []
+                for s in services:
+                    if not isinstance(s, dict):
+                        continue
+                    state = str(s.get('State', '')).lower()
+                    if state == 'running':
+                        running_services.append(s)
+                    elif 'starting' in state or 'created' in state:
+                        starting_services.append(s)
+                
+                # Only consider services running if we have running services AND no starting services
+                # This prevents showing the button when containers are still coming up
+                self.services_running = len(running_services) > 0 and len(starting_services) == 0
             else:
                 self.services_running = False
         except Exception:
@@ -220,7 +233,12 @@ class WelcomeScreen(Screen):
             running_services = [
                 s.name for s in services.values() if s.status == ServiceStatus.RUNNING
             ]
-            self.services_running = len(running_services) > 0
+            starting_services = [
+                s.name for s in services.values() if s.status == ServiceStatus.STARTING
+            ]
+            # Only consider services running if we have running services AND no starting services
+            # This prevents showing the button when containers are still coming up
+            self.services_running = len(running_services) > 0 and len(starting_services) == 0
         else:
             self.services_running = False
 
@@ -385,6 +403,34 @@ class WelcomeScreen(Screen):
 
     async def _start_all_services(self) -> None:
         """Start all services: containers first, then native services."""
+        # Check for port conflicts before attempting to start anything
+        conflicts = []
+
+        # Check container ports
+        if self.container_manager.is_available():
+            ports_available, port_conflicts = await self.container_manager.check_ports_available()
+            if not ports_available:
+                for service_name, port, error_msg in port_conflicts[:3]:  # Show first 3
+                    conflicts.append(f"{service_name} (port {port})")
+                if len(port_conflicts) > 3:
+                    conflicts.append(f"and {len(port_conflicts) - 3} more")
+
+        # Check native service port
+        port_available, error_msg = self.docling_manager.check_port_available()
+        if not port_available:
+            conflicts.append(f"docling (port {self.docling_manager._port})")
+
+        # If there are any conflicts, show error and return
+        if conflicts:
+            conflict_str = ", ".join(conflicts)
+            self.notify(
+                f"Cannot start services: Port conflicts detected for {conflict_str}. "
+                f"Please stop the conflicting services first.",
+                severity="error",
+                timeout=10
+            )
+            return
+
         # Step 1: Start container services first (to create the network)
         if self.container_manager.is_available():
             command_generator = self.container_manager.start_services()
@@ -410,6 +456,20 @@ class WelcomeScreen(Screen):
     async def _start_native_services_after_containers(self) -> None:
         """Start native services after containers have been started."""
         if not self.docling_manager.is_running():
+            # Check for port conflicts before attempting to start
+            port_available, error_msg = self.docling_manager.check_port_available()
+            if not port_available:
+                self.notify(
+                    f"Cannot start native services: {error_msg}. "
+                    f"Please stop the conflicting service first.",
+                    severity="error",
+                    timeout=10
+                )
+                # Update state and return
+                self.docling_running = False
+                await self._refresh_welcome_content()
+                return
+
             self.notify("Starting native services...", severity="information")
             success, message = await self.docling_manager.start()
             if success:

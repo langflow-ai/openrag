@@ -60,11 +60,22 @@ class ChatService:
                 "LANGFLOW_URL and LANGFLOW_CHAT_FLOW_ID environment variables are required"
             )
 
-        # Prepare extra headers for JWT authentication
+        # Prepare extra headers for JWT authentication and embedding model
         extra_headers = {}
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
 
+        # Pass the selected embedding model as a global variable
+        from config.settings import get_openrag_config
+        from utils.langflow_headers import add_provider_credentials_to_headers
+        
+        config = get_openrag_config()
+        embedding_model = config.knowledge.embedding_model
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+        
+        # Add provider credentials to headers
+        add_provider_credentials_to_headers(extra_headers, config)
+        logger.debug(f"[LF] Extra headers {extra_headers}")
         # Get context variables for filters, limit, and threshold
         from auth_context import (
             get_score_threshold,
@@ -169,10 +180,21 @@ class ChatService:
                 "LANGFLOW_URL and NUDGES_FLOW_ID environment variables are required"
             )
 
-        # Prepare extra headers for JWT authentication
+        # Prepare extra headers for JWT authentication and embedding model
         extra_headers = {}
         if jwt_token:
             extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
+
+        # Pass the selected embedding model as a global variable
+        from config.settings import get_openrag_config
+        from utils.langflow_headers import add_provider_credentials_to_headers
+        
+        config = get_openrag_config()
+        embedding_model = config.knowledge.embedding_model
+        extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+        
+        # Add provider credentials to headers
+        add_provider_credentials_to_headers(extra_headers, config)
 
         # Build the complete filter expression like the chat service does
         filter_expression = {}
@@ -287,10 +309,22 @@ class ChatService:
         document_prompt = f"I'm uploading a document called '{filename}'. Here is its content:\n\n{document_content}\n\nPlease confirm you've received this document and are ready to answer questions about it."
 
         if endpoint == "langflow":
-            # Prepare extra headers for JWT authentication
+            # Prepare extra headers for JWT authentication and embedding model
             extra_headers = {}
             if jwt_token:
                 extra_headers["X-LANGFLOW-GLOBAL-VAR-JWT"] = jwt_token
+
+            # Pass the selected embedding model as a global variable
+            from config.settings import get_openrag_config
+            from utils.langflow_headers import add_provider_credentials_to_headers
+            
+            config = get_openrag_config()
+            embedding_model = config.knowledge.embedding_model
+            extra_headers["X-LANGFLOW-GLOBAL-VAR-SELECTED_EMBEDDING_MODEL"] = embedding_model
+            
+            # Add provider credentials to headers
+            add_provider_credentials_to_headers(extra_headers, config)
+            
             # Ensure the Langflow client exists; try lazy init if needed
             langflow_client = await clients.ensure_langflow_client()
             if not langflow_client:
