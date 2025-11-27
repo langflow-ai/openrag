@@ -304,7 +304,7 @@ async def init_index_when_ready():
 
 def _get_documents_dir():
     """Get the documents directory path, handling both Docker and local environments."""
-    # In Docker, the volume is mounted at /app/documents
+    # In Docker, the volume is mounted at /app/openrag-documents
     # Locally, we use openrag-documents
     container_env = detect_container_environment()
     if container_env:
