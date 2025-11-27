@@ -308,7 +308,7 @@ def _get_documents_dir():
     # Locally, we use openrag-documents
     container_env = detect_container_environment()
     if container_env:
-        path = os.path.abspath("/app/documents")
+        path = os.path.abspath("/app/openrag-documents")
         logger.debug(f"Running in {container_env}, using container path: {path}")
         return path
     else:
