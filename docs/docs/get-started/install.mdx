@@ -180,17 +180,14 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
 
 ## Set up OpenRAG with the TUI {#setup}
 
-The TUI creates a `.env` file in your OpenRAG directory root and starts OpenRAG.
-If the TUI detects a `.env` file in the OpenRAG root directory, it sources any variables from the `.env` file.
-If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
+The OpenRAG setup process creates a `.env` file at the root of your OpenRAG directory, and then starts OpenRAG.
+If it detects a `.env` file in the OpenRAG root directory, it sources any variables from the `.env` file.
+
+The TUI offers two setup methods to populate the required values. **Basic Setup** can generate all minimum required values for OpenRAG. However, **Basic Setup** doesn't enable [OAuth connectors for cloud storage](/knowledge#auth). If you want to use OAuth connectors to upload documents from cloud storage, select **Advanced Setup**.
+If OpenRAG detects OAuth credentials, it recommends **Advanced Setup**.
 
 <Tabs groupId="Setup method">
   <TabItem value="Basic setup" label="Basic setup" default>
-
-    **Basic Setup** can generate all of the required values for OpenRAG. The OpenAI API key is optional and can be provided during onboarding.
-    **Basic Setup** does not set up OAuth connections for ingestion from cloud providers.
-    For OAuth setup, use **Advanced Setup**.
-    For information about the difference between basic (no auth) and OAuth in OpenRAG, see [OpenSearch authentication and document access](/knowledge#auth).
 
    1. To install OpenRAG with **Basic Setup**, click **Basic Setup** or press <kbd>1</kbd>.
    2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
@@ -215,16 +212,21 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
   </TabItem>
   <TabItem value="Advanced setup" label="Advanced setup">
 
-   1. To install OpenRAG with **Advanced Setup**, click **Advanced Setup** or press <kbd>2</kbd>. 
+   1. To install OpenRAG with **Advanced Setup**, click **Advanced Setup** or press <kbd>2</kbd>.
    2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
-   
+
        The OpenSearch password is required. The Langflow admin password is optional.
        If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
-   
+
    3. Paste your OpenAI API key in the OpenAI API key field.
-   4. Add your client and secret values for Google or Microsoft OAuth.
-   These values can be found with your OAuth provider.
-   For more information, see the [Google OAuth client](https://developers.google.com/identity/protocols/oauth2) or [Microsoft Graph OAuth client](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth) documentation.
+   4. If you want to upload documents from external storage, such as Google Drive, add the required OAuth credentials for the connectors that you want to use. These settings can be populated automatically if OpenRAG detects these credentials in a `.env` file in the OpenRAG installation directory.
+
+       * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+       * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
+       * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
+
+       You can [manage OAuth credentials](/ingestion#oauth-ingestion) later, but it is recommended to configure them during initial set up.
+
    5. The OpenRAG TUI presents redirect URIs for your OAuth app.
    These are the URLs your OAuth provider will redirect back to after user sign-in.
    Register these redirect values with your OAuth provider as they are presented in the TUI.
@@ -239,21 +241,23 @@ If the TUI detects OAuth credentials, it enforces the **Advanced Setup** path.
    8. To start the Docling service, under **Native Services**, click **Start**.
    9. To open the OpenRAG application, navigate to the TUI main menu, and then click **Open App**.
    Alternatively, in your browser, navigate to `localhost:3000`.
-   You are presented with your provider's OAuth sign-in screen.
-   After sign-in, you are redirected to the redirect URI.
 
-       Two additional variables are available for Advanced Setup:
+   10. If you enabled OAuth connectors, you must sign in to your OAuth provider before being redirected to your OpenRAG instance.
 
-       The `LANGFLOW_PUBLIC_URL` controls where the Langflow web interface can be accessed. This is where users interact with their flows in a browser.
+   11. Two additional variables are available for **Advanced Setup** at this point.
+   Only change these variables if you have a non-default network configuration for your deployment, such as using a reverse proxy or custom domain.
 
-       The `WEBHOOK_BASE_URL` controls where the endpoint for `/connectors/CONNECTOR_TYPE/webhook` will be available.
-       This connection enables real-time document synchronization with external services.
+       * `LANGFLOW_PUBLIC_URL`: Sets the base address to access the Langflow web interface. This is where users interact with flows in a browser.
+
+       * `WEBHOOK_BASE_URL`: Sets the base address of the OpenRAG OAuth connector endpoint.
        Supported webhook endpoints:
-       - Google Drive: `/connectors/google_drive/webhook`
-       - OneDrive: `/connectors/onedrive/webhook`
-       - SharePoint: `/connectors/sharepoint/webhook`
 
-   10. Continue with [Application Onboarding](#application-onboarding).
+           - Amazon S3: Not applicable.
+           - Google Drive: `/connectors/google_drive/webhook`
+           - OneDrive: `/connectors/onedrive/webhook`
+           - SharePoint: `/connectors/sharepoint/webhook`
+
+   12. Continue with [Application Onboarding](#application-onboarding).
   </TabItem>
 </Tabs>
 

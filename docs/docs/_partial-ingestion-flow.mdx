@@ -1,0 +1,24 @@
+<details>
+<summary>About the OpenSearch Ingestion flow</summary>
+
+When you upload documents locally or with OAuth connectors, the **OpenSearch Ingestion** flow runs in the background.
+By default, this flow uses Docling Serve to import and process documents.
+
+Like all [OpenRAG flows](/agents), you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it if you want to change the knowledge ingestion settings.
+
+The **OpenSearch Ingestion** flow is comprised of several components that work together to process and store documents in your knowledge base:
+
+* [**Docling Serve** component](https://docs.langflow.org/bundles-docling#docling-serve): Ingests files and processes them by connecting to OpenRAG's local Docling Serve service. The output is `DoclingDocument` data that contains the extracted text and metadata from the documents.
+* [**Export DoclingDocument** component](https://docs.langflow.org/bundles-docling#export-doclingdocument): Exports processed `DoclingDocument` data to Markdown format with image placeholders. This conversion standardizes the document data in preparation for further processing.
+* [**DataFrame Operations** component](https://docs.langflow.org/components-processing#dataframe-operations): Three of these components run sequentially to add metadata to the document data: `filename`, `file_size`, and `mimetype`.
+* [**Split Text** component](https://docs.langflow.org/components-processing#split-text): Splits the processed text into chunks, based on the configured [chunk size and overlap settings](/knowledge#knowledge-ingestion-settings).
+* **Secret Input** component: If needed, four of these components securely fetch the [OAuth authentication](/knowledge#auth) configuration variables: `CONNECTOR_TYPE`, `OWNER`, `OWNER_EMAIL`, and `OWNER_NAME`.
+* **Create Data** component: Combines the authentication credentials from the **Secret Input** components into a structured data object that is associated with the document embeddings.
+* [**Embedding Model** component](https://docs.langflow.org/components-embedding-models): Generates vector embeddings using your selected [embedding model](/knowledge#set-the-embedding-model-and-dimensions).
+* [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch): Stores the processed documents and their embeddings in a `documents` index of your OpenRAG [OpenSearch knowledge base](/knowledge).
+
+   The default address for the OpenSearch instance is `https://opensearch:9200`. To change this address, edit the `OPENSEARCH_PORT` [environment variable](/reference/configuration#opensearch-settings).
+
+   The default authentication method is JSON Web Token (JWT) authentication. If you [edit the flow](/agents#inspect-and-modify-flows), you can select `basic` auth mode, which uses the `OPENSEARCH_USERNAME` and `OPENSEARCH_PASSWORD` [environment variables](/reference/configuration#opensearch-settings) for authentication instead of JWT.
+
+</details>

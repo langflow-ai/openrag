@@ -7,21 +7,22 @@ import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
+import PartialIngestionFlow from '@site/docs/_partial-ingestion-flow.mdx';
 
 Upload documents to your [OpenRAG OpenSearch instance](/knowledge) to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
 Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
 
-OpenRAG can ingest knowledge from direct file uploads, URLs, and OAuth authenticated connections.
+OpenRAG can ingest knowledge from direct file uploads, URLs, and OAuth authenticated connectors.
 
 Knowledge ingestion is powered by OpenRAG's built-in knowledge ingestion flows that use Docling to process documents before storing the documents in your OpenSearch database.
 During ingestion, documents are broken into smaller chunks of content that are then embedded using your selected [embedding model](/knowledge#set-the-embedding-model-and-dimensions).
 Then, the chunks, embeddings, and associated metadata (which connects chunks of the same document) are stored in your OpenSearch database.
 
-Like all [OpenRAG flows](/agents), you can [inspect the flows in Langflow](/agents#inspect-and-modify-flows), and you can customize them if you want to change the knowledge ingestion settings.
+To modify chunking behavior and other ingestion settings, see [Knowledge ingestion settings](/knowledge#knowledge-ingestion-settings) and [Inspect and modify flows](/agents#inspect-and-modify-flows).
 
 ## Ingest local files and folders
 
-You can upload files and folders from your local machine to your knowledge base. When you do this, the **OpenSearch Ingestion** flow runs in the background.
+You can upload files and folders from your local machine to your knowledge base:
 
 1. Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to view your OpenSearch knowledge base.
 
@@ -29,32 +30,156 @@ You can upload files and folders from your local machine to your knowledge base.
 
 3. To upload one file, click <Icon name="File" aria-hidden="true"/> **File**. To upload all documents in a folder, click <Icon name="Folder" aria-hidden="true"/> **Folder**.
 
-   The default path for either **File** or **Folder** uploads is the `/documents` subdirectory in your OpenRAG installation directory.
+   The default path is the `./documents` subdirectory in your OpenRAG installation directory.
+   To change this path, see [Set the local documents path](/knowledge#set-the-local-documents-path).
 
-### Ingest local files temporarily
+The selected files are processed in the background through the **OpenSearch Ingestion** flow.
+
+<PartialIngestionFlow />
+
+You can [monitor ingestion](#monitor-ingestion) to see the progress of the uploads and check for failed uploads.
+
+## Ingest local files temporarily
 
 <PartialTempKnowledge />
 
-### OpenSearch Ingestion flow
+## Ingest files with OAuth connectors {#oauth-ingestion}
 
-<!-- combine with above -->
+OpenRAG can use OAuth authenticated connectors to ingest documents from the following external services:
 
-The **OpenSearch Ingestion** flow is the default knowledge ingestion flow in OpenRAG. When you **Add Knowledge** in OpenRAG, the **OpenSearch Ingestion** flow runs in the background. The flow ingests documents using Docling Serve to import and process documents.
+* AWS S3
+* Google Drive
+* Microsoft OneDrive
+* Microsoft Sharepoint
 
-If you [inspect the flow in Langflow](/agents#inspect-and-modify-flows), you'll see that it is comprised of ten components that work together to process and store documents in your knowledge base:
+These connectors enable seamless ingestion of files from cloud storage to your OpenRAG knowledge base.
 
-* The **OpenSearch Ingestion** flow uses Langflow's [**File** component](https://docs.langflow.org/components-data#file) to split and embed files loaded from your local machine into the OpenSearch database.
-The default path to your local folder is mounted from the `./documents` folder in your OpenRAG project directory to the `/app/documents/` directory inside the Docker container. Files added to the host or the container will be visible in both locations. To configure this location, modify the **Documents Paths** variable in either the TUI's [Advanced Setup](/install#setup) menu or in the `.env` used by Docker Compose.
-* The [**Docling Serve** component](https://docs.langflow.org/bundles-docling) processes input documents by connecting to your instance of Docling Serve.
-* The [**Export DoclingDocument** component](https://docs.langflow.org/components-docling) exports the processed DoclingDocument to markdown format with image export mode set to placeholder. This conversion makes the structured document data into a standardized format for further processing.
-* Three [**DataFrame Operations** components](https://docs.langflow.org/components-processing#dataframe-operations) sequentially add metadata columns to the document data of `filename`, `file_size`, and `mimetype`.
-* The [**Split Text** component](https://docs.langflow.org/components-processing#split-text) splits the processed text into chunks with a chunk size of 1000 characters and an overlap of 200 characters.
-* Four **Secret Input** components provide secure access to configuration variables: `CONNECTOR_TYPE`, `OWNER`, `OWNER_EMAIL`, and `OWNER_NAME`. These are runtime variables populated from OAuth login.
-* The **Create Data** component combines the secret inputs into a structured data object that will be associated with the document embeddings.
-* The [**Embedding Model** component](https://docs.langflow.org/components-embedding-models) generates vector embeddings using OpenAI's `text-embedding-3-small` model. The embedding model is selected at [Application onboarding] and cannot be changed.
-* The [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch) stores the processed documents and their embeddings in the `documents` index at `https://opensearch:9200`. By default, the component is authenticated with a JWT token, but you can also select `basic` auth mode, and enter your OpenSearch admin username and password.
+Individual users can connect their personal cloud storage accounts to OpenRAG. Each user must separately authorize OpenRAG to access their own cloud storage. When a user connects a cloud storage service, they are redirected to authenticate with that service provider and grant OpenRAG permission to sync documents from their personal cloud storage.
 
-To customize this flow, see [Inspect and modify flows](/agents#inspect-and-modify-flows).
+### Enable OAuth connectors
+
+Before users can connect their own cloud storage accounts, you must configure the provider's OAuth credentials in OpenRAG. Typically, this requires that you register OpenRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key.
+To enable multiple connectors, you must register an app and generate credentials for each provider.
+
+<Tabs>
+<TabItem value="TUI" label="TUI Advanced Setup" default>
+
+If you use the TUI to manage your OpenRAG containers, provide OAuth credentials in the **Advanced Setup**.
+
+You can do this during [installation](/install#setup), or you can add the credentials afterwards:
+
+1. If OpenRAG is running, stop it: Go to [**Status**](/install#tui-container-management), and then click **Stop Services**.
+
+2. Click **Advanced Setup**, and then add the OAuth credentials for the cloud storage providers that you want to use:
+
+   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+   * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
+   * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
+
+3. The OpenRAG TUI presents redirect URIs for your OAuth app that you must register with your OAuth provider.
+These are the URLs your OAuth provider will redirect back to after users authenticate and grant access to their cloud storage.
+
+4. Click **Save Configuration**.
+
+   OpenRAG regenerates the [`.env`](/reference/configuration) file with the given credentials.
+
+5. Click **Start Container Services**.
+
+</TabItem>
+<TabItem value="env" label="Docker Compose .env file">
+
+If you [install OpenRAG with self-managed containers](/docker), set OAuth credentials in the `.env` file for Docker Compose.
+
+You can do this during [initial set up](/docker#install-openrag-with-docker-compose), or you can add the credentials afterwards:
+
+1. Stop your OpenRAG deployment.
+
+   <Tabs>
+   <TabItem value="podman" label="Podman">
+
+   ```bash
+   podman stop --all
+   ```
+
+   </TabItem>
+   <TabItem value="docker" label="Docker">
+
+   ```bash
+   docker stop $(docker ps -q)
+   ```
+
+   </TabItem>
+   </Tabs>
+
+2. Edit the `.env` file for Docker Compose to add the OAuth credentials for the cloud storage providers that you want to use:
+
+   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+
+      ```env
+      AWS_ACCESS_KEY_ID=
+      AWS_SECRET_ACCESS_KEY=
+      ```
+
+   * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
+
+      ```env
+      GOOGLE_OAUTH_CLIENT_ID=
+      GOOGLE_OAUTH_CLIENT_SECRET=
+      ```
+
+   * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
+
+      ```env
+      MICROSOFT_GRAPH_OAUTH_CLIENT_ID=
+      MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=
+      ```
+
+3. Save the `.env` file.
+
+4. Restart your OpenRAG deployment:
+
+   <Tabs>
+   <TabItem value="podman" label="Podman">
+
+   ```bash
+   podman-compose up -d
+   ```
+
+   </TabItem>
+   <TabItem value="docker" label="Docker">
+
+   ```bash
+   docker-compose up -d
+   ```
+
+   </TabItem>
+   </Tabs>
+
+</TabItem>
+</Tabs>
+
+### Authenticate and ingest files from cloud storage
+
+After you start OpenRAG with OAuth connectors enabled, each user is prompted to authenticate with the OAuth provider upon accessing your OpenRAG instance.
+Individual authentication is required to access a user's cloud storage from your OpenRAG instance.
+For example, if a user navigates to the default OpenRAG URL at `http://localhost:3000`, they are redirected to the OAuth provider's sign-in page.
+After authenticating and granting the required permissions for OpenRAG, the user is redirected back to OpenRAG.
+
+To ingest knowledge with an OAuth connector, do the following:
+
+1. Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to view your OpenSearch knowledge base.
+
+2. Click **Add Knowledge**, and then select a storage provider.
+
+3. On the **Add Cloud Knowledge** page, click **Add Files**, and then select the files and folders to ingest from the connected storage.
+
+4. Click **Ingest Files**.
+
+The selected files are processed in the background through the **OpenSearch Ingestion** flow.
+
+<PartialIngestionFlow />
+
+You can [monitor ingestion](#monitor-ingestion) to see the progress of the uploads and check for failed uploads.
 
 ## Ingest knowledge from URLs {#url-flow}
 
@@ -63,62 +188,15 @@ This flow isn't directly accessible from the OpenRAG user interface.
 Instead, this flow is called by the [**OpenRAG OpenSearch Agent** flow](/chat#flow) as a Model Context Protocol (MCP) tool.
 The agent can call this component to fetch web content from a given URL, and then ingest that content into your OpenSearch knowledge base.
 
+Like all OpenRAG flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it.
+
 For more information about MCP in Langflow, see the Langflow documentation on [MCP clients](https://docs.langflow.org/mcp-client) and [MCP servers](https://docs.langflow.org/mcp-tutorial).
-
-## Ingest files through OAuth connectors {#oauth-ingestion}
-
-OpenRAG supports Google Drive, OneDrive, and Sharepoint as OAuth connectors for seamless document synchronization.
-
-OAuth integration allows individual users to connect their personal cloud storage accounts to OpenRAG. Each user must separately authorize OpenRAG to access their own cloud storage files. When a user connects a cloud service, they are redirected to authenticate with that service provider and grant OpenRAG permission to sync documents from their personal cloud storage.
-
-Before users can connect their cloud storage accounts, you must configure OAuth credentials in OpenRAG. This requires registering OpenRAG as an OAuth application with a cloud provider and obtaining client ID and secret keys for each service you want to support.
-
-To add an OAuth connector to OpenRAG, do the following.
-This example uses Google OAuth.
-If you wish to use another provider, add the secrets to another provider.
-
-<Tabs groupId="Installation type">
-  <TabItem value="TUI" label="TUI" default>
-   1. If OpenRAG is running, stop it with **Status** > **Stop Services**.
-   2. Click **Advanced Setup**.
-   3. Add the OAuth provider's client and secret key in the [Advanced Setup](/install#setup) menu.
-   4. Click **Save Configuration**.
-   The TUI generates a new `.env` file with your OAuth values.
-   5. Click **Start Container Services**.
-  </TabItem>
-  <TabItem value=".env" label=".env">
-   1. Stop the Docker deployment.
-   2. Add the OAuth provider's client and secret key in the `.env` file for Docker Compose.
-       ```bash    
-       GOOGLE_OAUTH_CLIENT_ID='YOUR_OAUTH_CLIENT_ID'
-       GOOGLE_OAUTH_CLIENT_SECRET='YOUR_OAUTH_CLIENT_SECRET'
-       ```
-   3. Save your `.env` file.
-   4. Start the Docker deployment.
-  </TabItem>
-</Tabs>
-
-The OpenRAG frontend at `http://localhost:3000` now redirects to an OAuth callback login page for your OAuth provider.
-A successful authentication opens OpenRAG with the required scopes for your connected storage.
-
-To add knowledge from an OAuth-connected storage provider, do the following:
-
-1. Click **Add Knowledge**, and then select the storage provider, for example, **Google Drive**.
-The **Add Cloud Knowledge** page opens.
-2. To add files or folders from the connected storage, click **Add Files**.
-Select the files or folders you want and click **Select**.
-You can select multiple files.
-3. When your files are selected, click **Ingest Files**.
-The ingestion process can take some time depending on the size of your documents.
-4. When ingestion is complete, your documents are available in the Knowledge screen.
-
-If ingestion fails, click **Status** to view the logged error.
 
 ## Monitor ingestion
 
 Document ingestion tasks run in the background.
 
-In the OpenRAG UI, a badge is shown on <Icon name="Bell" aria-hidden="true"/> **Tasks** when OpenRAG tasks are active.
+In the OpenRAG user interface, a badge is shown on <Icon name="Bell" aria-hidden="true"/> **Tasks** when OpenRAG tasks are active.
 Click <Icon name="Bell" aria-hidden="true"/> **Tasks** to inspect and cancel tasks:
 
 * **Active Tasks**: All tasks that are **Pending**, **Running**, or **Processing**.
@@ -135,87 +213,7 @@ For troubleshooting advice, see [Troubleshoot ingestion](#troubleshoot-ingestion
 
 To stop an active task, click <Icon name="X" aria-hidden="true"/> **Cancel**. Canceling a task stops processing immediately and marks the task as **Failed**.
 
-## Troubleshoot ingestion {#troubleshoot-ingestion}
-
-If an ingestion task fails, do the following:
-
-* Make sure you are uploading supported file types.
-* Split excessively large files into smaller files before uploading.
-* Remove unusual embedded content, such as videos or animations, before uploading. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
-
-If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](#browse-knowledge) to confirm that the documents are uploaded in full, and the chunks are correct.
-
-If the documents are present and well-formed, check your [knowledge filters](/knowledge-filters).
-If a global filter is applied, make sure the expected documents are included in the global filter.
-If the global filter excludes any documents, the agent cannot access those documents unless you apply a chat-level filter or change the global filter.
-
-If text is missing or incorrectly processed, you need to reupload the documents after modifying the ingestion parameters or the documents themselves.
-For example:
-
-* Break combined documents into separate files for better metadata context.
-* Make sure scanned documents are legible enough for extraction, and enable the **OCR** option. Poorly scanned documents might require additional preparation or rescanning before ingestion.
-* Adjust the **Chunk Size** and **Chunk Overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
-
-For more information about modifying ingestion parameters and flows, see [Knowledge ingestion settings](#knowledge-ingestion-settings).
-
-## Knowledge ingestion settings {#knowledge-ingestion-settings}
-
-OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion.
-
-You can use either Docling Serve or OpenRAG's built-in Docling ingestion pipeline to process documents.
-
-<Tabs>
-<TabItem value="serve" label="Docling Serve ingestion" default>
-
-When OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve), it starts a `docling serve` process on your local machine and runs Docling ingestion through an API service.
-
-Docling ingests documents from your local machine or OAuth connectors, splits them into chunks, and stores them as separate, structured documents in the OpenSearch `documents` index.
-
-OpenRAG chose Docling for its support for a wide variety of file formats, high performance, and advanced understanding of tables and images.
-
-The following knowledge ingestion settings only apply to the Docling Serve option:
-
-To modify OpenRAG's ingestion settings, including the Docling settings and ingestion flows, <Icon name="Settings2" aria-hidden="true"/> **Settings**.
-
-These settings configure the Docling ingestion parameters.
-
-OpenRAG will warn you if `docling serve` is not running.
-To start or stop `docling serve` or any other native services, in the TUI main menu, click **Start Native Services** or **Stop Native Services**.
-
-**Embedding model** determines which AI model is used to create vector embeddings. The default is the OpenAI `text-embedding-3-small` model.
-
-**Chunk size** determines how large each text chunk is in number of characters.
-Larger chunks yield more context per chunk, but can include irrelevant information. Smaller chunks yield more precise semantic search, but can lack context.
-The default value of `1000` characters provides a good starting point that balances these considerations.
-
-**Chunk overlap** controls the number of characters that overlap over chunk boundaries.
-Use larger overlap values for documents where context is most important, and use smaller overlap values for simpler documents, or when optimization is most important.
-The default value of 200 characters of overlap with a chunk size of 1000 (20% overlap) is suitable for general use cases. Decrease the overlap to 10% for a more efficient pipeline, or increase to 40% for more complex documents.
-
-**Table Structure** enables Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/) tool for parsing tables. Instead of treating tables as plain text, tables are output as structured table data with preserved relationships and metadata. **Table Structure** is enabled by default.
-
-**OCR** enables or disabled OCR processing when extracting text from images and scanned documents.
-OCR is disabled by default. This setting is best suited for processing text-based documents as quickly as possible with Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/). Images are ignored and not processed.
-
-Enable OCR when you are processing documents containing images with text that requires extraction, or for scanned documents. Enabling OCR can slow ingestion performance.
-
-If OpenRAG detects that the local machine is running on macOS, OpenRAG uses the [ocrmac](https://www.piwheels.org/project/ocrmac/) OCR engine. Other platforms use [easyocr](https://www.jaided.ai/easyocr/).
-
-**Picture descriptions** adds image descriptions generated by the [SmolVLM-256M-Instruct](https://huggingface.co/HuggingFaceTB/SmolVLM-Instruct) model to OCR processing. Enabling picture descriptions can slow ingestion performance.
-
-</TabItem>
-<TabItem value="docling" label="Built-in Docling ingestion">
-
-If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG environment variables](/reference/configuration#document-processing).
-
-The built-in pipeline uses the Docling processor directly instead of through the Docling Serve API.
-
-For the underlying functionality, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
-
-</TabItem>
-</Tabs>
-
-## Ingestion performance expectations
+### Ingestion performance expectations
 
 The following performance test was conducted with Docling Serve.
 
@@ -227,6 +225,9 @@ Throughput scales with CPU cores, memory, storage speed, and configuration choic
 
 This test returned 12 error, approximately 1.1 percent of the total files ingested.
 All errors were file-specific, and they didn't stop the pipeline.
+
+<details>
+<summary>Ingestion performance test details</summary>
 
 * Ingestion dataset:
 
@@ -256,8 +257,34 @@ All errors were file-specific, and they didn't stop the pipeline.
 
 * Throughput: Approximately 2.4 documents per second
 
+</details>
+
+## Troubleshoot ingestion {#troubleshoot-ingestion}
+
+If an ingestion task fails, do the following:
+
+* Make sure you are uploading supported file types.
+* Split excessively large files into smaller files before uploading.
+* Remove unusual embedded content, such as videos or animations, before uploading. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
+
+If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](#browse-knowledge) to confirm that the documents are uploaded in full, and the chunks are correct.
+
+If the documents are present and well-formed, check your [knowledge filters](/knowledge-filters).
+If a global filter is applied, make sure the expected documents are included in the global filter.
+If the global filter excludes any documents, the agent cannot access those documents unless you apply a chat-level filter or change the global filter.
+
+If text is missing or incorrectly processed, you need to reupload the documents after modifying the ingestion parameters or the documents themselves.
+For example:
+
+* Break combined documents into separate files for better metadata context.
+* Make sure scanned documents are legible enough for extraction, and enable the **OCR** option. Poorly scanned documents might require additional preparation or rescanning before ingestion.
+* Adjust the **Chunk Size** and **Chunk Overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
+
+For more information about modifying ingestion parameters and flows, see [Knowledge ingestion settings](/knowledge#knowledge-ingestion-settings).
+
 ## See also
 
 * [Configure knowledge](/knowledge)
 * [Filter knowledge](/knowledge-filters)
 * [Chat with knowledge](/chat)
+* [Inspect and modify flows](/agents#inspect-and-modify-flows)

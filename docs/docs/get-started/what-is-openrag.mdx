@@ -17,7 +17,7 @@ OpenRAG connects and amplifies three popular, proven open-source projects into o
 * [OpenSearch](https://docs.opensearch.org/latest/): OpenSearch is a community-driven, Apache 2.0-licensed open source search and analytics suite that makes it easy to ingest, search, visualize, and analyze data.
 It provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
 
-   OpenRAG uses OpenSearch as the underlying vector database for storing and retrieving your documents and associated vector data (embeddings). You can ingest documents from a variety of sources, including your local filesystem and OAuth authenticated connections to popular cloud storage services.
+   OpenRAG uses OpenSearch as the underlying vector database for storing and retrieving your documents and associated vector data (embeddings). You can ingest documents from a variety of sources, including your local filesystem and OAuth authenticated connectors to popular cloud storage services.
 
 * [Docling](https://docling-project.github.io/docling/): Docling simplifies document processing, supports many file formats and advanced PDF parsing, and provides seamless integrations with the generative AI ecosystem.
 
@@ -63,6 +63,6 @@ flowchart TD
 
 * **Docling Serve**: This is a local document processing service managed by the **OpenRAG backend**.
 
-* **External connectors**: Integrate third-party cloud storage services through OAuth authenticated connections to the **OpenRAG backend**, allowing synchronization of external storage with your OpenSearch knowledge base.
+* **External connectors**: Integrate third-party cloud storage services with OAuth authenticated connectors to the **OpenRAG backend**, allowing you to load documents from external storage to your OpenSearch knowledge base.
 
 * **OpenRAG frontend**: Provides the user interface for interacting with the OpenRAG platform.
