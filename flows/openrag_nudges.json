@@ -4088,6 +4088,7 @@
   "endpoint_name": null,
   "id": "ebc01d31-1976-46ce-a385-b0240327226c",
   "is_component": false,
+  "locked": true,
   "last_tested_version": "1.7.0.dev21",
   "name": "OpenRAG OpenSearch Nudges",
   "tags": [

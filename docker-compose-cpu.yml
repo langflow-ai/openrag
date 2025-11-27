@@ -84,6 +84,7 @@ services:
       - ./openrag-documents:/app/documents:Z
       - ./keys:/app/keys:Z
       - ./flows:/app/flows:U,z
+      - ./config:/app/config:Z
 
   openrag-frontend:
     image: langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}

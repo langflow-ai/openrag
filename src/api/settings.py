@@ -423,10 +423,7 @@ async def update_settings(request, session_manager):
             # Also update the chat flow with the new system prompt
             try:
                 flows_service = _get_flows_service()
-                await flows_service.update_chat_flow_system_prompt(
-                    body["system_prompt"], current_config.agent.system_prompt
-                )
-                logger.info(f"Successfully updated chat flow system prompt")
+                await _update_langflow_system_prompt(current_config, flows_service)
             except Exception as e:
                 logger.error(f"Failed to update chat flow system prompt: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
@@ -449,13 +446,7 @@ async def update_settings(request, session_manager):
             # Also update the flow with the new docling settings
             try:
                 flows_service = _get_flows_service()
-                preset_config = get_docling_preset_configs(
-                    table_structure=body["table_structure"],
-                    ocr=current_config.knowledge.ocr,
-                    picture_descriptions=current_config.knowledge.picture_descriptions,
-                )
-                await flows_service.update_flow_docling_preset("custom", preset_config)
-                logger.info(f"Successfully updated table_structure setting in flow")
+                await _update_langflow_docling_settings(current_config, flows_service)
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
@@ -466,13 +457,7 @@ async def update_settings(request, session_manager):
             # Also update the flow with the new docling settings
             try:
                 flows_service = _get_flows_service()
-                preset_config = get_docling_preset_configs(
-                    table_structure=current_config.knowledge.table_structure,
-                    ocr=body["ocr"],
-                    picture_descriptions=current_config.knowledge.picture_descriptions,
-                )
-                await flows_service.update_flow_docling_preset("custom", preset_config)
-                logger.info(f"Successfully updated ocr setting in flow")
+                await _update_langflow_docling_settings(current_config, flows_service)
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
@@ -483,15 +468,7 @@ async def update_settings(request, session_manager):
             # Also update the flow with the new docling settings
             try:
                 flows_service = _get_flows_service()
-                preset_config = get_docling_preset_configs(
-                    table_structure=current_config.knowledge.table_structure,
-                    ocr=current_config.knowledge.ocr,
-                    picture_descriptions=body["picture_descriptions"],
-                )
-                await flows_service.update_flow_docling_preset("custom", preset_config)
-                logger.info(
-                    f"Successfully updated picture_descriptions setting in flow"
-                )
+                await _update_langflow_docling_settings(current_config, flows_service)
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
@@ -571,7 +548,7 @@ async def update_settings(request, session_manager):
                 {"error": "Failed to save configuration"}, status_code=500
             )
 
-        # Update Langflow global variables if provider settings changed
+        # Update Langflow global variables and model values if provider settings changed
         provider_fields_to_check = [
             "llm_provider", "embedding_provider",
             "openai_api_key", "anthropic_api_key",
@@ -580,99 +557,17 @@ async def update_settings(request, session_manager):
         ]
         if any(key in body for key in provider_fields_to_check):
             try:
-                # Update WatsonX global variables if changed
-                if "watsonx_api_key" in body:
-                    await clients._create_langflow_global_variable(
-                        "WATSONX_API_KEY", current_config.providers.watsonx.api_key, modify=True
-                    )
-                    logger.info("Set WATSONX_API_KEY global variable in Langflow")
-
-                if "watsonx_project_id" in body:
-                    await clients._create_langflow_global_variable(
-                        "WATSONX_PROJECT_ID", current_config.providers.watsonx.project_id, modify=True
-                    )
-                    logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
-
-                # Update OpenAI global variables if changed
-                if "openai_api_key" in body:
-                    await clients._create_langflow_global_variable(
-                        "OPENAI_API_KEY", current_config.providers.openai.api_key, modify=True
-                    )
-                    logger.info("Set OPENAI_API_KEY global variable in Langflow")
-
-                # Update Anthropic global variables if changed
-                if "anthropic_api_key" in body:
-                    await clients._create_langflow_global_variable(
-                        "ANTHROPIC_API_KEY", current_config.providers.anthropic.api_key, modify=True
-                    )
-                    logger.info("Set ANTHROPIC_API_KEY global variable in Langflow")
-
-                # Update Ollama global variables if changed
-                if "ollama_endpoint" in body:
-                    endpoint = transform_localhost_url(current_config.providers.ollama.endpoint)
-                    await clients._create_langflow_global_variable(
-                        "OLLAMA_BASE_URL", endpoint, modify=True
-                    )
-                    logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
-
-                # Update LLM model values across flows if provider or model changed
-                if "llm_provider" in body or "llm_model" in body:
-                    flows_service = _get_flows_service()
-                    llm_provider = current_config.agent.llm_provider.lower()
-                    llm_provider_config = current_config.get_llm_provider_config()
-                    llm_endpoint = getattr(llm_provider_config, "endpoint", None)
-                    await flows_service.change_langflow_model_value(
-                        llm_provider,
-                        llm_model=current_config.agent.llm_model,
-                        endpoint=llm_endpoint,
-                    )
-                    logger.info(
-                        f"Successfully updated Langflow flows for LLM provider {llm_provider}"
-                    )
-
-                # Update SELECTED_EMBEDDING_MODEL global variable (no flow updates needed)
-                if "embedding_provider" in body or "embedding_model" in body:
-                    await clients._create_langflow_global_variable(
-                        "SELECTED_EMBEDDING_MODEL", current_config.knowledge.embedding_model, modify=True
-                    )
-                    logger.info(
-                        f"Set SELECTED_EMBEDDING_MODEL global variable to {current_config.knowledge.embedding_model}"
-                    )
+                flows_service = _get_flows_service()
                 
-                # Update MCP servers with provider credentials
-                try:
-                    from services.langflow_mcp_service import LangflowMCPService
-                    from utils.langflow_headers import build_mcp_global_vars_from_config
-                    
-                    mcp_service = LangflowMCPService()
-                    
-                    # Build global vars using utility function
-                    mcp_global_vars = build_mcp_global_vars_from_config(current_config)
-                    
-                    # In no-auth mode, add the anonymous JWT token and user details
-                    if is_no_auth_mode() and session_manager:
-                        from session_manager import AnonymousUser
-                        
-                        # Create/get anonymous JWT for no-auth mode
-                        anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
-                        if anonymous_jwt:
-                            mcp_global_vars["JWT"] = anonymous_jwt
-                        
-                        # Add anonymous user details
-                        anonymous_user = AnonymousUser()
-                        mcp_global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
-                        mcp_global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted)
-                        mcp_global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
-                        
-                        logger.debug("Added anonymous JWT and user details to MCP servers for no-auth mode")
-                    
-                    if mcp_global_vars:
-                        result = await mcp_service.update_mcp_servers_with_global_vars(mcp_global_vars)
-                        logger.info("Updated MCP servers with provider credentials after settings change", **result)
-                    
-                except Exception as mcp_error:
-                    logger.warning(f"Failed to update MCP servers after settings change: {str(mcp_error)}")
-                    # Don't fail the entire settings update if MCP update fails
+                # Update global variables
+                await _update_langflow_global_variables(current_config)
+
+                if "embedding_provider" in body or "embedding_model" in body:
+                    await _update_mcp_servers_with_provider_credentials(current_config)
+                
+                # Update model values if provider or model changed
+                if "llm_provider" in body or "llm_model" in body or "embedding_provider" in body or "embedding_model" in body:
+                    await _update_langflow_model_values(current_config, flows_service)
 
             except Exception as e:
                 logger.error(f"Failed to update Langflow settings: {str(e)}")
@@ -922,102 +817,32 @@ async def onboarding(request, flows_service, session_manager=None):
                 status_code=400,
             )
 
-        # Set Langflow global variables based on provider configuration
+        # Set Langflow global variables and model values based on provider configuration
         try:
-            # Set WatsonX global variables
-            if "watsonx_api_key" in body:
-                await clients._create_langflow_global_variable(
-                    "WATSONX_API_KEY", current_config.providers.watsonx.api_key, modify=True
-                )
-                logger.info("Set WATSONX_API_KEY global variable in Langflow")
-
-            if "watsonx_project_id" in body:
-                await clients._create_langflow_global_variable(
-                    "WATSONX_PROJECT_ID", current_config.providers.watsonx.project_id, modify=True
-                )
-                logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
-
-            # Set OpenAI global variables
-            if "openai_api_key" in body or current_config.providers.openai.api_key != "":
-                await clients._create_langflow_global_variable(
-                    "OPENAI_API_KEY", current_config.providers.openai.api_key, modify=True
-                )
-                logger.info("Set OPENAI_API_KEY global variable in Langflow")
-
-            # Set Anthropic global variables
-            if "anthropic_api_key" in body or current_config.providers.anthropic.api_key != "":
-                await clients._create_langflow_global_variable(
-                    "ANTHROPIC_API_KEY", current_config.providers.anthropic.api_key, modify=True
-                )
-                logger.info("Set ANTHROPIC_API_KEY global variable in Langflow")
-
-            # Set Ollama global variables
-            if "ollama_endpoint" in body:
-                endpoint = transform_localhost_url(current_config.providers.ollama.endpoint)
-                await clients._create_langflow_global_variable(
-                    "OLLAMA_BASE_URL", endpoint, modify=True
-                )
-                logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
-
-            # Update flows with LLM model values
-            if "llm_provider" in body or "llm_model" in body:
-                llm_provider = current_config.agent.llm_provider.lower()
-                llm_provider_config = current_config.get_llm_provider_config()
-                llm_endpoint = getattr(llm_provider_config, "endpoint", None)
-                await flows_service.change_langflow_model_value(
-                    provider=llm_provider,
-                    llm_model=current_config.agent.llm_model,
-                    endpoint=llm_endpoint,
-                )
-                logger.info(f"Updated Langflow flows for LLM provider {llm_provider}")
-
-            # Set SELECTED_EMBEDDING_MODEL global variable (no flow updates needed)
-            if "embedding_provider" in body or "embedding_model" in body:
-                await clients._create_langflow_global_variable(
-                    "SELECTED_EMBEDDING_MODEL", current_config.knowledge.embedding_model, modify=True
-                )
-                logger.info(
-                    f"Set SELECTED_EMBEDDING_MODEL global variable to {current_config.knowledge.embedding_model}"
-                )
+            # Check if any provider-related fields were provided
+            provider_fields_provided = any(key in body for key in [
+                "openai_api_key", "anthropic_api_key",
+                "watsonx_api_key", "watsonx_endpoint", "watsonx_project_id",
+                "ollama_endpoint"
+            ])
             
-            # Update MCP servers with provider credentials during onboarding
-            try:
-                from services.langflow_mcp_service import LangflowMCPService
-                from utils.langflow_headers import build_mcp_global_vars_from_config
-                
-                mcp_service = LangflowMCPService()
-                
-                # Build global vars using utility function
-                mcp_global_vars = build_mcp_global_vars_from_config(current_config)
-                
-                # In no-auth mode, add the anonymous JWT token and user details
-                if is_no_auth_mode() and session_manager:
-                    from session_manager import AnonymousUser
-                    
-                    # Create/get anonymous JWT for no-auth mode
-                    anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
-                    if anonymous_jwt:
-                        mcp_global_vars["JWT"] = anonymous_jwt
-                    
-                    # Add anonymous user details
-                    anonymous_user = AnonymousUser()
-                    mcp_global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
-                    mcp_global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted)
-                    mcp_global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
-                    
-                    logger.debug("Added anonymous JWT and user details to MCP servers for no-auth mode during onboarding")
-                
-                if mcp_global_vars:
-                    result = await mcp_service.update_mcp_servers_with_global_vars(mcp_global_vars)
-                    logger.info("Updated MCP servers with provider credentials during onboarding", **result)
-                
-            except Exception as mcp_error:
-                logger.warning(f"Failed to update MCP servers during onboarding: {str(mcp_error)}")
-                # Don't fail onboarding if MCP update fails
+            # Update global variables if any provider fields were provided
+            # or if existing config has values (for OpenAI/Anthropic that might already be set)
+            if (provider_fields_provided or 
+                current_config.providers.openai.api_key != "" or 
+                current_config.providers.anthropic.api_key != ""):
+                await _update_langflow_global_variables(current_config)
+            
+            if "embedding_provider" in body or "embedding_model" in body:
+                await _update_mcp_servers_with_provider_credentials(current_config, session_manager)
+
+            # Update model values if provider or model fields were provided
+            if "llm_provider" in body or "llm_model" in body or "embedding_provider" in body or "embedding_model" in body:
+                await _update_langflow_model_values(current_config, flows_service)
 
         except Exception as e:
             logger.error(
-                "Failed to set Langflow global variables",
+                "Failed to set Langflow global variables and model values",
                 error=str(e),
             )
             raise
@@ -1115,6 +940,221 @@ def _get_flows_service():
     from services.flows_service import FlowsService
 
     return FlowsService()
+
+
+async def _update_langflow_global_variables(config):
+    """Update Langflow global variables for all configured providers"""
+    try:
+        # WatsonX global variables
+        if config.providers.watsonx.api_key:
+            await clients._create_langflow_global_variable(
+                "WATSONX_API_KEY", config.providers.watsonx.api_key, modify=True
+            )
+            logger.info("Set WATSONX_API_KEY global variable in Langflow")
+
+        if config.providers.watsonx.project_id:
+            await clients._create_langflow_global_variable(
+                "WATSONX_PROJECT_ID", config.providers.watsonx.project_id, modify=True
+            )
+            logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
+
+        # OpenAI global variables
+        if config.providers.openai.api_key:
+            await clients._create_langflow_global_variable(
+                "OPENAI_API_KEY", config.providers.openai.api_key, modify=True
+            )
+            logger.info("Set OPENAI_API_KEY global variable in Langflow")
+
+        # Anthropic global variables
+        if config.providers.anthropic.api_key:
+            await clients._create_langflow_global_variable(
+                "ANTHROPIC_API_KEY", config.providers.anthropic.api_key, modify=True
+            )
+            logger.info("Set ANTHROPIC_API_KEY global variable in Langflow")
+
+        # Ollama global variables
+        if config.providers.ollama.endpoint:
+            endpoint = transform_localhost_url(config.providers.ollama.endpoint)
+            await clients._create_langflow_global_variable(
+                "OLLAMA_BASE_URL", endpoint, modify=True
+            )
+            logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
+
+        if config.knowledge.embedding_model:
+            await clients._create_langflow_global_variable(
+                "SELECTED_EMBEDDING_MODEL", config.knowledge.embedding_model, modify=True
+            )
+            logger.info(
+                f"Set SELECTED_EMBEDDING_MODEL global variable to {config.knowledge.embedding_model}"
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to update Langflow global variables: {str(e)}")
+        raise
+
+
+async def _update_mcp_servers_with_provider_credentials(config, session_manager = None):
+    # Update MCP servers with provider credentials
+    try:
+        from services.langflow_mcp_service import LangflowMCPService
+        from utils.langflow_headers import build_mcp_global_vars_from_config
+        
+        mcp_service = LangflowMCPService()
+        
+        # Build global vars using utility function
+        mcp_global_vars = build_mcp_global_vars_from_config(config)
+        
+        # In no-auth mode, add the anonymous JWT token and user details
+        if is_no_auth_mode() and session_manager:
+            from session_manager import AnonymousUser
+            
+            # Create/get anonymous JWT for no-auth mode
+            anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
+            if anonymous_jwt:
+                mcp_global_vars["JWT"] = anonymous_jwt
+            
+            # Add anonymous user details
+            anonymous_user = AnonymousUser()
+            mcp_global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
+            mcp_global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted)
+            mcp_global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
+            
+            logger.debug("Added anonymous JWT and user details to MCP servers for no-auth mode")
+        
+        if mcp_global_vars:
+            result = await mcp_service.update_mcp_servers_with_global_vars(mcp_global_vars)
+            logger.info("Updated MCP servers with provider credentials after settings change", **result)
+        
+    except Exception as mcp_error:
+        logger.warning(f"Failed to update MCP servers after settings change: {str(mcp_error)}")
+        # Don't fail the entire settings update if MCP update fails
+
+
+async def _update_langflow_model_values(config, flows_service):
+    """Update model values across Langflow flows"""
+    try:
+        # Update LLM model values
+        llm_provider = config.agent.llm_provider.lower()
+        llm_provider_config = config.get_llm_provider_config()
+        llm_endpoint = getattr(llm_provider_config, "endpoint", None)
+
+        await flows_service.change_langflow_model_value(
+            llm_provider,
+            llm_model=config.agent.llm_model,
+            endpoint=llm_endpoint,
+        )
+        logger.info(
+            f"Successfully updated Langflow flows for LLM provider {llm_provider}"
+        )
+
+        # Update embedding model values
+        embedding_provider = config.knowledge.embedding_provider.lower()
+        embedding_provider_config = config.get_embedding_provider_config()
+        embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
+
+        await flows_service.change_langflow_model_value(
+            embedding_provider,
+            embedding_model=config.knowledge.embedding_model,
+            endpoint=embedding_endpoint,
+        )
+        logger.info(
+            f"Successfully updated Langflow flows for embedding provider {embedding_provider}"
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to update Langflow model values: {str(e)}")
+        raise
+
+
+async def _update_langflow_system_prompt(config, flows_service):
+    """Update system prompt in chat flow"""
+    try:
+        llm_provider = config.agent.llm_provider.lower()
+        await flows_service.update_chat_flow_system_prompt(
+            config.agent.system_prompt, llm_provider
+        )
+        logger.info("Successfully updated chat flow system prompt")
+    except Exception as e:
+        logger.error(f"Failed to update chat flow system prompt: {str(e)}")
+        raise
+
+
+async def _update_langflow_docling_settings(config, flows_service):
+    """Update docling settings in ingest flow"""
+    try:
+        preset_config = get_docling_preset_configs(
+            table_structure=config.knowledge.table_structure,
+            ocr=config.knowledge.ocr,
+            picture_descriptions=config.knowledge.picture_descriptions,
+        )
+        await flows_service.update_flow_docling_preset("custom", preset_config)
+        logger.info("Successfully updated docling settings in ingest flow")
+    except Exception as e:
+        logger.error(f"Failed to update docling settings: {str(e)}")
+        raise
+
+
+async def _update_langflow_chunk_settings(config, flows_service):
+    """Update chunk size and overlap in ingest flow"""
+    try:
+        await flows_service.update_ingest_flow_chunk_size(config.knowledge.chunk_size)
+        logger.info(f"Successfully updated ingest flow chunk size to {config.knowledge.chunk_size}")
+
+        await flows_service.update_ingest_flow_chunk_overlap(config.knowledge.chunk_overlap)
+        logger.info(f"Successfully updated ingest flow chunk overlap to {config.knowledge.chunk_overlap}")
+    except Exception as e:
+        logger.error(f"Failed to update chunk settings: {str(e)}")
+        raise
+
+
+async def reapply_all_settings(session_manager = None):
+    """
+    Reapply all current configuration settings to Langflow flows and global variables.
+    This is called when flows are detected to have been reset.
+    """
+    try:
+        config = get_openrag_config()
+        flows_service = _get_flows_service()
+
+        logger.info("Reapplying all settings to Langflow flows and global variables")
+
+        if config.knowledge.embedding_model or config.knowledge.embedding_provider:
+            await _update_mcp_servers_with_provider_credentials(config, session_manager)
+        else:
+            logger.info("No embedding model or provider configured, skipping MCP server update")
+
+        # Update all Langflow settings using helper functions
+        try:
+            await _update_langflow_global_variables(config)
+        except Exception as e:
+            logger.error(f"Failed to update Langflow global variables: {str(e)}")
+            # Continue with other updates even if global variables fail
+
+        try:
+            await _update_langflow_model_values(config, flows_service)
+        except Exception as e:
+            logger.error(f"Failed to update Langflow model values: {str(e)}")
+
+        try:
+            await _update_langflow_system_prompt(config, flows_service)
+        except Exception as e:
+            logger.error(f"Failed to update Langflow system prompt: {str(e)}")
+
+        try:
+            await _update_langflow_docling_settings(config, flows_service)
+        except Exception as e:
+            logger.error(f"Failed to update Langflow docling settings: {str(e)}")
+
+        try:
+            await _update_langflow_chunk_settings(config, flows_service)
+        except Exception as e:
+            logger.error(f"Failed to update Langflow chunk settings: {str(e)}")
+
+        logger.info("Successfully reapplied all settings to Langflow flows")
+
+    except Exception as e:
+        logger.error(f"Failed to reapply settings: {str(e)}")
+        raise
 
 
 async def update_docling_preset(request, session_manager):
