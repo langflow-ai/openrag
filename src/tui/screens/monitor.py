@@ -409,11 +409,27 @@ class MonitorScreen(Screen):
             modal = CommandOutputModal(
                 "Upgrading Services",
                 command_generator,
-                on_complete=None,  # We'll refresh in on_screen_resume instead
+                on_complete=self._on_upgrade_complete,  # Show upgrade reminder after completion
             )
             self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
+
+    async def _on_upgrade_complete(self) -> None:
+        """Callback after upgrade completes - show TUI upgrade reminder."""
+        await self._refresh_services()
+        
+        # Show reminder to upgrade the TUI package
+        self.notify(
+            "Container services upgraded successfully!\n\n"
+            "To upgrade the TUI itself:\n"
+            "1. Exit TUI (press 'q')\n"
+            "2. Run: pip install --upgrade openrag\n"
+            "   (or: uv pip install --upgrade openrag)\n"
+            "3. Restart: openrag",
+            severity="information",
+            timeout=30  # Show for 30 seconds
+        )
 
     async def _reset_services(self) -> None:
         """Reset services with progress updates."""
