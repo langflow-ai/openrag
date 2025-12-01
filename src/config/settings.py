@@ -165,18 +165,36 @@ async def generate_langflow_api_key(modify: bool = False):
                 if validation_response.status_code == 200:
                     logger.debug("Cached API key is valid", key_prefix=LANGFLOW_KEY[:8])
                     return LANGFLOW_KEY
-                else:
+                elif validation_response.status_code in (401, 403):
                     logger.warning(
-                        "Cached API key is invalid, generating fresh key",
+                        "Cached API key is unauthorized, generating fresh key",
                         status_code=validation_response.status_code,
                     )
                     LANGFLOW_KEY = None  # Clear invalid key
-            except Exception as e:
+                else:
+                    logger.warning(
+                        "Cached API key validation returned non-access error; keeping existing key",
+                        status_code=validation_response.status_code,
+                    )
+                    return LANGFLOW_KEY
+            except requests.exceptions.Timeout as e:
                 logger.warning(
-                    "Cached API key validation failed, generating fresh key",
+                    "Cached API key validation timed out; keeping existing key",
                     error=str(e),
                 )
-                LANGFLOW_KEY = None  # Clear invalid key
+                return LANGFLOW_KEY
+            except requests.exceptions.RequestException as e:
+                logger.warning(
+                    "Cached API key validation failed due to request error; keeping existing key",
+                    error=str(e),
+                )
+                return LANGFLOW_KEY
+            except Exception as e:
+                logger.warning(
+                    "Unexpected error during cached API key validation; keeping existing key",
+                    error=str(e),
+                )
+                return LANGFLOW_KEY
 
     # Use default langflow/langflow credentials if auto-login is enabled and credentials not set
     username = LANGFLOW_SUPERUSER
@@ -279,7 +297,8 @@ class AppClients:
         self.opensearch = None
         self.langflow_client = None
         self.langflow_http_client = None
-        self._patched_async_client = None  # Private attribute
+        self._patched_llm_client = None  # Private attribute
+        self._patched_embedding_client = None  # Private attribute
         self._client_init_lock = __import__('threading').Lock()  # Lock for thread-safe initialization
         self.converter = None
 
@@ -358,114 +377,192 @@ class AppClients:
                 self.langflow_client = None
         return self.langflow_client
 
-    @property
-    def patched_async_client(self):
+    def _build_provider_env(self, provider_type: str):
         """
-        Property that ensures OpenAI client is initialized on first access.
-        This allows lazy initialization so the app can start without an API key.
-
-        Note: The client is a long-lived singleton that should be closed via cleanup().
-        Thread-safe via lock to prevent concurrent initialization attempts.
+        Build environment overrides for the requested provider type ("llm" or "embedding").
+        This is used to support different credentials for LLM and embedding providers.
         """
-        # Quick check without lock
-        if self._patched_async_client is not None:
-            return self._patched_async_client
+        config = get_openrag_config()
 
-        # Use lock to ensure only one thread initializes
+        if provider_type == "llm":
+            provider = (config.agent.llm_provider or "openai").lower()
+        else:
+            provider = (config.knowledge.embedding_provider or "openai").lower()
+
+        env_overrides = {}
+
+        if provider == "openai":
+            api_key = config.providers.openai.api_key or os.getenv("OPENAI_API_KEY")
+            if api_key:
+                env_overrides["OPENAI_API_KEY"] = api_key
+        elif provider == "anthropic":
+            api_key = config.providers.anthropic.api_key or os.getenv("ANTHROPIC_API_KEY")
+            if api_key:
+                env_overrides["ANTHROPIC_API_KEY"] = api_key
+        elif provider == "watsonx":
+            api_key = config.providers.watsonx.api_key or os.getenv("WATSONX_API_KEY")
+            endpoint = config.providers.watsonx.endpoint or os.getenv("WATSONX_ENDPOINT")
+            project_id = config.providers.watsonx.project_id or os.getenv("WATSONX_PROJECT_ID")
+            if api_key:
+                env_overrides["WATSONX_API_KEY"] = api_key
+            if endpoint:
+                env_overrides["WATSONX_ENDPOINT"] = endpoint
+            if project_id:
+                env_overrides["WATSONX_PROJECT_ID"] = project_id
+        elif provider == "ollama":
+            endpoint = config.providers.ollama.endpoint or os.getenv("OLLAMA_ENDPOINT")
+            if endpoint:
+                env_overrides["OLLAMA_ENDPOINT"] = endpoint
+                env_overrides["OLLAMA_BASE_URL"] = endpoint
+
+        return env_overrides, provider
+
+    def _apply_env_overrides(self, env_overrides: dict):
+        """Apply non-empty environment overrides."""
+        for key, value in (env_overrides or {}).items():
+            if value is None:
+                continue
+            os.environ[key] = str(value)
+
+    def _initialize_patched_client(self, cache_attr: str, provider_type: str):
+        """
+        Initialize a patched AsyncOpenAI client for the specified provider type.
+        Uses HTTP/2 probe only when an OpenAI key is present; otherwise falls back directly.
+        """
+        # Quick path
+        cached_client = getattr(self, cache_attr)
+        if cached_client is not None:
+            return cached_client
+
         with self._client_init_lock:
-            # Double-check after acquiring lock
-            if self._patched_async_client is not None:
-                return self._patched_async_client
+            cached_client = getattr(self, cache_attr)
+            if cached_client is not None:
+                return cached_client
 
-            # Try to initialize the client on-demand
-            # First check if OPENAI_API_KEY is in environment
-            openai_key = os.getenv("OPENAI_API_KEY")
+            env_overrides, provider_name = self._build_provider_env(provider_type)
+            self._apply_env_overrides(env_overrides)
 
-            if not openai_key:
-                # Try to get from config (in case it was set during onboarding)
-                try:
-                    config = get_openrag_config()
-                    if config and config.provider and config.provider.api_key:
-                        openai_key = config.provider.api_key
-                        # Set it in environment so AsyncOpenAI can pick it up
-                        os.environ["OPENAI_API_KEY"] = openai_key
-                        logger.info("Loaded OpenAI API key from config file")
-                except Exception as e:
-                    logger.debug("Could not load OpenAI key from config", error=str(e))
+            # Decide whether to run the HTTP/2 probe (only meaningful for OpenAI endpoints)
+            has_openai_key = bool(env_overrides.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY"))
+            if provider_name == "openai" and not has_openai_key:
+                raise ValueError("OPENAI_API_KEY is required for OpenAI provider")
 
-            # Try to initialize the client - AsyncOpenAI() will read from environment
-            # We'll try HTTP/2 first with a probe, then fall back to HTTP/1.1 if it times out
             import asyncio
             import concurrent.futures
-            import threading
 
-            async def probe_and_initialize():
-                # Try HTTP/2 first (default)
+            async def build_client(skip_probe: bool = False):
+                if not has_openai_key:
+                    # No OpenAI key present; create a basic patched client without probing
+                    return patch_openai_with_mcp(AsyncOpenAI(http_client=httpx.AsyncClient()))
+
+                if skip_probe:
+                    http_client = httpx.AsyncClient(http2=False, timeout=httpx.Timeout(60.0, connect=10.0))
+                    return patch_openai_with_mcp(AsyncOpenAI(http_client=http_client))
+
                 client_http2 = patch_openai_with_mcp(AsyncOpenAI())
-                logger.info("Probing OpenAI client with HTTP/2...")
+                logger.info("Probing patched OpenAI client with HTTP/2...")
 
                 try:
-                    # Probe with a small embedding and short timeout
                     await asyncio.wait_for(
                         client_http2.embeddings.create(
-                            model='text-embedding-3-small',
-                            input=['test']
+                            model="text-embedding-3-small",
+                            input=["test"],
                         ),
-                        timeout=5.0
+                        timeout=5.0,
                     )
-                    logger.info("OpenAI client initialized with HTTP/2 (probe successful)")
+                    logger.info("Patched OpenAI client initialized with HTTP/2 (probe successful)")
                     return client_http2
                 except (asyncio.TimeoutError, Exception) as probe_error:
                     logger.warning("HTTP/2 probe failed, falling back to HTTP/1.1", error=str(probe_error))
-                    # Close the HTTP/2 client
                     try:
                         await client_http2.close()
                     except Exception:
                         pass
 
-                    # Fall back to HTTP/1.1 with explicit timeout settings
                     http_client = httpx.AsyncClient(
-                        http2=False,
-                        timeout=httpx.Timeout(60.0, connect=10.0)
+                        http2=False, timeout=httpx.Timeout(60.0, connect=10.0)
                     )
-                    client_http1 = patch_openai_with_mcp(
-                        AsyncOpenAI(http_client=http_client)
-                    )
-                    logger.info("OpenAI client initialized with HTTP/1.1 (fallback)")
+                    client_http1 = patch_openai_with_mcp(AsyncOpenAI(http_client=http_client))
+                    logger.info("Patched OpenAI client initialized with HTTP/1.1 (fallback)")
                     return client_http1
 
-            def run_probe_in_thread():
-                """Run the async probe in a new thread with its own event loop"""
+            def run_builder(skip_probe=False):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
-                    return loop.run_until_complete(probe_and_initialize())
+                    return loop.run_until_complete(build_client(skip_probe=skip_probe))
                 finally:
                     loop.close()
 
             try:
-                # Run the probe in a separate thread with its own event loop
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(run_probe_in_thread)
-                    self._patched_async_client = future.result(timeout=15)
-                logger.info("Successfully initialized OpenAI client")
+                    future = executor.submit(run_builder, False)
+                    client = future.result(timeout=15 if has_openai_key else 10)
+                setattr(self, cache_attr, client)
+                logger.info("Successfully initialized patched client", provider_type=provider_type)
+                return client
             except Exception as e:
-                logger.error(f"Failed to initialize OpenAI client: {e.__class__.__name__}: {str(e)}")
-                raise ValueError(f"Failed to initialize OpenAI client: {str(e)}. Please complete onboarding or set OPENAI_API_KEY environment variable.")
+                logger.error(
+                    f"Failed to initialize patched client: {e.__class__.__name__}: {str(e)}",
+                    provider_type=provider_type,
+                )
+                raise ValueError(
+                    f"Failed to initialize patched client for {provider_type}: {str(e)}. "
+                    "Please ensure provider credentials are set."
+                )
 
-            return self._patched_async_client
+    @property
+    def patched_llm_client(self):
+        """Patched client for LLM provider."""
+        return self._initialize_patched_client("_patched_llm_client", "llm")
+
+    @property
+    def patched_embedding_client(self):
+        """Patched client for embedding provider."""
+        return self._initialize_patched_client("_patched_embedding_client", "embedding")
+
+    @property
+    def patched_async_client(self):
+        """Backward-compatibility alias for LLM client."""
+        return self.patched_llm_client
+
+    async def refresh_patched_clients(self):
+        """Reset patched clients so next use picks up updated provider credentials."""
+        clients_to_close = []
+        with self._client_init_lock:
+            if self._patched_llm_client is not None:
+                clients_to_close.append(self._patched_llm_client)
+                self._patched_llm_client = None
+            if self._patched_embedding_client is not None:
+                clients_to_close.append(self._patched_embedding_client)
+                self._patched_embedding_client = None
+
+        for client in clients_to_close:
+            try:
+                await client.close()
+            except Exception as e:
+                logger.warning("Failed to close patched client during refresh", error=str(e))
 
     async def cleanup(self):
         """Cleanup resources - should be called on application shutdown"""
         # Close AsyncOpenAI client if it was created
-        if self._patched_async_client is not None:
+        if self._patched_llm_client is not None:
             try:
-                await self._patched_async_client.close()
-                logger.info("Closed AsyncOpenAI client")
+                await self._patched_llm_client.close()
+                logger.info("Closed LLM patched client")
             except Exception as e:
-                logger.error("Failed to close AsyncOpenAI client", error=str(e))
+                logger.error("Failed to close LLM patched client", error=str(e))
             finally:
-                self._patched_async_client = None
+                self._patched_llm_client = None
+
+        if self._patched_embedding_client is not None:
+            try:
+                await self._patched_embedding_client.close()
+                logger.info("Closed embedding patched client")
+            except Exception as e:
+                logger.error("Failed to close embedding patched client", error=str(e))
+            finally:
+                self._patched_embedding_client = None
 
         # Close Langflow HTTP client if it exists
         if self.langflow_http_client is not None:

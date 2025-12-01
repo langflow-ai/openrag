@@ -37,6 +37,7 @@ async def upload_ingest_router(
         # Route based on configuration
         if DISABLE_INGEST_WITH_LANGFLOW:
             # Route to traditional OpenRAG upload
+            # Note: onboarding filter creation is only supported in Langflow path
             logger.debug("Routing to traditional OpenRAG upload")
             return await traditional_upload(request, document_service, session_manager)
         else:
@@ -77,6 +78,7 @@ async def langflow_upload_ingest_task(
         tweaks_json = form.get("tweaks")
         delete_after_ingest = form.get("delete_after_ingest", "true").lower() == "true"
         replace_duplicates = form.get("replace_duplicates", "false").lower() == "true"
+        create_filter = form.get("create_filter", "false").lower() == "true"
 
         # Parse JSON fields if provided
         settings = None
@@ -177,14 +179,36 @@ async def langflow_upload_ingest_task(
 
             logger.debug("Langflow upload task created successfully", task_id=task_id)
 
-            return JSONResponse(
-                {
-                    "task_id": task_id,
-                    "message": f"Langflow upload task created for {len(upload_files)} file(s)",
-                    "file_count": len(upload_files),
-                },
-                status_code=202,
-            )  # 202 Accepted for async processing
+            # Create knowledge filter for the uploaded document if requested
+            user_doc_filter_id = None
+            if create_filter and len(original_filenames) == 1:
+                try:
+                    from api.settings import _create_user_document_filter
+                    user_doc_filter_id = await _create_user_document_filter(
+                        request, session_manager, original_filenames[0]
+                    )
+                    if user_doc_filter_id:
+                        logger.info(
+                            "Created knowledge filter for uploaded document",
+                            filter_id=user_doc_filter_id,
+                            filename=original_filenames[0],
+                        )
+                except Exception as e:
+                    logger.error(
+                        "Failed to create knowledge filter for uploaded document",
+                        error=str(e),
+                    )
+                    # Don't fail the upload if filter creation fails
+
+            response_data = {
+                "task_id": task_id,
+                "message": f"Langflow upload task created for {len(upload_files)} file(s)",
+                "file_count": len(upload_files),
+            }
+            if user_doc_filter_id:
+                response_data["user_doc_filter_id"] = user_doc_filter_id
+
+            return JSONResponse(response_data, status_code=202)  # 202 Accepted for async processing
 
         except Exception:
             # Clean up temp files on error

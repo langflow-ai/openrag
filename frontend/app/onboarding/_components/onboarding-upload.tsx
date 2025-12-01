@@ -4,7 +4,10 @@ import { useGetNudgesQuery } from "@/app/api/queries/useGetNudgesQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
 import { Button } from "@/components/ui/button";
-import { ONBOARDING_UPLOAD_STEPS_KEY } from "@/lib/constants";
+import {
+  ONBOARDING_UPLOAD_STEPS_KEY,
+  ONBOARDING_USER_DOC_FILTER_ID_KEY,
+} from "@/lib/constants";
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
@@ -77,8 +80,17 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
     setIsUploading(true);
     try {
       setCurrentStep(0);
-      await uploadFile(file, true);
+      const result = await uploadFile(file, true, true); // Pass createFilter=true
       console.log("Document upload task started successfully");
+
+      // Store user document filter ID if returned
+      if (result.userDocFilterId && typeof window !== "undefined") {
+        localStorage.setItem(
+          ONBOARDING_USER_DOC_FILTER_ID_KEY,
+          result.userDocFilterId
+        );
+      }
+
       // Move to processing step - task monitoring will handle completion
       setTimeout(() => {
         setCurrentStep(1);

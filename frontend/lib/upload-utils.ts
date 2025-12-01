@@ -10,6 +10,7 @@ export interface UploadFileResult {
   deletion: unknown;
   unified: boolean;
   raw: unknown;
+  userDocFilterId?: string;
 }
 
 export async function duplicateCheck(
@@ -120,11 +121,15 @@ export async function uploadFileForContext(
 export async function uploadFile(
   file: File,
   replace = false,
+  createFilter = false,
 ): Promise<UploadFileResult> {
   try {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("replace_duplicates", replace.toString());
+    if (createFilter) {
+      formData.append("create_filter", "true");
+    }
 
     const uploadResponse = await fetch("/api/router/upload_ingest", {
       method: "POST",
@@ -177,6 +182,9 @@ export async function uploadFile(
       );
     }
 
+    const userDocFilterId = (uploadIngestJson as { user_doc_filter_id?: string })
+      .user_doc_filter_id;
+
     const result: UploadFileResult = {
       fileId,
       filePath,
@@ -184,6 +192,7 @@ export async function uploadFile(
       deletion: deletionJson,
       unified: true,
       raw: uploadIngestJson,
+      userDocFilterId,
     };
 
     return result;

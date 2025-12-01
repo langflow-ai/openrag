@@ -26,14 +26,14 @@ class ChatService:
 
         if stream:
             return async_chat_stream(
-                clients.patched_async_client,
+                clients.patched_llm_client,
                 prompt,
                 user_id,
                 previous_response_id=previous_response_id,
             )
         else:
             response_text, response_id = await async_chat(
-                clients.patched_async_client,
+                clients.patched_llm_client,
                 prompt,
                 user_id,
                 previous_response_id=previous_response_id,
@@ -344,7 +344,7 @@ class ChatService:
             if user_id and jwt_token:
                 set_auth_context(user_id, jwt_token)
             response_text, response_id = await async_chat(
-                clients.patched_async_client,
+                clients.patched_llm_client,
                 document_prompt,
                 user_id,
                 previous_response_id=previous_response_id,
@@ -632,4 +632,3 @@ class ChatService:
         except Exception as e:
             logger.error(f"Error deleting session {session_id} from Langflow: {e}")
             return False
-

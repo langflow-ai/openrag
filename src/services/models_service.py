@@ -108,7 +108,7 @@ class ModelsService:
             else:
                 logger.error(f"Failed to fetch OpenAI models: {response.status_code}")
                 raise Exception(
-                    f"OpenAI API returned status code {response.status_code}"
+                    f"OpenAI API returned status code {response.status_code}, {response.text}"
                 )
 
         except Exception as e:

@@ -209,7 +209,7 @@ class TaskProcessor:
         embeddings = []
 
         for batch in text_batches:
-            resp = await clients.patched_async_client.embeddings.create(
+            resp = await clients.patched_embedding_client.embeddings.create(
                 model=embedding_model, input=batch
             )
             embeddings.extend([d.embedding for d in resp.data])

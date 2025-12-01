@@ -508,7 +508,7 @@ async def update_settings(request, session_manager):
 
         # Update provider-specific settings
         if "openai_api_key" in body and body["openai_api_key"].strip():
-            current_config.providers.openai.api_key = body["openai_api_key"]
+            current_config.providers.openai.api_key = body["openai_api_key"].strip()
             current_config.providers.openai.configured = True
             config_updated = True
 
@@ -555,6 +555,9 @@ async def update_settings(request, session_manager):
             "watsonx_api_key", "watsonx_endpoint", "watsonx_project_id",
             "ollama_endpoint"
         ]
+
+        await clients.refresh_patched_clients()
+
         if any(key in body for key in provider_fields_to_check):
             try:
                 flows_service = _get_flows_service()
@@ -562,8 +565,11 @@ async def update_settings(request, session_manager):
                 # Update global variables
                 await _update_langflow_global_variables(current_config)
 
+                # Update LLM client credentials when embedding selection changes
                 if "embedding_provider" in body or "embedding_model" in body:
-                    await _update_mcp_servers_with_provider_credentials(current_config)
+                    await _update_mcp_servers_with_provider_credentials(
+                        current_config, session_manager
+                    )
                 
                 # Update model values if provider or model changed
                 if "llm_provider" in body or "llm_model" in body or "embedding_provider" in body or "embedding_model" in body:
@@ -573,6 +579,7 @@ async def update_settings(request, session_manager):
                 logger.error(f"Failed to update Langflow settings: {str(e)}")
                 # Don't fail the entire settings update if Langflow update fails
                 # The config was still saved
+
 
         logger.info(
             "Configuration updated successfully", updated_fields=list(body.keys())
@@ -689,7 +696,7 @@ async def onboarding(request, flows_service, session_manager=None):
 
         # Update provider-specific credentials
         if "openai_api_key" in body and body["openai_api_key"].strip():
-            current_config.providers.openai.api_key = body["openai_api_key"]
+            current_config.providers.openai.api_key = body["openai_api_key"].strip()
             current_config.providers.openai.configured = True
             config_updated = True
 
@@ -919,11 +926,33 @@ async def onboarding(request, flows_service, session_manager=None):
                 {"error": "Failed to save configuration"}, status_code=500
             )
 
+        # Refresh cached patched clients so latest credentials take effect immediately
+        await clients.refresh_patched_clients()
+
+        # Create OpenRAG Docs knowledge filter if sample data was ingested
+        openrag_docs_filter_id = None
+        if should_ingest_sample_data:
+            try:
+                openrag_docs_filter_id = await _create_openrag_docs_filter(
+                    request, session_manager
+                )
+                if openrag_docs_filter_id:
+                    logger.info(
+                        "Created OpenRAG Docs knowledge filter",
+                        filter_id=openrag_docs_filter_id,
+                    )
+            except Exception as e:
+                logger.error(
+                    "Failed to create OpenRAG Docs knowledge filter", error=str(e)
+                )
+                # Don't fail onboarding if filter creation fails
+
         return JSONResponse(
             {
                 "message": "Onboarding configuration updated successfully",
                 "edited": True,  # Confirm that config is now marked as edited
                 "sample_data_ingested": should_ingest_sample_data,
+                "openrag_docs_filter_id": openrag_docs_filter_id,
             }
         )
 
@@ -933,6 +962,132 @@ async def onboarding(request, flows_service, session_manager=None):
             {"error": str(e)},
             status_code=500,
         )
+
+
+async def _create_openrag_docs_filter(request, session_manager):
+    """Create the OpenRAG Docs knowledge filter for onboarding"""
+    import uuid
+    import json
+    from datetime import datetime
+    from session_manager import AnonymousUser
+
+    # Get knowledge filter service from app state
+    app = request.scope.get("app")
+    if not app or not hasattr(app.state, "services"):
+        logger.error("Could not access services for knowledge filter creation")
+        return None
+
+    knowledge_filter_service = app.state.services.get("knowledge_filter_service")
+    if not knowledge_filter_service:
+        logger.error("Knowledge filter service not available")
+        return None
+
+    # Use anonymous user for no-auth mode compatibility
+    user = AnonymousUser()
+    jwt_token = session_manager.get_effective_jwt_token(user.user_id, None)
+
+    # Create the filter document
+    filter_id = str(uuid.uuid4())
+    query_data = json.dumps({
+        "query": "",
+        "filters": {
+            "data_sources": ["openrag-documentation.pdf"],
+            "document_types": ["*"],
+            "owners": ["*"],
+            "connector_types": ["*"],
+        },
+        "limit": 10,
+        "scoreThreshold": 0,
+        "color": "blue",
+        "icon": "book",
+    })
+
+    filter_doc = {
+        "id": filter_id,
+        "name": "OpenRAG Docs",
+        "description": "Filter for OpenRAG documentation",
+        "query_data": query_data,
+        "owner": user.user_id,
+        "allowed_users": [],
+        "allowed_groups": [],
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+    result = await knowledge_filter_service.create_knowledge_filter(
+        filter_doc, user_id=user.user_id, jwt_token=jwt_token
+    )
+
+    if result.get("success"):
+        return filter_id
+    else:
+        logger.error("Failed to create OpenRAG Docs filter", error=result.get("error"))
+        return None
+
+
+async def _create_user_document_filter(request, session_manager, filename):
+    """Create a knowledge filter for a user-uploaded document during onboarding"""
+    import uuid
+    import json
+    from datetime import datetime
+    from session_manager import AnonymousUser
+
+    # Get knowledge filter service from app state
+    app = request.scope.get("app")
+    if not app or not hasattr(app.state, "services"):
+        logger.error("Could not access services for knowledge filter creation")
+        return None
+
+    knowledge_filter_service = app.state.services.get("knowledge_filter_service")
+    if not knowledge_filter_service:
+        logger.error("Knowledge filter service not available")
+        return None
+
+    # Use anonymous user for no-auth mode compatibility
+    user = AnonymousUser()
+    jwt_token = session_manager.get_effective_jwt_token(user.user_id, None)
+
+    # Create the filter document
+    filter_id = str(uuid.uuid4())
+
+    # Get a display name from the filename (remove extension for cleaner name)
+    display_name = filename.rsplit(".", 1)[0] if "." in filename else filename
+
+    query_data = json.dumps({
+        "query": "",
+        "filters": {
+            "data_sources": [filename],
+            "document_types": ["*"],
+            "owners": ["*"],
+            "connector_types": ["*"],
+        },
+        "limit": 10,
+        "scoreThreshold": 0,
+        "color": "green",
+        "icon": "file",
+    })
+
+    filter_doc = {
+        "id": filter_id,
+        "name": display_name,
+        "description": f"Filter for {filename}",
+        "query_data": query_data,
+        "owner": user.user_id,
+        "allowed_users": [],
+        "allowed_groups": [],
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+    result = await knowledge_filter_service.create_knowledge_filter(
+        filter_doc, user_id=user.user_id, jwt_token=jwt_token
+    )
+
+    if result.get("success"):
+        return filter_id
+    else:
+        logger.error("Failed to create user document filter", error=result.get("error"))
+        return None
 
 
 def _get_flows_service():

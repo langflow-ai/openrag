@@ -50,7 +50,12 @@ export function OpenAIOnboarding({
       : debouncedApiKey
         ? { apiKey: debouncedApiKey }
         : undefined,
-    { enabled: debouncedApiKey !== "" || getFromEnv || alreadyConfigured },
+    {
+      // Only validate when the user opts in (env) or provides a key.
+      // If a key was previously configured, let the user decide to reuse or replace it
+      // without triggering an immediate validation error.
+      enabled: debouncedApiKey !== "" || getFromEnv,
+    },
   );
   // Use custom hook for model selection logic
   const {
@@ -134,11 +139,12 @@ export function OpenAIOnboarding({
               }
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              disabled={alreadyConfigured}
+              // Even if a key exists, allow replacing it to avoid getting stuck on stale creds.
+              disabled={false}
             />
             {alreadyConfigured && (
               <p className="text-mmd text-muted-foreground">
-                Reusing key from model provider selection.
+                Existing OpenAI key detected. You can reuse it or enter a new one.
               </p>
             )}
             {isLoadingModels && (

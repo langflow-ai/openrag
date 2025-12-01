@@ -2,11 +2,12 @@
 
 import { motion } from "framer-motion";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type ChatConversation,
   useGetConversationsQuery,
 } from "@/app/api/queries/useGetConversationsQuery";
+import { getFilterById } from "@/app/api/queries/useGetFilterByIdQuery";
 import type { Settings } from "@/app/api/queries/useGetSettingsQuery";
 import { OnboardingContent } from "@/app/onboarding/_components/onboarding-content";
 import { ProgressBar } from "@/app/onboarding/_components/progress-bar";
@@ -20,9 +21,11 @@ import {
   HEADER_HEIGHT,
   ONBOARDING_ASSISTANT_MESSAGE_KEY,
   ONBOARDING_CARD_STEPS_KEY,
+  ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY,
   ONBOARDING_SELECTED_NUDGE_KEY,
   ONBOARDING_STEP_KEY,
   ONBOARDING_UPLOAD_STEPS_KEY,
+  ONBOARDING_USER_DOC_FILTER_ID_KEY,
   SIDEBAR_WIDTH,
   TOTAL_ONBOARDING_STEPS,
 } from "@/lib/constants";
@@ -42,6 +45,7 @@ export function ChatRenderer({
     refreshTrigger,
     refreshConversations,
     startNewConversation,
+    setConversationFilter,
   } = useChat();
 
   // Initialize onboarding state based on local storage and settings
@@ -71,6 +75,42 @@ export function ChatRenderer({
     startNewConversation();
   };
 
+  // Helper to set the default filter after onboarding transition
+  const setOnboardingFilter = useCallback(
+    async (preferUserDoc: boolean) => {
+      if (typeof window === "undefined") return;
+
+      // Try to get the appropriate filter ID
+      let filterId: string | null = null;
+
+      if (preferUserDoc) {
+        // Completed full onboarding - prefer user document filter
+        filterId = localStorage.getItem(ONBOARDING_USER_DOC_FILTER_ID_KEY);
+      }
+
+      // Fall back to OpenRAG docs filter
+      if (!filterId) {
+        filterId = localStorage.getItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY);
+      }
+
+      if (filterId) {
+        try {
+          const filter = await getFilterById(filterId);
+          if (filter) {
+            setConversationFilter(filter);
+          }
+        } catch (error) {
+          console.error("Failed to set onboarding filter:", error);
+        }
+      }
+
+      // Clean up onboarding filter IDs from localStorage
+      localStorage.removeItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY);
+      localStorage.removeItem(ONBOARDING_USER_DOC_FILTER_ID_KEY);
+    },
+    [setConversationFilter]
+  );
+
   // Save current step to local storage whenever it changes
   useEffect(() => {
     if (typeof window !== "undefined" && !showLayout) {
@@ -90,6 +130,8 @@ export function ChatRenderer({
         localStorage.removeItem(ONBOARDING_CARD_STEPS_KEY);
         localStorage.removeItem(ONBOARDING_UPLOAD_STEPS_KEY);
       }
+      // Set the user document filter as active (completed full onboarding)
+      setOnboardingFilter(true);
       setShowLayout(true);
     }
   };
@@ -109,6 +151,8 @@ export function ChatRenderer({
       localStorage.removeItem(ONBOARDING_CARD_STEPS_KEY);
       localStorage.removeItem(ONBOARDING_UPLOAD_STEPS_KEY);
     }
+    // Set the OpenRAG docs filter as active (skipped onboarding - no user doc)
+    setOnboardingFilter(false);
     setShowLayout(true);
   };
 

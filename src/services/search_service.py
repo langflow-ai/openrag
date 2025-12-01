@@ -150,7 +150,7 @@ class SearchService:
                 while attempts < MAX_EMBED_RETRIES:
                     attempts += 1
                     try:
-                        resp = await clients.patched_async_client.embeddings.create(
+                        resp = await clients.patched_embedding_client.embeddings.create(
                             model=model_name, input=[query]
                         )
                         return model_name, resp.data[0].embedding

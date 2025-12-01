@@ -5,16 +5,24 @@ import { StickToBottom } from "use-stick-to-bottom";
 import { AssistantMessage } from "@/app/chat/_components/assistant-message";
 import Nudges from "@/app/chat/_components/nudges";
 import { UserMessage } from "@/app/chat/_components/user-message";
-import type { Message } from "@/app/chat/_types/types";
+import type { Message, SelectedFilters } from "@/app/chat/_types/types";
 import OnboardingCard from "@/app/onboarding/_components/onboarding-card";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import {
   ONBOARDING_ASSISTANT_MESSAGE_KEY,
+  ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY,
   ONBOARDING_SELECTED_NUDGE_KEY,
 } from "@/lib/constants";
 
 import { OnboardingStep } from "./onboarding-step";
 import OnboardingUpload from "./onboarding-upload";
+
+// Filters for OpenRAG documentation
+const OPENRAG_DOCS_FILTERS: SelectedFilters = {
+  data_sources: ["openrag-documentation.pdf"],
+  document_types: [],
+  owners: [],
+};
 
 export function OnboardingContent({
   handleStepComplete,
@@ -115,9 +123,16 @@ export function OnboardingContent({
       localStorage.removeItem(ONBOARDING_ASSISTANT_MESSAGE_KEY);
     }
     setTimeout(async () => {
+      // Check if we have the OpenRAG docs filter ID (sample data was ingested)
+      const hasOpenragDocsFilter =
+        typeof window !== "undefined" &&
+        localStorage.getItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY);
+
       await sendMessage({
         prompt: nudge,
         previousResponseId: responseId || undefined,
+        // Use OpenRAG docs filter if sample data was ingested
+        filters: hasOpenragDocsFilter ? OPENRAG_DOCS_FILTERS : undefined,
       });
     }, 1500);
   };
