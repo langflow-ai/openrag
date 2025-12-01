@@ -272,171 +272,172 @@ If you installed OpenRAG with `uvx`, run `uvx openrag`.
 
 After installation, the TUI can deploy, manage, and upgrade your OpenRAG containers.
 
-### Start all services
+### Diagnostics
 
-Click **Start All Services** to start the OpenRAG containers.
-The TUI automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses.
-The TUI then pulls the images and deploys the containers with the following command.
-```bash
-docker compose up -d
-```
+The **Diagnostics** menu provides health monitoring for your container runtimes and monitoring of your OpenSearch security.
 
-If images are missing, the TUI runs `docker compose pull`, then runs `docker compose up -d`.
-
-### Status
+### Status {#status}
 
 The **Status** menu displays information on your container deployment.
 Here you can check container health, find your service ports, view logs, and upgrade your containers.
 
-To view streaming logs, select the container you want to view, and press <kbd>l</kbd>.
-To copy your logs, click **Copy to Clipboard**.
+* **Logs**: To view streaming logs, select the container you want to view, and press <kbd>l</kbd>.
+To copy the logs, click **Copy to Clipboard**.
 
-To **upgrade** your containers, click **Upgrade**.
-**Upgrade** runs `docker compose pull` and then `docker compose up -d --force-recreate`.
-For more information, see [Upgrade OpenRAG containers with the TUI](#upgrade-openrag-containers-with-the-tui).
+* **Upgrade**: Use this option when you [upgrade OpenRAG](#upgrade).
 
-To **reset** your containers, click **Reset**.
-Reset gives you a completely fresh start.
-Reset deletes all of your data, including OpenSearch data, uploaded documents, and authentication.
-**Reset** runs two commands.
-It first stops and removes all containers, volumes, and local images.
-```
+* **Reset**: This is a destructive action that [resets your containers](#reset-containers).
+
+* **Native services**: From the **Status** menu, you can view the status, port, and process ID (PID) of the OpenRAG native services.
+You can also click **Stop** or **Restart** to stop and start OpenRAG native services.
+
+    A _native service_ in OpenRAG is a service that runs locally on your machine, not within a container. For example, the `docling serve` process is an OpenRAG native service because this document processing service runs on your local machine, separate from the OpenRAG containers.
+
+### Reset containers {#reset-containers}
+
+:::warning
+This is a destructive action that deletes all of your OpenRAG container data, including OpenSearch data, uploaded documents, and customized flows.
+:::
+
+To destroy and recreate your OpenRAG containers, go to the TUI [**Status** menu](#status), and then click **Reset**.
+
+The **Reset** function runs two commands. First, it stops and removes all containers, volumes, and local images:
+
+```bash
 docker compose down --volumes --remove-orphans --rmi local
 ```
 
-When the first command is complete, OpenRAG removes any additional Docker objects with `prune`.
+Then, it removes any additional Docker objects with `docker system prune -f`.
 
-```
-docker system prune -f
-```
+If you reset your containers as part of reinstalling OpenRAG, continue the [reinstallation process](#reinstall) after resetting the containers.
 
-### Native services status
+### Start all services
 
-A _native service_ in OpenRAG refers to a service run locally on your machine, and not within a container.
-The `docling serve` process is a native service in OpenRAG, because it's a document processing service that is run on your local machine, and controlled separately from the containers.
+On the TUI main page, click **Start All Services** to start the OpenRAG containers and launch OpenRAG itself.
 
-To start or stop `docling serve` or any other native services, in the TUI Status menu, click **Stop** or **Restart**.
+When you start all services, the following processes happen:
 
-To view the status, port, or PID of a native service, in the TUI main menu, click [Status](#status).
+1. OpenRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses.
+
+2. OpenRAG pulls the OpenRAG container images with `docker compose pull` if any images are missing.
+
+3. OpenRAG deploys the containers with `docker compose up -d`.
 
 ## Upgrade OpenRAG {#upgrade}
 
-To upgrade OpenRAG, upgrade the OpenRAG Python package, and then upgrade the OpenRAG containers using the OpenRAG TUI.
+To upgrade OpenRAG, upgrade the OpenRAG Python package, and then upgrade the OpenRAG containers.
 
-Upgrading the OpenRAG Python package updates the TUI and Python code, but container versions are controlled separately by environment variables in your `.env` file. 
+This is a two part process because upgrading the OpenRAG Python package updates the TUI and Python code, but the container versions are controlled by environment variables in your `.env` file.
 
-### Upgrade OpenRAG python package
+1. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
 
-Use the following steps to upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
-After upgrading the Python package, you should also [upgrade your OpenRAG containers](#upgrade-openrag-containers-with-the-tui).
+    <Tabs groupId="Installation method">
+    <TabItem value="installer" label="Automatic installer or uvx" default>
 
-<Tabs groupId="Installation method">
-  <TabItem value="installer" label="Automatic installer / uvx" default>
-
-    If you installed OpenRAG using the [automatic installer](#install) or [uvx](#install), follow these steps to upgrade:
+    Use these steps to upgrade the Python package if you installed OpenRAG using the automatic installer or `uvx`:
 
     1. Navigate to your OpenRAG workspace directory:
-       ```bash
-       cd openrag-workspace
-       ```
+
+        ```bash
+        cd openrag-workspace
+        ```
 
     2. Upgrade the OpenRAG package:
-       ```bash
-       uvx --from openrag openrag
-       ```
-       
-       To upgrade to a specific version:
-       ```bash
-       uvx --from openrag==0.1.33 openrag
-       ```
 
-    3. After upgrading the Python package, [upgrade your containers](#upgrade-openrag-containers-with-the-tui).
+        ```bash
+        uvx --from openrag openrag
+        ```
 
-  </TabItem>
-  <TabItem value="uv-add" label="Python project with uv add">
+        To upgrade to a specific version:
+
+        ```bash
+        uvx --from openrag==0.1.33 openrag
+        ```
+
+    </TabItem>
+    <TabItem value="uv-add" label="Python project (uv add)">
+
+    Use these steps to upgrade the Python package if you installed OpenRAG in a Python project with `uv add`:
 
     1. Navigate to your project directory:
-       ```bash
-       cd YOUR_PROJECT_NAME
-       ```
+
+        ```bash
+        cd YOUR_PROJECT_NAME
+        ```
 
     2. Update OpenRAG to the latest version:
-       ```bash
-       uv add --upgrade openrag
-       ```
-       
-       To upgrade to a specific version:
-       ```bash
-       uv add --upgrade openrag==0.1.33
-       ```
+
+        ```bash
+        uv add --upgrade openrag
+        ```
+
+        To upgrade to a specific version:
+
+        ```bash
+        uv add --upgrade openrag==0.1.33
+        ```
 
     3. Start the OpenRAG TUI:
-       ```bash
-       uv run openrag
-       ```
 
-    4. After upgrading the Python package, [upgrade your containers](#upgrade-openrag-containers-with-the-tui).
+        ```bash
+        uv run openrag
+        ```
 
-  </TabItem>
-  <TabItem value="uv-pip" label="Existing virtual environment with uv pip install">
+    </TabItem>
+    <TabItem value="uv-pip" label="Virtual environment (uv pip install)">
+
+    Use these steps to upgrade the Python package if you installed OpenRAG in a venv with `uv pip install`:
 
     1. Activate your virtual environment.
 
     2. Upgrade OpenRAG:
-       ```bash
-       uv pip install --upgrade openrag
-       ```
-       
-       To upgrade to a specific version:
-       ```bash
-       uv pip install --upgrade openrag==0.1.33
-       ```
+
+        ```bash
+        uv pip install --upgrade openrag
+        ```
+
+        To upgrade to a specific version:
+
+        ```bash
+        uv pip install --upgrade openrag==0.1.33
+        ```
 
     3. Start the OpenRAG TUI:
-       ```bash
-       uv run openrag
-       ```
 
-    4. After upgrading the Python package, [upgrade your containers](#upgrade-openrag-containers-with-the-tui).
+        ```bash
+        uv run openrag
+        ```
 
-  </TabItem>
-</Tabs>
+    </TabItem>
+    </Tabs>
 
-### Upgrade OpenRAG containers with the TUI {#upgrade-openrag-containers-with-the-tui}
+2. Upgrade the OpenRAG containers: In the OpenRAG TUI, click **Status**, click **Upgrade**, and then wait while the containers are upgraded.
 
-After upgrading the OpenRAG Python package, upgrade your containers to ensure they match the `latest` version.
-**Upgrade** runs `docker compose pull`, which pulls container images based on versions specified in your `.env` file. 
-`OPENRAG_VERSION` is set to `latest` by default, so it pulls the `latest` available container images.
+    **Upgrade** runs `docker compose pull` to get the container images based on the version specified in your `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
 
-1. In the OpenRAG TUI, click **Status**, and then click **Upgrade**.
-2. When the upgrade completes, close the **Status** window and continue using OpenRAG.
+    `OPENRAG_VERSION` is set to `latest` by default, which it pulls the `latest` available container images.
+    To pin a specific container image version, edit the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) in your OpenRAG `.env` file. For example, `OPENRAG_VERSION=0.1.33`.
 
-If you encounter a `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade) in the troubleshooting guide.
+    If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
 
-To pin container versions to a specific release other than `latest`, set the `OPENRAG_VERSION` in your `.env` file:
-```bash
-OPENRAG_VERSION=0.1.33
-```
-
-For more information, see [System settings environment variables](/reference/configuration#system-settings).
-
-## Diagnostics
-
-The **Diagnostics** menu provides health monitoring for your container runtimes and monitoring of your OpenSearch security.
+3. When the upgrade process is complete, you can close the **Status** window and continue using OpenRAG.
 
 ## Reinstall OpenRAG {#reinstall}
 
 To reinstall OpenRAG with a completely fresh setup:
 
-1. Reset your containers using the **Reset** button in the [TUI status](#status) menu.
-   This removes all containers, volumes, and data.
+1. In the TUI **Status** menu, [reset your containers](#reset-containers) to destroy the existing OpenRAG containers and their data.
 
 2. Optional: Delete your project's `.env` file.
-   The Reset operation does not remove your project's `.env` file, so your passwords, API keys, and OAuth settings can be preserved.
-   If you delete the `.env` file, run the [Set up OpenRAG with the TUI](#setup) process again to create a new configuration.
 
-3. In the TUI Setup menu, follow these steps from [Basic Setup](#setup):
-   1. Click **Start All Services** to pull container images and start them.
-   2. Under **Native Services**, click **Start** to start the Docling service.
-   3. Click **Open App** to open the OpenRAG application.
-   4. Continue with [Application Onboarding](#application-onboarding).
+    The Reset operation does not remove your project's `.env` file, so your passwords, API keys, and OAuth settings can be preserved.
+    If you delete the `.env` file, you must run the [Set up OpenRAG with the TUI](#setup) process again to create a new configuration file.
+
+3. In the TUI **Setup** menu, repeat the [Basic Setup](#setup) process:
+
+    1. Click **Start All Services** to pull container images and start them.
+    2. Under **Native Services**, click **Start** to start the Docling service.
+    3. Click **Open App** to open the OpenRAG application.
+    4. Continue with [Application Onboarding](#application-onboarding).
+
+If reinstalling OpenRAG and deleting the `.env` file doesn't reset setup or onboarding, see [Reinstalling OpenRAG doesn't reset onboarding](/support/troubleshoot#reinstalling-openrag-doesnt-reset-onboarding).

@@ -211,3 +211,12 @@ After removing the containers, retry the upgrade in the OpenRAG TUI by clicking 
 
 </TabItem>
 </Tabs>
+
+## Reinstalling OpenRAG doesn't reset onboarding {#reinstalling-openrag-doesnt-reset-onboarding}
+
+If you [reinstall OpenRAG](/install#reinstall), you can restore your installation to it's original, default state by resetting the containers _and_ deleting the `.env` file.
+
+When you start OpenRAG after doing this, you should be prompted to go through the initial setup and onboarding process again.
+
+Due to a known issue, the onboarding process might not reset when you reinstall OpenRAG.
+If this occurs, [install OpenRAG in a new Python project directory](/install#install) (with `uv init` and `uv add openrag`).
