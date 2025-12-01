@@ -21,6 +21,7 @@ from ..utils.platform import RuntimeType
 from ..widgets.command_modal import CommandOutputModal
 from ..widgets.flow_backup_warning_modal import FlowBackupWarningModal
 from ..widgets.version_mismatch_warning_modal import VersionMismatchWarningModal
+from ..widgets.upgrade_instructions_modal import UpgradeInstructionsModal
 from ..widgets.diagnostics_notification import notify_with_diagnostics
 
 
@@ -432,23 +433,9 @@ class MonitorScreen(Screen):
                     timeout=5,
                 )
             else:
-                # Show upgrade instructions
-                upgrade_message = (
-                    f"Current version: {current_version}\n"
-                    f"Latest version: {latest_version}\n\n"
-                    "To upgrade the TUI:\n"
-                    "1. Exit TUI (press 'q')\n"
-                    "2. Run one of:\n"
-                    "   • pip install --upgrade openrag\n"
-                    "   • uv pip install --upgrade openrag\n"
-                    "   • uvx --from openrag openrag\n"
-                    "3. Restart: openrag\n\n"
-                    "After upgrading, containers will automatically use the new version."
-                )
-                self.notify(
-                    upgrade_message,
-                    severity="information",
-                    timeout=30,  # Show for 30 seconds
+                # Show upgrade instructions in a modal dialog
+                await self.app.push_screen_wait(
+                    UpgradeInstructionsModal(current_version, latest_version)
                 )
         except Exception as e:
             self.notify(
