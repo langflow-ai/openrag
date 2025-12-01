@@ -8,9 +8,14 @@ logger = get_logger(__name__)
 async def get_openai_models(request, models_service, session_manager):
     """Get available OpenAI models"""
     try:
-        # Get API key from query parameters
-        query_params = dict(request.query_params)
-        api_key = query_params.get("api_key")
+        # Get API key from request body
+        api_key = None
+        try:
+            body = await request.json()
+            api_key = body.get("api_key") if body else None
+        except Exception:
+            # Body might be empty or invalid JSON, continue to fallback
+            pass
 
         # If no API key provided, try to get it from stored configuration
         if not api_key:
@@ -26,7 +31,7 @@ async def get_openai_models(request, models_service, session_manager):
         if not api_key:
             return JSONResponse(
                 {
-                    "error": "OpenAI API key is required either as query parameter or in configuration"
+                    "error": "OpenAI API key is required either in request body or in configuration"
                 },
                 status_code=400,
             )
@@ -42,9 +47,14 @@ async def get_openai_models(request, models_service, session_manager):
 async def get_anthropic_models(request, models_service, session_manager):
     """Get available Anthropic models"""
     try:
-        # Get API key from query parameters
-        query_params = dict(request.query_params)
-        api_key = query_params.get("api_key")
+        # Get API key from request body
+        api_key = None
+        try:
+            body = await request.json()
+            api_key = body.get("api_key") if body else None
+        except Exception:
+            # Body might be empty or invalid JSON, continue to fallback
+            pass
 
         # If no API key provided, try to get it from stored configuration
         if not api_key:
@@ -60,7 +70,7 @@ async def get_anthropic_models(request, models_service, session_manager):
         if not api_key:
             return JSONResponse(
                 {
-                    "error": "Anthropic API key is required either as query parameter or in configuration"
+                    "error": "Anthropic API key is required either in request body or in configuration"
                 },
                 status_code=400,
             )
@@ -112,11 +122,19 @@ async def get_ollama_models(request, models_service, session_manager):
 async def get_ibm_models(request, models_service, session_manager):
     """Get available IBM Watson models"""
     try:
-        # Get parameters from query parameters if provided
-        query_params = dict(request.query_params)
-        endpoint = query_params.get("endpoint")
-        api_key = query_params.get("api_key")
-        project_id = query_params.get("project_id")
+        # Get parameters from request body if provided
+        endpoint = None
+        api_key = None
+        project_id = None
+        try:
+            body = await request.json()
+            if body:
+                endpoint = body.get("endpoint")
+                api_key = body.get("api_key")
+                project_id = body.get("project_id")
+        except Exception:
+            # Body might be empty or invalid JSON, continue to fallback
+            pass
 
         config = get_openrag_config()
         # If no API key provided, try to get it from stored configuration
@@ -132,7 +150,7 @@ async def get_ibm_models(request, models_service, session_manager):
         if not api_key:
             return JSONResponse(
                 {
-                    "error": "WatsonX API key is required either as query parameter or in configuration"
+                    "error": "WatsonX API key is required either in request body or in configuration"
                 },
                 status_code=400,
             )
@@ -149,7 +167,7 @@ async def get_ibm_models(request, models_service, session_manager):
         if not endpoint:
             return JSONResponse(
                 {
-                    "error": "Endpoint is required either as query parameter or in configuration"
+                    "error": "Endpoint is required either in request body or in configuration"
                 },
                 status_code=400,
             )
@@ -166,7 +184,7 @@ async def get_ibm_models(request, models_service, session_manager):
         if not project_id:
             return JSONResponse(
                 {
-                    "error": "Project ID is required either as query parameter or in configuration"
+                    "error": "Project ID is required either in request body or in configuration"
                 },
                 status_code=400,
             )
