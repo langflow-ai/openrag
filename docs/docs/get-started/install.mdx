@@ -284,7 +284,7 @@ Here you can check container health, find your service ports, view logs, and upg
 * **Logs**: To view streaming logs, select the container you want to view, and press <kbd>l</kbd>.
 To copy the logs, click **Copy to Clipboard**.
 
-* **Upgrade**: Use this option when you [upgrade OpenRAG](#upgrade).
+* **Upgrade**: Check for updates. For more information, see [upgrade OpenRAG](#upgrade).
 
 * **Reset**: This is a destructive action that [resets your containers](#reset-containers).
 
@@ -329,7 +329,9 @@ To upgrade OpenRAG, upgrade the OpenRAG Python package, and then upgrade the Ope
 
 This is a two part process because upgrading the OpenRAG Python package updates the TUI and Python code, but the container versions are controlled by environment variables in your `.env` file.
 
-1. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
+1. Stop your OpenRAG containers: In the OpenRAG TUI, go to the **Status** menu, and then click **Stop Services**.
+
+2. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
 
     <Tabs groupId="Installation method">
     <TabItem value="installer" label="Automatic installer or uvx" default>
@@ -411,12 +413,16 @@ This is a two part process because upgrading the OpenRAG Python package updates 
     </TabItem>
     </Tabs>
 
-2. Upgrade the OpenRAG containers: In the OpenRAG TUI, click **Status**, click **Upgrade**, and then wait while the containers are upgraded.
+3. Start the upgraded OpenRAG containers: In the OpenRAG TUI, click **Start All Services**, and then wait while the containers start.
 
-    **Upgrade** runs `docker compose pull` to get the container images based on the version specified in your `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
+    After upgrading the Python package, OpenRAG runs `docker compose pull` to get the appropriate container images matching the version specified in your OpenRAG `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
 
-    `OPENRAG_VERSION` is set to `latest` by default, which it pulls the `latest` available container images.
-    To pin a specific container image version, edit the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) in your OpenRAG `.env` file. For example, `OPENRAG_VERSION=0.1.33`.
+    In the `.env` file, the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) is set to `latest` by default, which it pulls the `latest` available container images.
+    To pin a specific container image version, you can set `OPENRAG_VERSION` to the desired container image version, such as `OPENRAG_VERSION=0.1.33`.
+
+    However, when you upgrade the Python package, OpenRAG automatically attempts to keep the `OPENRAG_VERSION` synchronized with the Python package version.
+    You might need to edit the `.env` file after upgrading the Python package to enforce a different container version.
+    The TUI warns you if it detects a version mismatch.
 
     If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
 

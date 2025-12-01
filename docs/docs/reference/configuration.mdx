@@ -134,11 +134,11 @@ Configure general system components, session management, and logging.
 |----------|---------|-------------|
 | `LANGFLOW_KEY_RETRIES` | `15` | Number of retries for Langflow key generation. |
 | `LANGFLOW_KEY_RETRY_DELAY` | `2.0` | Delay between retries in seconds. |
-| `LANGFLOW_VERSION` | `latest` | Langflow Docker image version. |
+| `LANGFLOW_VERSION` | `OPENRAG_VERSION` | Langflow Docker image version. By default, OpenRAG uses the `OPENRAG_VERSION` for the Langflow Docker image version. |
 | `LOG_FORMAT` | - | Log format (set to "json" for JSON output). |
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR). |
 | `MAX_WORKERS` | - | Maximum number of workers for document processing. |
-| `OPENRAG_VERSION` | `latest` | OpenRAG Docker image version. |
+| `OPENRAG_VERSION` | `latest` | The version of the OpenRAG Docker images to run. For more information, see [Upgrade OpenRAG](/install#upgrade) |
 | `SERVICE_NAME` | `openrag` | Service name for logging. |
 | `SESSION_SECRET` | auto-generated | Session management. |
 
