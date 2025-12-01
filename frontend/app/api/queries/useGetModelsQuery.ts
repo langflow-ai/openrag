@@ -42,11 +42,18 @@ export const useGetOpenAIModelsQuery = (
 
   async function getOpenAIModels(): Promise<ModelsResponse> {
     const url = new URL("/api/models/openai", window.location.origin);
+    const body: { api_key?: string } = {};
     if (params?.apiKey) {
-      url.searchParams.set("api_key", params.apiKey);
+      body.api_key = params.apiKey;
     }
 
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
     if (response.ok) {
       return await response.json();
     } else {
@@ -77,11 +84,18 @@ export const useGetAnthropicModelsQuery = (
 
   async function getAnthropicModels(): Promise<ModelsResponse> {
     const url = new URL("/api/models/anthropic", window.location.origin);
+    const body: { api_key?: string } = {};
     if (params?.apiKey) {
-      url.searchParams.set("api_key", params.apiKey);
+      body.api_key = params.apiKey;
     }
 
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
     if (response.ok) {
       return await response.json();
     } else {
@@ -147,17 +161,28 @@ export const useGetIBMModelsQuery = (
 
   async function getIBMModels(): Promise<ModelsResponse> {
     const url = new URL("/api/models/ibm", window.location.origin);
+    const body: {
+      endpoint?: string;
+      api_key?: string;
+      project_id?: string;
+    } = {};
     if (params?.endpoint) {
-      url.searchParams.set("endpoint", params.endpoint);
+      body.endpoint = params.endpoint;
     }
     if (params?.apiKey) {
-      url.searchParams.set("api_key", params.apiKey);
+      body.api_key = params.apiKey;
     }
     if (params?.projectId) {
-      url.searchParams.set("project_id", params.projectId);
+      body.project_id = params.projectId;
     }
 
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
     if (response.ok) {
       return await response.json();
     } else {
