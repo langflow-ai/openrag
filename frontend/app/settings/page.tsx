@@ -652,10 +652,9 @@ function KnowledgeSourcesPage() {
 				throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 			})
 			.then(() => {
-				// Only reset form values if the API call was successful
+				// Flow restoration is complete - backend already updated flow with current provider/model
+				// Just reset the UI form value for system prompt
 				setSystemPrompt(DEFAULT_AGENT_SETTINGS.system_prompt);
-				// Trigger model update to default model
-				handleModelChange(DEFAULT_AGENT_SETTINGS.llm_model);
 				closeDialog(); // Close after successful completion
 			})
 			.catch((error) => {
