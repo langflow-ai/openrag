@@ -458,7 +458,7 @@ def copy_sample_documents(*, force: bool = False) -> None:
     documents_dir = Path("openrag-documents")
 
     try:
-        assets_files = files("tui._assets.documents")
+        assets_files = files("tui._assets.openrag-documents")
         _copy_assets(assets_files, documents_dir, allowed_suffixes=(".pdf",), force=force)
     except Exception as e:
         logger.debug(f"Could not copy sample documents: {e}")

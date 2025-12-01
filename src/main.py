@@ -304,11 +304,11 @@ async def init_index_when_ready():
 
 def _get_documents_dir():
     """Get the documents directory path, handling both Docker and local environments."""
-    # In Docker, the volume is mounted at /app/documents
+    # In Docker, the volume is mounted at /app/openrag-documents
     # Locally, we use openrag-documents
     container_env = detect_container_environment()
     if container_env:
-        path = os.path.abspath("/app/documents")
+        path = os.path.abspath("/app/openrag-documents")
         logger.debug(f"Running in {container_env}, using container path: {path}")
         return path
     else:
@@ -514,6 +514,29 @@ async def startup_tasks(services):
     
     # Update MCP servers with provider credentials (especially important for no-auth mode)
     await _update_mcp_servers_with_provider_credentials(services)
+
+    # Check if flows were reset and reapply settings if config is edited
+    try:
+        config = get_openrag_config()
+        if config.edited:
+            logger.info("Checking if Langflow flows were reset")
+            flows_service = services["flows_service"]
+            reset_flows = await flows_service.check_flows_reset()
+            
+            if reset_flows:
+                logger.info(
+                    f"Detected reset flows: {', '.join(reset_flows)}. Reapplying all settings."
+                )
+                from api.settings import reapply_all_settings
+                await reapply_all_settings(session_manager=services["session_manager"])
+                logger.info("Successfully reapplied settings after detecting flow resets")
+            else:
+                logger.info("No flows detected as reset, skipping settings reapplication")
+        else:
+            logger.debug("Configuration not yet edited, skipping flow reset check")
+    except Exception as e:
+        logger.error(f"Failed to check flows reset or reapply settings: {str(e)}")
+        # Don't fail startup if this check fails
 
 
 async def initialize_services():
@@ -1204,6 +1227,45 @@ async def create_app():
         t1 = asyncio.create_task(startup_tasks(services))
         app.state.background_tasks.add(t1)
         t1.add_done_callback(app.state.background_tasks.discard)
+
+        # Start periodic flow backup task (every 5 minutes)
+        async def periodic_backup():
+            """Periodic backup task that runs every 15 minutes"""
+            while True:
+                try:
+                    await asyncio.sleep(5 * 60)  # Wait 5 minutes
+                    
+                    # Check if onboarding has been completed
+                    config = get_openrag_config()
+                    if not config.edited:
+                        logger.debug("Onboarding not completed yet, skipping periodic backup")
+                        continue
+                    
+                    flows_service = services.get("flows_service")
+                    if flows_service:
+                        logger.info("Running periodic flow backup")
+                        backup_results = await flows_service.backup_all_flows(only_if_changed=True)
+                        if backup_results["backed_up"]:
+                            logger.info(
+                                "Periodic backup completed",
+                                backed_up=len(backup_results["backed_up"]),
+                                skipped=len(backup_results["skipped"]),
+                            )
+                        else:
+                            logger.debug(
+                                "Periodic backup: no flows changed",
+                                skipped=len(backup_results["skipped"]),
+                            )
+                except asyncio.CancelledError:
+                    logger.info("Periodic backup task cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Error in periodic backup task: {str(e)}")
+                    # Continue running even if one backup fails
+
+        backup_task = asyncio.create_task(periodic_backup())
+        app.state.background_tasks.add(backup_task)
+        backup_task.add_done_callback(app.state.background_tasks.discard)
 
     # Add shutdown event handler
     @app.on_event("shutdown")

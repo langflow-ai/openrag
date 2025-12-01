@@ -6052,6 +6052,7 @@
   "endpoint_name": null,
   "id": "72c3d17c-2dac-4a73-b48a-6518473d7830",
   "is_component": false,
+  "locked": true,
   "mcp_enabled": true,
   "last_tested_version": "1.7.0.dev21",
   "name": "OpenSearch URL Ingestion Flow",

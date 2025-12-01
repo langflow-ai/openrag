@@ -19,6 +19,7 @@ from ..managers.container_manager import ContainerManager, ServiceStatus, Servic
 from ..managers.docling_manager import DoclingManager
 from ..utils.platform import RuntimeType
 from ..widgets.command_modal import CommandOutputModal
+from ..widgets.flow_backup_warning_modal import FlowBackupWarningModal
 from ..widgets.diagnostics_notification import notify_with_diagnostics
 
 
@@ -393,6 +394,16 @@ class MonitorScreen(Screen):
         """Upgrade services with progress updates."""
         self.operation_in_progress = True
         try:
+            # Check for flow backups before upgrading
+            if self._check_flow_backups():
+                # Show warning modal and wait for user decision
+                should_continue = await self.app.push_screen_wait(
+                    FlowBackupWarningModal(operation="upgrade")
+                )
+                if not should_continue:
+                    self.notify("Upgrade cancelled", severity="information")
+                    return
+            
             # Show command output in modal dialog
             command_generator = self.container_manager.upgrade_services()
             modal = CommandOutputModal(
@@ -408,6 +419,16 @@ class MonitorScreen(Screen):
         """Reset services with progress updates."""
         self.operation_in_progress = True
         try:
+            # Check for flow backups before resetting
+            if self._check_flow_backups():
+                # Show warning modal and wait for user decision
+                should_continue = await self.app.push_screen_wait(
+                    FlowBackupWarningModal(operation="reset")
+                )
+                if not should_continue:
+                    self.notify("Reset cancelled", severity="information")
+                    return
+            
             # Show command output in modal dialog
             command_generator = self.container_manager.reset_services()
             modal = CommandOutputModal(
@@ -418,6 +439,20 @@ class MonitorScreen(Screen):
             self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
+
+    def _check_flow_backups(self) -> bool:
+        """Check if there are any flow backups in ./flows/backup directory."""
+        from pathlib import Path
+        backup_dir = Path("flows/backup")
+        if not backup_dir.exists():
+            return False
+        
+        try:
+            # Check if there are any .json files in the backup directory
+            backup_files = list(backup_dir.glob("*.json"))
+            return len(backup_files) > 0
+        except Exception:
+            return False
 
     async def _start_docling_serve(self) -> None:
         """Start docling serve."""

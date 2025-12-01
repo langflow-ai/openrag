@@ -5712,7 +5712,7 @@
   "endpoint_name": null,
   "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
-  "last_tested_version": "1.7.0.dev21",
+  "last_tested_version": "1.7.0.dev19",
   "name": "OpenSearch Ingestion Flow",
   "tags": [
     "openai",
