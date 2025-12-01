@@ -1,18 +1,17 @@
 """Version checking utilities for OpenRAG TUI."""
 
-import asyncio
 from typing import Optional, Tuple
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
-async def get_latest_pypi_version(package_name: str = "openrag") -> Optional[str]:
+async def get_latest_docker_version(image_name: str = "langflowai/openrag-backend") -> Optional[str]:
     """
-    Get the latest version of a package from PyPI.
+    Get the latest version tag from Docker Hub for OpenRAG containers.
     
     Args:
-        package_name: Name of the package to check (default: "openrag")
+        image_name: Name of the Docker image to check (default: "langflowai/openrag-backend")
         
     Returns:
         Latest version string if found, None otherwise
@@ -21,15 +20,64 @@ async def get_latest_pypi_version(package_name: str = "openrag") -> Optional[str
         import httpx
         
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"https://pypi.org/pypi/{package_name}/json")
+            # Docker Hub API v2 endpoint for tags
+            url = f"https://hub.docker.com/v2/repositories/{image_name}/tags/"
+            params = {"page_size": 100, "ordering": "-last_updated"}
+            
+            response = await client.get(url, params=params)
             if response.status_code == 200:
                 data = response.json()
-                return data.get("info", {}).get("version")
+                tags = data.get("results", [])
+                
+                # Filter out non-version tags and find the latest version
+                version_tags = []
+                for tag in tags:
+                    tag_name = tag.get("name", "")
+                    # Skip architecture-specific tags (amd64, arm64) and "latest"
+                    if tag_name in ["latest", "amd64", "arm64"]:
+                        continue
+                    # Skip tags that don't look like version numbers
+                    # Version format: X.Y.Z (e.g., 0.1.47)
+                    # Check if it starts with a digit and contains only digits, dots, and hyphens
+                    if tag_name and tag_name[0].isdigit():
+                        # Remove dots and hyphens, check if rest is digits
+                        cleaned = tag_name.replace(".", "").replace("-", "")
+                        if cleaned.isdigit():
+                            version_tags.append(tag_name)
+                
+                if not version_tags:
+                    return None
+                
+                # Sort versions properly and return the latest
+                # Use a tuple-based sort key for proper version comparison
+                def version_sort_key(v: str) -> tuple:
+                    """Convert version string to tuple for sorting."""
+                    try:
+                        parts = []
+                        for part in v.split('.'):
+                            # Extract numeric part
+                            numeric_part = ''
+                            for char in part:
+                                if char.isdigit():
+                                    numeric_part += char
+                                else:
+                                    break
+                            parts.append(int(numeric_part) if numeric_part else 0)
+                        # Pad to at least 3 parts for consistent comparison
+                        while len(parts) < 3:
+                            parts.append(0)
+                        return tuple(parts)
+                    except Exception:
+                        # Fallback: return tuple of zeros if parsing fails
+                        return (0, 0, 0)
+                
+                version_tags.sort(key=version_sort_key)
+                return version_tags[-1]
             else:
-                logger.warning(f"PyPI API returned status {response.status_code}")
+                logger.warning(f"Docker Hub API returned status {response.status_code}")
                 return None
     except Exception as e:
-        logger.debug(f"Error checking PyPI for latest version: {e}")
+        logger.debug(f"Error checking Docker Hub for latest version: {e}")
         return None
 
 
@@ -104,13 +152,13 @@ def compare_versions(version1: str, version2: str) -> int:
 
 async def check_if_latest() -> Tuple[bool, Optional[str], str]:
     """
-    Check if the current version is the latest available on PyPI.
+    Check if the current version is the latest available on Docker Hub.
     
     Returns:
         Tuple of (is_latest, latest_version, current_version)
     """
     current = get_current_version()
-    latest = await get_latest_pypi_version()
+    latest = await get_latest_docker_version()
     
     if latest is None:
         # If we can't check, assume current is latest
