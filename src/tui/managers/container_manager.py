@@ -479,6 +479,100 @@ class ContainerManager:
             image=image,
         )
 
+    async def get_container_version(self) -> Optional[str]:
+        """
+        Get the version tag from existing containers.
+        Checks the backend container image tag to determine version.
+        
+        Returns:
+            Version string if found, None if no containers exist or version can't be determined
+        """
+        try:
+            # Check for backend container first (most reliable)
+            success, stdout, _ = await self._run_runtime_command(
+                ["ps", "--all", "--filter", "name=openrag-backend", "--format", "{{.Image}}"]
+            )
+            
+            if success and stdout.strip():
+                image_tag = stdout.strip().splitlines()[0].strip()
+                if not image_tag or image_tag == "N/A":
+                    return None
+                
+                # Extract version from image tag (e.g., langflowai/openrag-backend:0.1.47)
+                if ":" in image_tag:
+                    version = image_tag.split(":")[-1]
+                    # If version is "latest", check .env file for OPENRAG_VERSION
+                    if version == "latest":
+                        # Try to get version from .env file
+                        try:
+                            from pathlib import Path
+                            env_file = Path(".env")
+                            if env_file.exists():
+                                env_content = env_file.read_text()
+                                for line in env_content.splitlines():
+                                    line = line.strip()
+                                    if line.startswith("OPENRAG_VERSION"):
+                                        env_version = line.split("=", 1)[1].strip()
+                                        # Remove quotes if present
+                                        env_version = env_version.strip("'\"")
+                                        if env_version and env_version != "latest":
+                                            return env_version
+                        except Exception:
+                            pass
+                        # If still "latest", we can't determine version - return None
+                        return None
+                    # Return version if it looks like a version number (not "latest")
+                    if version and version != "latest":
+                        return version
+            
+            # Fallback: check all containers for version tags
+            success, stdout, _ = await self._run_runtime_command(
+                ["ps", "--all", "--format", "{{.Image}}"]
+            )
+            
+            if success and stdout.strip():
+                images = stdout.strip().splitlines()
+                for image in images:
+                    image = image.strip()
+                    if "openrag" in image.lower() and ":" in image:
+                        version = image.split(":")[-1]
+                        if version and version != "latest":
+                            return version
+        except Exception as e:
+            logger.debug(f"Error getting container version: {e}")
+        
+        return None
+
+    async def check_version_mismatch(self) -> tuple[bool, Optional[str], str]:
+        """
+        Check if existing containers have a different version than the current TUI.
+        
+        Returns:
+            Tuple of (has_mismatch, container_version, tui_version)
+        """
+        try:
+            from ..utils.version_check import get_current_version
+            
+            tui_version = get_current_version()
+            if tui_version == "unknown":
+                return False, None, tui_version
+            
+            container_version = await self.get_container_version()
+            
+            if container_version is None:
+                # No containers exist, no mismatch
+                return False, None, tui_version
+            
+            # Compare versions
+            from ..utils.version_check import compare_versions
+            comparison = compare_versions(container_version, tui_version)
+            has_mismatch = comparison != 0
+            
+            return has_mismatch, container_version, tui_version
+        except Exception as e:
+            logger.debug(f"Error checking version mismatch: {e}")
+            return False, None, "unknown"
+
     async def get_service_status(
         self, force_refresh: bool = False
     ) -> Dict[str, ServiceInfo]:
@@ -763,6 +857,14 @@ class ContainerManager:
         if not self.is_available():
             yield False, "No container runtime available"
             return
+
+        # Ensure OPENRAG_VERSION is set in .env file
+        try:
+            from ..managers.env_manager import EnvManager
+            env_manager = EnvManager()
+            env_manager.ensure_openrag_version()
+        except Exception:
+            pass  # Continue even if version setting fails
 
         # Determine GPU mode
         if cpu_mode is None:

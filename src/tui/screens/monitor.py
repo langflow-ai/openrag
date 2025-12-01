@@ -20,6 +20,7 @@ from ..managers.docling_manager import DoclingManager
 from ..utils.platform import RuntimeType
 from ..widgets.command_modal import CommandOutputModal
 from ..widgets.flow_backup_warning_modal import FlowBackupWarningModal
+from ..widgets.version_mismatch_warning_modal import VersionMismatchWarningModal
 from ..widgets.diagnostics_notification import notify_with_diagnostics
 
 
@@ -63,7 +64,7 @@ class MonitorScreen(Screen):
 
     def on_unmount(self) -> None:
         """Clean up when the screen is unmounted."""
-        if hasattr(self, 'docling_manager'):
+        if hasattr(self, "docling_manager"):
             self.docling_manager.cleanup()
         super().on_unmount()
         self._follow_service = None
@@ -218,7 +219,7 @@ class MonitorScreen(Screen):
         docling_status_value = docling_status["status"]
         docling_running = docling_status_value == "running"
         docling_starting = docling_status_value == "starting"
-        
+
         if docling_running:
             docling_status_text = "running"
             docling_style = "bold green"
@@ -228,9 +229,15 @@ class MonitorScreen(Screen):
         else:
             docling_status_text = "stopped"
             docling_style = "bold red"
-        
-        docling_port = f"{docling_status['host']}:{docling_status['port']}" if (docling_running or docling_starting) else "N/A"
-        docling_pid = str(docling_status.get("pid")) if docling_status.get("pid") else "N/A"
+
+        docling_port = (
+            f"{docling_status['host']}:{docling_status['port']}"
+            if (docling_running or docling_starting)
+            else "N/A"
+        )
+        docling_pid = (
+            str(docling_status.get("pid")) if docling_status.get("pid") else "N/A"
+        )
 
         if self.docling_table:
             self.docling_table.add_row(
@@ -238,7 +245,7 @@ class MonitorScreen(Screen):
                 Text(docling_status_text, style=docling_style),
                 docling_port,
                 docling_pid,
-                "Start/Stop/Logs"
+                "Start/Stop/Logs",
             )
             # Restore docling selection when it was the last active table
             if self._last_selected_table == "docling":
@@ -321,27 +328,45 @@ class MonitorScreen(Screen):
         self.operation_in_progress = True
         try:
             # Check for port conflicts before attempting to start
-            ports_available, conflicts = await self.container_manager.check_ports_available()
+            (
+                ports_available,
+                conflicts,
+            ) = await self.container_manager.check_ports_available()
             if not ports_available:
                 # Show error notification instead of modal
                 conflict_msgs = []
                 for service_name, port, error_msg in conflicts[:3]:  # Show first 3
                     conflict_msgs.append(f"{service_name} (port {port})")
-                
+
                 conflict_str = ", ".join(conflict_msgs)
                 if len(conflicts) > 3:
                     conflict_str += f" and {len(conflicts) - 3} more"
-                
+
                 self.notify(
                     f"Cannot start services: Port conflicts detected for {conflict_str}. "
                     f"Please stop the conflicting services first.",
                     severity="error",
-                    timeout=10
+                    timeout=10,
                 )
                 # Refresh to show current state
                 await self._refresh_services()
                 return
-            
+
+            # Check for version mismatch
+            (
+                has_mismatch,
+                container_version,
+                tui_version,
+            ) = await self.container_manager.check_version_mismatch()
+            if has_mismatch and container_version:
+                # Show warning modal and wait for user decision
+                should_continue = await self.app.push_screen_wait(
+                    VersionMismatchWarningModal(container_version, tui_version)
+                )
+                if not should_continue:
+                    self.notify("Start cancelled", severity="information")
+                    return
+
             # Show command output in modal dialog
             command_generator = self.container_manager.start_services(cpu_mode)
             modal = CommandOutputModal(
@@ -391,45 +416,46 @@ class MonitorScreen(Screen):
             self.operation_in_progress = False
 
     async def _upgrade_services(self) -> None:
-        """Upgrade services with progress updates."""
+        """Check TUI version and show upgrade instructions."""
         self.operation_in_progress = True
         try:
-            # Check for flow backups before upgrading
-            if self._check_flow_backups():
-                # Show warning modal and wait for user decision
-                should_continue = await self.app.push_screen_wait(
-                    FlowBackupWarningModal(operation="upgrade")
+            from ..utils.version_check import check_if_latest
+
+            # Check if current version is latest
+            is_latest, latest_version, current_version = await check_if_latest()
+
+            if is_latest:
+                # Show "this is the latest version" toast
+                self.notify(
+                    f"You are running the latest version ({current_version}).",
+                    severity="success",
+                    timeout=5,
                 )
-                if not should_continue:
-                    self.notify("Upgrade cancelled", severity="information")
-                    return
-            
-            # Show command output in modal dialog
-            command_generator = self.container_manager.upgrade_services()
-            modal = CommandOutputModal(
-                "Upgrading Services",
-                command_generator,
-                on_complete=self._on_upgrade_complete,  # Show upgrade reminder after completion
+            else:
+                # Show upgrade instructions
+                upgrade_message = (
+                    f"Current version: {current_version}\n"
+                    f"Latest version: {latest_version}\n\n"
+                    "To upgrade the TUI:\n"
+                    "1. Exit TUI (press 'q')\n"
+                    "2. Run one of:\n"
+                    "   • pip install --upgrade openrag\n"
+                    "   • uv pip install --upgrade openrag\n"
+                    "   • uvx --from openrag openrag\n"
+                    "3. Restart: openrag\n\n"
+                    "After upgrading, containers will automatically use the new version."
+                )
+                self.notify(
+                    upgrade_message,
+                    severity="information",
+                    timeout=30,  # Show for 30 seconds
+                )
+        except Exception as e:
+            self.notify(
+                f"Error checking version: {str(e)}", severity="error", timeout=10
             )
-            self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
-
-    async def _on_upgrade_complete(self) -> None:
-        """Callback after upgrade completes - show TUI upgrade reminder."""
-        await self._refresh_services()
-        
-        # Show reminder to upgrade the TUI package
-        self.notify(
-            "Container services upgraded successfully!\n\n"
-            "To upgrade the TUI itself:\n"
-            "1. Exit TUI (press 'q')\n"
-            "2. Run: pip install --upgrade openrag\n"
-            "   (or: uv pip install --upgrade openrag)\n"
-            "3. Restart: openrag",
-            severity="information",
-            timeout=30  # Show for 30 seconds
-        )
 
     async def _reset_services(self) -> None:
         """Reset services with progress updates."""
@@ -444,7 +470,7 @@ class MonitorScreen(Screen):
                 if not should_continue:
                     self.notify("Reset cancelled", severity="information")
                     return
-            
+
             # Show command output in modal dialog
             command_generator = self.container_manager.reset_services()
             modal = CommandOutputModal(
@@ -459,10 +485,11 @@ class MonitorScreen(Screen):
     def _check_flow_backups(self) -> bool:
         """Check if there are any flow backups in ./flows/backup directory."""
         from pathlib import Path
+
         backup_dir = Path("flows/backup")
         if not backup_dir.exists():
             return False
-        
+
         try:
             # Check if there are any .json files in the backup directory
             backup_files = list(backup_dir.glob("*.json"))
@@ -481,7 +508,7 @@ class MonitorScreen(Screen):
                     f"Cannot start docling serve: {error_msg}. "
                     f"Please stop the conflicting service first.",
                     severity="error",
-                    timeout=10
+                    timeout=10,
                 )
                 # Refresh to show current state
                 await self._refresh_services()
@@ -499,7 +526,9 @@ class MonitorScreen(Screen):
             if success:
                 self.notify(message, severity="information")
             else:
-                self.notify(f"Failed to start docling serve: {message}", severity="error")
+                self.notify(
+                    f"Failed to start docling serve: {message}", severity="error"
+                )
             # Refresh again to show final status (running or stopped)
             await self._refresh_services()
         except Exception as e:
@@ -517,7 +546,9 @@ class MonitorScreen(Screen):
             if success:
                 self.notify(message, severity="information")
             else:
-                self.notify(f"Failed to stop docling serve: {message}", severity="error")
+                self.notify(
+                    f"Failed to stop docling serve: {message}", severity="error"
+                )
             # Refresh the services table to show updated status
             await self._refresh_services()
         except Exception as e:
@@ -533,7 +564,9 @@ class MonitorScreen(Screen):
             if success:
                 self.notify(message, severity="information")
             else:
-                self.notify(f"Failed to restart docling serve: {message}", severity="error")
+                self.notify(
+                    f"Failed to restart docling serve: {message}", severity="error"
+                )
             # Refresh the services table to show updated status
             await self._refresh_services()
         except Exception as e:
@@ -544,6 +577,7 @@ class MonitorScreen(Screen):
     def _view_docling_logs(self) -> None:
         """View docling serve logs."""
         from .logs import LogsScreen
+
         self.app.push_screen(LogsScreen(initial_service="docling-serve"))
 
     def _strip_ansi_codes(self, text: str) -> str:
@@ -744,7 +778,7 @@ class MonitorScreen(Screen):
                 Button("Upgrade", variant="warning", id=f"upgrade-btn{suffix}")
             )
             controls.mount(Button("Reset", variant="error", id=f"reset-btn{suffix}"))
-            
+
         except Exception as e:
             notify_with_diagnostics(
                 self.app, f"Error updating controls: {e}", severity="error"
@@ -764,6 +798,7 @@ class MonitorScreen(Screen):
 
             # Use a random suffix for unique IDs
             import random
+
             suffix = f"-{random.randint(10000, 99999)}"
 
             # Add docling serve controls
@@ -771,17 +806,21 @@ class MonitorScreen(Screen):
             docling_status_value = docling_status["status"]
             docling_running = docling_status_value == "running"
             docling_starting = docling_status_value == "starting"
-            
+
             if docling_running:
                 docling_controls.mount(
                     Button("Stop", variant="error", id=f"docling-stop-btn{suffix}")
                 )
                 docling_controls.mount(
-                    Button("Restart", variant="primary", id=f"docling-restart-btn{suffix}")
+                    Button(
+                        "Restart", variant="primary", id=f"docling-restart-btn{suffix}"
+                    )
                 )
             elif docling_starting:
                 # Show disabled button or no button when starting
-                start_btn = Button("Starting...", variant="warning", id=f"docling-start-btn{suffix}")
+                start_btn = Button(
+                    "Starting...", variant="warning", id=f"docling-start-btn{suffix}"
+                )
                 start_btn.disabled = True
                 docling_controls.mount(start_btn)
             else:
@@ -821,6 +860,7 @@ class MonitorScreen(Screen):
             if selected_service:
                 # Push the logs screen with the selected service
                 from .logs import LogsScreen
+
                 logs_screen = LogsScreen(initial_service=selected_service)
                 self.app.push_screen(logs_screen)
             else:
@@ -943,7 +983,9 @@ class MonitorScreen(Screen):
                 except Exception:
                     pass
 
-    def _focus_services_table(self, row: str | None = None, set_last: bool = True) -> None:
+    def _focus_services_table(
+        self, row: str | None = None, set_last: bool = True
+    ) -> None:
         """Focus the services table and update selection."""
         if not self.services_table:
             return
