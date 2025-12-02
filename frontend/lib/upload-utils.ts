@@ -10,7 +10,8 @@ export interface UploadFileResult {
   deletion: unknown;
   unified: boolean;
   raw: unknown;
-  userDocFilterId?: string;
+  createFilter?: boolean;
+  filename?: string;
 }
 
 export async function duplicateCheck(
@@ -182,8 +183,10 @@ export async function uploadFile(
       );
     }
 
-    const userDocFilterId = (uploadIngestJson as { user_doc_filter_id?: string })
-      .user_doc_filter_id;
+    const shouldCreateFilter = (uploadIngestJson as { create_filter?: boolean })
+      .create_filter;
+    const filename = (uploadIngestJson as { filename?: string })
+      .filename;
 
     const result: UploadFileResult = {
       fileId,
@@ -192,7 +195,8 @@ export async function uploadFile(
       deletion: deletionJson,
       unified: true,
       raw: uploadIngestJson,
-      userDocFilterId,
+      createFilter: shouldCreateFilter,
+      filename,
     };
 
     return result;
