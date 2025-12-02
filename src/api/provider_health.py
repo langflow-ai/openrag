@@ -1,9 +1,10 @@
 """Provider health check endpoint."""
 
+import httpx
 from starlette.responses import JSONResponse
 from utils.logging_config import get_logger
 from config.settings import get_openrag_config
-from api.provider_validation import validate_provider_setup
+from api.provider_validation import validate_provider_setup, _test_ollama_lightweight_health
 
 logger = get_logger(__name__)
 
@@ -116,31 +117,69 @@ async def check_provider_health(request):
             )
         else:
             # Validate both LLM and embedding providers
+            # Note: For Ollama, we use lightweight checks that don't require model inference.
+            # This prevents false-positive errors when Ollama is busy processing other requests.
             llm_error = None
             embedding_error = None
 
             # Validate LLM provider
             try:
-                await validate_provider_setup(
-                    provider=provider,
-                    api_key=api_key,
-                    llm_model=llm_model,
-                    endpoint=endpoint,
-                    project_id=project_id,
-                )
+                # For Ollama, use lightweight health check that doesn't block on active requests
+                if provider == "ollama":
+                    try:
+                        await _test_ollama_lightweight_health(endpoint)
+                    except Exception as lightweight_error:
+                        # If lightweight check fails, Ollama is down or misconfigured
+                        llm_error = str(lightweight_error)
+                        logger.error(f"LLM provider ({provider}) lightweight check failed: {llm_error}")
+                        raise
+                else:
+                    await validate_provider_setup(
+                        provider=provider,
+                        api_key=api_key,
+                        llm_model=llm_model,
+                        endpoint=endpoint,
+                        project_id=project_id,
+                    )
+            except httpx.TimeoutException as e:
+                # Timeout means provider is busy, not misconfigured
+                if provider == "ollama":
+                    llm_error = None  # Don't treat as error
+                    logger.info(f"LLM provider ({provider}) appears busy: {str(e)}")
+                else:
+                    llm_error = str(e)
+                    logger.error(f"LLM provider ({provider}) validation timed out: {llm_error}")
             except Exception as e:
                 llm_error = str(e)
                 logger.error(f"LLM provider ({provider}) validation failed: {llm_error}")
 
             # Validate embedding provider
             try:
-                await validate_provider_setup(
-                    provider=embedding_provider,
-                    api_key=embedding_api_key,
-                    embedding_model=embedding_model,
-                    endpoint=embedding_endpoint,
-                    project_id=embedding_project_id,
-                )
+                # For Ollama, use lightweight health check first
+                if embedding_provider == "ollama":
+                    try:
+                        await _test_ollama_lightweight_health(embedding_endpoint)
+                    except Exception as lightweight_error:
+                        # If lightweight check fails, Ollama is down or misconfigured
+                        embedding_error = str(lightweight_error)
+                        logger.error(f"Embedding provider ({embedding_provider}) lightweight check failed: {embedding_error}")
+                        raise
+                else:
+                    await validate_provider_setup(
+                        provider=embedding_provider,
+                        api_key=embedding_api_key,
+                        embedding_model=embedding_model,
+                        endpoint=embedding_endpoint,
+                        project_id=embedding_project_id,
+                    )
+            except httpx.TimeoutException as e:
+                # Timeout means provider is busy, not misconfigured
+                if embedding_provider == "ollama":
+                    embedding_error = None  # Don't treat as error
+                    logger.info(f"Embedding provider ({embedding_provider}) appears busy: {str(e)}")
+                else:
+                    embedding_error = str(e)
+                    logger.error(f"Embedding provider ({embedding_provider}) validation timed out: {embedding_error}")
             except Exception as e:
                 embedding_error = str(e)
                 logger.error(f"Embedding provider ({embedding_provider}) validation failed: {embedding_error}")

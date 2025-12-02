@@ -364,6 +364,34 @@ async def _test_watsonx_embedding(
 
 
 # Ollama validation functions
+async def _test_ollama_lightweight_health(endpoint: str) -> None:
+    """Test Ollama availability with lightweight status check.
+    
+    Only checks if the endpoint returns a 200 status without fetching data.
+    """
+    try:
+        ollama_url = transform_localhost_url(endpoint)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                ollama_url,
+                timeout=10.0,  # Short timeout for lightweight check
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Ollama lightweight health check failed: {response.status_code}")
+                raise Exception(f"Ollama endpoint not responding: {response.status_code}")
+
+            logger.info("Ollama lightweight health check passed")
+
+    except httpx.TimeoutException:
+        logger.error("Ollama lightweight health check timed out")
+        raise Exception("Ollama endpoint timed out")
+    except Exception as e:
+        logger.error(f"Ollama lightweight health check failed: {str(e)}")
+        raise
+
+
 async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> None:
     """Test Ollama completion with tool calling."""
     try:
@@ -401,7 +429,7 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
             response = await client.post(
                 url,
                 json=payload,
-                timeout=30.0,
+                timeout=60.0,  # Increased timeout for Ollama when potentially busy
             )
 
             if response.status_code != 200:
@@ -412,7 +440,7 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
 
     except httpx.TimeoutException:
         logger.error("Ollama completion test timed out")
-        raise Exception("Request timed out")
+        raise httpx.TimeoutException("Ollama is busy or model inference timed out")
     except Exception as e:
         logger.error(f"Ollama completion test failed: {str(e)}")
         raise
@@ -433,7 +461,7 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
             response = await client.post(
                 url,
                 json=payload,
-                timeout=30.0,
+                timeout=60.0,  # Increased timeout for Ollama when potentially busy
             )
 
             if response.status_code != 200:
@@ -448,7 +476,7 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
 
     except httpx.TimeoutException:
         logger.error("Ollama embedding test timed out")
-        raise Exception("Request timed out")
+        raise httpx.TimeoutException("Ollama is busy or embedding generation timed out")
     except Exception as e:
         logger.error(f"Ollama embedding test failed: {str(e)}")
         raise
