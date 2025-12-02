@@ -77,7 +77,7 @@ On macOS, this cache directory is typically a user cache directory such as `/Use
    uvx openrag
    ```
 
-If you do not need OCR, you can disable OCR-based processing in your ingestion settings to avoid requiring `easyocr`.
+If you don't need OCR, you can disable OCR-based processing in your ingestion settings to avoid requiring `easyocr`.
 
 ## Upgrade fails due to Langflow container already exists {#langflow-container-already-exists-during-upgrade}
 
@@ -124,8 +124,8 @@ If reinstalling the Langflow container doesn't resolve the issue, you must reset
 Then, you can retry the upgrade.
 
 :::warning
-This is a destructive operation that completely resets your OpenRAG containers and removes all OpenRAG data, including OpenSearch data, uploaded documents, and authentication details.
-Your `.env` file is preserved, so your configuration settings remain intact, but all other data is lost.
+This is a destructive operation that destroys your OpenRAG containers and their contents.
+However, your `.env` file (configuration settings) and `./opensearch-data` (OpenSearch knowledge base) are preserved.
 :::
 
 To reset your installation, stop your containers, and then completely remove them.
@@ -211,3 +211,16 @@ After removing the containers, retry the upgrade in the OpenRAG TUI by clicking 
 
 </TabItem>
 </Tabs>
+
+## Reinstalling OpenRAG doesn't reset onboarding {#reinstalling-openrag-doesnt-reset-onboarding}
+
+If you [reinstall OpenRAG](/install#reinstall), you can restore your installation to it's original, default state by resetting the containers _and_ deleting the `.env` file.
+
+When you start OpenRAG after doing this, you should be prompted to go through the initial setup and onboarding process again.
+
+Due to a known issue, the onboarding process might not reset when you reinstall OpenRAG.
+If this occurs, [install OpenRAG in a new Python project directory](/install#install) (with `uv init` and `uv add openrag`).
+
+## Document ingestion or similarity search issues
+
+See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).

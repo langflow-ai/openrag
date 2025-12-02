@@ -24,9 +24,25 @@ const sidebars = {
     "get-started/quickstart",
     "get-started/install",
     "get-started/docker",
-    "core-components/agents",
-    "core-components/knowledge",
-    "core-components/ingestion",
+    {
+      type: "doc",
+      id: "core-components/agents",
+      label: "Flows",
+    },
+    {
+      type: "category",
+      label: "Knowledge",
+      items: [
+        "core-components/knowledge",
+        "core-components/ingestion",
+        "core-components/knowledge-filters",
+      ],
+    },
+    {
+      type: "doc",
+      id: "core-components/chat",
+      label: "Chat",
+    },
     "reference/configuration",
     "support/troubleshoot",
   ],

@@ -1,8 +1,5 @@
 """OpenRAG Terminal User Interface package."""
 
-from importlib.metadata import version
+from .utils.version_check import get_current_version
 
-try:
-    __version__ = version("openrag")
-except Exception:
-    __version__ = "unknown"
+__version__ = get_current_version()

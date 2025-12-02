@@ -1105,7 +1105,7 @@ async def create_app():
                     session_manager=services["session_manager"],
                 )
             ),
-            methods=["GET"],
+            methods=["POST"],
         ),
         Route(
             "/models/anthropic",
@@ -1116,7 +1116,7 @@ async def create_app():
                     session_manager=services["session_manager"],
                 )
             ),
-            methods=["GET"],
+            methods=["POST"],
         ),
         Route(
             "/models/ollama",
@@ -1138,7 +1138,7 @@ async def create_app():
                     session_manager=services["session_manager"],
                 )
             ),
-            methods=["GET", "POST"],
+            methods=["POST"],
         ),
         # Onboarding endpoint
         Route(
