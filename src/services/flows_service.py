@@ -28,6 +28,7 @@ import copy
 from datetime import datetime
 from utils.logging_config import get_logger
 from utils.container_utils import transform_localhost_url
+from utils.telemetry import TelemetryClient, Category, MessageId
 
 logger = get_logger(__name__)
 
@@ -227,6 +228,12 @@ class FlowsService:
             skipped_count=len(backup_results["skipped"]),
             failed_count=len(backup_results["failed"]),
         )
+
+        # Send telemetry event
+        if backup_results["failed"]:
+            await TelemetryClient.send_event(Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_BACKUP_FAILED)
+        else:
+            await TelemetryClient.send_event(Category.FLOW_OPERATIONS, MessageId.ORB_FLOW_BACKUP_COMPLETE)
 
         return backup_results
 

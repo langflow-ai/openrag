@@ -4,6 +4,7 @@ import time
 from starlette.responses import JSONResponse
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
+from utils.telemetry import TelemetryClient, Category, MessageId
 from config.settings import (
     DISABLE_INGEST_WITH_LANGFLOW,
     LANGFLOW_URL,
@@ -409,16 +410,32 @@ async def update_settings(request, session_manager):
 
         # Update agent settings
         if "llm_model" in body:
+            old_model = current_config.agent.llm_model
             current_config.agent.llm_model = body["llm_model"]
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_LLM_MODEL
+            )
+            logger.info(f"LLM model changed from {old_model} to {body['llm_model']}")
 
         if "llm_provider" in body:
+            old_provider = current_config.agent.llm_provider
             current_config.agent.llm_provider = body["llm_provider"]
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_LLM_PROVIDER
+            )
+            logger.info(f"LLM provider changed from {old_provider} to {body['llm_provider']}")
 
         if "system_prompt" in body:
             current_config.agent.system_prompt = body["system_prompt"]
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_SYSTEM_PROMPT
+            )
 
             # Also update the chat flow with the new system prompt
             try:
@@ -431,17 +448,33 @@ async def update_settings(request, session_manager):
 
         # Update knowledge settings
         if "embedding_model" in body:
+            old_model = current_config.knowledge.embedding_model
             new_embedding_model = body["embedding_model"].strip()
             current_config.knowledge.embedding_model = new_embedding_model
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_EMBED_MODEL
+            )
+            logger.info(f"Embedding model changed from {old_model} to {new_embedding_model}")
 
         if "embedding_provider" in body:
+            old_provider = current_config.knowledge.embedding_provider
             current_config.knowledge.embedding_provider = body["embedding_provider"]
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_EMBED_PROVIDER
+            )
+            logger.info(f"Embedding provider changed from {old_provider} to {body['embedding_provider']}")
 
         if "table_structure" in body:
             current_config.knowledge.table_structure = body["table_structure"]
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_DOCLING_UPDATED
+            )
 
             # Also update the flow with the new docling settings
             try:
@@ -453,6 +486,10 @@ async def update_settings(request, session_manager):
         if "ocr" in body:
             current_config.knowledge.ocr = body["ocr"]
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_DOCLING_UPDATED
+            )
 
             # Also update the flow with the new docling settings
             try:
@@ -464,6 +501,10 @@ async def update_settings(request, session_manager):
         if "picture_descriptions" in body:
             current_config.knowledge.picture_descriptions = body["picture_descriptions"]
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_DOCLING_UPDATED
+            )
 
             # Also update the flow with the new docling settings
             try:
@@ -475,6 +516,10 @@ async def update_settings(request, session_manager):
         if "chunk_size" in body:
             current_config.knowledge.chunk_size = body["chunk_size"]
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_CHUNK_UPDATED
+            )
 
             # Also update the ingest flow with the new chunk size
             try:
@@ -491,6 +536,10 @@ async def update_settings(request, session_manager):
         if "chunk_overlap" in body:
             current_config.knowledge.chunk_overlap = body["chunk_overlap"]
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_CHUNK_UPDATED
+            )
 
             # Also update the ingest flow with the new chunk overlap
             try:
@@ -507,35 +556,48 @@ async def update_settings(request, session_manager):
                 # The config will still be saved
 
         # Update provider-specific settings
+        provider_updated = False
         if "openai_api_key" in body and body["openai_api_key"].strip():
             current_config.providers.openai.api_key = body["openai_api_key"].strip()
             current_config.providers.openai.configured = True
             config_updated = True
+            provider_updated = True
 
         if "anthropic_api_key" in body and body["anthropic_api_key"].strip():
             current_config.providers.anthropic.api_key = body["anthropic_api_key"]
             current_config.providers.anthropic.configured = True
             config_updated = True
+            provider_updated = True
 
         if "watsonx_api_key" in body and body["watsonx_api_key"].strip():
             current_config.providers.watsonx.api_key = body["watsonx_api_key"]
             current_config.providers.watsonx.configured = True
             config_updated = True
+            provider_updated = True
 
         if "watsonx_endpoint" in body:
             current_config.providers.watsonx.endpoint = body["watsonx_endpoint"].strip()
             current_config.providers.watsonx.configured = True
             config_updated = True
+            provider_updated = True
 
         if "watsonx_project_id" in body:
             current_config.providers.watsonx.project_id = body["watsonx_project_id"].strip()
             current_config.providers.watsonx.configured = True
             config_updated = True
+            provider_updated = True
 
         if "ollama_endpoint" in body:
             current_config.providers.ollama.endpoint = body["ollama_endpoint"].strip()
             current_config.providers.ollama.configured = True
             config_updated = True
+            provider_updated = True
+        
+        if provider_updated:
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_PROVIDER_CREDS
+            )
 
         if not config_updated:
             return JSONResponse(
@@ -584,10 +646,18 @@ async def update_settings(request, session_manager):
         logger.info(
             "Configuration updated successfully", updated_fields=list(body.keys())
         )
+        await TelemetryClient.send_event(
+            Category.SETTINGS_OPERATIONS, 
+            MessageId.ORB_SETTINGS_UPDATED
+        )
         return JSONResponse({"message": "Configuration updated successfully"})
 
     except Exception as e:
         logger.error("Failed to update settings", error=str(e))
+        await TelemetryClient.send_event(
+            Category.SETTINGS_OPERATIONS, 
+            MessageId.ORB_SETTINGS_UPDATE_FAILED
+        )
         return JSONResponse(
             {"error": f"Failed to update settings: {str(e)}"}, status_code=500
         )
@@ -596,6 +666,8 @@ async def update_settings(request, session_manager):
 async def onboarding(request, flows_service, session_manager=None):
     """Handle onboarding configuration setup"""
     try:
+        await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
+        
         # Get current configuration
         current_config = get_openrag_config()
 
@@ -638,13 +710,23 @@ async def onboarding(request, flows_service, session_manager=None):
         config_updated = False
 
         # Update agent settings (LLM)
+        llm_model_selected = None
+        llm_provider_selected = None
+        
         if "llm_model" in body:
             if not isinstance(body["llm_model"], str) or not body["llm_model"].strip():
                 return JSONResponse(
                     {"error": "llm_model must be a non-empty string"}, status_code=400
                 )
-            current_config.agent.llm_model = body["llm_model"].strip()
+            llm_model_selected = body["llm_model"].strip()
+            current_config.agent.llm_model = llm_model_selected
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.ONBOARDING, 
+                MessageId.ORB_ONBOARD_LLM_MODEL,
+                metadata={"llm_model": llm_model_selected}
+            )
+            logger.info(f"LLM model selected during onboarding: {llm_model_selected}")
 
         if "llm_provider" in body:
             if (
@@ -660,10 +742,20 @@ async def onboarding(request, flows_service, session_manager=None):
                     {"error": "llm_provider must be one of: openai, anthropic, watsonx, ollama"},
                     status_code=400,
                 )
-            current_config.agent.llm_provider = body["llm_provider"].strip()
+            llm_provider_selected = body["llm_provider"].strip()
+            current_config.agent.llm_provider = llm_provider_selected
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.ONBOARDING, 
+                MessageId.ORB_ONBOARD_LLM_PROVIDER,
+                metadata={"llm_provider": llm_provider_selected}
+            )
+            logger.info(f"LLM provider selected during onboarding: {llm_provider_selected}")
 
         # Update knowledge settings (embedding)
+        embedding_model_selected = None
+        embedding_provider_selected = None
+        
         if "embedding_model" in body and not DISABLE_INGEST_WITH_LANGFLOW:
             if (
                 not isinstance(body["embedding_model"], str)
@@ -673,8 +765,15 @@ async def onboarding(request, flows_service, session_manager=None):
                     {"error": "embedding_model must be a non-empty string"},
                     status_code=400,
                 )
-            current_config.knowledge.embedding_model = body["embedding_model"].strip()
+            embedding_model_selected = body["embedding_model"].strip()
+            current_config.knowledge.embedding_model = embedding_model_selected
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.ONBOARDING, 
+                MessageId.ORB_ONBOARD_EMBED_MODEL,
+                metadata={"embedding_model": embedding_model_selected}
+            )
+            logger.info(f"Embedding model selected during onboarding: {embedding_model_selected}")
 
         if "embedding_provider" in body:
             if (
@@ -691,8 +790,15 @@ async def onboarding(request, flows_service, session_manager=None):
                     {"error": "embedding_provider must be one of: openai, watsonx, ollama"},
                     status_code=400,
                 )
-            current_config.knowledge.embedding_provider = body["embedding_provider"].strip()
+            embedding_provider_selected = body["embedding_provider"].strip()
+            current_config.knowledge.embedding_provider = embedding_provider_selected
             config_updated = True
+            await TelemetryClient.send_event(
+                Category.ONBOARDING, 
+                MessageId.ORB_ONBOARD_EMBED_PROVIDER,
+                metadata={"embedding_provider": embedding_provider_selected}
+            )
+            logger.info(f"Embedding provider selected during onboarding: {embedding_provider_selected}")
 
         # Update provider-specific credentials
         if "openai_api_key" in body and body["openai_api_key"].strip():
@@ -778,6 +884,12 @@ async def onboarding(request, flows_service, session_manager=None):
                     {"error": "sample_data must be a boolean value"}, status_code=400
                 )
             should_ingest_sample_data = body["sample_data"]
+            if should_ingest_sample_data:
+                await TelemetryClient.send_event(
+                    Category.ONBOARDING, 
+                    MessageId.ORB_ONBOARD_SAMPLE_DATA
+                )
+                logger.info("Sample data ingestion requested during onboarding")
 
         if not config_updated:
             return JSONResponse(
@@ -920,8 +1032,38 @@ async def onboarding(request, flows_service, session_manager=None):
                 "Onboarding configuration updated successfully",
                 updated_fields=updated_fields,
             )
+            
+            # Mark config as edited and send telemetry with model information
+            current_config.edited = True
+            
+            # Build metadata with selected models
+            onboarding_metadata = {}
+            if llm_provider_selected:
+                onboarding_metadata["llm_provider"] = llm_provider_selected
+            if llm_model_selected:
+                onboarding_metadata["llm_model"] = llm_model_selected
+            if embedding_provider_selected:
+                onboarding_metadata["embedding_provider"] = embedding_provider_selected
+            if embedding_model_selected:
+                onboarding_metadata["embedding_model"] = embedding_model_selected
+            
+            await TelemetryClient.send_event(
+                Category.ONBOARDING, 
+                MessageId.ORB_ONBOARD_CONFIG_EDITED,
+                metadata=onboarding_metadata
+            )
+            await TelemetryClient.send_event(
+                Category.ONBOARDING, 
+                MessageId.ORB_ONBOARD_COMPLETE,
+                metadata=onboarding_metadata
+            )
+            logger.info("Configuration marked as edited after onboarding")
 
         else:
+            await TelemetryClient.send_event(
+                Category.ONBOARDING, 
+                MessageId.ORB_ONBOARD_FAILED
+            )
             return JSONResponse(
                 {"error": "Failed to save configuration"}, status_code=500
             )
@@ -959,6 +1101,10 @@ async def onboarding(request, flows_service, session_manager=None):
 
     except Exception as e:
         logger.error("Failed to update onboarding settings", error=str(e))
+        await TelemetryClient.send_event(
+            Category.ONBOARDING, 
+            MessageId.ORB_ONBOARD_FAILED
+        )
         return JSONResponse(
             {"error": str(e)},
             status_code=500,
@@ -1311,11 +1457,11 @@ async def update_docling_preset(request, session_manager):
         flows_service = _get_flows_service()
         await flows_service.update_flow_docling_preset("custom", preset_config)
 
-        logger.info(f"Successfully updated docling settings in ingest flow")
+        logger.info("Successfully updated docling settings in ingest flow")
 
         return JSONResponse(
             {
-                "message": f"Successfully updated docling settings",
+                "message": "Successfully updated docling settings",
                 "settings": settings,
                 "preset_config": preset_config,
             }
