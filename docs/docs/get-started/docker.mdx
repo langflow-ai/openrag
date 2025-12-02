@@ -34,7 +34,7 @@ OpenRAG has two Docker Compose files. Both files deploy the same applications an
 
 - Prepare model providers and credentials.
 
-   During [Application Onboarding](#application-onboarding), you must select language model and embedding model providers.
+   During [application onboarding](#application-onboarding), you must select language model and embedding model providers.
    If your chosen provider offers both types, you can use the same provider for both selections.
    If your provider offers only one type, such as Anthropic, you must select two providers.
 
@@ -84,7 +84,7 @@ To install OpenRAG with Docker Compose, do the following:
    LANGFLOW_SECRET_KEY=your_secret_key
    ```
 
-   `OPENAI_API_KEY` is optional. You can provide it during [Application Onboarding](#application-onboarding) or choose a different model provider. If you want to set it in your `.env` file, you can find your OpenAI API key in your [OpenAI account](https://platform.openai.com/api-keys).
+   `OPENAI_API_KEY` is optional. You can provide it during [application onboarding](#application-onboarding) or choose a different model provider. If you want to set it in your `.env` file, you can find your OpenAI API key in your [OpenAI account](https://platform.openai.com/api-keys).
 
    `LANGFLOW_SECRET_KEY` is optional. Langflow will auto-generate it if not set. For more information, see the [Langflow documentation](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key).
 
@@ -159,7 +159,7 @@ To install OpenRAG with Docker Compose, do the following:
    - **Backend API**: http://localhost:8000
    - **Langflow**: http://localhost:7860
 
-9. Continue with [Application Onboarding](#application-onboarding).
+9. Continue with [application onboarding](#application-onboarding).
 
 To stop `docling serve` when you're done with your OpenRAG deployment, run:
 

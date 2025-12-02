@@ -10,13 +10,18 @@ OpenRAG connects and amplifies three popular, proven open-source projects into o
 
 * [Langflow](https://docs.langflow.org): Langflow is a versatile tool for building and deploying AI agents and MCP servers. It supports all major LLMs, vector databases, and a growing library of AI tools.
 
+   OpenRAG uses several built-in flows, and it provides full access to all Langflow features through the embedded Langflow visual editor.
+
+   By customizing the built-in flows or creating your own flows, every part of the OpenRAG stack interchangeable. You can modify any aspect of the flows from basic settings, like changing the language model, to replacing entire components. You can also write your own custom Langflow components, integrate MCP servers, call APIs, and leverage any other functionality provided by Langflow.
+
 * [OpenSearch](https://docs.opensearch.org/latest/): OpenSearch is a community-driven, Apache 2.0-licensed open source search and analytics suite that makes it easy to ingest, search, visualize, and analyze data.
+It provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
 
-* [Docling](https://docling-project.github.io/docling/): Docling simplifies document processing, parsing diverse formats — including advanced PDF understanding — and providing seamless integrations with the gen AI ecosystem.
+   OpenRAG uses OpenSearch as the underlying vector database for storing and retrieving your documents and associated vector data (embeddings). You can ingest documents from a variety of sources, including your local filesystem and OAuth authenticated connectors to popular cloud storage services.
 
-OpenRAG builds on Langflow's familiar interface while adding OpenSearch for vector storage and Docling for simplified document parsing. It uses opinionated flows that serve as ready-to-use recipes for ingestion, retrieval, and generation from familiar sources like Google Drive, OneDrive, and SharePoint.
+* [Docling](https://docling-project.github.io/docling/): Docling simplifies document processing, supports many file formats and advanced PDF parsing, and provides seamless integrations with the generative AI ecosystem.
 
-What's more, every part of the stack is interchangeable: You can write your own custom components in Python, try different language models, and customize your flows to build a personalized agentic RAG system.
+   OpenRAG uses Docling to parse and chunk documents that are stored in your OpenSearch knowledge base.
 
 :::tip
 Ready to get started? Try the [quickstart](/quickstart) to install OpenRAG and start exploring in minutes.
@@ -52,12 +57,12 @@ flowchart TD
     ext --> backend
 ```
 
-* The **OpenRAG Backend** is the central orchestration service that coordinates all other components.
+* **OpenRAG backend**: The central orchestration service that coordinates all other components.
 
-* **Langflow** provides a visual workflow engine for building AI agents, and connects to **OpenSearch** for vector storage and retrieval.
+* **Langflow**: This container runs a Langflow instance. It provides the embedded Langflow visual editor for editing and creating flow, and it connects to the **OpenSearch** container for vector storage and retrieval.
 
-* **Docling Serve** is a local document processing service managed by the **OpenRAG Backend**.
+* **Docling Serve**: This is a local document processing service managed by the **OpenRAG backend**.
 
-* **External connectors** integrate third-party cloud storage services through OAuth authenticated connections to the **OpenRAG Backend**, allowing synchronization of external storage with your OpenSearch knowledge base.
+* **External connectors**: Integrate third-party cloud storage services with OAuth authenticated connectors to the **OpenRAG backend**, allowing you to load documents from external storage to your OpenSearch knowledge base.
 
-* The **OpenRAG Frontend** provides the user interface for interacting with the platform.
+* **OpenRAG frontend**: Provides the user interface for interacting with the OpenRAG platform.
