@@ -465,6 +465,7 @@ export function KnowledgeFilterPanel() {
               disabled={isSaving}
               variant="outline"
               size="sm"
+              className="relative z-10"
             >
               Cancel
             </Button>
@@ -475,7 +476,7 @@ export function KnowledgeFilterPanel() {
               size="sm"
               onClick={handleDeleteFilter}
               disabled={isSaving}
-              className="pointer-events-auto"
+              className="relative z-10"
             >
               Delete Filter
             </Button>
@@ -484,7 +485,7 @@ export function KnowledgeFilterPanel() {
             onClick={handleSaveConfiguration}
             disabled={isSaving}
             size="sm"
-            className="relative"
+            className="relative z-10"
           >
             {isSaving && (
               <>
