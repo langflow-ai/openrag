@@ -475,6 +475,7 @@ export function KnowledgeFilterPanel() {
               size="sm"
               onClick={handleDeleteFilter}
               disabled={isSaving}
+              className="pointer-events-auto"
             >
               Delete Filter
             </Button>
