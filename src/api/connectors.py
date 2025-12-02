@@ -1,6 +1,7 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from utils.logging_config import get_logger
+from utils.telemetry import TelemetryClient, Category, MessageId
 
 logger = get_logger(__name__)
 
@@ -25,6 +26,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
     selected_files = data.get("selected_files")
 
     try:
+        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START)
         logger.debug(
             "Starting connector sync",
             connector_type=connector_type,
@@ -102,6 +104,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
                 jwt_token=jwt_token,
             )
         task_ids = [task_id]
+        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_COMPLETE)
         return JSONResponse(
             {
                 "task_ids": task_ids,
@@ -114,6 +117,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
 
     except Exception as e:
         logger.error("Connector sync failed", error=str(e))
+        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED)
         return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
 
 
@@ -185,6 +189,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
         config=temp_config,
     )
     try:
+        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_WEBHOOK_RECV)
         temp_connector = connector_service.connection_manager._create_connector(
             temp_connection
         )
@@ -336,6 +341,7 @@ async def connector_webhook(request: Request, connector_service, session_manager
 
     except Exception as e:
         logger.error("Webhook processing failed", error=str(e))
+        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_WEBHOOK_FAILED)
         return JSONResponse(
             {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
         )
