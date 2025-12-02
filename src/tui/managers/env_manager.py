@@ -68,6 +68,9 @@ class EnvConfig:
 
     # OpenSearch data path
     opensearch_data_path: str = "./opensearch-data"
+    
+    # Container version (linked to TUI version)
+    openrag_version: str = ""
 
     # Validation errors
     validation_errors: Dict[str, str] = field(default_factory=dict)
@@ -149,6 +152,7 @@ class EnvManager:
             "LANGFLOW_NEW_USER_IS_ACTIVE": "langflow_new_user_is_active",
             "LANGFLOW_ENABLE_SUPERUSER_CLI": "langflow_enable_superuser_cli",
             "DISABLE_INGEST_WITH_LANGFLOW": "disable_ingest_with_langflow",
+            "OPENRAG_VERSION": "openrag_version",
         }
         
         loaded_from_file = False
@@ -193,6 +197,17 @@ class EnvManager:
 
         if not self.config.langflow_secret_key:
             self.config.langflow_secret_key = self.generate_langflow_secret_key()
+        
+        # Set OPENRAG_VERSION to TUI version if not already set
+        if not self.config.openrag_version:
+            try:
+                from ..utils.version_check import get_current_version
+                current_version = get_current_version()
+                if current_version != "unknown":
+                    self.config.openrag_version = current_version
+            except Exception:
+                # If we can't get version, leave it empty (will use 'latest' from compose)
+                pass
 
         # Configure autologin based on whether password is set
         if not self.config.langflow_superuser_password:
@@ -344,6 +359,18 @@ class EnvManager:
                 f.write(
                     f"OPENSEARCH_DATA_PATH={self._quote_env_value(self.config.opensearch_data_path)}\n"
                 )
+                # Set OPENRAG_VERSION to TUI version
+                if self.config.openrag_version:
+                    f.write(f"OPENRAG_VERSION={self._quote_env_value(self.config.openrag_version)}\n")
+                else:
+                    # Fallback: try to get current version
+                    try:
+                        from ..utils.version_check import get_current_version
+                        current_version = get_current_version()
+                        if current_version != "unknown":
+                            f.write(f"OPENRAG_VERSION={self._quote_env_value(current_version)}\n")
+                    except Exception:
+                        pass
                 f.write("\n")
 
                 # Provider API keys and endpoints (optional - can be set during onboarding)
@@ -513,6 +540,73 @@ class EnvManager:
         ]
 
         return base_fields + oauth_fields + flow_fields + optional_fields
+
+    def ensure_openrag_version(self) -> None:
+        """Ensure OPENRAG_VERSION is set in .env file to match TUI version."""
+        try:
+            from ..utils.version_check import get_current_version
+            current_version = get_current_version()
+            if current_version == "unknown":
+                return
+            
+            # Check if OPENRAG_VERSION is already set in .env
+            if self.env_file.exists():
+                env_content = self.env_file.read_text()
+                if "OPENRAG_VERSION" in env_content:
+                    # Already set, check if it needs updating
+                    for line in env_content.splitlines():
+                        if line.strip().startswith("OPENRAG_VERSION"):
+                            existing_value = line.split("=", 1)[1].strip()
+                            existing_value = sanitize_env_value(existing_value)
+                            if existing_value == current_version:
+                                # Already correct, no update needed
+                                return
+                            break
+            
+            # Set or update OPENRAG_VERSION
+            self.config.openrag_version = current_version
+            
+            # Update .env file
+            if self.env_file.exists():
+                # Read existing content
+                lines = self.env_file.read_text().splitlines()
+                updated = False
+                new_lines = []
+                
+                for line in lines:
+                    if line.strip().startswith("OPENRAG_VERSION"):
+                        # Replace existing line
+                        new_lines.append(f"OPENRAG_VERSION={self._quote_env_value(current_version)}")
+                        updated = True
+                    else:
+                        new_lines.append(line)
+                
+                # If not found, add it after OPENSEARCH_DATA_PATH or at the end
+                if not updated:
+                    insert_pos = len(new_lines)
+                    for i, line in enumerate(new_lines):
+                        if "OPENSEARCH_DATA_PATH" in line:
+                            insert_pos = i + 1
+                            break
+                    new_lines.insert(insert_pos, f"OPENRAG_VERSION={self._quote_env_value(current_version)}")
+                
+                with open(self.env_file, 'w') as f:
+                    f.write("\n".join(new_lines) + "\n")
+                    f.flush()
+                    os.fsync(f.fileno())
+            else:
+                # Create new .env file with just OPENRAG_VERSION
+                with open(self.env_file, 'w') as f:
+                    content = (
+                        f"# OpenRAG Environment Configuration\n"
+                        f"# Generated by OpenRAG TUI\n\n"
+                        f"OPENRAG_VERSION={self._quote_env_value(current_version)}\n"
+                    )
+                    f.write(content)
+                    f.flush()
+                    os.fsync(f.fileno())
+        except Exception as e:
+            logger.debug(f"Error ensuring OPENRAG_VERSION: {e}")
 
     def generate_compose_volume_mounts(self) -> List[str]:
         """Generate Docker Compose volume mount strings from documents paths."""

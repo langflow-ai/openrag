@@ -15,6 +15,7 @@ from ..managers.container_manager import ContainerManager, ServiceStatus
 from ..managers.env_manager import EnvManager
 from ..managers.docling_manager import DoclingManager
 from ..widgets.command_modal import CommandOutputModal
+from ..widgets.version_mismatch_warning_modal import VersionMismatchWarningModal
 
 
 class WelcomeScreen(Screen):
@@ -450,6 +451,28 @@ class WelcomeScreen(Screen):
 
         # Step 1: Start container services first (to create the network)
         if self.container_manager.is_available():
+            # Check for version mismatch before starting
+            has_mismatch, container_version, tui_version = await self.container_manager.check_version_mismatch()
+            if has_mismatch and container_version:
+                # Show warning modal and wait for user decision
+                should_continue = await self.app.push_screen_wait(
+                    VersionMismatchWarningModal(container_version, tui_version)
+                )
+                if not should_continue:
+                    self.notify("Start cancelled", severity="information")
+                    return
+                # Ensure OPENRAG_VERSION is set in .env BEFORE starting services
+                # This ensures docker compose reads the correct version
+                try:
+                    from ..managers.env_manager import EnvManager
+                    env_manager = EnvManager()
+                    env_manager.ensure_openrag_version()
+                    # Small delay to ensure .env file is written and flushed
+                    import asyncio
+                    await asyncio.sleep(0.5)
+                except Exception:
+                    pass  # Continue even if version setting fails
+            
             command_generator = self.container_manager.start_services()
             modal = CommandOutputModal(
                 "Starting Container Services",
