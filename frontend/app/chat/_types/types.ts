@@ -49,6 +49,7 @@ export interface RequestBody {
   stream?: boolean;
   previous_response_id?: string;
   filters?: SelectedFilters;
+  filter_id?: string;
   limit?: number;
   scoreThreshold?: number;
 }
