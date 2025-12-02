@@ -4,6 +4,7 @@ import type {
   Message,
   SelectedFilters,
 } from "@/app/chat/_types/types";
+import { useChat } from "@/contexts/chat-context";
 
 interface UseChatStreamingOptions {
   endpoint?: string;
@@ -15,6 +16,7 @@ interface SendMessageOptions {
   prompt: string;
   previousResponseId?: string;
   filters?: SelectedFilters;
+  filter_id?: string;
   limit?: number;
   scoreThreshold?: number;
 }
@@ -31,10 +33,13 @@ export function useChatStreaming({
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef(0);
 
+  const { refreshConversations } = useChat();
+
   const sendMessage = async ({
     prompt,
     previousResponseId,
     filters,
+    filter_id,
     limit = 10,
     scoreThreshold = 0,
   }: SendMessageOptions) => {
@@ -73,6 +78,7 @@ export function useChatStreaming({
         stream: boolean;
         previous_response_id?: string;
         filters?: SelectedFilters;
+        filter_id?: string;
         limit?: number;
         scoreThreshold?: number;
       } = {
@@ -89,6 +95,12 @@ export function useChatStreaming({
       if (filters) {
         requestBody.filters = filters;
       }
+
+      if (filter_id) {
+        requestBody.filter_id = filter_id;
+      }
+
+      console.log("[useChatStreaming] Sending request:", { filter_id, requestBody });
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -489,6 +501,7 @@ export function useChatStreaming({
         // Clear streaming message and call onComplete with final message
         setStreamingMessage(null);
         onComplete?.(finalMessage, newResponseId);
+        refreshConversations(true);
         return finalMessage;
       }
 

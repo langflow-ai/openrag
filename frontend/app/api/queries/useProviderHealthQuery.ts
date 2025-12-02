@@ -96,9 +96,9 @@ export const useProviderHealthQuery = (
         // If healthy, check every 30 seconds; otherwise check every 3 seconds
         return query.state.data?.status === "healthy" ? 30000 : 3000;
       },
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false, // Disabled to reduce unnecessary calls on tab switches
       refetchOnMount: true,
-      staleTime: 30000, // Consider data stale after 25 seconds
+      staleTime: 30000, // Consider data fresh for 30 seconds
       enabled: !!settings?.edited && options?.enabled !== false, // Only run after onboarding is complete
       ...options,
     },

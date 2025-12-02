@@ -75,6 +75,7 @@ function SearchPage() {
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+  const lastErrorRef = useRef<string | null>(null);
 
   const deleteDocumentMutation = useDeleteDocument();
 
@@ -82,10 +83,28 @@ function SearchPage() {
     refreshTasks();
   }, [refreshTasks]);
 
-  const { data: searchData = [], isFetching } = useGetSearchQuery(
+  const { data: searchData = [], isFetching, error, isError } = useGetSearchQuery(
     queryOverride,
     parsedFilterData,
   );
+
+  // Show toast notification for search errors
+  useEffect(() => {
+    if (isError && error) {
+      const errorMessage = error instanceof Error ? error.message : "Search failed";
+      // Avoid showing duplicate toasts for the same error
+      if (lastErrorRef.current !== errorMessage) {
+        lastErrorRef.current = errorMessage;
+        toast.error("Search error", {
+          description: errorMessage,
+          duration: 5000,
+        });
+      }
+    } else if (!isError) {
+      // Reset when query succeeds
+      lastErrorRef.current = null;
+    }
+  }, [isError, error]);
   // Convert TaskFiles to File format and merge with backend results
   const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
     return {
