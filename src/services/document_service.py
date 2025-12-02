@@ -14,6 +14,7 @@ logger = get_logger(__name__)
 
 from config.settings import clients, INDEX_NAME, get_embedding_model
 from utils.document_processing import extract_relevant, process_document_sync
+from utils.telemetry import TelemetryClient, Category, MessageId
 
 
 def get_token_count(text: str, model: str = None) -> int:
@@ -98,6 +99,7 @@ class DocumentService:
         """Recreate the process pool if it's broken"""
         if self._process_pool_broken and self.process_pool:
             logger.warning("Attempting to recreate broken process pool")
+            TelemetryClient.send_event_sync(Category.DOCUMENT_PROCESSING, MessageId.ORB_DOC_POOL_RECREATE)
             try:
                 # Shutdown the old pool
                 self.process_pool.shutdown(wait=False)
