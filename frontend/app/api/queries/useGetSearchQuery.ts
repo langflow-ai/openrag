@@ -127,6 +127,12 @@ export const useGetSearchQuery = (
         },
         body: JSON.stringify(searchPayload),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || `Search failed with status ${response.status}`);
+      }
+
       const data = await response.json();
       // Group chunks by filename to create file results similar to page.tsx
       const fileMap = new Map<
@@ -198,7 +204,8 @@ export const useGetSearchQuery = (
       return files;
     } catch (error) {
       console.error("Error getting files", error);
-      return [];
+      // Re-throw the error so React Query can handle it and trigger onError callbacks
+      throw error;
     }
   }
 
@@ -207,6 +214,7 @@ export const useGetSearchQuery = (
       queryKey: ["search", queryData, query],
       placeholderData: (prev) => prev,
       queryFn: getFiles,
+      retry: false, // Don't retry on errors - show them immediately
       ...options,
     },
     queryClient,
