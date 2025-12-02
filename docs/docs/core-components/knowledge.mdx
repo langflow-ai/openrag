@@ -26,8 +26,9 @@ The **Knowledge** page lists the documents OpenRAG has ingested into your OpenSe
 To explore the raw contents of your knowledge base, click <Icon name="Library" aria-hidden="true"/> **Knowledge** to get a list of all ingested documents.
 Click a document to view the chunks produced from splitting the document during ingestion.
 
-OpenRAG includes some sample documents that you can use to see how the agent references documents in the [**Chat**](/chat).
-You might want to [delete these documents](#delete-knowledge) before uploading your own documents to avoid polluting the agent's context with these samples.
+OpenRAG includes some initial documents about OpenRAG. You can use these documents to ask OpenRAG about itself, and to test the [**Chat**](/chat) feature before uploading your own documents.
+If you [delete these documents](#delete-knowledge), you won't be able to ask OpenRAG about itself and it's own functionality.
+It is recommended that you keep these documents, and use [filters](/knowledge-filters) to separate them from your other knowledge.
 
 ## OpenSearch authentication and document access {#auth}
 
@@ -63,8 +64,14 @@ If you encounter errors or unexpected behavior after changing the index name, yo
 :::warning
 Knowledge ingestion settings apply to documents you upload after making the changes.
 Documents uploaded before changing these settings aren't reprocessed.
-To ensure consistency across your knowledge base, you must reupload all documents after adjusting any of these settings.
 :::
+
+After changing knowledge ingestion settings, you must determine if you need to reupload any documents to be consistent with the new settings.
+
+It isn't always necessary to reupload documents after changing knowledge ingestion settings.
+For example, it is typical to upload some documents with OCR enabled and others without OCR enabled.
+
+If needed, you can use [filters](/knowledge-filters) to separate documents that you uploaded with different settings, such as different embedding models.
 
 ### Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
 
@@ -146,10 +153,8 @@ To change this location, modify the **Documents Paths** variable in either the [
 
 ## Delete knowledge {#delete-knowledge}
 
-To clear your entire knowledge base, you can delete the contents of the `./opensearch-data` folder in your OpenRAG installation directory, or you can [reset the containers](/install#tui-container-management).
-
-Be aware that both of these operations are destructive and cannot be undone.
-In particular, resetting containers reverts your OpenRAG instance to the initial state as though it were a fresh installation.
+To clear your entire knowledge base, delete the contents of the `./opensearch-data` folder in your OpenRAG installation directory.
+This is a destructive operation that cannot be undone.
 
 ## See also
 
