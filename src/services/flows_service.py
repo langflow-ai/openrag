@@ -424,15 +424,69 @@ class FlowsService:
                         ]
 
                         logger.info(f"Updating {flow_type} flow model values")
-                        # Use LLM provider for most flows, embedding provider for ingest flows
-                        provider_to_use = embedding_provider if flow_type in ["ingest", "url_ingest"] else llm_provider
-                        update_result = await self.change_langflow_model_value(
-                            provider=provider_to_use,
-                            embedding_model=config.knowledge.embedding_model if flow_type in ["ingest", "url_ingest"] else None,
-                            llm_model=config.agent.llm_model if flow_type not in ["ingest", "url_ingest"] else None,
-                            endpoint=endpoint,
-                            flow_configs=single_flow_config,
-                        )
+                        
+                        # For retrieval flow: need to update both LLM and embedding (potentially different providers)
+                        # For ingest flows: only update embedding
+                        # For other flows: only update LLM
+                        
+                        if flow_type == "retrieval":
+                            # Retrieval flow uses both LLM and embedding models
+                            # Update LLM first
+                            llm_endpoint = getattr(llm_provider_config, "endpoint", None)
+                            llm_result = await self.change_langflow_model_value(
+                                provider=llm_provider,
+                                embedding_model=None,
+                                llm_model=config.agent.llm_model,
+                                endpoint=llm_endpoint,
+                                flow_configs=single_flow_config,
+                            )
+                            if not llm_result.get("success"):
+                                logger.warning(
+                                    f"Failed to update LLM in {flow_type} flow: {llm_result.get('error', 'Unknown error')}"
+                                )
+                            
+                            # Update embedding model
+                            embedding_provider_config = config.get_embedding_provider_config()
+                            embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
+                            embedding_result = await self.change_langflow_model_value(
+                                provider=embedding_provider,
+                                embedding_model=config.knowledge.embedding_model,
+                                llm_model=None,
+                                endpoint=embedding_endpoint,
+                                flow_configs=single_flow_config,
+                            )
+                            if not embedding_result.get("success"):
+                                logger.warning(
+                                    f"Failed to update embedding in {flow_type} flow: {embedding_result.get('error', 'Unknown error')}"
+                                )
+                            
+                            # Consider it successful if either update succeeded
+                            update_result = {
+                                "success": llm_result.get("success") or embedding_result.get("success"),
+                                "llm_result": llm_result,
+                                "embedding_result": embedding_result,
+                            }
+                        elif flow_type in ["ingest", "url_ingest"]:
+                            # Ingest flows only need embedding model
+                            embedding_provider_config = config.get_embedding_provider_config()
+                            embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
+                            update_result = await self.change_langflow_model_value(
+                                provider=embedding_provider,
+                                embedding_model=config.knowledge.embedding_model,
+                                llm_model=None,
+                                endpoint=embedding_endpoint,
+                                flow_configs=single_flow_config,
+                            )
+                        else:
+                            # Other flows (nudges) only need LLM model
+                            llm_endpoint = getattr(llm_provider_config, "endpoint", None)
+                            update_result = await self.change_langflow_model_value(
+                                provider=llm_provider,
+                                embedding_model=None,
+                                llm_model=config.agent.llm_model,
+                                endpoint=llm_endpoint,
+                                flow_configs=single_flow_config,
+                            )
 
                         if update_result.get("success"):
                             logger.info(
