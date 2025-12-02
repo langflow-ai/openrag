@@ -1,5 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useCreateFilter } from "@/app/api/mutations/useCreateFilter";
 import { useGetNudgesQuery } from "@/app/api/queries/useGetNudgesQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
@@ -18,6 +20,11 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState<number | null>(null);
+  const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
+  const [shouldCreateFilter, setShouldCreateFilter] = useState(false);
+  const [isCreatingFilter, setIsCreatingFilter] = useState(false);
+
+  const createFilterMutation = useCreateFilter();
 
   const STEP_LIST = [
     "Uploading your document",
@@ -56,6 +63,60 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       // Set to final step to show "Done"
       setCurrentStep(STEP_LIST.length);
 
+      // Create knowledge filter for uploaded document if requested
+      // Guard against race condition: only create if not already creating
+      if (shouldCreateFilter && uploadedFilename && !isCreatingFilter) {
+        // Reset flags immediately (synchronously) to prevent duplicate creation
+        setShouldCreateFilter(false);
+        const filename = uploadedFilename;
+        setUploadedFilename(null);
+        setIsCreatingFilter(true);
+
+        // Get display name from filename (remove extension for cleaner name)
+        const displayName = filename.includes(".")
+          ? filename.substring(0, filename.lastIndexOf("."))
+          : filename;
+
+        const queryData = JSON.stringify({
+          query: "",
+          filters: {
+            data_sources: [filename],
+            document_types: ["*"],
+            owners: ["*"],
+            connector_types: ["*"],
+          },
+          limit: 10,
+          scoreThreshold: 0,
+          color: "green",
+          icon: "file",
+        });
+
+        createFilterMutation
+          .mutateAsync({
+            name: displayName,
+            description: `Filter for ${filename}`,
+            queryData: queryData,
+          })
+          .then((result) => {
+            if (result.filter?.id && typeof window !== "undefined") {
+              localStorage.setItem(
+                ONBOARDING_USER_DOC_FILTER_ID_KEY,
+                result.filter.id,
+              );
+              console.log(
+                "Created knowledge filter for uploaded document",
+                result.filter.id,
+              );
+            }
+          })
+          .catch((error) => {
+            console.error("Failed to create knowledge filter:", error);
+          })
+          .finally(() => {
+            setIsCreatingFilter(false);
+          });
+      }
+
       // Refetch nudges to get new ones
       refetchNudges();
 
@@ -64,7 +125,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
         onComplete();
       }, 1000);
     }
-  }, [tasks, currentStep, onComplete, refetchNudges]);
+  }, [tasks, currentStep, onComplete, refetchNudges, shouldCreateFilter, uploadedFilename]);
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
@@ -83,12 +144,10 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       const result = await uploadFile(file, true, true); // Pass createFilter=true
       console.log("Document upload task started successfully");
 
-      // Store user document filter ID if returned
-      if (result.userDocFilterId && typeof window !== "undefined") {
-        localStorage.setItem(
-          ONBOARDING_USER_DOC_FILTER_ID_KEY,
-          result.userDocFilterId
-        );
+      // Store filename and createFilter flag in state to create filter after ingestion succeeds
+      if (result.createFilter && result.filename) {
+        setUploadedFilename(result.filename);
+        setShouldCreateFilter(true);
       }
 
       // Move to processing step - task monitoring will handle completion
@@ -96,7 +155,15 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
         setCurrentStep(1);
       }, 1500);
     } catch (error) {
-      console.error("Upload failed", (error as Error).message);
+      const errorMessage = error instanceof Error ? error.message : "Upload failed";
+      console.error("Upload failed", errorMessage);
+
+      // Show error toast notification
+      toast.error("Document upload failed", {
+        description: errorMessage,
+        duration: 5000,
+      });
+
       // Reset on error
       setCurrentStep(null);
     } finally {

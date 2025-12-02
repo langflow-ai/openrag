@@ -179,34 +179,13 @@ async def langflow_upload_ingest_task(
 
             logger.debug("Langflow upload task created successfully", task_id=task_id)
 
-            # Create knowledge filter for the uploaded document if requested
-            user_doc_filter_id = None
-            if create_filter and len(original_filenames) == 1:
-                try:
-                    from api.settings import _create_user_document_filter
-                    user_doc_filter_id = await _create_user_document_filter(
-                        request, session_manager, original_filenames[0]
-                    )
-                    if user_doc_filter_id:
-                        logger.info(
-                            "Created knowledge filter for uploaded document",
-                            filter_id=user_doc_filter_id,
-                            filename=original_filenames[0],
-                        )
-                except Exception as e:
-                    logger.error(
-                        "Failed to create knowledge filter for uploaded document",
-                        error=str(e),
-                    )
-                    # Don't fail the upload if filter creation fails
-
             response_data = {
                 "task_id": task_id,
                 "message": f"Langflow upload task created for {len(upload_files)} file(s)",
                 "file_count": len(upload_files),
+                "create_filter": create_filter,  # Pass flag back to frontend
+                "filename": original_filenames[0] if len(original_filenames) == 1 else None,  # Pass filename for filter creation
             }
-            if user_doc_filter_id:
-                response_data["user_doc_filter_id"] = user_doc_filter_id
 
             return JSONResponse(response_data, status_code=202)  # 202 Accepted for async processing
 

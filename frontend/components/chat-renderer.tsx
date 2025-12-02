@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   type ChatConversation,
@@ -39,6 +39,7 @@ export function ChatRenderer({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { isAuthenticated, isNoAuthMode } = useAuth();
   const {
     endpoint,
@@ -46,6 +47,8 @@ export function ChatRenderer({
     refreshConversations,
     startNewConversation,
     setConversationFilter,
+    setCurrentConversationId,
+    setPreviousResponseIds,
   } = useChat();
 
   // Initialize onboarding state based on local storage and settings
@@ -75,10 +78,36 @@ export function ChatRenderer({
     startNewConversation();
   };
 
-  // Helper to set the default filter after onboarding transition
-  const setOnboardingFilter = useCallback(
+  // Navigate to /chat when onboarding is active so animation reveals chat underneath
+  useEffect(() => {
+    if (!showLayout && pathname !== "/chat" && pathname !== "/") {
+      router.push("/chat");
+    }
+  }, [showLayout, pathname, router]);
+
+  // Helper to store default filter ID for new conversations after onboarding
+  const storeDefaultFilterForNewConversations = useCallback(
     async (preferUserDoc: boolean) => {
       if (typeof window === "undefined") return;
+
+      // Check if we already have a default filter set
+      const existingDefault = localStorage.getItem("default_conversation_filter_id");
+      if (existingDefault) {
+        console.log("[FILTER] Default filter already set:", existingDefault);
+        // Try to apply it to context state (don't save to localStorage to avoid overwriting)
+        try {
+          const filter = await getFilterById(existingDefault);
+          if (filter) {
+            // Pass null to skip localStorage save
+            setConversationFilter(filter, null);
+            return; // Successfully loaded and set, we're done
+          }
+        } catch (error) {
+          console.error("Failed to load existing default filter, will set new one:", error);
+          // Filter doesn't exist anymore, clear it and continue to set a new one
+          localStorage.removeItem("default_conversation_filter_id");
+        }
+      }
 
       // Try to get the appropriate filter ID
       let filterId: string | null = null;
@@ -86,27 +115,37 @@ export function ChatRenderer({
       if (preferUserDoc) {
         // Completed full onboarding - prefer user document filter
         filterId = localStorage.getItem(ONBOARDING_USER_DOC_FILTER_ID_KEY);
+        console.log("[FILTER] User doc filter ID:", filterId);
       }
 
       // Fall back to OpenRAG docs filter
       if (!filterId) {
         filterId = localStorage.getItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY);
+        console.log("[FILTER] OpenRAG docs filter ID:", filterId);
       }
 
+      console.log("[FILTER] Final filter ID to use:", filterId);
+
       if (filterId) {
+        // Store this as the default filter for new conversations
+        localStorage.setItem("default_conversation_filter_id", filterId);
+
+        // Apply filter to context state only (don't save to localStorage since there's no conversation yet)
+        // The default_conversation_filter_id will be used when a new conversation is started
         try {
           const filter = await getFilterById(filterId);
+          console.log("[FILTER] Loaded filter:", filter);
           if (filter) {
-            setConversationFilter(filter);
+            // Pass null to skip localStorage save - this prevents overwriting existing conversation filters
+            setConversationFilter(filter, null);
+            console.log("[FILTER] Set conversation filter (no save):", filter.id);
           }
         } catch (error) {
           console.error("Failed to set onboarding filter:", error);
         }
+      } else {
+        console.log("[FILTER] No filter ID found, not setting default");
       }
-
-      // Clean up onboarding filter IDs from localStorage
-      localStorage.removeItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY);
-      localStorage.removeItem(ONBOARDING_USER_DOC_FILTER_ID_KEY);
     },
     [setConversationFilter]
   );
@@ -118,7 +157,7 @@ export function ChatRenderer({
     }
   }, [currentStep, showLayout]);
 
-  const handleStepComplete = () => {
+  const handleStepComplete = async () => {
     if (currentStep < TOTAL_ONBOARDING_STEPS - 1) {
       setCurrentStep(currentStep + 1);
     } else {
@@ -130,8 +169,20 @@ export function ChatRenderer({
         localStorage.removeItem(ONBOARDING_CARD_STEPS_KEY);
         localStorage.removeItem(ONBOARDING_UPLOAD_STEPS_KEY);
       }
-      // Set the user document filter as active (completed full onboarding)
-      setOnboardingFilter(true);
+
+      // Clear ALL conversation state so next message starts fresh
+      await startNewConversation();
+
+      // Store the user document filter as default for new conversations and load it
+      await storeDefaultFilterForNewConversations(true);
+
+      // Clean up onboarding filter IDs now that we've set the default
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY);
+        localStorage.removeItem(ONBOARDING_USER_DOC_FILTER_ID_KEY);
+        console.log("[FILTER] Cleaned up onboarding filter IDs");
+      }
+
       setShowLayout(true);
     }
   };
@@ -151,8 +202,8 @@ export function ChatRenderer({
       localStorage.removeItem(ONBOARDING_CARD_STEPS_KEY);
       localStorage.removeItem(ONBOARDING_UPLOAD_STEPS_KEY);
     }
-    // Set the OpenRAG docs filter as active (skipped onboarding - no user doc)
-    setOnboardingFilter(false);
+    // Store the OpenRAG docs filter as default for new conversations
+    storeDefaultFilterForNewConversations(false);
     setShowLayout(true);
   };
 

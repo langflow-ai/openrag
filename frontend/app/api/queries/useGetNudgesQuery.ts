@@ -34,7 +34,7 @@ export const useGetNudgesQuery = (
     });
   }
 
-  async function getNudges(): Promise<Nudge[]> {
+  async function getNudges(context: { signal?: AbortSignal }): Promise<Nudge[]> {
     try {
       const requestBody: {
         filters?: NudgeFilters;
@@ -58,6 +58,7 @@ export const useGetNudgesQuery = (
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
+        signal: context.signal,
       });
       const data = await response.json();
 
@@ -67,6 +68,10 @@ export const useGetNudgesQuery = (
 
       return DEFAULT_NUDGES;
     } catch (error) {
+      // Ignore abort errors - these are expected when requests are cancelled
+      if (error instanceof Error && error.name === 'AbortError') {
+        return DEFAULT_NUDGES;
+      }
       console.error("Error getting nudges", error);
       return DEFAULT_NUDGES;
     }
@@ -76,6 +81,10 @@ export const useGetNudgesQuery = (
     {
       queryKey: ["nudges", chatId, filters, limit, scoreThreshold],
       queryFn: getNudges,
+      staleTime: 10000, // Consider data fresh for 10 seconds to prevent rapid refetching
+      networkMode: 'always', // Ensure requests can be cancelled
+      refetchOnMount: false, // Don't refetch on every mount
+      refetchOnWindowFocus: false, // Don't refetch when window regains focus
       refetchInterval: (query) => {
         // If data is empty, refetch every 5 seconds
         const data = query.state.data;

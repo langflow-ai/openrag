@@ -209,6 +209,16 @@ const OnboardingCard = ({
   const onboardingMutation = useOnboardingMutation({
     onSuccess: (data) => {
       console.log("Onboarding completed successfully", data);
+
+      // Save OpenRAG docs filter ID if sample data was ingested
+      if (data.openrag_docs_filter_id && typeof window !== "undefined") {
+        localStorage.setItem(
+          "onboarding_openrag_docs_filter_id",
+          data.openrag_docs_filter_id
+        );
+        console.log("Saved OpenRAG docs filter ID:", data.openrag_docs_filter_id);
+      }
+
       // Update provider health cache to healthy since backend just validated
       const provider =
         (isEmbedding ? settings.embedding_provider : settings.llm_provider) ||

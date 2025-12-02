@@ -556,7 +556,7 @@ async def update_settings(request, session_manager):
             "ollama_endpoint"
         ]
 
-        await clients.refresh_patched_clients()
+        await clients.refresh_patched_client()
 
         if any(key in body for key in provider_fields_to_check):
             try:
@@ -926,12 +926,13 @@ async def onboarding(request, flows_service, session_manager=None):
                 {"error": "Failed to save configuration"}, status_code=500
             )
 
-        # Refresh cached patched clients so latest credentials take effect immediately
-        await clients.refresh_patched_clients()
+        # Refresh cached patched client so latest credentials take effect immediately
+        await clients.refresh_patched_client()
 
         # Create OpenRAG Docs knowledge filter if sample data was ingested
+        # Only create on embedding step to avoid duplicates (both LLM and embedding cards submit with sample_data)
         openrag_docs_filter_id = None
-        if should_ingest_sample_data:
+        if should_ingest_sample_data and ("embedding_provider" in body or "embedding_model" in body):
             try:
                 openrag_docs_filter_id = await _create_openrag_docs_filter(
                     request, session_manager
@@ -1028,77 +1029,6 @@ async def _create_openrag_docs_filter(request, session_manager):
         return filter_id
     else:
         logger.error("Failed to create OpenRAG Docs filter", error=result.get("error"))
-        return None
-
-
-async def _create_user_document_filter(request, session_manager, filename):
-    """Create a knowledge filter for a user-uploaded document during onboarding"""
-    import uuid
-    import json
-    from datetime import datetime
-
-    # Get knowledge filter service from app state
-    app = request.scope.get("app")
-    if not app or not hasattr(app.state, "services"):
-        logger.error("Could not access services for knowledge filter creation")
-        return None
-
-    knowledge_filter_service = app.state.services.get("knowledge_filter_service")
-    if not knowledge_filter_service:
-        logger.error("Knowledge filter service not available")
-        return None
-
-    # Get user and JWT token from request
-    user = request.state.user
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
-
-    # In no-auth mode, set owner to None so filter is visible to all users
-    # In auth mode, use the actual user as owner
-    if is_no_auth_mode():
-        owner_user_id = None
-    else:
-        owner_user_id = user.user_id
-
-    # Create the filter document
-    filter_id = str(uuid.uuid4())
-
-    # Get a display name from the filename (remove extension for cleaner name)
-    display_name = filename.rsplit(".", 1)[0] if "." in filename else filename
-
-    query_data = json.dumps({
-        "query": "",
-        "filters": {
-            "data_sources": [filename],
-            "document_types": ["*"],
-            "owners": ["*"],
-            "connector_types": ["*"],
-        },
-        "limit": 10,
-        "scoreThreshold": 0,
-        "color": "green",
-        "icon": "file",
-    })
-
-    filter_doc = {
-        "id": filter_id,
-        "name": display_name,
-        "description": f"Filter for {filename}",
-        "query_data": query_data,
-        "owner": owner_user_id,
-        "allowed_users": [],
-        "allowed_groups": [],
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
-    }
-
-    result = await knowledge_filter_service.create_knowledge_filter(
-        filter_doc, user_id=user.user_id, jwt_token=jwt_token
-    )
-
-    if result.get("success"):
-        return filter_id
-    else:
-        logger.error("Failed to create user document filter", error=result.get("error"))
         return None
 
 

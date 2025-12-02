@@ -15,6 +15,7 @@ class ChatService:
         jwt_token: str = None,
         previous_response_id: str = None,
         stream: bool = False,
+        filter_id: str = None,
     ):
         """Handle chat requests using the patched OpenAI client"""
         if not prompt:
@@ -30,6 +31,7 @@ class ChatService:
                 prompt,
                 user_id,
                 previous_response_id=previous_response_id,
+                filter_id=filter_id,
             )
         else:
             response_text, response_id = await async_chat(
@@ -37,6 +39,7 @@ class ChatService:
                 prompt,
                 user_id,
                 previous_response_id=previous_response_id,
+                filter_id=filter_id,
             )
             response_data = {"response": response_text}
             if response_id:
@@ -50,6 +53,7 @@ class ChatService:
         jwt_token: str = None,
         previous_response_id: str = None,
         stream: bool = False,
+        filter_id: str = None,
     ):
         """Handle Langflow chat requests"""
         if not prompt:
@@ -147,6 +151,7 @@ class ChatService:
                 user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
+                filter_id=filter_id,
             )
         else:
             from agent import async_langflow_chat
@@ -158,6 +163,7 @@ class ChatService:
                 user_id,
                 extra_headers=extra_headers,
                 previous_response_id=previous_response_id,
+                filter_id=filter_id,
             )
             response_data = {"response": response_text}
             if response_id:
@@ -429,6 +435,7 @@ class ChatService:
                         "previous_response_id": conversation_state.get(
                             "previous_response_id"
                         ),
+                        "filter_id": conversation_state.get("filter_id"),
                         "total_messages": len(messages),
                         "source": "in_memory",
                     }
@@ -447,6 +454,7 @@ class ChatService:
                         "created_at": metadata.get("created_at"),
                         "last_activity": metadata.get("last_activity"),
                         "previous_response_id": metadata.get("previous_response_id"),
+                        "filter_id": metadata.get("filter_id"),
                         "total_messages": metadata.get("total_messages", 0),
                         "source": "metadata_only",
                     }
@@ -545,6 +553,7 @@ class ChatService:
                                 or conversation.get("created_at"),
                                 "last_activity": metadata.get("last_activity")
                                 or conversation.get("last_activity"),
+                                "filter_id": metadata.get("filter_id"),
                                 "total_messages": len(messages),
                                 "source": "langflow_enhanced",
                                 "langflow_session_id": session_id,

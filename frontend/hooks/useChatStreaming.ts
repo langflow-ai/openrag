@@ -15,6 +15,7 @@ interface SendMessageOptions {
   prompt: string;
   previousResponseId?: string;
   filters?: SelectedFilters;
+  filter_id?: string;
   limit?: number;
   scoreThreshold?: number;
 }
@@ -35,6 +36,7 @@ export function useChatStreaming({
     prompt,
     previousResponseId,
     filters,
+    filter_id,
     limit = 10,
     scoreThreshold = 0,
   }: SendMessageOptions) => {
@@ -73,6 +75,7 @@ export function useChatStreaming({
         stream: boolean;
         previous_response_id?: string;
         filters?: SelectedFilters;
+        filter_id?: string;
         limit?: number;
         scoreThreshold?: number;
       } = {
@@ -89,6 +92,12 @@ export function useChatStreaming({
       if (filters) {
         requestBody.filters = filters;
       }
+
+      if (filter_id) {
+        requestBody.filter_id = filter_id;
+      }
+
+      console.log("[useChatStreaming] Sending request:", { filter_id, requestBody });
 
       const response = await fetch(endpoint, {
         method: "POST",
