@@ -3,6 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY } from "@/lib/constants";
 
 export interface OnboardingVariables {
   // Provider selection
@@ -28,6 +29,7 @@ export interface OnboardingVariables {
 interface OnboardingResponse {
   message: string;
   edited: boolean;
+  openrag_docs_filter_id?: string;
 }
 
 export const useOnboardingMutation = (
@@ -59,6 +61,15 @@ export const useOnboardingMutation = (
 
   return useMutation({
     mutationFn: submitOnboarding,
+    onSuccess: (data) => {
+      // Store OpenRAG Docs filter ID if returned
+      if (data.openrag_docs_filter_id && typeof window !== "undefined") {
+        localStorage.setItem(
+          ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY,
+          data.openrag_docs_filter_id
+        );
+      }
+    },
     onSettled: () => {
       // Invalidate settings query to refetch updated data
       queryClient.invalidateQueries({ queryKey: ["settings"] });

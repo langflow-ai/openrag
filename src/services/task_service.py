@@ -7,6 +7,7 @@ from models.tasks import FileTask, TaskStatus, UploadTask
 from session_manager import AnonymousUser
 from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
+from utils.telemetry import TelemetryClient, Category, MessageId
 
 
 logger = get_logger(__name__)
@@ -131,6 +132,18 @@ class TaskService:
         # Store reference to background task for cancellation
         upload_task.background_task = background_task
 
+        # Send telemetry event for task creation with metadata
+        asyncio.create_task(
+            TelemetryClient.send_event(
+                Category.TASK_OPERATIONS,
+                MessageId.ORB_TASK_CREATED,
+                metadata={
+                    "total_files": len(items),
+                    "processor_type": processor.__class__.__name__,
+                }
+            )
+        )
+
         return task_id
 
     async def background_upload_processor(self, user_id: str, task_id: str) -> None:
@@ -174,6 +187,19 @@ class TaskService:
             if upload_task.processed_files >= upload_task.total_files:
                 upload_task.status = TaskStatus.COMPLETED
                 upload_task.updated_at = time.time()
+                
+                # Send telemetry for task completion
+                asyncio.create_task(
+                    TelemetryClient.send_event(
+                        Category.TASK_OPERATIONS,
+                        MessageId.ORB_TASK_COMPLETE,
+                        metadata={
+                            "total_files": upload_task.total_files,
+                            "successful_files": upload_task.successful_files,
+                            "failed_files": upload_task.failed_files,
+                        }
+                    )
+                )
 
         except Exception as e:
             logger.error(
@@ -183,8 +209,23 @@ class TaskService:
 
             traceback.print_exc()
             if user_id in self.task_store and task_id in self.task_store[user_id]:
-                self.task_store[user_id][task_id].status = TaskStatus.FAILED
-                self.task_store[user_id][task_id].updated_at = time.time()
+                failed_task = self.task_store[user_id][task_id]
+                failed_task.status = TaskStatus.FAILED
+                failed_task.updated_at = time.time()
+                
+                # Send telemetry for task failure
+                asyncio.create_task(
+                    TelemetryClient.send_event(
+                        Category.TASK_OPERATIONS,
+                        MessageId.ORB_TASK_FAILED,
+                        metadata={
+                            "total_files": failed_task.total_files,
+                            "processed_files": failed_task.processed_files,
+                            "successful_files": failed_task.successful_files,
+                            "failed_files": failed_task.failed_files,
+                        }
+                    )
+                )
 
     async def background_custom_processor(
         self, user_id: str, task_id: str, items: list
@@ -231,6 +272,19 @@ class TaskService:
             # Mark task as completed
             upload_task.status = TaskStatus.COMPLETED
             upload_task.updated_at = time.time()
+            
+            # Send telemetry for task completion
+            asyncio.create_task(
+                TelemetryClient.send_event(
+                    Category.TASK_OPERATIONS,
+                    MessageId.ORB_TASK_COMPLETE,
+                    metadata={
+                        "total_files": upload_task.total_files,
+                        "successful_files": upload_task.successful_files,
+                        "failed_files": upload_task.failed_files,
+                    }
+                )
+            )
 
         except asyncio.CancelledError:
             logger.info("Background processor cancelled", task_id=task_id)
@@ -246,8 +300,23 @@ class TaskService:
 
             traceback.print_exc()
             if user_id in self.task_store and task_id in self.task_store[user_id]:
-                self.task_store[user_id][task_id].status = TaskStatus.FAILED
-                self.task_store[user_id][task_id].updated_at = time.time()
+                failed_task = self.task_store[user_id][task_id]
+                failed_task.status = TaskStatus.FAILED
+                failed_task.updated_at = time.time()
+                
+                # Send telemetry for task failure
+                asyncio.create_task(
+                    TelemetryClient.send_event(
+                        Category.TASK_OPERATIONS,
+                        MessageId.ORB_TASK_FAILED,
+                        metadata={
+                            "total_files": failed_task.total_files,
+                            "processed_files": failed_task.processed_files,
+                            "successful_files": failed_task.successful_files,
+                            "failed_files": failed_task.failed_files,
+                        }
+                    )
+                )
 
     def get_task_status(self, user_id: str, task_id: str) -> dict | None:
         """Get the status of a specific upload task

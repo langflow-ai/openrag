@@ -110,6 +110,13 @@ function ChatPage() {
         } else {
           refreshConversationsSilent();
         }
+
+        // Save filter association for this response
+        if (conversationFilter && typeof window !== "undefined") {
+          const newKey = `conversation_filter_${responseId}`;
+          localStorage.setItem(newKey, conversationFilter.id);
+          console.log("[CHAT] Saved filter association:", newKey, "=", conversationFilter.id);
+        }
       }
     },
     onError: (error) => {
@@ -696,11 +703,18 @@ function ChatPage() {
     // Use passed previousResponseId if available, otherwise fall back to state
     const responseIdToUse = previousResponseId || previousResponseIds[endpoint];
 
+    console.log("[CHAT] Sending streaming message:", {
+      conversationFilter: conversationFilter?.id,
+      currentConversationId,
+      responseIdToUse,
+    });
+
     // Use the hook to send the message
     await sendStreamingMessage({
       prompt: userMessage.content,
       previousResponseId: responseIdToUse || undefined,
       filters: processedFilters,
+      filter_id: conversationFilter?.id, // ✅ Add filter_id for this conversation
       limit: parsedFilterData?.limit ?? 10,
       scoreThreshold: parsedFilterData?.scoreThreshold ?? 0,
     });
@@ -781,6 +795,19 @@ function ChatPage() {
           requestBody.previous_response_id = currentResponseId;
         }
 
+        // Add filter_id if a filter is selected for this conversation
+        if (conversationFilter) {
+          requestBody.filter_id = conversationFilter.id;
+        }
+
+        // Debug logging
+        console.log("[DEBUG] Sending message with:", {
+          previous_response_id: requestBody.previous_response_id,
+          filter_id: requestBody.filter_id,
+          currentConversationId,
+          previousResponseIds,
+        });
+
         const response = await fetch(apiEndpoint, {
           method: "POST",
           headers: {
@@ -804,6 +831,8 @@ function ChatPage() {
 
           // Store the response ID if present for this endpoint
           if (result.response_id) {
+            console.log("[DEBUG] Received response_id:", result.response_id, "currentConversationId:", currentConversationId);
+
             setPreviousResponseIds((prev) => ({
               ...prev,
               [endpoint]: result.response_id,
@@ -811,11 +840,20 @@ function ChatPage() {
 
             // If this is a new conversation (no currentConversationId), set it now
             if (!currentConversationId) {
+              console.log("[DEBUG] Setting currentConversationId to:", result.response_id);
               setCurrentConversationId(result.response_id);
               refreshConversations(true);
             } else {
+              console.log("[DEBUG] Existing conversation, doing silent refresh");
               // For existing conversations, do a silent refresh to keep backend in sync
               refreshConversationsSilent();
+            }
+
+            // Carry forward the filter association to the new response_id
+            if (conversationFilter && typeof window !== "undefined") {
+              const newKey = `conversation_filter_${result.response_id}`;
+              localStorage.setItem(newKey, conversationFilter.id);
+              console.log("[DEBUG] Saved filter association:", newKey, "=", conversationFilter.id);
             }
           }
         } else {
