@@ -23,32 +23,47 @@ The Docker Compose files are populated with values from your `.env`, so you don'
 
 Environment variables always take precedence over other variables.
 
-### Set environment variables
+### Set environment variables {#set-environment-variables}
 
-To set environment variables, do the following.
+After you start OpenRAG, you must [stop and restart OpenRAG containers](/install#tui-container-management) to apply any changes you make to the `.env` file.
 
-1. Stop OpenRAG.
+To set mutable environment variables, do the following:
+
+1. Stop OpenRAG with the TUI or Docker Compose.
+
 2. Set the values in the `.env` file:
+
    ```bash
    LOG_LEVEL=DEBUG
    LOG_FORMAT=json
    SERVICE_NAME=openrag-dev
    ```
-3. Start OpenRAG.
 
-Updating provider API keys or provider endpoints in the `.env` file will not take effect after [Application onboarding](/install#application-onboarding). To change these values, you must:
+3. Start OpenRAG with the TUI or Docker Compose.
 
-1. Stop OpenRAG.
+Certain environment variables that you set during [application onboarding](/install#application-onboarding), such as provider API keys and provider endpoints, require resetting the containers after modifying the `.env` file.
+
+To change immutable variables with TUI-managed containers, you must [reinstall OpenRAG](/install#reinstall) and either delete or modify the `.env` file before you repeat the setup and onboarding process in the TUI.
+
+To change immutable variables with self-managed containers, do the following:
+
+1. Stop OpenRAG with Docker Compose.
+
 2. Remove the containers:
-   ```
+
+   ```bash
    docker-compose down
    ```
+
 3. Update the values in your `.env` file.
-4. Start OpenRAG containers.
-   ```
+
+4. Start OpenRAG with Docker Compose:
+
+   ```bash
    docker-compose up -d
    ```
-5. Complete [Application onboarding](/install#application-onboarding) again.
+
+5. Repeat [application onboarding](/install#application-onboarding). The values in your `.env` file are automatically populated.
 
 ## Supported environment variables
 
@@ -56,18 +71,19 @@ All OpenRAG configuration can be controlled through environment variables.
 
 ### AI provider settings
 
-Configure which AI models and providers OpenRAG uses for language processing and embeddings.
-For more information, see [Application onboarding](/install#application-onboarding).
+Configure which models and providers OpenRAG uses to generate text and embeddings.
+These are initially set during [application onboarding](/install#application-onboarding).
+Some values are immutable and can only be changed by recreating the OpenRAG containers, as explained in [Set environment variables](#set-environment-variables).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for vector search. |
-| `LLM_MODEL` | `gpt-4o-mini` | Language model for the chat agent. |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for generating vector embeddings for documents in the knowledge base and similarity search queries. Can be changed after application onboarding. Accepts one or more models. |
+| `LLM_MODEL` | `gpt-4o-mini` | Language model for language processing and text generation in the **Chat** feature. |
 | `MODEL_PROVIDER` | `openai` | Model provider, such as OpenAI or IBM watsonx.ai. |
-| `OPENAI_API_KEY` | - | Your OpenAI API key. Optional. Can be provided during application onboarding when installing OpenRAG. |
-| `PROVIDER_API_KEY` | - | API key for the model provider. |
-| `PROVIDER_ENDPOINT` | - | Custom provider endpoint. Only used for IBM or Ollama providers. |
-| `PROVIDER_PROJECT_ID` | - | Project ID for providers. Only required for the IBM watsonx.ai provider. |
+| `OPENAI_API_KEY` | Not set | Optional OpenAI API key for the default model. For other providers, use `PROVIDER_API_KEY`. |
+| `PROVIDER_API_KEY` | Not set | API key for the model provider. |
+| `PROVIDER_ENDPOINT` | Not set | Custom provider endpoint for the IBM and Ollama model providers. Leave unset for other model providers. |
+| `PROVIDER_PROJECT_ID` | Not set | Project ID for the IBM watsonx.ai model provider only. Leave unset for other model providers. |
 
 ### Document processing
 
@@ -78,7 +94,7 @@ Control how OpenRAG [processes and ingests documents](/ingestion) into your know
 | `CHUNK_OVERLAP` | `200` | Overlap between chunks. |
 | `CHUNK_SIZE` | `1000` | Text chunk size for document processing. |
 | `DISABLE_INGEST_WITH_LANGFLOW` | `false` | Disable Langflow ingestion pipeline. |
-| `DOCLING_OCR_ENGINE` | - | OCR engine for document processing. |
+| `DOCLING_OCR_ENGINE` | Set by OS | OCR engine for document processing. For macOS, `ocrmac`. For any other OS, `easyocr`. |
 | `OCR_ENABLED` | `false` | Enable OCR for image processing. |
 | `OPENRAG_DOCUMENTS_PATHS` | `./openrag-documents` | Document paths for ingestion. |
 | `PICTURE_DESCRIPTIONS_ENABLED` | `false` | Enable picture descriptions. |
@@ -90,18 +106,18 @@ Configure Langflow authentication.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LANGFLOW_AUTO_LOGIN` | `False` | Enable auto-login for Langflow. |
-| `LANGFLOW_CHAT_FLOW_ID` | pre-filled | This value is pre-filled. The default value is found in [.env.example](https://github.com/langflow-ai/openrag/blob/main/.env.example). |
-| `LANGFLOW_ENABLE_SUPERUSER_CLI` | `False` | Enable superuser CLI. |
-| `LANGFLOW_INGEST_FLOW_ID` | pre-filled | This value is pre-filled. The default value is found in [.env.example](https://github.com/langflow-ai/openrag/blob/main/.env.example). |
-| `LANGFLOW_KEY` | auto-generated | Explicit Langflow API key. |
-| `LANGFLOW_NEW_USER_IS_ACTIVE` | `False` | New users are active by default. |
-| `LANGFLOW_PUBLIC_URL` | `http://localhost:7860` | Public URL for Langflow. |
-| `LANGFLOW_SECRET_KEY` | - | Secret key for Langflow internal operations. |
-| `LANGFLOW_SUPERUSER` | - | Langflow admin username. Required. |
-| `LANGFLOW_SUPERUSER_PASSWORD` | - | Langflow admin password. Required. |
-| `LANGFLOW_URL` | `http://localhost:7860` | Langflow URL. |
-| `NUDGES_FLOW_ID` | pre-filled | This value is pre-filled. The default value is found in [.env.example](https://github.com/langflow-ai/openrag/blob/main/.env.example). |
-| `SYSTEM_PROMPT` | "You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context." | System prompt for the Langflow agent. |
+| `LANGFLOW_CHAT_FLOW_ID` | Built-in flow ID | This value is automatically set to the ID of the chat [flow](/agents). The default value is found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change this value if you explicitly don't want to use this built-in flow. |
+| `LANGFLOW_ENABLE_SUPERUSER_CLI` | `False` | Enable superuser privileges for Langflow CLI commands. |
+| `LANGFLOW_INGEST_FLOW_ID` | Built-in flow ID | This value is automatically set to the ID of the ingestion [flow](/agents). The default value is found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change this value if you explicitly don't want to use this built-in flow. |
+| `LANGFLOW_KEY` | Automatically generated | Explicit Langflow API key. |
+| `LANGFLOW_NEW_USER_IS_ACTIVE` | `False` | Whether new Langflow users are active by default. |
+| `LANGFLOW_PUBLIC_URL` | `http://localhost:7860` | Public URL for the Langflow instance. |
+| `LANGFLOW_SECRET_KEY` | Not set | Secret key for Langflow internal operations. |
+| `LANGFLOW_SUPERUSER` | None, must be explicitly set | Langflow admin username. Required. |
+| `LANGFLOW_SUPERUSER_PASSWORD` | None, must be explicitly set | Langflow admin password. Required. |
+| `LANGFLOW_URL` | `http://localhost:7860` | URL for the Langflow instance. |
+| `NUDGES_FLOW_ID` | Built-in flow ID | This value is automatically set to the ID of the nudges [flow](/agents). The default value is found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change this value if you explicitly don't want to use this built-in flow. |
+| `SYSTEM_PROMPT` | `You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context.` | System prompt instructions for the agent driving the **Chat** flow. |
 
 ### OAuth provider settings
 
@@ -134,30 +150,28 @@ Configure general system components, session management, and logging.
 | `LANGFLOW_KEY_RETRIES` | `15` | Number of retries for Langflow key generation. |
 | `LANGFLOW_KEY_RETRY_DELAY` | `2.0` | Delay between retries in seconds. |
 | `LANGFLOW_VERSION` | `latest` | Langflow Docker image version. |
-| `LOG_FORMAT` | - | Log format (set to "json" for JSON output). |
+| `LOG_FORMAT` | Disabled | Set to `json` to enabled JSON-formatted log output. |
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR). |
-| `MAX_WORKERS` | - | Maximum number of workers for document processing. |
+| `MAX_WORKERS` | `1` | Maximum number of workers for document processing. |
 | `OPENRAG_VERSION` | `latest` | OpenRAG Docker image version. |
 | `SERVICE_NAME` | `openrag` | Service name for logging. |
-| `SESSION_SECRET` | auto-generated | Session management. |
+| `SESSION_SECRET` | Automatically generated | Session management. |
 
 ## Langflow runtime overrides
 
-Langflow runtime overrides allow you to modify component settings at runtime without changing the base configuration.
+You can modify [flow](/agents) settings at runtime without permanently changing the flow's configuration.
 
-Runtime overrides are implemented through **tweaks** - parameter modifications that are passed to specific Langflow components during flow execution.
+Runtime overrides are implemented through _tweaks_, which are one-time parameter modifications that are passed to specific Langflow components during flow execution.
 
-For more information on tweaks, see [Input schema (tweaks)](https://docs.langflow.org/concepts-publish#input-schema).
+For more information on tweaks, see the Langflow documentation on [Input schema (tweaks)](https://docs.langflow.org/concepts-publish#input-schema).
 
 ## Default values and fallbacks
 
-When no environment variables or configuration file values are provided, OpenRAG uses default values.
-These values can be found in the code base at the following locations.
+If a variable isn't set by environment variables or a configuration file, OpenRAG can use a default value if one is defined in the codebase.
+Default values can be found in the OpenRAG repository:
 
-### OpenRAG configuration defaults
+* OpenRAG configuration: [`config_manager.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/config_manager.py)
 
-These values are defined in [`config_manager.py` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/src/config/config_manager.py).
+* System configuration: [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py)
 
-### System configuration defaults
-
-These fallback values are defined in [`settings.py` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
+* Logging configuration: [`logging_config.py`](https://github.com/langflow-ai/openrag/blob/main/src/utils/logging_config.py)

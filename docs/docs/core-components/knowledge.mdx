@@ -75,19 +75,19 @@ If needed, you can use [filters](/knowledge-filters) to separate documents that 
 
 ### Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
 
-When you [install OpenRAG](/install), you select an embedding model during **Application Onboarding**.
+When you [install OpenRAG](/install), you select at least one embedding model during [application onboarding](/install#application-onboarding).
 OpenRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
 
 In the OpenRAG repository, you can find the complete list of supported models in [`models_service.py`](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py) and the corresponding vector dimensions in [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
 
-The default embedding dimension is `1536` and the default model is the OpenAI `text-embedding-3-small`.
+During application onboarding, you can select from the supported models.
+The default embedding dimension is `1536`, and the default model is the OpenAI `text-embedding-3-small`.
 
-You can use any supported or unsupported embedding model by specifying the model in your OpenRAG configuration during installation.
-
+If you want to use an unsupported model, you must manually set the model in your [OpenRAG configuration](/reference/configuration).
 If you use an unsupported embedding model that doesn't have defined dimensions in `settings.py`, then OpenRAG falls back to the default dimensions (1536) and logs a warning. OpenRAG's OpenSearch instance and flows continue to work, but [similarity search](https://www.ibm.com/think/topics/vector-search) quality can be affected if the actual model dimensions aren't 1536.
 
-This embedding model you choose during **Application Onboarding** is immutable and can only be changed by [reinstalling OpenRAG](/install#reinstall).
-Alternatively, you can [edit the OpenRAG flows](/agents#inspect-and-modify-flows) for knowledge ingestion and chat. Make sure all flows use the same embedding model.
+To change the embedding model after onboarding, it is recommended that you modify the embedding model setting in the OpenRAG **Settings** page or in your [OpenRAG configuration](/reference/configuration).
+This will automatically update all relevant [OpenRAG flows](/agents) to use the new embedding model configuration.
 
 ### Set Docling parameters
 
@@ -122,10 +122,14 @@ OpenRAG warns you if `docling serve` isn't running.
 You can [start and stop OpenRAG services](/install#tui-container-management) from the TUI main menu with **Start Native Services** or **Stop Native Services**.
 :::
 
-* **Embedding model**: Select the model to use to generate vector embeddings for your documents. This is initially set during installation.
-The recommended way to change this setting is by [reinstalling OpenRAG](/install#reinstall).
-If you change this value by directly [editing the flow](/agents#inspect-and-modify-flows), you must also change the embedding model in other [OpenRAG flows](/agents) to ensure that similarity search results are consistent.
-If you uploaded documents prior to changing the embedding model, you must either [create filters](/knowledge-filters) to prevent mixing documents embedded with different models, or you must reupload all documents to regenerate embeddings with the new model.
+* **Embedding model**: Select the model to use to generate vector embeddings for your documents.
+
+   This is initially set during installation.
+   The recommended way to change this setting is in the OpenRAG **Settings** or your [OpenRAG configuration](/reference/configuration).
+   This will automatically update all relevant [OpenRAG flows](/agents) to use the new embedding model configuration.
+
+   If you uploaded documents prior to changing the embedding model, you can [create filters](/knowledge-filters) to separate documents embedded with different models, or you can reupload all documents to regenerate embeddings with the new model.
+   If you want to use multiple embeddings models, similarity search (in the **Chat**) can take longer as it searching each model's embeddings separately.
 
 * **Chunk size**: Set the number of characters for each text chunk when breaking down a file.
 Larger chunks yield more context per chunk, but can include irrelevant information. Smaller chunks yield more precise semantic search, but can lack context.

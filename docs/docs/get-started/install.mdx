@@ -41,7 +41,7 @@ If you prefer running Podman or Docker containers and manually editing `.env` fi
 
 - Prepare model providers and credentials.
 
-   During [Application Onboarding](#application-onboarding), you must select language model and embedding model providers.
+   During [application onboarding](#application-onboarding), you must select language model and embedding model providers.
    If your chosen provider offers both types, you can use the same provider for both selections.
    If your provider offers only one type, such as Anthropic, you must select two providers.
 
@@ -208,7 +208,7 @@ If OpenRAG detects OAuth credentials, it recommends **Advanced Setup**.
    6. To start the Docling service, under **Native Services**, click **Start**.
    7. To open the OpenRAG application, navigate to the TUI main menu, and then click **Open App**.
    Alternatively, in your browser, navigate to `localhost:3000`.
-   8. Continue with [Application Onboarding](#application-onboarding).
+   8. Continue with [application onboarding](#application-onboarding).
   </TabItem>
   <TabItem value="Advanced setup" label="Advanced setup">
 
@@ -257,7 +257,7 @@ If OpenRAG detects OAuth credentials, it recommends **Advanced Setup**.
            - OneDrive: `/connectors/onedrive/webhook`
            - SharePoint: `/connectors/sharepoint/webhook`
 
-   12. Continue with [Application Onboarding](#application-onboarding).
+   12. Continue with [application onboarding](#application-onboarding).
   </TabItem>
 </Tabs>
 
@@ -436,11 +436,11 @@ To reinstall OpenRAG with a completely fresh setup:
    This removes all containers, volumes, and data.
 
 2. Optional: Delete your project's `.env` file.
-   The Reset operation does not remove your project's `.env` file, so your passwords, API keys, and OAuth settings can be preserved.
+   The Reset operation doesn't remove your project's `.env` file, so your passwords, API keys, and OAuth settings can be preserved.
    If you delete the `.env` file, run the [Set up OpenRAG with the TUI](#setup) process again to create a new configuration.
 
 3. In the TUI Setup menu, follow these steps from [Basic Setup](#setup):
    1. Click **Start All Services** to pull container images and start them.
    2. Under **Native Services**, click **Start** to start the Docling service.
    3. Click **Open App** to open the OpenRAG application.
-   4. Continue with [Application Onboarding](#application-onboarding).
+   4. Continue with [application onboarding](#application-onboarding).
