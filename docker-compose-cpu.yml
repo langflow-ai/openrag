@@ -81,9 +81,10 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     volumes:
-      - ./openrag-documents:/app/documents:Z
+      - ./openrag-documents:/app/openrag-documents:Z
       - ./keys:/app/keys:Z
       - ./flows:/app/flows:U,z
+      - ./config:/app/config:Z
 
   openrag-frontend:
     image: langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}

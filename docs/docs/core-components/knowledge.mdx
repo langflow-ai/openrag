@@ -140,7 +140,7 @@ The default value is 200 characters, which represents an overlap of 20 percent i
 
 ### Set the local documents path {#set-the-local-documents-path}
 
-The default path for local uploads is the `./openrag-documents` subdirectory in your OpenRAG installation directory. This is mounted to the `/app/documents/` directory inside the OpenRAG container. Files added to the host or container directory are visible in both locations.
+The default path for local uploads is the `./openrag-documents` subdirectory in your OpenRAG installation directory. This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container. Files added to the host or container directory are visible in both locations.
 
 To change this location, modify the **Documents Paths** variable in either the [**Advanced Setup** menu](/install#setup) or in the `.env` used by Docker Compose.
 

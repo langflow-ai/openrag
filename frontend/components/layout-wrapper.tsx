@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import {
   DoclingHealthBanner,
@@ -22,6 +23,7 @@ import { ChatRenderer } from "./chat-renderer";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { isMenuOpen } = useTask();
   const { isPanelOpen } = useKnowledgeFilter();
   const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
@@ -29,6 +31,14 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   // List of paths that should not show navigation
   const authPaths = ["/login", "/auth/callback"];
   const isAuthPage = authPaths.includes(pathname);
+
+  // Redirect to login when not authenticated (and not in no-auth mode)
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && !isNoAuthMode && !isAuthPage) {
+      const redirectUrl = `/login?redirect=${encodeURIComponent(pathname)}`;
+      router.push(redirectUrl);
+    }
+  }, [isLoading, isAuthenticated, isNoAuthMode, isAuthPage, pathname, router]);
 
   // Call all hooks unconditionally (React rules)
   // But disable queries for auth pages to prevent unnecessary requests
@@ -49,9 +59,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   const isSettingsLoadingOrError = isSettingsLoading || !settings;
 
-  // Show loading state when backend isn't ready
+  // Show loading state when backend isn't ready or when not authenticated (redirect will happen)
   if (
     isLoading ||
+    (!isAuthenticated && !isNoAuthMode) ||
     (isSettingsLoadingOrError && (isNoAuthMode || isAuthenticated))
   ) {
     return (

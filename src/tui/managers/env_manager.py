@@ -521,15 +521,15 @@ class EnvManager:
         )
 
         if not is_valid:
-            return ["./openrag-documents:/app/documents:Z"]  # fallback
+            return ["./openrag-documents:/app/openrag-documents:Z"]  # fallback
 
         volume_mounts = []
         for i, path in enumerate(validated_paths):
             if i == 0:
-                # First path maps to the default /app/documents
-                volume_mounts.append(f"{path}:/app/documents:Z")
+                # First path maps to the default /app/openrag-documents
+                volume_mounts.append(f"{path}:/app/openrag-documents:Z")
             else:
                 # Additional paths map to numbered directories
-                volume_mounts.append(f"{path}:/app/documents{i + 1}:Z")
+                volume_mounts.append(f"{path}:/app/openrag-documents{i + 1}:Z")
 
         return volume_mounts

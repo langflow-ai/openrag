@@ -34,6 +34,7 @@ class WelcomeScreen(Screen):
         self.has_oauth_config = False
         self.default_button_id = "basic-setup-btn"
         self._state_checked = False
+        self.has_flow_backups = False
         
         # Check if .env file exists
         self.has_env_file = self.env_manager.env_file.exists()
@@ -45,6 +46,9 @@ class WelcomeScreen(Screen):
         self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
             os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
         )
+        
+        # Check for flow backups
+        self.has_flow_backups = self._check_flow_backups()
 
     def compose(self) -> ComposeResult:
         """Create the welcome screen layout."""
@@ -60,6 +64,19 @@ class WelcomeScreen(Screen):
             id="main-container",
         )
         yield Footer()
+
+    def _check_flow_backups(self) -> bool:
+        """Check if there are any flow backups in ./flows/backup directory."""
+        backup_dir = Path("flows/backup")
+        if not backup_dir.exists():
+            return False
+        
+        try:
+            # Check if there are any .json files in the backup directory
+            backup_files = list(backup_dir.glob("*.json"))
+            return len(backup_files) > 0
+        except Exception:
+            return False
 
     def _detect_services_sync(self) -> None:
         """Synchronously detect if services are running."""

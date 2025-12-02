@@ -4507,6 +4507,7 @@
   "endpoint_name": null,
   "id": "1098eea1-6649-4e1d-aed1-b77249fb8dd0",
   "is_component": false,
+  "locked": true,
   "last_tested_version": "1.7.0.dev21",
   "name": "OpenRAG OpenSearch Agent",
   "tags": [
