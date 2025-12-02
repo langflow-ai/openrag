@@ -77,7 +77,7 @@ On macOS, this cache directory is typically a user cache directory such as `/Use
    uvx openrag
    ```
 
-If you do not need OCR, you can disable OCR-based processing in your ingestion settings to avoid requiring `easyocr`.
+If you don't need OCR, you can disable OCR-based processing in your ingestion settings to avoid requiring `easyocr`.
 
 ## Upgrade fails due to Langflow container already exists {#langflow-container-already-exists-during-upgrade}
 
@@ -220,3 +220,7 @@ When you start OpenRAG after doing this, you should be prompted to go through th
 
 Due to a known issue, the onboarding process might not reset when you reinstall OpenRAG.
 If this occurs, [install OpenRAG in a new Python project directory](/install#install) (with `uv init` and `uv add openrag`).
+
+## Document ingestion or similarity search issues
+
+See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).

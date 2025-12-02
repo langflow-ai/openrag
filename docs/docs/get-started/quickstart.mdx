@@ -7,6 +7,7 @@ import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialWsl from '@site/docs/_partial-wsl-install.mdx';
+import PartialIntegrateChat from '@site/docs/_partial-integrate-chat.mdx';
 
 Use this quickstart to install OpenRAG, and then try some of OpenRAG's core features.
 
@@ -84,7 +85,7 @@ You can complete this quickstart without going through the overview.
 
 ## Load and chat with documents {#chat-with-documents}
 
-OpenRAG's knowledge base chat is powered by the [OpenRAG OpenSearch Agent](/agents).
+Use the [OpenRAG **Chat**](/chat) to explore the documents in your OpenRAG database using natural language queries.
 Some documents are included by default to get you started, and you can load your own documents.
 
 1. In OpenRAG, click <Icon name="MessageSquare" aria-hidden="true"/> **Chat**.
@@ -103,7 +104,7 @@ You can click a document to view the chunks of the document as they are stored i
    **Folder** uploads an entire directory.
    The default directory is the `/openrag-documents` subdirectory in your OpenRAG installation directory.
 
-   For information about the cloud storage provider options, see [Ingest files through OAuth connectors](/knowledge#oauth-ingestion).
+   For information about the cloud storage provider options, see [Ingest files with OAuth connectors](/ingestion#oauth-ingestion).
 
 5. Return to the **Chat** window, and then ask a question related to the documents that you just uploaded.
 
@@ -116,7 +117,7 @@ You can click a document to view the chunks of the document as they are stored i
 
    * Click <Icon name="Settings2" aria-hidden="true"/> **Settings** to modify the knowledge ingestion settings.
 
-   For more information about knowledge bases and knowledge ingestion, see [OpenSearch in OpenRAG](/knowledge).
+   For more information, see [Configure knowledge](/knowledge) and [Ingest knowledge](/ingestion).
 
 ## Change the language model and chat settings {#change-components}
 
@@ -128,14 +129,14 @@ You can click a document to view the chunks of the document as they are stored i
 
    If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from the `.env` file in your OpenRAG installation directory.
 
-   The OpenRAG OpenSearch Agent flow opens in a new browser window.
+   The **OpenRAG OpenSearch Agent** flow opens in a new browser window.
 
    ![OpenRAG OpenSearch Agent flow](/img/opensearch-agent-flow.png)
 
 3. For this quickstart, try changing the model.
 Click the **Language Model** component, and then change the **Model Name** to a different OpenAI model.
 
-   When editing built-in flows, you can click **Restore flow** to revert the flow to its initial state.
+   After you edit a built-in flow, you can click **Restore flow** on the **Settings** page to revert the flow to its original state when you first installed OpenRAG.
 
 4. Press <kbd>Command</kbd>+<kbd>S</kbd> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to save your changes.
 
@@ -153,116 +154,7 @@ You can use these flows as-is or modify them to better suit your needs, as demon
 
 You can send and receive requests with the Langflow API using Python, TypeScript, or curl.
 
-1. Open the OpenRAG OpenSearch Agent flow in the Langflow visual editor: From the **Chat** window, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, click **Edit in Langflow**, and then click **Proceed**.
-
-2. Create a [Langflow API key](https://docs.langflow.org/api-keys-and-authentication), which is a user-specific token required to send requests to the Langflow server.
-This key doesn't grant access to OpenRAG.
-
-   1. In the Langflow visual editor, click your user icon in the header, and then select **Settings**.
-   2. Click **Langflow API Keys**, and then click <Icon name="Plus" aria-hidden="true"/> **Add New**.
-   3. Name your key, and then click **Create API Key**.
-   4. Copy the API key and store it securely.
-   5. Exit the Langflow **Settings** page to return to the visual editor.
-
-3. Click **Share**, and then select **API access** to get pregenerated code snippets that call the Langflow API and run the flow.
-
-   These code snippets construct API requests with your Langflow server URL (`LANGFLOW_SERVER_ADDRESS`), the flow to run (`FLOW_ID`), required headers (`LANGFLOW_API_KEY`, `Content-Type`), and a payload containing the required inputs to run the flow, including a default chat input message.
-
-   In production, you would modify the inputs to suit your application logic. For example, you could replace the default chat input message with dynamic user input.
-
-   <Tabs>
-   <TabItem value="python" label="Python">
-
-   ```python
-   import requests
-   import os
-   import uuid
-
-   api_key = 'LANGFLOW_API_KEY'
-   url = "http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID"  # The complete API endpoint URL for this flow
-
-   # Request payload configuration
-   payload = {
-       "output_type": "chat",
-       "input_type": "chat",
-       "input_value": "hello world!"
-   }
-   payload["session_id"] = str(uuid.uuid4())
-
-   headers = {"x-api-key": api_key}
-
-   try:
-       # Send API request
-       response = requests.request("POST", url, json=payload, headers=headers)
-       response.raise_for_status()  # Raise exception for bad status codes
-
-       # Print response
-       print(response.text)
-
-   except requests.exceptions.RequestException as e:
-       print(f"Error making API request: {e}")
-   except ValueError as e:
-       print(f"Error parsing response: {e}")
-   ```
-
-   </TabItem>
-   <TabItem value="typescript" label="TypeScript">
-
-   ```typescript
-   const crypto = require('crypto');
-   const apiKey = 'LANGFLOW_API_KEY';
-   const payload = {
-       "output_type": "chat",
-       "input_type": "chat",
-       "input_value": "hello world!"
-   };
-   payload.session_id = crypto.randomUUID();
-
-   const options = {
-       method: 'POST',
-       headers: {
-           'Content-Type': 'application/json',
-           "x-api-key": apiKey
-       },
-       body: JSON.stringify(payload)
-   };
-
-   fetch('http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID', options)
-       .then(response => response.json())
-       .then(response => console.warn(response))
-       .catch(err => console.error(err));
-   ```
-
-   </TabItem>
-   <TabItem value="curl" label="curl">
-
-   ```bash
-   curl --request POST \
-     --url 'http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID?stream=false' \
-     --header 'Content-Type: application/json' \
-     --header "x-api-key: LANGFLOW_API_KEY" \
-     --data '{
-       "output_type": "chat",
-       "input_type": "chat",
-       "input_value": "hello world!"
-     }'
-   ```
-
-   </TabItem>
-   </Tabs>
-
-4. Copy your preferred snippet, and then run it:
-
-   * **Python**: Paste the snippet into a `.py` file, save it, and then run it with `python filename.py`.
-   * **TypeScript**: Paste the snippet into a `.ts` file, save it, and then run it with `ts-node filename.ts`.
-   * **curl**: Paste and run snippet directly in your terminal.
-
-If the request is successful, the response includes many details about the flow run, including the session ID, inputs, outputs, components, durations, and more.
-
-In production, you won't pass the raw response to the user in its entirety.
-Instead, you extract and reformat relevant fields for different use cases, as demonstrated in the [Langflow quickstart](https://docs.langflow.org/quickstart#extract-data-from-the-response).
-For example, you could pass the chat output text to a front-end user-facing application, and store specific fields in logs and backend data stores for monitoring, chat history, or analytics.
-You could also pass the output from one flow as input to another flow.
+<PartialIntegrateChat />
 
 ## Next steps
 

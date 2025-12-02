@@ -1,28 +1,28 @@
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
-import PartialOllama from '@site/docs/_partial-ollama.mdx'; 
+import PartialOllama from '@site/docs/_partial-ollama.mdx';
 
-## Application onboarding 
+## Application onboarding
 
-The first time you start OpenRAG, whether using the TUI or a `.env` file, you must complete application onboarding.
+The first time you start OpenRAG, regardless of how you installed it, you must complete application onboarding.
 
-:::warning
-Most values from onboarding can be changed later in the OpenRAG **Settings** page, but there are important restrictions.
-
-The **language model provider** and **embeddings model provider** can only be selected at onboarding.
-To change your provider selection later, you must [reinstall OpenRAG](/install#reinstall).
+Some of these variables, such as the embedding models, can be changed seamlessly after onboarding.
+Others are immutable and require you to destroy and recreate the OpenRAG containers.
+For more information, see [Environment variables](/reference/configuration).
 
 You can use different providers for your language model and embedding model, such as Anthropic for the language model and OpenAI for the embeddings model.
-:::
+Additionally, you can set multiple embedding models.
 
-Choose one LLM provider and complete these steps:
+You only need to complete onboarding for your preferred providers.
 
     <Tabs groupId="Provider">
     <TabItem value="Anthropic" label="Anthropic" default>
+
     :::info
-    Anthropic does not provide embedding models. If you select Anthropic for your language model, you must then select a different provider for embeddings.
+    Anthropic doesn't provide embedding models. If you select Anthropic for your language model, you must select a different provider for embeddings.
     :::
+
     1. Enable **Use environment Anthropic API key** to automatically use your key from the `.env` file.
     Alternatively, paste an Anthropic API key into the field.
     2. Under **Advanced settings**, select your **Language Model**.
@@ -34,6 +34,7 @@ Choose one LLM provider and complete these steps:
 
     </TabItem>
     <TabItem value="OpenAI" label="OpenAI">
+
     1. Enable **Get API key from environment variable** to automatically enter your key from the TUI-generated `.env` file.
     Alternatively, paste an OpenAI API key into the field.
     2. Under **Advanced settings**, select your **Language Model**.
@@ -45,6 +46,7 @@ Choose one LLM provider and complete these steps:
 
     </TabItem>
     <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
+
     1. Complete the fields for **watsonx.ai API Endpoint**, **IBM Project ID**, and **IBM API key**.
     These values are found in your IBM watsonx deployment.
     2. Under **Advanced settings**, select your **Language Model**.
@@ -56,9 +58,11 @@ Choose one LLM provider and complete these steps:
 
     </TabItem>
     <TabItem value="Ollama" label="Ollama">
-    :::tip
-    Ollama is not included with OpenRAG. To install Ollama, see the [Ollama documentation](https://docs.ollama.com/).
-    :::   
+
+    :::info
+    Ollama isn't installed with OpenRAG. To install Ollama, see the [Ollama documentation](https://docs.ollama.com/).
+    :::
+
     1. To connect to an Ollama server running on your local machine, enter your Ollama server's base URL address.
     The default Ollama server address is `http://localhost:11434`.
     OpenRAG connects to the Ollama server and populates the model lists with the server's available models.
@@ -70,5 +74,6 @@ Choose one LLM provider and complete these steps:
     3. Click **Complete**.
     4. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
     5. Continue with the [Quickstart](/quickstart).
+
     </TabItem>
     </Tabs>
