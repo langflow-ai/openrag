@@ -4,6 +4,7 @@ import type {
   Message,
   SelectedFilters,
 } from "@/app/chat/_types/types";
+import { useChat } from "@/contexts/chat-context";
 
 interface UseChatStreamingOptions {
   endpoint?: string;
@@ -31,6 +32,8 @@ export function useChatStreaming({
   const [isLoading, setIsLoading] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef(0);
+
+  const { refreshConversations } = useChat();
 
   const sendMessage = async ({
     prompt,
@@ -498,6 +501,7 @@ export function useChatStreaming({
         // Clear streaming message and call onComplete with final message
         setStreamingMessage(null);
         onComplete?.(finalMessage, newResponseId);
+        refreshConversations(true);
         return finalMessage;
       }
 
