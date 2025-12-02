@@ -365,18 +365,16 @@ async def _test_watsonx_embedding(
 
 # Ollama validation functions
 async def _test_ollama_lightweight_health(endpoint: str) -> None:
-    """Test Ollama availability with lightweight /api/tags endpoint.
+    """Test Ollama availability with lightweight status check.
     
-    This endpoint is very fast and doesn't block on active requests,
-    making it ideal for health checks when Ollama might be busy.
+    Only checks if the endpoint returns a 200 status without fetching data.
     """
     try:
         ollama_url = transform_localhost_url(endpoint)
-        url = f"{ollama_url}/api/tags"
 
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                url,
+                ollama_url,
                 timeout=10.0,  # Short timeout for lightweight check
             )
 
