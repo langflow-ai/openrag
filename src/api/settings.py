@@ -969,7 +969,6 @@ async def _create_openrag_docs_filter(request, session_manager):
     import uuid
     import json
     from datetime import datetime
-    from session_manager import AnonymousUser
 
     # Get knowledge filter service from app state
     app = request.scope.get("app")
@@ -982,9 +981,16 @@ async def _create_openrag_docs_filter(request, session_manager):
         logger.error("Knowledge filter service not available")
         return None
 
-    # Use anonymous user for no-auth mode compatibility
-    user = AnonymousUser()
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, None)
+    # Get user and JWT token from request
+    user = request.state.user
+    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
+
+    # In no-auth mode, set owner to None so filter is visible to all users
+    # In auth mode, use the actual user as owner
+    if is_no_auth_mode():
+        owner_user_id = None
+    else:
+        owner_user_id = user.user_id
 
     # Create the filter document
     filter_id = str(uuid.uuid4())
@@ -1007,7 +1013,7 @@ async def _create_openrag_docs_filter(request, session_manager):
         "name": "OpenRAG Docs",
         "description": "Filter for OpenRAG documentation",
         "query_data": query_data,
-        "owner": user.user_id,
+        "owner": owner_user_id,
         "allowed_users": [],
         "allowed_groups": [],
         "created_at": datetime.utcnow().isoformat(),
@@ -1030,7 +1036,6 @@ async def _create_user_document_filter(request, session_manager, filename):
     import uuid
     import json
     from datetime import datetime
-    from session_manager import AnonymousUser
 
     # Get knowledge filter service from app state
     app = request.scope.get("app")
@@ -1043,9 +1048,16 @@ async def _create_user_document_filter(request, session_manager, filename):
         logger.error("Knowledge filter service not available")
         return None
 
-    # Use anonymous user for no-auth mode compatibility
-    user = AnonymousUser()
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, None)
+    # Get user and JWT token from request
+    user = request.state.user
+    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
+
+    # In no-auth mode, set owner to None so filter is visible to all users
+    # In auth mode, use the actual user as owner
+    if is_no_auth_mode():
+        owner_user_id = None
+    else:
+        owner_user_id = user.user_id
 
     # Create the filter document
     filter_id = str(uuid.uuid4())
@@ -1072,7 +1084,7 @@ async def _create_user_document_filter(request, session_manager, filename):
         "name": display_name,
         "description": f"Filter for {filename}",
         "query_data": query_data,
-        "owner": user.user_id,
+        "owner": owner_user_id,
         "allowed_users": [],
         "allowed_groups": [],
         "created_at": datetime.utcnow().isoformat(),
