@@ -1,7 +1,7 @@
 import copy
 from typing import Any, Dict
 from agentd.tool_decorator import tool
-from config.settings import EMBED_MODEL, clients, INDEX_NAME, get_embedding_model
+from config.settings import EMBED_MODEL, clients, INDEX_NAME, get_embedding_model, WATSONX_EMBEDDING_DIMENSIONS
 from auth_context import get_auth_context
 from utils.logging_config import get_logger
 
@@ -155,18 +155,15 @@ class SearchService:
                 if not any(model_name.startswith(prefix + "/") for prefix in ["openai", "ollama", "watsonx", "anthropic"]):
                     # Detect provider from model name characteristics:
                     # - Ollama: contains ":" (e.g., "nomic-embed-text:latest")
-                    # - WatsonX: starts with "ibm/" or known third-party models
+                    # - WatsonX: check against known IBM embedding models
                     # - OpenAI: everything else (no prefix needed)
 
                     if ":" in model_name:
                         # Ollama models use tags with colons
                         formatted_model = f"ollama/{model_name}"
                         logger.debug(f"Formatted Ollama model: {model_name} -> {formatted_model}")
-                    elif model_name.startswith("ibm/") or model_name in [
-                        "intfloat/multilingual-e5-large",
-                        "sentence-transformers/all-minilm-l6-v2"
-                    ]:
-                        # WatsonX embedding models
+                    elif model_name in WATSONX_EMBEDDING_DIMENSIONS:
+                        # WatsonX embedding models - use hardcoded list from settings
                         formatted_model = f"watsonx/{model_name}"
                         logger.debug(f"Formatted WatsonX model: {model_name} -> {formatted_model}")
                     # else: OpenAI models don't need a prefix
