@@ -124,8 +124,8 @@ If reinstalling the Langflow container doesn't resolve the issue, you must reset
 Then, you can retry the upgrade.
 
 :::warning
-This is a destructive operation that completely resets your OpenRAG containers and removes all OpenRAG data, including OpenSearch data, uploaded documents, and authentication details.
-Your `.env` file is preserved, so your configuration settings remain intact, but all other data is lost.
+This is a destructive operation that destroys your OpenRAG containers and their contents.
+However, your `.env` file (configuration settings) and `./opensearch-data` (OpenSearch knowledge base) are preserved.
 :::
 
 To reset your installation, stop your containers, and then completely remove them.

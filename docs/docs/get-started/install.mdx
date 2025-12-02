@@ -296,7 +296,7 @@ You can also click **Stop** or **Restart** to stop and start OpenRAG native serv
 ### Reset containers {#reset-containers}
 
 :::warning
-This is a destructive action that deletes all of your OpenRAG container data, including OpenSearch data, uploaded documents, and customized flows.
+This is a destructive action that destroys and recreates all of your OpenRAG containers.
 :::
 
 To destroy and recreate your OpenRAG containers, go to the TUI [**Status** menu](#status), and then click **Reset**.
@@ -438,6 +438,8 @@ To reinstall OpenRAG with a completely fresh setup:
 
     The Reset operation does not remove your project's `.env` file, so your passwords, API keys, and OAuth settings can be preserved.
     If you delete the `.env` file, you must run the [Set up OpenRAG with the TUI](#setup) process again to create a new configuration file.
+
+3. Optional: Delete your OpenSearch knowledge base by deleting the contents of the `./opensearch-data` folder in your OpenRAG installation directory.
 
 3. In the TUI **Setup** menu, repeat the [Basic Setup](#setup) process:
 
