@@ -2,19 +2,29 @@
 
 import { useEffect, useRef, useState } from "react";
 import { StickToBottom } from "use-stick-to-bottom";
+import { getFilterById } from "@/app/api/queries/useGetFilterByIdQuery";
 import { AssistantMessage } from "@/app/chat/_components/assistant-message";
 import Nudges from "@/app/chat/_components/nudges";
 import { UserMessage } from "@/app/chat/_components/user-message";
-import type { Message } from "@/app/chat/_types/types";
+import type { Message, SelectedFilters } from "@/app/chat/_types/types";
 import OnboardingCard from "@/app/onboarding/_components/onboarding-card";
+import { useChat } from "@/contexts/chat-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import {
   ONBOARDING_ASSISTANT_MESSAGE_KEY,
+  ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY,
   ONBOARDING_SELECTED_NUDGE_KEY,
 } from "@/lib/constants";
 
 import { OnboardingStep } from "./onboarding-step";
 import OnboardingUpload from "./onboarding-upload";
+
+// Filters for OpenRAG documentation
+const OPENRAG_DOCS_FILTERS: SelectedFilters = {
+  data_sources: ["openrag-documentation.pdf"],
+  document_types: [],
+  owners: [],
+};
 
 export function OnboardingContent({
   handleStepComplete,
@@ -25,6 +35,7 @@ export function OnboardingContent({
   handleStepBack: () => void;
   currentStep: number;
 }) {
+  const { setConversationFilter, setCurrentConversationId } = useChat();
   const parseFailedRef = useRef(false);
   const [responseId, setResponseId] = useState<string | null>(null);
   const [selectedNudge, setSelectedNudge] = useState<string>(() => {
@@ -70,7 +81,7 @@ export function OnboardingContent({
   }, [handleStepBack, currentStep]);
 
   const { streamingMessage, isLoading, sendMessage } = useChatStreaming({
-    onComplete: (message, newResponseId) => {
+    onComplete: async (message, newResponseId) => {
       setAssistantMessage(message);
       // Save assistant message to localStorage when complete
       if (typeof window !== "undefined") {
@@ -88,6 +99,26 @@ export function OnboardingContent({
       }
       if (newResponseId) {
         setResponseId(newResponseId);
+
+        // Set the current conversation ID
+        setCurrentConversationId(newResponseId);
+
+        // Save the filter association for this conversation
+        const openragDocsFilterId = localStorage.getItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY);
+        if (openragDocsFilterId) {
+          try {
+            // Load the filter and set it in the context with explicit responseId
+            // This ensures the filter is saved to localStorage with the correct conversation ID
+            const filter = await getFilterById(openragDocsFilterId);
+            if (filter) {
+              // Pass explicit newResponseId to ensure correct localStorage association
+              setConversationFilter(filter, newResponseId);
+              console.log("[ONBOARDING] Saved filter association:", `conversation_filter_${newResponseId}`, "=", openragDocsFilterId);
+            }
+          } catch (error) {
+            console.error("Failed to associate filter with conversation:", error);
+          }
+        }
       }
     },
     onError: (error) => {
@@ -115,9 +146,36 @@ export function OnboardingContent({
       localStorage.removeItem(ONBOARDING_ASSISTANT_MESSAGE_KEY);
     }
     setTimeout(async () => {
+      // Check if we have the OpenRAG docs filter ID (sample data was ingested)
+      const openragDocsFilterId =
+        typeof window !== "undefined"
+          ? localStorage.getItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY)
+          : null;
+
+      // Load and set the OpenRAG docs filter if available
+      let filterToUse = null;
+      console.log("[ONBOARDING] openragDocsFilterId:", openragDocsFilterId);
+      if (openragDocsFilterId) {
+        try {
+          const filter = await getFilterById(openragDocsFilterId);
+          console.log("[ONBOARDING] Loaded filter:", filter);
+          if (filter) {
+            // Pass null to skip localStorage save - no conversation exists yet
+            setConversationFilter(filter, null);
+            filterToUse = filter;
+          }
+        } catch (error) {
+          console.error("Failed to load OpenRAG docs filter:", error);
+        }
+      }
+
+      console.log("[ONBOARDING] Sending message with filter_id:", filterToUse?.id);
       await sendMessage({
         prompt: nudge,
         previousResponseId: responseId || undefined,
+        // Send both filter_id and filters (selections)
+        filter_id: filterToUse?.id,
+        filters: openragDocsFilterId ? OPENRAG_DOCS_FILTERS : undefined,
       });
     }, 1500);
   };

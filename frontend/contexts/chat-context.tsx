@@ -65,7 +65,7 @@ interface ChatContextType {
   refreshConversationsSilent: () => Promise<void>;
   refreshTrigger: number;
   refreshTriggerSilent: number;
-  loadConversation: (conversation: ConversationData) => void;
+  loadConversation: (conversation: ConversationData) => Promise<void>;
   startNewConversation: () => void;
   conversationData: ConversationData | null;
   forkFromResponse: (responseId: string) => void;
@@ -77,7 +77,8 @@ interface ChatContextType {
   conversationLoaded: boolean;
   setConversationLoaded: (loaded: boolean) => void;
   conversationFilter: KnowledgeFilter | null;
-  setConversationFilter: (filter: KnowledgeFilter | null) => void;
+  // responseId: undefined = use currentConversationId, null = don't save to localStorage
+  setConversationFilter: (filter: KnowledgeFilter | null, responseId?: string | null) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -112,6 +113,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const refreshConversations = useCallback((force = false) => {
+    console.log("[REFRESH] refreshConversations called, force:", force);
+
     if (force) {
       // Immediate refresh for important updates like new conversations
       setRefreshTrigger((prev) => prev + 1);
@@ -145,22 +148,59 @@ export function ChatProvider({ children }: ChatProviderProps) {
   }, []);
 
   const loadConversation = useCallback(
-    (conversation: ConversationData) => {
+    async (conversation: ConversationData) => {
+      console.log("[CONVERSATION] Loading conversation:", {
+        conversationId: conversation.response_id,
+        title: conversation.title,
+        endpoint: conversation.endpoint,
+      });
+
       setCurrentConversationId(conversation.response_id);
       setEndpoint(conversation.endpoint);
       // Store the full conversation data for the chat page to use
       setConversationData(conversation);
+
       // Load the filter if one exists for this conversation
-      // Only update the filter if this is a different conversation (to preserve user's filter selection)
-      setConversationFilterState((currentFilter) => {
-        // If we're loading a different conversation, load its filter
-        // Otherwise keep the current filter (don't reset it when conversation refreshes)
-        const isDifferentConversation =
-          conversation.response_id !== conversationData?.response_id;
-        return isDifferentConversation
-          ? conversation.filter || null
-          : currentFilter;
-      });
+      // Always update the filter to match the conversation being loaded
+      const isDifferentConversation =
+        conversation.response_id !== conversationData?.response_id;
+
+      if (isDifferentConversation && typeof window !== "undefined") {
+        // Try to load the saved filter from localStorage
+        const savedFilterId = localStorage.getItem(`conversation_filter_${conversation.response_id}`);
+        console.log("[CONVERSATION] Looking for filter:", {
+          conversationId: conversation.response_id,
+          savedFilterId,
+        });
+
+        if (savedFilterId) {
+          // Import getFilterById dynamically to avoid circular dependency
+          const { getFilterById } = await import("@/app/api/queries/useGetFilterByIdQuery");
+          try {
+            const filter = await getFilterById(savedFilterId);
+
+            if (filter) {
+              console.log("[CONVERSATION] Loaded filter:", filter.name, filter.id);
+              setConversationFilterState(filter);
+              // Update conversation data with the loaded filter
+              setConversationData((prev) => {
+                if (!prev) return prev;
+                return { ...prev, filter };
+              });
+            }
+          } catch (error) {
+            console.error("[CONVERSATION] Failed to load filter:", error);
+            // Filter was deleted, clean up localStorage
+            localStorage.removeItem(`conversation_filter_${conversation.response_id}`);
+            setConversationFilterState(null);
+          }
+        } else {
+          // No saved filter in localStorage, clear the current filter
+          console.log("[CONVERSATION] No filter found for this conversation");
+          setConversationFilterState(null);
+        }
+      }
+
       // Clear placeholder when loading a real conversation
       setPlaceholderConversation(null);
       setConversationLoaded(true);
@@ -170,15 +210,48 @@ export function ChatProvider({ children }: ChatProviderProps) {
     [conversationData?.response_id],
   );
 
-  const startNewConversation = useCallback(() => {
+  const startNewConversation = useCallback(async () => {
+    console.log("[CONVERSATION] Starting new conversation");
+
     // Clear current conversation data and reset state
     setCurrentConversationId(null);
     setPreviousResponseIds({ chat: null, langflow: null });
     setConversationData(null);
     setConversationDocs([]);
     setConversationLoaded(false);
-    // Clear the filter when starting a new conversation
-    setConversationFilterState(null);
+
+    // Load default filter if available (and clear it after first use)
+    if (typeof window !== "undefined") {
+      const defaultFilterId = localStorage.getItem("default_conversation_filter_id");
+      console.log("[CONVERSATION] Default filter ID:", defaultFilterId);
+
+      if (defaultFilterId) {
+        // Clear the default filter now so it's only used once
+        localStorage.removeItem("default_conversation_filter_id");
+        console.log("[CONVERSATION] Cleared default filter (used once)");
+
+        try {
+          const { getFilterById } = await import("@/app/api/queries/useGetFilterByIdQuery");
+          const filter = await getFilterById(defaultFilterId);
+
+          if (filter) {
+            console.log("[CONVERSATION] Loaded default filter:", filter.name, filter.id);
+            setConversationFilterState(filter);
+          } else {
+            // Default filter was deleted
+            setConversationFilterState(null);
+          }
+        } catch (error) {
+          console.error("[CONVERSATION] Failed to load default filter:", error);
+          setConversationFilterState(null);
+        }
+      } else {
+        console.log("[CONVERSATION] No default filter set");
+        setConversationFilterState(null);
+      }
+    } else {
+      setConversationFilterState(null);
+    }
 
     // Create a temporary placeholder conversation to show in sidebar
     const placeholderConversation: ConversationData = {
@@ -230,7 +303,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   );
 
   const setConversationFilter = useCallback(
-    (filter: KnowledgeFilter | null) => {
+    (filter: KnowledgeFilter | null, responseId?: string | null) => {
       setConversationFilterState(filter);
       // Update the conversation data to include the filter
       setConversationData((prev) => {
@@ -240,8 +313,24 @@ export function ChatProvider({ children }: ChatProviderProps) {
           filter,
         };
       });
+
+      // Determine which conversation ID to use for saving
+      // - undefined: use currentConversationId (default behavior)
+      // - null: explicitly skip saving to localStorage
+      // - string: use the provided responseId
+      const targetId = responseId === undefined ? currentConversationId : responseId;
+
+      // Save filter association for the target conversation
+      if (typeof window !== "undefined" && targetId) {
+        const key = `conversation_filter_${targetId}`;
+        if (filter) {
+          localStorage.setItem(key, filter.id);
+        } else {
+          localStorage.removeItem(key);
+        }
+      }
     },
-    [],
+    [currentConversationId],
   );
 
   const value = useMemo<ChatContextType>(

@@ -289,7 +289,7 @@ export function Navigation({
         handleNewConversation();
       } else if (activeConvo) {
         loadConversation(activeConvo);
-        refreshConversations();
+        // Don't call refreshConversations here - it causes unnecessary refetches
       } else if (
         conversations.length > 0 &&
         currentConversationId === null &&
@@ -473,7 +473,7 @@ export function Navigation({
                         onClick={() => {
                           if (loading || isConversationsLoading) return;
                           loadConversation(conversation);
-                          refreshConversations();
+                          // Don't refresh - just loading an existing conversation
                         }}
                         disabled={loading || isConversationsLoading}
                       >

@@ -37,6 +37,7 @@ async def upload_ingest_router(
         # Route based on configuration
         if DISABLE_INGEST_WITH_LANGFLOW:
             # Route to traditional OpenRAG upload
+            # Note: onboarding filter creation is only supported in Langflow path
             logger.debug("Routing to traditional OpenRAG upload")
             return await traditional_upload(request, document_service, session_manager)
         else:
@@ -77,6 +78,7 @@ async def langflow_upload_ingest_task(
         tweaks_json = form.get("tweaks")
         delete_after_ingest = form.get("delete_after_ingest", "true").lower() == "true"
         replace_duplicates = form.get("replace_duplicates", "false").lower() == "true"
+        create_filter = form.get("create_filter", "false").lower() == "true"
 
         # Parse JSON fields if provided
         settings = None
@@ -177,14 +179,15 @@ async def langflow_upload_ingest_task(
 
             logger.debug("Langflow upload task created successfully", task_id=task_id)
 
-            return JSONResponse(
-                {
-                    "task_id": task_id,
-                    "message": f"Langflow upload task created for {len(upload_files)} file(s)",
-                    "file_count": len(upload_files),
-                },
-                status_code=202,
-            )  # 202 Accepted for async processing
+            response_data = {
+                "task_id": task_id,
+                "message": f"Langflow upload task created for {len(upload_files)} file(s)",
+                "file_count": len(upload_files),
+                "create_filter": create_filter,  # Pass flag back to frontend
+                "filename": original_filenames[0] if len(original_filenames) == 1 else None,  # Pass filename for filter creation
+            }
+
+            return JSONResponse(response_data, status_code=202)  # 202 Accepted for async processing
 
         except Exception:
             # Clean up temp files on error

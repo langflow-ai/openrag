@@ -165,18 +165,36 @@ async def generate_langflow_api_key(modify: bool = False):
                 if validation_response.status_code == 200:
                     logger.debug("Cached API key is valid", key_prefix=LANGFLOW_KEY[:8])
                     return LANGFLOW_KEY
-                else:
+                elif validation_response.status_code in (401, 403):
                     logger.warning(
-                        "Cached API key is invalid, generating fresh key",
+                        "Cached API key is unauthorized, generating fresh key",
                         status_code=validation_response.status_code,
                     )
                     LANGFLOW_KEY = None  # Clear invalid key
-            except Exception as e:
+                else:
+                    logger.warning(
+                        "Cached API key validation returned non-access error; keeping existing key",
+                        status_code=validation_response.status_code,
+                    )
+                    return LANGFLOW_KEY
+            except requests.exceptions.Timeout as e:
                 logger.warning(
-                    "Cached API key validation failed, generating fresh key",
+                    "Cached API key validation timed out; keeping existing key",
                     error=str(e),
                 )
-                LANGFLOW_KEY = None  # Clear invalid key
+                return LANGFLOW_KEY
+            except requests.exceptions.RequestException as e:
+                logger.warning(
+                    "Cached API key validation failed due to request error; keeping existing key",
+                    error=str(e),
+                )
+                return LANGFLOW_KEY
+            except Exception as e:
+                logger.warning(
+                    "Unexpected error during cached API key validation; keeping existing key",
+                    error=str(e),
+                )
+                return LANGFLOW_KEY
 
     # Use default langflow/langflow credentials if auto-login is enabled and credentials not set
     username = LANGFLOW_SUPERUSER
@@ -279,7 +297,7 @@ class AppClients:
         self.opensearch = None
         self.langflow_client = None
         self.langflow_http_client = None
-        self._patched_async_client = None  # Private attribute
+        self._patched_async_client = None  # Private attribute - single client for all providers
         self._client_init_lock = __import__('threading').Lock()  # Lock for thread-safe initialization
         self.converter = None
 
@@ -364,6 +382,9 @@ class AppClients:
         Property that ensures OpenAI client is initialized on first access.
         This allows lazy initialization so the app can start without an API key.
 
+        The client is patched with LiteLLM support to handle multiple providers.
+        All provider credentials are loaded into environment for LiteLLM routing.
+
         Note: The client is a long-lived singleton that should be closed via cleanup().
         Thread-safe via lock to prevent concurrent initialization attempts.
         """
@@ -377,21 +398,40 @@ class AppClients:
             if self._patched_async_client is not None:
                 return self._patched_async_client
 
-            # Try to initialize the client on-demand
-            # First check if OPENAI_API_KEY is in environment
-            openai_key = os.getenv("OPENAI_API_KEY")
-
-            if not openai_key:
-                # Try to get from config (in case it was set during onboarding)
-                try:
-                    config = get_openrag_config()
-                    if config and config.provider and config.provider.api_key:
-                        openai_key = config.provider.api_key
-                        # Set it in environment so AsyncOpenAI can pick it up
-                        os.environ["OPENAI_API_KEY"] = openai_key
-                        logger.info("Loaded OpenAI API key from config file")
-                except Exception as e:
-                    logger.debug("Could not load OpenAI key from config", error=str(e))
+            # Load all provider credentials into environment for LiteLLM
+            # LiteLLM routes based on model name prefixes (openai/, ollama/, watsonx/, etc.)
+            try:
+                config = get_openrag_config()
+                
+                # Set OpenAI credentials
+                if config.providers.openai.api_key:
+                    os.environ["OPENAI_API_KEY"] = config.providers.openai.api_key
+                    logger.debug("Loaded OpenAI API key from config")
+                
+                # Set Anthropic credentials
+                if config.providers.anthropic.api_key:
+                    os.environ["ANTHROPIC_API_KEY"] = config.providers.anthropic.api_key
+                    logger.debug("Loaded Anthropic API key from config")
+                
+                # Set WatsonX credentials
+                if config.providers.watsonx.api_key:
+                    os.environ["WATSONX_API_KEY"] = config.providers.watsonx.api_key
+                if config.providers.watsonx.endpoint:
+                    os.environ["WATSONX_ENDPOINT"] = config.providers.watsonx.endpoint
+                    os.environ["WATSONX_API_BASE"] = config.providers.watsonx.endpoint  # LiteLLM expects this name
+                if config.providers.watsonx.project_id:
+                    os.environ["WATSONX_PROJECT_ID"] = config.providers.watsonx.project_id
+                if config.providers.watsonx.api_key:
+                    logger.debug("Loaded WatsonX credentials from config")
+                
+                # Set Ollama endpoint
+                if config.providers.ollama.endpoint:
+                    os.environ["OLLAMA_BASE_URL"] = config.providers.ollama.endpoint
+                    os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
+                    logger.debug("Loaded Ollama endpoint from config")
+                    
+            except Exception as e:
+                logger.debug("Could not load provider credentials from config", error=str(e))
 
             # Try to initialize the client - AsyncOpenAI() will read from environment
             # We'll try HTTP/2 first with a probe, then fall back to HTTP/1.1 if it times out
@@ -454,6 +494,27 @@ class AppClients:
                 raise ValueError(f"Failed to initialize OpenAI client: {str(e)}. Please complete onboarding or set OPENAI_API_KEY environment variable.")
 
             return self._patched_async_client
+
+    @property
+    def patched_llm_client(self):
+        """Alias for patched_async_client - for backward compatibility with code expecting separate clients."""
+        return self.patched_async_client
+
+    @property
+    def patched_embedding_client(self):
+        """Alias for patched_async_client - for backward compatibility with code expecting separate clients."""
+        return self.patched_async_client
+
+    async def refresh_patched_client(self):
+        """Reset patched client so next use picks up updated provider credentials."""
+        if self._patched_async_client is not None:
+            try:
+                await self._patched_async_client.close()
+                logger.info("Closed patched client for refresh")
+            except Exception as e:
+                logger.warning("Failed to close patched client during refresh", error=str(e))
+            finally:
+                self._patched_async_client = None
 
     async def cleanup(self):
         """Cleanup resources - should be called on application shutdown"""

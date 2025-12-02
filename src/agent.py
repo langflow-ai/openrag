@@ -1,3 +1,5 @@
+from http.client import HTTPException
+
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -67,6 +69,7 @@ def store_conversation_thread(user_id: str, response_id: str, conversation_state
         "created_at": conversation_state.get("created_at"),
         "last_activity": conversation_state.get("last_activity"),
         "previous_response_id": conversation_state.get("previous_response_id"),
+        "filter_id": conversation_state.get("filter_id"),
         "total_messages": len(
             [msg for msg in messages if msg.get("role") in ["user", "assistant"]]
         ),
@@ -219,15 +222,26 @@ async def async_response(
 
         response = await client.responses.create(**request_params)
 
-        response_text = response.output_text
-        logger.info("Response generated", log_prefix=log_prefix, response=response_text)
+        # Check if response has output_text using getattr to avoid issues with special objects
+        output_text = getattr(response, "output_text", None)
+        if output_text is not None:
+            response_text = output_text
+            logger.info("Response generated", log_prefix=log_prefix, response=response_text)
 
-        # Extract and store response_id if available
-        response_id = getattr(response, "id", None) or getattr(
-            response, "response_id", None
-        )
+            # Extract and store response_id if available
+            response_id = getattr(response, "id", None) or getattr(
+                response, "response_id", None
+            )
 
-        return response_text, response_id, response
+            return response_text, response_id, response
+        else:
+            msg = "Nudge response missing output_text"
+            error = getattr(response, "error", None)
+            if error:
+                error_msg = getattr(error, "message", None)
+                if error_msg:
+                    msg = error_msg
+            raise ValueError(msg)
     except Exception as e:
         logger.error("Exception in non-streaming response", error=str(e))
         import traceback
@@ -314,6 +328,7 @@ async def async_chat(
     user_id: str,
     model: str = "gpt-4.1-mini",
     previous_response_id: str = None,
+    filter_id: str = None,
 ):
     logger.debug(
         "async_chat called", user_id=user_id, previous_response_id=previous_response_id
@@ -333,6 +348,10 @@ async def async_chat(
     logger.debug(
         "Added user message", message_count=len(conversation_state["messages"])
     )
+
+    # Store filter_id in conversation state if provided
+    if filter_id:
+        conversation_state["filter_id"] = filter_id
 
     response_text, response_id, response_obj = await async_response(
         async_client,
@@ -389,6 +408,7 @@ async def async_chat_stream(
     user_id: str,
     model: str = "gpt-4.1-mini",
     previous_response_id: str = None,
+    filter_id: str = None,
 ):
     # Get the specific conversation thread (or create new one)
     conversation_state = get_conversation_thread(user_id, previous_response_id)
@@ -398,6 +418,10 @@ async def async_chat_stream(
 
     user_message = {"role": "user", "content": prompt, "timestamp": datetime.now()}
     conversation_state["messages"].append(user_message)
+
+    # Store filter_id in conversation state if provided
+    if filter_id:
+        conversation_state["filter_id"] = filter_id
 
     full_response = ""
     response_id = None
@@ -452,6 +476,7 @@ async def async_langflow_chat(
     extra_headers: dict = None,
     previous_response_id: str = None,
     store_conversation: bool = True,
+    filter_id: str = None,
 ):
     logger.debug(
         "async_langflow_chat called",
@@ -477,6 +502,10 @@ async def async_langflow_chat(
             "Added user message to langflow",
             message_count=len(conversation_state["messages"]),
         )
+
+        # Store filter_id in conversation state if provided
+        if filter_id:
+            conversation_state["filter_id"] = filter_id
 
     response_text, response_id, response_obj = await async_response(
         langflow_client,
@@ -562,6 +591,7 @@ async def async_langflow_chat_stream(
     user_id: str,
     extra_headers: dict = None,
     previous_response_id: str = None,
+    filter_id: str = None,
 ):
     logger.debug(
         "async_langflow_chat_stream called",
@@ -577,6 +607,10 @@ async def async_langflow_chat_stream(
 
     user_message = {"role": "user", "content": prompt, "timestamp": datetime.now()}
     conversation_state["messages"].append(user_message)
+
+    # Store filter_id in conversation state if provided
+    if filter_id:
+        conversation_state["filter_id"] = filter_id
 
     full_response = ""
     response_id = None

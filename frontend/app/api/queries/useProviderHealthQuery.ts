@@ -123,7 +123,7 @@ export const useProviderHealthQuery = (
         
         return delay;
       },
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false, // Disabled to reduce unnecessary calls on tab switches
       refetchOnMount: true,
       staleTime: 30000, // Consider data stale after 30 seconds
       enabled: !!settings?.edited && options?.enabled !== false, // Only run after onboarding is complete

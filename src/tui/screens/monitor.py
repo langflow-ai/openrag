@@ -2,6 +2,8 @@
 
 import asyncio
 import re
+import shutil
+from pathlib import Path
 from typing import Literal, Any, Optional
 
 # Define button variant type
@@ -20,6 +22,7 @@ from ..managers.docling_manager import DoclingManager
 from ..utils.platform import RuntimeType
 from ..widgets.command_modal import CommandOutputModal
 from ..widgets.flow_backup_warning_modal import FlowBackupWarningModal
+from ..widgets.factory_reset_warning_modal import FactoryResetWarningModal
 from ..widgets.version_mismatch_warning_modal import VersionMismatchWarningModal
 from ..widgets.upgrade_instructions_modal import UpgradeInstructionsModal
 from ..widgets.diagnostics_notification import notify_with_diagnostics
@@ -34,7 +37,7 @@ class MonitorScreen(Screen):
         ("s", "start", "Start Services"),
         ("t", "stop", "Stop Services"),
         ("u", "upgrade", "Upgrade"),
-        ("x", "reset", "Reset"),
+        ("x", "reset", "Factory Reset"),
         ("l", "logs", "View Logs"),
         ("g", "toggle_mode", "Toggle GPU/CPU"),
         ("j", "cursor_down", "Move Down"),
@@ -63,13 +66,6 @@ class MonitorScreen(Screen):
             self._container_manager = self.app.container_manager
         return self._container_manager
 
-    def on_unmount(self) -> None:
-        """Clean up when the screen is unmounted."""
-        if hasattr(self, "docling_manager"):
-            self.docling_manager.cleanup()
-        super().on_unmount()
-        self._follow_service = None
-        self._logs_buffer = []
 
     def compose(self) -> ComposeResult:
         """Create the monitoring screen layout."""
@@ -164,6 +160,12 @@ class MonitorScreen(Screen):
             self.refresh_timer.stop()
         # Stop following logs if running
         self._stop_follow()
+        # Clean up docling manager
+        if hasattr(self, "docling_manager"):
+            self.docling_manager.cleanup()
+        # Reset follow state (already done in _stop_follow, but ensure clean state)
+        self._follow_service = None
+        self._logs_buffer = []
 
     async def on_screen_resume(self) -> None:
         """Called when the screen is resumed (e.g., after a modal is closed)."""
@@ -455,9 +457,17 @@ class MonitorScreen(Screen):
             self.operation_in_progress = False
 
     async def _reset_services(self) -> None:
-        """Reset services with progress updates."""
+        """Factory reset: clear config and opensearch-data, then reset services."""
         self.operation_in_progress = True
         try:
+            # Show factory reset warning modal first
+            should_continue = await self.app.push_screen_wait(
+                FactoryResetWarningModal()
+            )
+            if not should_continue:
+                self.notify("Factory reset cancelled", severity="information")
+                return
+
             # Check for flow backups before resetting
             if self._check_flow_backups():
                 # Show warning modal and wait for user decision
@@ -465,13 +475,40 @@ class MonitorScreen(Screen):
                     FlowBackupWarningModal(operation="reset")
                 )
                 if not should_continue:
-                    self.notify("Reset cancelled", severity="information")
+                    self.notify("Factory reset cancelled", severity="information")
                     return
+
+            # Clear config, opensearch-data folders, and conversations.json
+            try:
+                config_path = Path("config")
+                opensearch_data_path = Path("opensearch-data")
+                conversations_file = Path("conversations.json")
+                
+                if config_path.exists():
+                    shutil.rmtree(config_path)
+                    # Recreate empty config directory
+                    config_path.mkdir(parents=True, exist_ok=True)
+                
+                if opensearch_data_path.exists():
+                    shutil.rmtree(opensearch_data_path)
+                    # Recreate empty opensearch-data directory
+                    opensearch_data_path.mkdir(parents=True, exist_ok=True)
+                
+                if conversations_file.exists():
+                    conversations_file.unlink()
+                
+            except Exception as e:
+                self.notify(
+                    f"Error clearing folders: {str(e)}",
+                    severity="error",
+                    timeout=10,
+                )
+                return
 
             # Show command output in modal dialog
             command_generator = self.container_manager.reset_services()
             modal = CommandOutputModal(
-                "Resetting Services",
+                "Factory Resetting Services",
                 command_generator,
                 on_complete=None,  # We'll refresh in on_screen_resume instead
             )
@@ -774,7 +811,7 @@ class MonitorScreen(Screen):
             controls.mount(
                 Button("Upgrade", variant="warning", id=f"upgrade-btn{suffix}")
             )
-            controls.mount(Button("Reset", variant="error", id=f"reset-btn{suffix}"))
+            controls.mount(Button("Factory Reset", variant="error", id=f"reset-btn{suffix}"))
 
         except Exception as e:
             notify_with_diagnostics(

@@ -14,6 +14,7 @@ async def chat_endpoint(request: Request, chat_service, session_manager):
     filters = data.get("filters")
     limit = data.get("limit", 10)
     score_threshold = data.get("scoreThreshold", 0)
+    filter_id = data.get("filter_id")
 
     user = request.state.user
     user_id = user.user_id
@@ -42,6 +43,7 @@ async def chat_endpoint(request: Request, chat_service, session_manager):
                 jwt_token,
                 previous_response_id=previous_response_id,
                 stream=True,
+                filter_id=filter_id,
             ),
             media_type="text/event-stream",
             headers={
@@ -58,6 +60,7 @@ async def chat_endpoint(request: Request, chat_service, session_manager):
             jwt_token,
             previous_response_id=previous_response_id,
             stream=False,
+            filter_id=filter_id,
         )
         return JSONResponse(result)
 
@@ -71,6 +74,7 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
     filters = data.get("filters")
     limit = data.get("limit", 10)
     score_threshold = data.get("scoreThreshold", 0)
+    filter_id = data.get("filter_id")
 
     user = request.state.user
     user_id = user.user_id
@@ -100,6 +104,7 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
                     jwt_token,
                     previous_response_id=previous_response_id,
                     stream=True,
+                    filter_id=filter_id,
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -116,6 +121,7 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
                 jwt_token,
                 previous_response_id=previous_response_id,
                 stream=False,
+                filter_id=filter_id,
             )
             return JSONResponse(result)
 
