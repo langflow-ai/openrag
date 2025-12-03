@@ -1,8 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useState } from "react";
+import OpenAILogo from "@/components/icons/openai-logo";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
-import OpenAILogo from "@/components/icons/openai-logo";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -48,13 +48,13 @@ export function OpenAIOnboarding({
     getFromEnv
       ? { apiKey: "" }
       : debouncedApiKey
-        ? { apiKey: debouncedApiKey }
-        : undefined,
+      ? { apiKey: debouncedApiKey }
+      : undefined,
     {
       // Only validate when the user opts in (env) or provides a key.
       // If a key was previously configured, let the user decide to reuse or replace it
       // without triggering an immediate validation error.
-      enabled: debouncedApiKey !== "" || getFromEnv,
+      enabled: debouncedApiKey !== "" || getFromEnv || alreadyConfigured,
     },
   );
   // Use custom hook for model selection logic
@@ -144,7 +144,8 @@ export function OpenAIOnboarding({
             />
             {alreadyConfigured && (
               <p className="text-mmd text-muted-foreground">
-                Existing OpenAI key detected. You can reuse it or enter a new one.
+                Existing OpenAI key detected. You can reuse it or enter a new
+                one.
               </p>
             )}
             {isLoadingModels && (
