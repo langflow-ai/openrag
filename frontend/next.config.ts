@@ -14,9 +14,6 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  env: {
-    UPDATED_ONBOARDING: process.env.UPDATED_ONBOARDING,
-  },
 };
 
 export default nextConfig;
