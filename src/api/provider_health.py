@@ -1,5 +1,6 @@
 """Provider health check endpoint."""
 
+import asyncio
 import httpx
 from starlette.responses import JSONResponse
 from utils.logging_config import get_logger
@@ -149,6 +150,16 @@ async def check_provider_health(request):
                 logger.error(f"LLM provider ({provider}) validation failed: {llm_error}")
 
             # Validate embedding provider
+            # For WatsonX with test_completion=True, wait 2 seconds between completion and embedding tests
+            if (
+                test_completion
+                and provider == "watsonx"
+                and embedding_provider == "watsonx"
+                and llm_error is None
+            ):
+                logger.info("Waiting 2 seconds before WatsonX embedding test (after completion test)")
+                await asyncio.sleep(2)
+            
             try:
                 await validate_provider_setup(
                     provider=embedding_provider,
