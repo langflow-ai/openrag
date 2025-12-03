@@ -3,6 +3,12 @@ import { useEffect, useState } from "react";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
 import IBMLogo from "@/components/icons/ibm-logo";
+import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { useGetIBMModelsQuery } from "../../api/queries/useGetModelsQuery";
@@ -18,6 +24,9 @@ export function IBMOnboarding({
   setSampleDataset,
   setIsLoadingModels,
   alreadyConfigured = false,
+  existingEndpoint,
+  existingProjectId,
+  hasEnvApiKey = false,
 }: {
   isEmbedding?: boolean;
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
@@ -25,12 +34,20 @@ export function IBMOnboarding({
   setSampleDataset: (dataset: boolean) => void;
   setIsLoadingModels?: (isLoading: boolean) => void;
   alreadyConfigured?: boolean;
+  existingEndpoint?: string;
+  existingProjectId?: string;
+  hasEnvApiKey?: boolean;
 }) {
   const [endpoint, setEndpoint] = useState(
-    alreadyConfigured ? "" : "https://us-south.ml.cloud.ibm.com",
+    alreadyConfigured ? "" : (existingEndpoint || "https://us-south.ml.cloud.ibm.com"),
   );
   const [apiKey, setApiKey] = useState("");
-  const [projectId, setProjectId] = useState("");
+  const [getFromEnv, setGetFromEnv] = useState(
+    hasEnvApiKey && !alreadyConfigured,
+  );
+  const [projectId, setProjectId] = useState(
+    alreadyConfigured ? "" : (existingProjectId || ""),
+  );
 
   const options = [
     {
@@ -76,7 +93,7 @@ export function IBMOnboarding({
   } = useGetIBMModelsQuery(
     {
       endpoint: debouncedEndpoint ? debouncedEndpoint : undefined,
-      apiKey: debouncedApiKey ? debouncedApiKey : undefined,
+      apiKey: getFromEnv ? "" : (debouncedApiKey ? debouncedApiKey : undefined),
       projectId: debouncedProjectId ? debouncedProjectId : undefined,
     },
     {
@@ -84,6 +101,7 @@ export function IBMOnboarding({
         !!debouncedEndpoint ||
         !!debouncedApiKey ||
         !!debouncedProjectId ||
+        getFromEnv ||
         alreadyConfigured,
     },
   );
@@ -97,6 +115,16 @@ export function IBMOnboarding({
     languageModels,
     embeddingModels,
   } = useModelSelection(modelsData, isEmbedding);
+
+  const handleGetFromEnvChange = (fromEnv: boolean) => {
+    setGetFromEnv(fromEnv);
+    if (fromEnv) {
+      setApiKey("");
+    }
+    setEmbeddingModel?.("");
+    setLanguageModel?.("");
+  };
+
   const handleSampleDatasetChange = (dataset: boolean) => {
     setSampleDataset(dataset);
   };
@@ -169,34 +197,78 @@ export function IBMOnboarding({
             </p>
           )}
         </div>
-        <div className="space-y-1">
-          <LabelInput
-            label="watsonx API key"
-            helperText="API key to access watsonx.ai"
-            id="api-key"
-            type="password"
-            required
-            placeholder={
-              alreadyConfigured
-                ? "•••••••••••••••••••••••••••••••••••••••••"
-                : "your-api-key"
-            }
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            disabled={alreadyConfigured}
-          />
-          {alreadyConfigured && (
+        <LabelWrapper
+          label="Use environment watsonx API key"
+          id="get-api-key"
+          description="Reuse the key from your environment config. Turn off to enter a different key."
+          flex
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <Switch
+                  checked={getFromEnv}
+                  onCheckedChange={handleGetFromEnvChange}
+                  disabled={!hasEnvApiKey || alreadyConfigured}
+                />
+              </div>
+            </TooltipTrigger>
+            {!hasEnvApiKey && !alreadyConfigured && (
+              <TooltipContent>
+                watsonx API key not detected in the environment.
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </LabelWrapper>
+        {!getFromEnv && !alreadyConfigured && (
+          <div className="space-y-1">
+            <LabelInput
+              label="watsonx API key"
+              helperText="API key to access watsonx.ai"
+              className={modelsError ? "!border-destructive" : ""}
+              id="api-key"
+              type="password"
+              required
+              placeholder="your-api-key"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            {isLoadingModels && (
+              <p className="text-mmd text-muted-foreground">
+                Validating API key...
+              </p>
+            )}
+            {modelsError && (
+              <p className="text-mmd text-destructive">
+                Invalid watsonx API key. Verify or replace the key.
+              </p>
+            )}
+          </div>
+        )}
+        {alreadyConfigured && (
+          <div className="space-y-1">
+            <LabelInput
+              label="watsonx API key"
+              helperText="API key to access watsonx.ai"
+              id="api-key"
+              type="password"
+              required
+              placeholder="•••••••••••••••••••••••••••••••••••••••••"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              disabled={true}
+            />
             <p className="text-mmd text-muted-foreground">
               Reusing API key from model provider selection.
             </p>
-          )}
-        </div>
-        {isLoadingModels && (
+          </div>
+        )}
+        {getFromEnv && isLoadingModels && (
           <p className="text-mmd text-muted-foreground">
             Validating configuration...
           </p>
         )}
-        {modelsError && (
+        {getFromEnv && modelsError && (
           <p className="text-mmd text-accent-amber-foreground">
             Connection failed. Check your configuration.
           </p>
