@@ -424,8 +424,8 @@ class WelcomeScreen(Screen):
         # Check for port conflicts before attempting to start anything
         conflicts = []
 
-        # Check container ports
-        if self.container_manager.is_available():
+        # Check container ports only if services are not already running
+        if self.container_manager.is_available() and not self.services_running:
             ports_available, port_conflicts = await self.container_manager.check_ports_available()
             if not ports_available:
                 for service_name, port, error_msg in port_conflicts[:3]:  # Show first 3
@@ -433,10 +433,11 @@ class WelcomeScreen(Screen):
                 if len(port_conflicts) > 3:
                     conflicts.append(f"and {len(port_conflicts) - 3} more")
 
-        # Check native service port
-        port_available, error_msg = self.docling_manager.check_port_available()
-        if not port_available:
-            conflicts.append(f"docling (port {self.docling_manager._port})")
+        # Check native service port only if it's not already running
+        if not self.docling_manager.is_running():
+            port_available, error_msg = self.docling_manager.check_port_available()
+            if not port_available:
+                conflicts.append(f"docling (port {self.docling_manager._port})")
 
         # If there are any conflicts, show error and return
         if conflicts:
@@ -450,7 +451,7 @@ class WelcomeScreen(Screen):
             return
 
         # Step 1: Start container services first (to create the network)
-        if self.container_manager.is_available():
+        if self.container_manager.is_available() and not self.services_running:
             # Check for version mismatch before starting
             has_mismatch, container_version, tui_version = await self.container_manager.check_version_mismatch()
             if has_mismatch and container_version:
@@ -480,6 +481,10 @@ class WelcomeScreen(Screen):
                 on_complete=self._on_containers_started_start_native,
             )
             self.app.push_screen(modal)
+        elif self.services_running:
+            # Containers already running, just start native services
+            self.notify("Container services already running", severity="information")
+            await self._start_native_services_after_containers()
         else:
             self.notify("No container runtime available", severity="warning")
             # Still try to start native services
