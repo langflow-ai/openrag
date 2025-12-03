@@ -897,6 +897,7 @@ async def onboarding(request, flows_service, session_manager=None):
             )
 
         # Validate provider setup before initializing OpenSearch index
+        # Use lightweight validation (test_completion=False) to avoid consuming credits during onboarding
         try:
             from api.provider_validation import validate_provider_setup
 
@@ -905,13 +906,14 @@ async def onboarding(request, flows_service, session_manager=None):
                 llm_provider = current_config.agent.llm_provider.lower()
                 llm_provider_config = current_config.get_llm_provider_config()
 
-                logger.info(f"Validating LLM provider setup for {llm_provider}")
+                logger.info(f"Validating LLM provider setup for {llm_provider} (lightweight)")
                 await validate_provider_setup(
                     provider=llm_provider,
                     api_key=getattr(llm_provider_config, "api_key", None),
                     llm_model=current_config.agent.llm_model,
                     endpoint=getattr(llm_provider_config, "endpoint", None),
                     project_id=getattr(llm_provider_config, "project_id", None),
+                    test_completion=False,  # Lightweight validation - no credits consumed
                 )
                 logger.info(f"LLM provider setup validation completed successfully for {llm_provider}")
 
@@ -920,13 +922,14 @@ async def onboarding(request, flows_service, session_manager=None):
                 embedding_provider = current_config.knowledge.embedding_provider.lower()
                 embedding_provider_config = current_config.get_embedding_provider_config()
 
-                logger.info(f"Validating embedding provider setup for {embedding_provider}")
+                logger.info(f"Validating embedding provider setup for {embedding_provider} (lightweight)")
                 await validate_provider_setup(
                     provider=embedding_provider,
                     api_key=getattr(embedding_provider_config, "api_key", None),
                     embedding_model=current_config.knowledge.embedding_model,
                     endpoint=getattr(embedding_provider_config, "endpoint", None),
                     project_id=getattr(embedding_provider_config, "project_id", None),
+                    test_completion=False,  # Lightweight validation - no credits consumed
                 )
                 logger.info(f"Embedding provider setup validation completed successfully for {embedding_provider}")
         except Exception as e:
