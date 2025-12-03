@@ -469,16 +469,17 @@ class MonitorScreen(Screen):
                 return
 
             # Check for flow backups before resetting
+            delete_backups = False
             if self._check_flow_backups():
                 # Show warning modal and wait for user decision
-                should_continue = await self.app.push_screen_wait(
+                should_continue, delete_backups = await self.app.push_screen_wait(
                     FlowBackupWarningModal(operation="reset")
                 )
                 if not should_continue:
                     self.notify("Factory reset cancelled", severity="information")
                     return
 
-            # Clear config, conversations.json, and flow backups first (before stopping containers)
+            # Clear config, conversations.json, and optionally flow backups (before stopping containers)
             try:
                 config_path = Path("config")
                 conversations_file = Path("conversations.json")
@@ -492,17 +493,19 @@ class MonitorScreen(Screen):
                 if conversations_file.exists():
                     conversations_file.unlink()
                 
-                # Delete flow backups if they exist
-                if flows_backup_path.exists():
+                # Delete flow backups only if user chose to
+                if delete_backups and flows_backup_path.exists():
                     shutil.rmtree(flows_backup_path)
                     # Recreate empty backup directory
                     flows_backup_path.mkdir(parents=True, exist_ok=True)
+                    self.notify("Flow backups deleted", severity="information")
+                elif flows_backup_path.exists():
+                    self.notify("Flow backups preserved in ./flows/backup", severity="information")
                 
             except Exception as e:
                 self.notify(
                     f"Error clearing config: {str(e)}",
                     severity="error",
-                    timeout=10,
                 )
                 return
 

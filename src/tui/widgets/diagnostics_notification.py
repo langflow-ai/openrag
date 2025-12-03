@@ -9,7 +9,7 @@ def notify_with_diagnostics(
     app: App,
     message: str,
     severity: Literal["information", "warning", "error"] = "error",
-    timeout: float = 10.0,
+    timeout: float | None = None,
 ) -> None:
     """Show a notification with a button to open the diagnostics screen.
 
@@ -17,7 +17,7 @@ def notify_with_diagnostics(
         app: The Textual app
         message: The notification message
         severity: The notification severity
-        timeout: The notification timeout in seconds
+        timeout: The notification timeout in seconds (None for default 20s)
     """
     # First show the notification
     app.notify(message, severity=severity, timeout=timeout)

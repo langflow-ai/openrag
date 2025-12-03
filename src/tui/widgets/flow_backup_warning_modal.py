@@ -1,13 +1,16 @@
 """Flow backup warning modal for OpenRAG TUI."""
 
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static, Label
+from textual.widgets import Button, Static, Label, Checkbox
 
 
-class FlowBackupWarningModal(ModalScreen[bool]):
-    """Modal dialog to warn about flow backups before upgrade/reset."""
+class FlowBackupWarningModal(ModalScreen[tuple[bool, bool]]):
+    """Modal dialog to warn about flow backups before upgrade/reset.
+    
+    Returns tuple of (continue, delete_backups)
+    """
 
     DEFAULT_CSS = """
     FlowBackupWarningModal {
@@ -35,6 +38,17 @@ class FlowBackupWarningModal(ModalScreen[bool]):
         padding: 2;
         color: #fafafa;
         text-align: center;
+    }
+
+    #checkbox-container {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        padding: 0 2;
+    }
+
+    #delete-backups-checkbox {
+        width: auto;
     }
 
     #button-row {
@@ -88,11 +102,12 @@ class FlowBackupWarningModal(ModalScreen[bool]):
             yield Static(
                 f"Flow backups found in ./flows/backup\n\n"
                 f"Proceeding with {self.operation} will reset custom flows to defaults.\n"
-                f"Your customizations are backed up and will need to be\n"
-                f"manually imported and upgraded to work with the latest version.\n\n"
-                f"Do you want to continue?",
+                f"Your customizations are backed up in ./flows/backup/\n\n"
+                f"Choose whether to keep or delete the backup files:",
                 id="message"
             )
+            with Vertical(id="checkbox-container"):
+                yield Checkbox("Delete backup files", id="delete-backups-checkbox", value=False)
             with Horizontal(id="button-row"):
                 yield Button("Cancel", id="cancel-btn")
                 yield Button(f"Continue {self.operation.title()}", id="continue-btn")
@@ -104,6 +119,7 @@ class FlowBackupWarningModal(ModalScreen[bool]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "continue-btn":
-            self.dismiss(True)  # User wants to continue
+            delete_backups = self.query_one("#delete-backups-checkbox", Checkbox).value
+            self.dismiss((True, delete_backups))  # User wants to continue, with delete preference
         else:
-            self.dismiss(False)  # User cancelled
+            self.dismiss((False, False))  # User cancelled
