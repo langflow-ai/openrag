@@ -376,6 +376,10 @@ db-reset:
 	curl -X DELETE "http://localhost:9200/knowledge_filters" -u admin:$${OPENSEARCH_PASSWORD} || true
 	@echo "Indices reset. Restart backend to recreate."
 
+clear-os-data:
+	@echo "🧹 Clearing OpenSearch data directory..."
+	@uv run python scripts/clear_opensearch_data.py
+
 # Flow management
 flow-upload:
 	@echo "📁 Uploading flow to Langflow..."
