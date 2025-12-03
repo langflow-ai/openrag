@@ -6,6 +6,7 @@ import { useProviderHealthQuery } from "@/app/api/queries/useProviderHealthQuery
 import type { ModelProvider } from "@/app/settings/_helpers/model-helpers";
 import { Banner, BannerIcon, BannerTitle } from "@/components/ui/banner";
 import { cn } from "@/lib/utils";
+import { useChat } from "@/contexts/chat-context";
 import { Button } from "./ui/button";
 
 interface ProviderHealthBannerProps {
@@ -14,13 +15,16 @@ interface ProviderHealthBannerProps {
 
 // Custom hook to check provider health status
 export function useProviderHealth() {
+  const { hasChatError } = useChat();
   const {
     data: health,
     isLoading,
     isFetching,
     error,
     isError,
-  } = useProviderHealthQuery();
+  } = useProviderHealthQuery({
+    test_completion: hasChatError, // Use test_completion=true when chat errors occur
+  });
 
   const isHealthy = health?.status === "healthy" && !isError;
   // Only consider unhealthy if backend is up but provider validation failed

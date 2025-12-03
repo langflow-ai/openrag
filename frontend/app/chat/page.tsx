@@ -51,6 +51,7 @@ function ChatPage() {
   ]);
   const [input, setInput] = useState("");
   const { loading, setLoading } = useLoadingStore();
+  const { setChatError } = useChat();
   const [asyncMode, setAsyncMode] = useState(true);
   const [expandedFunctionCalls, setExpandedFunctionCalls] = useState<
     Set<string>
@@ -123,6 +124,8 @@ function ChatPage() {
       console.error("Streaming error:", error);
       setLoading(false);
       setWaitingTooLong(false);
+      // Set chat error flag to trigger test_completion=true on health checks
+      setChatError(true);
       const errorMessage: Message = {
         role: "assistant",
         content:
@@ -197,6 +200,11 @@ function ChatPage() {
       const result = await response.json();
       console.log("Upload result:", result);
 
+      if (!response.ok) {
+        // Set chat error flag if upload fails
+        setChatError(true);
+      }
+
       if (response.status === 201) {
         // New flow: Got task ID, start tracking with centralized system
         const taskId = result.task_id || result.id;
@@ -255,6 +263,8 @@ function ChatPage() {
       }
     } catch (error) {
       console.error("Upload failed:", error);
+      // Set chat error flag to trigger test_completion=true on health checks
+      setChatError(true);
       const errorMessage: Message = {
         role: "assistant",
         content: `❌ Failed to process document. Please try again.`,
@@ -858,6 +868,8 @@ function ChatPage() {
           }
         } else {
           console.error("Chat failed:", result.error);
+          // Set chat error flag to trigger test_completion=true on health checks
+          setChatError(true);
           const errorMessage: Message = {
             role: "assistant",
             content: "Sorry, I encountered an error. Please try again.",
@@ -867,6 +879,8 @@ function ChatPage() {
         }
       } catch (error) {
         console.error("Chat error:", error);
+        // Set chat error flag to trigger test_completion=true on health checks
+        setChatError(true);
         const errorMessage: Message = {
           role: "assistant",
           content:
