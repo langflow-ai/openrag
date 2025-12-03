@@ -174,7 +174,7 @@ uv run python scripts/docling_ctl.py stop
 Manage your OpenRAG containers with the following commands.
 These commands are also available in the TUI's [Status menu](/install#status).
 
-### Upgrade containers
+### Upgrade containers {#upgrade-containers}
 
 Upgrade your containers to the latest version while preserving your data.
 
@@ -183,21 +183,176 @@ docker compose pull
 docker compose up -d --force-recreate
 ```
 
-### Rebuild containers (destructive)
+### Reset containers (destructive) {#reset-containers}
 
-Reset state by rebuilding all of your containers.
-Your OpenSearch and Langflow databases will be lost.
-Documents stored in the `./openrag-documents` directory will persist, since the directory is mounted as a volume in the OpenRAG backend container.
+:::warning
+These are destructive operations that reset your OpenRAG deployment to an initial state.
+Be aware that data is lost and cannot be recovered after running these commands.
+:::
 
-```bash
-docker compose up --build --force-recreate --remove-orphans
-```
+<Tabs>
+<TabItem value="docker-compose" label="Docker Compose" default>
 
-### Remove all containers and data (destructive)
+* Rebuild containers: This command destroys and recreates the containers. Data stored exclusively on the containers is lost, such as Langflow flows.
+The `.env` file, `config` directory, `./openrag-documents` directory, `./opensearch-data` directory, and the `conversations.json` file are preserved.
 
-Completely remove your OpenRAG installation and delete all data.
-This deletes all of your data, including OpenSearch data, uploaded documents, and authentication. 
-```bash
-docker compose down --volumes --remove-orphans --rmi local
-docker system prune -f
-```
+   ```bash
+   docker compose up --build --force-recreate --remove-orphans
+   ```
+
+* Destroy and recreate containers with the option for additional data removal: These commands destroy the containers, and then recreate them.
+This allows you to delete other OpenRAG data before recreating the containers.
+
+   1. Destroy the containers, volumes, and local images, and then remove (prune) any additional Docker objects:
+
+      ```bash
+      docker compose down --volumes --remove-orphans --rmi local
+      docker system prune -f
+      ```
+
+   2. Optional: Remove data that wasn't deleted by the previous commands:
+
+      * OpenRAG's `.env` file
+      * The contents of OpenRAG's `config` directory
+      * The contents of the `./openrag-documents` directory
+      * The contents of the `./opensearch-data` directory
+      * The `conversations.json` file
+
+   3. Recreate the containers:
+
+      ```bash
+      docker compose up -d
+      ```
+
+</TabItem>
+<TabItem value="Podman-compose" label="Podman Compose">
+
+* Rebuild containers: This command destroys and recreates the containers. Data stored exclusively on the containers is lost, such as Langflow flows.
+The `.env` file, `config` directory, `./openrag-documents` directory, `./opensearch-data` directory, and the `conversations.json` file are preserved.
+
+   ```bash
+   podman-compose up --build --force-recreate --remove-orphans
+   ```
+
+* Destroy and recreate containers with the option for additional data removal: These commands destroy the containers, and then recreate them.
+This allows you to delete other OpenRAG data before recreating the containers.
+
+   1. Destroy the containers, volumes, and local images, and then remove (prune) any additional Podman objects:
+
+      ```bash
+      podman-compose down --volumes --remove-orphans --rmi local
+      podman system prune -f
+      ```
+
+   2. Optional: Remove data that wasn't deleted by the previous commands:
+
+      * OpenRAG's `.env` file
+      * The contents of OpenRAG's `config` directory
+      * The contents of the `./openrag-documents` directory
+      * The contents of the `./opensearch-data` directory
+      * The `conversations.json` file
+
+   3. Recreate the containers:
+
+      ```bash
+      podman-compose up -d
+      ```
+
+</TabItem>
+<TabItem value="docker" label="Docker">
+
+1. Stop all running containers:
+
+   ```bash
+   docker stop $(docker ps -q)
+   ```
+
+2. Remove all containers, including stopped containers:
+
+   ```bash
+   docker rm --force $(docker ps -aq)
+   ```
+
+3. Remove all images:
+
+   ```bash
+   docker rmi --force $(docker images -q)
+   ```
+
+4. Remove all volumes:
+
+   ```bash
+   docker volume prune --force
+   ```
+
+5. Remove all networks except the default network:
+
+   ```bash
+   docker network prune --force
+   ```
+
+6. Clean up any leftover data:
+
+   ```bash
+   docker system prune --all --force --volumes
+   ```
+
+7. Optional: Remove data that wasn't deleted by the previous commands:
+
+   * OpenRAG's `.env` file
+   * The contents of OpenRAG's `config` directory
+   * The contents of the `./openrag-documents` directory
+   * The contents of the `./opensearch-data` directory
+   * The `conversations.json` file
+
+</TabItem>
+<TabItem value="podman" label="Podman">
+
+1. Stop all running containers:
+
+   ```bash
+   podman stop --all
+   ```
+
+2. Remove all containers, including stopped containers:
+
+   ```bash
+   podman rm --all --force
+   ```
+
+3. Remove all images:
+
+   ```bash
+   podman rmi --all --force
+   ```
+
+4. Remove all volumes:
+
+   ```bash
+   podman volume prune --force
+   ```
+
+5. Remove all networks except the default network:
+
+   ```bash
+   podman network prune --force
+   ```
+
+6. Clean up any leftover data:
+
+   ```bash
+   podman system prune --all --force --volumes
+   ```
+
+7. Optional: Remove data that wasn't deleted by the previous commands:
+
+   * OpenRAG's `.env` file
+   * The contents of OpenRAG's `config` directory
+   * The contents of the `./openrag-documents` directory
+   * The contents of the `./opensearch-data` directory
+   * The `conversations.json` file
+
+</TabItem>
+</Tabs>
+
+After resetting your containers, you must repeat [application onboarding](#application-onboarding).

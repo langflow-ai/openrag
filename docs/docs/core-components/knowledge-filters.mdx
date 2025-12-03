@@ -14,6 +14,16 @@ Each knowledge filter captures a specific subset of documents based on given a s
 Knowledge filters can be used with different OpenRAG functionality.
 For example, knowledge filters can help agents access large knowledge bases efficiently by narrowing the scope of documents that you want the agent to use.
 
+## Built-in filters
+
+When you install OpenRAG, it automatically creates an **OpenRAG docs** filter that includes OpenRAG's default documents.
+These documents provide information about OpenRAG itself and help you learn how to use OpenRAG.
+
+When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, [apply the **OpenRAG docs** filter](#apply-a-filter) if you want to ask questions about OpenRAG's features and functionality.
+This limits the agent's context to the default OpenRAG documentation rather than all documents in your knowledge base.
+
+After uploading your own documents, it is recommended that you create your own filters to organize your documents effectively and separate them from the default OpenRAG documents.
+
 ## Create a filter
 
 To create a knowledge filter, do the following:

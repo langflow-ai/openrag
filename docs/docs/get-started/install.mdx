@@ -290,34 +290,44 @@ To copy the logs, click **Copy to Clipboard**.
 
 * **Upgrade**: Check for updates. For more information, see [upgrade OpenRAG](#upgrade).
 
-* **Reset**: This is a destructive action that [resets your containers](#reset-containers).
+* **Factory Reset**: This is a destructive action that [resets your containers](#reset-containers).
 
-* **Native services**: From the **Status** menu, you can view the status, port, and process ID (PID) of the OpenRAG native services.
-You can also click **Stop** or **Restart** to stop and start OpenRAG native services.
-
-    A _native service_ in OpenRAG is a service that runs locally on your machine, not within a container. For example, the `docling serve` process is an OpenRAG native service because this document processing service runs on your local machine, separate from the OpenRAG containers.
+* **Native services**: [View and manage OpenRAG services](#start-all-services) that run directly on your local machine instead of a container.
 
 ### Reset containers {#reset-containers}
 
+Reset your OpenRAG deployment by recreating the containers and removing some related data.
+
 :::warning
-This is a destructive action that destroys and recreates all of your OpenRAG containers.
+This is a destructive action that destroys the following:
+
+* All OpenRAG containers, volumes, and local images
+* Any additional Docker objects
+* The contents of OpenRAG's `config` and `./opensearch-data` directories
+* The `conversations.json` file
+
+This operation _doesn't_ remove the `.env` file or the contents of the `./openrag-documents` directory.
 :::
 
-To destroy and recreate your OpenRAG containers, go to the TUI [**Status** menu](#status), and then click **Reset**.
+1. To destroy and recreate your OpenRAG containers, go to the TUI [**Status** menu](#status), and then click **Factory Reset**.
 
-The **Reset** function runs two commands. First, it stops and removes all containers, volumes, and local images:
+   This function runs the following commands _and_ deletes the contents of OpenRAG's `config` and `./opensearch-data` directories.
 
-```bash
-docker compose down --volumes --remove-orphans --rmi local
-```
+   ```bash
+   docker compose down --volumes --remove-orphans --rmi local
+   docker system prune -f
+   ```
 
-Then, it removes any additional Docker objects with `docker system prune -f`.
+2. If you reset your containers as part of reinstalling OpenRAG, continue the [reinstallation process](#reinstall) after resetting the containers.
+Otherwise, in the TUI **Setup** menu, repeat the [setup process](#setup) to start the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
 
-If you reset your containers as part of reinstalling OpenRAG, continue the [reinstallation process](#reinstall) after resetting the containers.
+### Start all services {#start-all-services}
 
-### Start all services
+Through the TUI, you can view and manage OpenRAG services that run in containers and directly on your local machine.
 
-On the TUI main page, click **Start All Services** to start the OpenRAG containers and launch OpenRAG itself.
+#### Start containers
+
+On the TUI main page or the **Setup** menu, click **Start All Services** to start the OpenRAG containers and launch OpenRAG itself.
 
 When you start all services, the following processes happen:
 
@@ -326,6 +336,13 @@ When you start all services, the following processes happen:
 2. OpenRAG pulls the OpenRAG container images with `docker compose pull` if any images are missing.
 
 3. OpenRAG deploys the containers with `docker compose up -d`.
+
+#### Start native services (Docling)
+
+A _native service_ in OpenRAG is a service that runs locally on your machine, not within a container. For example, the `docling serve` process is an OpenRAG native service because this document processing service runs on your local machine, separate from the OpenRAG containers.
+
+From the **Status** menu, you can view the status, port, and process ID (PID) of the OpenRAG native services.
+You can also click **Stop** or **Restart** to stop and start OpenRAG native services.
 
 ## Upgrade OpenRAG {#upgrade}
 
@@ -430,26 +447,23 @@ This is a two part process because upgrading the OpenRAG Python package updates 
 
     If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
 
-3. When the upgrade process is complete, you can close the **Status** window and continue using OpenRAG.
+4. When the upgrade process is complete, you can close the **Status** window and continue using OpenRAG.
 
 ## Reinstall OpenRAG {#reinstall}
 
-To reinstall OpenRAG with a completely fresh setup:
+Reset your OpenRAG deployment by recreating the containers and, optionally, removing related data:
 
-1. In the TUI **Status** menu, [reset your containers](#reset-containers) to destroy the existing OpenRAG containers and their data.
+1. In the TUI, [reset your containers](#reset-containers) to destroy the following:
 
-2. Optional: Delete your project's `.env` file.
+   * All existing OpenRAG containers, volumes, and local images
+   * Any additional Docker objects
+   * The contents of OpenRAG's `config` and `./opensearch-data` directories
+   * The `conversations.json` file
 
-    The Reset operation doesn't remove your project's `.env` file, so your passwords, API keys, and OAuth settings can be preserved.
-    If you delete the `.env` file, you must run the [Set up OpenRAG with the TUI](#setup) process again to create a new configuration file.
+2. Optional: Remove data that wasn't deleted by the **Factory Reset** operation. For a completely fresh installation, delete all of this data.
 
-3. Optional: Delete your OpenSearch knowledge base by deleting the contents of the `./opensearch-data` folder in your OpenRAG installation directory.
+    * **OpenRAG's `.env` file**: Contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth settings, and other [environment variables](/reference/configuration). If you delete this file, you must either repeat the [setup process](#setup) to create a new `.env` file, or add a populated `.env` file to your OpenRAG installation directory before restarting OpenRAG.
+    * **The contents of the `./openrag-documents` directory**: Contains documents that you uploaded to OpenRAG. Delete these files to prevent documents from being reingested to your knowledge base after restarting OpenRAG. However, you might want to preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
 
-3. In the TUI **Setup** menu, repeat the [Basic Setup](#setup) process:
-
-    1. Click **Start All Services** to pull container images and start them.
-    2. Under **Native Services**, click **Start** to start the Docling service.
-    3. Click **Open App** to open the OpenRAG application.
-    4. Continue with [application onboarding](#application-onboarding).
-
-If reinstalling OpenRAG and deleting the `.env` file doesn't reset setup or onboarding, see [Reinstalling OpenRAG doesn't reset onboarding](/support/troubleshoot#reinstalling-openrag-doesnt-reset-onboarding).
+3. In the TUI **Setup** menu, repeat the [setup process](#setup) to configure OpenRAG, restart the services, and launch the OpenRAG app, and repeat [application onboarding](#application-onboarding).
+If OpenRAG detects a `.env` file, it automatically populates any OpenRAG passwords, OAuth credentials, and onboarding configuration set in that file.

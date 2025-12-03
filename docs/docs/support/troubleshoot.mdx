@@ -85,141 +85,52 @@ If you encounter a `langflow container already exists` error when upgrading Open
 
 To resolve this issue, do the following:
 
-First, try removing only the Langflow container, and then retry the upgrade in the OpenRAG TUI by clicking **Status** and then **Upgrade**.
+1. Remove only the Langflow container:
 
-<Tabs groupId="Container software">
-<TabItem value="Podman" label="Podman">
+   <Tabs groupId="Container software">
+   <TabItem value="Podman" label="Podman">
 
-1. Stop the Langflow container:
+   1. Stop the Langflow container:
 
-   ```bash
-   podman stop langflow
-   ```
+      ```bash
+      podman stop langflow
+      ```
 
-2. Remove the Langflow container:
+   2. Remove the Langflow container:
 
-   ```bash
-   podman rm langflow --force
-   ```
+      ```bash
+      podman rm langflow --force
+      ```
 
-</TabItem>
-<TabItem value="Docker" label="Docker" default>
+   </TabItem>
+   <TabItem value="Docker" label="Docker" default>
 
-1. Stop the Langflow container:
+   1. Stop the Langflow container:
 
-   ```bash
-   docker stop langflow
-   ```
+      ```bash
+      docker stop langflow
+      ```
 
-2. Remove the Langflow container:
+   2. Remove the Langflow container:
 
-   ```bash
-   docker rm langflow --force
-   ```
+      ```bash
+      docker rm langflow --force
+      ```
 
-</TabItem>
-</Tabs>
+   </TabItem>
+   </Tabs>
 
-If reinstalling the Langflow container doesn't resolve the issue, you must reset to a fresh installation by removing all OpenRAG containers and data.
-Then, you can retry the upgrade.
+2. Retry the upgrade:
 
-:::warning
-This is a destructive operation that destroys your OpenRAG containers and their contents.
-However, your `.env` file (configuration settings) and `./opensearch-data` (OpenSearch knowledge base) are preserved.
-:::
+   * [Upgrade self-managed containers](/docker#upgrade-containers)
+   * [Upgrade TUI-managed containers](/install#upgrade-containers)
 
-To reset your installation, stop your containers, and then completely remove them.
-After removing the containers, retry the upgrade in the OpenRAG TUI by clicking **Status** and then **Upgrade**.
+3. If reinstalling the Langflow container doesn't resolve the issue, you must reset your OpenRAG deployment:
 
-<Tabs groupId="Container software">
-<TabItem value="Podman" label="Podman">
+   * [Reset self-managed containers](/docker#reset-containers)
+   * [Reset TUI-managed containers](/install#reset-containers)
 
-1. Stop all running containers:
-
-   ```bash
-   podman stop --all
-   ```
-
-2. Remove all containers, including stopped containers:
-
-   ```bash
-   podman rm --all --force
-   ```
-
-3. Remove all images:
-
-   ```bash
-   podman rmi --all --force
-   ```
-
-4. Remove all volumes:
-
-   ```bash
-   podman volume prune --force
-   ```
-
-5. Remove all networks except the default network:
-
-   ```bash
-   podman network prune --force
-   ```
-
-6. Clean up any leftover data:
-
-   ```bash
-   podman system prune --all --force --volumes
-   ```
-
-</TabItem>
-<TabItem value="Docker" label="Docker" default>
-
-1. Stop all running containers:
-
-   ```bash
-   docker stop $(docker ps -q)
-   ```
-
-2. Remove all containers, including stopped containers:
-
-   ```bash
-   docker rm --force $(docker ps -aq)
-   ```
-
-3. Remove all images:
-
-   ```bash
-   docker rmi --force $(docker images -q)
-   ```
-
-4. Remove all volumes:
-
-   ```bash
-   docker volume prune --force
-   ```
-
-5. Remove all networks except the default network:
-
-   ```bash
-   docker network prune --force
-   ```
-
-6. Clean up any leftover data:
-
-   ```bash
-   docker system prune --all --force --volumes
-   ```
-
-</TabItem>
-</Tabs>
-
-## Reinstalling OpenRAG doesn't reset onboarding {#reinstalling-openrag-doesnt-reset-onboarding}
-
-If you [reinstall OpenRAG](/install#reinstall), you can restore your installation to it's original, default state by resetting the containers _and_ deleting the `.env` file.
-
-When you start OpenRAG after doing this, you should be prompted to go through the initial setup and onboarding process again.
-
-Due to a known issue, the onboarding process might not reset when you reinstall OpenRAG.
-If this occurs, [install OpenRAG in a new Python project directory](/install#install) (with `uv init` and `uv add openrag`).
+4. Retry the upgrade.
 
 ## Document ingestion or similarity search issues
 
