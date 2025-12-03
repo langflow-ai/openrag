@@ -1012,6 +1012,54 @@ class ContainerManager:
         else:
             yield False, "Some errors occurred during service restart", False
 
+    async def clear_opensearch_data_volume(self) -> AsyncIterator[tuple[bool, str]]:
+        """Clear opensearch data using a temporary container with proper permissions."""
+        if not self.is_available():
+            yield False, "No container runtime available"
+            return
+
+        yield False, "Clearing OpenSearch data volume..."
+
+        # Get the absolute path to opensearch-data directory
+        opensearch_data_path = Path("opensearch-data").absolute()
+        
+        if not opensearch_data_path.exists():
+            yield True, "OpenSearch data directory does not exist, skipping"
+            return
+        
+        # Use the opensearch container with proper volume mount flags
+        # :Z flag ensures proper SELinux labeling and UID mapping for rootless containers
+        cmd = [
+            "run",
+            "--rm",
+            "-v", f"{opensearch_data_path}:/usr/share/opensearch/data:Z",
+            "langflowai/openrag-opensearch:latest",
+            "bash", "-c",
+            "rm -rf /usr/share/opensearch/data/* /usr/share/opensearch/data/.[!.]* && echo 'Cleared successfully'"
+        ]
+        
+        success, stdout, stderr = await self._run_runtime_command(cmd)
+        
+        if success and "Cleared successfully" in stdout:
+            yield True, "OpenSearch data cleared successfully"
+        else:
+            # If it fails, try with the base opensearch image
+            yield False, "Retrying with base OpenSearch image..."
+            cmd = [
+                "run",
+                "--rm",
+                "-v", f"{opensearch_data_path}:/usr/share/opensearch/data:Z",
+                "opensearchproject/opensearch:3.0.0",
+                "bash", "-c",
+                "rm -rf /usr/share/opensearch/data/* /usr/share/opensearch/data/.[!.]* && echo 'Cleared successfully'"
+            ]
+            success, stdout, stderr = await self._run_runtime_command(cmd)
+            
+            if success and "Cleared successfully" in stdout:
+                yield True, "OpenSearch data cleared successfully"
+            else:
+                yield False, f"Failed to clear OpenSearch data: {stderr if stderr else 'Unknown error'}"
+
     async def reset_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Reset all services (stop, remove containers/volumes, clear data) and yield progress updates."""
         yield False, "Stopping all services..."

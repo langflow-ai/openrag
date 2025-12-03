@@ -4,7 +4,7 @@ import asyncio
 import re
 import shutil
 from pathlib import Path
-from typing import Literal, Any, Optional
+from typing import Literal, Any, Optional, AsyncIterator
 
 # Define button variant type
 ButtonVariant = Literal["default", "primary", "success", "warning", "error"]
@@ -478,35 +478,36 @@ class MonitorScreen(Screen):
                     self.notify("Factory reset cancelled", severity="information")
                     return
 
-            # Clear config, opensearch-data folders, and conversations.json
+            # Clear config, conversations.json, and flow backups first (before stopping containers)
             try:
                 config_path = Path("config")
-                opensearch_data_path = Path("opensearch-data")
                 conversations_file = Path("conversations.json")
+                flows_backup_path = Path("flows/backup")
                 
                 if config_path.exists():
                     shutil.rmtree(config_path)
                     # Recreate empty config directory
                     config_path.mkdir(parents=True, exist_ok=True)
                 
-                if opensearch_data_path.exists():
-                    shutil.rmtree(opensearch_data_path)
-                    # Recreate empty opensearch-data directory
-                    opensearch_data_path.mkdir(parents=True, exist_ok=True)
-                
                 if conversations_file.exists():
                     conversations_file.unlink()
                 
+                # Delete flow backups if they exist
+                if flows_backup_path.exists():
+                    shutil.rmtree(flows_backup_path)
+                    # Recreate empty backup directory
+                    flows_backup_path.mkdir(parents=True, exist_ok=True)
+                
             except Exception as e:
                 self.notify(
-                    f"Error clearing folders: {str(e)}",
+                    f"Error clearing config: {str(e)}",
                     severity="error",
                     timeout=10,
                 )
                 return
 
-            # Show command output in modal dialog
-            command_generator = self.container_manager.reset_services()
+            # Show command output in modal dialog for stopping services and clearing data
+            command_generator = self._factory_reset_with_data_clear()
             modal = CommandOutputModal(
                 "Factory Resetting Services",
                 command_generator,
@@ -515,6 +516,33 @@ class MonitorScreen(Screen):
             self.app.push_screen(modal)
         finally:
             self.operation_in_progress = False
+
+    async def _factory_reset_with_data_clear(self) -> AsyncIterator[tuple[bool, str]]:
+        """Generator that stops services and clears opensearch data."""
+        # First stop all services
+        async for success, message in self.container_manager.reset_services():
+            yield success, message
+            if not success and "failed" in message.lower():
+                return
+        
+        # Now clear opensearch-data using container
+        yield False, "Clearing OpenSearch data..."
+        opensearch_data_path = Path("opensearch-data")
+        if opensearch_data_path.exists():
+            async for success, message in self.container_manager.clear_opensearch_data_volume():
+                yield success, message
+                if not success and "failed" in message.lower():
+                    return
+            
+            # Recreate empty opensearch-data directory
+            try:
+                opensearch_data_path.mkdir(parents=True, exist_ok=True)
+                yield True, "OpenSearch data directory recreated"
+            except Exception as e:
+                yield False, f"Error recreating opensearch-data directory: {e}"
+                return
+        
+        yield True, "Factory reset completed successfully"
 
     def _check_flow_backups(self) -> bool:
         """Check if there are any flow backups in ./flows/backup directory."""
