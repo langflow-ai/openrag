@@ -323,6 +323,20 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               currentTask.error || "Unknown error"
             }`,
           });
+          
+          // Set chat error flag to trigger test_completion=true on health checks
+          // Only for ingestion-related tasks (tasks with files are ingestion tasks)
+          if (currentTask.files && Object.keys(currentTask.files).length > 0) {
+            // Dispatch event that chat context can listen to
+            // This avoids circular dependency issues
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(
+                new CustomEvent("ingestionFailed", {
+                  detail: { taskId: currentTask.task_id },
+                }),
+              );
+            }
+          }
         }
       }
     });

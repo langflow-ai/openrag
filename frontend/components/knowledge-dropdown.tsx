@@ -238,6 +238,15 @@ export function KnowledgeDropdown() {
       await uploadFileUtil(file, replace);
       refetchTasks();
     } catch (error) {
+      // Dispatch event that chat context can listen to
+      // This avoids circular dependency issues
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("ingestionFailed", {
+            detail: { source: "knowledge-dropdown" },
+          }),
+        );
+      }
       toast.error("Upload failed", {
         description: error instanceof Error ? error.message : "Unknown error",
       });

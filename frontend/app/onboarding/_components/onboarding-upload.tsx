@@ -158,6 +158,16 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       const errorMessage = error instanceof Error ? error.message : "Upload failed";
       console.error("Upload failed", errorMessage);
 
+      // Dispatch event that chat context can listen to
+      // This avoids circular dependency issues
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("ingestionFailed", {
+            detail: { source: "onboarding" },
+          }),
+        );
+      }
+
       // Show error toast notification
       toast.error("Document upload failed", {
         description: errorMessage,
