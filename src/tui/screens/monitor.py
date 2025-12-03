@@ -493,14 +493,15 @@ class MonitorScreen(Screen):
                 if conversations_file.exists():
                     conversations_file.unlink()
                 
-                # Delete flow backups only if user chose to
-                if delete_backups and flows_backup_path.exists():
-                    shutil.rmtree(flows_backup_path)
-                    # Recreate empty backup directory
-                    flows_backup_path.mkdir(parents=True, exist_ok=True)
-                    self.notify("Flow backups deleted", severity="information")
-                elif flows_backup_path.exists():
-                    self.notify("Flow backups preserved in ./flows/backup", severity="information")
+                # Delete flow backups only if user chose to (and they actually exist)
+                if self._check_flow_backups():
+                    if delete_backups:
+                        shutil.rmtree(flows_backup_path)
+                        # Recreate empty backup directory
+                        flows_backup_path.mkdir(parents=True, exist_ok=True)
+                        self.notify("Flow backups deleted", severity="information")
+                    else:
+                        self.notify("Flow backups preserved in ./flows/backup", severity="information")
                 
             except Exception as e:
                 self.notify(
