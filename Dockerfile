@@ -1,18 +1,79 @@
-FROM opensearchproject/opensearch:3.0.0
+########################################
+# Stage 1: Upstream OpenSearch with plugins
+########################################
+FROM opensearchproject/opensearch:3.2.0 AS upstream_opensearch
+
+# Remove plugins
+RUN opensearch-plugin remove opensearch-neural-search || true && \
+    opensearch-plugin remove opensearch-knn || true && \
+    # removing this one due to Netty CVE-2025-58056, can bring it back in the future
+    opensearch-plugin remove opensearch-security-analytics || true 
+
+# Prepare jvector plugin artifacts
+RUN mkdir -p /tmp/opensearch-jvector-plugin && \
+    curl -L -s https://github.com/opensearch-project/opensearch-jvector/releases/download/3.2.0.0/artifacts.tar.gz \
+      | tar zxvf - -C /tmp/opensearch-jvector-plugin
+
+# Prepare neural-search plugin
+RUN mkdir -p /tmp/opensearch-neural-search && \
+    curl -L -s https://storage.googleapis.com/opensearch-jvector/opensearch-neural-search-3.2.0.0-20251029200300.zip \
+      > /tmp/opensearch-neural-search/plugin.zip
+
+# Install additional plugins
+RUN opensearch-plugin install --batch file:///tmp/opensearch-jvector-plugin/repository/org/opensearch/plugin/opensearch-jvector-plugin/3.2.0.0/opensearch-jvector-plugin-3.2.0.0.zip && \
+    opensearch-plugin install --batch file:///tmp/opensearch-neural-search/plugin.zip && \
+    opensearch-plugin install --batch repository-gcs && \
+    opensearch-plugin install --batch repository-azure && \
+    # opensearch-plugin install --batch repository-s3 && \
+    opensearch-plugin install --batch https://github.com/opensearch-project/opensearch-prometheus-exporter/releases/download/3.2.0.0/prometheus-exporter-3.2.0.0.zip
+
+# Apply Netty patch
+COPY patch-netty.sh /tmp/
+RUN whoami && bash /tmp/patch-netty.sh
+
+# Set permissions for OpenShift compatibility before copying
+RUN chmod -R g=u /usr/share/opensearch
+
+
+########################################
+# Stage 2: UBI9 runtime image
+########################################
+FROM registry.access.redhat.com/ubi9/ubi:latest
 
 USER root
 
-RUN echo y | dnf install less procps-ng findutils sysstat perf sudo
+# Update packages and install required tools
+# TODO bring back iostat somehow? sysstat isn't in ubi
+# TODO bring back 'perf' package, but what did we need it for?
+RUN dnf update -y && \
+    dnf install -y --allowerasing \
+      less procps-ng findutils sudo curl tar gzip shadow-utils which && \
+    dnf clean all
 
-# Grant the opensearchuser sudo privileges
-# 'wheel' is the sudo group in Amazon Linux
-RUN usermod -aG wheel opensearch
+# Create opensearch user and group
+ARG UID=1000
+ARG GID=1000
+ARG OPENSEARCH_HOME=/usr/share/opensearch
 
-# Change the sudoers file to allow passwordless sudo
-RUN echo "opensearch ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+WORKDIR $OPENSEARCH_HOME
 
-# Handle different architectures for async-profiler
+RUN groupadd -g $GID opensearch && \
+    adduser -u $UID -g $GID -d $OPENSEARCH_HOME opensearch
+
+# Grant the opensearch user sudo privileges (passwordless sudo)
+RUN usermod -aG wheel opensearch && \
+    echo "opensearch ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Copy OpenSearch from the upstream stage
+COPY --from=upstream_opensearch --chown=$UID:0 $OPENSEARCH_HOME $OPENSEARCH_HOME
+
+ARG OPENSEARCH_VERSION=3.2.0
+
+########################################
+# Async-profiler (multi-arch like your original)
+########################################
 ARG TARGETARCH
+
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
       export ASYNC_PROFILER_URL=https://github.com/async-profiler/async-profiler/releases/download/v4.0/async-profiler-4.0-linux-x64.tar.gz; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
@@ -24,31 +85,21 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     curl -s -L $ASYNC_PROFILER_URL | tar zxvf - --strip-components=1 -C /opt/async-profiler && \
     chown -R opensearch:opensearch /opt/async-profiler
 
+# Create profiling script (as in your original Dockerfile)
+RUN echo "#!/bin/bash" > /usr/share/opensearch/profile.sh && \
+    echo "export PATH=\$PATH:/opt/async-profiler/bin" >> /usr/share/opensearch/profile.sh && \
+    echo "echo 1 | sudo tee /proc/sys/kernel/perf_event_paranoid >/dev/null" >> /usr/share/opensearch/profile.sh && \
+    echo "echo 0 | sudo tee /proc/sys/kernel/kptr_restrict >/dev/null" >> /usr/share/opensearch/profile.sh && \
+    echo "asprof \$@" >> /usr/share/opensearch/profile.sh && \
+    chmod 777 /usr/share/opensearch/profile.sh
 
-RUN echo "#!/bin/bash" > /usr/share/opensearch/profile.sh
-RUN echo "export PATH=\$PATH:/opt/async-profiler/bin" >> /usr/share/opensearch/profile.sh
-RUN echo "echo 1 | sudo tee /proc/sys/kernel/perf_event_paranoid >/dev/null" >> /usr/share/opensearch/profile.sh
-RUN echo "echo 0 | sudo tee /proc/sys/kernel/kptr_restrict >/dev/null" >> /usr/share/opensearch/profile.sh
-RUN echo "asprof \$@" >> /usr/share/opensearch/profile.sh
+########################################
+# Security config (OIDC/DLS) and setup script
+########################################
 
-RUN chmod 777 /usr/share/opensearch/profile.sh
-
-# Copy OIDC and DLS security configuration (as root)
+# Copy OIDC and DLS security configuration (as root, like before)
 COPY securityconfig/ /usr/share/opensearch/securityconfig/
 RUN chown -R opensearch:opensearch /usr/share/opensearch/securityconfig/
-
-USER opensearch
-
-RUN opensearch-plugin remove opensearch-neural-search
-RUN opensearch-plugin remove opensearch-knn
-
-# FIXME installing the prom exporter plugin ahead of time isn't compatible with the operator, for now
-# RUN opensearch-plugin install https://github.com/Virtimo/prometheus-exporter-plugin-for-opensearch/releases/download/v2.18.0/prometheus-exporter-2.18.0.0.zip
-
-RUN echo y | opensearch-plugin install https://repo1.maven.org/maven2/org/opensearch/plugin/opensearch-jvector-plugin/3.0.0.3/opensearch-jvector-plugin-3.0.0.3.zip
-RUN echo y | opensearch-plugin install repository-gcs
-RUN echo y | opensearch-plugin install repository-azure
-RUN echo y | opensearch-plugin install repository-s3
 
 # Create a script to apply security configuration after OpenSearch starts
 RUN echo '#!/bin/bash' > /usr/share/opensearch/setup-security.sh && \
@@ -70,3 +121,18 @@ RUN echo '#!/bin/bash' > /usr/share/opensearch/setup-security.sh && \
     echo '  -key /usr/share/opensearch/config/kirk-key.pem' >> /usr/share/opensearch/setup-security.sh && \
     echo 'echo "Security configuration applied successfully"' >> /usr/share/opensearch/setup-security.sh && \
     chmod +x /usr/share/opensearch/setup-security.sh
+
+########################################
+# Final runtime settings
+########################################
+USER opensearch
+WORKDIR $OPENSEARCH_HOME
+ENV JAVA_HOME=$OPENSEARCH_HOME/jdk
+ENV PATH=$PATH:$JAVA_HOME/bin:$OPENSEARCH_HOME/bin
+
+# Expose ports
+EXPOSE 9200 9300 9600 9650
+
+ENTRYPOINT ["./opensearch-docker-entrypoint.sh"]
+CMD ["opensearch"]
+
