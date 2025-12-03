@@ -1,8 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useState } from "react";
+import OllamaLogo from "@/components/icons/ollama-logo";
 import { LabelInput } from "@/components/label-input";
 import { LabelWrapper } from "@/components/label-wrapper";
-import OllamaLogo from "@/components/icons/ollama-logo";
 import { useDebouncedValue } from "@/lib/debounce";
 import type { OnboardingVariables } from "../../api/mutations/useOnboardingMutation";
 import { useGetOllamaModelsQuery } from "../../api/queries/useGetModelsQuery";
@@ -28,7 +28,9 @@ export function OllamaOnboarding({
   existingEndpoint?: string;
 }) {
   const [endpoint, setEndpoint] = useState(
-    alreadyConfigured ? undefined : (existingEndpoint || `http://localhost:11434`),
+    alreadyConfigured
+      ? undefined
+      : existingEndpoint || `http://localhost:11434`,
   );
   const [showConnecting, setShowConnecting] = useState(false);
   const debouncedEndpoint = useDebouncedValue(endpoint, 500);
@@ -40,7 +42,7 @@ export function OllamaOnboarding({
     error: modelsError,
   } = useGetOllamaModelsQuery(
     debouncedEndpoint ? { endpoint: debouncedEndpoint } : undefined,
-    { enabled: !!debouncedEndpoint || alreadyConfigured },
+    { enabled: !!debouncedEndpoint || alreadyConfigured || alreadyConfigured },
   );
 
   // Use custom hook for model selection logic
