@@ -518,6 +518,9 @@ const OnboardingCard = ({
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     alreadyConfigured={providerAlreadyConfigured}
+                    existingEndpoint={currentSettings?.providers?.watsonx?.endpoint}
+                    existingProjectId={currentSettings?.providers?.watsonx?.project_id}
+                    hasEnvApiKey={currentSettings?.providers?.watsonx?.has_api_key === true}
                   />
                 </TabsContent>
                 <TabsContent value="ollama">
@@ -528,6 +531,7 @@ const OnboardingCard = ({
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     alreadyConfigured={providerAlreadyConfigured}
+                    existingEndpoint={currentSettings?.providers?.ollama?.endpoint}
                   />
                 </TabsContent>
               </Tabs>

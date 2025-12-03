@@ -17,6 +17,7 @@ export function OllamaOnboarding({
   setIsLoadingModels,
   isEmbedding = false,
   alreadyConfigured = false,
+  existingEndpoint,
 }: {
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
   sampleDataset: boolean;
@@ -24,9 +25,10 @@ export function OllamaOnboarding({
   setIsLoadingModels?: (isLoading: boolean) => void;
   isEmbedding?: boolean;
   alreadyConfigured?: boolean;
+  existingEndpoint?: string;
 }) {
   const [endpoint, setEndpoint] = useState(
-    alreadyConfigured ? undefined : `http://localhost:11434`,
+    alreadyConfigured ? undefined : (existingEndpoint || `http://localhost:11434`),
   );
   const [showConnecting, setShowConnecting] = useState(false);
   const debouncedEndpoint = useDebouncedValue(endpoint, 500);
