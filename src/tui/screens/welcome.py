@@ -433,10 +433,11 @@ class WelcomeScreen(Screen):
                 if len(port_conflicts) > 3:
                     conflicts.append(f"and {len(port_conflicts) - 3} more")
 
-        # Check native service port
-        port_available, error_msg = self.docling_manager.check_port_available()
-        if not port_available:
-            conflicts.append(f"docling (port {self.docling_manager._port})")
+        # Check native service port only if it's not already running
+        if not self.docling_manager.is_running():
+            port_available, error_msg = self.docling_manager.check_port_available()
+            if not port_available:
+                conflicts.append(f"docling (port {self.docling_manager._port})")
 
         # If there are any conflicts, show error and return
         if conflicts:
