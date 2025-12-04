@@ -7,7 +7,7 @@ You can reset your OpenRAG deployment to its initial state by recreating the con
 
 ## Reinstall TUI-managed containers
 
-1. In the TUI, [reset your containers](/manage-containers#reset-containers) to destroy the following:
+1. In the TUI, [reset your containers](/manage-containers) to destroy the following:
 
    * All existing OpenRAG containers, volumes, and local images
    * Any additional Docker objects
@@ -17,11 +17,13 @@ You can reset your OpenRAG deployment to its initial state by recreating the con
 2. Optional: Remove data that wasn't deleted by the **Factory Reset** operation.
 For a completely fresh installation, delete all of this data.
 
-    * **OpenRAG's `.env` file**: Contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth settings, and other [environment variables](/reference/configuration). If you delete this file, you must either repeat the [setup process](#setup) to create a new `.env` file, or add a populated `.env` file to your OpenRAG installation directory before restarting OpenRAG.
+    * **OpenRAG's `.env` file**: Contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth settings, and other [environment variables](/reference/configuration). If you delete this file, OpenRAG automatically generates a new one after you repeat the initial setup and onboarding process. Alternatively, you can add a prepopulated `.env` file to your OpenRAG installation directory before restarting OpenRAG.
     * **The contents of the `./openrag-documents` directory**: Contains documents that you uploaded to OpenRAG. Delete these files to prevent documents from being reingested to your knowledge base after restarting OpenRAG. However, you might want to preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
 
-3. In the TUI **Setup** menu, repeat the [setup process](#setup) to configure OpenRAG, restart the services, and launch the OpenRAG app, and repeat [application onboarding](#application-onboarding).
-If OpenRAG detects a `.env` file, it automatically populates any OpenRAG passwords, OAuth credentials, and onboarding configuration set in that file.
+3. In the TUI **Setup** menu, repeat the **Basic/Advanced Setup** process to configure OpenRAG and restart all services.
+Then, launch the OpenRAG app and repeat application onboarding.
+
+   If OpenRAG detects a `.env` file during start up, it automatically populates any OpenRAG passwords, OAuth credentials, and onboarding configuration set in that file.
 
 ## Reinstall self-managed containers
 
