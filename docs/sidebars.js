@@ -22,8 +22,24 @@ const sidebars = {
       label: "About OpenRAG"
     },
     "get-started/quickstart",
-    "get-started/install",
-    "get-started/docker",
+    {
+      type: "category",
+      label: "Installation",
+      items: [
+        "get-started/install-options",
+        "get-started/install",
+        "get-started/install-uv-add",
+        "get-started/install-uv-pip",
+        "get-started/install-uvx",
+        "get-started/install-windows",
+        "get-started/docker",
+        "get-started/upgrade",
+        "get-started/reset-reinstall",
+        "get-started/uninstall",
+      ],
+    },
+    "get-started/tui",
+    "get-started/manage-containers",
     {
       type: "doc",
       id: "core-components/agents",
