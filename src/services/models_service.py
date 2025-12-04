@@ -50,7 +50,7 @@ class ModelsService:
         self.session_manager = None
 
     async def get_openai_models(self, api_key: str) -> Dict[str, List[Dict[str, str]]]:
-        """Fetch available models from OpenAI API"""
+        """Fetch available models from OpenAI API with lightweight validation"""
         try:
             headers = {
                 "Authorization": f"Bearer {api_key}",
@@ -58,6 +58,8 @@ class ModelsService:
             }
 
             async with httpx.AsyncClient() as client:
+                # Lightweight validation: just check if API key is valid
+                # This doesn't consume credits, only validates the key
                 response = await client.get(
                     "https://api.openai.com/v1/models", headers=headers, timeout=10.0
                 )
@@ -101,6 +103,7 @@ class ModelsService:
                     key=lambda x: (not x.get("default", False), x["value"])
                 )
 
+                logger.info("OpenAI API key validated successfully without consuming credits")
                 return {
                     "language_models": language_models,
                     "embedding_models": embedding_models,
@@ -389,38 +392,12 @@ class ModelsService:
                             }
                         )
 
-            # Validate credentials with the first available LLM model
-            if language_models:
-                first_llm_model = language_models[0]["value"]
-                
-                async with httpx.AsyncClient() as client:
-                    validation_url = f"{watson_endpoint}/ml/v1/text/generation"
-                    validation_params = {"version": "2024-09-16"}
-                    validation_payload = {
-                        "input": "test",
-                        "model_id": first_llm_model,
-                        "project_id": project_id,
-                        "parameters": {
-                            "max_new_tokens": 1,
-                        },
-                    }
-
-                    validation_response = await client.post(
-                        validation_url,
-                        headers=headers,
-                        params=validation_params,
-                        json=validation_payload,
-                        timeout=10.0,
-                    )
-
-                    if validation_response.status_code != 200:
-                        raise Exception(
-                            f"Invalid credentials or endpoint: {validation_response.status_code} - {validation_response.text}"
-                        )
-
-                    logger.info(f"IBM Watson credentials validated successfully using model: {first_llm_model}")
+            # Lightweight validation: API key is already validated by successfully getting bearer token
+            # No need to make a generation request that consumes credits
+            if bearer_token:
+                logger.info("IBM Watson API key validated successfully without consuming credits")
             else:
-                logger.warning("No language models available to validate credentials")
+                logger.warning("No bearer token available - API key validation may have failed")
 
             if not language_models and not embedding_models:
                 raise Exception("No IBM models retrieved from API")

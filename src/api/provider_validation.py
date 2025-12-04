@@ -14,17 +14,20 @@ async def validate_provider_setup(
     llm_model: str = None,
     endpoint: str = None,
     project_id: str = None,
+    test_completion: bool = False,
 ) -> None:
     """
     Validate provider setup by testing completion with tool calling and embedding.
 
     Args:
-        provider: Provider name ('openai', 'watsonx', 'ollama')
+        provider: Provider name ('openai', 'watsonx', 'ollama', 'anthropic')
         api_key: API key for the provider (optional for ollama)
         embedding_model: Embedding model to test
         llm_model: LLM model to test
         endpoint: Provider endpoint (required for ollama and watsonx)
         project_id: Project ID (required for watsonx)
+        test_completion: If True, performs full validation with completion/embedding tests (consumes credits).
+                        If False, performs lightweight validation (no credits consumed). Default: False.
 
     Raises:
         Exception: If validation fails with message "Setup failed, please try again or select a different provider."
@@ -32,34 +35,62 @@ async def validate_provider_setup(
     provider_lower = provider.lower()
 
     try:
-        logger.info(f"Starting validation for provider: {provider_lower}")
+        logger.info(f"Starting validation for provider: {provider_lower} (test_completion={test_completion})")
 
-        if embedding_model:
-            # Test embedding
-            await test_embedding(
+        if test_completion:
+            # Full validation with completion/embedding tests (consumes credits)
+            if embedding_model:
+                # Test embedding
+                await test_embedding(
+                    provider=provider_lower,
+                    api_key=api_key,
+                    embedding_model=embedding_model,
+                    endpoint=endpoint,
+                    project_id=project_id,
+                )
+            elif llm_model:
+                # Test completion with tool calling
+                await test_completion_with_tools(
+                    provider=provider_lower,
+                    api_key=api_key,
+                    llm_model=llm_model,
+                    endpoint=endpoint,
+                    project_id=project_id,
+                )
+        else:
+            # Lightweight validation (no credits consumed)
+            await test_lightweight_health(
                 provider=provider_lower,
                 api_key=api_key,
-                embedding_model=embedding_model,
                 endpoint=endpoint,
                 project_id=project_id,
             )
-
-        elif llm_model:
-            # Test completion with tool calling
-            await test_completion_with_tools(
-                provider=provider_lower,
-                api_key=api_key,
-                llm_model=llm_model,
-                endpoint=endpoint,
-                project_id=project_id,
-            )
-        
 
         logger.info(f"Validation successful for provider: {provider_lower}")
 
     except Exception as e:
         logger.error(f"Validation failed for provider {provider_lower}: {str(e)}")
         raise Exception("Setup failed, please try again or select a different provider.")
+
+
+async def test_lightweight_health(
+    provider: str,
+    api_key: str = None,
+    endpoint: str = None,
+    project_id: str = None,
+) -> None:
+    """Test provider health with lightweight check (no credits consumed)."""
+
+    if provider == "openai":
+        await _test_openai_lightweight_health(api_key)
+    elif provider == "watsonx":
+        await _test_watsonx_lightweight_health(api_key, endpoint, project_id)
+    elif provider == "ollama":
+        await _test_ollama_lightweight_health(endpoint)
+    elif provider == "anthropic":
+        await _test_anthropic_lightweight_health(api_key)
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
 
 
 async def test_completion_with_tools(
@@ -103,6 +134,40 @@ async def test_embedding(
 
 
 # OpenAI validation functions
+async def _test_openai_lightweight_health(api_key: str) -> None:
+    """Test OpenAI API key validity with lightweight check.
+    
+    Only checks if the API key is valid without consuming credits.
+    Uses the /v1/models endpoint which doesn't consume credits.
+    """
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Use /v1/models endpoint which validates the key without consuming credits
+            response = await client.get(
+                "https://api.openai.com/v1/models",
+                headers=headers,
+                timeout=10.0,  # Short timeout for lightweight check
+            )
+
+            if response.status_code != 200:
+                logger.error(f"OpenAI lightweight health check failed: {response.status_code}")
+                raise Exception(f"OpenAI API key validation failed: {response.status_code}")
+
+            logger.info("OpenAI lightweight health check passed")
+
+    except httpx.TimeoutException:
+        logger.error("OpenAI lightweight health check timed out")
+        raise Exception("OpenAI API request timed out")
+    except Exception as e:
+        logger.error(f"OpenAI lightweight health check failed: {str(e)}")
+        raise
+
+
 async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> None:
     """Test OpenAI completion with tool calling."""
     try:
@@ -213,6 +278,45 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
 
 
 # IBM Watson validation functions
+async def _test_watsonx_lightweight_health(
+    api_key: str, endpoint: str, project_id: str
+) -> None:
+    """Test WatsonX API key validity with lightweight check.
+    
+    Only checks if the API key is valid by getting a bearer token.
+    Does not consume credits by avoiding model inference requests.
+    """
+    try:
+        # Get bearer token from IBM IAM - this validates the API key without consuming credits
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                "https://iam.cloud.ibm.com/identity/token",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data={
+                    "grant_type": "urn:ibm:params:oauth:grant-type:apikey",
+                    "apikey": api_key,
+                },
+                timeout=10.0,  # Short timeout for lightweight check
+            )
+
+            if token_response.status_code != 200:
+                logger.error(f"IBM IAM token request failed: {token_response.status_code}")
+                raise Exception("Failed to authenticate with IBM Watson - invalid API key")
+
+            bearer_token = token_response.json().get("access_token")
+            if not bearer_token:
+                raise Exception("No access token received from IBM")
+
+            logger.info("WatsonX lightweight health check passed - API key is valid")
+
+    except httpx.TimeoutException:
+        logger.error("WatsonX lightweight health check timed out")
+        raise Exception("WatsonX API request timed out")
+    except Exception as e:
+        logger.error(f"WatsonX lightweight health check failed: {str(e)}")
+        raise
+
+
 async def _test_watsonx_completion_with_tools(
     api_key: str, llm_model: str, endpoint: str, project_id: str
 ) -> None:
@@ -483,6 +587,48 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
 
 
 # Anthropic validation functions
+async def _test_anthropic_lightweight_health(api_key: str) -> None:
+    """Test Anthropic API key validity with lightweight check.
+    
+    Only checks if the API key is valid without consuming credits.
+    Uses a minimal messages request with max_tokens=1 to validate the key.
+    """
+    try:
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+
+        # Minimal validation request - uses cheapest model with minimal tokens
+        payload = {
+            "model": "claude-3-5-haiku-latest",  # Cheapest model
+            "max_tokens": 1,  # Minimum tokens to validate key
+            "messages": [{"role": "user", "content": "test"}],
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json=payload,
+                timeout=10.0,  # Short timeout for lightweight check
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Anthropic lightweight health check failed: {response.status_code}")
+                raise Exception(f"Anthropic API key validation failed: {response.status_code}")
+
+            logger.info("Anthropic lightweight health check passed")
+
+    except httpx.TimeoutException:
+        logger.error("Anthropic lightweight health check timed out")
+        raise Exception("Anthropic API request timed out")
+    except Exception as e:
+        logger.error(f"Anthropic lightweight health check failed: {str(e)}")
+        raise
+
+
 async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) -> None:
     """Test Anthropic completion with tool calling."""
     try:

@@ -1,10 +1,11 @@
 """Provider health check endpoint."""
 
+import asyncio
 import httpx
 from starlette.responses import JSONResponse
 from utils.logging_config import get_logger
 from config.settings import get_openrag_config
-from api.provider_validation import validate_provider_setup, _test_ollama_lightweight_health
+from api.provider_validation import validate_provider_setup
 
 logger = get_logger(__name__)
 
@@ -16,6 +17,8 @@ async def check_provider_health(request):
     Query parameters:
         provider (optional): Provider to check ('openai', 'ollama', 'watsonx', 'anthropic').
                            If not provided, checks the currently configured provider.
+        test_completion (optional): If 'true', performs full validation with completion/embedding tests (consumes credits).
+                                    If 'false' or not provided, performs lightweight validation (no/minimal credits consumed).
     
     Returns:
         200: Provider is healthy and validated
@@ -26,6 +29,7 @@ async def check_provider_health(request):
         # Get optional provider from query params
         query_params = dict(request.query_params)
         check_provider = query_params.get("provider")
+        test_completion = query_params.get("test_completion", "false").lower() == "true"
         
         # Get current config
         current_config = get_openrag_config()
@@ -100,6 +104,7 @@ async def check_provider_health(request):
                 llm_model=llm_model,
                 endpoint=endpoint,
                 project_id=project_id,
+                test_completion=test_completion,
             )
 
             return JSONResponse(
@@ -124,23 +129,14 @@ async def check_provider_health(request):
 
             # Validate LLM provider
             try:
-                # For Ollama, use lightweight health check that doesn't block on active requests
-                if provider == "ollama":
-                    try:
-                        await _test_ollama_lightweight_health(endpoint)
-                    except Exception as lightweight_error:
-                        # If lightweight check fails, Ollama is down or misconfigured
-                        llm_error = str(lightweight_error)
-                        logger.error(f"LLM provider ({provider}) lightweight check failed: {llm_error}")
-                        raise
-                else:
-                    await validate_provider_setup(
-                        provider=provider,
-                        api_key=api_key,
-                        llm_model=llm_model,
-                        endpoint=endpoint,
-                        project_id=project_id,
-                    )
+                await validate_provider_setup(
+                    provider=provider,
+                    api_key=api_key,
+                    llm_model=llm_model,
+                    endpoint=endpoint,
+                    project_id=project_id,
+                    test_completion=test_completion,
+                )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured
                 if provider == "ollama":
@@ -154,24 +150,25 @@ async def check_provider_health(request):
                 logger.error(f"LLM provider ({provider}) validation failed: {llm_error}")
 
             # Validate embedding provider
+            # For WatsonX with test_completion=True, wait 2 seconds between completion and embedding tests
+            if (
+                test_completion
+                and provider == "watsonx"
+                and embedding_provider == "watsonx"
+                and llm_error is None
+            ):
+                logger.info("Waiting 2 seconds before WatsonX embedding test (after completion test)")
+                await asyncio.sleep(2)
+            
             try:
-                # For Ollama, use lightweight health check first
-                if embedding_provider == "ollama":
-                    try:
-                        await _test_ollama_lightweight_health(embedding_endpoint)
-                    except Exception as lightweight_error:
-                        # If lightweight check fails, Ollama is down or misconfigured
-                        embedding_error = str(lightweight_error)
-                        logger.error(f"Embedding provider ({embedding_provider}) lightweight check failed: {embedding_error}")
-                        raise
-                else:
-                    await validate_provider_setup(
-                        provider=embedding_provider,
-                        api_key=embedding_api_key,
-                        embedding_model=embedding_model,
-                        endpoint=embedding_endpoint,
-                        project_id=embedding_project_id,
-                    )
+                await validate_provider_setup(
+                    provider=embedding_provider,
+                    api_key=embedding_api_key,
+                    embedding_model=embedding_model,
+                    endpoint=embedding_endpoint,
+                    project_id=embedding_project_id,
+                    test_completion=test_completion,
+                )
             except httpx.TimeoutException as e:
                 # Timeout means provider is busy, not misconfigured
                 if embedding_provider == "ollama":

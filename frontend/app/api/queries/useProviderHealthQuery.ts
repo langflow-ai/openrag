@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useChat } from "@/contexts/chat-context";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
 
 export interface ProviderHealthDetails {
@@ -24,6 +25,7 @@ export interface ProviderHealthResponse {
 
 export interface ProviderHealthParams {
   provider?: "openai" | "ollama" | "watsonx";
+  test_completion?: boolean;
 }
 
 // Track consecutive failures for exponential backoff
@@ -38,6 +40,9 @@ export const useProviderHealthQuery = (
 ) => {
   const queryClient = useQueryClient();
 
+  // Get chat error state from context (ChatProvider wraps the entire app in layout.tsx)
+  const { hasChatError, setChatError } = useChat();
+
   const { data: settings = {} } = useGetSettingsQuery();
 
   async function checkProviderHealth(): Promise<ProviderHealthResponse> {
@@ -47,6 +52,12 @@ export const useProviderHealthQuery = (
       // Add provider query param if specified
       if (params?.provider) {
         url.searchParams.set("provider", params.provider);
+      }
+
+      // Add test_completion query param if specified or if chat error exists
+      const testCompletion = params?.test_completion ?? hasChatError;
+      if (testCompletion) {
+        url.searchParams.set("test_completion", "true");
       }
 
       const response = await fetch(url.toString());
@@ -90,7 +101,7 @@ export const useProviderHealthQuery = (
     }
   }
 
-  const queryKey = ["provider", "health"];
+  const queryKey = ["provider", "health", params?.test_completion];
   const failureCountKey = queryKey.join("-");
 
   const queryResult = useQuery(
@@ -101,26 +112,32 @@ export const useProviderHealthQuery = (
       refetchInterval: (query) => {
         const data = query.state.data;
         const status = data?.status;
-        
+
         // If healthy, reset failure count and check every 30 seconds
+        // Also reset chat error flag if we're using test_completion=true and it succeeded
         if (status === "healthy") {
           failureCountMap.set(failureCountKey, 0);
+          // If we were checking with test_completion=true due to chat errors, reset the flag
+          if (hasChatError && setChatError) {
+            setChatError(false);
+          }
           return 30000;
         }
-        
+
         // If backend unavailable, use moderate polling
         if (status === "backend-unavailable") {
           return 15000;
         }
-        
+
         // For unhealthy/error status, use exponential backoff
         const currentFailures = failureCountMap.get(failureCountKey) || 0;
         failureCountMap.set(failureCountKey, currentFailures + 1);
-        
+
         // Exponential backoff: 5s, 10s, 20s, then 30s
         const backoffDelays = [5000, 10000, 20000, 30000];
-        const delay = backoffDelays[Math.min(currentFailures, backoffDelays.length - 1)];
-        
+        const delay =
+          backoffDelays[Math.min(currentFailures, backoffDelays.length - 1)];
+
         return delay;
       },
       refetchOnWindowFocus: false, // Disabled to reduce unnecessary calls on tab switches
