@@ -568,49 +568,41 @@ class AppClients:
         self, name: str, value: str, modify: bool = False
     ):
         """Create a global variable in Langflow via API"""
-        api_key = await get_langflow_api_key()
-        if not api_key:
-            logger.warning(
-                "Cannot create Langflow global variable: No API key", variable_name=name
-            )
-            return
-
-        url = f"{LANGFLOW_URL}/api/v1/variables/"
         payload = {
             "name": name,
             "value": value,
             "default_fields": [],
             "type": "Credential",
         }
-        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, headers=headers, json=payload)
+            response = await self.langflow_request(
+                "POST", "/api/v1/variables/", json=payload
+            )
 
-                if response.status_code in [200, 201]:
+            if response.status_code in [200, 201]:
+                logger.info(
+                    "Successfully created Langflow global variable",
+                    variable_name=name,
+                )
+            elif response.status_code == 400 and "already exists" in response.text:
+                if modify:
                     logger.info(
-                        "Successfully created Langflow global variable",
+                        "Langflow global variable already exists, attempting to update",
                         variable_name=name,
                     )
-                elif response.status_code == 400 and "already exists" in response.text:
-                    if modify:
-                        logger.info(
-                            "Langflow global variable already exists, attempting to update",
-                            variable_name=name,
-                        )
-                        await self._update_langflow_global_variable(name, value)
-                    else:
-                        logger.info(
-                            "Langflow global variable already exists",
-                            variable_name=name,
-                        )
+                    await self._update_langflow_global_variable(name, value)
                 else:
-                    logger.warning(
-                        "Failed to create Langflow global variable",
+                    logger.info(
+                        "Langflow global variable already exists",
                         variable_name=name,
-                        status_code=response.status_code,
                     )
+            else:
+                logger.warning(
+                    "Failed to create Langflow global variable",
+                    variable_name=name,
+                    status_code=response.status_code,
+                )
         except Exception as e:
             logger.error(
                 "Exception creating Langflow global variable",
@@ -620,76 +612,62 @@ class AppClients:
 
     async def _update_langflow_global_variable(self, name: str, value: str):
         """Update an existing global variable in Langflow via API"""
-        api_key = await get_langflow_api_key()
-        if not api_key:
-            logger.warning(
-                "Cannot update Langflow global variable: No API key", variable_name=name
-            )
-            return
-
-        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
-
         try:
-            async with httpx.AsyncClient() as client:
-                # First, get all variables to find the one with the matching name
-                get_response = await client.get(
-                    f"{LANGFLOW_URL}/api/v1/variables/", headers=headers
+            # First, get all variables to find the one with the matching name
+            get_response = await self.langflow_request("GET", "/api/v1/variables/")
+
+            if get_response.status_code != 200:
+                logger.error(
+                    "Failed to retrieve variables for update",
+                    variable_name=name,
+                    status_code=get_response.status_code,
                 )
+                return
 
-                if get_response.status_code != 200:
-                    logger.error(
-                        "Failed to retrieve variables for update",
-                        variable_name=name,
-                        status_code=get_response.status_code,
-                    )
-                    return
+            variables = get_response.json()
+            target_variable = None
 
-                variables = get_response.json()
-                target_variable = None
+            # Find the variable with matching name
+            for variable in variables:
+                if variable.get("name") == name:
+                    target_variable = variable
+                    break
 
-                # Find the variable with matching name
-                for variable in variables:
-                    if variable.get("name") == name:
-                        target_variable = variable
-                        break
+            if not target_variable:
+                logger.error("Variable not found for update", variable_name=name)
+                return
 
-                if not target_variable:
-                    logger.error("Variable not found for update", variable_name=name)
-                    return
+            variable_id = target_variable.get("id")
+            if not variable_id:
+                logger.error("Variable ID not found for update", variable_name=name)
+                return
 
-                variable_id = target_variable.get("id")
-                if not variable_id:
-                    logger.error("Variable ID not found for update", variable_name=name)
-                    return
+            # Update the variable using PATCH
+            update_payload = {
+                "id": variable_id,
+                "name": name,
+                "value": value,
+                "default_fields": target_variable.get("default_fields", []),
+            }
 
-                # Update the variable using PATCH
-                update_payload = {
-                    "id": variable_id,
-                    "name": name,
-                    "value": value,
-                    "default_fields": target_variable.get("default_fields", []),
-                }
+            patch_response = await self.langflow_request(
+                "PATCH", f"/api/v1/variables/{variable_id}", json=update_payload
+            )
 
-                patch_response = await client.patch(
-                    f"{LANGFLOW_URL}/api/v1/variables/{variable_id}",
-                    headers=headers,
-                    json=update_payload,
+            if patch_response.status_code == 200:
+                logger.info(
+                    "Successfully updated Langflow global variable",
+                    variable_name=name,
+                    variable_id=variable_id,
                 )
-
-                if patch_response.status_code == 200:
-                    logger.info(
-                        "Successfully updated Langflow global variable",
-                        variable_name=name,
-                        variable_id=variable_id,
-                    )
-                else:
-                    logger.warning(
-                        "Failed to update Langflow global variable",
-                        variable_name=name,
-                        variable_id=variable_id,
-                        status_code=patch_response.status_code,
-                        response_text=patch_response.text,
-                    )
+            else:
+                logger.warning(
+                    "Failed to update Langflow global variable",
+                    variable_name=name,
+                    variable_id=variable_id,
+                    status_code=patch_response.status_code,
+                    response_text=patch_response.text,
+                )
 
         except Exception as e:
             logger.error(
