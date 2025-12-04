@@ -294,18 +294,18 @@ async def _send_scarf_event(
                 )
                 return
                 
-        except httpx.TimeoutException as e:
-            # Retry timeout errors
-            logger.error(
-                f"Failed to send telemetry event: {category}:{message_id}. "
-                f"Timeout error: {e}"
+        except httpx.TimeoutException:
+            # Don't retry timeouts - Scarf is slow/unreachable, retrying won't help
+            logger.warning(
+                f"Telemetry timeout for {category}:{message_id}, skipping retries"
             )
-        except httpx.ConnectError as e:
-            # Retry connection errors
-            logger.error(
-                f"Failed to send telemetry event: {category}:{message_id}. "
-                f"Connection error: {e}"
+            return
+        except httpx.ConnectError:
+            # Don't retry connection errors - network is unreachable
+            logger.warning(
+                f"Telemetry connection failed for {category}:{message_id}, skipping retries"
             )
+            return
         except httpx.RequestError as e:
             # Non-retryable request errors
             logger.error(
@@ -333,11 +333,14 @@ async def _send_scarf_event(
 
 class TelemetryClient:
     """Telemetry client for sending events to Scarf."""
-    
+
     @staticmethod
     async def send_event(category: str, message_id: str, metadata: dict = None) -> None:
-        """Send a telemetry event asynchronously.
-        
+        """Send a telemetry event in the background (fire-and-forget).
+
+        This method creates a background task and returns immediately,
+        so telemetry never blocks application operations.
+
         Args:
             category: Event category
             message_id: Event message ID
@@ -348,11 +351,15 @@ class TelemetryClient:
                 f"Telemetry event aborted: {category}:{message_id}. DO_NOT_TRACK is enabled"
             )
             return
-        
-        try:
-            await _send_scarf_event(category, message_id, metadata)
-        except Exception as e:
-            logger.error(f"Error sending telemetry event: {e}")
+
+        async def _send_with_error_handling():
+            try:
+                await _send_scarf_event(category, message_id, metadata)
+            except Exception as e:
+                logger.error(f"Error sending telemetry event: {e}")
+
+        # Fire and forget - don't block the caller
+        asyncio.create_task(_send_with_error_handling())
     
     @staticmethod
     def send_event_sync(category: str, message_id: str, metadata: dict = None) -> None:
