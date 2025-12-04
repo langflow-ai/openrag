@@ -6,7 +6,6 @@ slug: /install
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
-import PartialWsl from '@site/docs/_partial-wsl-install.mdx';
 
 :::tip
 For a fully guided installation and preview of OpenRAG's core features, try the [quickstart](/quickstart).
@@ -29,14 +28,8 @@ For other installation methods, see [Choose an installation method](/install-opt
    - [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/).
    - [`podman-compose`](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or [Docker Compose](https://docs.docker.com/compose/install/). To use Docker Compose with Podman, you must alias Docker Compose commands to Podman commands.
 
-- Microsoft Windows only: To run OpenRAG on Windows, you must use the Windows Subsystem for Linux (WSL).
-
-   <details>
-   <summary>Install WSL for OpenRAG</summary>
-
-   <PartialWsl />
-
-   </details>
+- To run OpenRAG on Microsoft Windows, you must use the Windows Subsystem for Linux (WSL).
+See [Install OpenRAG on Windows](/install-windows).
 
 - Prepare model providers and credentials.
 
@@ -55,131 +48,29 @@ For other installation methods, see [Choose an installation method](/install-opt
 
 ## Install OpenRAG {#install}
 
-Choose an installation method based on your needs:
+The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, then runs OpenRAG with `uvx`.
 
-* For new users, the automatic installer script detects and installs prerequisites and then runs OpenRAG. 
-* For a quick test, use `uvx` to run OpenRAG without creating a project or modifying files.
-* Use `uv add` to install OpenRAG as a managed dependency in a new or existing Python project.
-* Use `uv pip install` to install OpenRAG into an existing virtual environment.
+1. Create a directory to store the OpenRAG configuration files:
+   ```bash
+   mkdir openrag-workspace
+   cd openrag-workspace
+   ```
 
-<Tabs groupId="Installation method">
-  <TabItem value="installer" label="Automatic installer" default>
-
-    The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, then runs OpenRAG with `uvx`.
-
-    1. Create a directory to store the OpenRAG configuration files:
-       ```bash
-       mkdir openrag-workspace
-       cd openrag-workspace
-       ```
-
-    2. Run the installer:
-       ```bash
-       curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
-       ```
-
-    The TUI creates a `.env` file and docker-compose files in the current working directory.
-
-  </TabItem>
-  <TabItem value="uvx" label="Quick test with uvx">
-
-    Use `uvx` to quickly run OpenRAG without creating a project or modifying any files.
-
-    1. Create a directory to store the OpenRAG configuration files:
-       ```bash
-       mkdir openrag-workspace
-       cd openrag-workspace
-       ```
-
-    2. Run OpenRAG:
-       ```bash
-       uvx openrag
-       ```
-
-       To run a specific version:
-       ```bash
-       uvx --from openrag==0.1.30 openrag
-       ```
-
-    The TUI creates a `.env` file and docker-compose files in the current working directory.
-
-  </TabItem>
-  <TabItem value="uv-add" label="Python project with uv add">
-
-    Use `uv add` to install OpenRAG as a dependency in your Python project. This adds OpenRAG to your `pyproject.toml` and lockfile, making your installation reproducible and version-controlled.
-
-    1. Create a new project with a virtual environment:
-       ```bash
-       uv init YOUR_PROJECT_NAME
-       cd YOUR_PROJECT_NAME
-       ```
-
-       The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
-
-    2. Add OpenRAG to your project:
-       ```bash
-       uv add openrag
-       ```
-
-       To add a specific version:
-       ```bash
-       uv add openrag==0.1.30
-       ```
-
-    3. Start the OpenRAG TUI:
-       ```bash
-       uv run openrag
-       ```
-
-    <details closed>
-      <summary>Install a local wheel</summary>
-      
-      If you downloaded the OpenRAG wheel to your local machine, install it by specifying its path:
-
-      1. Add the wheel to your project:
-         ```bash
-         uv add PATH/TO/openrag-VERSION-py3-none-any.whl
-         ```
-
-         Replace `PATH/TO/` and `VERSION` with the path and version of your downloaded OpenRAG `.whl` file.
-
-      2. Run OpenRAG:
-         ```bash
-         uv run openrag
-         ```
-    </details>
-
-  </TabItem>
-  <TabItem value="uv-pip" label="Existing virtual environment with uv pip install">
-
-    Use `uv pip install` to install OpenRAG into an existing virtual environment that isn't managed by `uv`.
-
-    :::tip
-    For new projects, `uv add` is recommended as it manages dependencies in your project's lockfile.
-    :::
-
-    1. Activate your virtual environment.
-
-    2. Install OpenRAG:
-       ```bash
-       uv pip install openrag
-       ```
-
-    3. Run OpenRAG:
-       ```bash
-       uv run openrag
-       ```
-
-  </TabItem>
-</Tabs>
-
-When the Terminal User Interface (TUI) starts, continue to [Set up OpenRAG with the TUI](#setup).
-
-![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
-
+2. Run the installer:
+   ```bash
+   curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
+   ```
+<!-- move down to the setup section?? -->
+The installer script installs OpenRAG with `uvx`.
+When installed in this way, OpenRAG creates its `.env` and `docker-compose.yml` files in the current working directory.
+<!-- use partial? -->
 If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
 
 ## Set up OpenRAG with the TUI {#setup}
+<!-- use partial? -->
+When the Terminal User Interface (TUI) starts, you must complete the initial setup to configure OpenRAG.
+
+![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
 The OpenRAG setup process creates a `.env` file at the root of your OpenRAG directory, and then starts OpenRAG.
 If it detects a `.env` file in the OpenRAG root directory, it sources any variables from the `.env` file.

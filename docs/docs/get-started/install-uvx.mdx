@@ -17,7 +17,35 @@ The [automatic installer script](/install) also uses `uvx` to install OpenRAG.
 
 For other installation methods, see [Choose an installation method](/install-options).
 
+## Install and run OpenRAG with uvx
 
+    Use `uvx` to quickly run OpenRAG without creating a project or modifying any files.
+
+    1. Create a directory to store the OpenRAG configuration files:
+       ```bash
+       mkdir openrag-workspace
+       cd openrag-workspace
+       ```
+
+    2. Run OpenRAG:
+       ```bash
+       uvx openrag
+       ```
+
+       To run a specific version:
+       ```bash
+       uvx --from openrag==0.1.30 openrag
+       ```
+<!-- move down to the setup section?? -->
+    When you install OpenRAG with `uvx`, OpenRAG creates its `.env` and `docker-compose.yml` files in the current working directory.
+
+    If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
+
+## Set up OpenRAG with the TUI
+
+When the Terminal User Interface (TUI) starts, you must complete the initial setup to configure OpenRAG.
+
+![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
 
 ## Next steps

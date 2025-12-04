@@ -15,9 +15,67 @@ For other installation methods, see [Choose an installation method](/install-opt
     * **`uv add`** (Recommended): Install OpenRAG as a managed dependency in a new or existing Python project.
 
 
+## uv add (Recommended)
+
+    Use `uv add` to install OpenRAG as a dependency in your Python project. This adds OpenRAG to your `pyproject.toml` and lockfile, making your installation reproducible and version-controlled.
+
+    1. Create a new project with a virtual environment:
+       ```bash
+       uv init YOUR_PROJECT_NAME
+       cd YOUR_PROJECT_NAME
+       ```
+
+       The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
+
+    2. Add the OpenRAG package to your project:
+       ```bash
+       uv add openrag
+       ```
+
+       To add a specific version:
+       ```bash
+       uv add openrag==0.1.30
+       ```
+
+       If you downloaded the OpenRAG wheel to your local machine, install OpenRAG by specifying the path and name of the OpenRAG `.whl` file:
+
+       ```bash
+       uv add PATH/TO/openrag-VERSION-py3-none-any.whl
+       ```
+
+    3. Start the OpenRAG TUI:
+       ```bash
+       uv run openrag
+       ```
+If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
 
 
+## uv pip install
 
+    Use `uv pip install` to install OpenRAG into an existing virtual environment that isn't managed by `uv`.
+
+    :::tip
+    For new projects, `uv add` is recommended as it manages dependencies in your project's lockfile.
+    :::
+
+    1. Activate your virtual environment.
+
+    2. Install OpenRAG:
+       ```bash
+       uv pip install openrag
+       ```
+
+    3. Run OpenRAG:
+       ```bash
+       uv run openrag
+       ```
+    If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
+
+## Set up OpenRAG with the TUI
+<!-- use partial? -->
+When the Terminal User Interface (TUI) starts, you must complete the initial setup to configure OpenRAG.
+
+![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
 ## Next steps
 
