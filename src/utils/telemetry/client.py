@@ -54,8 +54,8 @@ def _get_openrag_version() -> str:
 OPENRAG_VERSION = _get_openrag_version()
 
 # HTTP timeouts
-HTTP_REQUEST_TIMEOUT = 10.0
-HTTP_CONNECT_TIMEOUT = 5.0
+HTTP_REQUEST_TIMEOUT = 15.0
+HTTP_CONNECT_TIMEOUT = 10.0
 
 # Retry configuration
 RETRY_BASE_MS = 250
