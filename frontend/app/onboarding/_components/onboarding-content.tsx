@@ -191,7 +191,7 @@ export function OnboardingContent({
 
   return (
     <StickToBottom
-      className="flex h-full flex-1 flex-col"
+      className="flex h-full flex-1 flex-col [&>div]:scrollbar-hide"
       resize="smooth"
       initial="instant"
       mass={1}

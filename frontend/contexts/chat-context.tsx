@@ -79,6 +79,8 @@ interface ChatContextType {
   conversationFilter: KnowledgeFilter | null;
   // responseId: undefined = use currentConversationId, null = don't save to localStorage
   setConversationFilter: (filter: KnowledgeFilter | null, responseId?: string | null) => void;
+  hasChatError: boolean;
+  setChatError: (hasError: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -108,6 +110,19 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [conversationLoaded, setConversationLoaded] = useState(false);
   const [conversationFilter, setConversationFilterState] =
     useState<KnowledgeFilter | null>(null);
+  const [hasChatError, setChatError] = useState(false);
+
+  // Listen for ingestion failures and set chat error flag
+  useEffect(() => {
+    const handleIngestionFailed = () => {
+      setChatError(true);
+    };
+
+    window.addEventListener("ingestionFailed", handleIngestionFailed);
+    return () => {
+      window.removeEventListener("ingestionFailed", handleIngestionFailed);
+    };
+  }, []);
 
   // Debounce refresh requests to prevent excessive reloads
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -358,6 +373,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       setConversationLoaded,
       conversationFilter,
       setConversationFilter,
+      hasChatError,
+      setChatError,
     }),
     [
       endpoint,
@@ -378,6 +395,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       conversationLoaded,
       conversationFilter,
       setConversationFilter,
+      hasChatError,
     ],
   );
 
