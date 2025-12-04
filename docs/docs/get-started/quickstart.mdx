@@ -30,10 +30,11 @@ For other providers, see the complete [installation guide](/install).
 
    </details>
 
-
 ## Install OpenRAG
 
-For this quickstart, install OpenRAG with the automatic installer script and basic setup:
+For this quickstart, install OpenRAG with the automatic installer script and basic setup.
+
+This script installs OpenRAG dependencies, including Docker or Podman, installs OpenRAG with [`uvx`](https://docs.astral.sh/uvx/getting-started/installation/), and creates a `.env` file and `docker-compose` files in the current working directory.
 
 1. Create a directory to store the OpenRAG configuration files, and then change to that directory:
 
@@ -48,10 +49,13 @@ For this quickstart, install OpenRAG with the automatic installer script and bas
    bash run_openrag_with_prereqs.sh
    ```
 
-   This script installs OpenRAG and its dependencies, including Docker or Podman, and it creates a `.env` file and `docker-compose` files in the current working directory.
+   Wait while the installer script prepares your environment and installs OpenRAG.
    You might be prompted to install certain dependencies if they aren't already present in your environment.
-   This process can take a few minutes.
-   Once the environment is ready, OpenRAG starts.
+
+   The entire process can take a few minutes.
+   Once the environment is ready, the OpenRAG Terminal User Interface (TUI) starts.
+
+   ![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
 3. Click **Basic Setup**.
 
@@ -66,7 +70,7 @@ For this quickstart, install OpenRAG with the automatic installer script and bas
 5. Click **Save Configuration**, and then click **Start All Services**.
 
    Wait a few minutes while the startup process pulls and runs the necessary container images.
-   Proceed when you see the following messages in the terminal user interface (TUI):
+   Proceed when you see the following messages in the TUI:
 
    ```bash
    Services started successfully
@@ -158,9 +162,8 @@ You can send and receive requests with the Langflow API using Python, TypeScript
 
 ## Next steps
 
-* **Reinstall OpenRAG with your preferred settings**: This quickstart used a minimal setup to demonstrate OpenRAG's core functionality.
-It is recommended that you [reinstall OpenRAG](/install#reinstall) with your preferred configuration because some settings are immutable after initial setup.
-For all installation options, see [Install OpenRAG with TUI](/install) and [Install OpenRAG with containers](/docker).
+* **Reinstall OpenRAG with your preferred settings**: This quickstart used `uvx` and a minimal setup to demonstrate OpenRAG's core functionality.
+It is recommended that you [reinstall OpenRAG](/reinstall) with your preferred configuration and [installation method](/install-options).
 
 * **Learn more about OpenRAG**: Explore OpenRAG and the OpenRAG documentation to learn more about its features and functionality.
 

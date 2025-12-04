@@ -1,0 +1,14 @@
+---
+title: Remove OpenRAG
+slug: /uninstall
+---
+
+:::tip
+If you want to reset your OpenRAG containers without removing OpenRAG entirely, see [Reset OpenRAG containers](/manage-containers#reset-containers) and [Reinstall OpenRAG](/reinstall).
+:::
+
+If you used the [automated installer script](/install) or [`uvx`](/install-uvx) to install OpenRAG, run `uv cache clean openrag` to remove the cached OpenRAG environment.
+
+If you used [`uv`](/install-uv) to install OpenRAG, run `uv remove openrag` in your Python project.
+
+For self-managed containers, destroy the containers, prune any additional Docker objects, and delete any remaining OpenRAG files, as explained in [Reset OpenRAG containers](/manage-containers#reset-containers).

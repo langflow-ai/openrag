@@ -1,0 +1,30 @@
+---
+title: Choose an installation method
+slug: /install-options
+---
+
+The [OpenRAG architecture](/#openrag-architecture) is lightweight and container-based with a central OpenRAG backend that orchestrates the various services and external connectors.
+Depending on your use case, OpenRAG can assist with container management, or you can manage the containers yourself.
+
+Choose the installation method that best fits your needs:
+
+* **Use the [Terminal User Interface (TUI)](/tui) to manage containers**: For guided configuration and simplified container management, install OpenRAG with TUI-managed containers.
+
+    * [**Automatic installer script**](/install): Run one script to install the required dependencies and install OpenRAG with `uvx`.
+    * [**`uv`**](/install-uv): Install OpenRAG as a dependency of a new or existing Python project.
+    * [**`uvx`**](/install-uvx): Invoke OpenRAG without permanently installing it in a Python project.
+
+* [**Install OpenRAG on Microsoft Windows**](/install-wsl): On Windows machines, you must install OpenRAG within the Windows Subsystem for Linux (WSL).
+
+   OpenRAG doesn't support nested virtualization; don't run OpenRAG on a WSL distribution that is inside a Windows VM.
+
+* [**Manage your own containers**](/docker): You can use Docker or Podman to deploy self-managed OpenRAG containers.
+
+The first time you start OpenRAG, you must complete application onboarding.
+This is required for all installation methods because it prepares the minimum required configuration for OpenRAG to run.
+For more information, see the instructions for your chosen installation method.
+
+Your OpenRAG configuration is stored in a `.env` file in the OpenRAG installation directory.
+When using TUI-managed containers, the TUI prompts you for any missing values during setup and onboarding, and any values detected in a preexisting `.env` file are automatically populated.
+When using self-managed containers, you must predefine these values in a `.env` file, as you would for any container deployment.
+For more information, see the instructions for your chosen installation method and [Environment variables](/reference/configuration).

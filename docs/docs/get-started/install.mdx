@@ -1,5 +1,5 @@
 ---
-title: Install OpenRAG with TUI
+title: Install OpenRAG with the automatic installer script
 slug: /install
 ---
 
@@ -8,17 +8,16 @@ import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
 import PartialWsl from '@site/docs/_partial-wsl-install.mdx';
 
-[Install OpenRAG](#install) and then run the [OpenRAG Terminal User Interface(TUI)](#setup) to start your OpenRAG deployment with a guided setup process.
+:::tip
+For a fully guided installation and preview of OpenRAG's core features, try the [quickstart](/quickstart).
+:::
 
-The OpenRAG Terminal User Interface (TUI) allows you to set up, configure, and monitor your OpenRAG deployment directly from the terminal.
+For guided configuration and simplified container management, install OpenRAG with containers managed by the [Terminal User Interface (TUI)](/tui).
 
-![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
+The installer script detects and installs any missing dependencies, and then installs OpenRAG with [`uvx`](https://docs.astral.sh/uvx/getting-started/installation/).
 
-Instead of starting OpenRAG using Docker commands and manually editing values in the `.env` file, the TUI walks you through the setup. It prompts for variables where required, creates a `.env` file for you, and then starts OpenRAG.
-
-Once OpenRAG is running, use the TUI to monitor your application, control your containers, and retrieve logs.
-
-If you prefer running Podman or Docker containers and manually editing `.env` files, see [Install OpenRAG Containers](/docker).
+Because `uvx` installs OpenRAG in an ephemeral, isolated virtual environment, this installation method isn't suitable for all use cases.
+For other installation methods, see [Choose an installation method](/install-options).
 
 ## Prerequisites
 
@@ -174,7 +173,9 @@ Choose an installation method based on your needs:
   </TabItem>
 </Tabs>
 
-Continue with [Set up OpenRAG with the TUI](#setup).
+When the Terminal User Interface (TUI) starts, continue to [Set up OpenRAG with the TUI](#setup).
+
+![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
 If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
 
@@ -263,15 +264,6 @@ If OpenRAG detects OAuth credentials, it recommends **Advanced Setup**.
 
 <PartialOnboarding />
 
-## Exit the OpenRAG TUI
-
-To exit the OpenRAG TUI, navigate to the main menu, and then press <kbd>q</kbd>.
-The OpenRAG containers continue to run until they are stopped.
-For more information, see [Manage OpenRAG containers with the TUI ](#tui-container-management).
-
-To relaunch the TUI, run `uv run openrag`.
-If you installed OpenRAG with `uvx`, run `uvx openrag`.
-
 ## Manage OpenRAG containers with the TUI {#tui-container-management}
 
 After installation, the TUI can deploy, manage, and upgrade your OpenRAG containers.
@@ -288,7 +280,7 @@ Here you can check container health, find your service ports, view logs, and upg
 * **Logs**: To view streaming logs, select the container you want to view, and press <kbd>l</kbd>.
 To copy the logs, click **Copy to Clipboard**.
 
-* **Upgrade**: Check for updates. For more information, see [upgrade OpenRAG](#upgrade).
+* **Upgrade**: Check for updates. For more information, see [upgrade OpenRAG](/upgrade).
 
 * **Factory Reset**: This is a destructive action that [resets your containers](#reset-containers).
 
@@ -318,7 +310,7 @@ This operation _doesn't_ remove the `.env` file or the contents of the `./openra
    docker system prune -f
    ```
 
-2. If you reset your containers as part of reinstalling OpenRAG, continue the [reinstallation process](#reinstall) after resetting the containers.
+2. If you reset your containers as part of reinstalling OpenRAG, continue the [reinstallation process](/reinstall) after resetting the containers.
 Otherwise, in the TUI **Setup** menu, repeat the [setup process](#setup) to start the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
 
 ### Start all services {#start-all-services}
@@ -344,126 +336,8 @@ A _native service_ in OpenRAG is a service that runs locally on your machine, no
 From the **Status** menu, you can view the status, port, and process ID (PID) of the OpenRAG native services.
 You can also click **Stop** or **Restart** to stop and start OpenRAG native services.
 
-## Upgrade OpenRAG {#upgrade}
+## Next steps
 
-To upgrade OpenRAG, upgrade the OpenRAG Python package, and then upgrade the OpenRAG containers.
-
-This is a two part process because upgrading the OpenRAG Python package updates the TUI and Python code, but the container versions are controlled by environment variables in your `.env` file.
-
-1. Stop your OpenRAG containers: In the OpenRAG TUI, go to the **Status** menu, and then click **Stop Services**.
-
-2. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
-
-    <Tabs groupId="Installation method">
-    <TabItem value="installer" label="Automatic installer or uvx" default>
-
-    Use these steps to upgrade the Python package if you installed OpenRAG using the automatic installer or `uvx`:
-
-    1. Navigate to your OpenRAG workspace directory:
-
-        ```bash
-        cd openrag-workspace
-        ```
-
-    2. Upgrade the OpenRAG package:
-
-        ```bash
-        uvx --from openrag openrag
-        ```
-
-        To upgrade to a specific version:
-
-        ```bash
-        uvx --from openrag==0.1.33 openrag
-        ```
-
-    </TabItem>
-    <TabItem value="uv-add" label="Python project (uv add)">
-
-    Use these steps to upgrade the Python package if you installed OpenRAG in a Python project with `uv add`:
-
-    1. Navigate to your project directory:
-
-        ```bash
-        cd YOUR_PROJECT_NAME
-        ```
-
-    2. Update OpenRAG to the latest version:
-
-        ```bash
-        uv add --upgrade openrag
-        ```
-
-        To upgrade to a specific version:
-
-        ```bash
-        uv add --upgrade openrag==0.1.33
-        ```
-
-    3. Start the OpenRAG TUI:
-
-        ```bash
-        uv run openrag
-        ```
-
-    </TabItem>
-    <TabItem value="uv-pip" label="Virtual environment (uv pip install)">
-
-    Use these steps to upgrade the Python package if you installed OpenRAG in a venv with `uv pip install`:
-
-    1. Activate your virtual environment.
-
-    2. Upgrade OpenRAG:
-
-        ```bash
-        uv pip install --upgrade openrag
-        ```
-
-        To upgrade to a specific version:
-
-        ```bash
-        uv pip install --upgrade openrag==0.1.33
-        ```
-
-    3. Start the OpenRAG TUI:
-
-        ```bash
-        uv run openrag
-        ```
-
-    </TabItem>
-    </Tabs>
-
-3. Start the upgraded OpenRAG containers: In the OpenRAG TUI, click **Start All Services**, and then wait while the containers start.
-
-    After upgrading the Python package, OpenRAG runs `docker compose pull` to get the appropriate container images matching the version specified in your OpenRAG `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
-
-    In the `.env` file, the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) is set to `latest` by default, which it pulls the `latest` available container images.
-    To pin a specific container image version, you can set `OPENRAG_VERSION` to the desired container image version, such as `OPENRAG_VERSION=0.1.33`.
-
-    However, when you upgrade the Python package, OpenRAG automatically attempts to keep the `OPENRAG_VERSION` synchronized with the Python package version.
-    You might need to edit the `.env` file after upgrading the Python package to enforce a different container version.
-    The TUI warns you if it detects a version mismatch.
-
-    If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
-
-4. When the upgrade process is complete, you can close the **Status** window and continue using OpenRAG.
-
-## Reinstall OpenRAG {#reinstall}
-
-Reset your OpenRAG deployment by recreating the containers and, optionally, removing related data:
-
-1. In the TUI, [reset your containers](#reset-containers) to destroy the following:
-
-   * All existing OpenRAG containers, volumes, and local images
-   * Any additional Docker objects
-   * The contents of OpenRAG's `config` and `./opensearch-data` directories
-   * The `conversations.json` file
-
-2. Optional: Remove data that wasn't deleted by the **Factory Reset** operation. For a completely fresh installation, delete all of this data.
-
-    * **OpenRAG's `.env` file**: Contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth settings, and other [environment variables](/reference/configuration). If you delete this file, you must either repeat the [setup process](#setup) to create a new `.env` file, or add a populated `.env` file to your OpenRAG installation directory before restarting OpenRAG.
-    * **The contents of the `./openrag-documents` directory**: Contains documents that you uploaded to OpenRAG. Delete these files to prevent documents from being reingested to your knowledge base after restarting OpenRAG. However, you might want to preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
-
-3. In the TUI **Setup** menu, repeat the [setup process](#setup) to configure OpenRAG, restart the services, and launch the OpenRAG app, and repeat [application onboarding](#application-onboarding).
-If OpenRAG detects a `.env` file, it automatically populates any OpenRAG passwords, OAuth credentials, and onboarding configuration set in that file.
+* [Manage OpenRAG containers](/manage-containers)
+* [Chat](/chat)
+* [Upload documents](/ingestion)

@@ -1,0 +1,31 @@
+---
+title: Use the TUI
+slug: /tui
+---
+
+The OpenRAG Terminal User Interface (TUI) provides a simplified and guided experience for configuring, managing, and monitoring your OpenRAG deployment directly from the terminal.
+
+![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
+
+The TUI is used when you install OpenRAG with the [automatic installer script](/install), [`uv`](/install-uv), or [`uvx`](/install-uvx).
+It guides you through the initial setup, creates your `.env` file automatically, and provides convenient access to [container management](/manage-containers) controls.
+
+In contrast, when you [deploy OpenRAG with self-managed containers](/docker), you must manually configure OpenRAG by preparing a `.env` file and using Docker or Podman commands to deploy and manage your containers.
+
+## Access the TUI {#access-the-tui}
+
+If you installed OpenRAG with `uv`, access the TUI with `uv run openrag`.
+
+If you installed OpenRAG with the automatic installer script or `uvx`, access the TUI with `uvx openrag`.
+
+## Exit the OpenRAG TUI
+
+To exit the OpenRAG TUI, go to the TUI main menu, and then press <kbd>q</kbd>.
+
+Your OpenRAG containers continue to run until they are stopped.
+
+To restart the TUI, see [Access the TUI](#access-the-tui).
+
+## See also
+
+* [Manage containers](/manage-containers)

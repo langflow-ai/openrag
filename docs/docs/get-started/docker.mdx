@@ -1,5 +1,5 @@
 ---
-title: Install OpenRAG containers
+title: Deploy OpenRAG with self-managed containers
 slug: /docker
 ---
 
@@ -7,6 +7,9 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
 import PartialWsl from '@site/docs/_partial-wsl-install.mdx';
+
+You can use Docker or Podman to deploy self-managed OpenRAG containers.
+Use this option if you don't want to use the TUI for container management, or you need to run OpenRAG in an environment where using the TUI is unfeasible.
 
 OpenRAG has two Docker Compose files. Both files deploy the same applications and containers locally, but they are for different environments:
 
@@ -172,9 +175,10 @@ uv run python scripts/docling_ctl.py stop
 ## Container management commands
 
 Manage your OpenRAG containers with the following commands.
-These commands are also available in the TUI's [Status menu](/install#status).
 
-### Upgrade containers {#upgrade-containers}
+### Upgrade containers
+
+<!-- also on /upgrade -->
 
 Upgrade your containers to the latest version while preserving your data.
 
@@ -184,6 +188,8 @@ docker compose up -d --force-recreate
 ```
 
 ### Reset containers (destructive) {#reset-containers}
+
+<!-- part of this needs to be on /reinstall and /uninstall -->
 
 :::warning
 These are destructive operations that reset your OpenRAG deployment to an initial state.
