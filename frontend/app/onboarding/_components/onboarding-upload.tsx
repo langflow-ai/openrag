@@ -217,9 +217,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 					})
 					.finally(() => {
 						setIsCreatingFilter(false);
-						// Refetch nudges to get new ones
-						refetchNudges();
-
+            
 						// Wait a bit before completing (after filter is created)
 						setTimeout(() => {
 							onComplete();
@@ -227,8 +225,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 					});
 			} else {
 				// No filter to create, just complete
-				// Refetch nudges to get new ones
-				refetchNudges();
 
 				// Wait a bit before completing
 				setTimeout(() => {
@@ -240,7 +236,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 		tasks,
 		currentStep,
 		onComplete,
-		refetchNudges,
 		shouldCreateFilter,
 		uploadedFilename,
 		uploadedTaskId,
