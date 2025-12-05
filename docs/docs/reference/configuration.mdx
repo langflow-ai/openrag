@@ -56,23 +56,27 @@ For example, with self-managed services, do the following:
 
 All OpenRAG configuration can be controlled through environment variables.
 
-### AI provider settings
+### Model provider settings {#model-provider-settings}
 
 Configure which models and providers OpenRAG uses to generate text and embeddings.
-These are initially set during [application onboarding](/install#application-onboarding).
-Some values are immutable and can only be changed by redeploying OpenRAG, as explained in [Set environment variables](#set-environment-variables).
+You only need to provide credentials for the providers you are using in OpenRAG.
+
+These variables are initially set during [application onboarding](/install#application-onboarding).
+Some of these variables are immutable and can only be changed by redeploying OpenRAG, as explained in [Set environment variables](#set-environment-variables).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for generating vector embeddings for documents in the knowledge base and similarity search queries. Can be changed after application onboarding. Accepts one or more models. |
 | `LLM_MODEL` | `gpt-4o-mini` | Language model for language processing and text generation in the **Chat** feature. |
-| `MODEL_PROVIDER` | `openai` | Model provider, such as OpenAI or IBM watsonx.ai. |
-| `OPENAI_API_KEY` | Not set | Optional OpenAI API key for the default model. For other providers, use `PROVIDER_API_KEY`. |
-| `PROVIDER_API_KEY` | Not set | API key for the model provider. |
-| `PROVIDER_ENDPOINT` | Not set | Custom provider endpoint for the IBM and Ollama model providers. Leave unset for other model providers. |
-| `PROVIDER_PROJECT_ID` | Not set | Project ID for the IBM watsonx.ai model provider only. Leave unset for other model providers. |
+| `MODEL_PROVIDER` | `openai` | Model provider, as one of `openai`, `watsonx`, `ollama`, or `anthropic`. |
+| `ANTHROPIC_API_KEY` | Not set | API key for the Anthropic language model provider. |
+| `OPENAI_API_KEY` | Not set | API key for the OpenAI model provider, which is also the default model provider. |
+| `OLLAMA_ENDPOINT` | Not set | Custom provider endpoint for the Ollama model provider. |
+| `WATSONX_API_KEY` | Not set | API key for the IBM watsonx.ai model provider. |
+| `WATSONX_ENDPOINT` | Not set | Custom provider endpoint for the IBM watsonx.ai model provider. |
+| `WATSONX_PROJECT_ID` | Not set | Project ID for the IBM watsonx.ai model provider. |
 
-### Document processing
+### Document processing settings
 
 Control how OpenRAG [processes and ingests documents](/ingestion) into your knowledge base.
 

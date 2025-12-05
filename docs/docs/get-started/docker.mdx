@@ -102,44 +102,63 @@ To install OpenRAG with Docker Compose, do the following:
 7. Deploy OpenRAG locally with the appropriate Docker Compose file for your environment.
 Both files deploy the same services.
 
-   - [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing. This Docker Compose file requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support.
+   * [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing. This Docker Compose file requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support.
 
-      ```bash
-      docker compose build
-      docker compose up -d
-      ```
+      * Docker:
 
-   - [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without NVIDIA GPU support. Use this Docker Compose file for environments where GPU drivers aren't available.
+         ```bash
+         docker compose build
+         docker compose up -d
+         ```
 
-      ```bash
-      docker compose -f docker-compose-cpu.yml up -d
-      ```
+      * Podman Compose:
 
-   <!-- add podman compose -->
+         ```bash
+         podman compose build
+         podman compose up -d
+         ```
+
+   * [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without NVIDIA GPU support. Use this Docker Compose file for environments where GPU drivers aren't available.
+
+      * Docker:
+
+         ```bash
+         docker compose -f docker-compose-cpu.yml up -d
+         ```
+
+      * Podman Compose:
+
+         ```bash
+         podman compose -f docker-compose-cpu.yml up -d
+         ```
 
    The OpenRAG Docker Compose file starts five containers:
-   | Container Name | Default Address | Purpose |
+
+   | Container Name | Default address | Purpose |
    |---|---|---|
    | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
-   | OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
-   | Langflow | http://localhost:7860 | AI workflow engine and flow management. |
-   | OpenSearch | http://localhost:9200 | Vector database for document storage. |
-   | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
+   | OpenRAG Frontend | http://localhost:3000 | React web interface for user interaction. |
+   | Langflow | http://localhost:7860 | [AI workflow engine](/agents). |
+   | OpenSearch | http://localhost:9200 | Datastore for [knowledge](/knowledge). |
+   | OpenSearch Dashboards | http://localhost:5601 | OpenSearch database administration interface. |
 
-8. Verify installation by confirming all services are running.
+8. Wait while the containers start, and then confirm all containers are running:
 
-   <!-- add podman compose -->
-   ```bash
-   docker compose ps
-   ```
+   * Docker Compose:
 
-   You can now access OpenRAG at the following endpoints:
+      ```bash
+      docker compose ps
+      ```
 
-   - **Frontend**: http://localhost:3000
-   - **Backend API**: http://localhost:8000
-   - **Langflow**: http://localhost:7860
+   * Podman Compose:
 
-9. Access the OpenRAG frontend to continue with [application onboarding](#application-onboarding).
+      ```bash
+      podman compose ps
+      ```
+
+   If all containers are running, you can access your OpenRAG services at their addresses.
+
+9. Access the OpenRAG frontend at `http://localhost:3000` to continue with [application onboarding](#application-onboarding).
 
 <PartialOnboarding />
 
