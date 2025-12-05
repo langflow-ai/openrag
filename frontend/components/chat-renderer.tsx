@@ -47,8 +47,7 @@ export function ChatRenderer({
     refreshConversations,
     startNewConversation,
     setConversationFilter,
-    setCurrentConversationId,
-    setPreviousResponseIds,
+    setOnboardingComplete,
   } = useChat();
 
   // Initialize onboarding state based on local storage and settings
@@ -170,6 +169,9 @@ export function ChatRenderer({
         localStorage.removeItem(ONBOARDING_UPLOAD_STEPS_KEY);
       }
 
+      // Mark onboarding as complete in context
+      setOnboardingComplete(true);
+
       // Clear ALL conversation state so next message starts fresh
       await startNewConversation();
 
@@ -202,6 +204,8 @@ export function ChatRenderer({
       localStorage.removeItem(ONBOARDING_CARD_STEPS_KEY);
       localStorage.removeItem(ONBOARDING_UPLOAD_STEPS_KEY);
     }
+    // Mark onboarding as complete in context
+    setOnboardingComplete(true);
     // Store the OpenRAG docs filter as default for new conversations
     storeDefaultFilterForNewConversations(false);
     setShowLayout(true);

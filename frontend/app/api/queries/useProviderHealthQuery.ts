@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { useChat } from "@/contexts/chat-context";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
+import { useGetTasksQuery } from "./useGetTasksQuery";
 
 export interface ProviderHealthDetails {
   llm_model: string;
@@ -40,10 +41,19 @@ export const useProviderHealthQuery = (
 ) => {
   const queryClient = useQueryClient();
 
-  // Get chat error state from context (ChatProvider wraps the entire app in layout.tsx)
-  const { hasChatError, setChatError } = useChat();
+  // Get chat error state and onboarding completion from context (ChatProvider wraps the entire app in layout.tsx)
+  const { hasChatError, setChatError, isOnboardingComplete } = useChat();
 
   const { data: settings = {} } = useGetSettingsQuery();
+
+  // Check if there are any active ingestion tasks
+  const { data: tasks = [] } = useGetTasksQuery();
+  const hasActiveIngestion = tasks.some(
+    (task) =>
+      task.status === "pending" ||
+      task.status === "running" ||
+      task.status === "processing",
+  );
 
   async function checkProviderHealth(): Promise<ProviderHealthResponse> {
     try {
@@ -55,6 +65,7 @@ export const useProviderHealthQuery = (
       }
 
       // Add test_completion query param if specified or if chat error exists
+      // Use the same testCompletion value that's in the queryKey
       const testCompletion = params?.test_completion ?? hasChatError;
       if (testCompletion) {
         url.searchParams.set("test_completion", "true");
@@ -101,7 +112,10 @@ export const useProviderHealthQuery = (
     }
   }
 
-  const queryKey = ["provider", "health", params?.test_completion];
+  // Include hasChatError in queryKey so React Query refetches when it changes
+  // This ensures the health check runs with test_completion=true when chat errors occur
+  const testCompletion = params?.test_completion ?? hasChatError;
+  const queryKey = ["provider", "health", testCompletion, hasChatError];
   const failureCountKey = queryKey.join("-");
 
   const queryResult = useQuery(
@@ -143,7 +157,11 @@ export const useProviderHealthQuery = (
       refetchOnWindowFocus: false, // Disabled to reduce unnecessary calls on tab switches
       refetchOnMount: true,
       staleTime: 30000, // Consider data stale after 30 seconds
-      enabled: !!settings?.edited && options?.enabled !== false, // Only run after onboarding is complete
+      enabled:
+        !!settings?.edited &&
+        isOnboardingComplete &&
+        !hasActiveIngestion && // Disable health checks when ingestion is happening
+        options?.enabled !== false, // Only run after onboarding is complete
       ...options,
     },
     queryClient,
