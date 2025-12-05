@@ -73,8 +73,6 @@ function ChatPage() {
 	const lastLoadedConversationRef = useRef<string | null>(null);
 	const { addTask } = useTask();
 
-  console.log(endpoint, refreshTrigger);
-
 	// Check if chat history is loading
 	const { isLoading: isConversationsLoading } = useGetConversationsQuery(
 		endpoint,
