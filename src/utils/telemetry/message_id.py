@@ -199,3 +199,5 @@ class MessageId:
     ORB_ONBOARD_SAMPLE_DATA = "ORB_ONBOARD_SAMPLE_DATA"
     # Message: Configuration marked as edited
     ORB_ONBOARD_CONFIG_EDITED = "ORB_ONBOARD_CONFIG_EDITED"
+    # Message: Onboarding rolled back due to all files failing
+    ORB_ONBOARD_ROLLBACK = "ORB_ONBOARD_ROLLBACK"
