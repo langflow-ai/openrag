@@ -95,6 +95,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           icon: "file",
         });
 
+        // Wait for filter creation to complete before proceeding
         createFilterMutation
           .mutateAsync({
             name: displayName,
@@ -118,16 +119,24 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           })
           .finally(() => {
             setIsCreatingFilter(false);
+            // Refetch nudges to get new ones
+            refetchNudges();
+
+            // Wait a bit before completing (after filter is created)
+            setTimeout(() => {
+              onComplete();
+            }, 1000);
           });
+      } else {
+        // No filter to create, just complete
+        // Refetch nudges to get new ones
+        refetchNudges();
+
+        // Wait a bit before completing
+        setTimeout(() => {
+          onComplete();
+        }, 1000);
       }
-
-      // Refetch nudges to get new ones
-      refetchNudges();
-
-      // Wait a bit before completing
-      setTimeout(() => {
-        onComplete();
-      }, 1000);
     }
   }, [
     tasks,
