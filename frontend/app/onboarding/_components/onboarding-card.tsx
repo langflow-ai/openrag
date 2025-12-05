@@ -507,7 +507,7 @@ const OnboardingCard = ({
                     hasEnvApiKey={
                       currentSettings?.providers?.openai?.has_api_key === true
                     }
-                    alreadyConfigured={providerAlreadyConfigured}
+                    alreadyConfigured={providerAlreadyConfigured && modelProvider === "openai"}
                   />
                 </TabsContent>
                 <TabsContent value="watsonx">
@@ -517,7 +517,7 @@ const OnboardingCard = ({
                     setSampleDataset={setSampleDataset}
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
-                    alreadyConfigured={providerAlreadyConfigured}
+                    alreadyConfigured={providerAlreadyConfigured && modelProvider === "watsonx"}
                     existingEndpoint={currentSettings?.providers?.watsonx?.endpoint}
                     existingProjectId={currentSettings?.providers?.watsonx?.project_id}
                     hasEnvApiKey={currentSettings?.providers?.watsonx?.has_api_key === true}
@@ -530,7 +530,7 @@ const OnboardingCard = ({
                     setSampleDataset={setSampleDataset}
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
-                    alreadyConfigured={providerAlreadyConfigured}
+                    alreadyConfigured={providerAlreadyConfigured && modelProvider === "ollama"}
                     existingEndpoint={currentSettings?.providers?.ollama?.endpoint}
                   />
                 </TabsContent>
