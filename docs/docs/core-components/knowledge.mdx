@@ -4,8 +4,6 @@ slug: /knowledge
 ---
 
 import Icon from "@site/src/components/icon/icon";
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
 
 OpenRAG includes a built-in [OpenSearch](https://docs.opensearch.org/latest/) instance that serves as the underlying datastore for your _knowledge_ (documents).
 This specialized database is used to store and retrieve your documents and the associated vector data (embeddings).
@@ -98,23 +96,14 @@ When you [upload documents](/ingestion), Docling processes the files, splits the
 
 You can use either Docling Serve or OpenRAG's built-in Docling ingestion pipeline to process documents.
 
-<Tabs>
-<TabItem value="serve" label="Docling Serve ingestion" default>
-
-By default, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve).
+* **Docling Serve ingestion**: By default, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve).
 This means that OpenRAG starts a `docling serve` process on your local machine and runs Docling ingestion through an API service.
 
-</TabItem>
-<TabItem value="docling" label="Built-in Docling ingestion">
+* **Built-in Docling ingestion**: If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG environment variables](/reference/configuration#document-processing).
 
-If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG environment variables](/reference/configuration#document-processing).
+   The built-in pipeline uses the Docling processor directly instead of through the Docling Serve API.
 
-The built-in pipeline uses the Docling processor directly instead of through the Docling Serve API.
-
-For the underlying functionality, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
-
-</TabItem>
-</Tabs>
+   For the underlying functionality, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
 
 To modify the Docling ingestion and embedding parameters, click <Icon name="Settings2" aria-hidden="true"/> **Settings** in the OpenRAG user interface.
 

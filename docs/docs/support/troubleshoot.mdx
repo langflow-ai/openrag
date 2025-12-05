@@ -3,9 +3,6 @@ title: Troubleshoot OpenRAG
 slug: /support/troubleshoot
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
 This page provides troubleshooting advice for issues you might encounter when using OpenRAG or contributing to OpenRAG.
 
 ## OpenSearch fails to start
@@ -101,38 +98,33 @@ To resolve this issue, do the following:
 
 1. Remove only the Langflow container:
 
-   <Tabs groupId="Container software">
-   <TabItem value="Podman" label="Podman">
-
    1. Stop the Langflow container:
 
-      ```bash
-      podman stop langflow
-      ```
+      * Docker:
+
+         ```bash
+         docker stop langflow
+         ```
+
+      * Podman:
+
+         ```bash
+         podman stop langflow
+         ```
 
    2. Remove the Langflow container:
 
-      ```bash
-      podman rm langflow --force
-      ```
+      * Docker:
 
-   </TabItem>
-   <TabItem value="Docker" label="Docker" default>
+         ```bash
+         docker rm langflow --force
+         ```
 
-   1. Stop the Langflow container:
+      * Podman:
 
-      ```bash
-      docker stop langflow
-      ```
-
-   2. Remove the Langflow container:
-
-      ```bash
-      docker rm langflow --force
-      ```
-
-   </TabItem>
-   </Tabs>
+         ```bash
+         podman rm langflow --force
+         ```
 
 2. Retry the [upgrade](/upgrade).
 
