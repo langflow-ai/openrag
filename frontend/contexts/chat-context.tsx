@@ -262,6 +262,10 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const startNewConversation = useCallback(async () => {
     console.log("[CONVERSATION] Starting new conversation");
 
+    // Check if there's existing conversation data - if so, this is a manual "new conversation" action
+    // Check state values before clearing them
+    const hasExistingConversation = conversationData !== null || placeholderConversation !== null;
+    
     // Clear current conversation data and reset state
     setCurrentConversationId(null);
     setPreviousResponseIds({ chat: null, langflow: null });
@@ -295,15 +299,22 @@ export function ChatProvider({ children }: ChatProviderProps) {
           setConversationFilterState(null);
         }
       } else {
-        console.log("[CONVERSATION] No default filter set");
-        setConversationFilterState(null);
+        // No default filter in localStorage
+        if (hasExistingConversation) {
+          // User is manually starting a new conversation - clear the filter
+          console.log("[CONVERSATION] Manual new conversation - clearing filter");
+          setConversationFilterState(null);
+        } else {
+          // First time after onboarding - preserve existing filter if set
+          // This prevents clearing the filter when startNewConversation is called multiple times during onboarding
+          console.log("[CONVERSATION] No default filter set, preserving existing filter if any");
+          // Don't clear the filter - it may have been set by storeDefaultFilterForNewConversations
+        }
       }
-    } else {
-      setConversationFilterState(null);
     }
 
     // Create a temporary placeholder conversation to show in sidebar
-    const placeholderConversation: ConversationData = {
+    const newPlaceholderConversation: ConversationData = {
       response_id: "new-conversation-" + Date.now(),
       title: "New conversation",
       endpoint: endpoint,
@@ -318,10 +329,10 @@ export function ChatProvider({ children }: ChatProviderProps) {
       last_activity: new Date().toISOString(),
     };
 
-    setPlaceholderConversation(placeholderConversation);
+    setPlaceholderConversation(newPlaceholderConversation);
     // Force immediate refresh to ensure sidebar shows correct state
     refreshConversations(true);
-  }, [endpoint, refreshConversations]);
+  }, [endpoint, refreshConversations, conversationData, placeholderConversation]);
 
   const addConversationDoc = useCallback((filename: string) => {
     setConversationDocs((prev) => [
