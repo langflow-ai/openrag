@@ -25,45 +25,36 @@ Environment variables always take precedence over other variables.
 
 ### Set environment variables {#set-environment-variables}
 
-After you start OpenRAG, you must [stop and restart OpenRAG containers](/install#tui-container-management) to apply any changes you make to the `.env` file.
+Environment variables are either mutable or immutable.
 
-To set mutable environment variables, do the following:
+If you edit mutable environment variables, you can apply the changes by stopping and restarting the OpenRAG services after editing the `.env` file:
 
-1. Stop OpenRAG with the TUI or Docker Compose.
+1. [Stop the OpenRAG services](/manage-services).
 
-2. Set the values in the `.env` file:
+2. Edit your `.env` file.
 
-   ```bash
-   LOG_LEVEL=DEBUG
-   LOG_FORMAT=json
-   SERVICE_NAME=openrag-dev
-   ```
+3. [Restart the OpenRAG services](/manage-services).
 
-3. Start OpenRAG with the TUI or Docker Compose.
+If you edit immutable environment variables, you must [redeploy OpenRAG](/reinstall) with your modified `.env` file.
+For example, with self-managed services, do the following:
 
-Certain environment variables that you set during [application onboarding](/install#application-onboarding), such as provider API keys and provider endpoints, require resetting the containers after modifying the `.env` file.
-
-To change immutable variables with TUI-managed containers, you must [reinstall OpenRAG](/reinstall) and either delete or modify the `.env` file before you repeat the setup and onboarding process in the TUI.
-
-To change immutable variables with self-managed containers, do the following:
-
-1. Stop OpenRAG with Docker Compose.
-
-2. Remove the containers:
+1. Stop the deployment:
 
    ```bash
-   docker-compose down
+   docker compose down
    ```
 
-3. Update the values in your `.env` file.
+2. Edit your `.env` file.
 
-4. Start OpenRAG with Docker Compose:
+3. Redeploy OpenRAG:
 
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
-5. Repeat [application onboarding](/install#application-onboarding). The values in your `.env` file are automatically populated.
+4. Restart the Docling service.
+
+5. Launch the OpenRAG app, and then repeat [application onboarding](/install#application-onboarding). The values in your `.env` file are automatically populated.
 
 ## Supported environment variables
 
@@ -73,7 +64,7 @@ All OpenRAG configuration can be controlled through environment variables.
 
 Configure which models and providers OpenRAG uses to generate text and embeddings.
 These are initially set during [application onboarding](/install#application-onboarding).
-Some values are immutable and can only be changed by recreating the OpenRAG containers, as explained in [Set environment variables](#set-environment-variables).
+Some values are immutable and can only be changed by redeploying OpenRAG, as explained in [Set environment variables](#set-environment-variables).
 
 | Variable | Default | Description |
 |----------|---------|-------------|

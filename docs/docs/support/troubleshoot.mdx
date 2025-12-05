@@ -57,27 +57,41 @@ Ensure ports 3000, 7860, 8000, 9200, 5601 are available.
 
 ## OCR ingestion fails (easyocr not installed)
 
-If Docling ingestion fails with an OCR-related error and mentions `easyocr` is missing, this is likely due to a stale `uv` cache.
+Docling ingestion can fail with an OCR-related error that mentions `easyocr` is missing.
+This is likely due to a stale `uv` cache when you [install OpenRAG with `uvx`](/install-uvx).
 
-`easyocr` is already included as a dependency in OpenRAG's `pyproject.toml`. Project-managed installations using `uv sync` and `uv run` always sync dependencies directly from your `pyproject.toml`, so they should have `easyocr` installed.
+When you invoke OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project.
+The location and path of this cache depends on your operating system.
+For example, on macOS, this is typically a user cache directory, such as `/Users/USER_NAME/.cache/uv`.
 
-If you're running OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project. This cache can become stale.
+This cache can become stale, producing errors like missing dependencies.
 
-On macOS, this cache directory is typically a user cache directory such as `/Users/USER_NAME/.cache/uv`.
+1. [Exit the TUI](/tui).
 
-1. To clear the uv cache, run:
+2. Clear the `uv` cache:
 
    ```bash
    uv cache clean
    ```
 
-2. Start OpenRAG:
+   To clear the OpenRAG cache only, run:
+
+   ```bash
+   uv cache clean openrag
+   ```
+
+3. Invoke OpenRAG to restart the TUI:
 
    ```bash
    uvx openrag
    ```
 
-If you don't need OCR, you can disable OCR-based processing in your ingestion settings to avoid requiring `easyocr`.
+4. Click **Open App**, and then retry document ingestion.
+
+If you install OpenRAG with `uv`, dependencies are synced directly from your `pyproject.toml` file.
+This should automatically install `easyocr` because `easyocr` is included as a dependency in OpenRAG's `pyproject.toml`.
+
+If you don't need OCR, you can disable OCR-based processing in your [ingestion settings](/knowledge#knowledge-ingestion-settings) to avoid requiring `easyocr`.
 
 ## Upgrade fails due to Langflow container already exists {#langflow-container-already-exists-during-upgrade}
 
@@ -122,7 +136,7 @@ To resolve this issue, do the following:
 
 2. Retry the [upgrade](/upgrade).
 
-3. If reinstalling the Langflow container doesn't resolve the issue, then you must [reset all containers](/manage-containers) or [reinstall OpenRAG](/reinstall).
+3. If reinstalling the Langflow container doesn't resolve the issue, then you must [reset all containers](/manage-services) or [reinstall OpenRAG](/reinstall).
 
 4. Retry the [upgrade](/upgrade).
 

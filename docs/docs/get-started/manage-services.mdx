@@ -1,0 +1,103 @@
+---
+title: Manage OpenRAG containers and services
+slug: /manage-services
+---
+
+Service management is an essential part of maintaining your OpenRAG deployment.
+
+Most OpenRAG services run in containers.
+
+_Native services_, like Docling, run directly on the local machine where you installed OpenRAG.
+
+## Manage containers and services with the TUI {#tui-container-management}
+
+If you [installed OpenRAG](/install-options) with the automated installer script, `uv`, or `uvx`, you can use the [Terminal User Interface (TUI)](/tui) to manage your services:
+
+* Start and stop OpenRAG container-based services.
+* Start and stop OpenRAG's native services (Docling).
+* View the status of your OpenRAG services.
+* Access container logs for troubleshooting.
+* Upgrade your OpenRAG containers to the latest version.
+* Reset your OpenRAG containers to an initial state (destructive).
+
+### Diagnostics
+
+The **Diagnostics** menu provides health monitoring for your container runtimes and monitoring of your OpenSearch security.
+
+### Status {#status}
+
+The TUI's **Status** menu provides information about your OpenRAG services, including health, ports, logs, and controls:
+
+* **Logs**: To view streaming logs, select the container you want to view, and press <kbd>l</kbd>.
+To copy the logs, click **Copy to Clipboard**.
+
+* **Upgrade**: Check for updates to OpenRAG. For more information, see [upgrade OpenRAG](/upgrade).
+
+* **Factory Reset**: This is a destructive action that [resets your containers](#reset-containers).
+
+* **Native services**: [View and manage OpenRAG's native services](#start-all-services) that run directly on the local machine instead of a container.
+
+### Reset containers {#reset-containers}
+
+Reset your OpenRAG deployment by recreating the containers and removing some related data.
+
+:::warning
+This is a destructive action that destroys the following:
+
+* All OpenRAG containers, volumes, and local images
+* Any additional Docker objects
+* The contents of OpenRAG's `config` and `./opensearch-data` directories
+* The `conversations.json` file
+
+This operation _doesn't_ remove the `.env` file or the contents of the `./openrag-documents` directory.
+:::
+
+1. To destroy and recreate your OpenRAG containers, go to the TUI [**Status** menu](#status), and then click **Factory Reset**.
+
+   This function runs the following commands _and_ deletes the contents of OpenRAG's `config` and `./opensearch-data` directories.
+
+   ```bash
+   docker compose down --volumes --remove-orphans --rmi local
+   docker system prune -f
+   ```
+
+2. If you reset your containers as part of reinstalling OpenRAG, continue the [reinstallation process](/reinstall) after resetting the containers.
+Otherwise, in the TUI **Setup** menu, repeat the [setup process](#setup) to start the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
+
+### Start all services {#start-all-services}
+
+Through the TUI, you can stop and start OpenRAG services.
+
+#### Start containers
+
+On the TUI main page or the **Setup** menu, click **Start All Services** to start the OpenRAG containers.
+
+When you start all services, the following processes happen:
+
+1. OpenRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses.
+
+2. OpenRAG pulls the OpenRAG container images with `docker compose pull` if any images are missing.
+
+3. OpenRAG deploys the containers with `docker compose up -d`.
+
+#### Start native services (Docling)
+
+A _native service_ in OpenRAG is a service that runs locally on your machine, not within a container. For example, the `docling serve` process is an OpenRAG native service because this document processing service runs on your local machine, separate from the OpenRAG containers.
+
+From the **Status** menu, you can view the status, port, and process ID (PID) of the OpenRAG native services.
+You can also click **Stop** or **Restart** to stop and start OpenRAG native services.
+
+## Manage containers with Docker or Podman
+
+If you [deployed OpenRAG with self-managed containers](/docker), run Docker or Podman commands to manage your OpenRAG containers.
+
+* Start containers
+* Stop containers
+* View container status
+* Access container logs for troubleshooting
+* Upgrade your OpenRAG containers to the latest version
+* Reset your OpenRAG containers to an initial state (destructive)
+
+## See also
+
+* [Uninstall OpenRAG](/uninstall)

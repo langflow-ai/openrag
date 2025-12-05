@@ -64,11 +64,11 @@ To enable multiple connectors, you must register an app and generate credentials
 <Tabs>
 <TabItem value="TUI" label="TUI Advanced Setup" default>
 
-If you use the TUI to manage your OpenRAG containers, provide OAuth credentials in the **Advanced Setup**.
+If you use the TUI to manage your OpenRAG services, provide OAuth credentials in the **Advanced Setup**.
 
 You can do this during [installation](/install#setup), or you can add the credentials afterwards:
 
-1. If OpenRAG is running, stop it: Go to [**Status**](/install#tui-container-management), and then click **Stop Services**.
+1. If OpenRAG is running, stop it: Go to [**Status**](/manage-services#tui-container-management), and then click **Stop Services**.
 
 2. Click **Advanced Setup**, and then add the OAuth credentials for the cloud storage providers that you want to use:
 
@@ -83,12 +83,12 @@ These are the URLs your OAuth provider will redirect back to after users authent
 
    OpenRAG regenerates the [`.env`](/reference/configuration) file with the given credentials.
 
-5. Click **Start Container Services**.
+5. Click **Start All Services**.
 
 </TabItem>
 <TabItem value="env" label="Docker Compose .env file">
 
-If you [install OpenRAG with self-managed containers](/docker), set OAuth credentials in the `.env` file for Docker Compose.
+If you [installed OpenRAG with self-managed services](/docker), set OAuth credentials in the `.env` file for Docker Compose.
 
 You can do this during [initial set up](/docker#install-openrag-with-docker-compose), or you can add the credentials afterwards:
 

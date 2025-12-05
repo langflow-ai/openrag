@@ -1,5 +1,5 @@
 ---
-title: Deploy OpenRAG with self-managed containers
+title: Deploy OpenRAG with self-managed services
 slug: /docker
 ---
 
@@ -8,10 +8,11 @@ import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
 import PartialWsl from '@site/docs/_partial-wsl-install.mdx';
 
-You can use Docker or Podman to deploy self-managed OpenRAG containers.
-Use this option if you don't want to use the TUI for container management, or you need to run OpenRAG in an environment where using the TUI is unfeasible.
+To manage your own OpenRAG services, deploy OpenRAG with Docker or Podman.
 
-OpenRAG has two Docker Compose files. Both files deploy the same applications and containers locally, but they are for different environments:
+Use this installation method if you don't want to [use the Terminal User Interface (TUI)](/tui), or you need to run OpenRAG in an environment where using the TUI is unfeasible.
+
+OpenRAG has two Docker Compose files. Both files deploy the same services, but they are for different environments:
 
 - [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing. This Docker Compose file requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support.
 

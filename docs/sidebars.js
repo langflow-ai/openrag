@@ -42,7 +42,7 @@ const sidebars = {
         },
         { type: "doc",
           id: "get-started/docker",
-          label: "Deploy self-managed containers",
+          label: "Deploy self-managed services",
         },
         "get-started/upgrade",
         "get-started/reinstall",
@@ -52,8 +52,8 @@ const sidebars = {
     "get-started/tui",
     {
       type: "doc",
-      id: "get-started/manage-containers",
-      label: "Manage containers",
+      id: "get-started/manage-services",
+      label: "Manage services",
     },
     {
       type: "doc",

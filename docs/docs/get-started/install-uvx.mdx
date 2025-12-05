@@ -3,43 +3,47 @@ title: Invoke OpenRAG with uvx
 slug: /install-uvx
 ---
 
-For guided configuration and simplified container management, install OpenRAG with containers managed by the [Terminal User Interface (TUI)](/tui).
+For guided configuration and simplified service management, install OpenRAG with services managed by the [Terminal User Interface (TUI)](/tui).
 
-You can use [`uvx`](https://docs.astral.sh/uvx/getting-started/installation/) to invoke OpenRAG without permanently installing it in a Python project.
-`uvx` installs OpenRAG in an ephemeral, isolated virtual environment.
-
-This method is best when you want to test OpenRAG outside of a Python project or you don't need to preserve the OpenRAG installation.
-Depending on your project structure, `uvx` might not be suitable for production deployments.
+You can use [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) to invoke OpenRAG outside of a Python project or without modifying your project's dependencies.
 
 :::tip
 The [automatic installer script](/install) also uses `uvx` to install OpenRAG.
 :::
 
+Depending on your project structure, `uvx` might not be suitable for production deployments.
 For other installation methods, see [Choose an installation method](/install-options).
 
 ## Install and run OpenRAG with uvx
 
-    Use `uvx` to quickly run OpenRAG without creating a project or modifying any files.
+    1. Create a directory to store your OpenRAG configuration files and data, and then change to that directory:
 
-    1. Create a directory to store the OpenRAG configuration files:
        ```bash
        mkdir openrag-workspace
        cd openrag-workspace
        ```
 
-    2. Run OpenRAG:
+       :::tip
+       If you want to use a pre-populated [`.env`](/reference/configuration) file for OpenRAG, copy it to this directory before invoking OpenRAG.
+       :::
+
+    2. Invoke OpenRAG:
        ```bash
        uvx openrag
        ```
 
-       To run a specific version:
+       You can invoke a specific version using any of the [`uvx` version specifiers](https://docs.astral.sh/uv/guides/tools/#requesting-specific-versions), such as `--from`:
+
        ```bash
        uvx --from openrag==0.1.30 openrag
        ```
-<!-- move down to the setup section?? -->
-    When you install OpenRAG with `uvx`, OpenRAG creates its `.env` and `docker-compose.yml` files in the current working directory.
 
-    If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
+Invoking OpenRAG with `uvx openrag` creates a cached, ephemeral environment for the TUI in your local `uv` cache.
+By invoking OpenRAG in a specific directory, your OpenRAG configuration files and data are stored separately from the `uv` cache.
+Clearing the `uv` cache doesn't remove your entire OpenRAG installation.
+After clearing the cache, you can re-invoke OpenRAG (`uvx openrag`) to restart the TUI with your preserved configuration and data.
+
+If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
 
 ## Set up OpenRAG with the TUI
 
@@ -47,9 +51,11 @@ When the Terminal User Interface (TUI) starts, you must complete the initial set
 
 ![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
+The OpenRAG setup process creates the `.env` and `docker-compose.yml` files in the directory where you invoked OpenRAG.
+If it detects a `.env` file in the OpenRAG installation directory, it sources any variables from that file.
 
 ## Next steps
 
-* [Manage OpenRAG containers](/manage-containers)
+* [Manage OpenRAG services](/manage-services)
 * [Chat](/chat)
 * [Upload documents](/ingestion)

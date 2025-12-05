@@ -33,10 +33,9 @@ For other providers, see the complete [installation guide](/install).
 ## Install OpenRAG
 
 For this quickstart, install OpenRAG with the automatic installer script and basic setup.
+The script installs OpenRAG dependencies, including Docker or Podman, and then it installs and runs OpenRAG with [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools).
 
-This script installs OpenRAG dependencies, including Docker or Podman, installs OpenRAG with [`uvx`](https://docs.astral.sh/uvx/getting-started/installation/), and creates a `.env` file and `docker-compose` files in the current working directory.
-
-1. Create a directory to store the OpenRAG configuration files, and then change to that directory:
+1. Create a directory for your OpenRAG installation, and then change to that directory:
 
    ```bash
    mkdir openrag-workspace
@@ -53,39 +52,41 @@ This script installs OpenRAG dependencies, including Docker or Podman, installs 
    You might be prompted to install certain dependencies if they aren't already present in your environment.
 
    The entire process can take a few minutes.
-   Once the environment is ready, the OpenRAG Terminal User Interface (TUI) starts.
+   Once the environment is ready, the OpenRAG [Terminal User Interface (TUI)](/tui) starts.
 
    ![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
-3. Click **Basic Setup**.
+3. In the TUI, click **Basic Setup**.
 
-4. Create passwords for your OpenRAG installation's OpenSearch and Langflow services. You can click **Generate Passwords** to automatically generate passwords.
+4. Click **Generate Passwords** to create administrator passwords for your OpenRAG OpenSearch and Langflow services.
 
-   The OpenSearch password is required. The Langflow admin password is optional.
-   If you don't generate a Langflow admin password, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
+5. Leave the **OpenAI API key** field empty.
 
    Your passwords are saved in the `.env` file that is used to start OpenRAG.
    You can find this file in your OpenRAG installation directory.
 
-5. Click **Save Configuration**, and then click **Start All Services**.
+6. Click **Save Configuration**, and then click **Start All Services**.
 
-   Wait a few minutes while the startup process pulls and runs the necessary container images.
-   Proceed when you see the following messages in the TUI:
+   This process can take some time while OpenRAG pulls and runs the container images.
+   If all services start successfully, the TUI prints a confirmation message:
 
-   ```bash
+   ```text
    Services started successfully
    Command completed successfully
    ```
 
-6. To open the OpenRAG application, go to the TUI main menu, and then click **Open App**.
-Alternatively, in your browser, navigate to `localhost:3000`.
+   Your [OpenRAG configuration](/reference/configuration) is stored in a `.env` file that is created automatically in the directory where you ran the installer script.
+   Container definitions are stored in a `docker-compose.yml` file in the same directory.
 
-7. Select the **OpenAI** model provider, enter your OpenAI API key, and then click **Complete**.
+7. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
 
-   For this quickstart, you can use the default options for the model settings.
+8. From the TUI main menu, click **Open App** to launch the OpenRAG application and start the application onboarding process.
 
-8. Click through the overview slides for a brief introduction to OpenRAG and basic setup, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+9. For this quickstart, select the **OpenAI** model provider, enter your OpenAI API key, and then click **Complete**. Use the default settings for all other model options.
+
+10. Click through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
 You can complete this quickstart without going through the overview.
+The overview demonstrates some basic functionality that is covered in the next section and in other parts of the OpenRAG documentation.
 
 ## Load and chat with documents {#chat-with-documents}
 

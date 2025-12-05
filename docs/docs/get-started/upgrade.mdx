@@ -8,13 +8,15 @@ import TabItem from '@theme/TabItem';
 
 Use these steps to upgrade your OpenRAG deployment to the latest version or a specific version.
 
-## Upgrade TUI-managed containers
+## Upgrade TUI-managed installations
 
 To upgrade OpenRAG, you need to upgrade the OpenRAG Python package, and then upgrade the OpenRAG containers.
 
+Upgrading the Python package also upgrades Docling by bumping the dependency in `pyproject.toml`.
+
 This is a two part process because upgrading the OpenRAG Python package updates the TUI and Python code, but the container versions are controlled by environment variables in your `.env` file.
 
-1. Stop your OpenRAG containers: In the OpenRAG TUI, go to the **Status** menu, and then click **Stop Services**.
+1. Stop all OpenRAG services: In the OpenRAG TUI, go to the **Status** menu, and then click **Stop Services**.
 
 2. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
 
@@ -111,7 +113,9 @@ This is a two part process because upgrading the OpenRAG Python package updates 
 
     If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
 
-4. When the upgrade process is complete, you can close the **Status** window and continue using OpenRAG.
+4. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
+
+5. When the upgrade process is complete, you can close the **Status** window and continue using OpenRAG.
 
 ## Upgrade self-managed containers
 

@@ -11,11 +11,11 @@ import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
 For a fully guided installation and preview of OpenRAG's core features, try the [quickstart](/quickstart).
 :::
 
-For guided configuration and simplified container management, install OpenRAG with containers managed by the [Terminal User Interface (TUI)](/tui).
+For guided configuration and simplified service management, install OpenRAG with services managed by the [Terminal User Interface (TUI)](/tui).
 
-The installer script detects and installs any missing dependencies, and then installs OpenRAG with [`uvx`](https://docs.astral.sh/uvx/getting-started/installation/).
+The installer script detects and installs any missing dependencies, and then installs OpenRAG with [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) in the directory where you run the script.
 
-Because `uvx` installs OpenRAG in an ephemeral, isolated virtual environment, this installation method isn't suitable for all use cases.
+This installation method is best for running OpenRAG outside of a Python project.
 For other installation methods, see [Choose an installation method](/install-options).
 
 ## Prerequisites
@@ -48,70 +48,118 @@ See [Install OpenRAG on Windows](/install-windows).
 
 ## Install OpenRAG {#install}
 
-The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, then runs OpenRAG with `uvx`.
+The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, then it installs and runs OpenRAG with `uvx`.
 
-1. Create a directory to store the OpenRAG configuration files:
+1. Create a directory to store your OpenRAG configuration file, and then change to that directory:
+
    ```bash
    mkdir openrag-workspace
    cd openrag-workspace
    ```
 
-2. Run the installer:
+2. Get and run the installer script:
+
    ```bash
    curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
    ```
-<!-- move down to the setup section?? -->
-The installer script installs OpenRAG with `uvx`.
-When installed in this way, OpenRAG creates its `.env` and `docker-compose.yml` files in the current working directory.
-<!-- use partial? -->
-If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
 
-## Set up OpenRAG with the TUI {#setup}
-<!-- use partial? -->
-When the Terminal User Interface (TUI) starts, you must complete the initial setup to configure OpenRAG.
+   :::tip
+   You can also manually [download the OpenRAG install script](https://docs.openr.ag/files/run_openrag_with_prereqs.sh), move it to your OpenRAG directory, and then run it:
+
+   ```bash
+   bash run_openrag_with_prereqs.sh
+   ```
+   :::
+
+3. Wait while the installer script prepares your environment and installs OpenRAG.
+You might be prompted to install certain dependencies if they aren't already present in your environment.
+
+The entire process can take a few minutes.
+Once the environment is ready, the OpenRAG Terminal User Interface (TUI) starts.
 
 ![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
-The OpenRAG setup process creates a `.env` file at the root of your OpenRAG directory, and then starts OpenRAG.
-If it detects a `.env` file in the OpenRAG root directory, it sources any variables from the `.env` file.
+The installer script uses `uvx`, which creates a cached, ephemeral environment in your local `uv` cache.
+Running the script in a specific directory, your OpenRAG configuration files and data are stored separately from the `uv` cache.
+Clearing the cache doesn't delete your entire OpenRAG installation, only the TUI environment.
+After clearing the cache, run `uvx openrag` to [access the TUI](/tui) and continue with your preserved configuration and data.
 
-The TUI offers two setup methods to populate the required values. **Basic Setup** can generate all minimum required values for OpenRAG. However, **Basic Setup** doesn't enable [OAuth connectors for cloud storage](/knowledge#auth). If you want to use OAuth connectors to upload documents from cloud storage, select **Advanced Setup**.
-If OpenRAG detects OAuth credentials, it recommends **Advanced Setup**.
+If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
+
+## Set up OpenRAG with the TUI {#setup}
+
+When you install OpenRAG with the installer script, you manage the OpenRAG services with the Terminal User Interface (TUI).
+The TUI guides you through the initial configuration process before you start the OpenRAG services.
+
+Your [OpenRAG configuration](/reference/configuration) is stored in a `.env` file that is created automatically in the OpenRAG installation directory.
+If OpenRAG detects an existing `.env` file, the TUI automatically populates those values during setup and onboarding.
+
+Container definitions are stored in a `docker-compose.yml` file in the OpenRAG installation directory.
+
+Because the installer script uses `uvx`, the OpenRAG `.env` and `docker-compose.yml` files are stored in the directory where you ran the installer script.
+
+You can use either **Basic Setup** or **Advanced Setup** to configure OpenRAG.
+This choice determines [how OpenRAG authenticates with OpenSearch and controls access to documents](/knowledge#auth).
+
+:::info
+You must use **Advanced Setup** if you want to [use OAuth connectors to upload documents from cloud storage](/ingestion#oauth-ingestion).
+:::
+
+If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setup** in the TUI.
 
 <Tabs groupId="Setup method">
   <TabItem value="Basic setup" label="Basic setup" default>
 
-   1. To install OpenRAG with **Basic Setup**, click **Basic Setup** or press <kbd>1</kbd>.
-   2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
+   1. In the TUI, click **Basic Setup** or press <kbd>1</kbd>.
 
-       The OpenSearch password is required. The Langflow admin password is optional.
-       If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
+   2. Enter administrator passwords for the OpenRAG OpenSearch and Langflow services, or click **Generate Passwords** to generate passwords automatically.
 
-   3. Optional: Paste your OpenAI API key in the OpenAI API key field. You can also provide this during onboarding or choose a different model provider.
+      The OpenSearch password is required.
+
+      The Langflow password is optional.
+      If the Langflow password is empty, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) without password authentication.
+
+   3. Optional: Enter your OpenAI API key, or leave this field empty if you want to configure model provider credentials later during application onboarding.
+
    4. Click **Save Configuration**.
-   Your passwords are saved in the `.env` file used to start OpenRAG.
-   5. To start OpenRAG, click **Start All Services**.
-      Startup pulls container images and runs them, so it can take some time.
-      When startup is complete, the TUI displays the following:
-      ```bash
+
+      Your passwords and API key, if provided, are stored in the `.env` file in your OpenRAG installation directory.
+      If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
+
+   5. Click **Start All Services** to start the OpenRAG services that run in containers.
+
+      This process can take some time while OpenRAG pulls and runs the container images.
+      If all services start successfully, the TUI prints a confirmation message:
+
+      ```text
       Services started successfully
       Command completed successfully
       ```
-   6. To start the Docling service, under **Native Services**, click **Start**.
-   7. To open the OpenRAG application, navigate to the TUI main menu, and then click **Open App**.
-   Alternatively, in your browser, navigate to `localhost:3000`.
+
+   6. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
+
+   7. Launch the OpenRAG application:
+
+      * From the TUI main menu, click **Open App**.
+      * In your browser, navigate to `localhost:3000`.
+
    8. Continue with [application onboarding](#application-onboarding).
+
   </TabItem>
   <TabItem value="Advanced setup" label="Advanced setup">
 
-   1. To install OpenRAG with **Advanced Setup**, click **Advanced Setup** or press <kbd>2</kbd>.
-   2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
+   1. In the TUI, click **Advanced Setup** or press <kbd>2</kbd>.
 
-       The OpenSearch password is required. The Langflow admin password is optional.
-       If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
+   2. Enter administrator passwords for the OpenRAG OpenSearch and Langflow services, or click **Generate Passwords** to generate passwords automatically.
 
-   3. Paste your OpenAI API key in the OpenAI API key field.
-   4. If you want to upload documents from external storage, such as Google Drive, add the required OAuth credentials for the connectors that you want to use. These settings can be populated automatically if OpenRAG detects these credentials in a `.env` file in the OpenRAG installation directory.
+      The OpenSearch password is required.
+
+      The Langflow password is optional.
+      If the Langflow password is empty, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) without password authentication.
+
+   3. Optional: Enter your OpenAI API key, or leave this field empty if you want to configure model provider credentials later during application onboarding.
+
+   4. To upload documents from external storage, such as Google Drive, add the required OAuth credentials for the connectors that you want to use. These settings can be populated automatically if OpenRAG detects these credentials in a `.env` file in the OpenRAG installation directory.
 
        * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
        * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
@@ -122,113 +170,54 @@ If OpenRAG detects OAuth credentials, it recommends **Advanced Setup**.
    5. The OpenRAG TUI presents redirect URIs for your OAuth app.
    These are the URLs your OAuth provider will redirect back to after user sign-in.
    Register these redirect values with your OAuth provider as they are presented in the TUI.
+
    6. Click **Save Configuration**.
-   7. To start OpenRAG, click **Start All Services**.
-      Startup pulls container images and runs them, so it can take some time.
-      When startup is complete, the TUI displays the following:
-      ```bash
+
+      Your passwords, API key (if provided), and OAuth credentials (if provided) are stored in the `.env` file in your OpenRAG installation directory.
+      If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
+
+   7. Click **Start All Services** to start the OpenRAG services that run in containers.
+
+      This process can take some time while OpenRAG pulls and runs the container images.
+      If all services start successfully, the TUI prints a confirmation message:
+
+      ```text
       Services started successfully
       Command completed successfully
       ```
-   8. To start the Docling service, under **Native Services**, click **Start**.
-   9. To open the OpenRAG application, navigate to the TUI main menu, and then click **Open App**.
-   Alternatively, in your browser, navigate to `localhost:3000`.
+
+   8. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
+
+   9. Launch the OpenRAG application:
+
+      * From the TUI main menu, click **Open App**.
+      * In your browser, navigate to `localhost:3000`.
 
    10. If you enabled OAuth connectors, you must sign in to your OAuth provider before being redirected to your OpenRAG instance.
 
-   11. Two additional variables are available for **Advanced Setup** at this point.
-   Only change these variables if you have a non-default network configuration for your deployment, such as using a reverse proxy or custom domain.
+   11. If required, you can edit the following additional environment variables.
+   Only change these variables if your OpenRAG deployment has a non-default network configuration, such as a reverse proxy or custom domain.
 
        * `LANGFLOW_PUBLIC_URL`: Sets the base address to access the Langflow web interface. This is where users interact with flows in a browser.
 
-       * `WEBHOOK_BASE_URL`: Sets the base address of the OpenRAG OAuth connector endpoint.
-       Supported webhook endpoints:
+       * `WEBHOOK_BASE_URL`: Sets the base address for the following OpenRAG OAuth connector endpoints:
 
            - Amazon S3: Not applicable.
-           - Google Drive: `/connectors/google_drive/webhook`
-           - OneDrive: `/connectors/onedrive/webhook`
-           - SharePoint: `/connectors/sharepoint/webhook`
+           - Google Drive: `WEBHOOK_BASE_URL/connectors/google_drive/webhook`
+           - OneDrive: `WEBHOOK_BASE_URL/connectors/onedrive/webhook`
+           - SharePoint: `WEBHOOK_BASE_URL/connectors/sharepoint/webhook`
 
    12. Continue with [application onboarding](#application-onboarding).
+
   </TabItem>
 </Tabs>
 
+The first time you start the OpenRAG application, you must complete application onboarding to select language and embedding models that are essential for OpenRAG features like the [**Chat**](/chat).
+
 <PartialOnboarding />
-
-## Manage OpenRAG containers with the TUI {#tui-container-management}
-
-After installation, the TUI can deploy, manage, and upgrade your OpenRAG containers.
-
-### Diagnostics
-
-The **Diagnostics** menu provides health monitoring for your container runtimes and monitoring of your OpenSearch security.
-
-### Status {#status}
-
-The **Status** menu displays information on your container deployment.
-Here you can check container health, find your service ports, view logs, and upgrade your containers.
-
-* **Logs**: To view streaming logs, select the container you want to view, and press <kbd>l</kbd>.
-To copy the logs, click **Copy to Clipboard**.
-
-* **Upgrade**: Check for updates. For more information, see [upgrade OpenRAG](/upgrade).
-
-* **Factory Reset**: This is a destructive action that [resets your containers](#reset-containers).
-
-* **Native services**: [View and manage OpenRAG services](#start-all-services) that run directly on your local machine instead of a container.
-
-### Reset containers {#reset-containers}
-
-Reset your OpenRAG deployment by recreating the containers and removing some related data.
-
-:::warning
-This is a destructive action that destroys the following:
-
-* All OpenRAG containers, volumes, and local images
-* Any additional Docker objects
-* The contents of OpenRAG's `config` and `./opensearch-data` directories
-* The `conversations.json` file
-
-This operation _doesn't_ remove the `.env` file or the contents of the `./openrag-documents` directory.
-:::
-
-1. To destroy and recreate your OpenRAG containers, go to the TUI [**Status** menu](#status), and then click **Factory Reset**.
-
-   This function runs the following commands _and_ deletes the contents of OpenRAG's `config` and `./opensearch-data` directories.
-
-   ```bash
-   docker compose down --volumes --remove-orphans --rmi local
-   docker system prune -f
-   ```
-
-2. If you reset your containers as part of reinstalling OpenRAG, continue the [reinstallation process](/reinstall) after resetting the containers.
-Otherwise, in the TUI **Setup** menu, repeat the [setup process](#setup) to start the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
-
-### Start all services {#start-all-services}
-
-Through the TUI, you can view and manage OpenRAG services that run in containers and directly on your local machine.
-
-#### Start containers
-
-On the TUI main page or the **Setup** menu, click **Start All Services** to start the OpenRAG containers and launch OpenRAG itself.
-
-When you start all services, the following processes happen:
-
-1. OpenRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses.
-
-2. OpenRAG pulls the OpenRAG container images with `docker compose pull` if any images are missing.
-
-3. OpenRAG deploys the containers with `docker compose up -d`.
-
-#### Start native services (Docling)
-
-A _native service_ in OpenRAG is a service that runs locally on your machine, not within a container. For example, the `docling serve` process is an OpenRAG native service because this document processing service runs on your local machine, separate from the OpenRAG containers.
-
-From the **Status** menu, you can view the status, port, and process ID (PID) of the OpenRAG native services.
-You can also click **Stop** or **Restart** to stop and start OpenRAG native services.
 
 ## Next steps
 
-* [Manage OpenRAG containers](/manage-containers)
+* [Manage OpenRAG services](/manage-services)
 * [Chat](/chat)
 * [Upload documents](/ingestion)
