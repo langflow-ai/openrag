@@ -897,7 +897,7 @@ async def onboarding(request, flows_service, session_manager=None):
             )
 
         # Validate provider setup before initializing OpenSearch index
-        # Use lightweight validation (test_completion=False) to avoid consuming credits during onboarding
+        # Use full validation with completion tests (test_completion=True) to ensure provider health during onboarding
         try:
             from api.provider_validation import validate_provider_setup
 
@@ -906,14 +906,14 @@ async def onboarding(request, flows_service, session_manager=None):
                 llm_provider = current_config.agent.llm_provider.lower()
                 llm_provider_config = current_config.get_llm_provider_config()
 
-                logger.info(f"Validating LLM provider setup for {llm_provider} (lightweight)")
+                logger.info(f"Validating LLM provider setup for {llm_provider} (full validation with completion test)")
                 await validate_provider_setup(
                     provider=llm_provider,
                     api_key=getattr(llm_provider_config, "api_key", None),
                     llm_model=current_config.agent.llm_model,
                     endpoint=getattr(llm_provider_config, "endpoint", None),
                     project_id=getattr(llm_provider_config, "project_id", None),
-                    test_completion=False,  # Lightweight validation - no credits consumed
+                    test_completion=True,  # Full validation with completion test - ensures provider health
                 )
                 logger.info(f"LLM provider setup validation completed successfully for {llm_provider}")
 
@@ -922,14 +922,14 @@ async def onboarding(request, flows_service, session_manager=None):
                 embedding_provider = current_config.knowledge.embedding_provider.lower()
                 embedding_provider_config = current_config.get_embedding_provider_config()
 
-                logger.info(f"Validating embedding provider setup for {embedding_provider} (lightweight)")
+                logger.info(f"Validating embedding provider setup for {embedding_provider} (full validation with completion test)")
                 await validate_provider_setup(
                     provider=embedding_provider,
                     api_key=getattr(embedding_provider_config, "api_key", None),
                     embedding_model=current_config.knowledge.embedding_model,
                     endpoint=getattr(embedding_provider_config, "endpoint", None),
                     project_id=getattr(embedding_provider_config, "project_id", None),
-                    test_completion=False,  # Lightweight validation - no credits consumed
+                    test_completion=True,  # Full validation with completion test - ensures provider health
                 )
                 logger.info(f"Embedding provider setup validation completed successfully for {embedding_provider}")
         except Exception as e:
@@ -1401,6 +1401,139 @@ async def reapply_all_settings(session_manager = None):
     except Exception as e:
         logger.error(f"Failed to reapply settings: {str(e)}")
         raise
+
+
+async def rollback_onboarding(request, session_manager, task_service):
+    """Rollback onboarding configuration when sample data files fail.
+    
+    This will:
+    1. Cancel all active tasks
+    2. Delete successfully ingested knowledge documents
+    3. Reset configuration to allow re-onboarding
+    """
+    try:
+        # Get current configuration
+        current_config = get_openrag_config()
+
+        # Only allow rollback if config was marked as edited (onboarding completed)
+        if not current_config.edited:
+            return JSONResponse(
+                {"error": "No onboarding configuration to rollback"}, status_code=400
+            )
+
+        user = request.state.user
+        jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
+
+        logger.info("Rolling back onboarding configuration due to file failures")
+
+        # Get all tasks for the user
+        all_tasks = task_service.get_all_tasks(user.user_id)
+        
+        cancelled_tasks = []
+        deleted_files = []
+        
+        # Cancel all active tasks and collect successfully ingested files
+        for task_data in all_tasks:
+            task_id = task_data.get("task_id")
+            task_status = task_data.get("status")
+            
+            # Cancel active tasks (pending, running, processing)
+            if task_status in ["pending", "running", "processing"]:
+                try:
+                    success = await task_service.cancel_task(user.user_id, task_id)
+                    if success:
+                        cancelled_tasks.append(task_id)
+                        logger.info(f"Cancelled task {task_id}")
+                except Exception as e:
+                    logger.error(f"Failed to cancel task {task_id}: {str(e)}")
+            
+            # For completed tasks, find successfully ingested files and delete them
+            elif task_status == "completed":
+                files = task_data.get("files", {})
+                if isinstance(files, dict):
+                    for file_path, file_info in files.items():
+                        # Check if file was successfully ingested
+                        if isinstance(file_info, dict):
+                            file_status = file_info.get("status")
+                            filename = file_info.get("filename") or file_path.split("/")[-1]
+                            
+                            if file_status == "completed" and filename:
+                                try:
+                                    # Get user's OpenSearch client
+                                    opensearch_client = session_manager.get_user_opensearch_client(
+                                        user.user_id, jwt_token
+                                    )
+                                    
+                                    # Delete documents by filename
+                                    from utils.opensearch_queries import build_filename_delete_body
+                                    from config.settings import INDEX_NAME
+                                    
+                                    delete_query = build_filename_delete_body(filename)
+                                    
+                                    result = await opensearch_client.delete_by_query(
+                                        index=INDEX_NAME,
+                                        body=delete_query,
+                                        conflicts="proceed"
+                                    )
+                                    
+                                    deleted_count = result.get("deleted", 0)
+                                    if deleted_count > 0:
+                                        deleted_files.append(filename)
+                                        logger.info(f"Deleted {deleted_count} chunks for filename {filename}")
+                                except Exception as e:
+                                    logger.error(f"Failed to delete documents for {filename}: {str(e)}")
+
+        # Clear embedding provider and model settings
+        current_config.knowledge.embedding_provider = "openai"  # Reset to default
+        current_config.knowledge.embedding_model = ""
+        
+        # Mark config as not edited so user can go through onboarding again
+        current_config.edited = False
+
+        # Save the rolled back configuration manually to avoid save_config_file setting edited=True
+        try:
+            import yaml
+            config_file = config_manager.config_file
+            
+            # Ensure directory exists
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Save config with edited=False
+            with open(config_file, "w") as f:
+                yaml.dump(current_config.to_dict(), f, default_flow_style=False, indent=2)
+            
+            # Update cached config
+            config_manager._config = current_config
+            
+            logger.info("Successfully saved rolled back configuration with edited=False")
+        except Exception as e:
+            logger.error(f"Failed to save rolled back configuration: {e}")
+            return JSONResponse(
+                {"error": "Failed to save rolled back configuration"}, status_code=500
+            )
+
+        logger.info(
+            f"Successfully rolled back onboarding configuration. "
+            f"Cancelled {len(cancelled_tasks)} tasks, deleted {len(deleted_files)} files"
+        )
+        await TelemetryClient.send_event(
+            Category.ONBOARDING, 
+            MessageId.ORB_ONBOARD_ROLLBACK
+        )
+        
+        return JSONResponse(
+            {
+                "message": "Onboarding configuration rolled back successfully",
+                "cancelled_tasks": len(cancelled_tasks),
+                "deleted_files": len(deleted_files),
+            }
+        )
+
+    except Exception as e:
+        logger.error("Failed to rollback onboarding configuration", error=str(e))
+        return JSONResponse(
+            {"error": f"Failed to rollback onboarding: {str(e)}"}, status_code=500
+        )
 
 
 async def update_docling_preset(request, session_manager):

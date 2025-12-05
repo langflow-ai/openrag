@@ -1179,6 +1179,18 @@ async def create_app():
             ),
             methods=["POST"],
         ),
+        # Onboarding rollback endpoint
+        Route(
+            "/onboarding/rollback",
+            require_auth(services["session_manager"])(
+                partial(
+                    settings.rollback_onboarding,
+                    session_manager=services["session_manager"],
+                    task_service=services["task_service"],
+                )
+            ),
+            methods=["POST"],
+        ),
         # Docling preset update endpoint
         Route(
             "/settings/docling-preset",
