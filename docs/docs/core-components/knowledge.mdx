@@ -10,7 +10,7 @@ import TabItem from '@theme/TabItem';
 OpenRAG includes a built-in [OpenSearch](https://docs.opensearch.org/latest/) instance that serves as the underlying datastore for your _knowledge_ (documents).
 This specialized database is used to store and retrieve your documents and the associated vector data (embeddings).
 
-The documents in your OpenSearch knowledge base provide specialized context in addition to the general knowledge available to the language model that you select when you [install OpenRAG](/install) or [edit a flow](/agents).
+The documents in your OpenSearch knowledge base provide specialized context in addition to the general knowledge available to the language model that you select when you [install OpenRAG](/install-options) or [edit a flow](/agents).
 
 You can [upload documents](/ingestion) from a variety of sources to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
 Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
@@ -76,7 +76,7 @@ If needed, you can use [filters](/knowledge-filters) to separate documents that 
 
 ### Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
 
-When you [install OpenRAG](/install), you select at least one embedding model during [application onboarding](/install#application-onboarding).
+When you [install OpenRAG](/install-options), you select at least one embedding model during [application onboarding](/install#application-onboarding).
 OpenRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
 
 In the OpenRAG repository, you can find the complete list of supported models in [`models_service.py`](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py) and the corresponding vector dimensions in [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
@@ -120,7 +120,7 @@ To modify the Docling ingestion and embedding parameters, click <Icon name="Sett
 
 :::tip
 OpenRAG warns you if `docling serve` isn't running.
-You can [start and stop OpenRAG services](/manage-services#tui-container-management) from the TUI main menu with **Start Native Services** or **Stop Native Services**.
+For information about starting and stopping OpenRAG native services, like Docling, see [Manage OpenRAG services](/manage-services).
 :::
 
 * **Embedding model**: Select the model to use to generate vector embeddings for your documents.

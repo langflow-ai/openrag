@@ -7,8 +7,146 @@ slug: /uninstall
 If you want to reset your OpenRAG containers without removing OpenRAG entirely, see [Reset OpenRAG containers](/manage-services) and [Reinstall OpenRAG](/reinstall).
 :::
 
+## Uninstall TUI-managed deployments
+
 If you used the [automated installer script](/install) or [`uvx`](/install-uvx) to install OpenRAG, clear your `uv` cache (`uv cache clean`) to remove the TUI environment, and then delete the directory containing your OpenRAG configuration files and data (where you would invoke OpenRAG).
 
 If you used [`uv`](/install-uv) to install OpenRAG, run `uv remove openrag` in your Python project.
 
-For self-managed containers, destroy the containers, prune any additional Docker objects, and delete any remaining OpenRAG files, as explained in [Reset OpenRAG containers](/manage-services).
+## Uninstall self-managed deployments
+
+For self-managed services, destroy the containers, prune any additional Docker objects, shut down the Docling service, and delete any remaining OpenRAG files.
+
+### Uninstall with Docker Compose or Podman Compose
+
+1. Destroy the containers, volumes, and local images, and then remove (prune) any additional Docker objects:
+
+   * Docker Compose:
+
+      ```bash
+      docker compose down --volumes --remove-orphans --rmi local
+      docker system prune -f
+      ```
+
+   * Podman Compose:
+
+      ```bash
+      podman compose down --volumes --remove-orphans --rmi local
+      podman system prune -f
+      ```
+
+2. Remove data that wasn't deleted by the previous commands:
+
+   * OpenRAG's `.env` file
+   * The contents of OpenRAG's `config` directory
+   * The contents of the `./openrag-documents` directory
+   * The contents of the `./opensearch-data` directory
+   * The `conversations.json` file
+
+3. Stop `docling-serve`:
+
+    ```bash
+    uv run python scripts/docling_ctl.py stop
+    ```
+
+### Step-by-step removal and cleanup with Docker or Podman
+
+Use these commands for step-by-step container removal and cleanup:
+
+1. Stop all running containers:
+
+   * Docker:
+
+      ```bash
+      docker stop $(docker ps -q)
+      ```
+
+   * Podman:
+
+      ```bash
+      podman stop --all
+      ```
+
+2. Remove all containers, including stopped containers:
+
+   * Docker:
+
+      ```bash
+      docker rm --force $(docker ps -aq)
+      ```
+
+   * Podman:
+
+      ```bash
+      podman rm --all --force
+      ```
+
+3. Remove all images:
+
+   * Docker:
+
+      ```bash
+      docker rmi --force $(docker images -q)
+      ```
+
+   * Podman:
+
+      ```bash
+      podman rmi --all --force
+      ```
+
+4. Remove all volumes:
+
+   * Docker:
+
+      ```bash
+      docker volume prune --force
+      ```
+
+   * Podman:
+
+      ```bash
+      podman volume prune --force
+      ```
+
+5. Remove all networks except the default network:
+
+   * Docker:
+
+      ```bash
+      docker network prune --force
+      ```
+
+   * Podman:
+
+      ```bash
+      podman network prune --force
+      ```
+
+6. Clean up any leftover data:
+
+   * Docker:
+
+      ```bash
+      docker system prune --all --force --volumes
+      ```
+
+   * Podman:
+
+      ```bash
+      podman system prune --all --force --volumes
+      ```
+
+7. Remove data that wasn't deleted by the previous commands:
+
+   * OpenRAG's `.env` file
+   * The contents of OpenRAG's `config` directory
+   * The contents of the `./openrag-documents` directory
+   * The contents of the `./opensearch-data` directory
+   * The `conversations.json` file
+
+8. Stop `docling-serve`:
+
+    ```bash
+    uv run python scripts/docling_ctl.py stop
+    ```

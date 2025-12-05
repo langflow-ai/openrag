@@ -1,0 +1,12 @@
+- Gather the credentials and connection details for your preferred model providers.
+
+   - OpenAI: Create an [OpenAI API key](https://platform.openai.com/api-keys).
+   - Anthropic language models: Create an [Anthropic API key](https://www.anthropic.com/docs/api/reference).
+   - IBM watsonx.ai: Get your watsonx.ai API endpoint, IBM project ID, and IBM API key from your watsonx deployment.
+   - Ollama: Use the [Ollama documentation](https://docs.ollama.com/) to set up your Ollama instance locally, in the cloud, or on a remote server, and then get your Ollama server's base URL.
+
+   You must have access to at least one language model and one embedding model.
+   If your chosen provider offers both types, you can use the same provider for both models.
+   If your provider offers only one type, such as Anthropic, you must select two providers.
+
+- Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.

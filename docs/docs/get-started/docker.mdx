@@ -6,43 +6,25 @@ slug: /docker
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
+import PartialPrereqCommon from '@site/docs/_partial-prereq-common.mdx';
+import PartialPrereqNoScript from '@site/docs/_partial-prereq-no-script.mdx';
+import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
+import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
+import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
 
 To manage your own OpenRAG services, deploy OpenRAG with Docker or Podman.
 
 Use this installation method if you don't want to [use the Terminal User Interface (TUI)](/tui), or you need to run OpenRAG in an environment where using the TUI is unfeasible.
 
-OpenRAG has two Docker Compose files. Both files deploy the same services, but they are for different environments:
-
-- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing. This Docker Compose file requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support.
-
-- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without NVIDIA GPU support. Use this Docker Compose file for environments where GPU drivers aren't available.
-
 ## Prerequisites
 
-- For Microsoft Windows, you must use the Windows Subsystem for Linux (WSL).
-See [Install OpenRAG on Windows](/install-windows) before proceeding.
+<PartialPrereqWindows />
 
-- Install [Python](https://www.python.org/downloads/release/python-3100/) version 3.13 or later.
+<PartialPrereqCommon />
 
-- Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
+<PartialPrereqPython />
 
-- Install [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/).
-
-- Install [Podman Compose](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or [Docker Compose](https://docs.docker.com/compose/install/).
-To use Docker Compose with Podman, you must alias Docker Compose commands to Podman commands.
-
-- Gather the credentials and connection details for your preferred model providers.
-
-   - OpenAI: Create an [OpenAI API key](https://platform.openai.com/api-keys).
-   - Anthropic language models: Create an [Anthropic API key](https://www.anthropic.com/docs/api/reference).
-   - IBM watsonx.ai: Get your watsonx.ai API endpoint, IBM project ID, and IBM API key from your watsonx deployment.
-   - Ollama: Use the [Ollama documentation](https://docs.ollama.com/) to set up your Ollama instance locally, in the cloud, or on a remote server, and then get your Ollama server's base URL.
-
-   You must have access to at least one language model and one embedding model.
-   If your chosen provider offers both types, you can use the same provider for both models.
-   If your provider offers only one type, such as Anthropic, you must select two providers.
-
-- Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
+<PartialPrereqNoScript />
 
 ## Install OpenRAG with Docker Compose
 
@@ -76,7 +58,7 @@ To install OpenRAG with Docker Compose, do the following:
 
    The following values are optional:
 
-   ```bash
+   ```env
    OPENAI_API_KEY=your_openai_api_key
    LANGFLOW_SECRET_KEY=your_secret_key
    ```
@@ -87,7 +69,7 @@ To install OpenRAG with Docker Compose, do the following:
 
    The following Langflow configuration values are optional but important to consider:
 
-   ```bash
+   ```env
    LANGFLOW_SUPERUSER=admin
    LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
    ```
@@ -117,7 +99,12 @@ To install OpenRAG with Docker Compose, do the following:
    PID: 27746
    ```
 
-7. Deploy OpenRAG locally with Docker Compose based on your deployment type.
+7. Deploy OpenRAG locally with the appropriate Docker Compose file for your environment.
+Both files deploy the same services.
+
+- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing. This Docker Compose file requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support.
+
+- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without NVIDIA GPU support. Use this Docker Compose file for environments where GPU drivers aren't available.
 
    <Tabs groupId="Compose file">
      <TabItem value="docker-compose.yml" label="docker-compose.yml" default>
@@ -135,6 +122,8 @@ To install OpenRAG with Docker Compose, do the following:
      </TabItem>
    </Tabs>
 
+<!-- add podman compose -->
+
    The OpenRAG Docker Compose file starts five containers:
    | Container Name | Default Address | Purpose |
    |---|---|---|
@@ -146,6 +135,7 @@ To install OpenRAG with Docker Compose, do the following:
 
 8. Verify installation by confirming all services are running.
 
+ <!-- add podman compose -->
    ```bash
    docker compose ps
    ```
@@ -156,203 +146,8 @@ To install OpenRAG with Docker Compose, do the following:
    - **Backend API**: http://localhost:8000
    - **Langflow**: http://localhost:7860
 
-9. Continue with [application onboarding](#application-onboarding).
-
-To stop `docling serve` when you're done with your OpenRAG deployment, run:
-
-```bash
-uv run python scripts/docling_ctl.py stop
-```
+9. Access the OpenRAG frontend to continue with [application onboarding](#application-onboarding).
 
 <PartialOnboarding />
 
-## Container management commands
-
-Manage your OpenRAG containers with the following commands.
-
-### Upgrade containers
-
-<!-- also on /upgrade -->
-
-Upgrade your containers to the latest version while preserving your data.
-
-```bash
-docker compose pull
-docker compose up -d --force-recreate
-```
-
-### Reset containers (destructive) {#reset-containers}
-
-<!-- part of this needs to be on /reinstall and /uninstall -->
-
-:::warning
-These are destructive operations that reset your OpenRAG deployment to an initial state.
-Be aware that data is lost and cannot be recovered after running these commands.
-:::
-
-<Tabs>
-<TabItem value="docker-compose" label="Docker Compose" default>
-
-* Rebuild containers: This command destroys and recreates the containers. Data stored exclusively on the containers is lost, such as Langflow flows.
-The `.env` file, `config` directory, `./openrag-documents` directory, `./opensearch-data` directory, and the `conversations.json` file are preserved.
-
-   ```bash
-   docker compose up --build --force-recreate --remove-orphans
-   ```
-
-* Destroy and recreate containers with the option for additional data removal: These commands destroy the containers, and then recreate them.
-This allows you to delete other OpenRAG data before recreating the containers.
-
-   1. Destroy the containers, volumes, and local images, and then remove (prune) any additional Docker objects:
-
-      ```bash
-      docker compose down --volumes --remove-orphans --rmi local
-      docker system prune -f
-      ```
-
-   2. Optional: Remove data that wasn't deleted by the previous commands:
-
-      * OpenRAG's `.env` file
-      * The contents of OpenRAG's `config` directory
-      * The contents of the `./openrag-documents` directory
-      * The contents of the `./opensearch-data` directory
-      * The `conversations.json` file
-
-   3. Recreate the containers:
-
-      ```bash
-      docker compose up -d
-      ```
-
-</TabItem>
-<TabItem value="Podman-compose" label="Podman Compose">
-
-* Rebuild containers: This command destroys and recreates the containers. Data stored exclusively on the containers is lost, such as Langflow flows.
-The `.env` file, `config` directory, `./openrag-documents` directory, `./opensearch-data` directory, and the `conversations.json` file are preserved.
-
-   ```bash
-   podman-compose up --build --force-recreate --remove-orphans
-   ```
-
-* Destroy and recreate containers with the option for additional data removal: These commands destroy the containers, and then recreate them.
-This allows you to delete other OpenRAG data before recreating the containers.
-
-   1. Destroy the containers, volumes, and local images, and then remove (prune) any additional Podman objects:
-
-      ```bash
-      podman-compose down --volumes --remove-orphans --rmi local
-      podman system prune -f
-      ```
-
-   2. Optional: Remove data that wasn't deleted by the previous commands:
-
-      * OpenRAG's `.env` file
-      * The contents of OpenRAG's `config` directory
-      * The contents of the `./openrag-documents` directory
-      * The contents of the `./opensearch-data` directory
-      * The `conversations.json` file
-
-   3. Recreate the containers:
-
-      ```bash
-      podman-compose up -d
-      ```
-
-</TabItem>
-<TabItem value="docker" label="Docker">
-
-1. Stop all running containers:
-
-   ```bash
-   docker stop $(docker ps -q)
-   ```
-
-2. Remove all containers, including stopped containers:
-
-   ```bash
-   docker rm --force $(docker ps -aq)
-   ```
-
-3. Remove all images:
-
-   ```bash
-   docker rmi --force $(docker images -q)
-   ```
-
-4. Remove all volumes:
-
-   ```bash
-   docker volume prune --force
-   ```
-
-5. Remove all networks except the default network:
-
-   ```bash
-   docker network prune --force
-   ```
-
-6. Clean up any leftover data:
-
-   ```bash
-   docker system prune --all --force --volumes
-   ```
-
-7. Optional: Remove data that wasn't deleted by the previous commands:
-
-   * OpenRAG's `.env` file
-   * The contents of OpenRAG's `config` directory
-   * The contents of the `./openrag-documents` directory
-   * The contents of the `./opensearch-data` directory
-   * The `conversations.json` file
-
-</TabItem>
-<TabItem value="podman" label="Podman">
-
-1. Stop all running containers:
-
-   ```bash
-   podman stop --all
-   ```
-
-2. Remove all containers, including stopped containers:
-
-   ```bash
-   podman rm --all --force
-   ```
-
-3. Remove all images:
-
-   ```bash
-   podman rmi --all --force
-   ```
-
-4. Remove all volumes:
-
-   ```bash
-   podman volume prune --force
-   ```
-
-5. Remove all networks except the default network:
-
-   ```bash
-   podman network prune --force
-   ```
-
-6. Clean up any leftover data:
-
-   ```bash
-   podman system prune --all --force --volumes
-   ```
-
-7. Optional: Remove data that wasn't deleted by the previous commands:
-
-   * OpenRAG's `.env` file
-   * The contents of OpenRAG's `config` directory
-   * The contents of the `./openrag-documents` directory
-   * The contents of the `./opensearch-data` directory
-   * The `conversations.json` file
-
-</TabItem>
-</Tabs>
-
-After resetting your containers, you must repeat [application onboarding](#application-onboarding).
+<PartialInstallNextSteps />
