@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -7,13 +8,13 @@ import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
 import { Button } from "@/components/ui/button";
 import {
-  ONBOARDING_UPLOAD_STEPS_KEY,
-  ONBOARDING_USER_DOC_FILTER_ID_KEY,
+	ONBOARDING_UPLOAD_STEPS_KEY,
+	ONBOARDING_USER_DOC_FILTER_ID_KEY,
 } from "@/lib/constants";
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
-  onComplete: () => void;
+	onComplete: () => void;
 }
 
 const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {

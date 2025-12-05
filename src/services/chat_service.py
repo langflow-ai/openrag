@@ -595,7 +595,7 @@ class ChatService:
         try:
             # Delete from local conversation storage
             from agent import delete_user_conversation
-            local_deleted = delete_user_conversation(user_id, session_id)
+            local_deleted = await delete_user_conversation(user_id, session_id)
 
             # Delete from Langflow using the monitor API
             langflow_deleted = await self._delete_langflow_session(session_id)
