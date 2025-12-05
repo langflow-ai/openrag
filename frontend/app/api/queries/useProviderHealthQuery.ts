@@ -40,8 +40,8 @@ export const useProviderHealthQuery = (
 ) => {
   const queryClient = useQueryClient();
 
-  // Get chat error state from context (ChatProvider wraps the entire app in layout.tsx)
-  const { hasChatError, setChatError } = useChat();
+  // Get chat error state and onboarding completion from context (ChatProvider wraps the entire app in layout.tsx)
+  const { hasChatError, setChatError, isOnboardingComplete } = useChat();
 
   const { data: settings = {} } = useGetSettingsQuery();
 
@@ -143,7 +143,10 @@ export const useProviderHealthQuery = (
       refetchOnWindowFocus: false, // Disabled to reduce unnecessary calls on tab switches
       refetchOnMount: true,
       staleTime: 30000, // Consider data stale after 30 seconds
-      enabled: !!settings?.edited && options?.enabled !== false, // Only run after onboarding is complete
+      enabled:
+        !!settings?.edited &&
+        isOnboardingComplete &&
+        options?.enabled !== false, // Only run after onboarding is complete
       ...options,
     },
     queryClient,

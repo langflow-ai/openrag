@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { ONBOARDING_STEP_KEY } from "@/lib/constants";
 
 export type EndpointType = "chat" | "langflow";
 
@@ -81,6 +82,8 @@ interface ChatContextType {
   setConversationFilter: (filter: KnowledgeFilter | null, responseId?: string | null) => void;
   hasChatError: boolean;
   setChatError: (hasError: boolean) => void;
+  isOnboardingComplete: boolean;
+  setOnboardingComplete: (complete: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -111,6 +114,37 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [conversationFilter, setConversationFilterState] =
     useState<KnowledgeFilter | null>(null);
   const [hasChatError, setChatError] = useState(false);
+  
+  // Check if onboarding is complete (onboarding step key should be null)
+  const [isOnboardingComplete, setIsOnboardingComplete] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(ONBOARDING_STEP_KEY) === null;
+  });
+
+  // Sync onboarding completion state with localStorage
+  useEffect(() => {
+    const checkOnboarding = () => {
+      if (typeof window !== "undefined") {
+        setIsOnboardingComplete(
+          localStorage.getItem(ONBOARDING_STEP_KEY) === null,
+        );
+      }
+    };
+
+    // Check on mount
+    checkOnboarding();
+
+    // Listen for storage events (for cross-tab sync)
+    window.addEventListener("storage", checkOnboarding);
+
+    return () => {
+      window.removeEventListener("storage", checkOnboarding);
+    };
+  }, []);
+
+  const setOnboardingComplete = useCallback((complete: boolean) => {
+    setIsOnboardingComplete(complete);
+  }, []);
 
   // Listen for ingestion failures and set chat error flag
   useEffect(() => {
@@ -375,6 +409,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       setConversationFilter,
       hasChatError,
       setChatError,
+      isOnboardingComplete,
+      setOnboardingComplete,
     }),
     [
       endpoint,
@@ -396,6 +432,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       conversationFilter,
       setConversationFilter,
       hasChatError,
+      isOnboardingComplete,
+      setOnboardingComplete,
     ],
   );
 

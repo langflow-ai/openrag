@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { EndpointType } from "@/contexts/chat-context";
+import { useChat } from "@/contexts/chat-context";
 
 export interface RawConversation {
   response_id: string;
@@ -50,6 +51,7 @@ export const useGetConversationsQuery = (
   options?: Omit<UseQueryOptions, "queryKey" | "queryFn">,
 ) => {
   const queryClient = useQueryClient();
+  const { isOnboardingComplete } = useChat();
 
   async function getConversations(context: { signal?: AbortSignal }): Promise<ChatConversation[]> {
     try {
@@ -95,6 +97,11 @@ export const useGetConversationsQuery = (
     }
   }
 
+  // Extract enabled from options and combine with onboarding completion check
+  // Query is only enabled if onboarding is complete AND the caller's enabled condition is met
+  const callerEnabled = options?.enabled ?? true;
+  const enabled = isOnboardingComplete && callerEnabled;
+
   const queryResult = useQuery(
     {
       queryKey: ["conversations", endpoint, refreshTrigger],
@@ -106,6 +113,7 @@ export const useGetConversationsQuery = (
       refetchOnMount: false, // Don't refetch on every mount
       refetchOnWindowFocus: false, // Don't refetch when window regains focus
       ...options,
+      enabled, // Override enabled after spreading options to ensure onboarding check is applied
     },
     queryClient,
   );
