@@ -45,8 +45,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 		refetchInterval: currentStep !== null ? 1000 : false, // Poll every 1 second during upload
 	});
 
-	const { refetch: refetchNudges } = useGetNudgesQuery(null);
-
 	// Monitor tasks and call onComplete when file processing is done
 	useEffect(() => {
 		if (currentStep === null || !tasks || !uploadedTaskId) {
