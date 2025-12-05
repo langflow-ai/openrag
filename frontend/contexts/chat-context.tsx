@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { ONBOARDING_STEP_KEY } from "@/lib/constants";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 
 export type EndpointType = "chat" | "langflow";
 
@@ -115,23 +116,32 @@ export function ChatProvider({ children }: ChatProviderProps) {
     useState<KnowledgeFilter | null>(null);
   const [hasChatError, setChatError] = useState(false);
   
-  // Check if onboarding is complete (onboarding step key should be null)
+  // Get settings to check if onboarding was completed (settings.edited)
+  const { data: settings } = useGetSettingsQuery();
+  
+  // Check if onboarding is complete
+  // Onboarding is complete if:
+  // 1. settings.edited is true (backend confirms onboarding was completed)
+  // 2. AND onboarding step key is null (local onboarding flow is done)
   const [isOnboardingComplete, setIsOnboardingComplete] = useState(() => {
     if (typeof window === "undefined") return false;
-    return localStorage.getItem(ONBOARDING_STEP_KEY) === null;
+    // Default to false if settings not loaded yet
+    return false;
   });
 
-  // Sync onboarding completion state with localStorage
+  // Sync onboarding completion state with settings.edited and localStorage
   useEffect(() => {
     const checkOnboarding = () => {
       if (typeof window !== "undefined") {
-        setIsOnboardingComplete(
-          localStorage.getItem(ONBOARDING_STEP_KEY) === null,
-        );
+        // Onboarding is complete if settings.edited is true AND step key is null
+        const stepKeyExists = localStorage.getItem(ONBOARDING_STEP_KEY) !== null;
+        const isEdited = settings?.edited === true;
+        // Complete if edited is true and step key doesn't exist (onboarding flow finished)
+        setIsOnboardingComplete(isEdited && !stepKeyExists);
       }
     };
 
-    // Check on mount
+    // Check on mount and when settings change
     checkOnboarding();
 
     // Listen for storage events (for cross-tab sync)
@@ -140,7 +150,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
     return () => {
       window.removeEventListener("storage", checkOnboarding);
     };
-  }, []);
+  }, [settings?.edited]);
 
   const setOnboardingComplete = useCallback((complete: boolean) => {
     setIsOnboardingComplete(complete);
