@@ -26,7 +26,7 @@ Use this installation method if you don't want to [use the Terminal User Interfa
 
 <PartialPrereqNoScript />
 
-## Prepare your deployment
+## Prepare your deployment {#setup}
 
 1. Clone the OpenRAG repository:
 
@@ -118,47 +118,35 @@ Both files deploy the same services.
 
    * [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml): If your host machine has an NVIDIA GPU with CUDA support and compatible NVIDIA drivers, you can use this file  to deploy OpenRAG with accelerated processing.
 
-      * Docker:
+      ```bash title="Docker"
+      docker compose build
+      docker compose up -d
+      ```
 
-         ```bash
-         docker compose build
-         docker compose up -d
-         ```
-
-      * Podman Compose:
-
-         ```bash
-         podman compose build
-         podman compose up -d
-         ```
+      ```bash title="Podman"
+      podman compose build
+      podman compose up -d
+      ```
 
    * [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml): If your host machine doesn't have NVIDIA GPU support, use this file for a CPU-only OpenRAG deployment.
 
-      * Docker:
+      ```bash title="Docker"
+      docker compose -f docker-compose-cpu.yml up -d
+      ```
 
-         ```bash
-         docker compose -f docker-compose-cpu.yml up -d
-         ```
-
-      * Podman Compose:
-
-         ```bash
-         podman compose -f docker-compose-cpu.yml up -d
-         ```
+      ```bash title="Podman"
+      podman compose -f docker-compose-cpu.yml up -d
+      ```
 
 4. Wait for the OpenRAG containers to start, and then confirm that all containers are running:
 
-   * Docker Compose:
+   ```bash title="Docker"
+   docker compose ps
+   ```
 
-      ```bash
-      docker compose ps
-      ```
-
-   * Podman Compose:
-
-      ```bash
-      podman compose ps
-      ```
+   ```bash title="Podman"
+   podman compose ps
+   ```
 
    The OpenRAG Docker Compose files deploy the following containers:
 

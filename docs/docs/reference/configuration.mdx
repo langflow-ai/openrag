@@ -3,6 +3,8 @@ title: Environment variables
 slug: /reference/configuration
 ---
 
+import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
+
 OpenRAG recognizes environment variables from the following sources:
 
 * [Environment variables](#configure-environment-variables): Values set in the `.env` file.
@@ -36,17 +38,19 @@ For example, with self-managed services, do the following:
 
 1. Stop the deployment:
 
-   ```bash
+   ```bash title="Docker"
    docker compose down
+   ```
+
+   ```bash title="Podman"
+   podman compose down
    ```
 
 2. Edit your `.env` file.
 
 3. Redeploy OpenRAG:
 
-   ```bash
-   docker compose up -d
-   ```
+   <PartialDockerComposeUp />
 
 4. Restart the Docling service.
 
@@ -76,7 +80,7 @@ Some of these variables are immutable and can only be changed by redeploying Ope
 | `WATSONX_ENDPOINT` | Not set | Custom provider endpoint for the IBM watsonx.ai model provider. |
 | `WATSONX_PROJECT_ID` | Not set | Project ID for the IBM watsonx.ai model provider. |
 
-### Document processing settings
+### Document processing settings {#document-processing-settings}
 
 Control how OpenRAG [processes and ingests documents](/ingestion) into your knowledge base.
 

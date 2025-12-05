@@ -29,7 +29,7 @@ In the **Status** menu, click **Stop Services**.
 3. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
 The commands to upgrade the package depend on how you installed OpenRAG.
 
-   <Tabs groupId="Installation method">
+   <Tabs>
    <TabItem value="installer" label="Script or uvx" default>
 
    Use these steps to upgrade the Python package if you installed OpenRAG using the [installer script](/install) or [`uvx`](/install-uvx):
@@ -130,23 +130,18 @@ The commands to upgrade the package depend on how you installed OpenRAG.
 
 ## Upgrade self-managed containers
 
-By default, OpenRAG's `docker-compose.yml` file pulls the latest container images that are available when you run `docker compose up -d`.
+To fetch and apply the latest container images while preserving your OpenRAG data, run the commands for your container management tool.
+By default, OpenRAG's `docker-compose` files pull the latest container images.
 
-To fetch and apply the latest container images while preserving your OpenRAG data, run the commands for your container management tool:
+```bash title="Docker"
+docker compose pull
+docker compose up -d --force-recreate
+```
 
-* Docker Compose:
-
-   ```bash
-   docker compose pull
-   docker compose up -d --force-recreate
-   ```
-
-* Podman Compose:
-
-   ```bash
-   podman compose pull
-   podman compose up -d --force-recreate
-   ```
+```bash title="Podman"
+podman compose pull
+podman compose up -d --force-recreate
+```
 
 ## See also
 

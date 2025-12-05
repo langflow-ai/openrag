@@ -8,6 +8,8 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 import PartialIngestionFlow from '@site/docs/_partial-ingestion-flow.mdx';
+import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
+import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
 
 Upload documents to your [OpenRAG OpenSearch instance](/knowledge) to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
 Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
@@ -62,7 +64,7 @@ Before users can connect their own cloud storage accounts, you must configure th
 To enable multiple connectors, you must register an app and generate credentials for each provider.
 
 <Tabs>
-<TabItem value="TUI" label="TUI Advanced Setup" default>
+<TabItem value="TUI" label="TUI-managed services" default>
 
 If you use the [Terminal User Interface (TUI)](/tui) to manage your OpenRAG services, enter OAuth credentials in the **Advanced Setup** menu.
 You can do this during [installation](/install#setup), or you can add the credentials afterwards:
@@ -86,25 +88,15 @@ These are the URLs your OAuth provider will redirect back to after users authent
 You should be prompted to sign in to your OAuth provider before being redirected to your OpenRAG instance.
 
 </TabItem>
-<TabItem value="env" label="Docker Compose .env file">
+<TabItem value="env" label="Self-managed services">
 
 If you [installed OpenRAG with self-managed services](/docker), set OAuth credentials in the `.env` file for Docker Compose.
 
-You can do this during [initial set up](/docker#install-openrag-with-docker-compose), or you can add the credentials afterwards:
+You can do this during [initial set up](/docker#setup), or you can add the credentials afterwards:
 
-1. Stop your OpenRAG deployment:
+1. Stop all OpenRAG containers:
 
-   * Docker:
-
-      ```bash
-      docker stop $(docker ps -q)
-      ```
-
-   * Podman:
-
-      ```bash
-      podman stop --all
-      ```
+   <PartialDockerStopAll />
 
 2. Edit the `.env` file for Docker Compose to add the OAuth credentials for the cloud storage providers that you want to use:
 
@@ -131,19 +123,9 @@ You can do this during [initial set up](/docker#install-openrag-with-docker-comp
 
 3. Save the `.env` file.
 
-4. Restart your OpenRAG deployment:
+4. Restart your OpenRAG containers:
 
-   * Docker:
-
-      ```bash
-      docker compose up -d
-      ```
-
-   * Podman:
-
-      ```bash
-      podman compose up -d
-      ```
+   <PartialDockerComposeUp />
 
 </TabItem>
 </Tabs>

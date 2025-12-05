@@ -107,31 +107,23 @@ To resolve this issue, do the following:
 
    1. Stop the Langflow container:
 
-      * Docker:
+      ```bash title="Docker"
+      docker stop langflow
+      ```
 
-         ```bash
-         docker stop langflow
-         ```
-
-      * Podman:
-
-         ```bash
-         podman stop langflow
-         ```
+      ```bash title="Podman"
+      podman stop langflow
+      ```
 
    2. Remove the Langflow container:
 
-      * Docker:
+      ```bash title="Docker"
+      docker rm langflow --force
+      ```
 
-         ```bash
-         docker rm langflow --force
-         ```
-
-      * Podman:
-
-         ```bash
-         podman rm langflow --force
-         ```
+      ```bash title="Podman"
+      podman rm langflow --force
+      ```
 
 2. Retry the [upgrade](/upgrade).
 
