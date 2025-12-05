@@ -47,8 +47,8 @@ def get_conversation_thread(user_id: str, previous_response_id: str = None):
     return new_conversation
 
 
-def store_conversation_thread(user_id: str, response_id: str, conversation_state: dict):
-    """Store conversation both in memory (with function calls) and persist metadata to disk"""
+async def store_conversation_thread(user_id: str, response_id: str, conversation_state: dict):
+    """Store conversation both in memory (with function calls) and persist metadata to disk (async, non-blocking)"""
     # 1. Store full conversation in memory for function call preservation
     if user_id not in active_conversations:
         active_conversations[user_id] = {}
@@ -76,7 +76,7 @@ def store_conversation_thread(user_id: str, response_id: str, conversation_state
         # Don't store actual messages - Langflow has them
     }
 
-    conversation_persistence.store_conversation_thread(
+    await conversation_persistence.store_conversation_thread(
         user_id, response_id, metadata_only
     )
 
@@ -382,7 +382,7 @@ async def async_chat(
     # Store the conversation thread with its response_id
     if response_id:
         conversation_state["last_activity"] = datetime.now()
-        store_conversation_thread(user_id, response_id, conversation_state)
+        await store_conversation_thread(user_id, response_id, conversation_state)
         logger.debug(
             "Stored conversation thread", user_id=user_id, response_id=response_id
         )
@@ -461,7 +461,7 @@ async def async_chat_stream(
         # Store the conversation thread with its response_id
         if response_id:
             conversation_state["last_activity"] = datetime.now()
-            store_conversation_thread(user_id, response_id, conversation_state)
+            await store_conversation_thread(user_id, response_id, conversation_state)
             logger.debug(
                 f"Stored conversation thread for user {user_id} with response_id: {response_id}"
             )
@@ -549,7 +549,7 @@ async def async_langflow_chat(
     # Store the conversation thread with its response_id
     if response_id:
         conversation_state["last_activity"] = datetime.now()
-        store_conversation_thread(user_id, response_id, conversation_state)
+        await store_conversation_thread(user_id, response_id, conversation_state)
 
         # Claim session ownership for this user
         try:
@@ -656,7 +656,7 @@ async def async_langflow_chat_stream(
         # Store the conversation thread with its response_id
         if response_id:
             conversation_state["last_activity"] = datetime.now()
-            store_conversation_thread(user_id, response_id, conversation_state)
+            await store_conversation_thread(user_id, response_id, conversation_state)
 
             # Claim session ownership for this user
         try:
@@ -672,8 +672,8 @@ async def async_langflow_chat_stream(
             )
 
 
-def delete_user_conversation(user_id: str, response_id: str) -> bool:
-    """Delete a conversation for a user from both memory and persistent storage"""
+async def delete_user_conversation(user_id: str, response_id: str) -> bool:
+    """Delete a conversation for a user from both memory and persistent storage (async, non-blocking)"""
     deleted = False
 
     try:
@@ -684,7 +684,7 @@ def delete_user_conversation(user_id: str, response_id: str) -> bool:
             deleted = True
 
         # Delete from persistent storage
-        conversation_deleted = conversation_persistence.delete_conversation_thread(user_id, response_id)
+        conversation_deleted = await conversation_persistence.delete_conversation_thread(user_id, response_id)
         if conversation_deleted:
             logger.debug(f"Deleted conversation {response_id} from persistent storage for user {user_id}")
             deleted = True
