@@ -19,8 +19,8 @@ If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setu
 
       The OpenSearch password is required.
 
-      The Langflow password is optional.
-      If the Langflow password is empty, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) without password authentication.
+      The Langflow password is recommended but optional.
+      If the Langflow password is empty, the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
 
    3. Optional: Enter your OpenAI API key, or leave this field empty if you want to configure model provider credentials later during application onboarding.
 
@@ -57,8 +57,8 @@ If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setu
 
       The OpenSearch password is required.
 
-      The Langflow password is optional.
-      If the Langflow password is empty, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) without password authentication.
+      The Langflow password is recommended but optional.
+      If the Langflow password is empty, the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
 
    3. Optional: Enter your OpenAI API key, or leave this field empty if you want to configure model provider credentials later during application onboarding.
 
@@ -76,7 +76,7 @@ If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setu
 
    6. Click **Save Configuration**.
 
-      Your passwords, API key (if provided), and OAuth credentials (if provided) are stored in the `.env` file in your OpenRAG installation directory.
+      Your passwords, API key, and OAuth credentials, if provided, are stored in the `.env` file in your OpenRAG installation directory.
       If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
 
    7. Click **Start All Services** to start the OpenRAG services that run in containers.
@@ -105,10 +105,10 @@ If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setu
 
        * `WEBHOOK_BASE_URL`: Sets the base address for the following OpenRAG OAuth connector endpoints:
 
-           - Amazon S3: Not applicable.
-           - Google Drive: `WEBHOOK_BASE_URL/connectors/google_drive/webhook`
-           - OneDrive: `WEBHOOK_BASE_URL/connectors/onedrive/webhook`
-           - SharePoint: `WEBHOOK_BASE_URL/connectors/sharepoint/webhook`
+           * Amazon S3: Not applicable.
+           * Google Drive: `WEBHOOK_BASE_URL/connectors/google_drive/webhook`
+           * OneDrive: `WEBHOOK_BASE_URL/connectors/onedrive/webhook`
+           * SharePoint: `WEBHOOK_BASE_URL/connectors/sharepoint/webhook`
 
    12. Continue with [application onboarding](#application-onboarding).
 

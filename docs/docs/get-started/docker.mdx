@@ -26,67 +26,73 @@ Use this installation method if you don't want to [use the Terminal User Interfa
 
 <PartialPrereqNoScript />
 
-## Install OpenRAG with Docker Compose
+## Prepare your deployment
 
-To install OpenRAG with Docker Compose, do the following:
+1. Clone the OpenRAG repository:
 
-1. Clone the OpenRAG repository.
    ```bash
    git clone https://github.com/langflow-ai/openrag.git
+   ```
+
+2. Change to the root of the cloned repository:
+
+   ```bash
    cd openrag
    ```
 
-2. Install dependencies.
+3. Install dependencies:
+
    ```bash
    uv sync
    ```
 
-3. Copy the example `.env` file included in the repository root.
-  The example file includes all environment variables with comments to guide you in finding and setting their values.
+4. Create a `.env` file at the root of the cloned repository.
+
+   You can create an empty file or copy the repository's [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example) file.
+   The example file contains some of the [OpenRAG environment variables](/reference/configuration) to get you started with configuring your deployment.
+
    ```bash
    cp .env.example .env
    ```
 
-   Alternatively, create a new `.env` file in the repository root.
-   ```
-   touch .env
-   ```
+5. Edit the `.env` file to configure your deployment using [OpenRAG environment variables](/reference/configuration).
+The OpenRAG Docker Compose files pull values from your `.env` file to configure the OpenRAG containers.
+The following variables are required or recommended:
 
-4. The Docker Compose files are populated with the values from your `.env` file. 
-   The `OPENSEARCH_PASSWORD` value must be set.
-   `OPENSEARCH_PASSWORD` can be automatically generated when using the TUI, but for a Docker Compose installation, you can set it manually instead. To generate an OpenSearch admin password, see the [OpenSearch documentation](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
+   * **`OPENSEARCH_PASSWORD` (Required)**: Sets the OpenSearch administrator password. It must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
 
-   The following values are optional:
+   * **`LANGFLOW_SUPERUSER`**: The username for the Langflow administrator user. Defaults to `admin` if not set.
 
-   ```env
-   OPENAI_API_KEY=your_openai_api_key
-   LANGFLOW_SECRET_KEY=your_secret_key
-   ```
+   * **`LANGFLOW_SUPERUSER_PASSWORD` (Strongly recommended)**: Sets the Langflow administrator password, and determines the Langflow server's default authentication mode. If not set, the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
 
-   `OPENAI_API_KEY` is optional. You can provide it during [application onboarding](#application-onboarding) or choose a different model provider. If you want to set it in your `.env` file, you can find your OpenAI API key in your [OpenAI account](https://platform.openai.com/api-keys).
+   * **`LANGFLOW_SECRET_KEY` (Strongly recommended)**: A secret encryption key for internal Langflow operations. It is recommended to [generate your own Langflow secret key](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key). If not set, Langflow generates a secret key automatically.
 
-   `LANGFLOW_SECRET_KEY` is optional. Langflow will auto-generate it if not set. For more information, see the [Langflow documentation](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key).
+   * **Model provider credentials**: Provide credentials for your preferred model providers. If not set in the `.env` file, you must configure at least one provider during [application onboarding](#application-onboarding).
 
-   The following Langflow configuration values are optional but important to consider:
+      * `OPENAI_API_KEY`
+      * `ANTHROPIC_API_KEY`
+      * `OLLAMA_ENDPOINT`
+      * `WATSONX_API_KEY`
+      * `WATSONX_ENDPOINT`
+      * `WATSONX_PROJECT_ID`
 
-   ```env
-   LANGFLOW_SUPERUSER=admin
-   LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
-   ```
+   * **OAuth provider credentials**: To upload documents from external storage, such as Google Drive, set the required OAuth credentials for the connectors that you want to use. You can [manage OAuth credentials](/ingestion#oauth-ingestion) later, but it is recommended to configure them during initial set up so you don't have to rebuild the containers.
 
-   `LANGFLOW_SUPERUSER` defaults to `admin`. You can omit it or set it to a different username. `LANGFLOW_SUPERUSER_PASSWORD` is optional. If omitted, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required. If set, Langflow requires password authentication.
-   
-   For more information on configuring OpenRAG with environment variables, see [Environment variables](/reference/configuration).
+      * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+      * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
+      * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
 
-5. Start `docling serve` on the host machine.
+   For more information and variables, see [Environment variables](/reference/configuration).
+
+6. Start `docling serve` on the host machine.
    OpenRAG Docker installations require that `docling serve` is running on port 5001 on the host machine.
    This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing.
-   
+
    ```bash
    uv run python scripts/docling_ctl.py start --port 5001
    ```
-   
-6. Confirm `docling serve` is running.
+
+7. Confirm `docling serve` is running.
    ```
    uv run python scripts/docling_ctl.py status
    ```
@@ -99,7 +105,7 @@ To install OpenRAG with Docker Compose, do the following:
    PID: 27746
    ```
 
-7. Deploy OpenRAG locally with the appropriate Docker Compose file for your environment.
+8. Deploy OpenRAG locally with the appropriate Docker Compose file for your environment.
 Both files deploy the same services.
 
    * [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing. This Docker Compose file requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support.
@@ -142,7 +148,7 @@ Both files deploy the same services.
    | OpenSearch | http://localhost:9200 | Datastore for [knowledge](/knowledge). |
    | OpenSearch Dashboards | http://localhost:5601 | OpenSearch database administration interface. |
 
-8. Wait while the containers start, and then confirm all containers are running:
+9. Wait while the containers start, and then confirm all containers are running:
 
    * Docker Compose:
 
@@ -158,7 +164,7 @@ Both files deploy the same services.
 
    If all containers are running, you can access your OpenRAG services at their addresses.
 
-9. Access the OpenRAG frontend at `http://localhost:3000` to continue with [application onboarding](#application-onboarding).
+10. Access the OpenRAG frontend at `http://localhost:3000` to continue with [application onboarding](#application-onboarding).
 
 <PartialOnboarding />
 

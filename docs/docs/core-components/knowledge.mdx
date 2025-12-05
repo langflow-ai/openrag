@@ -34,12 +34,12 @@ When you [install OpenRAG](/install-options), you provide the initial configurat
 This includes authentication credentials for OpenSearch and OAuth connectors.
 This configuration determines how OpenRAG authenticates with OpenSearch and controls access to documents in your knowledge base:
 
-* **No-auth mode (basic setup)**: If you choose **Basic Setup** in the [TUI](/tui), or your `.env` file doesn't include OAuth credentials, then OpenRAG runs in no-auth mode.
+* **No-auth mode (basic setup)**: If you select **Basic Setup** in the [TUI](/tui), or your `.env` file doesn't include OAuth credentials, then the OpenRAG OpenSearch instance runs in no-auth mode.
 
    This mode uses one anonymous JWT token for OpenSearch authentication.
    There is no differentiation between users; all users that access your OpenRAG instance can access all documents uploaded to your knowledge base.
 
-* **OAuth mode (advanced setup)**: If you choose **Advanced Setup** in the [TUI](/tui), or your `.env` file includes OAuth credentials, then OpenRAG runs in OAuth mode.
+* **OAuth mode (advanced setup)**: If you select **Advanced Setup** in the [TUI](/tui), or your `.env` file includes OAuth credentials, then the OpenRAG OpenSearch instance runs in OAuth mode.
 
    This mode uses a unique JWT token for each OpenRAG user, and each document is tagged with user ownership.
    Documents are filtered by user owner; users see only the documents that they uploaded or have access to through their cloud storage accounts.
