@@ -65,6 +65,7 @@ export const useProviderHealthQuery = (
       }
 
       // Add test_completion query param if specified or if chat error exists
+      // Use the same testCompletion value that's in the queryKey
       const testCompletion = params?.test_completion ?? hasChatError;
       if (testCompletion) {
         url.searchParams.set("test_completion", "true");
@@ -111,7 +112,10 @@ export const useProviderHealthQuery = (
     }
   }
 
-  const queryKey = ["provider", "health", params?.test_completion];
+  // Include hasChatError in queryKey so React Query refetches when it changes
+  // This ensures the health check runs with test_completion=true when chat errors occur
+  const testCompletion = params?.test_completion ?? hasChatError;
+  const queryKey = ["provider", "health", testCompletion, hasChatError];
   const failureCountKey = queryKey.join("-");
 
   const queryResult = useQuery(
