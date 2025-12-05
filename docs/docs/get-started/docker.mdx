@@ -82,22 +82,30 @@ The following variables are required or recommended:
       * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
       * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
 
-   For more information and variables, see [Environment variables](/reference/configuration).
+   For more information and variables, see [OpenRAG environment variables](/reference/configuration).
 
-6. Start `docling serve` on the host machine.
-   OpenRAG Docker installations require that `docling serve` is running on port 5001 on the host machine.
-   This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing.
+## Start services
+
+1. Start `docling serve` on port 5001 on the host machine:
 
    ```bash
    uv run python scripts/docling_ctl.py start --port 5001
    ```
 
-7. Confirm `docling serve` is running.
-   ```
+   Docling cannot run inside a Docker container due to system-level dependencies, so you must manage it as a separate service on the host machine.
+   For more information, see [Stop, start, and inspect native services](/manage-services#start-native-services).
+
+   This port is required to deploy OpenRAG successfully; don't use a different port.
+   Additionally, this enables the [MLX framework](https://opensource.apple.com/projects/mlx/) for accelerated performance on Apple Silicon Mac machines.
+
+2. Confirm `docling serve` is running.
+
+   ```bash
    uv run python scripts/docling_ctl.py status
    ```
 
-   Make sure the response shows that `docling serve` is running, for example:
+   If `docling serve` is running, the output includes the status, address, and process ID (PID):
+
    ```bash
    Status: running
    Endpoint: http://127.0.0.1:5001
@@ -105,10 +113,10 @@ The following variables are required or recommended:
    PID: 27746
    ```
 
-8. Deploy OpenRAG locally with the appropriate Docker Compose file for your environment.
+3. Deploy the OpenRAG containers locally using the appropriate Docker Compose file for your environment.
 Both files deploy the same services.
 
-   * [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing. This Docker Compose file requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support.
+   * [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml): If your host machine has an NVIDIA GPU with CUDA support and compatible NVIDIA drivers, you can use this file  to deploy OpenRAG with accelerated processing.
 
       * Docker:
 
@@ -124,7 +132,7 @@ Both files deploy the same services.
          podman compose up -d
          ```
 
-   * [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without NVIDIA GPU support. Use this Docker Compose file for environments where GPU drivers aren't available.
+   * [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml): If your host machine doesn't have NVIDIA GPU support, use this file for a CPU-only OpenRAG deployment.
 
       * Docker:
 
@@ -138,17 +146,7 @@ Both files deploy the same services.
          podman compose -f docker-compose-cpu.yml up -d
          ```
 
-   The OpenRAG Docker Compose file starts five containers:
-
-   | Container Name | Default address | Purpose |
-   |---|---|---|
-   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
-   | OpenRAG Frontend | http://localhost:3000 | React web interface for user interaction. |
-   | Langflow | http://localhost:7860 | [AI workflow engine](/agents). |
-   | OpenSearch | http://localhost:9200 | Datastore for [knowledge](/knowledge). |
-   | OpenSearch Dashboards | http://localhost:5601 | OpenSearch database administration interface. |
-
-9. Wait while the containers start, and then confirm all containers are running:
+4. Wait for the OpenRAG containers to start, and then confirm that all containers are running:
 
    * Docker Compose:
 
@@ -162,9 +160,19 @@ Both files deploy the same services.
       podman compose ps
       ```
 
-   If all containers are running, you can access your OpenRAG services at their addresses.
+   The OpenRAG Docker Compose files deploy the following containers:
 
-10. Access the OpenRAG frontend at `http://localhost:3000` to continue with [application onboarding](#application-onboarding).
+   | Container Name | Default address | Purpose |
+   |---|---|---|
+   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
+   | OpenRAG Frontend | http://localhost:3000 | React web interface for user interaction. |
+   | Langflow | http://localhost:7860 | [AI workflow engine](/agents). |
+   | OpenSearch | http://localhost:9200 | Datastore for [knowledge](/knowledge). |
+   | OpenSearch Dashboards | http://localhost:5601 | OpenSearch database administration interface. |
+
+   When the containers are running, you can access your OpenRAG services at their addresses.
+
+5. Access the OpenRAG frontend at `http://localhost:3000`, and then continue with [application onboarding](#application-onboarding).
 
 <PartialOnboarding />
 

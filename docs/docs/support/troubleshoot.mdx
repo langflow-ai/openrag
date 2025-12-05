@@ -50,7 +50,14 @@ podman machine start
 
 ## Port conflicts
 
-Ensure ports 3000, 7860, 8000, 9200, 5601 are available.
+With the default [configuration](/reference/configuration), OpenRAG requires the following ports to be available on the host machine:
+
+* 3000: Langflow application
+* 5001: Docling local ingestion service
+* 5601: OpenSearch Dashboards
+* 7860: Docling UI
+* 8000: Docling API
+* 9200: OpenSearch service
 
 ## OCR ingestion fails (easyocr not installed)
 

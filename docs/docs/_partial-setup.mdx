@@ -11,106 +11,106 @@ You must use **Advanced Setup** if you want to [use OAuth connectors to upload d
 If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setup** in the TUI.
 
 <Tabs groupId="Setup method">
-  <TabItem value="Basic setup" label="Basic setup" default>
+<TabItem value="Basic setup" label="Basic setup" default>
 
-   1. In the TUI, click **Basic Setup** or press <kbd>1</kbd>.
+1. In the TUI, click **Basic Setup** or press <kbd>1</kbd>.
 
-   2. Enter administrator passwords for the OpenRAG OpenSearch and Langflow services, or click **Generate Passwords** to generate passwords automatically.
+2. Enter administrator passwords for the OpenRAG OpenSearch and Langflow services, or click **Generate Passwords** to generate passwords automatically.
 
-      The OpenSearch password is required.
+   The OpenSearch password is required.
 
-      The Langflow password is recommended but optional.
-      If the Langflow password is empty, the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
+   The Langflow password is recommended but optional.
+   If the Langflow password is empty, the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
 
-   3. Optional: Enter your OpenAI API key, or leave this field empty if you want to configure model provider credentials later during application onboarding.
+3. Optional: Enter your OpenAI API key, or leave this field empty if you want to configure model provider credentials later during application onboarding.
 
-   4. Click **Save Configuration**.
+4. Click **Save Configuration**.
 
-      Your passwords and API key, if provided, are stored in the `.env` file in your OpenRAG installation directory.
-      If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
+   Your passwords and API key, if provided, are stored in the `.env` file in your OpenRAG installation directory.
+   If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
 
-   5. Click **Start All Services** to start the OpenRAG services that run in containers.
+5. Click **Start All Services** to start the OpenRAG services that run in containers.
 
-      This process can take some time while OpenRAG pulls and runs the container images.
-      If all services start successfully, the TUI prints a confirmation message:
+   This process can take some time while OpenRAG pulls and runs the container images.
+   If all services start successfully, the TUI prints a confirmation message:
 
-      ```text
-      Services started successfully
-      Command completed successfully
-      ```
+   ```text
+   Services started successfully
+   Command completed successfully
+   ```
 
-   6. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
+6. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
 
-   7. Launch the OpenRAG application:
+7. Launch the OpenRAG application:
 
-      * From the TUI main menu, click **Open App**.
-      * In your browser, navigate to `localhost:3000`.
+   * From the TUI main menu, click **Open App**.
+   * In your browser, navigate to `localhost:3000`.
 
-   8. Continue with [application onboarding](#application-onboarding).
+8. Continue with [application onboarding](#application-onboarding).
 
-  </TabItem>
-  <TabItem value="Advanced setup" label="Advanced setup">
+</TabItem>
+<TabItem value="Advanced setup" label="Advanced setup">
 
-   1. In the TUI, click **Advanced Setup** or press <kbd>2</kbd>.
+1. In the TUI, click **Advanced Setup** or press <kbd>2</kbd>.
 
-   2. Enter administrator passwords for the OpenRAG OpenSearch and Langflow services, or click **Generate Passwords** to generate passwords automatically.
+2. Enter administrator passwords for the OpenRAG OpenSearch and Langflow services, or click **Generate Passwords** to generate passwords automatically.
 
-      The OpenSearch password is required.
+   The OpenSearch password is required.
 
-      The Langflow password is recommended but optional.
-      If the Langflow password is empty, the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
+   The Langflow password is recommended but optional.
+   If the Langflow password is empty, the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
 
-   3. Optional: Enter your OpenAI API key, or leave this field empty if you want to configure model provider credentials later during application onboarding.
+3. Optional: Enter your OpenAI API key, or leave this field empty if you want to configure model provider credentials later during application onboarding.
 
-   4. To upload documents from external storage, such as Google Drive, add the required OAuth credentials for the connectors that you want to use. These settings can be populated automatically if OpenRAG detects these credentials in a `.env` file in the OpenRAG installation directory.
+4. To upload documents from external storage, such as Google Drive, add the required OAuth credentials for the connectors that you want to use. These settings can be populated automatically if OpenRAG detects these credentials in a `.env` file in the OpenRAG installation directory.
 
-       * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
-       * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
-       * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
+   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+   * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
+   * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
 
-       You can [manage OAuth credentials](/ingestion#oauth-ingestion) later, but it is recommended to configure them during initial set up.
+   You can [manage OAuth credentials](/ingestion#oauth-ingestion) later, but it is recommended to configure them during initial set up.
 
-   5. The OpenRAG TUI presents redirect URIs for your OAuth app.
-   These are the URLs your OAuth provider will redirect back to after user sign-in.
-   Register these redirect values with your OAuth provider as they are presented in the TUI.
+5. The OpenRAG TUI presents redirect URIs for your OAuth app.
+These are the URLs your OAuth provider will redirect back to after user sign-in.
+Register these redirect values with your OAuth provider as they are presented in the TUI.
 
-   6. Click **Save Configuration**.
+6. Click **Save Configuration**.
 
-      Your passwords, API key, and OAuth credentials, if provided, are stored in the `.env` file in your OpenRAG installation directory.
-      If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
+   Your passwords, API key, and OAuth credentials, if provided, are stored in the `.env` file in your OpenRAG installation directory.
+   If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
 
-   7. Click **Start All Services** to start the OpenRAG services that run in containers.
+7. Click **Start All Services** to start the OpenRAG services that run in containers.
 
-      This process can take some time while OpenRAG pulls and runs the container images.
-      If all services start successfully, the TUI prints a confirmation message:
+   This process can take some time while OpenRAG pulls and runs the container images.
+   If all services start successfully, the TUI prints a confirmation message:
 
-      ```text
-      Services started successfully
-      Command completed successfully
-      ```
+   ```text
+   Services started successfully
+   Command completed successfully
+   ```
 
-   8. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
+8. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
 
-   9. Launch the OpenRAG application:
+9. Launch the OpenRAG application:
 
-      * From the TUI main menu, click **Open App**.
-      * In your browser, navigate to `localhost:3000`.
+   * From the TUI main menu, click **Open App**.
+   * In your browser, navigate to `localhost:3000`.
 
-   10. If you enabled OAuth connectors, you must sign in to your OAuth provider before being redirected to your OpenRAG instance.
+10. If you enabled OAuth connectors, you must sign in to your OAuth provider before being redirected to your OpenRAG instance.
 
-   11. If required, you can edit the following additional environment variables.
-   Only change these variables if your OpenRAG deployment has a non-default network configuration, such as a reverse proxy or custom domain.
+11. If required, you can edit the following additional environment variables.
+Only change these variables if your OpenRAG deployment has a non-default network configuration, such as a reverse proxy or custom domain.
 
-       * `LANGFLOW_PUBLIC_URL`: Sets the base address to access the Langflow web interface. This is where users interact with flows in a browser.
+   * `LANGFLOW_PUBLIC_URL`: Sets the base address to access the Langflow web interface. This is where users interact with flows in a browser.
 
-       * `WEBHOOK_BASE_URL`: Sets the base address for the following OpenRAG OAuth connector endpoints:
+   * `WEBHOOK_BASE_URL`: Sets the base address for the following OpenRAG OAuth connector endpoints:
 
-           * Amazon S3: Not applicable.
-           * Google Drive: `WEBHOOK_BASE_URL/connectors/google_drive/webhook`
-           * OneDrive: `WEBHOOK_BASE_URL/connectors/onedrive/webhook`
-           * SharePoint: `WEBHOOK_BASE_URL/connectors/sharepoint/webhook`
+      * Amazon S3: Not applicable.
+      * Google Drive: `WEBHOOK_BASE_URL/connectors/google_drive/webhook`
+      * OneDrive: `WEBHOOK_BASE_URL/connectors/onedrive/webhook`
+      * SharePoint: `WEBHOOK_BASE_URL/connectors/sharepoint/webhook`
 
-   12. Continue with [application onboarding](#application-onboarding).
+12. Continue with [application onboarding](#application-onboarding).
 
-  </TabItem>
+</TabItem>
 </Tabs>
