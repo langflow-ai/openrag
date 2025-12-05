@@ -172,11 +172,13 @@ export function ChatRenderer({
       // Mark onboarding as complete in context
       setOnboardingComplete(true);
 
-      // Clear ALL conversation state so next message starts fresh
-      await startNewConversation();
-
-      // Store the user document filter as default for new conversations and load it
+      // Store the user document filter as default for new conversations FIRST
+      // This must happen before startNewConversation() so the filter is available
       await storeDefaultFilterForNewConversations(true);
+
+      // Clear ALL conversation state so next message starts fresh
+      // This will pick up the default filter we just set
+      await startNewConversation();
 
       // Clean up onboarding filter IDs now that we've set the default
       if (typeof window !== "undefined") {

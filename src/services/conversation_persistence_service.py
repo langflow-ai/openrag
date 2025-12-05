@@ -5,6 +5,7 @@ Simple service to persist chat conversations to disk so they survive server rest
 
 import json
 import os
+import asyncio
 from typing import Dict, Any
 from datetime import datetime
 import threading
@@ -33,8 +34,8 @@ class ConversationPersistenceService:
                 return {}
         return {}
     
-    def _save_conversations(self):
-        """Save conversations to disk"""
+    def _save_conversations_sync(self):
+        """Synchronous save conversations to disk (runs in executor)"""
         try:
             with self.lock:
                 with open(self.storage_file, 'w', encoding='utf-8') as f:
@@ -42,6 +43,12 @@ class ConversationPersistenceService:
                 logger.debug(f"Saved {self._count_total_conversations(self._conversations)} conversations to {self.storage_file}")
         except Exception as e:
             logger.error(f"Error saving conversations to {self.storage_file}: {e}")
+    
+    async def _save_conversations(self):
+        """Async save conversations to disk (non-blocking)"""
+        # Run the synchronous file I/O in a thread pool to avoid blocking the event loop
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._save_conversations_sync)
     
     def _count_total_conversations(self, data: Dict[str, Any]) -> int:
         """Count total conversations across all users"""
@@ -68,8 +75,8 @@ class ConversationPersistenceService:
         else:
             return obj
     
-    def store_conversation_thread(self, user_id: str, response_id: str, conversation_state: Dict[str, Any]):
-        """Store a conversation thread and persist to disk"""
+    async def store_conversation_thread(self, user_id: str, response_id: str, conversation_state: Dict[str, Any]):
+        """Store a conversation thread and persist to disk (async, non-blocking)"""
         if user_id not in self._conversations:
             self._conversations[user_id] = {}
         
@@ -78,28 +85,28 @@ class ConversationPersistenceService:
         
         self._conversations[user_id][response_id] = serialized_conversation
         
-        # Save to disk (we could optimize this with batching if needed)
-        self._save_conversations()
+        # Save to disk asynchronously (non-blocking)
+        await self._save_conversations()
     
     def get_conversation_thread(self, user_id: str, response_id: str) -> Dict[str, Any]:
         """Get a specific conversation thread"""
         user_conversations = self.get_user_conversations(user_id)
         return user_conversations.get(response_id, {})
     
-    def delete_conversation_thread(self, user_id: str, response_id: str) -> bool:
-        """Delete a specific conversation thread"""
+    async def delete_conversation_thread(self, user_id: str, response_id: str) -> bool:
+        """Delete a specific conversation thread (async, non-blocking)"""
         if user_id in self._conversations and response_id in self._conversations[user_id]:
             del self._conversations[user_id][response_id]
-            self._save_conversations()
+            await self._save_conversations()
             logger.debug(f"Deleted conversation {response_id} for user {user_id}")
             return True
         return False
     
-    def clear_user_conversations(self, user_id: str):
-        """Clear all conversations for a user"""
+    async def clear_user_conversations(self, user_id: str):
+        """Clear all conversations for a user (async, non-blocking)"""
         if user_id in self._conversations:
             del self._conversations[user_id]
-            self._save_conversations()
+            await self._save_conversations()
             logger.debug(f"Cleared all conversations for user {user_id}")
     
     def get_storage_stats(self) -> Dict[str, Any]:

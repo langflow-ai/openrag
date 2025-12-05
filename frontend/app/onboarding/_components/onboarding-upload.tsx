@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -7,13 +8,13 @@ import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
 import { Button } from "@/components/ui/button";
 import {
-  ONBOARDING_UPLOAD_STEPS_KEY,
-  ONBOARDING_USER_DOC_FILTER_ID_KEY,
+	ONBOARDING_UPLOAD_STEPS_KEY,
+	ONBOARDING_USER_DOC_FILTER_ID_KEY,
 } from "@/lib/constants";
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
-  onComplete: () => void;
+	onComplete: () => void;
 }
 
 const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
@@ -21,6 +22,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const [isUploading, setIsUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState<number | null>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
+  const [uploadedTaskId, setUploadedTaskId] = useState<string | null>(null);
   const [shouldCreateFilter, setShouldCreateFilter] = useState(false);
   const [isCreatingFilter, setIsCreatingFilter] = useState(false);
 
@@ -43,23 +45,26 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
   // Monitor tasks and call onComplete when file processing is done
   useEffect(() => {
-    if (currentStep === null || !tasks) {
+    if (currentStep === null || !tasks || !uploadedTaskId) {
       return;
     }
 
-    // Check if there are any active tasks (pending, running, or processing)
-    const activeTasks = tasks.find(
-      (task) =>
-        task.status === "pending" ||
-        task.status === "running" ||
-        task.status === "processing",
-    );
+    // Find the task by task ID from the upload response
+    const matchingTask = tasks.find((task) => task.task_id === uploadedTaskId);
 
-    // If no active tasks and we have more than 1 task (initial + new upload), complete it
-    if (
-      (!activeTasks || (activeTasks.processed_files ?? 0) > 0) &&
-      tasks.length > 1
-    ) {
+    // If no matching task found, wait for it to appear
+    if (!matchingTask) {
+      return;
+    }
+
+    // Check if the matching task is still active (pending, running, or processing)
+    const isTaskActive =
+      matchingTask.status === "pending" ||
+      matchingTask.status === "running" ||
+      matchingTask.status === "processing";
+
+    // If task is completed or has processed files, complete the onboarding step
+    if (!isTaskActive || (matchingTask.processed_files ?? 0) > 0) {
       // Set to final step to show "Done"
       setCurrentStep(STEP_LIST.length);
 
@@ -91,6 +96,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           icon: "file",
         });
 
+        // Wait for filter creation to complete before proceeding
         createFilterMutation
           .mutateAsync({
             name: displayName,
@@ -114,18 +120,36 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           })
           .finally(() => {
             setIsCreatingFilter(false);
+            // Refetch nudges to get new ones
+            refetchNudges();
+
+            // Wait a bit before completing (after filter is created)
+            setTimeout(() => {
+              onComplete();
+            }, 1000);
           });
+      } else {
+        // No filter to create, just complete
+        // Refetch nudges to get new ones
+        refetchNudges();
+
+        // Wait a bit before completing
+        setTimeout(() => {
+          onComplete();
+        }, 1000);
       }
-
-      // Refetch nudges to get new ones
-      refetchNudges();
-
-      // Wait a bit before completing
-      setTimeout(() => {
-        onComplete();
-      }, 1000);
     }
-  }, [tasks, currentStep, onComplete, refetchNudges, shouldCreateFilter, uploadedFilename]);
+  }, [
+    tasks,
+    currentStep,
+    onComplete,
+    refetchNudges,
+    shouldCreateFilter,
+    uploadedFilename,
+    uploadedTaskId,
+    createFilterMutation,
+    isCreatingFilter,
+  ]);
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
@@ -143,6 +167,11 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       setCurrentStep(0);
       const result = await uploadFile(file, true, true); // Pass createFilter=true
       console.log("Document upload task started successfully");
+
+      // Store task ID to track the specific upload task
+      if (result.taskId) {
+        setUploadedTaskId(result.taskId);
+      }
 
       // Store filename and createFilter flag in state to create filter after ingestion succeeds
       if (result.createFilter && result.filename) {
@@ -176,6 +205,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
 
       // Reset on error
       setCurrentStep(null);
+      setUploadedTaskId(null);
     } finally {
       setIsUploading(false);
     }
