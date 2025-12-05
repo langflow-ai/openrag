@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { useChat } from "@/contexts/chat-context";
 import { useGetSettingsQuery } from "./useGetSettingsQuery";
+import { useGetTasksQuery } from "./useGetTasksQuery";
 
 export interface ProviderHealthDetails {
   llm_model: string;
@@ -44,6 +45,15 @@ export const useProviderHealthQuery = (
   const { hasChatError, setChatError, isOnboardingComplete } = useChat();
 
   const { data: settings = {} } = useGetSettingsQuery();
+
+  // Check if there are any active ingestion tasks
+  const { data: tasks = [] } = useGetTasksQuery();
+  const hasActiveIngestion = tasks.some(
+    (task) =>
+      task.status === "pending" ||
+      task.status === "running" ||
+      task.status === "processing",
+  );
 
   async function checkProviderHealth(): Promise<ProviderHealthResponse> {
     try {
@@ -146,6 +156,7 @@ export const useProviderHealthQuery = (
       enabled:
         !!settings?.edited &&
         isOnboardingComplete &&
+        !hasActiveIngestion && // Disable health checks when ingestion is happening
         options?.enabled !== false, // Only run after onboarding is complete
       ...options,
     },
