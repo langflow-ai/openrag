@@ -141,61 +141,29 @@ INDEX_BODY = {
 LANGFLOW_BASE_URL = f"{LANGFLOW_URL}/api/v1"
 
 
-async def generate_langflow_api_key(modify: bool = False):
-    """Generate Langflow API key using superuser credentials at startup"""
+async def get_langflow_api_key(force_regenerate: bool = False):
+    """Get the Langflow API key, generating one if needed.
+
+    Args:
+        force_regenerate: If True, generates a new key even if one is cached.
+                          Used when a request fails with 401/403 to get a fresh key.
+    """
     global LANGFLOW_KEY
 
     logger.debug(
-        "generate_langflow_api_key called", current_key_present=bool(LANGFLOW_KEY)
+        "get_langflow_api_key called",
+        current_key_present=bool(LANGFLOW_KEY),
+        force_regenerate=force_regenerate,
     )
 
-    # If key already provided via env, do not attempt generation
-    if LANGFLOW_KEY:
-        if os.getenv("LANGFLOW_KEY"):
-            logger.info("Using LANGFLOW_KEY from environment; skipping generation")
-            return LANGFLOW_KEY
-        else:
-            # We have a cached key, but let's validate it first
-            logger.debug("Validating cached LANGFLOW_KEY", key_prefix=LANGFLOW_KEY[:8])
-            try:
-                validation_response = requests.get(
-                    f"{LANGFLOW_URL}/api/v1/users/whoami",
-                    headers={"x-api-key": LANGFLOW_KEY},
-                    timeout=5,
-                )
-                if validation_response.status_code == 200:
-                    logger.debug("Cached API key is valid", key_prefix=LANGFLOW_KEY[:8])
-                    return LANGFLOW_KEY
-                elif validation_response.status_code in (401, 403):
-                    logger.warning(
-                        "Cached API key is unauthorized, generating fresh key",
-                        status_code=validation_response.status_code,
-                    )
-                    LANGFLOW_KEY = None  # Clear invalid key
-                else:
-                    logger.warning(
-                        "Cached API key validation returned non-access error; keeping existing key",
-                        status_code=validation_response.status_code,
-                    )
-                    return LANGFLOW_KEY
-            except requests.exceptions.Timeout as e:
-                logger.warning(
-                    "Cached API key validation timed out; keeping existing key",
-                    error=str(e),
-                )
-                return LANGFLOW_KEY
-            except requests.exceptions.RequestException as e:
-                logger.warning(
-                    "Cached API key validation failed due to request error; keeping existing key",
-                    error=str(e),
-                )
-                return LANGFLOW_KEY
-            except Exception as e:
-                logger.warning(
-                    "Unexpected error during cached API key validation; keeping existing key",
-                    error=str(e),
-                )
-                return LANGFLOW_KEY
+    # If we have a cached key and not forcing regeneration, return it
+    if LANGFLOW_KEY and not force_regenerate:
+        return LANGFLOW_KEY
+
+    # If forcing regeneration, clear the cached key
+    if force_regenerate and LANGFLOW_KEY:
+        logger.info("Forcing Langflow API key regeneration due to auth failure")
+        LANGFLOW_KEY = None
 
     # Use default langflow/langflow credentials if auto-login is enabled and credentials not set
     username = LANGFLOW_SUPERUSER
@@ -217,72 +185,70 @@ async def generate_langflow_api_key(modify: bool = False):
         max_attempts = int(os.getenv("LANGFLOW_KEY_RETRIES", "15"))
         delay_seconds = float(os.getenv("LANGFLOW_KEY_RETRY_DELAY", "2.0"))
 
-        for attempt in range(1, max_attempts + 1):
-            try:
-                # Login to get access token
-                login_response = requests.post(
-                    f"{LANGFLOW_URL}/api/v1/login",
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                    data={
-                        "username": username,
-                        "password": password,
-                    },
-                    timeout=10,
-                )
-                login_response.raise_for_status()
-                access_token = login_response.json().get("access_token")
-                if not access_token:
-                    raise KeyError("access_token")
-
-                # Create API key
-                api_key_response = requests.post(
-                    f"{LANGFLOW_URL}/api/v1/api_key/",
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {access_token}",
-                    },
-                    json={"name": "openrag-auto-generated"},
-                    timeout=10,
-                )
-                api_key_response.raise_for_status()
-                api_key = api_key_response.json().get("api_key")
-                if not api_key:
-                    raise KeyError("api_key")
-
-                # Validate the API key works
-                validation_response = requests.get(
-                    f"{LANGFLOW_URL}/api/v1/users/whoami",
-                    headers={"x-api-key": api_key},
-                    timeout=10,
-                )
-                if validation_response.status_code == 200:
-                    LANGFLOW_KEY = api_key
-                    logger.info(
-                        "Successfully generated and validated Langflow API key",
-                        key_prefix=api_key[:8],
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    # Login to get access token
+                    login_response = await client.post(
+                        f"{LANGFLOW_URL}/api/v1/login",
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                        data={
+                            "username": username,
+                            "password": password,
+                        },
                     )
-                    return api_key
-                else:
-                    logger.error(
-                        "Generated API key validation failed",
-                        status_code=validation_response.status_code,
-                    )
-                    raise ValueError(
-                        f"API key validation failed: {validation_response.status_code}"
-                    )
-            except (requests.exceptions.RequestException, KeyError) as e:
-                logger.warning(
-                    "Attempt to generate Langflow API key failed",
-                    attempt=attempt,
-                    max_attempts=max_attempts,
-                    error=str(e),
-                )
-                if attempt < max_attempts:
-                    time.sleep(delay_seconds)
-                else:
-                    raise
+                    login_response.raise_for_status()
+                    access_token = login_response.json().get("access_token")
+                    if not access_token:
+                        raise KeyError("access_token")
 
-    except requests.exceptions.RequestException as e:
+                    # Create API key
+                    api_key_response = await client.post(
+                        f"{LANGFLOW_URL}/api/v1/api_key/",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {access_token}",
+                        },
+                        json={"name": "openrag-auto-generated"},
+                    )
+                    api_key_response.raise_for_status()
+                    api_key = api_key_response.json().get("api_key")
+                    if not api_key:
+                        raise KeyError("api_key")
+
+                    # Validate the API key works
+                    validation_response = await client.get(
+                        f"{LANGFLOW_URL}/api/v1/users/whoami",
+                        headers={"x-api-key": api_key},
+                    )
+                    if validation_response.status_code == 200:
+                        LANGFLOW_KEY = api_key
+                        logger.info(
+                            "Successfully generated and validated Langflow API key",
+                            key_prefix=api_key[:8],
+                        )
+                        return api_key
+                    else:
+                        logger.error(
+                            "Generated API key validation failed",
+                            status_code=validation_response.status_code,
+                        )
+                        raise ValueError(
+                            f"API key validation failed: {validation_response.status_code}"
+                        )
+                except (httpx.HTTPStatusError, httpx.RequestError, KeyError) as e:
+                    logger.warning(
+                        "Attempt to generate Langflow API key failed",
+                        attempt=attempt,
+                        max_attempts=max_attempts,
+                        error=str(e),
+                    )
+                    if attempt < max_attempts:
+                        await asyncio.sleep(delay_seconds)
+                    else:
+                        raise
+
+    except (httpx.HTTPStatusError, httpx.RequestError) as e:
         logger.error("Failed to generate Langflow API key", error=str(e))
         return None
     except KeyError as e:
@@ -304,7 +270,7 @@ class AppClients:
 
     async def initialize(self):
         # Generate Langflow API key first
-        await generate_langflow_api_key()
+        await get_langflow_api_key()
 
         # Initialize OpenSearch client
         self.opensearch = AsyncOpenSearch(
@@ -363,7 +329,7 @@ class AppClients:
         if self.langflow_client is not None:
             return self.langflow_client
         # Try generating key again (with retries)
-        await generate_langflow_api_key()
+        await get_langflow_api_key()
         if LANGFLOW_KEY and self.langflow_client is None:
             try:
                 self.langflow_client = AsyncOpenAI(
@@ -560,8 +526,11 @@ class AppClients:
                 self.langflow_client = None
 
     async def langflow_request(self, method: str, endpoint: str, **kwargs):
-        """Central method for all Langflow API requests"""
-        api_key = await generate_langflow_api_key()
+        """Central method for all Langflow API requests.
+
+        Retries once with a fresh API key on auth failures (401/403).
+        """
+        api_key = await get_langflow_api_key()
         if not api_key:
             raise ValueError("No Langflow API key available")
 
@@ -576,57 +545,65 @@ class AppClients:
 
         url = f"{LANGFLOW_URL}{endpoint}"
 
-        return await self.langflow_http_client.request(
+        response = await self.langflow_http_client.request(
             method=method, url=url, headers=headers, **kwargs
         )
+
+        # Retry once with a fresh API key on auth failure
+        if response.status_code in (401, 403):
+            logger.warning(
+                "Langflow request auth failed, regenerating API key and retrying",
+                status_code=response.status_code,
+                endpoint=endpoint,
+            )
+            api_key = await get_langflow_api_key(force_regenerate=True)
+            if api_key:
+                headers["x-api-key"] = api_key
+                response = await self.langflow_http_client.request(
+                    method=method, url=url, headers=headers, **kwargs
+                )
+
+        return response
 
     async def _create_langflow_global_variable(
         self, name: str, value: str, modify: bool = False
     ):
         """Create a global variable in Langflow via API"""
-        api_key = await generate_langflow_api_key()
-        if not api_key:
-            logger.warning(
-                "Cannot create Langflow global variable: No API key", variable_name=name
-            )
-            return
-
-        url = f"{LANGFLOW_URL}/api/v1/variables/"
         payload = {
             "name": name,
             "value": value,
             "default_fields": [],
             "type": "Credential",
         }
-        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, headers=headers, json=payload)
+            response = await self.langflow_request(
+                "POST", "/api/v1/variables/", json=payload
+            )
 
-                if response.status_code in [200, 201]:
+            if response.status_code in [200, 201]:
+                logger.info(
+                    "Successfully created Langflow global variable",
+                    variable_name=name,
+                )
+            elif response.status_code == 400 and "already exists" in response.text:
+                if modify:
                     logger.info(
-                        "Successfully created Langflow global variable",
+                        "Langflow global variable already exists, attempting to update",
                         variable_name=name,
                     )
-                elif response.status_code == 400 and "already exists" in response.text:
-                    if modify:
-                        logger.info(
-                            "Langflow global variable already exists, attempting to update",
-                            variable_name=name,
-                        )
-                        await self._update_langflow_global_variable(name, value)
-                    else:
-                        logger.info(
-                            "Langflow global variable already exists",
-                            variable_name=name,
-                        )
+                    await self._update_langflow_global_variable(name, value)
                 else:
-                    logger.warning(
-                        "Failed to create Langflow global variable",
+                    logger.info(
+                        "Langflow global variable already exists",
                         variable_name=name,
-                        status_code=response.status_code,
                     )
+            else:
+                logger.warning(
+                    "Failed to create Langflow global variable",
+                    variable_name=name,
+                    status_code=response.status_code,
+                )
         except Exception as e:
             logger.error(
                 "Exception creating Langflow global variable",
@@ -636,76 +613,62 @@ class AppClients:
 
     async def _update_langflow_global_variable(self, name: str, value: str):
         """Update an existing global variable in Langflow via API"""
-        api_key = await generate_langflow_api_key()
-        if not api_key:
-            logger.warning(
-                "Cannot update Langflow global variable: No API key", variable_name=name
-            )
-            return
-
-        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
-
         try:
-            async with httpx.AsyncClient() as client:
-                # First, get all variables to find the one with the matching name
-                get_response = await client.get(
-                    f"{LANGFLOW_URL}/api/v1/variables/", headers=headers
+            # First, get all variables to find the one with the matching name
+            get_response = await self.langflow_request("GET", "/api/v1/variables/")
+
+            if get_response.status_code != 200:
+                logger.error(
+                    "Failed to retrieve variables for update",
+                    variable_name=name,
+                    status_code=get_response.status_code,
                 )
+                return
 
-                if get_response.status_code != 200:
-                    logger.error(
-                        "Failed to retrieve variables for update",
-                        variable_name=name,
-                        status_code=get_response.status_code,
-                    )
-                    return
+            variables = get_response.json()
+            target_variable = None
 
-                variables = get_response.json()
-                target_variable = None
+            # Find the variable with matching name
+            for variable in variables:
+                if variable.get("name") == name:
+                    target_variable = variable
+                    break
 
-                # Find the variable with matching name
-                for variable in variables:
-                    if variable.get("name") == name:
-                        target_variable = variable
-                        break
+            if not target_variable:
+                logger.error("Variable not found for update", variable_name=name)
+                return
 
-                if not target_variable:
-                    logger.error("Variable not found for update", variable_name=name)
-                    return
+            variable_id = target_variable.get("id")
+            if not variable_id:
+                logger.error("Variable ID not found for update", variable_name=name)
+                return
 
-                variable_id = target_variable.get("id")
-                if not variable_id:
-                    logger.error("Variable ID not found for update", variable_name=name)
-                    return
+            # Update the variable using PATCH
+            update_payload = {
+                "id": variable_id,
+                "name": name,
+                "value": value,
+                "default_fields": target_variable.get("default_fields", []),
+            }
 
-                # Update the variable using PATCH
-                update_payload = {
-                    "id": variable_id,
-                    "name": name,
-                    "value": value,
-                    "default_fields": target_variable.get("default_fields", []),
-                }
+            patch_response = await self.langflow_request(
+                "PATCH", f"/api/v1/variables/{variable_id}", json=update_payload
+            )
 
-                patch_response = await client.patch(
-                    f"{LANGFLOW_URL}/api/v1/variables/{variable_id}",
-                    headers=headers,
-                    json=update_payload,
+            if patch_response.status_code == 200:
+                logger.info(
+                    "Successfully updated Langflow global variable",
+                    variable_name=name,
+                    variable_id=variable_id,
                 )
-
-                if patch_response.status_code == 200:
-                    logger.info(
-                        "Successfully updated Langflow global variable",
-                        variable_name=name,
-                        variable_id=variable_id,
-                    )
-                else:
-                    logger.warning(
-                        "Failed to update Langflow global variable",
-                        variable_name=name,
-                        variable_id=variable_id,
-                        status_code=patch_response.status_code,
-                        response_text=patch_response.text,
-                    )
+            else:
+                logger.warning(
+                    "Failed to update Langflow global variable",
+                    variable_name=name,
+                    variable_id=variable_id,
+                    status_code=patch_response.status_code,
+                    response_text=patch_response.text,
+                )
 
         except Exception as e:
             logger.error(
