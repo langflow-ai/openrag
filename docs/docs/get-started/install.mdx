@@ -13,44 +13,34 @@ For a fully guided installation and preview of OpenRAG's core features, try the 
 
 For guided configuration and simplified service management, install OpenRAG with services managed by the [Terminal User Interface (TUI)](/tui).
 
-The installer script detects and installs any missing dependencies, and then installs OpenRAG with [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) in the directory where you run the script.
+The installer script installs `uv`, Docker or Podman, Docker Compose, and OpenRAG.
 
-This installation method is best for running OpenRAG outside of a Python project.
+This installation method is best for testing OpenRAG by running it outside of a Python project.
 For other installation methods, see [Choose an installation method](/install-options).
 
 ## Prerequisites
 
-- All OpenRAG installations require [Python](https://www.python.org/downloads/release/python-3100/) version 3.13 or later.
+- For Microsoft Windows, you must use the Windows Subsystem for Linux (WSL).
+See [Install OpenRAG on Windows](/install-windows) before proceeding.
 
-- If you aren't using the automatic installer script, install the following:
+- Install [Python](https://www.python.org/downloads/release/python-3100/) version 3.13 or later.
 
-   - [uv](https://docs.astral.sh/uv/getting-started/installation/).
-   - [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/).
-   - [`podman-compose`](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or [Docker Compose](https://docs.docker.com/compose/install/). To use Docker Compose with Podman, you must alias Docker Compose commands to Podman commands.
-
-- To run OpenRAG on Microsoft Windows, you must use the Windows Subsystem for Linux (WSL).
-See [Install OpenRAG on Windows](/install-windows).
-
-- Prepare model providers and credentials.
-
-   During [application onboarding](#application-onboarding), you must select language model and embedding model providers.
-   If your chosen provider offers both types, you can use the same provider for both selections.
-   If your provider offers only one type, such as Anthropic, you must select two providers.
-
-   Gather the credentials and connection details for your chosen model providers before starting onboarding:
+- Gather the credentials and connection details for your preferred model providers.
 
    - OpenAI: Create an [OpenAI API key](https://platform.openai.com/api-keys).
    - Anthropic language models: Create an [Anthropic API key](https://www.anthropic.com/docs/api/reference).
    - IBM watsonx.ai: Get your watsonx.ai API endpoint, IBM project ID, and IBM API key from your watsonx deployment.
    - Ollama: Use the [Ollama documentation](https://docs.ollama.com/) to set up your Ollama instance locally, in the cloud, or on a remote server, and then get your Ollama server's base URL.
 
+   You must have access to at least one language model and one embedding model.
+   If your chosen provider offers both types, you can use the same provider for both models.
+   If your provider offers only one type, such as Anthropic, you must select two providers.
+
 - Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
 
-## Install OpenRAG {#install}
+## Run the installer script {#install}
 
-The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, then it installs and runs OpenRAG with `uvx`.
-
-1. Create a directory to store your OpenRAG configuration file, and then change to that directory:
+1. Create a directory to store your OpenRAG configuration files and data, and then change to that directory:
 
    ```bash
    mkdir openrag-workspace
@@ -71,6 +61,8 @@ The script detects and installs uv, Docker/Podman, and Docker Compose prerequisi
    ```
    :::
 
+   The installer script installs OpenRAG with [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) in the directory where you run the script.
+
 3. Wait while the installer script prepares your environment and installs OpenRAG.
 You might be prompted to install certain dependencies if they aren't already present in your environment.
 
@@ -79,9 +71,8 @@ Once the environment is ready, the OpenRAG Terminal User Interface (TUI) starts.
 
 ![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
 
-The installer script uses `uvx`, which creates a cached, ephemeral environment in your local `uv` cache.
-Running the script in a specific directory, your OpenRAG configuration files and data are stored separately from the `uv` cache.
-Clearing the cache doesn't delete your entire OpenRAG installation, only the TUI environment.
+Because the installer script uses `uvx`, it creates a cached, ephemeral environment in your local `uv` cache, and your OpenRAG configuration files and data are stored separately from the `uv` cache.
+Clearing the cache doesn't delete your entire OpenRAG installation, only the temporary TUI environment.
 After clearing the cache, run `uvx openrag` to [access the TUI](/tui) and continue with your preserved configuration and data.
 
 If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
@@ -218,6 +209,6 @@ The first time you start the OpenRAG application, you must complete application 
 
 ## Next steps
 
-* [Manage OpenRAG services](/manage-services)
-* [Chat](/chat)
-* [Upload documents](/ingestion)
+* Try some of OpenRAG's core features in the [quickstart](/quickstart#chat-with-documents).
+* Learn how to [manage OpenRAG services](/manage-services).
+* [Upload documents](/ingestion), and then use the [**Chat**](/chat) to explore your data.
