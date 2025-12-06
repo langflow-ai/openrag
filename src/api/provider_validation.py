@@ -1,10 +1,111 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
+import json
 import httpx
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _parse_json_error_message(error_text: str) -> str:
+    """Parse JSON error message and extract just the message field."""
+    try:
+        # Try to parse as JSON
+        error_data = json.loads(error_text)
+        
+        if isinstance(error_data, dict):
+            # WatsonX format: {"errors": [{"code": "...", "message": "..."}], ...}
+            if "errors" in error_data and isinstance(error_data["errors"], list):
+                errors = error_data["errors"]
+                if len(errors) > 0 and isinstance(errors[0], dict):
+                    message = errors[0].get("message", "")
+                    if message:
+                        return message
+                    code = errors[0].get("code", "")
+                    if code:
+                        return f"Error: {code}"
+            
+            # OpenAI format: {"error": {"message": "...", "type": "...", "code": "..."}}
+            if "error" in error_data:
+                error_obj = error_data["error"]
+                if isinstance(error_obj, dict):
+                    message = error_obj.get("message", "")
+                    if message:
+                        return message
+            
+            # Direct message field
+            if "message" in error_data:
+                return error_data["message"]
+            
+            # Generic format: {"detail": "..."}
+            if "detail" in error_data:
+                return error_data["detail"]
+    except (json.JSONDecodeError, ValueError, TypeError):
+        pass
+    
+    # Return original text if not JSON or can't parse
+    return error_text
+
+
+def _extract_error_details(response: httpx.Response) -> str:
+    """Extract detailed error message from API response."""
+    try:
+        # Try to parse JSON error response
+        error_data = response.json()
+        
+        # Common error response formats
+        if isinstance(error_data, dict):
+            # WatsonX format: {"errors": [{"code": "...", "message": "..."}], ...}
+            if "errors" in error_data and isinstance(error_data["errors"], list):
+                errors = error_data["errors"]
+                if len(errors) > 0 and isinstance(errors[0], dict):
+                    # Extract just the message from the first error
+                    message = errors[0].get("message", "")
+                    if message:
+                        return message
+                    # Fallback to code if no message
+                    code = errors[0].get("code", "")
+                    if code:
+                        return f"Error: {code}"
+            
+            # OpenAI format: {"error": {"message": "...", "type": "...", "code": "..."}}
+            if "error" in error_data:
+                error_obj = error_data["error"]
+                if isinstance(error_obj, dict):
+                    message = error_obj.get("message", "")
+                    error_type = error_obj.get("type", "")
+                    code = error_obj.get("code", "")
+                    if message:
+                        details = message
+                        if error_type:
+                            details += f" (type: {error_type})"
+                        if code:
+                            details += f" (code: {code})"
+                        return details
+            
+            # Anthropic format: {"error": {"message": "...", "type": "..."}}
+            if "message" in error_data:
+                return error_data["message"]
+            
+            # Generic format: {"message": "..."}
+            if "detail" in error_data:
+                return error_data["detail"]
+        
+        # If JSON parsing worked but no structured error found, try parsing text
+        response_text = response.text[:500]
+        parsed = _parse_json_error_message(response_text)
+        if parsed != response_text:
+            return parsed
+        return response_text
+        
+    except (json.JSONDecodeError, ValueError):
+        # If JSON parsing fails, try parsing the text as JSON string
+        response_text = response.text[:500] if response.text else f"HTTP {response.status_code}"
+        parsed = _parse_json_error_message(response_text)
+        if parsed != response_text:
+            return parsed
+        return response_text
 
 
 async def validate_provider_setup(
@@ -30,7 +131,7 @@ async def validate_provider_setup(
                         If False, performs lightweight validation (no credits consumed). Default: False.
 
     Raises:
-        Exception: If validation fails with message "Setup failed, please try again or select a different provider."
+        Exception: If validation fails, raises the original exception with the actual error message.
     """
     provider_lower = provider.lower()
 
@@ -70,7 +171,8 @@ async def validate_provider_setup(
 
     except Exception as e:
         logger.error(f"Validation failed for provider {provider_lower}: {str(e)}")
-        raise Exception("Setup failed, please try again or select a different provider.")
+        # Preserve the original error message instead of replacing it with a generic one
+        raise
 
 
 async def test_lightweight_health(
@@ -155,8 +257,9 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
             )
 
             if response.status_code != 200:
-                logger.error(f"OpenAI lightweight health check failed: {response.status_code}")
-                raise Exception(f"OpenAI API key validation failed: {response.status_code}")
+                error_details = _extract_error_details(response)
+                logger.error(f"OpenAI lightweight health check failed: {response.status_code} - {error_details}")
+                raise Exception(f"OpenAI API key validation failed: {error_details}")
 
             logger.info("OpenAI lightweight health check passed")
 
@@ -225,8 +328,9 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
                 )
 
             if response.status_code != 200:
-                logger.error(f"OpenAI completion test failed: {response.status_code} - {response.text}")
-                raise Exception(f"OpenAI API error: {response.status_code}")
+                error_details = _extract_error_details(response)
+                logger.error(f"OpenAI completion test failed: {response.status_code} - {error_details}")
+                raise Exception(f"OpenAI API error: {error_details}")
 
             logger.info("OpenAI completion with tool calling test passed")
 
@@ -260,8 +364,9 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
             )
 
             if response.status_code != 200:
-                logger.error(f"OpenAI embedding test failed: {response.status_code} - {response.text}")
-                raise Exception(f"OpenAI API error: {response.status_code}")
+                error_details = _extract_error_details(response)
+                logger.error(f"OpenAI embedding test failed: {response.status_code} - {error_details}")
+                raise Exception(f"OpenAI API error: {error_details}")
 
             data = response.json()
             if not data.get("data") or len(data["data"]) == 0:
@@ -300,8 +405,9 @@ async def _test_watsonx_lightweight_health(
             )
 
             if token_response.status_code != 200:
-                logger.error(f"IBM IAM token request failed: {token_response.status_code}")
-                raise Exception("Failed to authenticate with IBM Watson - invalid API key")
+                error_details = _extract_error_details(token_response)
+                logger.error(f"IBM IAM token request failed: {token_response.status_code} - {error_details}")
+                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -335,8 +441,9 @@ async def _test_watsonx_completion_with_tools(
             )
 
             if token_response.status_code != 200:
-                logger.error(f"IBM IAM token request failed: {token_response.status_code}")
-                raise Exception("Failed to authenticate with IBM Watson")
+                error_details = _extract_error_details(token_response)
+                logger.error(f"IBM IAM token request failed: {token_response.status_code} - {error_details}")
+                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -388,8 +495,11 @@ async def _test_watsonx_completion_with_tools(
             )
 
             if response.status_code != 200:
-                logger.error(f"IBM Watson completion test failed: {response.status_code} - {response.text}")
-                raise Exception(f"IBM Watson API error: {response.status_code}")
+                error_details = _extract_error_details(response)
+                logger.error(f"IBM Watson completion test failed: {response.status_code} - {error_details}")
+                # If error_details is still JSON, parse it to extract just the message
+                parsed_details = _parse_json_error_message(error_details)
+                raise Exception(f"IBM Watson API error: {parsed_details}")
 
             logger.info("IBM Watson completion with tool calling test passed")
 
@@ -398,6 +508,13 @@ async def _test_watsonx_completion_with_tools(
         raise Exception("Request timed out")
     except Exception as e:
         logger.error(f"IBM Watson completion test failed: {str(e)}")
+        # If the error message contains JSON, parse it to extract just the message
+        error_str = str(e)
+        if "IBM Watson API error: " in error_str:
+            json_part = error_str.split("IBM Watson API error: ", 1)[1]
+            parsed_message = _parse_json_error_message(json_part)
+            if parsed_message != json_part:
+                raise Exception(f"IBM Watson API error: {parsed_message}")
         raise
 
 
@@ -419,8 +536,9 @@ async def _test_watsonx_embedding(
             )
 
             if token_response.status_code != 200:
-                logger.error(f"IBM IAM token request failed: {token_response.status_code}")
-                raise Exception("Failed to authenticate with IBM Watson")
+                error_details = _extract_error_details(token_response)
+                logger.error(f"IBM IAM token request failed: {token_response.status_code} - {error_details}")
+                raise Exception(f"Failed to authenticate with IBM Watson: {error_details}")
 
             bearer_token = token_response.json().get("access_token")
             if not bearer_token:
@@ -450,8 +568,11 @@ async def _test_watsonx_embedding(
             )
 
             if response.status_code != 200:
-                logger.error(f"IBM Watson embedding test failed: {response.status_code} - {response.text}")
-                raise Exception(f"IBM Watson API error: {response.status_code}")
+                error_details = _extract_error_details(response)
+                logger.error(f"IBM Watson embedding test failed: {response.status_code} - {error_details}")
+                # If error_details is still JSON, parse it to extract just the message
+                parsed_details = _parse_json_error_message(error_details)
+                raise Exception(f"IBM Watson API error: {parsed_details}")
 
             data = response.json()
             if not data.get("results") or len(data["results"]) == 0:
@@ -464,6 +585,13 @@ async def _test_watsonx_embedding(
         raise Exception("Request timed out")
     except Exception as e:
         logger.error(f"IBM Watson embedding test failed: {str(e)}")
+        # If the error message contains JSON, parse it to extract just the message
+        error_str = str(e)
+        if "IBM Watson API error: " in error_str:
+            json_part = error_str.split("IBM Watson API error: ", 1)[1]
+            parsed_message = _parse_json_error_message(json_part)
+            if parsed_message != json_part:
+                raise Exception(f"IBM Watson API error: {parsed_message}")
         raise
 
 
@@ -483,8 +611,9 @@ async def _test_ollama_lightweight_health(endpoint: str) -> None:
             )
 
             if response.status_code != 200:
-                logger.error(f"Ollama lightweight health check failed: {response.status_code}")
-                raise Exception(f"Ollama endpoint not responding: {response.status_code}")
+                error_details = _extract_error_details(response)
+                logger.error(f"Ollama lightweight health check failed: {response.status_code} - {error_details}")
+                raise Exception(f"Ollama endpoint not responding: {error_details}")
 
             logger.info("Ollama lightweight health check passed")
 
@@ -537,8 +666,9 @@ async def _test_ollama_completion_with_tools(llm_model: str, endpoint: str) -> N
             )
 
             if response.status_code != 200:
-                logger.error(f"Ollama completion test failed: {response.status_code} - {response.text}")
-                raise Exception(f"Ollama API error: {response.status_code}")
+                error_details = _extract_error_details(response)
+                logger.error(f"Ollama completion test failed: {response.status_code} - {error_details}")
+                raise Exception(f"Ollama API error: {error_details}")
 
             logger.info("Ollama completion with tool calling test passed")
 
@@ -569,8 +699,9 @@ async def _test_ollama_embedding(embedding_model: str, endpoint: str) -> None:
             )
 
             if response.status_code != 200:
-                logger.error(f"Ollama embedding test failed: {response.status_code} - {response.text}")
-                raise Exception(f"Ollama API error: {response.status_code}")
+                error_details = _extract_error_details(response)
+                logger.error(f"Ollama embedding test failed: {response.status_code} - {error_details}")
+                raise Exception(f"Ollama API error: {error_details}")
 
             data = response.json()
             if not data.get("embedding"):
@@ -616,8 +747,9 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
             )
 
             if response.status_code != 200:
-                logger.error(f"Anthropic lightweight health check failed: {response.status_code}")
-                raise Exception(f"Anthropic API key validation failed: {response.status_code}")
+                error_details = _extract_error_details(response)
+                logger.error(f"Anthropic lightweight health check failed: {response.status_code} - {error_details}")
+                raise Exception(f"Anthropic API key validation failed: {error_details}")
 
             logger.info("Anthropic lightweight health check passed")
 
@@ -672,8 +804,9 @@ async def _test_anthropic_completion_with_tools(api_key: str, llm_model: str) ->
             )
 
             if response.status_code != 200:
-                logger.error(f"Anthropic completion test failed: {response.status_code} - {response.text}")
-                raise Exception(f"Anthropic API error: {response.status_code}")
+                error_details = _extract_error_details(response)
+                logger.error(f"Anthropic completion test failed: {response.status_code} - {error_details}")
+                raise Exception(f"Anthropic API error: {error_details}")
 
             logger.info("Anthropic completion with tool calling test passed")
 

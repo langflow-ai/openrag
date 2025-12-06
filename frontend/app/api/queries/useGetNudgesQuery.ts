@@ -3,6 +3,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useChat } from "@/contexts/chat-context";
+import { useProviderHealthQuery } from "./useProviderHealthQuery";
 
 type Nudge = string;
 
@@ -27,6 +29,13 @@ export const useGetNudgesQuery = (
 ) => {
   const { chatId, filters, limit, scoreThreshold } = params ?? {};
   const queryClient = useQueryClient();
+  const { isOnboardingComplete } = useChat();
+  
+  // Check if LLM provider is healthy
+  // If health data is not available yet, assume healthy (optimistic)
+  // Only disable if health data exists and shows LLM error
+  const { data: health } = useProviderHealthQuery();
+  const isLLMHealthy = health === undefined || (health?.status === "healthy" && !health?.llm_error);
 
   function cancel() {
     queryClient.removeQueries({
@@ -77,6 +86,11 @@ export const useGetNudgesQuery = (
     }
   }
 
+  // Extract enabled from options and combine with onboarding completion and LLM health checks
+  // Query is only enabled if onboarding is complete AND LLM provider is healthy AND the caller's enabled condition is met
+  const callerEnabled = options?.enabled ?? true;
+  const enabled = isOnboardingComplete && isLLMHealthy && callerEnabled;
+
   const queryResult = useQuery(
     {
       queryKey: ["nudges", chatId, filters, limit, scoreThreshold],
@@ -91,6 +105,7 @@ export const useGetNudgesQuery = (
         return Array.isArray(data) && data.length === 0 ? 5000 : false;
       },
       ...options,
+      enabled, // Override enabled after spreading options to ensure onboarding check is applied
     },
     queryClient,
   );

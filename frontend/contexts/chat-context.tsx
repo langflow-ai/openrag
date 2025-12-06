@@ -10,6 +10,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { ONBOARDING_STEP_KEY } from "@/lib/constants";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 
 export type EndpointType = "chat" | "langflow";
 
@@ -81,6 +83,8 @@ interface ChatContextType {
   setConversationFilter: (filter: KnowledgeFilter | null, responseId?: string | null) => void;
   hasChatError: boolean;
   setChatError: (hasError: boolean) => void;
+  isOnboardingComplete: boolean;
+  setOnboardingComplete: (complete: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -111,6 +115,46 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [conversationFilter, setConversationFilterState] =
     useState<KnowledgeFilter | null>(null);
   const [hasChatError, setChatError] = useState(false);
+  
+  // Get settings to check if onboarding was completed (settings.edited)
+  const { data: settings } = useGetSettingsQuery();
+  
+  // Check if onboarding is complete
+  // Onboarding is complete if:
+  // 1. settings.edited is true (backend confirms onboarding was completed)
+  // 2. AND onboarding step key is null (local onboarding flow is done)
+  const [isOnboardingComplete, setIsOnboardingComplete] = useState(() => {
+    if (typeof window === "undefined") return false;
+    // Default to false if settings not loaded yet
+    return false;
+  });
+
+  // Sync onboarding completion state with settings.edited and localStorage
+  useEffect(() => {
+    const checkOnboarding = () => {
+      if (typeof window !== "undefined") {
+        // Onboarding is complete if settings.edited is true AND step key is null
+        const stepKeyExists = localStorage.getItem(ONBOARDING_STEP_KEY) !== null;
+        const isEdited = settings?.edited === true;
+        // Complete if edited is true and step key doesn't exist (onboarding flow finished)
+        setIsOnboardingComplete(isEdited && !stepKeyExists);
+      }
+    };
+
+    // Check on mount and when settings change
+    checkOnboarding();
+
+    // Listen for storage events (for cross-tab sync)
+    window.addEventListener("storage", checkOnboarding);
+
+    return () => {
+      window.removeEventListener("storage", checkOnboarding);
+    };
+  }, [settings?.edited]);
+
+  const setOnboardingComplete = useCallback((complete: boolean) => {
+    setIsOnboardingComplete(complete);
+  }, []);
 
   // Listen for ingestion failures and set chat error flag
   useEffect(() => {
@@ -228,6 +272,10 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const startNewConversation = useCallback(async () => {
     console.log("[CONVERSATION] Starting new conversation");
 
+    // Check if there's existing conversation data - if so, this is a manual "new conversation" action
+    // Check state values before clearing them
+    const hasExistingConversation = conversationData !== null || placeholderConversation !== null;
+    
     // Clear current conversation data and reset state
     setCurrentConversationId(null);
     setPreviousResponseIds({ chat: null, langflow: null });
@@ -261,15 +309,22 @@ export function ChatProvider({ children }: ChatProviderProps) {
           setConversationFilterState(null);
         }
       } else {
-        console.log("[CONVERSATION] No default filter set");
-        setConversationFilterState(null);
+        // No default filter in localStorage
+        if (hasExistingConversation) {
+          // User is manually starting a new conversation - clear the filter
+          console.log("[CONVERSATION] Manual new conversation - clearing filter");
+          setConversationFilterState(null);
+        } else {
+          // First time after onboarding - preserve existing filter if set
+          // This prevents clearing the filter when startNewConversation is called multiple times during onboarding
+          console.log("[CONVERSATION] No default filter set, preserving existing filter if any");
+          // Don't clear the filter - it may have been set by storeDefaultFilterForNewConversations
+        }
       }
-    } else {
-      setConversationFilterState(null);
     }
 
     // Create a temporary placeholder conversation to show in sidebar
-    const placeholderConversation: ConversationData = {
+    const newPlaceholderConversation: ConversationData = {
       response_id: "new-conversation-" + Date.now(),
       title: "New conversation",
       endpoint: endpoint,
@@ -284,10 +339,10 @@ export function ChatProvider({ children }: ChatProviderProps) {
       last_activity: new Date().toISOString(),
     };
 
-    setPlaceholderConversation(placeholderConversation);
+    setPlaceholderConversation(newPlaceholderConversation);
     // Force immediate refresh to ensure sidebar shows correct state
     refreshConversations(true);
-  }, [endpoint, refreshConversations]);
+  }, [endpoint, refreshConversations, conversationData, placeholderConversation]);
 
   const addConversationDoc = useCallback((filename: string) => {
     setConversationDocs((prev) => [
@@ -375,6 +430,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       setConversationFilter,
       hasChatError,
       setChatError,
+      isOnboardingComplete,
+      setOnboardingComplete,
     }),
     [
       endpoint,
@@ -396,6 +453,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
       conversationFilter,
       setConversationFilter,
       hasChatError,
+      isOnboardingComplete,
+      setOnboardingComplete,
     ],
   );
 

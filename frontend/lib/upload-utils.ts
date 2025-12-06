@@ -12,6 +12,7 @@ export interface UploadFileResult {
   raw: unknown;
   createFilter?: boolean;
   filename?: string;
+  taskId?: string;
 }
 
 export async function duplicateCheck(
@@ -158,6 +159,7 @@ export async function uploadFile(
       (uploadIngestJson as { upload?: { id?: string } }).upload?.id ||
       (uploadIngestJson as { id?: string }).id ||
       (uploadIngestJson as { task_id?: string }).task_id;
+    const taskId = (uploadIngestJson as { task_id?: string }).task_id;
     const filePath =
       (uploadIngestJson as { upload?: { path?: string } }).upload?.path ||
       (uploadIngestJson as { path?: string }).path ||
@@ -197,6 +199,7 @@ export async function uploadFile(
       raw: uploadIngestJson,
       createFilter: shouldCreateFilter,
       filename,
+      taskId,
     };
 
     return result;
