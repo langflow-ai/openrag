@@ -15,6 +15,7 @@ import {
 } from "@/components/provider-health-banner";
 import { TaskNotificationMenu } from "@/components/task-notification-menu";
 import { useAuth } from "@/contexts/auth-context";
+import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { isMenuOpen } = useTask();
   const { isPanelOpen } = useKnowledgeFilter();
   const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
+  const { isOnboardingComplete } = useChat();
 
   // List of paths that should not show navigation
   const authPaths = ["/login", "/auth/callback"];
@@ -91,17 +93,17 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             isOpen={isDoclingUnhealthy}
             className="w-full"
           >
-            <DoclingHealthBanner />
+          <DoclingHealthBanner />
+        </AnimatedConditional>
+        {settings?.edited && isOnboardingComplete && (
+          <AnimatedConditional
+            vertical
+            isOpen={isProviderUnhealthy}
+            className="w-full"
+          >
+            <ProviderHealthBanner />
           </AnimatedConditional>
-          {settings?.edited && (
-            <AnimatedConditional
-              vertical
-              isOpen={isProviderUnhealthy}
-              className="w-full"
-            >
-              <ProviderHealthBanner />
-            </AnimatedConditional>
-          )}
+        )}
         </div>
 
         <ChatRenderer settings={settings}>{children}</ChatRenderer>
