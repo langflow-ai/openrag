@@ -135,6 +135,7 @@ async def async_response_stream(
 
         full_response = ""
         chunk_count = 0
+        detected_tool_call = False  # Track if we've detected a tool call
         async for chunk in response:
             chunk_count += 1
             logger.debug(
@@ -158,6 +159,17 @@ async def async_response_stream(
                 else:
                     delta_text = str(chunk.delta)
                 full_response += delta_text
+            
+            # Enhanced logging for tool call detection (Granite 3.3 8b investigation)
+            chunk_attrs = dir(chunk) if hasattr(chunk, '__dict__') else []
+            tool_related_attrs = [attr for attr in chunk_attrs if 'tool' in attr.lower() or 'call' in attr.lower() or 'retrieval' in attr.lower()]
+            if tool_related_attrs:
+                logger.info(
+                    "Tool-related attributes found in chunk",
+                    chunk_count=chunk_count,
+                    attributes=tool_related_attrs,
+                    chunk_type=type(chunk).__name__
+                )
 
             # Send the raw event as JSON followed by newline for easy parsing
             try:
@@ -169,7 +181,57 @@ async def async_response_stream(
                     chunk_data = chunk.__dict__
                 else:
                     chunk_data = str(chunk)
+                
+                # Log detailed chunk structure for investigation (especially for Granite 3.3 8b)
+                if isinstance(chunk_data, dict):
+                    # Check for any fields that might indicate tool usage
+                    potential_tool_fields = {
+                        k: v for k, v in chunk_data.items() 
+                        if any(keyword in str(k).lower() for keyword in ['tool', 'call', 'retrieval', 'function', 'result', 'output'])
+                    }
+                    if potential_tool_fields:
+                        logger.info(
+                            "Potential tool-related fields in chunk",
+                            chunk_count=chunk_count,
+                            fields=list(potential_tool_fields.keys()),
+                            sample_data=str(potential_tool_fields)[:500]
+                        )
 
+                # Middleware: Detect implicit tool calls and inject standardized events
+                # This helps Granite 3.3 8b and other models that don't emit standard markers
+                if isinstance(chunk_data, dict) and not detected_tool_call:
+                    # Check if this chunk contains retrieval results
+                    has_results = any([
+                        'results' in chunk_data and isinstance(chunk_data.get('results'), list),
+                        'outputs' in chunk_data and isinstance(chunk_data.get('outputs'), list),
+                        'retrieved_documents' in chunk_data,
+                        'retrieval_results' in chunk_data,
+                    ])
+                    
+                    if has_results:
+                        logger.info(
+                            "Detected implicit tool call in backend, injecting synthetic event",
+                            chunk_fields=list(chunk_data.keys())
+                        )
+                        # Inject a synthetic tool call event before this chunk
+                        synthetic_event = {
+                            "type": "response.output_item.done",
+                            "item": {
+                                "type": "retrieval_call",
+                                "id": f"synthetic_{chunk_count}",
+                                "name": "Retrieval",
+                                "tool_name": "Retrieval",
+                                "status": "completed",
+                                "inputs": {"implicit": True, "backend_detected": True},
+                                "results": chunk_data.get('results') or chunk_data.get('outputs') or 
+                                         chunk_data.get('retrieved_documents') or 
+                                         chunk_data.get('retrieval_results') or []
+                            }
+                        }
+                        # Send the synthetic event first
+                        yield (json.dumps(synthetic_event, default=str) + "\n").encode("utf-8")
+                        detected_tool_call = True  # Mark that we've injected a tool call
+                
                 yield (json.dumps(chunk_data, default=str) + "\n").encode("utf-8")
             except Exception as e:
                 # Fallback to string representation
