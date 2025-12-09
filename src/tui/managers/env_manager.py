@@ -63,11 +63,11 @@ class EnvConfig:
     disable_ingest_with_langflow: str = "False"
     nudges_flow_id: str = "ebc01d31-1976-46ce-a385-b0240327226c"
 
-    # Document paths (comma-separated)
-    openrag_documents_paths: str = "./openrag-documents"
+    # Document paths (comma-separated) - use centralized location by default
+    openrag_documents_paths: str = "~/.openrag/documents/openrag-documents"
 
-    # OpenSearch data path
-    opensearch_data_path: str = "./opensearch-data"
+    # OpenSearch data path - use centralized location by default
+    opensearch_data_path: str = "~/.openrag/data/opensearch-data"
     
     # Container version (linked to TUI version)
     openrag_version: str = ""
@@ -80,7 +80,28 @@ class EnvManager:
     """Manages environment configuration for OpenRAG."""
 
     def __init__(self, env_file: Optional[Path] = None):
-        self.env_file = env_file or Path(".env")
+        if env_file:
+            self.env_file = env_file
+        else:
+            # Use centralized location for TUI .env file
+            from utils.paths import get_tui_env_file, get_legacy_paths
+            self.env_file = get_tui_env_file()
+            
+            # Check for legacy .env in current directory and migrate if needed
+            legacy_env = get_legacy_paths()["tui_env"]
+            if not self.env_file.exists() and legacy_env.exists():
+                try:
+                    import shutil
+                    self.env_file.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(legacy_env, self.env_file)
+                    from utils.logging_config import get_logger
+                    logger = get_logger(__name__)
+                    logger.info(f"Migrated .env from {legacy_env} to {self.env_file}")
+                except Exception as e:
+                    from utils.logging_config import get_logger
+                    logger = get_logger(__name__)
+                    logger.warning(f"Failed to migrate .env file: {e}")
+        
         self.config = EnvConfig()
 
     def generate_secure_password(self) -> str:

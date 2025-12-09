@@ -1,11 +1,13 @@
 """Configuration management for OpenRAG."""
 
 import os
+import shutil
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, asdict
 from utils.logging_config import get_logger
+from utils.paths import get_config_file, get_legacy_paths
 
 logger = get_logger(__name__)
 
@@ -130,10 +132,40 @@ class ConfigManager:
         """Initialize configuration manager.
 
         Args:
-            config_file: Path to configuration file. Defaults to 'config.yaml' in project root.
+            config_file: Path to configuration file. Defaults to centralized location.
         """
-        self.config_file = Path(config_file) if config_file else Path("config/config.yaml")
+        if config_file:
+            self.config_file = Path(config_file)
+        else:
+            # Use centralized location
+            self.config_file = get_config_file()
+            
+            # Check for legacy location and migrate if needed
+            legacy_config = get_legacy_paths()["config"]
+            if not self.config_file.exists() and legacy_config.exists():
+                self._migrate_from_legacy(legacy_config)
+        
         self._config: Optional[OpenRAGConfig] = None
+    
+    def _migrate_from_legacy(self, legacy_config_path: Path) -> None:
+        """Migrate configuration from legacy location to centralized location.
+        
+        Args:
+            legacy_config_path: Path to legacy config file
+        """
+        try:
+            logger.info(
+                f"Migrating configuration from {legacy_config_path} to {self.config_file}"
+            )
+            # Ensure parent directory exists
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            # Copy the config file
+            shutil.copy2(legacy_config_path, self.config_file)
+            logger.info("Configuration migration completed successfully")
+        except Exception as e:
+            logger.warning(
+                f"Failed to migrate configuration from {legacy_config_path}: {e}"
+            )
 
     def load_config(self) -> OpenRAGConfig:
         """Load configuration from environment variables and config file.

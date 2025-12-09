@@ -51,18 +51,29 @@ class SessionManager:
     def __init__(
         self,
         secret_key: str = None,
-        private_key_path: str = "keys/private_key.pem",
-        public_key_path: str = "keys/public_key.pem",
+        private_key_path: str = None,
+        public_key_path: str = None,
     ):
+        from utils.paths import get_private_key_path, get_public_key_path
+        
         self.secret_key = secret_key  # Keep for backward compatibility
         self.users: Dict[str, User] = {}  # user_id -> User
         self.user_opensearch_clients: Dict[
             str, Any
         ] = {}  # user_id -> OpenSearch client
 
+        # Use centralized key paths if not explicitly provided
+        if private_key_path is None:
+            self.private_key_path = str(get_private_key_path())
+        else:
+            self.private_key_path = private_key_path
+            
+        if public_key_path is None:
+            self.public_key_path = str(get_public_key_path())
+        else:
+            self.public_key_path = public_key_path
+        
         # Load RSA keys
-        self.private_key_path = private_key_path
-        self.public_key_path = public_key_path
         self._load_rsa_keys()
 
     def _load_rsa_keys(self):

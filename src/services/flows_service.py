@@ -40,17 +40,13 @@ class FlowsService:
 
     def _get_flows_directory(self):
         """Get the flows directory path"""
-        current_file_dir = os.path.dirname(os.path.abspath(__file__))  # src/services/
-        src_dir = os.path.dirname(current_file_dir)  # src/
-        project_root = os.path.dirname(src_dir)  # project root
-        return os.path.join(project_root, "flows")
+        from utils.paths import get_flows_dir
+        return str(get_flows_dir())
 
     def _get_backup_directory(self):
         """Get the backup directory path"""
-        flows_dir = self._get_flows_directory()
-        backup_dir = os.path.join(flows_dir, "backup")
-        os.makedirs(backup_dir, exist_ok=True)
-        return backup_dir
+        from utils.paths import get_flows_backup_dir
+        return str(get_flows_backup_dir())
 
     def _get_latest_backup_path(self, flow_id: str, flow_type: str):
         """

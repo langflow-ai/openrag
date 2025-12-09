@@ -454,8 +454,9 @@ def _copy_assets(resource_tree, destination: Path, allowed_suffixes: Optional[It
 
 
 def copy_sample_documents(*, force: bool = False) -> None:
-    """Copy sample documents from package to current directory if they don't exist."""
-    documents_dir = Path("openrag-documents")
+    """Copy sample documents from package to centralized directory if they don't exist."""
+    from utils.paths import get_documents_dir
+    documents_dir = get_documents_dir()
 
     try:
         assets_files = files("tui._assets.openrag-documents")
@@ -466,8 +467,9 @@ def copy_sample_documents(*, force: bool = False) -> None:
 
 
 def copy_sample_flows(*, force: bool = False) -> None:
-    """Copy sample flows from package to current directory if they don't exist."""
-    flows_dir = Path("flows")
+    """Copy sample flows from package to centralized directory if they don't exist."""
+    from utils.paths import get_flows_dir
+    flows_dir = get_flows_dir()
 
     try:
         assets_files = files("tui._assets.flows")
@@ -478,7 +480,9 @@ def copy_sample_flows(*, force: bool = False) -> None:
 
 
 def copy_compose_files(*, force: bool = False) -> None:
-    """Copy docker-compose templates into the workspace if they are missing."""
+    """Copy docker-compose templates into the TUI workspace if they are missing."""
+    from utils.paths import get_tui_compose_file
+    
     try:
         assets_root = files("tui._assets")
     except Exception as e:
@@ -486,7 +490,9 @@ def copy_compose_files(*, force: bool = False) -> None:
         return
 
     for filename in ("docker-compose.yml", "docker-compose.gpu.yml"):
-        destination = Path(filename)
+        is_gpu = "gpu" in filename
+        destination = get_tui_compose_file(gpu=is_gpu)
+        
         if destination.exists() and not force:
             continue
 
@@ -505,7 +511,7 @@ def copy_compose_files(*, force: bool = False) -> None:
                     logger.debug(f"Failed to read existing compose file {destination}: {read_error}")
 
             destination.write_bytes(resource_bytes)
-            logger.info(f"Copied docker-compose template: {filename}")
+            logger.info(f"Copied docker-compose template to {destination}")
         except Exception as error:
             logger.debug(f"Could not copy compose file {filename}: {error}")
 
