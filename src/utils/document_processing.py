@@ -119,6 +119,82 @@ def get_worker_converter():
     return _worker_converter
 
 
+def process_text_file(file_path: str) -> dict:
+    """
+    Process a plain text file without using docling.
+    Returns the same structure as extract_relevant() for consistency.
+    
+    Args:
+        file_path: Path to the .txt file
+        
+    Returns:
+        dict with keys: id, filename, mimetype, chunks
+    """
+    import os
+    from utils.hash_utils import hash_id
+    
+    # Read the file
+    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+        content = f.read()
+    
+    # Compute hash
+    file_hash = hash_id(file_path)
+    filename = os.path.basename(file_path)
+    
+    # Split content into chunks of ~1000 characters to match typical docling chunk sizes
+    # This ensures embeddings stay within reasonable token limits
+    chunk_size = 1000
+    chunks = []
+    
+    # Split by paragraphs first (double newline)
+    paragraphs = content.split('\n\n')
+    current_chunk = ""
+    chunk_index = 0
+    
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+            
+        # If adding this paragraph would exceed chunk size, save current chunk
+        if len(current_chunk) + len(para) + 2 > chunk_size and current_chunk:
+            chunks.append({
+                "page": chunk_index + 1,  # Use chunk_index + 1 as "page" number
+                "type": "text",
+                "text": current_chunk.strip()
+            })
+            chunk_index += 1
+            current_chunk = para
+        else:
+            if current_chunk:
+                current_chunk += "\n\n" + para
+            else:
+                current_chunk = para
+    
+    # Add the last chunk if any
+    if current_chunk.strip():
+        chunks.append({
+            "page": chunk_index + 1,
+            "type": "text",
+            "text": current_chunk.strip()
+        })
+    
+    # If no chunks were created (empty file), create a single empty chunk
+    if not chunks:
+        chunks.append({
+            "page": 1,
+            "type": "text",
+            "text": ""
+        })
+    
+    return {
+        "id": file_hash,
+        "filename": filename,
+        "mimetype": "text/plain",
+        "chunks": chunks,
+    }
+
+
 def extract_relevant(doc_dict: dict) -> dict:
     """
     Given the full export_to_dict() result:
