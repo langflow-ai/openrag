@@ -107,7 +107,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         "  {"
         "    \"size\": 100,"
         "    \"query\": {"
-        "        \"term\": {\"filename\": \"AmericanAirlines-2017_4.md\"}"
+        "        \"term\": {\"filename\": \"my_doc.md\"}"
         "    }"
         "    \"_source\": [\"filename\", \"text\", \"page\"]"
         " }"
