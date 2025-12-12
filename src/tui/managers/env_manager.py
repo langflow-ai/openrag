@@ -67,7 +67,11 @@ class EnvConfig:
     # Document paths (comma-separated) - use centralized location by default
     openrag_documents_paths: str = "$HOME/.openrag/documents/openrag-documents"
 
-    # OpenSearch data path - use centralized location by default
+    # Volume mount paths - use centralized location by default
+    openrag_documents_path: str = "$HOME/.openrag/documents/openrag-documents"  # Primary documents path for compose
+    openrag_keys_path: str = "$HOME/.openrag/keys"
+    openrag_flows_path: str = "$HOME/.openrag/flows"
+    openrag_config_path: str = "$HOME/.openrag/config"
     opensearch_data_path: str = "$HOME/.openrag/data/opensearch-data"
     
     # Container version (linked to TUI version)
@@ -174,6 +178,10 @@ class EnvManager:
             "AWS_SECRET_ACCESS_KEY": "aws_secret_access_key",  # pragma: allowlist secret
             "LANGFLOW_PUBLIC_URL": "langflow_public_url",
             "OPENRAG_DOCUMENTS_PATHS": "openrag_documents_paths",
+            "OPENRAG_DOCUMENTS_PATH": "openrag_documents_path",
+            "OPENRAG_KEYS_PATH": "openrag_keys_path",
+            "OPENRAG_FLOWS_PATH": "openrag_flows_path",
+            "OPENRAG_CONFIG_PATH": "openrag_config_path",
             "OPENSEARCH_DATA_PATH": "opensearch_data_path",
             "LANGFLOW_AUTO_LOGIN": "langflow_auto_login",
             "LANGFLOW_NEW_USER_IS_ACTIVE": "langflow_new_user_is_active",
@@ -369,6 +377,22 @@ class EnvManager:
                 f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
                 f.write(
                     f"OPENRAG_DOCUMENTS_PATHS={self._quote_env_value(self.config.openrag_documents_paths)}\n"
+                )
+                f.write("\n")
+                
+                # Volume mount paths for Docker Compose
+                f.write("# Volume mount paths for Docker Compose\n")
+                f.write(
+                    f"OPENRAG_DOCUMENTS_PATH={self._quote_env_value(self.config.openrag_documents_path)}\n"
+                )
+                f.write(
+                    f"OPENRAG_KEYS_PATH={self._quote_env_value(self.config.openrag_keys_path)}\n"
+                )
+                f.write(
+                    f"OPENRAG_FLOWS_PATH={self._quote_env_value(self.config.openrag_flows_path)}\n"
+                )
+                f.write(
+                    f"OPENRAG_CONFIG_PATH={self._quote_env_value(self.config.openrag_config_path)}\n"
                 )
                 f.write(
                     f"OPENSEARCH_DATA_PATH={self._quote_env_value(self.config.opensearch_data_path)}\n"

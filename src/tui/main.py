@@ -541,6 +541,69 @@ def copy_compose_files(*, force: bool = False) -> None:
             logger.debug(f"Could not copy compose file {filename}: {error}")
 
 
+def migrate_legacy_data_directories():
+    """Migrate data from CWD-based directories to ~/.openrag/.
+    
+    This is a one-time migration for users upgrading from the old layout.
+    Migrates: documents, flows, keys, config, opensearch-data
+    """
+    from pathlib import Path
+    import shutil
+    
+    cwd = Path.cwd()
+    target_base = Path.home() / ".openrag"
+    
+    # Define migration mappings: (source_path, target_path, description)
+    migrations = [
+        (cwd / "openrag-documents", target_base / "documents" / "openrag-documents", "documents"),
+        (cwd / "flows", target_base / "flows", "flows"),
+        (cwd / "keys", target_base / "keys", "keys"),
+        (cwd / "config", target_base / "config", "config"),
+        (cwd / "opensearch-data", target_base / "data" / "opensearch-data", "OpenSearch data"),
+    ]
+    
+    migrated_any = False
+    for source, target, description in migrations:
+        if not source.exists():
+            continue
+        
+        # If target exists, merge; otherwise move
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            
+            if target.exists():
+                # Target exists - merge contents
+                logger.info(f"Merging {description} from {source} to {target}")
+                if source.is_dir():
+                    for item in source.iterdir():
+                        src_item = source / item.name
+                        dst_item = target / item.name
+                        
+                        if not dst_item.exists():
+                            if src_item.is_dir():
+                                shutil.copytree(src_item, dst_item)
+                            else:
+                                shutil.copy2(src_item, dst_item)
+                            logger.debug(f"Copied {src_item} to {dst_item}")
+                else:
+                    if not target.exists():
+                        shutil.copy2(source, target)
+                        logger.debug(f"Copied {source} to {target}")
+            else:
+                # Target doesn't exist - move entire directory/file
+                logger.info(f"Migrating {description} from {source} to {target}")
+                shutil.move(str(source), str(target))
+            
+            migrated_any = True
+        except Exception as e:
+            logger.warning(f"Failed to migrate {description}: {e}")
+    
+    if migrated_any:
+        logger.info("Data migration completed. Old directories can be safely deleted from CWD.")
+    
+    return migrated_any
+
+
 def setup_host_directories():
     """Initialize OpenRAG directory structure on the host.
     
@@ -583,6 +646,9 @@ def run_tui():
 
     app = None
     try:
+        # Migrate legacy data directories from CWD to ~/.openrag/
+        migrate_legacy_data_directories()
+        
         # Initialize host directory structure
         setup_host_directories()
         
