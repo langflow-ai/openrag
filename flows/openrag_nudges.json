@@ -4114,7 +4114,7 @@
   "is_component": false,
   "locked": true,
   "last_tested_version": "1.7.0.dev21",
-  "name": "OpenRAG OpenSearch Nudges",
+  "name": "OpenRAG OpenSearch Nudges Flow",
   "tags": [
     "assistants",
     "agents"

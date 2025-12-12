@@ -123,28 +123,29 @@ class EnvManager:
         import os
         
         # Map env vars to config attributes
-        attr_map = {
-            "OPENAI_API_KEY": "openai_api_key",
-            "ANTHROPIC_API_KEY": "anthropic_api_key",
+        # These are environment variable names, not actual secrets
+        attr_map = {  # pragma: allowlist secret
+            "OPENAI_API_KEY": "openai_api_key",  # pragma: allowlist secret
+            "ANTHROPIC_API_KEY": "anthropic_api_key",  # pragma: allowlist secret
             "OLLAMA_ENDPOINT": "ollama_endpoint",
-            "WATSONX_API_KEY": "watsonx_api_key",
+            "WATSONX_API_KEY": "watsonx_api_key",  # pragma: allowlist secret
             "WATSONX_ENDPOINT": "watsonx_endpoint",
             "WATSONX_PROJECT_ID": "watsonx_project_id",
-            "OPENSEARCH_PASSWORD": "opensearch_password",
-            "LANGFLOW_SECRET_KEY": "langflow_secret_key",
+            "OPENSEARCH_PASSWORD": "opensearch_password",  # pragma: allowlist secret
+            "LANGFLOW_SECRET_KEY": "langflow_secret_key",  # pragma: allowlist secret
             "LANGFLOW_SUPERUSER": "langflow_superuser",
-            "LANGFLOW_SUPERUSER_PASSWORD": "langflow_superuser_password",
+            "LANGFLOW_SUPERUSER_PASSWORD": "langflow_superuser_password",  # pragma: allowlist secret
             "LANGFLOW_CHAT_FLOW_ID": "langflow_chat_flow_id",
             "LANGFLOW_INGEST_FLOW_ID": "langflow_ingest_flow_id",
             "LANGFLOW_URL_INGEST_FLOW_ID": "langflow_url_ingest_flow_id",
             "NUDGES_FLOW_ID": "nudges_flow_id",
             "GOOGLE_OAUTH_CLIENT_ID": "google_oauth_client_id",
-            "GOOGLE_OAUTH_CLIENT_SECRET": "google_oauth_client_secret",
+            "GOOGLE_OAUTH_CLIENT_SECRET": "google_oauth_client_secret",  # pragma: allowlist secret
             "MICROSOFT_GRAPH_OAUTH_CLIENT_ID": "microsoft_graph_oauth_client_id",
-            "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET": "microsoft_graph_oauth_client_secret",
+            "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET": "microsoft_graph_oauth_client_secret",  # pragma: allowlist secret
             "WEBHOOK_BASE_URL": "webhook_base_url",
             "AWS_ACCESS_KEY_ID": "aws_access_key_id",
-            "AWS_SECRET_ACCESS_KEY": "aws_secret_access_key",
+            "AWS_SECRET_ACCESS_KEY": "aws_secret_access_key",  # pragma: allowlist secret
             "LANGFLOW_PUBLIC_URL": "langflow_public_url",
             "OPENRAG_DOCUMENTS_PATHS": "openrag_documents_paths",
             "OPENSEARCH_DATA_PATH": "opensearch_data_path",
