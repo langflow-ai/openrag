@@ -265,8 +265,7 @@ def generate_jwt_keys():
         except Exception as e:
             logger.warning(f"Failed to migrate JWT keys: {e}")
     
-    # Ensure keys directory exists (already done by get_keys_dir, but keeping for clarity)
-    keys_dir.mkdir(parents=True, exist_ok=True)
+    # Ensure keys directory exists (already done by get_keys_dir)
 
     # Generate keys if they don't exist
     if not private_key_path.exists():
