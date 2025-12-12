@@ -180,6 +180,22 @@ class LangflowFileService:
                 body=resp.text[:1000],
             )
         resp.raise_for_status()
+        
+        # Check if response is actually JSON before parsing
+        content_type = resp.headers.get("content-type", "")
+        if "application/json" not in content_type:
+            logger.error(
+                "[LF] Unexpected response content type from Langflow",
+                content_type=content_type,
+                status_code=resp.status_code,
+                body=resp.text[:1000],
+            )
+            raise ValueError(
+                f"Langflow returned {content_type} instead of JSON. "
+                f"This may indicate the ingestion flow failed or the endpoint is incorrect. "
+                f"Response preview: {resp.text[:500]}"
+            )
+        
         try:
             resp_json = resp.json()
         except Exception as e:

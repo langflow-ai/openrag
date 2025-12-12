@@ -667,7 +667,7 @@
             ],
             "frozen": false,
             "icon": "braces",
-            "last_updated": "2025-12-03T21:41:00.148Z",
+            "last_updated": "2025-12-12T20:12:18.129Z",
             "legacy": false,
             "lf_version": "1.7.0.dev21",
             "metadata": {},
@@ -717,7 +717,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "79455c62-cdb1-4f14-bf44-8e76acc020a6"
+                "value": "75fd27c1-8f4b-46a1-88bb-a8a8e72719e3"
               },
               "_type": "Component",
               "code": {
@@ -1399,7 +1399,7 @@
             "description": "Uses Docling to process input documents connecting to your instance of Docling Serve.",
             "display_name": "Docling Serve",
             "documentation": "https://docling-project.github.io/docling/",
-            "edited": false,
+            "edited": true,
             "field_order": [
               "path",
               "file_path",
@@ -1417,9 +1417,8 @@
             "frozen": false,
             "icon": "Docling",
             "legacy": false,
-            "lf_version": "1.7.0.dev21",
             "metadata": {
-              "code_hash": "26eeb513dded",
+              "code_hash": "5723576d00e5",
               "dependencies": {
                 "dependencies": [
                   {
@@ -1428,20 +1427,20 @@
                   },
                   {
                     "name": "docling_core",
-                    "version": "2.48.4"
+                    "version": "2.49.0"
                   },
                   {
                     "name": "pydantic",
-                    "version": "2.10.6"
+                    "version": "2.11.10"
                   },
                   {
                     "name": "lfx",
-                    "version": "0.1.12.dev31"
+                    "version": "0.2.0.dev21"
                   }
                 ],
                 "total_dependencies": 4
               },
-              "module": "lfx.components.docling.docling_remote.DoclingRemoteComponent"
+              "module": "custom_components.docling_serve"
             },
             "minimized": false,
             "output_types": [],
@@ -1451,8 +1450,12 @@
                 "cache": true,
                 "display_name": "Files",
                 "group_outputs": false,
+                "hidden": null,
+                "loop_types": null,
                 "method": "load_files",
                 "name": "dataframe",
+                "options": null,
+                "required_inputs": null,
                 "selected": "DataFrame",
                 "tool_mode": true,
                 "types": [
@@ -1473,6 +1476,7 @@
                 "list": false,
                 "list_add_label": "Add More",
                 "name": "api_headers",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
@@ -1480,6 +1484,7 @@
                 "tool_mode": false,
                 "trace_as_input": true,
                 "trace_as_metadata": true,
+                "track_in_telemetry": false,
                 "type": "NestedDict",
                 "value": {}
               },
@@ -1493,12 +1498,14 @@
                 "list_add_label": "Add More",
                 "load_from_db": false,
                 "name": "api_url",
+                "override_skip": false,
                 "placeholder": "",
                 "required": true,
                 "show": true,
                 "title_case": false,
                 "tool_mode": false,
                 "trace_as_metadata": true,
+                "track_in_telemetry": false,
                 "type": "str",
                 "value": "http://localhost:5001"
               },
@@ -1518,7 +1525,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "import base64\nimport time\nfrom concurrent.futures import Future, ThreadPoolExecutor\nfrom pathlib import Path\nfrom typing import Any\n\nimport httpx\nfrom docling_core.types.doc import DoclingDocument\nfrom pydantic import ValidationError\n\nfrom lfx.base.data import BaseFileComponent\nfrom lfx.inputs import IntInput, NestedDictInput, StrInput\nfrom lfx.inputs.inputs import FloatInput\nfrom lfx.schema import Data\nfrom lfx.utils.util import transform_localhost_url\n\n\nclass DoclingRemoteComponent(BaseFileComponent):\n    display_name = \"Docling Serve\"\n    description = \"Uses Docling to process input documents connecting to your instance of Docling Serve.\"\n    documentation = \"https://docling-project.github.io/docling/\"\n    trace_type = \"tool\"\n    icon = \"Docling\"\n    name = \"DoclingRemote\"\n\n    MAX_500_RETRIES = 5\n\n    # https://docling-project.github.io/docling/usage/supported_formats/\n    VALID_EXTENSIONS = [\n        \"adoc\",\n        \"asciidoc\",\n        \"asc\",\n        \"bmp\",\n        \"csv\",\n        \"dotx\",\n        \"dotm\",\n        \"docm\",\n        \"docx\",\n        \"htm\",\n        \"html\",\n        \"jpeg\",\n        \"json\",\n        \"md\",\n        \"pdf\",\n        \"png\",\n        \"potx\",\n        \"ppsx\",\n        \"pptm\",\n        \"potm\",\n        \"ppsm\",\n        \"pptx\",\n        \"tiff\",\n        \"txt\",\n        \"xls\",\n        \"xlsx\",\n        \"xhtml\",\n        \"xml\",\n        \"webp\",\n    ]\n\n    inputs = [\n        *BaseFileComponent.get_base_inputs(),\n        StrInput(\n            name=\"api_url\",\n            display_name=\"Server address\",\n            info=\"URL of the Docling Serve instance.\",\n            required=True,\n        ),\n        IntInput(\n            name=\"max_concurrency\",\n            display_name=\"Concurrency\",\n            info=\"Maximum number of concurrent requests for the server.\",\n            advanced=True,\n            value=2,\n        ),\n        FloatInput(\n            name=\"max_poll_timeout\",\n            display_name=\"Maximum poll time\",\n            info=\"Maximum waiting time for the document conversion to complete.\",\n            advanced=True,\n            value=3600,\n        ),\n        NestedDictInput(\n            name=\"api_headers\",\n            display_name=\"HTTP headers\",\n            advanced=True,\n            required=False,\n            info=(\"Optional dictionary of additional headers required for connecting to Docling Serve.\"),\n        ),\n        NestedDictInput(\n            name=\"docling_serve_opts\",\n            display_name=\"Docling options\",\n            advanced=True,\n            required=False,\n            info=(\n                \"Optional dictionary of additional options. \"\n                \"See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information.\"\n            ),\n        ),\n    ]\n\n    outputs = [\n        *BaseFileComponent.get_base_outputs(),\n    ]\n\n    def process_files(self, file_list: list[BaseFileComponent.BaseFile]) -> list[BaseFileComponent.BaseFile]:\n        # Transform localhost URLs to container-accessible hosts when running in a container\n        transformed_url = transform_localhost_url(self.api_url)\n        base_url = f\"{transformed_url}/v1\"\n\n        def _convert_document(client: httpx.Client, file_path: Path, options: dict[str, Any]) -> Data | None:\n            encoded_doc = base64.b64encode(file_path.read_bytes()).decode()\n            payload = {\n                \"options\": options,\n                \"sources\": [{\"kind\": \"file\", \"base64_string\": encoded_doc, \"filename\": file_path.name}],\n            }\n\n            response = client.post(f\"{base_url}/convert/source/async\", json=payload)\n            response.raise_for_status()\n            task = response.json()\n\n            http_failures = 0\n            retry_status_start = 500\n            retry_status_end = 600\n            start_wait_time = time.monotonic()\n            while task[\"task_status\"] not in (\"success\", \"failure\"):\n                # Check if processing exceeds the maximum poll timeout\n                processing_time = time.monotonic() - start_wait_time\n                if processing_time >= self.max_poll_timeout:\n                    msg = (\n                        f\"Processing time {processing_time=} exceeds the maximum poll timeout {self.max_poll_timeout=}.\"\n                        \"Please increase the max_poll_timeout parameter or review why the processing \"\n                        \"takes long on the server.\"\n                    )\n                    self.log(msg)\n                    raise RuntimeError(msg)\n\n                # Call for a new status update\n                time.sleep(2)\n                response = client.get(f\"{base_url}/status/poll/{task['task_id']}\")\n\n                # Check if the status call gets into 5xx errors and retry\n                if retry_status_start <= response.status_code < retry_status_end:\n                    http_failures += 1\n                    if http_failures > self.MAX_500_RETRIES:\n                        self.log(f\"The status requests got a http response {response.status_code} too many times.\")\n                        return None\n                    continue\n\n                # Update task status\n                task = response.json()\n\n            result_resp = client.get(f\"{base_url}/result/{task['task_id']}\")\n            result_resp.raise_for_status()\n            result = result_resp.json()\n\n            if \"json_content\" not in result[\"document\"] or result[\"document\"][\"json_content\"] is None:\n                self.log(\"No JSON DoclingDocument found in the result.\")\n                return None\n\n            try:\n                doc = DoclingDocument.model_validate(result[\"document\"][\"json_content\"])\n                return Data(data={\"doc\": doc, \"file_path\": str(file_path)})\n            except ValidationError as e:\n                self.log(f\"Error validating the document. {e}\")\n                return None\n\n        docling_options = {\n            \"to_formats\": [\"json\"],\n            \"image_export_mode\": \"placeholder\",\n            **(self.docling_serve_opts or {}),\n        }\n\n        processed_data: list[Data | None] = []\n        with (\n            httpx.Client(headers=self.api_headers) as client,\n            ThreadPoolExecutor(max_workers=self.max_concurrency) as executor,\n        ):\n            futures: list[tuple[int, Future]] = []\n            for i, file in enumerate(file_list):\n                if file.path is None:\n                    processed_data.append(None)\n                    continue\n\n                futures.append((i, executor.submit(_convert_document, client, file.path, docling_options)))\n\n            for _index, future in futures:\n                try:\n                    result_data = future.result()\n                    processed_data.append(result_data)\n                except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:\n                    self.log(f\"Docling remote processing failed: {exc}\")\n                    raise\n\n        return self.rollup_data(file_list, processed_data)\n"
+                "value": "import base64\nimport time\nfrom concurrent.futures import Future, ThreadPoolExecutor\nfrom pathlib import Path\nfrom typing import Any\n\nimport httpx\nfrom docling_core.types.doc import DoclingDocument\nfrom pydantic import ValidationError\n\nfrom lfx.base.data import BaseFileComponent\nfrom lfx.inputs import IntInput, NestedDictInput, StrInput\nfrom lfx.inputs.inputs import FloatInput\nfrom lfx.schema import Data\nfrom lfx.utils.util import transform_localhost_url\n\n\nclass DoclingRemoteComponent(BaseFileComponent):\n    display_name = \"Docling Serve\"\n    description = \"Uses Docling to process input documents connecting to your instance of Docling Serve.\"\n    documentation = \"https://docling-project.github.io/docling/\"\n    trace_type = \"tool\"\n    icon = \"Docling\"\n    name = \"DoclingRemote\"\n\n    MAX_500_RETRIES = 5\n\n    # https://docling-project.github.io/docling/usage/supported_formats/\n    VALID_EXTENSIONS = [\n        \"adoc\",\n        \"asciidoc\",\n        \"asc\",\n        \"bmp\",\n        \"csv\",\n        \"dotx\",\n        \"dotm\",\n        \"docm\",\n        \"docx\",\n        \"htm\",\n        \"html\",\n        \"jpeg\",\n        \"jpg\",\n        \"json\",\n        \"md\",\n        \"pdf\",\n        \"png\",\n        \"potx\",\n        \"ppsx\",\n        \"pptm\",\n        \"potm\",\n        \"ppsm\",\n        \"pptx\",\n        \"tiff\",\n        \"txt\",\n        \"xls\",\n        \"xlsx\",\n        \"xhtml\",\n        \"xml\",\n        \"webp\",\n    ]\n\n    inputs = [\n        *BaseFileComponent.get_base_inputs(),\n        StrInput(\n            name=\"api_url\",\n            display_name=\"Server address\",\n            info=\"URL of the Docling Serve instance.\",\n            required=True,\n        ),\n        IntInput(\n            name=\"max_concurrency\",\n            display_name=\"Concurrency\",\n            info=\"Maximum number of concurrent requests for the server.\",\n            advanced=True,\n            value=2,\n        ),\n        FloatInput(\n            name=\"max_poll_timeout\",\n            display_name=\"Maximum poll time\",\n            info=\"Maximum waiting time for the document conversion to complete.\",\n            advanced=True,\n            value=3600,\n        ),\n        NestedDictInput(\n            name=\"api_headers\",\n            display_name=\"HTTP headers\",\n            advanced=True,\n            required=False,\n            info=(\"Optional dictionary of additional headers required for connecting to Docling Serve.\"),\n        ),\n        NestedDictInput(\n            name=\"docling_serve_opts\",\n            display_name=\"Docling options\",\n            advanced=True,\n            required=False,\n            info=(\n                \"Optional dictionary of additional options. \"\n                \"See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information.\"\n            ),\n        ),\n    ]\n\n    outputs = [\n        *BaseFileComponent.get_base_outputs(),\n    ]\n\n    def process_files(self, file_list: list[BaseFileComponent.BaseFile]) -> list[BaseFileComponent.BaseFile]:\n        # Transform localhost URLs to container-accessible hosts when running in a container\n        transformed_url = transform_localhost_url(self.api_url)\n        base_url = f\"{transformed_url}/v1\"\n\n        def _convert_document(client: httpx.Client, file_path: Path, options: dict[str, Any]) -> Data | None:\n            encoded_doc = base64.b64encode(file_path.read_bytes()).decode()\n            payload = {\n                \"options\": options,\n                \"sources\": [{\"kind\": \"file\", \"base64_string\": encoded_doc, \"filename\": file_path.name}],\n            }\n\n            response = client.post(f\"{base_url}/convert/source/async\", json=payload)\n            response.raise_for_status()\n            task = response.json()\n\n            http_failures = 0\n            retry_status_start = 500\n            retry_status_end = 600\n            start_wait_time = time.monotonic()\n            while task[\"task_status\"] not in (\"success\", \"failure\"):\n                # Check if processing exceeds the maximum poll timeout\n                processing_time = time.monotonic() - start_wait_time\n                if processing_time >= self.max_poll_timeout:\n                    msg = (\n                        f\"Processing time {processing_time=} exceeds the maximum poll timeout {self.max_poll_timeout=}.\"\n                        \"Please increase the max_poll_timeout parameter or review why the processing \"\n                        \"takes long on the server.\"\n                    )\n                    self.log(msg)\n                    raise RuntimeError(msg)\n\n                # Call for a new status update\n                time.sleep(2)\n                response = client.get(f\"{base_url}/status/poll/{task['task_id']}\")\n\n                # Check if the status call gets into 5xx errors and retry\n                if retry_status_start <= response.status_code < retry_status_end:\n                    http_failures += 1\n                    if http_failures > self.MAX_500_RETRIES:\n                        self.log(f\"The status requests got a http response {response.status_code} too many times.\")\n                        return None\n                    continue\n\n                # Update task status\n                task = response.json()\n\n            result_resp = client.get(f\"{base_url}/result/{task['task_id']}\")\n            result_resp.raise_for_status()\n            result = result_resp.json()\n\n            if \"json_content\" not in result[\"document\"] or result[\"document\"][\"json_content\"] is None:\n                self.log(\"No JSON DoclingDocument found in the result.\")\n                return None\n\n            try:\n                doc = DoclingDocument.model_validate(result[\"document\"][\"json_content\"])\n                return Data(data={\"doc\": doc, \"file_path\": str(file_path)})\n            except ValidationError as e:\n                self.log(f\"Error validating the document. {e}\")\n                return None\n\n        docling_options = {\n            \"to_formats\": [\"json\"],\n            \"image_export_mode\": \"placeholder\",\n            **(self.docling_serve_opts or {}),\n        }\n\n        processed_data: list[Data | None] = []\n        with (\n            httpx.Client(headers=self.api_headers) as client,\n            ThreadPoolExecutor(max_workers=self.max_concurrency) as executor,\n        ):\n            futures: list[tuple[int, Future]] = []\n            for i, file in enumerate(file_list):\n                if file.path is None:\n                    processed_data.append(None)\n                    continue\n\n                futures.append((i, executor.submit(_convert_document, client, file.path, docling_options)))\n\n            for _index, future in futures:\n                try:\n                    result_data = future.result()\n                    processed_data.append(result_data)\n                except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:\n                    self.log(f\"Docling remote processing failed: {exc}\")\n                    raise\n\n        return self.rollup_data(file_list, processed_data)\n"
               },
               "delete_server_file_after_processing": {
                 "_input_type": "BoolInput",
@@ -1529,24 +1536,28 @@
                 "list": false,
                 "list_add_label": "Add More",
                 "name": "delete_server_file_after_processing",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
                 "tool_mode": false,
                 "trace_as_metadata": true,
+                "track_in_telemetry": true,
                 "type": "bool",
                 "value": true
               },
               "docling_serve_opts": {
                 "_input_type": "NestedDictInput",
-                "advanced": false,
+                "advanced": true,
                 "display_name": "Docling options",
                 "dynamic": false,
                 "info": "Optional dictionary of additional options. See https://github.com/docling-project/docling-serve/blob/main/docs/usage.md for more information.",
                 "list": false,
                 "list_add_label": "Add More",
+                "load_from_db": false,
                 "name": "docling_serve_opts",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
@@ -1554,6 +1565,7 @@
                 "tool_mode": false,
                 "trace_as_input": true,
                 "trace_as_metadata": true,
+                "track_in_telemetry": false,
                 "type": "NestedDict",
                 "value": {
                   "do_ocr": false,
@@ -1580,11 +1592,13 @@
                 "list": true,
                 "list_add_label": "Add More",
                 "name": "file_path",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
                 "trace_as_metadata": true,
+                "track_in_telemetry": false,
                 "type": "other",
                 "value": ""
               },
@@ -1597,12 +1611,14 @@
                 "list": false,
                 "list_add_label": "Add More",
                 "name": "ignore_unspecified_files",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
                 "tool_mode": false,
                 "trace_as_metadata": true,
+                "track_in_telemetry": true,
                 "type": "bool",
                 "value": false
               },
@@ -1615,30 +1631,34 @@
                 "list": false,
                 "list_add_label": "Add More",
                 "name": "ignore_unsupported_extensions",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
                 "tool_mode": false,
                 "trace_as_metadata": true,
+                "track_in_telemetry": true,
                 "type": "bool",
                 "value": true
               },
               "max_concurrency": {
                 "_input_type": "IntInput",
-                "advanced": false,
+                "advanced": true,
                 "display_name": "Concurrency",
                 "dynamic": false,
                 "info": "Maximum number of concurrent requests for the server.",
                 "list": false,
                 "list_add_label": "Add More",
                 "name": "max_concurrency",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
                 "tool_mode": false,
                 "trace_as_metadata": true,
+                "track_in_telemetry": true,
                 "type": "int",
                 "value": 2
               },
@@ -1651,12 +1671,14 @@
                 "list": false,
                 "list_add_label": "Add More",
                 "name": "max_poll_timeout",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
                 "tool_mode": false,
                 "trace_as_metadata": true,
+                "track_in_telemetry": true,
                 "type": "float",
                 "value": 3600
               },
@@ -1678,6 +1700,7 @@
                   "htm",
                   "html",
                   "jpeg",
+                  "jpg",
                   "json",
                   "md",
                   "pdf",
@@ -1702,16 +1725,19 @@
                   "gz"
                 ],
                 "file_path": [],
-                "info": "Supported file extensions: adoc, asciidoc, asc, bmp, csv, dotx, dotm, docm, docx, htm, html, jpeg, json, md, pdf, png, potx, ppsx, pptm, potm, ppsm, pptx, tiff, txt, xls, xlsx, xhtml, xml, webp; optionally bundled in file extensions: zip, tar, tgz, bz2, gz",
+                "info": "Supported file extensions: adoc, asciidoc, asc, bmp, csv, dotx, dotm, docm, docx, htm, html, jpeg, jpg, json, md, pdf, png, potx, ppsx, pptm, potm, ppsm, pptx, tiff, txt, xls, xlsx, xhtml, xml, webp; optionally bundled in file extensions: zip, tar, tgz, bz2, gz",
                 "list": true,
                 "list_add_label": "Add More",
                 "name": "path",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "temp_file": false,
                 "title_case": false,
+                "tool_mode": true,
                 "trace_as_metadata": true,
+                "track_in_telemetry": false,
                 "type": "file",
                 "value": ""
               },
@@ -1725,12 +1751,14 @@
                 "list_add_label": "Add More",
                 "load_from_db": false,
                 "name": "separator",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
                 "tool_mode": false,
                 "trace_as_metadata": true,
+                "track_in_telemetry": false,
                 "type": "str",
                 "value": "\n\n"
               },
@@ -1743,12 +1771,14 @@
                 "list": false,
                 "list_add_label": "Add More",
                 "name": "silent_errors",
+                "override_skip": false,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
                 "tool_mode": false,
                 "trace_as_metadata": true,
+                "track_in_telemetry": true,
                 "type": "bool",
                 "value": false
               }
@@ -1761,7 +1791,7 @@
         "dragging": false,
         "id": "DoclingRemote-Dp3PX",
         "measured": {
-          "height": 475,
+          "height": 312,
           "width": 320
         },
         "position": {
@@ -2060,7 +2090,7 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-12-03T21:41:00.319Z",
+            "last_updated": "2025-12-12T20:12:18.208Z",
             "legacy": false,
             "lf_version": "1.7.0.dev21",
             "metadata": {
@@ -2107,7 +2137,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "79455c62-cdb1-4f14-bf44-8e76acc020a6"
+                "value": "75fd27c1-8f4b-46a1-88bb-a8a8e72719e3"
               },
               "_type": "Component",
               "ascending": {
@@ -2511,7 +2541,7 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-12-03T21:41:00.320Z",
+            "last_updated": "2025-12-12T20:12:18.209Z",
             "legacy": false,
             "lf_version": "1.7.0.dev21",
             "metadata": {
@@ -2558,7 +2588,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "79455c62-cdb1-4f14-bf44-8e76acc020a6"
+                "value": "75fd27c1-8f4b-46a1-88bb-a8a8e72719e3"
               },
               "_type": "Component",
               "ascending": {
@@ -2962,7 +2992,7 @@
             ],
             "frozen": false,
             "icon": "table",
-            "last_updated": "2025-12-03T21:41:00.320Z",
+            "last_updated": "2025-12-12T20:12:18.209Z",
             "legacy": false,
             "lf_version": "1.7.0.dev21",
             "metadata": {
@@ -3009,7 +3039,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "79455c62-cdb1-4f14-bf44-8e76acc020a6"
+                "value": "75fd27c1-8f4b-46a1-88bb-a8a8e72719e3"
               },
               "_type": "Component",
               "ascending": {
@@ -4126,7 +4156,7 @@
           "x": 2261.865622928042,
           "y": 1349.2821108833643
         },
-        "selected": true,
+        "selected": false,
         "type": "genericNode"
       },
       {
@@ -4163,7 +4193,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-12-03T21:41:00.158Z",
+            "last_updated": "2025-12-12T20:12:18.131Z",
             "legacy": false,
             "lf_version": "1.7.0.dev21",
             "metadata": {
@@ -4231,7 +4261,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "79455c62-cdb1-4f14-bf44-8e76acc020a6"
+                "value": "75fd27c1-8f4b-46a1-88bb-a8a8e72719e3"
               },
               "_type": "Component",
               "api_base": {
@@ -4688,7 +4718,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-12-03T21:41:00.159Z",
+            "last_updated": "2025-12-12T20:12:18.132Z",
             "legacy": false,
             "lf_version": "1.7.0.dev21",
             "metadata": {
@@ -4756,7 +4786,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "79455c62-cdb1-4f14-bf44-8e76acc020a6"
+                "value": "75fd27c1-8f4b-46a1-88bb-a8a8e72719e3"
               },
               "_type": "Component",
               "api_base": {
@@ -4969,8 +4999,7 @@
                 "load_from_db": false,
                 "name": "model",
                 "options": [
-                  "embeddinggemma:latest",
-                  "mxbai-embed-large:latest",
+                  "all-minilm:latest",
                   "nomic-embed-text:latest"
                 ],
                 "options_metadata": [],
@@ -4986,7 +5015,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": true,
                 "type": "str",
-                "value": "embeddinggemma:latest"
+                "value": "all-minilm:latest"
               },
               "model_kwargs": {
                 "_input_type": "DictInput",
@@ -5215,7 +5244,7 @@
             ],
             "frozen": false,
             "icon": "binary",
-            "last_updated": "2025-12-03T21:41:00.159Z",
+            "last_updated": "2025-12-12T20:12:18.133Z",
             "legacy": false,
             "lf_version": "1.7.0.dev21",
             "metadata": {
@@ -5283,7 +5312,7 @@
                 "value": "5488df7c-b93f-4f87-a446-b67028bc0813"
               },
               "_frontend_node_folder_id": {
-                "value": "79455c62-cdb1-4f14-bf44-8e76acc020a6"
+                "value": "75fd27c1-8f4b-46a1-88bb-a8a8e72719e3"
               },
               "_type": "Component",
               "api_base": {
@@ -5708,15 +5737,16 @@
       }
     ],
     "viewport": {
-      "x": -848.3573799283768,
-      "y": -648.7033245837173,
-      "zoom": 0.6472397864500404
+      "x": 249.3666737262397,
+      "y": -156.8776378758762,
+      "zoom": 0.38977017930844676
     }
   },
   "description": "Load your data for chat context with Retrieval Augmented Generation.",
   "endpoint_name": null,
   "id": "5488df7c-b93f-4f87-a446-b67028bc0813",
   "is_component": false,
+  "locked": true,
   "last_tested_version": "1.7.0.dev21",
   "name": "OpenSearch Ingestion Flow",
   "tags": [
