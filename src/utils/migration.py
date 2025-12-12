@@ -231,7 +231,7 @@ def perform_migration() -> Dict[str, bool]:
     marker_file = get_migration_marker_file()
     try:
         marker_file.parent.mkdir(parents=True, exist_ok=True)
-        marker_file.write_text(f"Migration completed successfully\n")
+        marker_file.write_text("Migration completed successfully\n")
         logger.info("Migration marker file created")
     except Exception as e:
         logger.warning(f"Failed to create migration marker file: {e}")
