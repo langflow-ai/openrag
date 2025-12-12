@@ -293,7 +293,17 @@ class ContainerManager:
             use_gpu = not cpu_mode
         
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        cmd = self.runtime_info.compose_command
+        
+        # Add --env-file to explicitly specify the .env location
+        from utils.paths import get_tui_env_file
+        tui_env_file = get_tui_env_file()
+        if tui_env_file.exists():
+            cmd.extend(["--env-file", str(tui_env_file)])
+        elif Path(".env").exists():
+            cmd.extend(["--env-file", ".env"])
+        
+        cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
         cmd.extend(args)
@@ -339,7 +349,17 @@ class ContainerManager:
             use_gpu = not cpu_mode
         
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        cmd = self.runtime_info.compose_command
+        
+        # Add --env-file to explicitly specify the .env location
+        from utils.paths import get_tui_env_file
+        tui_env_file = get_tui_env_file()
+        if tui_env_file.exists():
+            cmd.extend(["--env-file", str(tui_env_file)])
+        elif Path(".env").exists():
+            cmd.extend(["--env-file", ".env"])
+        
+        cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
         cmd.extend(args)
@@ -412,7 +432,17 @@ class ContainerManager:
             use_gpu = not cpu_mode
         
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        cmd = self.runtime_info.compose_command
+        
+        # Add --env-file to explicitly specify the .env location
+        from utils.paths import get_tui_env_file
+        tui_env_file = get_tui_env_file()
+        if tui_env_file.exists():
+            cmd.extend(["--env-file", str(tui_env_file)])
+        elif Path(".env").exists():
+            cmd.extend(["--env-file", ".env"])
+        
+        cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
         cmd.extend(args)
@@ -818,13 +848,24 @@ class ContainerManager:
 
     async def _parse_compose_images(self) -> list[str]:
         """Get resolved image names from compose files using docker/podman compose, with robust fallbacks."""
+        from utils.paths import get_tui_env_file
+        
         images: set[str] = set()
 
         # Try both GPU and CPU modes to get all images
         for use_gpu in [True, False]:
             try:
                 # Build compose command with override pattern
-                cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+                cmd = self.runtime_info.compose_command
+                
+                # Add --env-file to explicitly specify the .env location
+                tui_env_file = get_tui_env_file()
+                if tui_env_file.exists():
+                    cmd.extend(["--env-file", str(tui_env_file)])
+                elif Path(".env").exists():
+                    cmd.extend(["--env-file", ".env"])
+                
+                cmd.extend(["-f", str(self.compose_file)])
                 if use_gpu and self.gpu_compose_file.exists():
                     cmd.extend(["-f", str(self.gpu_compose_file)])
                 cmd.extend(["config", "--format", "json"])
@@ -845,7 +886,16 @@ class ContainerManager:
                         continue
 
                 # Fallback to YAML output (for older compose versions)
-                cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+                cmd = self.runtime_info.compose_command
+                
+                # Add --env-file to explicitly specify the .env location
+                tui_env_file = get_tui_env_file()
+                if tui_env_file.exists():
+                    cmd.extend(["--env-file", str(tui_env_file)])
+                elif Path(".env").exists():
+                    cmd.extend(["--env-file", ".env"])
+                
+                cmd.extend(["-f", str(self.compose_file)])
                 if use_gpu and self.gpu_compose_file.exists():
                     cmd.extend(["-f", str(self.gpu_compose_file)])
                 cmd.append("config")
