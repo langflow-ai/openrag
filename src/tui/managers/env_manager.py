@@ -94,12 +94,10 @@ class EnvManager:
                     import shutil
                     self.env_file.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(legacy_env, self.env_file)
-                    from utils.logging_config import get_logger
-                    logger = get_logger(__name__)
                     logger.info(f"Migrated .env from {legacy_env} to {self.env_file}")
+
+
                 except Exception as e:
-                    from utils.logging_config import get_logger
-                    logger = get_logger(__name__)
                     logger.warning(f"Failed to migrate .env file: {e}")
         
         self.config = EnvConfig()
