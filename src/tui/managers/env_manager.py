@@ -65,10 +65,10 @@ class EnvConfig:
     nudges_flow_id: str = "ebc01d31-1976-46ce-a385-b0240327226c"
 
     # Document paths (comma-separated) - use centralized location by default
-    openrag_documents_paths: str = "~/.openrag/documents/openrag-documents"
+    openrag_documents_paths: str = "$HOME/.openrag/documents/openrag-documents"
 
     # OpenSearch data path - use centralized location by default
-    opensearch_data_path: str = "~/.openrag/data/opensearch-data"
+    opensearch_data_path: str = "$HOME/.openrag/data/opensearch-data"
     
     # Container version (linked to TUI version)
     openrag_version: str = ""
