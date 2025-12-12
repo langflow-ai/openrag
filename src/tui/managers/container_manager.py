@@ -114,21 +114,21 @@ class ContainerManager:
             self._compose_search_log += " ✗ NOT FOUND"
 
         # Finally check package resources
-        self._compose_search_log += "\n  3. Package resources: "
+        self._compose_search_log += f"\n  3. Package resources: "
         try:
             pkg_files = files("tui._assets")
             self._compose_search_log += f"{pkg_files}"
             compose_resource = pkg_files / filename
 
             if compose_resource.is_file():
-                self._compose_search_log += " ✓ FOUND, copying to TUI directory"
+                self._compose_search_log += f" ✓ FOUND, copying to TUI directory"
                 # Copy to TUI directory
                 tui_path.parent.mkdir(parents=True, exist_ok=True)
                 content = compose_resource.read_text()
                 tui_path.write_text(content)
                 return tui_path
             else:
-                self._compose_search_log += " ✗ NOT FOUND"
+                self._compose_search_log += f" ✗ NOT FOUND"
         except Exception as e:
             self._compose_search_log += f" ✗ SKIPPED ({e})"
             # Don't log this as an error since it's expected when running from source
@@ -151,9 +151,17 @@ class ContainerManager:
         even if os.environ has stale values.
         """
         from dotenv import load_dotenv
+        from utils.paths import get_tui_env_file
         
         env = dict(os.environ)  # Start with current environment
-        env_file = Path(".env")
+        
+        # Check centralized TUI .env location first
+        tui_env_file = get_tui_env_file()
+        if tui_env_file.exists():
+            env_file = tui_env_file
+        else:
+            # Fall back to CWD .env for backward compatibility
+            env_file = Path(".env")
         
         if env_file.exists():
             try:
@@ -162,6 +170,7 @@ class ContainerManager:
                 load_dotenv(dotenv_path=env_file, override=True)
                 # Update our dict with all environment variables (including those from .env)
                 env.update(os.environ)
+                logger.debug(f"Loaded environment from {env_file}")
             except Exception as e:
                 logger.debug(f"Error reading .env file for Docker Compose: {e}")
         
