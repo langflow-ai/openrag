@@ -16,7 +16,7 @@ class SharePointConnector(BaseConnector):
 
     # Required BaseConnector class attributes
     CLIENT_ID_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_ID"
-    CLIENT_SECRET_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"
+    CLIENT_SECRET_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"  # pragma: allowlist secret
     
     # Connector metadata
     CONNECTOR_NAME = "SharePoint"

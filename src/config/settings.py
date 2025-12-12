@@ -59,6 +59,12 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
     "DISABLE_INGEST_WITH_LANGFLOW", "false"
 ).lower() in ("true", "1", "yes")
 
+# Langflow HTTP timeout configuration (in seconds)
+# For large documents (300+ pages), ingestion can take 30+ minutes
+# Default: 40 minutes total, 40 minutes read timeout
+LANGFLOW_TIMEOUT = float(os.getenv("LANGFLOW_TIMEOUT", "2400"))  # 40 minutes
+LANGFLOW_CONNECT_TIMEOUT = float(os.getenv("LANGFLOW_CONNECT_TIMEOUT", "30"))  # 30 seconds
+
 
 def is_no_auth_mode():
     """Check if we're running in no-auth mode (OAuth credentials missing)"""
@@ -317,9 +323,22 @@ class AppClients:
         # Initialize document converter
         self.converter = create_document_converter(ocr_engine=DOCLING_OCR_ENGINE)
 
-        # Initialize Langflow HTTP client
+        # Initialize Langflow HTTP client with extended timeouts for large documents
+        # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
         self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL, timeout=1200.0
+            base_url=LANGFLOW_URL,
+            timeout=httpx.Timeout(
+                timeout=LANGFLOW_TIMEOUT,  # Total timeout
+                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
+                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
+                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
+                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
+            )
+        )
+        logger.info(
+            "Initialized Langflow HTTP client with extended timeouts",
+            timeout_seconds=LANGFLOW_TIMEOUT,
+            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
         )
 
         return self
