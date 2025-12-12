@@ -246,39 +246,25 @@ async def init_index():
 
 def generate_jwt_keys():
     """Generate RSA keys for JWT signing if they don't exist"""
-    from utils.paths import get_keys_dir, get_private_key_path, get_public_key_path, get_legacy_paths
-    
-    # Use centralized keys directory
-    keys_dir = get_keys_dir()
-    private_key_path = get_private_key_path()
-    public_key_path = get_public_key_path()
-    
-    # Check for legacy keys and migrate if needed
-    legacy_paths = get_legacy_paths()
-    if not private_key_path.exists() and legacy_paths["private_key"].exists():
-        logger.info(f"Migrating JWT keys from {legacy_paths['keys_dir']} to {keys_dir}")
-        try:
-            shutil.copy2(legacy_paths["private_key"], private_key_path)
-            if legacy_paths["public_key"].exists():
-                shutil.copy2(legacy_paths["public_key"], public_key_path)
-            logger.info("JWT keys migration completed successfully")
-        except Exception as e:
-            logger.warning(f"Failed to migrate JWT keys: {e}")
-    
-    # Ensure keys directory exists (already done by get_keys_dir)
+    keys_dir = "keys"
+    private_key_path = os.path.join(keys_dir, "private_key.pem")
+    public_key_path = os.path.join(keys_dir, "public_key.pem")
+
+    # Create keys directory if it doesn't exist
+    os.makedirs(keys_dir, exist_ok=True)
 
     # Generate keys if they don't exist
-    if not private_key_path.exists():
+    if not os.path.exists(private_key_path):
         try:
             # Generate private key
             subprocess.run(
-                ["openssl", "genrsa", "-out", str(private_key_path), "2048"],
+                ["openssl", "genrsa", "-out", private_key_path, "2048"],
                 check=True,
                 capture_output=True,
             )
 
             # Set restrictive permissions on private key (readable by owner only)
-            os.chmod(str(private_key_path), 0o600)
+            os.chmod(private_key_path, 0o600)
 
             # Generate public key
             subprocess.run(
@@ -286,17 +272,17 @@ def generate_jwt_keys():
                     "openssl",
                     "rsa",
                     "-in",
-                    str(private_key_path),
+                    private_key_path,
                     "-pubout",
                     "-out",
-                    str(public_key_path),
+                    public_key_path,
                 ],
                 check=True,
                 capture_output=True,
             )
 
             # Set permissions on public key (readable by all)
-            os.chmod(str(public_key_path), 0o644)
+            os.chmod(public_key_path, 0o644)
 
             logger.info("Generated RSA keys for JWT signing")
         except subprocess.CalledProcessError as e:
@@ -306,8 +292,8 @@ def generate_jwt_keys():
     else:
         # Ensure correct permissions on existing keys
         try:
-            os.chmod(str(private_key_path), 0o600)
-            os.chmod(str(public_key_path), 0o644)
+            os.chmod(private_key_path, 0o600)
+            os.chmod(public_key_path, 0o644)
             logger.info("RSA keys already exist, ensured correct permissions")
         except OSError as e:
             logger.warning("Failed to set permissions on existing keys", error=str(e))
@@ -328,18 +314,17 @@ async def init_index_when_ready():
 
 def _get_documents_dir():
     """Get the documents directory path, handling both Docker and local environments."""
-    from utils.paths import get_documents_dir
-    
-    # Use centralized path utility which handles both container and local environments
-    path = get_documents_dir()
+    # In Docker, the volume is mounted at /app/openrag-documents
+    # Locally, we use openrag-documents
     container_env = detect_container_environment()
-    
     if container_env:
+        path = os.path.abspath("/app/openrag-documents")
         logger.debug(f"Running in {container_env}, using container path: {path}")
+        return path
     else:
-        logger.debug(f"Running locally, using centralized path: {path}")
-    
-    return str(path)
+        path = os.path.abspath(os.path.join(os.getcwd(), "openrag-documents"))
+        logger.debug(f"Running locally, using local path: {path}")
+        return path
 
 
 async def ingest_default_documents_when_ready(services):
@@ -575,16 +560,6 @@ async def startup_tasks(services):
 async def initialize_services():
     """Initialize all services and their dependencies"""
     await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START)
-    
-    # Perform migration if needed (move files from old locations to ~/.openrag)
-    from utils.migration import perform_migration
-    try:
-        migration_results = perform_migration()
-        if migration_results:
-            logger.info("File migration completed", results=migration_results)
-    except Exception as e:
-        logger.warning(f"Migration failed, some files may still be in legacy locations. Consider manual migration. Error: {e}")
-    
     # Generate JWT keys if they don't exist
     generate_jwt_keys()
 

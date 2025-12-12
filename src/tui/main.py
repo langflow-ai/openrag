@@ -454,9 +454,28 @@ def _copy_assets(resource_tree, destination: Path, allowed_suffixes: Optional[It
 
 
 def copy_sample_documents(*, force: bool = False) -> None:
-    """Copy sample documents from package to centralized directory if they don't exist."""
-    from utils.paths import get_documents_dir
-    documents_dir = get_documents_dir()
+    """Copy sample documents from package to host directory.
+    
+    Uses the first path from OPENRAG_DOCUMENTS_PATHS env var.
+    Defaults to ~/.openrag/documents/openrag-documents if not configured.
+    """
+    from .managers.env_manager import EnvManager
+    from pathlib import Path
+    
+    # Get the configured documents path from env
+    env_manager = EnvManager()
+    env_manager.load_existing_env()
+    
+    # Parse the first path from the documents paths config
+    documents_path_str = env_manager.config.openrag_documents_paths
+    if documents_path_str:
+        first_path = documents_path_str.split(',')[0].strip()
+        documents_dir = Path(first_path).expanduser()
+    else:
+        # Default fallback
+        documents_dir = Path.home() / ".openrag" / "documents" / "openrag-documents"
+    
+    documents_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         assets_files = files("tui._assets.openrag-documents")
@@ -467,9 +486,15 @@ def copy_sample_documents(*, force: bool = False) -> None:
 
 
 def copy_sample_flows(*, force: bool = False) -> None:
-    """Copy sample flows from package to centralized directory if they don't exist."""
-    from utils.paths import get_flows_dir
-    flows_dir = get_flows_dir()
+    """Copy sample flows from package to host directory.
+    
+    Flows are placed in ~/.openrag/flows/ which will be volume-mounted to containers.
+    """
+    from pathlib import Path
+    
+    # Flows always go to ~/.openrag/flows/ - this will be volume-mounted
+    flows_dir = Path.home() / ".openrag" / "flows"
+    flows_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         assets_files = files("tui._assets.flows")
@@ -516,6 +541,32 @@ def copy_compose_files(*, force: bool = False) -> None:
             logger.debug(f"Could not copy compose file {filename}: {error}")
 
 
+def setup_host_directories():
+    """Initialize OpenRAG directory structure on the host.
+    
+    Creates directories that will be volume-mounted into containers:
+    - ~/.openrag/documents/openrag-documents/ (for document ingestion)
+    - ~/.openrag/flows/ (for Langflow flows)
+    - ~/.openrag/keys/ (for JWT keys)
+    - ~/.openrag/config/ (for configuration)
+    - ~/.openrag/data/opensearch-data/ (for OpenSearch data)
+    """
+    from pathlib import Path
+    
+    base_dir = Path.home() / ".openrag"
+    directories = [
+        base_dir / "documents" / "openrag-documents",
+        base_dir / "flows",
+        base_dir / "keys",
+        base_dir / "config",
+        base_dir / "data" / "opensearch-data",
+    ]
+    
+    for directory in directories:
+        directory.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Ensured directory exists: {directory}")
+
+
 def run_tui():
     """Run the OpenRAG TUI application."""
     # Check for native Windows before launching TUI
@@ -532,6 +583,9 @@ def run_tui():
 
     app = None
     try:
+        # Initialize host directory structure
+        setup_host_directories()
+        
         # Keep bundled assets aligned with the packaged versions
         copy_sample_documents(force=True)
         copy_sample_flows(force=True)
