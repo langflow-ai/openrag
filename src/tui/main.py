@@ -644,22 +644,22 @@ def migrate_legacy_data_directories():
 
 def setup_host_directories():
     """Initialize OpenRAG directory structure on the host.
-    
+
     Creates directories that will be volume-mounted into containers:
     - ~/.openrag/documents/openrag-documents/ (for document ingestion)
     - ~/.openrag/flows/ (for Langflow flows)
     - ~/.openrag/keys/ (for JWT keys)
     - ~/.openrag/config/ (for configuration)
+    - ~/.openrag/data/ (for backend data: conversations, OAuth tokens, etc.)
     - ~/.openrag/data/opensearch-data/ (for OpenSearch data)
     """
-    from pathlib import Path
-    
     base_dir = Path.home() / ".openrag"
     directories = [
         base_dir / "documents" / "openrag-documents",
         base_dir / "flows",
         base_dir / "keys",
         base_dir / "config",
+        base_dir / "data",
         base_dir / "data" / "opensearch-data",
     ]
     

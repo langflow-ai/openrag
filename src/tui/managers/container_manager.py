@@ -1135,8 +1135,11 @@ class ContainerManager:
 
         yield False, "Clearing OpenSearch data volume..."
 
-        # Get the absolute path to opensearch-data directory
-        opensearch_data_path = Path("opensearch-data").absolute()
+        # Get opensearch data path from env config
+        from .env_manager import EnvManager
+        env_manager = EnvManager()
+        env_manager.load_existing_env()
+        opensearch_data_path = Path(env_manager.config.opensearch_data_path.replace("$HOME", str(Path.home()))).expanduser().absolute()
         
         if not opensearch_data_path.exists():
             yield True, "OpenSearch data directory does not exist, skipping"

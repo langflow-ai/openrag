@@ -72,6 +72,7 @@ class EnvConfig:
     openrag_keys_path: str = "$HOME/.openrag/keys"
     openrag_flows_path: str = "$HOME/.openrag/flows"
     openrag_config_path: str = "$HOME/.openrag/config"
+    openrag_data_path: str = "$HOME/.openrag/data"  # Backend data (conversations, tokens, etc.)
     opensearch_data_path: str = "$HOME/.openrag/data/opensearch-data"
     
     # Container version (linked to TUI version)
@@ -182,6 +183,7 @@ class EnvManager:
             "OPENRAG_KEYS_PATH": "openrag_keys_path",
             "OPENRAG_FLOWS_PATH": "openrag_flows_path",
             "OPENRAG_CONFIG_PATH": "openrag_config_path",
+            "OPENRAG_DATA_PATH": "openrag_data_path",
             "OPENSEARCH_DATA_PATH": "opensearch_data_path",
             "LANGFLOW_AUTO_LOGIN": "langflow_auto_login",
             "LANGFLOW_NEW_USER_IS_ACTIVE": "langflow_new_user_is_active",
@@ -393,6 +395,9 @@ class EnvManager:
                 )
                 f.write(
                     f"OPENRAG_CONFIG_PATH={self._quote_env_value(self.config.openrag_config_path)}\n"
+                )
+                f.write(
+                    f"OPENRAG_DATA_PATH={self._quote_env_value(self.config.openrag_data_path)}\n"
                 )
                 f.write(
                     f"OPENSEARCH_DATA_PATH={self._quote_env_value(self.config.opensearch_data_path)}\n"

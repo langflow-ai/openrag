@@ -96,11 +96,8 @@ class GoogleDriveConnector(BaseConnector):
         client_id = config.get("client_id") or env_client_id
         client_secret = config.get("client_secret") or env_client_secret
 
-        # Token file default (so callback & workers don’t need to pass it)
-        project_root = Path(__file__).resolve().parent.parent.parent.parent
-        token_file = config.get("token_file") or str(
-            project_root / "google_drive_token.json"
-        )
+        # Token file default - use data/ directory for persistence
+        token_file = config.get("token_file") or "data/google_drive_token.json"
         Path(token_file).parent.mkdir(parents=True, exist_ok=True)
 
         if not isinstance(client_id, str) or not client_id.strip():

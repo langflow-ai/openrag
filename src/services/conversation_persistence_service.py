@@ -15,9 +15,11 @@ logger = get_logger(__name__)
 
 class ConversationPersistenceService:
     """Simple service to persist conversations to disk"""
-    
-    def __init__(self, storage_file: str = "conversations.json"):
+
+    def __init__(self, storage_file: str = "data/conversations.json"):
         self.storage_file = storage_file
+        # Ensure data directory exists
+        os.makedirs(os.path.dirname(self.storage_file), exist_ok=True)
         self.lock = threading.Lock()
         self._conversations = self._load_conversations()
     
