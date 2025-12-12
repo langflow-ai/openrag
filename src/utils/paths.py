@@ -25,7 +25,9 @@ def get_openrag_home() -> Path:
     # This maintains backward compatibility with existing Docker setups
     container_env = detect_container_environment()
     if container_env:
-        # In containers, paths are managed by Docker volumes
+        # In containers, return the container's working directory.
+        # This ensures compatibility with existing Docker volume mounts,
+        # as Docker typically mounts volumes into the working directory.
         return Path.cwd()
     
     # In local environments, use centralized location
