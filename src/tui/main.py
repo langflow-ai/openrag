@@ -543,16 +543,24 @@ def copy_compose_files(*, force: bool = False) -> None:
 
 def migrate_legacy_data_directories():
     """Migrate data from CWD-based directories to ~/.openrag/.
-    
+
     This is a one-time migration for users upgrading from the old layout.
     Migrates: documents, flows, keys, config, opensearch-data
+
+    Prompts user for confirmation before migrating. If user declines,
+    exits with a message to downgrade to v1.52 or earlier.
     """
-    from pathlib import Path
     import shutil
-    
+    import sys
+
     cwd = Path.cwd()
     target_base = Path.home() / ".openrag"
-    
+    marker = target_base / ".migrated"
+
+    # Check if migration already completed
+    if marker.exists():
+        return
+
     # Define migration mappings: (source_path, target_path, description)
     migrations = [
         (cwd / "openrag-documents", target_base / "documents" / "openrag-documents", "documents"),
@@ -561,47 +569,74 @@ def migrate_legacy_data_directories():
         (cwd / "config", target_base / "config", "config"),
         (cwd / "opensearch-data", target_base / "data" / "opensearch-data", "OpenSearch data"),
     ]
-    
-    migrated_any = False
-    for source, target, description in migrations:
-        if not source.exists():
-            continue
-        
-        # If target exists, merge; otherwise move
+
+    # Check which sources exist and need migration
+    sources_to_migrate = [(s, t, d) for s, t, d in migrations if s.exists()]
+
+    if not sources_to_migrate:
+        # No legacy data to migrate, just mark as done
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+        return
+
+    # Prompt user for confirmation
+    print("\n" + "=" * 60)
+    print("  OpenRAG Data Migration Required")
+    print("=" * 60)
+    print(f"\nStarting with this version, OpenRAG stores data in:")
+    print(f"  {target_base}")
+    print("\nThe following will be moved from your current directory:")
+    for source, target, desc in sources_to_migrate:
+        print(f"  - {desc}: {source.name}/ -> {target}")
+    print("\nThis is a one-time migration.")
+    print("\nIf you don't want to migrate, exit and downgrade to v1.52 or earlier.")
+
+    try:
+        response = input("\nProceed with migration? [y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        response = ""
+
+    if response != "y":
+        print("\nMigration cancelled. Exiting.")
+        sys.exit(0)
+
+    print("\nMigrating...")
+
+    # Perform migration
+    for source, target, description in sources_to_migrate:
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            
+
             if target.exists():
-                # Target exists - merge contents
+                # Target exists - merge contents (copy only new items)
                 logger.info(f"Merging {description} from {source} to {target}")
                 if source.is_dir():
                     for item in source.iterdir():
                         src_item = source / item.name
                         dst_item = target / item.name
-                        
+
                         if not dst_item.exists():
                             if src_item.is_dir():
                                 shutil.copytree(src_item, dst_item)
                             else:
                                 shutil.copy2(src_item, dst_item)
                             logger.debug(f"Copied {src_item} to {dst_item}")
-                else:
-                    if not target.exists():
-                        shutil.copy2(source, target)
-                        logger.debug(f"Copied {source} to {target}")
             else:
-                # Target doesn't exist - move entire directory/file
+                # Target doesn't exist - move entire directory
                 logger.info(f"Migrating {description} from {source} to {target}")
                 shutil.move(str(source), str(target))
-            
-            migrated_any = True
+
+            print(f"  Migrated {description}")
         except Exception as e:
             logger.warning(f"Failed to migrate {description}: {e}")
-    
-    if migrated_any:
-        logger.info("Data migration completed. Old directories can be safely deleted from CWD.")
-    
-    return migrated_any
+            print(f"  Warning: Failed to migrate {description}: {e}")
+
+    # Create marker to prevent future migration prompts
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.touch()
+
+    print("\nMigration complete!\n")
+    logger.info("Data migration completed successfully")
 
 
 def setup_host_directories():
