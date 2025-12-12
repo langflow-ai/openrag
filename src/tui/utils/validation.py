@@ -96,21 +96,6 @@ def validate_non_empty(value: str) -> bool:
     return bool(value and value.strip())
 
 
-def sanitize_env_value(value: str) -> str:
-    """Sanitize environment variable value."""
-    # Remove leading/trailing whitespace
-    value = value.strip()
-
-    # Remove quotes if they wrap the entire value
-    if len(value) >= 2:
-        if (value.startswith('"') and value.endswith('"')) or (
-            value.startswith("'") and value.endswith("'")
-        ):
-            value = value[1:-1]
-
-    return value
-
-
 def validate_documents_paths(paths_str: str) -> tuple[bool, str, list[str]]:
     """
     Validate comma-separated documents paths for volume mounting.
