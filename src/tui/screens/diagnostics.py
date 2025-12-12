@@ -167,8 +167,8 @@ class DiagnosticsScreen(Screen):
             status = self.query_one("#copy-status", Static)
 
             # Create logs directory if it doesn't exist
-            logs_dir = Path("logs")
-            logs_dir.mkdir(exist_ok=True)
+            logs_dir = Path.home() / ".openrag" / "logs"
+            logs_dir.mkdir(parents=True, exist_ok=True)
 
             # Create a timestamped filename
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
