@@ -87,11 +87,25 @@ class ContainerManager:
         }
 
     def _find_compose_file(self, filename: str) -> Path:
-        """Find compose file in current directory or package resources."""
-        # First check current working directory
-        cwd_path = Path(filename)
+        """Find compose file in centralized TUI directory, current directory, or package resources."""
+        from utils.paths import get_tui_compose_file
+        
         self._compose_search_log = f"Searching for {filename}:\n"
-        self._compose_search_log += f"  1. Current directory: {cwd_path.absolute()}"
+        
+        # First check centralized TUI directory (~/.openrag/tui/)
+        is_gpu = "gpu" in filename
+        tui_path = get_tui_compose_file(gpu=is_gpu)
+        self._compose_search_log += f"  1. TUI directory: {tui_path.absolute()}"
+        
+        if tui_path.exists():
+            self._compose_search_log += " ✓ FOUND"
+            return tui_path
+        else:
+            self._compose_search_log += " ✗ NOT FOUND"
+        
+        # Then check current working directory (for backward compatibility)
+        cwd_path = Path(filename)
+        self._compose_search_log += f"\n  2. Current directory: {cwd_path.absolute()}"
 
         if cwd_path.exists():
             self._compose_search_log += " ✓ FOUND"
@@ -99,28 +113,29 @@ class ContainerManager:
         else:
             self._compose_search_log += " ✗ NOT FOUND"
 
-        # Then check package resources
-        self._compose_search_log += f"\n  2. Package resources: "
+        # Finally check package resources
+        self._compose_search_log += "\n  3. Package resources: "
         try:
             pkg_files = files("tui._assets")
             self._compose_search_log += f"{pkg_files}"
             compose_resource = pkg_files / filename
 
             if compose_resource.is_file():
-                self._compose_search_log += f" ✓ FOUND, copying to current directory"
-                # Copy to cwd for compose command to work
+                self._compose_search_log += " ✓ FOUND, copying to TUI directory"
+                # Copy to TUI directory
+                tui_path.parent.mkdir(parents=True, exist_ok=True)
                 content = compose_resource.read_text()
-                cwd_path.write_text(content)
-                return cwd_path
+                tui_path.write_text(content)
+                return tui_path
             else:
-                self._compose_search_log += f" ✗ NOT FOUND"
+                self._compose_search_log += " ✗ NOT FOUND"
         except Exception as e:
             self._compose_search_log += f" ✗ SKIPPED ({e})"
             # Don't log this as an error since it's expected when running from source
 
-        # Fall back to original path (will fail later if not found)
-        self._compose_search_log += f"\n  3. Falling back to: {cwd_path.absolute()}"
-        return Path(filename)
+        # Fall back to TUI path (will fail later if not found)
+        self._compose_search_log += f"\n  4. Falling back to: {tui_path.absolute()}"
+        return tui_path
 
     def _get_env_from_file(self) -> Dict[str, str]:
         """Read environment variables from .env file, prioritizing file values over os.environ.
