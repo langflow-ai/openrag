@@ -585,7 +585,7 @@ def migrate_legacy_data_directories():
     print("=" * 60)
     print(f"\nStarting with this version, OpenRAG stores data in:")
     print(f"  {target_base}")
-    print("\nThe following will be moved from your current directory:")
+    print("\nThe following will be copied from your current directory:")
     for source, target, desc in sources_to_migrate:
         print(f"  - {desc}: {source.name}/ -> {target}")
     print("\nThis is a one-time migration.")
@@ -602,7 +602,7 @@ def migrate_legacy_data_directories():
 
     print("\nMigrating...")
 
-    # Perform migration
+    # Perform migration (always copy, never delete originals)
     for source, target, description in sources_to_migrate:
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -622,9 +622,12 @@ def migrate_legacy_data_directories():
                                 shutil.copy2(src_item, dst_item)
                             logger.debug(f"Copied {src_item} to {dst_item}")
             else:
-                # Target doesn't exist - move entire directory
-                logger.info(f"Migrating {description} from {source} to {target}")
-                shutil.move(str(source), str(target))
+                # Target doesn't exist - copy entire directory
+                logger.info(f"Copying {description} from {source} to {target}")
+                if source.is_dir():
+                    shutil.copytree(source, target)
+                else:
+                    shutil.copy2(source, target)
 
             print(f"  Migrated {description}")
         except Exception as e:
