@@ -584,7 +584,7 @@ async def initialize_services():
         if migration_results:
             logger.info("File migration completed", results=migration_results)
     except Exception as e:
-        logger.warning(f"Migration failed, continuing with startup: {e}")
+        logger.warning(f"Migration failed, some files may still be in legacy locations. Consider manual migration. Error: {e}")
     
     # Generate JWT keys if they don't exist
     generate_jwt_keys()
