@@ -41,7 +41,8 @@ class WelcomeScreen(Screen):
         self.has_env_file = self.env_manager.env_file.exists()
 
         # Load .env file if it exists
-        load_dotenv()
+        # override=True ensures .env file values take precedence over existing environment variables
+        load_dotenv(override=True)
 
         # Check OAuth config immediately
         self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
