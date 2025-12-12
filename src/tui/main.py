@@ -457,7 +457,7 @@ def copy_sample_documents(*, force: bool = False) -> None:
     """Copy sample documents from package to host directory.
     
     Uses the first path from OPENRAG_DOCUMENTS_PATHS env var.
-    Defaults to ~/.openrag/documents/openrag-documents if not configured.
+    Defaults to ~/.openrag/documents if not configured.
     """
     from .managers.env_manager import EnvManager
     from pathlib import Path
@@ -470,10 +470,12 @@ def copy_sample_documents(*, force: bool = False) -> None:
     documents_path_str = env_manager.config.openrag_documents_paths
     if documents_path_str:
         first_path = documents_path_str.split(',')[0].strip()
+        # Expand $HOME and ~
+        first_path = first_path.replace("$HOME", str(Path.home()))
         documents_dir = Path(first_path).expanduser()
     else:
         # Default fallback
-        documents_dir = Path.home() / ".openrag" / "documents" / "openrag-documents"
+        documents_dir = Path.home() / ".openrag" / "documents"
     
     documents_dir.mkdir(parents=True, exist_ok=True)
 
@@ -563,7 +565,7 @@ def migrate_legacy_data_directories():
 
     # Define migration mappings: (source_path, target_path, description)
     migrations = [
-        (cwd / "openrag-documents", target_base / "documents" / "openrag-documents", "documents"),
+        (cwd / "openrag-documents", target_base / "documents", "documents"),
         (cwd / "flows", target_base / "flows", "flows"),
         (cwd / "keys", target_base / "keys", "keys"),
         (cwd / "config", target_base / "config", "config"),
@@ -646,16 +648,16 @@ def setup_host_directories():
     """Initialize OpenRAG directory structure on the host.
 
     Creates directories that will be volume-mounted into containers:
-    - ~/.openrag/documents/openrag-documents/ (for document ingestion)
+    - ~/.openrag/documents/ (for document ingestion)
     - ~/.openrag/flows/ (for Langflow flows)
     - ~/.openrag/keys/ (for JWT keys)
     - ~/.openrag/config/ (for configuration)
     - ~/.openrag/data/ (for backend data: conversations, OAuth tokens, etc.)
-    - ~/.openrag/data/opensearch-data/ (for OpenSearch data)
+    - ~/.openrag/data/opensearch-data/ (for OpenSearch index)
     """
     base_dir = Path.home() / ".openrag"
     directories = [
-        base_dir / "documents" / "openrag-documents",
+        base_dir / "documents",
         base_dir / "flows",
         base_dir / "keys",
         base_dir / "config",

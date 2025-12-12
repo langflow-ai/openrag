@@ -523,7 +523,7 @@ class ConfigScreen(Screen):
         yield Label("Documents Paths")
         current_value = getattr(self.env_manager.config, "openrag_documents_paths", "")
         input_widget = Input(
-            placeholder="./openrag-documents,/path/to/more/docs",
+            placeholder="~/.openrag/documents",
             value=current_value,
             validators=[DocumentsPathValidator()],
             id="input-openrag_documents_paths",
@@ -544,9 +544,9 @@ class ConfigScreen(Screen):
             "Directory to persist OpenSearch indices across upgrades",
             classes="helper-text",
         )
-        current_value = getattr(self.env_manager.config, "opensearch_data_path", "./opensearch-data")
+        current_value = getattr(self.env_manager.config, "opensearch_data_path", "$HOME/.openrag/data/opensearch-data")
         input_widget = Input(
-            placeholder="./opensearch-data",
+            placeholder="~/.openrag/data/opensearch-data",
             value=current_value,
             id="input-opensearch_data_path",
         )

@@ -65,10 +65,10 @@ class EnvConfig:
     nudges_flow_id: str = "ebc01d31-1976-46ce-a385-b0240327226c"
 
     # Document paths (comma-separated) - use centralized location by default
-    openrag_documents_paths: str = "$HOME/.openrag/documents/openrag-documents"
+    openrag_documents_paths: str = "$HOME/.openrag/documents"
 
     # Volume mount paths - use centralized location by default
-    openrag_documents_path: str = "$HOME/.openrag/documents/openrag-documents"  # Primary documents path for compose
+    openrag_documents_path: str = "$HOME/.openrag/documents"  # Primary documents path for compose
     openrag_keys_path: str = "$HOME/.openrag/keys"
     openrag_flows_path: str = "$HOME/.openrag/flows"
     openrag_config_path: str = "$HOME/.openrag/config"
@@ -524,7 +524,7 @@ class EnvManager:
             (
                 "openrag_documents_paths",
                 "Documents Paths",
-                "./openrag-documents,/path/to/more/docs",
+                "~/.openrag/documents",
                 False,
             ),
         ]
@@ -649,12 +649,13 @@ class EnvManager:
 
     def generate_compose_volume_mounts(self) -> List[str]:
         """Generate Docker Compose volume mount strings from documents paths."""
-        is_valid, _, validated_paths = validate_documents_paths(
-            self.config.openrag_documents_paths
-        )
+        # Expand $HOME before validation
+        paths_str = self.config.openrag_documents_paths.replace("$HOME", str(Path.home()))
+        is_valid, error_msg, validated_paths = validate_documents_paths(paths_str)
 
         if not is_valid:
-            return ["./openrag-documents:/app/openrag-documents:Z"]  # fallback
+            logger.warning(f"Invalid documents paths: {error_msg}")
+            return []
 
         volume_mounts = []
         for i, path in enumerate(validated_paths):
