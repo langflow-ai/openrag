@@ -293,7 +293,7 @@ class ContainerManager:
             use_gpu = not cpu_mode
         
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command
+        cmd = self.runtime_info.compose_command.copy()
         
         # Add --env-file to explicitly specify the .env location
         from utils.paths import get_tui_env_file
@@ -349,7 +349,7 @@ class ContainerManager:
             use_gpu = not cpu_mode
         
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command
+        cmd = self.runtime_info.compose_command.copy()
         
         # Add --env-file to explicitly specify the .env location
         from utils.paths import get_tui_env_file
@@ -432,7 +432,7 @@ class ContainerManager:
             use_gpu = not cpu_mode
         
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command
+        cmd = self.runtime_info.compose_command.copy()
         
         # Add --env-file to explicitly specify the .env location
         from utils.paths import get_tui_env_file
@@ -856,7 +856,7 @@ class ContainerManager:
         for use_gpu in [True, False]:
             try:
                 # Build compose command with override pattern
-                cmd = self.runtime_info.compose_command
+                cmd = self.runtime_info.compose_command.copy()
                 
                 # Add --env-file to explicitly specify the .env location
                 tui_env_file = get_tui_env_file()
@@ -886,7 +886,7 @@ class ContainerManager:
                         continue
 
                 # Fallback to YAML output (for older compose versions)
-                cmd = self.runtime_info.compose_command
+                cmd = self.runtime_info.compose_command.copy()
                 
                 # Add --env-file to explicitly specify the .env location
                 tui_env_file = get_tui_env_file()
@@ -1222,7 +1222,7 @@ class ContainerManager:
             return
 
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        cmd = self.runtime_info.compose_command.copy() + ["-f", str(self.compose_file)]
         if self.use_gpu_compose and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
         cmd.extend(["logs", "-f", service_name])
