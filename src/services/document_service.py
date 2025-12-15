@@ -181,6 +181,7 @@ class DocumentService:
     async def process_upload_context(self, upload_file, filename: str = None):
         """Process uploaded file and return content for context"""
         import io
+        import os
 
         if not filename:
             filename = upload_file.filename or "uploaded_document"
@@ -194,22 +195,37 @@ class DocumentService:
             content.write(chunk)
         content.seek(0)  # Reset to beginning for reading
 
-        # Create DocumentStream and process with docling
-        doc_stream = DocumentStream(name=filename, stream=content)
-        result = clients.converter.convert(doc_stream)
-        full_doc = result.document.export_to_dict()
-        slim_doc = extract_relevant(full_doc)
+        # Check if this is a .txt file - use simple processing
+        file_ext = os.path.splitext(filename)[1].lower()
+        
+        if file_ext == '.txt':
+            # Simple text file processing for chat context
+            text_content = content.read().decode('utf-8', errors='replace')
+            
+            # For context, we don't need to chunk - just return the full content
+            return {
+                "filename": filename,
+                "content": text_content,
+                "pages": 1,  # Text files don't have pages
+                "content_length": len(text_content),
+            }
+        else:
+            # Create DocumentStream and process with docling
+            doc_stream = DocumentStream(name=filename, stream=content)
+            result = clients.converter.convert(doc_stream)
+            full_doc = result.document.export_to_dict()
+            slim_doc = extract_relevant(full_doc)
 
-        # Extract all text content
-        all_text = []
-        for chunk in slim_doc["chunks"]:
-            all_text.append(f"Page {chunk['page']}:\n{chunk['text']}")
+            # Extract all text content
+            all_text = []
+            for chunk in slim_doc["chunks"]:
+                all_text.append(f"Page {chunk['page']}:\n{chunk['text']}")
 
-        full_content = "\n\n".join(all_text)
+            full_content = "\n\n".join(all_text)
 
-        return {
-            "filename": filename,
-            "content": full_content,
-            "pages": len(slim_doc["chunks"]),
-            "content_length": len(full_content),
-        }
+            return {
+                "filename": filename,
+                "content": full_content,
+                "pages": len(slim_doc["chunks"]),
+                "content_length": len(full_content),
+            }

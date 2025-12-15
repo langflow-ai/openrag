@@ -197,10 +197,27 @@ class TaskProcessor:
             file_hash=file_hash,
         )
 
-        # Convert and extract
-        result = clients.converter.convert(file_path)
-        full_doc = result.document.export_to_dict()
-        slim_doc = extract_relevant(full_doc)
+        # Check if this is a .txt file - use simple processing instead of docling
+        import os
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        if file_ext == '.txt':
+            # Simple text file processing without docling
+            from utils.document_processing import process_text_file
+            logger.info(
+                "Processing as plain text file (bypassing docling)",
+                file_path=file_path,
+                file_hash=file_hash,
+            )
+            slim_doc = process_text_file(file_path)
+            # Override filename with original_filename if provided
+            if original_filename:
+                slim_doc["filename"] = original_filename
+        else:
+            # Convert and extract using docling for other file types
+            result = clients.converter.convert(file_path)
+            full_doc = result.document.export_to_dict()
+            slim_doc = extract_relevant(full_doc)
 
         texts = [c["text"] for c in slim_doc["chunks"]]
 

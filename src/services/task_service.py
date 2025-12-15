@@ -257,9 +257,13 @@ class TaskService:
                         import traceback
 
                         traceback.print_exc()
-                        file_task.status = TaskStatus.FAILED
-                        file_task.error = str(e)
-                        upload_task.failed_files += 1
+                        # Note: Processors already handle incrementing failed_files and
+                        # setting file_task status/error, so we don't duplicate that here.
+                        # Only update timestamp if processor didn't already set it
+                        if file_task.status == TaskStatus.RUNNING:
+                            file_task.status = TaskStatus.FAILED
+                        if not file_task.error:
+                            file_task.error = str(e)
                     finally:
                         file_task.updated_at = time.time()
                         upload_task.processed_files += 1
