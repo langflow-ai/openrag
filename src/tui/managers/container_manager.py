@@ -1040,7 +1040,7 @@ class ContainerManager:
         up_success = {"value": True}
         error_messages = []
         
-        async for message, replace_last in self._stream_compose_command(["up", "-d"], up_success, cpu_mode):
+        async for message, replace_last in self._stream_compose_command(["up", "-d", "--no-build"], up_success, cpu_mode):
             # Detect error patterns in the output
             lower_msg = message.lower()
             
@@ -1115,7 +1115,7 @@ class ContainerManager:
         # Restart with new images using streaming output
         restart_success = True
         async for message, replace_last in self._run_compose_command_streaming(
-            ["up", "-d", "--force-recreate"], cpu_mode
+            ["up", "-d", "--force-recreate", "--no-build"], cpu_mode
         ):
             yield False, message, replace_last
             # Check for error patterns in the output
