@@ -494,14 +494,22 @@ class MonitorScreen(Screen):
                 flows_backup_path = flows_path / "backup"
 
                 if config_path.exists():
-                    shutil.rmtree(config_path)
+                    # Use container to handle files owned by container user
+                    success, msg = await self.container_manager.clear_directory_with_container(config_path)
+                    if not success:
+                        # Fallback to regular rmtree if container method fails
+                        shutil.rmtree(config_path)
                     # Recreate empty config directory
                     config_path.mkdir(parents=True, exist_ok=True)
 
                 # Delete flow backups only if user chose to (and they actually exist)
                 if self._check_flow_backups():
                     if delete_backups:
-                        shutil.rmtree(flows_backup_path)
+                        # Use container to handle files owned by container user
+                        success, msg = await self.container_manager.clear_directory_with_container(flows_backup_path)
+                        if not success:
+                            # Fallback to regular rmtree if container method fails
+                            shutil.rmtree(flows_backup_path)
                         # Recreate empty backup directory
                         flows_backup_path.mkdir(parents=True, exist_ok=True)
                         self.notify("Flow backups deleted", severity="information")

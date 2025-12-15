@@ -1127,6 +1127,39 @@ class ContainerManager:
         else:
             yield False, "Some errors occurred during service restart", False
 
+    async def clear_directory_with_container(self, path: Path) -> tuple[bool, str]:
+        """Clear a directory using a container to handle container-owned files.
+
+        Args:
+            path: The directory to clear (contents will be deleted, directory recreated)
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if not self.is_available():
+            return False, "No container runtime available"
+
+        if not path.exists():
+            return True, "Directory does not exist, nothing to clear"
+
+        path = path.absolute()
+
+        # Use alpine container to delete files owned by container user
+        cmd = [
+            "run", "--rm",
+            "-v", f"{path}:/work:Z",
+            "alpine",
+            "sh", "-c",
+            "rm -rf /work/* /work/.[!.]* 2>/dev/null; echo done"
+        ]
+
+        success, stdout, stderr = await self._run_runtime_command(cmd)
+
+        if success and "done" in stdout:
+            return True, f"Cleared {path}"
+        else:
+            return False, f"Failed to clear {path}: {stderr or 'Unknown error'}"
+
     async def clear_opensearch_data_volume(self) -> AsyncIterator[tuple[bool, str]]:
         """Clear opensearch data using a temporary container with proper permissions."""
         if not self.is_available():
