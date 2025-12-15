@@ -377,30 +377,34 @@ class EnvManager:
                 f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
+
+                # Expand $HOME in paths before writing to .env
+                # This ensures paths work with all compose implementations (docker, podman)
+                from utils.paths import expand_path
                 f.write(
-                    f"OPENRAG_DOCUMENTS_PATHS={self._quote_env_value(self.config.openrag_documents_paths)}\n"
+                    f"OPENRAG_DOCUMENTS_PATHS={self._quote_env_value(expand_path(self.config.openrag_documents_paths))}\n"
                 )
                 f.write("\n")
-                
+
                 # Volume mount paths for Docker Compose
                 f.write("# Volume mount paths for Docker Compose\n")
                 f.write(
-                    f"OPENRAG_DOCUMENTS_PATH={self._quote_env_value(self.config.openrag_documents_path)}\n"
+                    f"OPENRAG_DOCUMENTS_PATH={self._quote_env_value(expand_path(self.config.openrag_documents_path))}\n"
                 )
                 f.write(
-                    f"OPENRAG_KEYS_PATH={self._quote_env_value(self.config.openrag_keys_path)}\n"
+                    f"OPENRAG_KEYS_PATH={self._quote_env_value(expand_path(self.config.openrag_keys_path))}\n"
                 )
                 f.write(
-                    f"OPENRAG_FLOWS_PATH={self._quote_env_value(self.config.openrag_flows_path)}\n"
+                    f"OPENRAG_FLOWS_PATH={self._quote_env_value(expand_path(self.config.openrag_flows_path))}\n"
                 )
                 f.write(
-                    f"OPENRAG_CONFIG_PATH={self._quote_env_value(self.config.openrag_config_path)}\n"
+                    f"OPENRAG_CONFIG_PATH={self._quote_env_value(expand_path(self.config.openrag_config_path))}\n"
                 )
                 f.write(
-                    f"OPENRAG_DATA_PATH={self._quote_env_value(self.config.openrag_data_path)}\n"
+                    f"OPENRAG_DATA_PATH={self._quote_env_value(expand_path(self.config.openrag_data_path))}\n"
                 )
                 f.write(
-                    f"OPENSEARCH_DATA_PATH={self._quote_env_value(self.config.opensearch_data_path)}\n"
+                    f"OPENSEARCH_DATA_PATH={self._quote_env_value(expand_path(self.config.opensearch_data_path))}\n"
                 )
                 # Set OPENRAG_VERSION to TUI version
                 if self.config.openrag_version:

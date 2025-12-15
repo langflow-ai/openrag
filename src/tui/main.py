@@ -576,9 +576,27 @@ def migrate_legacy_data_directories():
     sources_to_migrate = [(s, t, d) for s, t, d in migrations if s.exists()]
 
     if not sources_to_migrate:
-        # No legacy data to migrate, just mark as done
+        # No legacy data to migrate, just mark as done and update .env paths
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.touch()
+        # Still need to update .env with centralized paths
+        try:
+            from managers.env_manager import EnvManager
+            env_manager = EnvManager()
+            env_manager.load_existing_env()
+            # Explicitly set centralized paths (overrides any old CWD-relative paths)
+            home = str(Path.home())
+            env_manager.config.openrag_documents_paths = f"{home}/.openrag/documents"
+            env_manager.config.openrag_documents_path = f"{home}/.openrag/documents"
+            env_manager.config.openrag_keys_path = f"{home}/.openrag/keys"
+            env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
+            env_manager.config.openrag_config_path = f"{home}/.openrag/config"
+            env_manager.config.openrag_data_path = f"{home}/.openrag/data"
+            env_manager.config.opensearch_data_path = f"{home}/.openrag/data/opensearch-data"
+            env_manager.save_env()
+            logger.info("Updated .env file with centralized paths")
+        except Exception as e:
+            logger.warning(f"Failed to update .env paths: {e}")
         return
 
     # Prompt user for confirmation
@@ -640,6 +658,27 @@ def migrate_legacy_data_directories():
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.touch()
 
+    # Update .env file with centralized paths
+    try:
+        from managers.env_manager import EnvManager
+        env_manager = EnvManager()
+        env_manager.load_existing_env()
+        # Explicitly set centralized paths (overrides any old CWD-relative paths)
+        home = str(Path.home())
+        env_manager.config.openrag_documents_paths = f"{home}/.openrag/documents"
+        env_manager.config.openrag_documents_path = f"{home}/.openrag/documents"
+        env_manager.config.openrag_keys_path = f"{home}/.openrag/keys"
+        env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
+        env_manager.config.openrag_config_path = f"{home}/.openrag/config"
+        env_manager.config.openrag_data_path = f"{home}/.openrag/data"
+        env_manager.config.opensearch_data_path = f"{home}/.openrag/data/opensearch-data"
+        env_manager.save_env()
+        print("  Updated .env with centralized paths")
+        logger.info("Updated .env file with centralized paths")
+    except Exception as e:
+        logger.warning(f"Failed to update .env paths: {e}")
+        print(f"  Warning: Failed to update .env paths: {e}")
+
     print("\nMigration complete!\n")
     logger.info("Data migration completed successfully")
 
@@ -688,7 +727,7 @@ def run_tui():
     try:
         # Migrate legacy data directories from CWD to ~/.openrag/
         migrate_legacy_data_directories()
-        
+
         # Initialize host directory structure
         setup_host_directories()
         

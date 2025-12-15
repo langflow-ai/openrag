@@ -55,7 +55,7 @@ def get_tui_compose_file(gpu: bool = False) -> Path:
 
 def get_legacy_paths() -> dict:
     """Get legacy (CWD-based) paths for migration purposes.
-    
+
     Returns:
         Dictionary mapping resource names to their old CWD-based paths
     """
@@ -65,3 +65,21 @@ def get_legacy_paths() -> dict:
         "tui_compose": cwd / "docker-compose.yml",
         "tui_compose_gpu": cwd / "docker-compose.gpu.yml",
     }
+
+
+def expand_path(path: str) -> str:
+    """Expand $HOME and ~ in a path string to the actual home directory.
+
+    Args:
+        path: Path string that may contain $HOME or ~
+
+    Returns:
+        Path string with $HOME and ~ expanded to actual home directory
+    """
+    if not path:
+        return path
+    expanded = path.replace("$HOME", str(Path.home()))
+    # Also handle ~ at start of path
+    if expanded.startswith("~"):
+        expanded = str(Path.home()) + expanded[1:]
+    return expanded

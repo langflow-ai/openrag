@@ -1173,43 +1173,18 @@ class ContainerManager:
         env_manager = EnvManager()
         env_manager.load_existing_env()
         opensearch_data_path = Path(env_manager.config.opensearch_data_path.replace("$HOME", str(Path.home()))).expanduser().absolute()
-        
+
         if not opensearch_data_path.exists():
             yield True, "OpenSearch data directory does not exist, skipping"
             return
-        
-        # Use the opensearch container with proper volume mount flags
-        # :Z flag ensures proper SELinux labeling and UID mapping for rootless containers
-        cmd = [
-            "run",
-            "--rm",
-            "-v", f"{opensearch_data_path}:/usr/share/opensearch/data:Z",
-            "langflowai/openrag-opensearch:latest",
-            "bash", "-c",
-            "rm -rf /usr/share/opensearch/data/* /usr/share/opensearch/data/.[!.]* && echo 'Cleared successfully'"
-        ]
-        
-        success, stdout, stderr = await self._run_runtime_command(cmd)
-        
-        if success and "Cleared successfully" in stdout:
+
+        # Use alpine with root to clear container-owned files
+        success, msg = await self.clear_directory_with_container(opensearch_data_path)
+
+        if success:
             yield True, "OpenSearch data cleared successfully"
         else:
-            # If it fails, try with the base opensearch image
-            yield False, "Retrying with base OpenSearch image..."
-            cmd = [
-                "run",
-                "--rm",
-                "-v", f"{opensearch_data_path}:/usr/share/opensearch/data:Z",
-                "opensearchproject/opensearch:3.0.0",
-                "bash", "-c",
-                "rm -rf /usr/share/opensearch/data/* /usr/share/opensearch/data/.[!.]* && echo 'Cleared successfully'"
-            ]
-            success, stdout, stderr = await self._run_runtime_command(cmd)
-            
-            if success and "Cleared successfully" in stdout:
-                yield True, "OpenSearch data cleared successfully"
-            else:
-                yield False, f"Failed to clear OpenSearch data: {stderr if stderr else 'Unknown error'}"
+            yield False, f"Failed to clear OpenSearch data: {msg}"
 
     async def reset_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Reset all services (stop, remove containers/volumes, clear data) and yield progress updates."""
