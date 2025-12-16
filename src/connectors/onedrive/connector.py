@@ -58,9 +58,8 @@ class OneDriveConnector(BaseConnector):
         except Exception as e:
             logger.debug(f"Failed to get client_secret: {e}")
 
-        # Token file setup
-        project_root = Path(__file__).resolve().parent.parent.parent.parent
-        token_file = config.get("token_file") or str(project_root / "onedrive_token.json")
+        # Token file setup - use data/ directory for persistence
+        token_file = config.get("token_file") or "data/onedrive_token.json"
         Path(token_file).parent.mkdir(parents=True, exist_ok=True)
 
         # Only initialize OAuth if we have credentials
@@ -72,7 +71,7 @@ class OneDriveConnector(BaseConnector):
                 oauth_token_file = config["token_file"]
             else:
                 # Use a per-connection cache file to avoid collisions with other connectors
-                oauth_token_file = f"onedrive_token_{connection_id}.json"
+                oauth_token_file = f"data/onedrive_token_{connection_id}.json"
 
             # MSA & org both work via /common for OneDrive personal testing
             authority = "https://login.microsoftonline.com/common"
