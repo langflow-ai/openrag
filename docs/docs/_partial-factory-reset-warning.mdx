@@ -2,7 +2,7 @@
 This is a destructive action that does the following:
 
 * Destroys all OpenRAG containers, volumes, and local images with `docker compose down --volumes --remove-orphans --rmi local`.
-* Prunes any additional Docker objects with `docker system prune -f`.
+* Prunes any additional container objects with `docker system prune -f`.
 * Deletes the contents of OpenRAG's `config` and `./opensearch-data` directories.
 * Deletes the `conversations.json` file.
 

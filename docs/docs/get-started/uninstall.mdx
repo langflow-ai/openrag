@@ -19,11 +19,13 @@ If you used [`uv`](/install-uv) to install OpenRAG, run `uv remove openrag` in y
 
 ## Uninstall self-managed deployments
 
-For self-managed services, destroy the containers, prune any additional Docker objects, shut down the Docling service, and delete any remaining OpenRAG files.
+For self-managed services, destroy the containers, prune any additional container objects, delete any remaining OpenRAG files, and then shut down the Docling service.
 
-### Uninstall with Docker Compose or Podman Compose
+### Uninstall with `docker compose` or `podman compose`
 
-1. Destroy the containers, volumes, and local images, and then remove (prune) any additional Docker objects:
+Use these steps to uninstall a self-managed OpenRAG deployment with streamlined `docker compose` or `podman compose` commands:
+
+1. Destroy the containers, volumes, and local images, and then remove (prune) any additional container objects:
 
    <PartialDockerComposeDownAndPrune />
 
@@ -41,9 +43,9 @@ For self-managed services, destroy the containers, prune any additional Docker o
    uv run python scripts/docling_ctl.py stop
    ```
 
-### Step-by-step removal and cleanup with Docker or Podman
+### Uninstall with discrete `docker` or `podman` commands
 
-Use these commands for step-by-step container removal and cleanup:
+Use these commands to uninstall a self-managed OpenRAG deployment with discrete `docker` or `podman` commands:
 
 1. Stop all running containers:
 

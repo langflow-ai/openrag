@@ -14,13 +14,13 @@ Use this quickstart to install OpenRAG, and then try some of OpenRAG's core feat
 
 ## Prerequisites
 
-<PartialPrereqWindows />
+<PartialPrereqPython />
 
 * Get an [OpenAI API key](https://platform.openai.com/api-keys).
 This quickstart uses OpenAI for simplicity.
 For other providers, see the other [installation methods](/install-options).
 
-<PartialPrereqPython />
+<PartialPrereqWindows />
 
 ## Install OpenRAG
 
@@ -54,9 +54,6 @@ The script installs OpenRAG dependencies, including Docker or Podman, and then i
 
 5. Leave the **OpenAI API key** field empty.
 
-   Your passwords are saved in the `.env` file that is used to start OpenRAG.
-   You can find this file in your OpenRAG installation directory.
-
 6. Click **Save Configuration**, and then click **Start All Services**.
 
    This process can take some time while OpenRAG pulls and runs the container images.
@@ -67,7 +64,7 @@ The script installs OpenRAG dependencies, including Docker or Podman, and then i
    Command completed successfully
    ```
 
-   Your [OpenRAG configuration](/reference/configuration) is stored in a `.env` file that is created automatically in the directory where you ran the installer script.
+   Your OpenRAG configuration and passwords are stored in an [OpenRAG `.env` file](/reference/configuration) file that is created automatically in your OpenRAG installation directory, which is the directory where you ran the installer script.
    Container definitions are stored in the `docker-compose` files in the same directory.
 
 7. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.

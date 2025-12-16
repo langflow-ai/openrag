@@ -7,8 +7,9 @@ This page provides troubleshooting advice for issues you might encounter when us
 
 ## OpenSearch fails to start
 
-Check that `OPENSEARCH_PASSWORD` set in [Environment variables](/reference/configuration) meets requirements.
-The password must contain at least 8 characters, and must contain at least one uppercase letter, one lowercase letter, one digit, and one special character that is strong.
+Check that the value of the `OPENSEARCH_PASSWORD` [environment variable](/reference/configuration) meets the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
+
+If you need to change the password, you must [reset the OpenRAG services](/manage-services).
 
 ## OpenRAG fails to start from the TUI with operation not supported
 
@@ -30,7 +31,8 @@ Replace `VERSION` with your installed Python version, such as `3.13`.
 
 ## Langflow connection issues
 
-Verify the `LANGFLOW_SUPERUSER` credentials set in [Environment variables](/reference/configuration) are correct.
+Verify that the value of the `LANGFLOW_SUPERUSER` environment variable is correct.
+For more information about this variable and how this variable controls Langflow access, see [Langflow settings](/reference/configuration#langflow-settings).
 
 ## Container out of memory errors
 
@@ -50,7 +52,7 @@ podman machine start
 
 ## Port conflicts
 
-With the default [configuration](/reference/configuration), OpenRAG requires the following ports to be available on the host machine:
+With the default [environment variable](/reference/configuration) values, OpenRAG requires the following ports to be available on the host machine:
 
 * 3000: Langflow application
 * 5001: Docling local ingestion service

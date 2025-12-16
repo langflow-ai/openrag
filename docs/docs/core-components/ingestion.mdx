@@ -80,7 +80,7 @@ You can do this during [installation](/install#setup), or you can add the creden
 3. The TUI presents redirect URIs for your OAuth app that you must register with your OAuth provider.
 These are the URLs your OAuth provider will redirect back to after users authenticate and grant access to their cloud storage.
 
-4. Click **Save Configuration** to add the OAuth credentials to your OpenRAG [`.env`](/reference/configuration) file.
+4. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
 
 5. Click **Start All Services** to restart the OpenRAG containers with OAuth enabled.
 
@@ -90,7 +90,7 @@ You should be prompted to sign in to your OAuth provider before being redirected
 </TabItem>
 <TabItem value="env" label="Self-managed services">
 
-If you [installed OpenRAG with self-managed services](/docker), set OAuth credentials in the `.env` file for Docker Compose.
+If you [installed OpenRAG with self-managed services](/docker), set OAuth credentials in your [OpenRAG `.env` file](/reference/configuration).
 
 You can do this during [initial set up](/docker#setup), or you can add the credentials afterwards:
 
@@ -98,7 +98,7 @@ You can do this during [initial set up](/docker#setup), or you can add the crede
 
    <PartialDockerStopAll />
 
-2. Edit the `.env` file for Docker Compose to add the OAuth credentials for the cloud storage providers that you want to use:
+2. Edit your OpenRAG `.env` file to add the OAuth credentials for the cloud storage providers that you want to use:
 
    * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
 

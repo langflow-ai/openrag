@@ -5,11 +5,13 @@ slug: /install-windows
 
 If you're using Windows, you must install OpenRAG within the Windows Subsystem for Linux (WSL).
 
-## Nested virtualization isn't supported
+:::warning
+Nested virtualization isn't supported.
 
 OpenRAG isn't compatible with nested virtualization, which can cause networking issues.
 Don't install OpenRAG on a WSL distribution that is installed inside a Windows VM.
 Instead, install OpenRAG on your base OS or a non-nested Linux VM.
+:::
 
 ## Install OpenRAG in the WSL
 

@@ -12,10 +12,11 @@ import PartialPrereqNoScript from '@site/docs/_partial-prereq-no-script.mdx';
 import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
 import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
+import PartialOpenSearchAuthMode from '@site/docs/_partial-opensearch-auth-mode.mdx';
 
-For guided configuration and simplified service management, install OpenRAG with services managed by the [Terminal User Interface (TUI)](/tui).
+Use [`uv`](https://docs.astral.sh/uv/getting-started/installation/) to install OpenRAG as a managed or unmanaged dependency in a new or existing Python project.
 
-You can use [`uv`](https://docs.astral.sh/uv/getting-started/installation/) to install OpenRAG as a managed or unmanaged dependency in a new or existing Python project.
+When you install OpenRAG with `uv`, you will use the [Terminal User Interface (TUI)](/tui) to configure and manage your OpenRAG deployment.
 
 For other installation methods, see [Select an installation method](/install-options).
 
@@ -23,11 +24,11 @@ For other installation methods, see [Select an installation method](/install-opt
 
 <PartialPrereqWindows />
 
-<PartialPrereqCommon />
-
 <PartialPrereqPython />
 
 <PartialPrereqNoScript />
+
+<PartialPrereqCommon />
 
 ## Install and start OpenRAG with uv
 
@@ -40,7 +41,7 @@ This is recommended because it adds OpenRAG to your `pyproject.toml` and lockfil
 
 If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
 
-### uv add {#uv-add}
+### Use uv add {#uv-add}
 
 1. Create a new `uv`-managed Python project:
 
@@ -57,7 +58,7 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
    Because `uv` manages the virtual environment for you, you won't see a `(venv)` prompt.
    `uv` commands automatically use the project's virtual environment.
 
-2. Add OpenRAG to your project:
+3. Add OpenRAG to your project:
 
    * Add the latest version:
 
@@ -79,13 +80,15 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
 
    For more options, see [Managing dependencies with `uv`](https://docs.astral.sh/uv/concepts/projects/dependencies/).
 
-3. Start the OpenRAG TUI:
+4. Optional: If you want to use a pre-populated [OpenRAG `.env` file](/reference/configuration), copy it to this directory before starting OpenRAG.
+
+5. Start the OpenRAG TUI:
 
    ```bash
    uv run openrag
    ```
 
-### uv pip install {#uv-pip-install}
+### Use uv pip install {#uv-pip-install}
 
 1. Activate your virtual environment.
 
@@ -95,7 +98,9 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
    uv pip install openrag
    ```
 
-3. Start the OpenRAG TUI:
+3. Optional: If you want to use a pre-populated [OpenRAG `.env` file](/reference/configuration), copy it to this directory before starting OpenRAG.
+
+4. Start the OpenRAG TUI:
 
    ```bash
    uv run openrag
@@ -103,12 +108,13 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
 
 ## Set up OpenRAG with the TUI {#setup}
 
-When you install OpenRAG with `uv`, you manage the OpenRAG services with the Terminal User Interface (TUI).
+When you install OpenRAG with `uv`, you manage the OpenRAG services with the TUI.
 The TUI guides you through the initial configuration process before you start the OpenRAG services.
 
-Your [OpenRAG configuration](/reference/configuration) is stored in a `.env` file that is created automatically in the Python project where you installed OpenRAG.
-If OpenRAG detects an existing `.env` file, the TUI automatically populates those values during setup and onboarding.
-Container definitions are stored in the `docker-compose` files in the same directory.
+Your configuration values are stored in an [OpenRAG `.env` file](/reference/configuration) that is created automatically in the Python project where you installed OpenRAG.
+If OpenRAG detects an existing `.env` file in this directory, then the TUI can populate those values automatically during setup and onboarding.
+
+Container definitions are stored in the `docker-compose` files in the same directory as the OpenRAG `.env` file.
 
 <PartialSetup />
 

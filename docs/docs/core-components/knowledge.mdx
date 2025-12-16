@@ -4,6 +4,7 @@ slug: /knowledge
 ---
 
 import Icon from "@site/src/components/icon/icon";
+import PartialOpenSearchAuthMode from '@site/docs/_partial-opensearch-auth-mode.mdx';
 
 OpenRAG includes a built-in [OpenSearch](https://docs.opensearch.org/latest/) instance that serves as the underlying datastore for your _knowledge_ (documents).
 This specialized database is used to store and retrieve your documents and the associated vector data (embeddings).
@@ -27,7 +28,7 @@ Click a document to view the chunks produced from splitting the document during 
 ### Default documents {#default-documents}
 
 By default, OpenRAG includes some initial documents about OpenRAG.
-These documents are ingested automatically during [application onboarding](/install#application-onboarding).
+These documents are ingested automatically during the [application onboarding process](/install#application-onboarding).
 
 You can use these documents to ask OpenRAG about itself, and to test the [**Chat**](/chat) feature before uploading your own documents.
 
@@ -36,21 +37,10 @@ It is recommended that you keep these documents, and use [filters](/knowledge-fi
 
 ## OpenSearch authentication and document access {#auth}
 
-When you [install OpenRAG](/install-options), you provide the initial configuration values for your OpenRAG services.
-This includes authentication credentials for OpenSearch and OAuth connectors.
-This configuration determines how OpenRAG authenticates with OpenSearch and controls access to documents in your knowledge base:
+When you [install OpenRAG](/install-options), you provide the initial configuration values for your OpenRAG services, including authentication credentials for OpenSearch and OAuth connectors.
+This configuration determines how OpenRAG authenticates with your deployment's OpenSearch instance, and it controls user access to documents in your knowledge base:
 
-* **No-auth mode (basic setup)**: If you select **Basic Setup** in the [TUI](/tui), or your `.env` file doesn't include OAuth credentials, then the OpenRAG OpenSearch instance runs in no-auth mode.
-
-   This mode uses one anonymous JWT token for OpenSearch authentication.
-   There is no differentiation between users; all users that access your OpenRAG instance can access all documents uploaded to your knowledge base.
-
-* **OAuth mode (advanced setup)**: If you select **Advanced Setup** in the [TUI](/tui), or your `.env` file includes OAuth credentials, then the OpenRAG OpenSearch instance runs in OAuth mode.
-
-   This mode uses a unique JWT token for each OpenRAG user, and each document is tagged with user ownership.
-   Documents are filtered by user owner; users see only the documents that they uploaded or have access to through their cloud storage accounts.
-
-   You can enable OAuth mode after installation, as explained in [Ingest files with OAuth connectors](/ingestion#oauth-ingestion).
+<PartialOpenSearchAuthMode />
 
 ## OpenSearch indexes
 
@@ -80,18 +70,18 @@ If needed, you can use [filters](/knowledge-filters) to separate documents that 
 
 ### Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
 
-When you [install OpenRAG](/install-options), you select at least one embedding model during [application onboarding](/install#application-onboarding).
+When you [install OpenRAG](/install-options), you select at least one embedding model during the [application onboarding process](/install#application-onboarding).
 OpenRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
 
 In the OpenRAG repository, you can find the complete list of supported models in [`models_service.py`](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py) and the corresponding vector dimensions in [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
 
-During application onboarding, you can select from the supported models.
+During the application onboarding process, you can select from the supported models.
 The default embedding dimension is `1536`, and the default model is the OpenAI `text-embedding-3-small`.
 
-If you want to use an unsupported model, you must manually set the model in your [OpenRAG configuration](/reference/configuration).
+If you want to use an unsupported model, you must manually set the model in your [OpenRAG `.env` file](/reference/configuration).
 If you use an unsupported embedding model that doesn't have defined dimensions in `settings.py`, then OpenRAG falls back to the default dimensions (1536) and logs a warning. OpenRAG's OpenSearch instance and flows continue to work, but [similarity search](https://www.ibm.com/think/topics/vector-search) quality can be affected if the actual model dimensions aren't 1536.
 
-To change the embedding model after onboarding, it is recommended that you modify the embedding model setting in the OpenRAG **Settings** page or in your [OpenRAG configuration](/reference/configuration).
+To change the embedding model after onboarding, it is recommended that you modify the embedding model setting in the OpenRAG **Settings** page or in your [OpenRAG `.env` file](/reference/configuration).
 This will automatically update all relevant [OpenRAG flows](/agents) to use the new embedding model configuration.
 
 ### Set Docling parameters
@@ -121,7 +111,7 @@ For information about starting and stopping OpenRAG native services, like Doclin
 * **Embedding model**: Select the model to use to generate vector embeddings for your documents.
 
    This is initially set during installation.
-   The recommended way to change this setting is in the OpenRAG **Settings** or your [OpenRAG configuration](/reference/configuration).
+   The recommended way to change this setting is in the OpenRAG **Settings** or your [OpenRAG `.env` file](/reference/configuration).
    This will automatically update all relevant [OpenRAG flows](/agents) to use the new embedding model configuration.
 
    If you uploaded documents prior to changing the embedding model, you can [create filters](/knowledge-filters) to separate documents embedded with different models, or you can reupload all documents to regenerate embeddings with the new model.
@@ -149,7 +139,7 @@ The default value is 200 characters, which represents an overlap of 20 percent i
 
 The default path for local uploads is the `./openrag-documents` subdirectory in your OpenRAG installation directory. This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container. Files added to the host or container directory are visible in both locations.
 
-To change this location, modify the **Documents Paths** variable in either the [**Advanced Setup** menu](/install#setup) or in the `.env` used by Docker Compose.
+To change this location, modify the **Documents Paths** variable in either the [**Advanced Setup** menu](/install#setup) or in your [OpenRAG `.env` file](/reference/configuration).
 
 ## Delete knowledge {#delete-knowledge}
 

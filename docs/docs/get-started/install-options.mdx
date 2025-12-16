@@ -8,7 +8,7 @@ Depending on your use case, OpenRAG can assist with service management, or you c
 
 Select the installation method that best fits your needs:
 
-* **Use the [Terminal User Interface (TUI)](/tui) to manage services**: For guided configuration and simplified service management, install OpenRAG with TUI-managed services.
+* **Use the [Terminal User Interface (TUI)](/tui) to manage services**: For guided configuration and simplified service management, install OpenRAG with TUI-managed services. Use one of the following options:
 
    * [**Automatic installer script**](/install): Run one script to install the required dependencies and OpenRAG.
    * [**`uv`**](/install-uv): Install OpenRAG as a dependency of a new or existing Python project.
@@ -16,16 +16,19 @@ Select the installation method that best fits your needs:
 
 * [**Install OpenRAG on Microsoft Windows**](/install-windows): On Windows machines, you must install OpenRAG within the Windows Subsystem for Linux (WSL).
 
+   :::warning
    OpenRAG doesn't support nested virtualization; don't run OpenRAG on a WSL distribution that is inside a Windows VM.
+   :::
 
 * [**Manage your own services**](/docker): You can use Docker or Podman to deploy self-managed OpenRAG services.
 
-The first time you start OpenRAG, you must complete application onboarding.
+The first time you start OpenRAG, you must complete the application onboarding process.
 This is required for all installation methods because it prepares the minimum required configuration for OpenRAG to run.
 For TUI-managed services, you must also complete initial setup before you start the OpenRAG services.
 For more information, see the instructions for your preferred installation method.
 
 Your OpenRAG configuration is stored in a `.env` file in the OpenRAG installation directory.
-When using TUI-managed services, the TUI prompts you for any missing values during setup and onboarding, and any values detected in a preexisting `.env` file are automatically populated.
-When using self-managed services, you must predefine these values in a `.env` file, as you would for any Docker or Podman deployment.
-For more information, see the instructions for your preferred installation method and [Environment variables](/reference/configuration).
+When using TUI-managed services, this file is created automatically, or you can provide a pre-populated `.env` file before starting the TUI.
+The TUI prompts you for the required values during setup and onboarding, and any values detected in a preexisting `.env` file are populated automatically.
+When using self-managed services, you must provide a pre-populated `.env` file, as you would for any Docker or Podman deployment.
+For more information, see the instructions for your preferred installation method and the [OpenRAG environment variables reference](/reference/configuration).
