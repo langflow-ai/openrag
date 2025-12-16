@@ -481,27 +481,40 @@ class MonitorScreen(Screen):
 
             # Clear config, conversations.json, and optionally flow backups (before stopping containers)
             try:
-                config_path = Path("config")
-                conversations_file = Path("conversations.json")
-                flows_backup_path = Path("flows/backup")
-                
+                # Get paths from env config
+                from ..managers.env_manager import EnvManager
+                env_manager = EnvManager()
+                env_manager.load_existing_env()
+
+                def expand_path(path_str: str) -> Path:
+                    return Path(path_str.replace("$HOME", str(Path.home()))).expanduser()
+
+                config_path = expand_path(env_manager.config.openrag_config_path)
+                flows_path = expand_path(env_manager.config.openrag_flows_path)
+                flows_backup_path = flows_path / "backup"
+
                 if config_path.exists():
-                    shutil.rmtree(config_path)
+                    # Use container to handle files owned by container user
+                    success, msg = await self.container_manager.clear_directory_with_container(config_path)
+                    if not success:
+                        # Fallback to regular rmtree if container method fails
+                        shutil.rmtree(config_path)
                     # Recreate empty config directory
                     config_path.mkdir(parents=True, exist_ok=True)
-                
-                if conversations_file.exists():
-                    conversations_file.unlink()
-                
+
                 # Delete flow backups only if user chose to (and they actually exist)
                 if self._check_flow_backups():
                     if delete_backups:
-                        shutil.rmtree(flows_backup_path)
+                        # Use container to handle files owned by container user
+                        success, msg = await self.container_manager.clear_directory_with_container(flows_backup_path)
+                        if not success:
+                            # Fallback to regular rmtree if container method fails
+                            shutil.rmtree(flows_backup_path)
                         # Recreate empty backup directory
                         flows_backup_path.mkdir(parents=True, exist_ok=True)
                         self.notify("Flow backups deleted", severity="information")
                     else:
-                        self.notify("Flow backups preserved in ./flows/backup", severity="information")
+                        self.notify(f"Flow backups preserved in {flows_backup_path}", severity="information")
                 
             except Exception as e:
                 self.notify(
@@ -531,7 +544,11 @@ class MonitorScreen(Screen):
         
         # Now clear opensearch-data using container
         yield False, "Clearing OpenSearch data..."
-        opensearch_data_path = Path("opensearch-data")
+        # Get opensearch data path from env config
+        from ..managers.env_manager import EnvManager
+        env_manager = EnvManager()
+        env_manager.load_existing_env()
+        opensearch_data_path = Path(env_manager.config.opensearch_data_path.replace("$HOME", str(Path.home()))).expanduser()
         if opensearch_data_path.exists():
             async for success, message in self.container_manager.clear_opensearch_data_volume():
                 yield success, message
@@ -549,10 +566,15 @@ class MonitorScreen(Screen):
         yield True, "Factory reset completed successfully"
 
     def _check_flow_backups(self) -> bool:
-        """Check if there are any flow backups in ./flows/backup directory."""
+        """Check if there are any flow backups in flows/backup directory."""
         from pathlib import Path
+        from ..managers.env_manager import EnvManager
 
-        backup_dir = Path("flows/backup")
+        # Get flows path from env config
+        env_manager = EnvManager()
+        env_manager.load_existing_env()
+        flows_path = Path(env_manager.config.openrag_flows_path.replace("$HOME", str(Path.home()))).expanduser()
+        backup_dir = flows_path / "backup"
         if not backup_dir.exists():
             return False
 

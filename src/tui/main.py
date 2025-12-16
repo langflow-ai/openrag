@@ -454,8 +454,30 @@ def _copy_assets(resource_tree, destination: Path, allowed_suffixes: Optional[It
 
 
 def copy_sample_documents(*, force: bool = False) -> None:
-    """Copy sample documents from package to current directory if they don't exist."""
-    documents_dir = Path("openrag-documents")
+    """Copy sample documents from package to host directory.
+    
+    Uses the first path from OPENRAG_DOCUMENTS_PATHS env var.
+    Defaults to ~/.openrag/documents if not configured.
+    """
+    from .managers.env_manager import EnvManager
+    from pathlib import Path
+    
+    # Get the configured documents path from env
+    env_manager = EnvManager()
+    env_manager.load_existing_env()
+    
+    # Parse the first path from the documents paths config
+    documents_path_str = env_manager.config.openrag_documents_paths
+    if documents_path_str:
+        first_path = documents_path_str.split(',')[0].strip()
+        # Expand $HOME and ~
+        first_path = first_path.replace("$HOME", str(Path.home()))
+        documents_dir = Path(first_path).expanduser()
+    else:
+        # Default fallback
+        documents_dir = Path.home() / ".openrag" / "documents"
+    
+    documents_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         assets_files = files("tui._assets.openrag-documents")
@@ -466,8 +488,15 @@ def copy_sample_documents(*, force: bool = False) -> None:
 
 
 def copy_sample_flows(*, force: bool = False) -> None:
-    """Copy sample flows from package to current directory if they don't exist."""
-    flows_dir = Path("flows")
+    """Copy sample flows from package to host directory.
+    
+    Flows are placed in ~/.openrag/flows/ which will be volume-mounted to containers.
+    """
+    from pathlib import Path
+    
+    # Flows always go to ~/.openrag/flows/ - this will be volume-mounted
+    flows_dir = Path.home() / ".openrag" / "flows"
+    flows_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         assets_files = files("tui._assets.flows")
@@ -478,7 +507,9 @@ def copy_sample_flows(*, force: bool = False) -> None:
 
 
 def copy_compose_files(*, force: bool = False) -> None:
-    """Copy docker-compose templates into the workspace if they are missing."""
+    """Copy docker-compose templates into the TUI workspace if they are missing."""
+    from utils.paths import get_tui_compose_file
+    
     try:
         assets_root = files("tui._assets")
     except Exception as e:
@@ -486,7 +517,9 @@ def copy_compose_files(*, force: bool = False) -> None:
         return
 
     for filename in ("docker-compose.yml", "docker-compose.gpu.yml"):
-        destination = Path(filename)
+        is_gpu = "gpu" in filename
+        destination = get_tui_compose_file(gpu=is_gpu)
+        
         if destination.exists() and not force:
             continue
 
@@ -505,9 +538,175 @@ def copy_compose_files(*, force: bool = False) -> None:
                     logger.debug(f"Failed to read existing compose file {destination}: {read_error}")
 
             destination.write_bytes(resource_bytes)
-            logger.info(f"Copied docker-compose template: {filename}")
+            logger.info(f"Copied docker-compose template to {destination}")
         except Exception as error:
             logger.debug(f"Could not copy compose file {filename}: {error}")
+
+
+def migrate_legacy_data_directories():
+    """Migrate data from CWD-based directories to ~/.openrag/.
+
+    This is a one-time migration for users upgrading from the old layout.
+    Migrates: documents, flows, keys, config, opensearch-data
+
+    Prompts user for confirmation before migrating. If user declines,
+    exits with a message to downgrade to v1.52 or earlier.
+    """
+    import shutil
+    import sys
+
+    cwd = Path.cwd()
+    target_base = Path.home() / ".openrag"
+    marker = target_base / ".migrated"
+
+    # Check if migration already completed
+    if marker.exists():
+        return
+
+    # Define migration mappings: (source_path, target_path, description)
+    migrations = [
+        (cwd / "openrag-documents", target_base / "documents", "documents"),
+        (cwd / "flows", target_base / "flows", "flows"),
+        (cwd / "keys", target_base / "keys", "keys"),
+        (cwd / "config", target_base / "config", "config"),
+        (cwd / "opensearch-data", target_base / "data" / "opensearch-data", "OpenSearch data"),
+    ]
+
+    # Check which sources exist and need migration
+    sources_to_migrate = [(s, t, d) for s, t, d in migrations if s.exists()]
+
+    if not sources_to_migrate:
+        # No legacy data to migrate, just mark as done and update .env paths
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+        # Still need to update .env with centralized paths
+        try:
+            from managers.env_manager import EnvManager
+            env_manager = EnvManager()
+            env_manager.load_existing_env()
+            # Explicitly set centralized paths (overrides any old CWD-relative paths)
+            home = str(Path.home())
+            env_manager.config.openrag_documents_paths = f"{home}/.openrag/documents"
+            env_manager.config.openrag_documents_path = f"{home}/.openrag/documents"
+            env_manager.config.openrag_keys_path = f"{home}/.openrag/keys"
+            env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
+            env_manager.config.openrag_config_path = f"{home}/.openrag/config"
+            env_manager.config.openrag_data_path = f"{home}/.openrag/data"
+            env_manager.config.opensearch_data_path = f"{home}/.openrag/data/opensearch-data"
+            env_manager.save_env()
+            logger.info("Updated .env file with centralized paths")
+        except Exception as e:
+            logger.warning(f"Failed to update .env paths: {e}")
+        return
+
+    # Prompt user for confirmation
+    print("\n" + "=" * 60)
+    print("  OpenRAG Data Migration Required")
+    print("=" * 60)
+    print(f"\nStarting with this version, OpenRAG stores data in:")
+    print(f"  {target_base}")
+    print("\nThe following will be copied from your current directory:")
+    for source, target, desc in sources_to_migrate:
+        print(f"  - {desc}: {source.name}/ -> {target}")
+    print("\nThis is a one-time migration.")
+    print("\nIf you don't want to migrate, exit and downgrade to v1.52 or earlier.")
+
+    try:
+        response = input("\nProceed with migration? [y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        response = ""
+
+    if response != "y":
+        print("\nMigration cancelled. Exiting.")
+        sys.exit(0)
+
+    print("\nMigrating...")
+
+    # Perform migration (always copy, never delete originals)
+    for source, target, description in sources_to_migrate:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+
+            if target.exists():
+                # Target exists - merge contents (copy only new items)
+                logger.info(f"Merging {description} from {source} to {target}")
+                if source.is_dir():
+                    for item in source.iterdir():
+                        src_item = source / item.name
+                        dst_item = target / item.name
+
+                        if not dst_item.exists():
+                            if src_item.is_dir():
+                                shutil.copytree(src_item, dst_item)
+                            else:
+                                shutil.copy2(src_item, dst_item)
+                            logger.debug(f"Copied {src_item} to {dst_item}")
+            else:
+                # Target doesn't exist - copy entire directory
+                logger.info(f"Copying {description} from {source} to {target}")
+                if source.is_dir():
+                    shutil.copytree(source, target)
+                else:
+                    shutil.copy2(source, target)
+
+            print(f"  Migrated {description}")
+        except Exception as e:
+            logger.warning(f"Failed to migrate {description}: {e}")
+            print(f"  Warning: Failed to migrate {description}: {e}")
+
+    # Create marker to prevent future migration prompts
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.touch()
+
+    # Update .env file with centralized paths
+    try:
+        from managers.env_manager import EnvManager
+        env_manager = EnvManager()
+        env_manager.load_existing_env()
+        # Explicitly set centralized paths (overrides any old CWD-relative paths)
+        home = str(Path.home())
+        env_manager.config.openrag_documents_paths = f"{home}/.openrag/documents"
+        env_manager.config.openrag_documents_path = f"{home}/.openrag/documents"
+        env_manager.config.openrag_keys_path = f"{home}/.openrag/keys"
+        env_manager.config.openrag_flows_path = f"{home}/.openrag/flows"
+        env_manager.config.openrag_config_path = f"{home}/.openrag/config"
+        env_manager.config.openrag_data_path = f"{home}/.openrag/data"
+        env_manager.config.opensearch_data_path = f"{home}/.openrag/data/opensearch-data"
+        env_manager.save_env()
+        print("  Updated .env with centralized paths")
+        logger.info("Updated .env file with centralized paths")
+    except Exception as e:
+        logger.warning(f"Failed to update .env paths: {e}")
+        print(f"  Warning: Failed to update .env paths: {e}")
+
+    print("\nMigration complete!\n")
+    logger.info("Data migration completed successfully")
+
+
+def setup_host_directories():
+    """Initialize OpenRAG directory structure on the host.
+
+    Creates directories that will be volume-mounted into containers:
+    - ~/.openrag/documents/ (for document ingestion)
+    - ~/.openrag/flows/ (for Langflow flows)
+    - ~/.openrag/keys/ (for JWT keys)
+    - ~/.openrag/config/ (for configuration)
+    - ~/.openrag/data/ (for backend data: conversations, OAuth tokens, etc.)
+    - ~/.openrag/data/opensearch-data/ (for OpenSearch index)
+    """
+    base_dir = Path.home() / ".openrag"
+    directories = [
+        base_dir / "documents",
+        base_dir / "flows",
+        base_dir / "keys",
+        base_dir / "config",
+        base_dir / "data",
+        base_dir / "data" / "opensearch-data",
+    ]
+    
+    for directory in directories:
+        directory.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Ensured directory exists: {directory}")
 
 
 def run_tui():
@@ -526,6 +725,12 @@ def run_tui():
 
     app = None
     try:
+        # Migrate legacy data directories from CWD to ~/.openrag/
+        migrate_legacy_data_directories()
+
+        # Initialize host directory structure
+        setup_host_directories()
+        
         # Keep bundled assets aligned with the packaged versions
         copy_sample_documents(force=True)
         copy_sample_flows(force=True)
