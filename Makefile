@@ -11,7 +11,7 @@ ifneq (,$(wildcard .env))
 endif
 
 .PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install \
-       test test-integration test-ci test-ci-local \
+       test test-integration test-ci test-ci-local test-sdk \
        backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup
 
@@ -46,8 +46,9 @@ help:
 	@echo "Testing:"
 	@echo "  test             - Run all backend tests"
 	@echo "  test-integration - Run integration tests (requires infra)"
-	@echo "  test-ci          - Start infra, run integration tests, tear down (uses DockerHub images)"
+	@echo "  test-ci          - Start infra, run integration + SDK tests, tear down (uses DockerHub images)"
 	@echo "  test-ci-local    - Same as test-ci but builds all images locally"
+	@echo "  test-sdk         - Run SDK integration tests (requires running OpenRAG at localhost:3000)"
 	@echo "  lint         - Run linting checks"
 	@echo ""
 
@@ -137,16 +138,19 @@ install-fe:
 
 # Building
 build:
-	@echo "🔨 Building Docker images..."
-	docker compose build
+	@echo "Building all Docker images locally..."
+	docker build -t langflowai/openrag-opensearch:latest -f Dockerfile .
+	docker build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
+	docker build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
+	docker build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
 
 build-be:
-	@echo "🔨 Building backend image..."
-	docker build -t openrag-backend -f Dockerfile.backend .
+	@echo "Building backend image..."
+	docker build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
 
 build-fe:
-	@echo "🔨 Building frontend image..."
-	docker build -t openrag-frontend -f Dockerfile.frontend .
+	@echo "Building frontend image..."
+	docker build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
 
 # Logging and debugging
 logs:
@@ -211,8 +215,8 @@ test-ci:
 	docker compose -f docker-compose-cpu.yml pull; \
 	echo "Building OpenSearch image override..."; \
 	docker build --no-cache -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
-	echo "Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
-	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow; \
+	echo "Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers"; \
+	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
 	echo "Starting docling-serve..."; \
 	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
 	echo "Docling-serve started at $$DOCLING_ENDPOINT"; \
@@ -256,6 +260,21 @@ test-ci:
 	DISABLE_STARTUP_INGEST=$${DISABLE_STARTUP_INGEST:-true} \
 	uv run pytest tests/integration -vv -s -o log_cli=true --log-cli-level=DEBUG; \
 	TEST_RESULT=$$?; \
+	echo ""; \
+	echo "Waiting for frontend at http://localhost:3000..."; \
+	for i in $$(seq 1 60); do \
+		curl -s http://localhost:3000/ >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "Running Python SDK integration tests"; \
+	cd sdks/python && \
+	uv pip install -e ".[dev]" && \
+	OPENRAG_URL=http://localhost:3000 uv run pytest tests/test_integration.py -vv -s || TEST_RESULT=1; \
+	cd ../..; \
+	echo "Running TypeScript SDK integration tests"; \
+	cd sdks/typescript && \
+	npm install && npm run build && \
+	OPENRAG_URL=http://localhost:3000 npm test || TEST_RESULT=1; \
+	cd ../..; \
 	echo ""; \
 	echo "=== Post-test JWT diagnostics ==="; \
 	echo "Generating test JWT token..."; \
@@ -292,8 +311,8 @@ test-ci-local:
 	docker build -t langflowai/openrag-backend:latest -f Dockerfile.backend .; \
 	docker build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
 	docker build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
-	echo "Starting infra (OpenSearch + Dashboards + Langflow) with CPU containers"; \
-	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow; \
+	echo "Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers"; \
+	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
 	echo "Starting docling-serve..."; \
 	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
 	echo "Docling-serve started at $$DOCLING_ENDPOINT"; \
@@ -338,6 +357,21 @@ test-ci-local:
 	uv run pytest tests/integration -vv -s -o log_cli=true --log-cli-level=DEBUG; \
 	TEST_RESULT=$$?; \
 	echo ""; \
+	echo "Waiting for frontend at http://localhost:3000..."; \
+	for i in $$(seq 1 60); do \
+		curl -s http://localhost:3000/ >/dev/null 2>&1 && break || sleep 2; \
+	done; \
+	echo "Running Python SDK integration tests"; \
+	cd sdks/python && \
+	uv pip install -e ".[dev]" && \
+	OPENRAG_URL=http://localhost:3000 uv run pytest tests/test_integration.py -vv -s || TEST_RESULT=1; \
+	cd ../..; \
+	echo "Running TypeScript SDK integration tests"; \
+	cd sdks/typescript && \
+	npm install && npm run build && \
+	OPENRAG_URL=http://localhost:3000 npm test || TEST_RESULT=1; \
+	cd ../..; \
+	echo ""; \
 	echo "=== Post-test JWT diagnostics ==="; \
 	echo "Generating test JWT token..."; \
 	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))" 2>/dev/null || echo ""); \
@@ -352,6 +386,17 @@ test-ci-local:
 	uv run python scripts/docling_ctl.py stop || true; \
 	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
 	exit $$TEST_RESULT
+
+# SDK integration tests (requires running OpenRAG instance)
+test-sdk:
+	@echo "Running SDK integration tests..."
+	@echo "Make sure OpenRAG backend is running at localhost:8000 (make backend)"
+	@echo ""
+	@echo "Running Python SDK tests..."
+	cd sdks/python && uv pip install -e ".[dev]" && OPENRAG_URL=http://localhost:8000 uv run pytest tests/test_integration.py -vv -s
+	@echo ""
+	@echo "Running TypeScript SDK tests..."
+	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:8000 npm test
 
 lint:
 	@echo "🔍 Running linting checks..."

@@ -54,8 +54,16 @@ from api import (
 from api.connector_router import ConnectorRouter
 from auth_middleware import optional_auth, require_auth
 
+# API Key authentication
+from api_key_middleware import require_api_key
+from services.api_key_service import APIKeyService
+from api import keys as api_keys
+from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings
+
 # Configuration and setup
 from config.settings import (
+    API_KEYS_INDEX_BODY,
+    API_KEYS_INDEX_NAME,
     DISABLE_INGEST_WITH_LANGFLOW,
     INDEX_BODY,
     INDEX_NAME,
@@ -238,6 +246,20 @@ async def init_index():
         logger.info(
             "Knowledge filters index already exists, skipping creation",
             index_name=knowledge_filter_index_name,
+        )
+
+    # Create API keys index for public API authentication
+    if not await clients.opensearch.indices.exists(index=API_KEYS_INDEX_NAME):
+        await clients.opensearch.indices.create(
+            index=API_KEYS_INDEX_NAME, body=API_KEYS_INDEX_BODY
+        )
+        logger.info(
+            "Created API keys index", index_name=API_KEYS_INDEX_NAME
+        )
+    else:
+        logger.info(
+            "API keys index already exists, skipping creation",
+            index_name=API_KEYS_INDEX_NAME,
         )
 
     # Configure alerting plugin security settings
@@ -640,6 +662,9 @@ async def initialize_services():
 
     langflow_file_service = LangflowFileService()
 
+    # API Key service for public API authentication
+    api_key_service = APIKeyService(session_manager)
+
     return {
         "document_service": document_service,
         "search_service": search_service,
@@ -653,6 +678,7 @@ async def initialize_services():
         "models_service": models_service,
         "monitor_service": monitor_service,
         "session_manager": session_manager,
+        "api_key_service": api_key_service,
     }
 
 
@@ -1251,6 +1277,127 @@ async def create_app():
         Route(
             "/docling/health",
             partial(docling.health),
+            methods=["GET"],
+        ),
+        # ===== API Key Management Endpoints (JWT auth for UI) =====
+        Route(
+            "/keys",
+            require_auth(services["session_manager"])(
+                partial(
+                    api_keys.list_keys_endpoint,
+                    api_key_service=services["api_key_service"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/keys",
+            require_auth(services["session_manager"])(
+                partial(
+                    api_keys.create_key_endpoint,
+                    api_key_service=services["api_key_service"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/keys/{key_id}",
+            require_auth(services["session_manager"])(
+                partial(
+                    api_keys.revoke_key_endpoint,
+                    api_key_service=services["api_key_service"],
+                )
+            ),
+            methods=["DELETE"],
+        ),
+        # ===== Public API v1 Endpoints (API Key auth) =====
+        # Chat endpoints
+        Route(
+            "/api/v1/chat",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_chat.chat_create_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/api/v1/chat",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_chat.chat_list_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/api/v1/chat/{chat_id}",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_chat.chat_get_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/api/v1/chat/{chat_id}",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_chat.chat_delete_endpoint,
+                    chat_service=services["chat_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
+        ),
+        # Search endpoint
+        Route(
+            "/api/v1/search",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_search.search_endpoint,
+                    search_service=services["search_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        # Documents endpoints
+        Route(
+            "/api/v1/documents/ingest",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_documents.ingest_endpoint,
+                    document_service=services["document_service"],
+                    task_service=services["task_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/api/v1/documents",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_documents.delete_document_endpoint,
+                    document_service=services["document_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
+        ),
+        # Settings endpoint (read-only)
+        Route(
+            "/api/v1/settings",
+            require_api_key(services["api_key_service"])(
+                partial(v1_settings.get_settings_endpoint)
+            ),
             methods=["GET"],
         ),
     ]
