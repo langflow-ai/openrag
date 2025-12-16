@@ -2353,7 +2353,7 @@ wheels = [
 
 [[package]]
 name = "openrag"
-version = "0.1.53rc3"
+version = "0.1.53"
 source = { editable = "." }
 dependencies = [
     { name = "agentd" },
@@ -2364,7 +2364,7 @@ dependencies = [
     { name = "docling", extra = ["vlm"] },
     { name = "docling-core" },
     { name = "docling-serve" },
-    { name = "easyocr" },
+    { name = "easyocr", marker = "sys_platform != 'darwin'" },
     { name = "google-api-python-client" },
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib" },
@@ -2403,7 +2403,7 @@ requires-dist = [
     { name = "docling", extras = ["vlm"], marker = "sys_platform != 'darwin'", specifier = "==2.41.0" },
     { name = "docling-core", specifier = "==2.48.1" },
     { name = "docling-serve", specifier = "==1.5.0" },
-    { name = "easyocr", specifier = ">=1.7.1" },
+    { name = "easyocr", marker = "sys_platform != 'darwin'", specifier = ">=1.7.1" },
     { name = "google-api-python-client", specifier = ">=2.143.0" },
     { name = "google-auth-httplib2", specifier = ">=0.2.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.0" },
