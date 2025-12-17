@@ -29,3 +29,5 @@ config/
 
 # OpenSearch data directory
 opensearch-data/
+
+node_modules
