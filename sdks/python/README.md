@@ -147,10 +147,19 @@ results = await client.search.query(
 ## Documents
 
 ```python
-# Ingest a file
+# Ingest a file (waits for completion by default)
 result = await client.documents.ingest(file_path="./report.pdf")
-print(f"Document ID: {result.document_id}")
-print(f"Chunks: {result.chunks}")
+print(f"Status: {result.status}")
+print(f"Successful files: {result.successful_files}")
+
+# Ingest without waiting (returns immediately with task_id)
+result = await client.documents.ingest(file_path="./report.pdf", wait=False)
+print(f"Task ID: {result.task_id}")
+
+# Poll for completion manually
+final_status = await client.documents.wait_for_task(result.task_id)
+print(f"Status: {final_status.status}")
+print(f"Successful files: {final_status.successful_files}")
 
 # Ingest from file object
 with open("./report.pdf", "rb") as f:
@@ -158,7 +167,7 @@ with open("./report.pdf", "rb") as f:
 
 # Delete a document
 result = await client.documents.delete("report.pdf")
-print(f"Deleted {result.deleted_chunks} chunks")
+print(f"Success: {result.success}")
 ```
 
 ## Settings

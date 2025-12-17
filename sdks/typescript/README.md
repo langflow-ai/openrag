@@ -84,14 +84,14 @@ for await (const event of await client.chat.create({
 }
 ```
 
-### Streaming with `stream()` (Disposable pattern)
+### Streaming with `stream()`
 
 Provides additional helpers for convenience:
 
 ```typescript
-// Full event iteration with Disposable pattern
-{
-  using stream = await client.chat.stream({ message: "Explain RAG" });
+// Full event iteration
+const stream = await client.chat.stream({ message: "Explain RAG" });
+try {
   for await (const event of stream) {
     if (event.type === "content") {
       process.stdout.write(event.delta);
@@ -102,21 +102,27 @@ Provides additional helpers for convenience:
   console.log(`\nChat ID: ${stream.chatId}`);
   console.log(`Full text: ${stream.text}`);
   console.log(`Sources: ${stream.sources}`);
+} finally {
+  stream.close();
 }
 
 // Just text deltas
-{
-  using stream = await client.chat.stream({ message: "Explain RAG" });
+const stream = await client.chat.stream({ message: "Explain RAG" });
+try {
   for await (const text of stream.textStream) {
     process.stdout.write(text);
   }
+} finally {
+  stream.close();
 }
 
 // Get final text directly
-{
-  using stream = await client.chat.stream({ message: "Explain RAG" });
+const stream = await client.chat.stream({ message: "Explain RAG" });
+try {
   const text = await stream.finalText();
   console.log(text);
+} finally {
+  stream.close();
 }
 ```
 
@@ -163,12 +169,24 @@ const results = await client.search.query("API documentation", {
 ## Documents
 
 ```typescript
-// Ingest a file (Node.js)
+// Ingest a file (waits for completion by default)
 const result = await client.documents.ingest({
   filePath: "./report.pdf",
 });
-console.log(`Document ID: ${result.document_id}`);
-console.log(`Chunks: ${result.chunks}`);
+console.log(`Status: ${result.status}`);
+console.log(`Successful files: ${result.successful_files}`);
+
+// Ingest without waiting (returns immediately with task_id)
+const result = await client.documents.ingest({
+  filePath: "./report.pdf",
+  wait: false,
+});
+console.log(`Task ID: ${result.task_id}`);
+
+// Poll for completion manually
+const finalStatus = await client.documents.waitForTask(result.task_id);
+console.log(`Status: ${finalStatus.status}`);
+console.log(`Successful files: ${finalStatus.successful_files}`);
 
 // Ingest from File object (browser)
 const file = new File([...], "report.pdf");
@@ -179,7 +197,7 @@ const result = await client.documents.ingest({
 
 // Delete a document
 const result = await client.documents.delete("report.pdf");
-console.log(`Deleted ${result.deleted_chunks} chunks`);
+console.log(`Success: ${result.success}`);
 ```
 
 ## Settings
