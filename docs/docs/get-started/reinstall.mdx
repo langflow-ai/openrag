@@ -31,8 +31,8 @@ If you modified the built-in flows or created custom flows in your OpenRAG Langf
 3. Optional: Remove data that wasn't deleted by the **Factory Reset** operation.
 For a completely fresh installation, delete all of this data.
 
-   * **OpenRAG's `.env` file**: Contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth settings, and other [environment variables](/reference/configuration). If you delete this file, OpenRAG automatically generates a new one after you repeat the setup and onboarding process. Alternatively, you can add a prepopulated `.env` file to your OpenRAG installation directory before restarting OpenRAG.
-   * **The contents of the `./openrag-documents` directory**: Contains documents that you uploaded to OpenRAG. Delete these files to prevent documents from being reingested to your knowledge base after restarting OpenRAG. However, you might want to preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
+   * **OpenRAG's `.env` file**: Contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth settings, and other [environment variables](/reference/configuration). If you delete this file, OpenRAG automatically generates a new one at `~/.openrag/tui` after you repeat the setup and onboarding process. Alternatively, you can create a prepopulated `.env` file in the expected directory before restarting OpenRAG.
+   * **The `~/.openrag` directory**: The `documents` subdirectory contains documents that you uploaded to OpenRAG. Delete these files to prevent documents from being reingested to your knowledge base after restarting OpenRAG. However, you might want to preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
 
 4. Restart the TUI with `uv run openrag` or `uvx openrag`.
 
@@ -49,13 +49,7 @@ Use these steps to reinstall OpenRAG containers with streamlined `docker compose
 
    <PartialDockerComposeDownAndPrune />
 
-2. Optional: Remove data that wasn't deleted by the previous commands:
-
-   * OpenRAG's `.env` file
-   * The contents of OpenRAG's `config` directory
-   * The contents of the `./openrag-documents` directory
-   * The contents of the `./opensearch-data` directory
-   * The `conversations.json` file
+2. Optional: Remove OpenRAG's `.env` file and the `~/.openrag` directory, which aren't deleted by the previous commands.
 
 3. If you deleted the `.env` file, prepare a new `.env` before redeploying the containers.
 For more information, see [Deploy OpenRAG with self-managed services](/docker).
@@ -78,13 +72,7 @@ If you want to reinstall one container, specify the container name in the comman
 
 <PartialDockerRemoveAndCleanupSteps />
 
-7. Optional: Remove data that wasn't deleted by the previous commands:
-
-   * OpenRAG's `.env` file
-   * The contents of OpenRAG's `config` directory
-   * The contents of the `./openrag-documents` directory
-   * The contents of the `./opensearch-data` directory
-   * The `conversations.json` file
+7. Optional: Remove OpenRAG's `.env` file and the `~/.openrag` directory, which aren't deleted by the previous commands.
 
 8. If you removed all OpenRAG containers, [redeploy OpenRAG](/docker).
 If you removed only one container, redeploy that container with the appropriate `docker run` or `podman run` command.

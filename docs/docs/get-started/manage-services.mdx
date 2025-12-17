@@ -142,7 +142,7 @@ This command destroys and recreates the containers. Data stored exclusively on t
 
 If you want to preserve customized flows, see [Export customized flows before resetting containers](#export-customized-flows-before-resetting-containers).
 
-The `.env` file, `config` directory, `./openrag-documents` directory, `./opensearch-data` directory, and the `conversations.json` file are preserved.
+The `.env` file and the `~/.openrag/documents` directory are preserved.
 
 ```bash title="Docker"
 docker compose up --build --force-recreate --remove-orphans
@@ -165,13 +165,7 @@ Destroyed containers and deleted data are lost and cannot be recovered after run
 
    <PartialDockerComposeDownAndPrune />
 
-2. Optional: Remove data that wasn't deleted by the previous commands:
-
-   * OpenRAG's `.env` file
-   * The contents of OpenRAG's `config` directory
-   * The contents of the `./openrag-documents` directory
-   * The contents of the `./opensearch-data` directory
-   * The `conversations.json` file
+2. Optional: Remove OpenRAG's `.env` file and the `~/.openrag` directory, which aren't deleted by the previous commands.
 
 3. If you deleted the `.env` file, prepare a new `.env` before redeploying the containers.
 For more information, see [Deploy OpenRAG with self-managed services](/docker).

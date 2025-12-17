@@ -114,7 +114,7 @@ The commands to upgrade the package depend on how you installed OpenRAG.
    When you start services after upgrading the Python package, OpenRAG runs `docker compose pull` to get the appropriate container images matching the version specified in your OpenRAG `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
 
    :::tip Pin container versions
-   In the `.env` file, the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) is set to `latest` by default, which pulls the `latest` available container images.
+   In the OpenRAG `.env` file, the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) is set to `latest` by default, which pulls the `latest` available container images.
    To pin a specific container image version, you can set `OPENRAG_VERSION` to the desired container image version, such as `OPENRAG_VERSION=0.1.33`.
 
    However, when you upgrade the Python package, OpenRAG automatically attempts to keep the `OPENRAG_VERSION` synchronized with the Python package version.
