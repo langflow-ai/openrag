@@ -2,7 +2,7 @@
  * Integration tests for OpenRAG TypeScript SDK.
  *
  * These tests run against a real OpenRAG instance.
- * Requires: OPENRAG_URL environment variable (defaults to http://localhost:3000)
+ * Requires: OPENRAG_URL environment variable (defaults to http://localhost:8000)
  *
  * Run with: npm test
  */
@@ -15,7 +15,7 @@ import * as os from "os";
 // Dynamic import to handle the SDK not being built yet
 let OpenRAGClient: typeof import("../src").OpenRAGClient;
 
-const BASE_URL = process.env.OPENRAG_URL || "http://localhost:3000";
+const BASE_URL = process.env.OPENRAG_URL || "http://localhost:8000";
 const SKIP_TESTS = process.env.SKIP_SDK_INTEGRATION_TESTS === "true";
 
 // Create API key for tests
@@ -78,15 +78,32 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
   });
 
   describe("Documents", () => {
-    it("should ingest a document", async () => {
+    it("should ingest a document (wait for completion)", async () => {
+      // wait=true (default) polls until completion
       const result = await client.documents.ingest({ filePath: testFilePath });
 
-      expect(result.success).toBe(true);
-      expect(result.chunks).toBeGreaterThan(0);
+      expect(result.status).toBe("completed");
+      expect((result as any).successful_files).toBeGreaterThanOrEqual(1);
+    });
+
+    it("should ingest a document without waiting", async () => {
+      // wait=false returns immediately with task_id
+      const result = await client.documents.ingest({
+        filePath: testFilePath,
+        wait: false,
+      });
+
+      expect((result as any).task_id).toBeDefined();
+
+      // Can poll manually
+      const finalStatus = await client.documents.waitForTask(
+        (result as any).task_id
+      );
+      expect(finalStatus.status).toBe("completed");
     });
 
     it("should delete a document", async () => {
-      // First ingest
+      // First ingest (wait for completion)
       await client.documents.ingest({ filePath: testFilePath });
 
       // Then delete

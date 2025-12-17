@@ -79,15 +79,28 @@ class TestDocuments:
     @pytest.mark.asyncio
     async def test_ingest_document(self, client, test_file: Path):
         """Test document ingestion."""
+        # wait=True (default) polls until completion
         result = await client.documents.ingest(file_path=str(test_file))
 
-        assert result.success is True
-        assert result.chunks > 0
+        assert result.status == "completed"
+        assert result.successful_files >= 1
+
+    @pytest.mark.asyncio
+    async def test_ingest_document_no_wait(self, client, test_file: Path):
+        """Test document ingestion without waiting."""
+        # wait=False returns immediately with task_id
+        result = await client.documents.ingest(file_path=str(test_file), wait=False)
+
+        assert result.task_id is not None
+
+        # Can poll manually
+        final_status = await client.documents.wait_for_task(result.task_id)
+        assert final_status.status == "completed"
 
     @pytest.mark.asyncio
     async def test_delete_document(self, client, test_file: Path):
         """Test document deletion."""
-        # First ingest
+        # First ingest (wait for completion)
         await client.documents.ingest(file_path=str(test_file))
 
         # Then delete

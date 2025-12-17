@@ -1377,9 +1377,21 @@ async def create_app():
                     document_service=services["document_service"],
                     task_service=services["task_service"],
                     session_manager=services["session_manager"],
+                    langflow_file_service=services["langflow_file_service"],
                 )
             ),
             methods=["POST"],
+        ),
+        Route(
+            "/api/v1/tasks/{task_id}",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_documents.task_status_endpoint,
+                    task_service=services["task_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
         ),
         Route(
             "/api/v1/documents",

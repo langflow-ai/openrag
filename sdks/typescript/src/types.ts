@@ -56,10 +56,19 @@ export interface SearchFilters {
 
 // Document types
 export interface IngestResponse {
-  success: boolean;
-  document_id?: string | null;
+  task_id: string;
+  status?: string | null;  // Optional - we poll for actual status
   filename?: string | null;
-  chunks: number;
+}
+
+export interface IngestTaskStatus {
+  task_id: string;
+  status: string; // "pending", "running", "completed", "failed"
+  total_files: number;
+  processed_files: number;
+  successful_files: number;
+  failed_files: number;
+  files: Record<string, unknown>;
 }
 
 export interface DeleteDocumentResponse {

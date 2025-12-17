@@ -71,12 +71,23 @@ class SearchResponse(BaseModel):
 
 # Document models
 class IngestResponse(BaseModel):
-    """Response from document ingestion."""
+    """Response from document ingestion (async task-based)."""
 
-    success: bool
-    document_id: str | None = None
+    task_id: str
+    status: str | None = None  # Optional - we poll for actual status
     filename: str | None = None
-    chunks: int = 0
+
+
+class IngestTaskStatus(BaseModel):
+    """Status of an ingestion task."""
+
+    task_id: str
+    status: str  # "pending", "running", "completed", "failed"
+    total_files: int = 0
+    processed_files: int = 0
+    successful_files: int = 0
+    failed_files: int = 0
+    files: dict = {}  # Detailed per-file status
 
 
 class DeleteDocumentResponse(BaseModel):

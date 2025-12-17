@@ -6,12 +6,20 @@ Uses API key authentication.
 """
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from api.router import upload_ingest_router
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
-async def ingest_endpoint(request: Request, document_service, task_service, session_manager):
+async def ingest_endpoint(
+    request: Request,
+    document_service,
+    task_service,
+    session_manager,
+    langflow_file_service,
+):
     """
     Ingest a document into the knowledge base.
 
@@ -19,68 +27,57 @@ async def ingest_endpoint(request: Request, document_service, task_service, sess
 
     Request: multipart/form-data with "file" field
 
-    Response:
+    Response (async via Langflow):
+        {
+            "task_id": "...",
+            "status": "processing",
+            "filename": "doc.pdf"
+        }
+
+    Response (sync when Langflow disabled):
         {
             "success": true,
             "document_id": "...",
             "filename": "doc.pdf",
             "chunks": 10
         }
+    """
+    # Delegate to the existing upload_ingest_router which handles both
+    # Langflow and traditional paths
+    return await upload_ingest_router(
+        request,
+        document_service=document_service,
+        langflow_file_service=langflow_file_service,
+        session_manager=session_manager,
+        task_service=task_service,
+    )
 
-    For bulk uploads, returns a task ID:
+
+async def task_status_endpoint(request: Request, task_service, session_manager):
+    """
+    Get the status of an ingestion task.
+
+    GET /api/v1/tasks/{task_id}
+
+    Response:
         {
             "task_id": "...",
-            "status": "processing"
+            "status": "completed",
+            "total_files": 1,
+            "processed_files": 1,
+            "successful_files": 1,
+            "failed_files": 0,
+            "files": {...}
         }
     """
-    try:
-        content_type = request.headers.get("content-type", "")
+    task_id = request.path_params.get("task_id")
+    user = request.state.user
 
-        if "multipart/form-data" in content_type:
-            # Single file upload
-            form = await request.form()
-            upload_file = form.get("file")
+    task_status = task_service.get_task_status(user.user_id, task_id)
+    if not task_status:
+        return JSONResponse({"error": "Task not found"}, status_code=404)
 
-            if not upload_file:
-                return JSONResponse(
-                    {"error": "File is required"},
-                    status_code=400,
-                )
-
-            user = request.state.user
-
-            result = await document_service.process_upload_file(
-                upload_file,
-                owner_user_id=user.user_id,
-                jwt_token=None,  # API key auth, no JWT
-                owner_name=user.name,
-                owner_email=user.email,
-            )
-
-            if result.get("error"):
-                return JSONResponse(result, status_code=500)
-
-            return JSONResponse({
-                "success": True,
-                "document_id": result.get("id"),  # process_upload_file returns "id"
-                "filename": upload_file.filename,
-                "chunks": result.get("chunks", 0),
-            }, status_code=201)
-
-        else:
-            return JSONResponse(
-                {"error": "Content-Type must be multipart/form-data"},
-                status_code=400,
-            )
-
-    except Exception as e:
-        error_msg = str(e)
-        logger.error("Document ingestion failed", error=error_msg)
-
-        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse({"error": error_msg}, status_code=403)
-        else:
-            return JSONResponse({"error": error_msg}, status_code=500)
+    return JSONResponse(task_status)
 
 
 async def delete_document_endpoint(request: Request, document_service, session_manager):
