@@ -41,7 +41,11 @@ jobs:
 
       - name: Cleanup OpenSearch data (root-owned files)
         run: |
-          docker run --rm -v $(pwd):/work alpine rm -rf /work/opensearch-data || true
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine rm -rf /work/opensearch-data && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
 
       - run: df -h
 
