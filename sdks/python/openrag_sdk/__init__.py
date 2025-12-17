@@ -36,6 +36,7 @@ from .exceptions import (
     ServerError,
     ValidationError,
 )
+from .knowledge_filters import KnowledgeFiltersClient
 from .models import (
     AgentSettings,
     ChatResponse,
@@ -43,18 +44,28 @@ from .models import (
     Conversation,
     ConversationDetail,
     ConversationListResponse,
+    CreateKnowledgeFilterOptions,
+    CreateKnowledgeFilterResponse,
     DeleteDocumentResponse,
+    DeleteKnowledgeFilterResponse,
     DoneEvent,
+    GetKnowledgeFilterResponse,
     IngestResponse,
+    KnowledgeFilter,
+    KnowledgeFilterQueryData,
+    KnowledgeFilterSearchResponse,
     KnowledgeSettings,
     Message,
     SearchFilters,
     SearchResponse,
     SearchResult,
     SettingsResponse,
+    SettingsUpdateOptions,
+    SettingsUpdateResponse,
     Source,
     SourcesEvent,
     StreamEvent,
+    UpdateKnowledgeFilterOptions,
 )
 
 __version__ = "0.1.0"
@@ -62,6 +73,8 @@ __version__ = "0.1.0"
 __all__ = [
     # Main client
     "OpenRAGClient",
+    # Sub-clients
+    "KnowledgeFiltersClient",
     # Exceptions
     "OpenRAGError",
     "AuthenticationError",
@@ -86,6 +99,17 @@ __all__ = [
     "ConversationListResponse",
     "Message",
     "SettingsResponse",
+    "SettingsUpdateOptions",
+    "SettingsUpdateResponse",
     "AgentSettings",
     "KnowledgeSettings",
+    # Knowledge filter models
+    "KnowledgeFilter",
+    "KnowledgeFilterQueryData",
+    "CreateKnowledgeFilterOptions",
+    "UpdateKnowledgeFilterOptions",
+    "CreateKnowledgeFilterResponse",
+    "KnowledgeFilterSearchResponse",
+    "GetKnowledgeFilterResponse",
+    "DeleteKnowledgeFilterResponse",
 ]

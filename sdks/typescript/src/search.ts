@@ -29,6 +29,10 @@ export class SearchClient {
       body["filters"] = options.filters;
     }
 
+    if (options?.filterId) {
+      body["filter_id"] = options.filterId;
+    }
+
     const response = await this.client._request("POST", "/api/v1/search", {
       body: JSON.stringify(body),
     });

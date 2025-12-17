@@ -117,6 +117,114 @@ export interface SettingsResponse {
   knowledge: KnowledgeSettings;
 }
 
+/** Options for updating settings. */
+export interface SettingsUpdateOptions {
+  /** LLM model name. */
+  llm_model?: string;
+  /** LLM provider (openai, anthropic, watsonx, ollama). */
+  llm_provider?: string;
+  /** System prompt for the agent. */
+  system_prompt?: string;
+  /** Embedding model name. */
+  embedding_model?: string;
+  /** Embedding provider (openai, watsonx, ollama). */
+  embedding_provider?: string;
+  /** Chunk size for document splitting. */
+  chunk_size?: number;
+  /** Chunk overlap for document splitting. */
+  chunk_overlap?: number;
+  /** Enable table structure parsing. */
+  table_structure?: boolean;
+  /** Enable OCR for text extraction. */
+  ocr?: boolean;
+  /** Enable picture descriptions. */
+  picture_descriptions?: boolean;
+}
+
+/** Response from settings update. */
+export interface SettingsUpdateResponse {
+  message: string;
+}
+
+// Knowledge filter types
+/** Query configuration stored in a knowledge filter. */
+export interface KnowledgeFilterQueryData {
+  /** Semantic search query text. */
+  query?: string;
+  /** Filter criteria for documents. */
+  filters?: {
+    data_sources?: string[];
+    document_types?: string[];
+    owners?: string[];
+    connector_types?: string[];
+  };
+  /** Maximum number of results. */
+  limit?: number;
+  /** Minimum relevance score threshold. */
+  scoreThreshold?: number;
+  /** UI color for the filter. */
+  color?: string;
+  /** UI icon for the filter. */
+  icon?: string;
+}
+
+/** A knowledge filter definition. */
+export interface KnowledgeFilter {
+  id: string;
+  name: string;
+  description?: string;
+  queryData: KnowledgeFilterQueryData;
+  owner?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Options for creating a knowledge filter. */
+export interface CreateKnowledgeFilterOptions {
+  /** Filter name (required). */
+  name: string;
+  /** Filter description. */
+  description?: string;
+  /** Query configuration for the filter. */
+  queryData: KnowledgeFilterQueryData;
+}
+
+/** Options for updating a knowledge filter. */
+export interface UpdateKnowledgeFilterOptions {
+  /** New filter name. */
+  name?: string;
+  /** New filter description. */
+  description?: string;
+  /** New query configuration. */
+  queryData?: KnowledgeFilterQueryData;
+}
+
+/** Response from creating a knowledge filter. */
+export interface CreateKnowledgeFilterResponse {
+  success: boolean;
+  id?: string;
+  error?: string;
+}
+
+/** Response from searching knowledge filters. */
+export interface KnowledgeFilterSearchResponse {
+  success: boolean;
+  filters: KnowledgeFilter[];
+}
+
+/** Response from getting a knowledge filter. */
+export interface GetKnowledgeFilterResponse {
+  success: boolean;
+  filter?: KnowledgeFilter;
+  error?: string;
+}
+
+/** Response from deleting a knowledge filter. */
+export interface DeleteKnowledgeFilterResponse {
+  success: boolean;
+  error?: string;
+}
+
 // Client options
 export interface OpenRAGClientOptions {
   /** API key for authentication. Falls back to OPENRAG_API_KEY env var. */
@@ -135,6 +243,8 @@ export interface ChatCreateOptions {
   filters?: SearchFilters;
   limit?: number;
   scoreThreshold?: number;
+  /** Knowledge filter ID to apply to the chat. */
+  filterId?: string;
 }
 
 export interface SearchQueryOptions {
@@ -142,6 +252,8 @@ export interface SearchQueryOptions {
   filters?: SearchFilters;
   limit?: number;
   scoreThreshold?: number;
+  /** Knowledge filter ID to apply to the search. */
+  filterId?: string;
 }
 
 // Error types

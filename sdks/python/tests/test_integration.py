@@ -73,6 +73,124 @@ class TestSettings:
         assert settings.agent is not None
         assert settings.knowledge is not None
 
+    @pytest.mark.asyncio
+    async def test_update_settings(self, client):
+        """Test updating settings."""
+        # Get current settings first
+        current_settings = await client.settings.get()
+        current_chunk_size = current_settings.knowledge.chunk_size or 1000
+
+        # Update with the same value (safe for tests)
+        result = await client.settings.update({"chunk_size": current_chunk_size})
+
+        assert result.message is not None
+
+        # Verify the setting persisted
+        updated_settings = await client.settings.get()
+        assert updated_settings.knowledge.chunk_size == current_chunk_size
+
+
+class TestKnowledgeFilters:
+    """Test knowledge filter operations."""
+
+    @pytest.mark.asyncio
+    async def test_knowledge_filter_crud(self, client):
+        """Test create, read, update, delete for knowledge filters."""
+        # Create
+        create_result = await client.knowledge_filters.create({
+            "name": "Python SDK Test Filter",
+            "description": "Filter created by Python SDK integration tests",
+            "queryData": {
+                "query": "test documents",
+                "limit": 10,
+                "scoreThreshold": 0.5,
+            },
+        })
+
+        assert create_result.success is True
+        assert create_result.id is not None
+        filter_id = create_result.id
+
+        # Search
+        filters = await client.knowledge_filters.search("Python SDK Test")
+        assert isinstance(filters, list)
+        found = any(f.name == "Python SDK Test Filter" for f in filters)
+        assert found is True
+
+        # Get
+        filter_obj = await client.knowledge_filters.get(filter_id)
+        assert filter_obj is not None
+        assert filter_obj.id == filter_id
+        assert filter_obj.name == "Python SDK Test Filter"
+
+        # Update
+        update_success = await client.knowledge_filters.update(
+            filter_id,
+            {"description": "Updated description from Python SDK test"},
+        )
+        assert update_success is True
+
+        # Verify update
+        updated_filter = await client.knowledge_filters.get(filter_id)
+        assert updated_filter.description == "Updated description from Python SDK test"
+
+        # Delete
+        delete_success = await client.knowledge_filters.delete(filter_id)
+        assert delete_success is True
+
+        # Verify deletion
+        deleted_filter = await client.knowledge_filters.get(filter_id)
+        assert deleted_filter is None
+
+    @pytest.mark.asyncio
+    async def test_filter_id_in_chat(self, client):
+        """Test using filter_id in chat."""
+        # Create a filter first
+        create_result = await client.knowledge_filters.create({
+            "name": "Chat Test Filter Python",
+            "description": "Filter for testing chat with filter_id",
+            "queryData": {
+                "query": "test",
+                "limit": 5,
+            },
+        })
+        assert create_result.success is True
+        filter_id = create_result.id
+
+        try:
+            # Use filter in chat
+            response = await client.chat.create(
+                message="Hello with filter",
+                filter_id=filter_id,
+            )
+            assert response.response is not None
+        finally:
+            # Cleanup
+            await client.knowledge_filters.delete(filter_id)
+
+    @pytest.mark.asyncio
+    async def test_filter_id_in_search(self, client):
+        """Test using filter_id in search."""
+        # Create a filter first
+        create_result = await client.knowledge_filters.create({
+            "name": "Search Test Filter Python",
+            "description": "Filter for testing search with filter_id",
+            "queryData": {
+                "query": "test",
+                "limit": 5,
+            },
+        })
+        assert create_result.success is True
+        filter_id = create_result.id
+
+        try:
+            # Use filter in search
+            results = await client.search.query("test query", filter_id=filter_id)
+            assert results.results is not None
+        finally:
+            # Cleanup
+            await client.knowledge_filters.delete(filter_id)
+
 
 class TestDocuments:
     """Test document operations."""
@@ -222,3 +340,30 @@ class TestChat:
 
         assert result.conversations is not None
         assert isinstance(result.conversations, list)
+
+    @pytest.mark.asyncio
+    async def test_get_conversation(self, client):
+        """Test getting a specific conversation."""
+        # Create a conversation first
+        response = await client.chat.create(message="Test message for get.")
+        assert response.chat_id is not None
+
+        # Get the conversation
+        conversation = await client.chat.get(response.chat_id)
+
+        assert conversation.chat_id == response.chat_id
+        assert conversation.messages is not None
+        assert isinstance(conversation.messages, list)
+        assert len(conversation.messages) >= 1
+
+    @pytest.mark.asyncio
+    async def test_delete_conversation(self, client):
+        """Test deleting a conversation."""
+        # Create a conversation first
+        response = await client.chat.create(message="Test message for delete.")
+        assert response.chat_id is not None
+
+        # Delete the conversation
+        result = await client.chat.delete(response.chat_id)
+
+        assert result is True

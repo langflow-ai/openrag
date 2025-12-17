@@ -58,6 +58,7 @@ class ChatStream:
         filters: SearchFilters | dict[str, Any] | None = None,
         limit: int = 10,
         score_threshold: float = 0,
+        filter_id: str | None = None,
     ):
         self._client = client
         self._message = message
@@ -65,6 +66,7 @@ class ChatStream:
         self._filters = filters
         self._limit = limit
         self._score_threshold = score_threshold
+        self._filter_id = filter_id
 
         # Aggregated data
         self._text = ""
@@ -104,6 +106,9 @@ class ChatStream:
                 body["filters"] = self._filters.model_dump(exclude_none=True)
             else:
                 body["filters"] = self._filters
+
+        if self._filter_id:
+            body["filter_id"] = self._filter_id
 
         self._response = await self._client._http.send(
             self._client._http.build_request(
@@ -214,6 +219,7 @@ class ChatClient:
         filters: SearchFilters | dict[str, Any] | None = None,
         limit: int = 10,
         score_threshold: float = 0,
+        filter_id: str | None = None,
     ) -> ChatResponse: ...
 
     @overload
@@ -226,6 +232,7 @@ class ChatClient:
         filters: SearchFilters | dict[str, Any] | None = None,
         limit: int = 10,
         score_threshold: float = 0,
+        filter_id: str | None = None,
     ) -> AsyncIterator[StreamEvent]: ...
 
     async def create(
@@ -237,6 +244,7 @@ class ChatClient:
         filters: SearchFilters | dict[str, Any] | None = None,
         limit: int = 10,
         score_threshold: float = 0,
+        filter_id: str | None = None,
     ) -> ChatResponse | AsyncIterator[StreamEvent]:
         """
         Send a chat message.
@@ -248,6 +256,7 @@ class ChatClient:
             filters: Optional search filters (data_sources, document_types).
             limit: Maximum number of search results (default 10).
             score_threshold: Minimum search score threshold (default 0).
+            filter_id: Optional knowledge filter ID to apply.
 
         Returns:
             ChatResponse if stream=False, AsyncIterator[StreamEvent] if stream=True.
@@ -269,6 +278,7 @@ class ChatClient:
                 filters=filters,
                 limit=limit,
                 score_threshold=score_threshold,
+                filter_id=filter_id,
             )
         else:
             return await self._create_response(
@@ -277,6 +287,7 @@ class ChatClient:
                 filters=filters,
                 limit=limit,
                 score_threshold=score_threshold,
+                filter_id=filter_id,
             )
 
     async def _create_response(
@@ -286,6 +297,7 @@ class ChatClient:
         filters: SearchFilters | dict[str, Any] | None,
         limit: int,
         score_threshold: float,
+        filter_id: str | None = None,
     ) -> ChatResponse:
         """Send a non-streaming chat message."""
         body: dict[str, Any] = {
@@ -303,6 +315,9 @@ class ChatClient:
                 body["filters"] = filters.model_dump(exclude_none=True)
             else:
                 body["filters"] = filters
+
+        if filter_id:
+            body["filter_id"] = filter_id
 
         response = await self._client._request(
             "POST",
@@ -326,6 +341,7 @@ class ChatClient:
         filters: SearchFilters | dict[str, Any] | None,
         limit: int,
         score_threshold: float,
+        filter_id: str | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream a chat response as an async iterator."""
         body: dict[str, Any] = {
@@ -343,6 +359,9 @@ class ChatClient:
                 body["filters"] = filters.model_dump(exclude_none=True)
             else:
                 body["filters"] = filters
+
+        if filter_id:
+            body["filter_id"] = filter_id
 
         async with self._client._http.stream(
             "POST",
@@ -387,6 +406,7 @@ class ChatClient:
         filters: SearchFilters | dict[str, Any] | None = None,
         limit: int = 10,
         score_threshold: float = 0,
+        filter_id: str | None = None,
     ) -> ChatStream:
         """
         Create a streaming chat context manager.
@@ -397,6 +417,7 @@ class ChatClient:
             filters: Optional search filters (data_sources, document_types).
             limit: Maximum number of search results (default 10).
             score_threshold: Minimum search score threshold (default 0).
+            filter_id: Optional knowledge filter ID to apply.
 
         Returns:
             ChatStream context manager.
@@ -418,6 +439,7 @@ class ChatClient:
             filters=filters,
             limit=limit,
             score_threshold=score_threshold,
+            filter_id=filter_id,
         )
 
     async def list(self) -> ConversationListResponse:

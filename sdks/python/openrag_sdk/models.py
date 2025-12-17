@@ -158,3 +158,103 @@ class SearchFilters(BaseModel):
 
     data_sources: list[str] | None = None
     document_types: list[str] | None = None
+
+
+# Settings update models
+class SettingsUpdateOptions(BaseModel):
+    """Options for updating settings."""
+
+    llm_model: str | None = None
+    llm_provider: str | None = None
+    system_prompt: str | None = None
+    embedding_model: str | None = None
+    embedding_provider: str | None = None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
+    table_structure: bool | None = None
+    ocr: bool | None = None
+    picture_descriptions: bool | None = None
+
+
+class SettingsUpdateResponse(BaseModel):
+    """Response from settings update."""
+
+    message: str
+
+
+# Knowledge filter models
+class KnowledgeFilterQueryData(BaseModel):
+    """Query configuration stored in a knowledge filter."""
+
+    query: str | None = None
+    filters: dict[str, list[str]] | None = None
+    limit: int | None = None
+    score_threshold: float | None = Field(default=None, alias="scoreThreshold")
+    color: str | None = None
+    icon: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class KnowledgeFilter(BaseModel):
+    """A knowledge filter definition."""
+
+    id: str
+    name: str
+    description: str | None = None
+    query_data: KnowledgeFilterQueryData | None = Field(default=None, alias="queryData")
+    owner: str | None = None
+    created_at: str | None = Field(default=None, alias="createdAt")
+    updated_at: str | None = Field(default=None, alias="updatedAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class CreateKnowledgeFilterOptions(BaseModel):
+    """Options for creating a knowledge filter."""
+
+    name: str
+    description: str | None = None
+    query_data: KnowledgeFilterQueryData = Field(alias="queryData")
+
+    model_config = {"populate_by_name": True}
+
+
+class UpdateKnowledgeFilterOptions(BaseModel):
+    """Options for updating a knowledge filter."""
+
+    name: str | None = None
+    description: str | None = None
+    query_data: KnowledgeFilterQueryData | None = Field(default=None, alias="queryData")
+
+    model_config = {"populate_by_name": True}
+
+
+class CreateKnowledgeFilterResponse(BaseModel):
+    """Response from creating a knowledge filter."""
+
+    success: bool
+    id: str | None = None
+    error: str | None = None
+
+
+class KnowledgeFilterSearchResponse(BaseModel):
+    """Response from searching knowledge filters."""
+
+    success: bool
+    filters: list[KnowledgeFilter] = Field(default_factory=list)
+
+
+class GetKnowledgeFilterResponse(BaseModel):
+    """Response from getting a knowledge filter."""
+
+    success: bool
+    filter: KnowledgeFilter | None = None
+    error: str | None = None
+
+
+class DeleteKnowledgeFilterResponse(BaseModel):
+    """Response from deleting a knowledge filter."""
+
+    success: bool
+    error: str | None = None

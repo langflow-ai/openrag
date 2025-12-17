@@ -23,6 +23,7 @@ class SearchClient:
         filters: SearchFilters | dict[str, Any] | None = None,
         limit: int = 10,
         score_threshold: float = 0,
+        filter_id: str | None = None,
     ) -> SearchResponse:
         """
         Perform semantic search on documents.
@@ -32,6 +33,7 @@ class SearchClient:
             filters: Optional filters (data_sources, document_types).
             limit: Maximum number of results (default 10).
             score_threshold: Minimum score threshold (default 0).
+            filter_id: Optional knowledge filter ID to apply.
 
         Returns:
             SearchResponse containing the search results.
@@ -47,6 +49,9 @@ class SearchClient:
                 body["filters"] = filters.model_dump(exclude_none=True)
             else:
                 body["filters"] = filters
+
+        if filter_id:
+            body["filter_id"] = filter_id
 
         response = await self._client._request(
             "POST",

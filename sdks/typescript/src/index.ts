@@ -37,6 +37,7 @@ export { OpenRAGClient } from "./client";
 export { ChatClient, ChatStream } from "./chat";
 export { SearchClient } from "./search";
 export { DocumentsClient } from "./documents";
+export { KnowledgeFiltersClient } from "./knowledge-filters";
 
 export {
   // Error types
@@ -71,6 +72,17 @@ export {
   Message,
   // Settings types
   SettingsResponse,
+  SettingsUpdateOptions,
+  SettingsUpdateResponse,
   AgentSettings,
   KnowledgeSettings,
+  // Knowledge filter types
+  KnowledgeFilter,
+  KnowledgeFilterQueryData,
+  CreateKnowledgeFilterOptions,
+  UpdateKnowledgeFilterOptions,
+  CreateKnowledgeFilterResponse,
+  KnowledgeFilterSearchResponse,
+  GetKnowledgeFilterResponse,
+  DeleteKnowledgeFilterResponse,
 } from "./types";

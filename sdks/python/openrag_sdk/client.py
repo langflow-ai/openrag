@@ -15,6 +15,7 @@ from .exceptions import (
     ServerError,
     ValidationError,
 )
+from .knowledge_filters import KnowledgeFiltersClient
 from .search import SearchClient
 
 
@@ -26,7 +27,7 @@ class SettingsClient:
 
     async def get(self):
         """
-        Get current OpenRAG configuration (read-only).
+        Get current OpenRAG configuration.
 
         Returns:
             SettingsResponse with agent and knowledge settings.
@@ -36,6 +37,27 @@ class SettingsClient:
         response = await self._client._request("GET", "/api/v1/settings")
         data = response.json()
         return SettingsResponse(**data)
+
+    async def update(self, options):
+        """
+        Update OpenRAG configuration.
+
+        Args:
+            options: SettingsUpdateOptions or dict with settings to update.
+
+        Returns:
+            SettingsUpdateResponse with success message.
+        """
+        from .models import SettingsUpdateOptions, SettingsUpdateResponse
+
+        if isinstance(options, SettingsUpdateOptions):
+            body = options.model_dump(exclude_none=True)
+        else:
+            body = {k: v for k, v in options.items() if v is not None}
+
+        response = await self._client._request("POST", "/settings", json=body)
+        data = response.json()
+        return SettingsUpdateResponse(message=data.get("message", "Settings updated"))
 
 
 class OpenRAGClient:
@@ -110,6 +132,7 @@ class OpenRAGClient:
         self.search = SearchClient(self)
         self.documents = DocumentsClient(self)
         self.settings = SettingsClient(self)
+        self.knowledge_filters = KnowledgeFiltersClient(self)
 
     @property
     def _headers(self) -> dict[str, str]:

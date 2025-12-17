@@ -5,6 +5,7 @@
 import { ChatClient } from "./chat";
 import { DocumentsClient } from "./documents";
 import { SearchClient } from "./search";
+import { KnowledgeFiltersClient } from "./knowledge-filters";
 import {
   AuthenticationError,
   NotFoundError,
@@ -13,6 +14,8 @@ import {
   RateLimitError,
   ServerError,
   SettingsResponse,
+  SettingsUpdateOptions,
+  SettingsUpdateResponse,
   ValidationError,
 } from "./types";
 
@@ -31,7 +34,7 @@ class SettingsClient {
   constructor(private client: OpenRAGClient) {}
 
   /**
-   * Get current OpenRAG configuration (read-only).
+   * Get current OpenRAG configuration.
    */
   async get(): Promise<SettingsResponse> {
     const response = await this.client._request("GET", "/api/v1/settings");
@@ -39,6 +42,22 @@ class SettingsClient {
     return {
       agent: data.agent || {},
       knowledge: data.knowledge || {},
+    };
+  }
+
+  /**
+   * Update OpenRAG configuration.
+   *
+   * @param options - The settings to update.
+   * @returns Success response with message.
+   */
+  async update(options: SettingsUpdateOptions): Promise<SettingsUpdateResponse> {
+    const response = await this.client._request("POST", "/settings", {
+      body: JSON.stringify(options),
+    });
+    const data = await response.json();
+    return {
+      message: data.message || "Settings updated",
     };
   }
 }
@@ -84,6 +103,8 @@ export class OpenRAGClient {
   readonly documents: DocumentsClient;
   /** Settings client for configuration. */
   readonly settings: SettingsClient;
+  /** Knowledge filters client for managing filters. */
+  readonly knowledgeFilters: KnowledgeFiltersClient;
 
   constructor(options: OpenRAGClientOptions = {}) {
     // Resolve API key from argument or environment
@@ -108,6 +129,7 @@ export class OpenRAGClient {
     this.search = new SearchClient(this);
     this.documents = new DocumentsClient(this);
     this.settings = new SettingsClient(this);
+    this.knowledgeFilters = new KnowledgeFiltersClient(this);
   }
 
   /** @internal Get request headers with authentication. */

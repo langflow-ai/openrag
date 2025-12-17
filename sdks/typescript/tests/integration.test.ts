@@ -75,6 +75,139 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
       expect(settings.agent).toBeDefined();
       expect(settings.knowledge).toBeDefined();
     });
+
+    it("should update settings", async () => {
+      // Get current settings first
+      const currentSettings = await client.settings.get();
+      const currentChunkSize = currentSettings.knowledge.chunk_size || 1000;
+
+      // Update with a new value
+      const result = await client.settings.update({
+        chunk_size: currentChunkSize,
+      });
+
+      expect(result.message).toBeDefined();
+
+      // Verify the setting persisted
+      const updatedSettings = await client.settings.get();
+      expect(updatedSettings.knowledge.chunk_size).toBe(currentChunkSize);
+    });
+  });
+
+  describe("Knowledge Filters", () => {
+    let createdFilterId: string;
+
+    it("should create a knowledge filter", async () => {
+      const result = await client.knowledgeFilters.create({
+        name: "SDK Test Filter",
+        description: "Filter created by TypeScript SDK integration tests",
+        queryData: {
+          query: "test documents",
+          limit: 10,
+          scoreThreshold: 0.5,
+        },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.id).toBeDefined();
+      createdFilterId = result.id!;
+    });
+
+    it("should search knowledge filters", async () => {
+      const filters = await client.knowledgeFilters.search("SDK Test");
+
+      expect(Array.isArray(filters)).toBe(true);
+      // Should find the filter we created
+      const found = filters.some((f) => f.name === "SDK Test Filter");
+      expect(found).toBe(true);
+    });
+
+    it("should get a knowledge filter by ID", async () => {
+      expect(createdFilterId).toBeDefined();
+
+      const filter = await client.knowledgeFilters.get(createdFilterId);
+
+      expect(filter).not.toBeNull();
+      expect(filter!.id).toBe(createdFilterId);
+      expect(filter!.name).toBe("SDK Test Filter");
+    });
+
+    it("should update a knowledge filter", async () => {
+      expect(createdFilterId).toBeDefined();
+
+      const success = await client.knowledgeFilters.update(createdFilterId, {
+        description: "Updated description from SDK test",
+      });
+
+      expect(success).toBe(true);
+
+      // Verify the update
+      const filter = await client.knowledgeFilters.get(createdFilterId);
+      expect(filter!.description).toBe("Updated description from SDK test");
+    });
+
+    it("should delete a knowledge filter", async () => {
+      expect(createdFilterId).toBeDefined();
+
+      const success = await client.knowledgeFilters.delete(createdFilterId);
+
+      expect(success).toBe(true);
+
+      // Verify deletion
+      const filter = await client.knowledgeFilters.get(createdFilterId);
+      expect(filter).toBeNull();
+    });
+
+    it("should use filterId in chat", async () => {
+      // Create a filter first
+      const createResult = await client.knowledgeFilters.create({
+        name: "Chat Test Filter",
+        description: "Filter for testing chat with filterId",
+        queryData: {
+          query: "test",
+          limit: 5,
+        },
+      });
+      expect(createResult.success).toBe(true);
+      const filterId = createResult.id!;
+
+      try {
+        // Use filter in chat
+        const response = await client.chat.create({
+          message: "Hello with filter",
+          filterId,
+        });
+
+        expect(response.response).toBeDefined();
+      } finally {
+        // Cleanup
+        await client.knowledgeFilters.delete(filterId);
+      }
+    });
+
+    it("should use filterId in search", async () => {
+      // Create a filter first
+      const createResult = await client.knowledgeFilters.create({
+        name: "Search Test Filter",
+        description: "Filter for testing search with filterId",
+        queryData: {
+          query: "test",
+          limit: 5,
+        },
+      });
+      expect(createResult.success).toBe(true);
+      const filterId = createResult.id!;
+
+      try {
+        // Use filter in search
+        const results = await client.search.query("test query", { filterId });
+
+        expect(results.results).toBeDefined();
+      } finally {
+        // Cleanup
+        await client.knowledgeFilters.delete(filterId);
+      }
+    });
   });
 
   describe("Documents", () => {
@@ -220,6 +353,35 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
 
       expect(result.conversations).toBeDefined();
       expect(Array.isArray(result.conversations)).toBe(true);
+    });
+
+    it("should get a specific conversation", async () => {
+      // Create a conversation first
+      const response = await client.chat.create({
+        message: "Test message for get.",
+      });
+      expect(response.chatId).toBeDefined();
+
+      // Get the conversation
+      const conversation = await client.chat.get(response.chatId!);
+
+      expect(conversation.chatId).toBe(response.chatId);
+      expect(conversation.messages).toBeDefined();
+      expect(Array.isArray(conversation.messages)).toBe(true);
+      expect(conversation.messages.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("should delete a conversation", async () => {
+      // Create a conversation first
+      const response = await client.chat.create({
+        message: "Test message for delete.",
+      });
+      expect(response.chatId).toBeDefined();
+
+      // Delete the conversation
+      const result = await client.chat.delete(response.chatId!);
+
+      expect(result).toBe(true);
     });
   });
 });

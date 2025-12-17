@@ -75,6 +75,10 @@ export class ChatStream implements AsyncIterable<StreamEvent>, Disposable {
       body["filters"] = this.options.filters;
     }
 
+    if (this.options.filterId) {
+      body["filter_id"] = this.options.filterId;
+    }
+
     this._response = await this.client._request("POST", "/api/v1/chat", {
       body: JSON.stringify(body),
       stream: true,
@@ -216,6 +220,10 @@ export class ChatClient {
 
     if (options.filters) {
       body["filters"] = options.filters;
+    }
+
+    if (options.filterId) {
+      body["filter_id"] = options.filterId;
     }
 
     const response = await this.client._request("POST", "/api/v1/chat", {
