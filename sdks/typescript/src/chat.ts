@@ -12,7 +12,6 @@ import type {
   ConversationListResponse,
   DoneEvent,
   Message,
-  SearchFilters,
   Source,
   SourcesEvent,
   StreamEvent,
@@ -69,11 +68,11 @@ export class ChatStream implements AsyncIterable<StreamEvent>, Disposable {
     };
 
     if (this.options.chatId) {
-      body.chat_id = this.options.chatId;
+      body["chat_id"] = this.options.chatId;
     }
 
     if (this.options.filters) {
-      body.filters = this.options.filters;
+      body["filters"] = this.options.filters;
     }
 
     this._response = await this.client._request("POST", "/api/v1/chat", {
@@ -212,11 +211,11 @@ export class ChatClient {
     };
 
     if (options.chatId) {
-      body.chat_id = options.chatId;
+      body["chat_id"] = options.chatId;
     }
 
     if (options.filters) {
-      body.filters = options.filters;
+      body["filters"] = options.filters;
     }
 
     const response = await this.client._request("POST", "/api/v1/chat", {
@@ -260,11 +259,11 @@ export class ChatClient {
 
     const conversations: Conversation[] = (data.conversations || []).map(
       (c: Record<string, unknown>) => ({
-        chatId: c.chat_id,
-        title: c.title || "",
-        createdAt: c.created_at || null,
-        lastActivity: c.last_activity || null,
-        messageCount: c.message_count || 0,
+        chatId: c["chat_id"],
+        title: c["title"] || "",
+        createdAt: c["created_at"] || null,
+        lastActivity: c["last_activity"] || null,
+        messageCount: c["message_count"] || 0,
       })
     );
 
@@ -282,9 +281,9 @@ export class ChatClient {
 
     const messages: Message[] = (data.messages || []).map(
       (m: Record<string, unknown>) => ({
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp || null,
+        role: m["role"],
+        content: m["content"],
+        timestamp: m["timestamp"] || null,
       })
     );
 

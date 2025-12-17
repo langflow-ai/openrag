@@ -115,13 +115,7 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
 
   describe("Search", () => {
     it("should search documents", async () => {
-      // Ensure document is ingested
-      await client.documents.ingest({ filePath: testFilePath });
-
-      // Wait for indexing
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Search
+      // Documents already ingested by previous tests
       const results = await client.search.query("orange kangaroos jumping");
 
       expect(results.results).toBeDefined();

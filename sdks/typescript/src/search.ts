@@ -3,7 +3,7 @@
  */
 
 import type { OpenRAGClient } from "./client";
-import type { SearchFilters, SearchQueryOptions, SearchResponse } from "./types";
+import type { SearchQueryOptions, SearchResponse } from "./types";
 
 export class SearchClient {
   constructor(private client: OpenRAGClient) {}
@@ -26,7 +26,7 @@ export class SearchClient {
     };
 
     if (options?.filters) {
-      body.filters = options.filters;
+      body["filters"] = options.filters;
     }
 
     const response = await this.client._request("POST", "/api/v1/search", {

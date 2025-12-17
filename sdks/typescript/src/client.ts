@@ -139,7 +139,7 @@ export class OpenRAGClient {
       const response = await fetch(url, {
         method,
         headers,
-        body: options.body,
+        body: options.body ?? null,
         signal: controller.signal,
       });
 
