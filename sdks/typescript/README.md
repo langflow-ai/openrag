@@ -203,10 +203,64 @@ console.log(`Success: ${result.success}`);
 ## Settings
 
 ```typescript
+// Get settings
 const settings = await client.settings.get();
 console.log(`LLM Provider: ${settings.agent.llm_provider}`);
 console.log(`LLM Model: ${settings.agent.llm_model}`);
 console.log(`Embedding Model: ${settings.knowledge.embedding_model}`);
+
+// Update settings
+await client.settings.update({
+  chunk_size: 1000,
+  chunk_overlap: 200,
+});
+```
+
+## Knowledge Filters
+
+Knowledge filters are reusable, named filter configurations that can be applied to chat and search operations.
+
+```typescript
+// Create a knowledge filter
+const result = await client.knowledgeFilters.create({
+  name: "Technical Docs",
+  description: "Filter for technical documentation",
+  queryData: {
+    query: "technical",
+    filters: {
+      document_types: ["application/pdf"],
+    },
+    limit: 10,
+    scoreThreshold: 0.5,
+  },
+});
+const filterId = result.id;
+
+// Search for filters
+const filters = await client.knowledgeFilters.search("Technical");
+for (const filter of filters) {
+  console.log(`${filter.name}: ${filter.description}`);
+}
+
+// Get a specific filter
+const filter = await client.knowledgeFilters.get(filterId);
+
+// Update a filter
+await client.knowledgeFilters.update(filterId, {
+  description: "Updated description",
+});
+
+// Delete a filter
+await client.knowledgeFilters.delete(filterId);
+
+// Use filter in chat
+const response = await client.chat.create({
+  message: "Explain the API",
+  filterId,
+});
+
+// Use filter in search
+const results = await client.search.query("API endpoints", { filterId });
 ```
 
 ## Error Handling

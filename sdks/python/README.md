@@ -173,10 +173,63 @@ print(f"Success: {result.success}")
 ## Settings
 
 ```python
+# Get settings
 settings = await client.settings.get()
 print(f"LLM Provider: {settings.agent.llm_provider}")
 print(f"LLM Model: {settings.agent.llm_model}")
 print(f"Embedding Model: {settings.knowledge.embedding_model}")
+
+# Update settings
+await client.settings.update({
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+})
+```
+
+## Knowledge Filters
+
+Knowledge filters are reusable, named filter configurations that can be applied to chat and search operations.
+
+```python
+# Create a knowledge filter
+result = await client.knowledge_filters.create({
+    "name": "Technical Docs",
+    "description": "Filter for technical documentation",
+    "queryData": {
+        "query": "technical",
+        "filters": {
+            "document_types": ["application/pdf"],
+        },
+        "limit": 10,
+        "scoreThreshold": 0.5,
+    },
+})
+filter_id = result.id
+
+# Search for filters
+filters = await client.knowledge_filters.search("Technical")
+for f in filters:
+    print(f"{f.name}: {f.description}")
+
+# Get a specific filter
+filter_obj = await client.knowledge_filters.get(filter_id)
+
+# Update a filter
+await client.knowledge_filters.update(filter_id, {
+    "description": "Updated description",
+})
+
+# Delete a filter
+await client.knowledge_filters.delete(filter_id)
+
+# Use filter in chat
+response = await client.chat.create(
+    message="Explain the API",
+    filter_id=filter_id,
+)
+
+# Use filter in search
+results = await client.search.query("API endpoints", filter_id=filter_id)
 ```
 
 ## Error Handling
