@@ -54,8 +54,9 @@ def test_file(tmp_path) -> Path:
     import uuid
     file_path = tmp_path / f"sdk_test_doc_{uuid.uuid4().hex[:8]}.txt"
     file_path.write_text(
-        f"SDK Integration Test Document {uuid.uuid4()}\n\n"
-        "This document tests the OpenRAG Python SDK.\n"
+        f"SDK Integration Test Document\n\n"
+        f"ID: {uuid.uuid4()}\n\n"
+        "This document tests the OpenRAG Python SDK.\n\n"
         "It contains unique content about purple elephants dancing.\n"
     )
     return file_path
@@ -77,15 +78,6 @@ class TestDocuments:
     """Test document operations."""
 
     @pytest.mark.asyncio
-    async def test_ingest_document(self, client, test_file: Path):
-        """Test document ingestion."""
-        # wait=True (default) polls until completion
-        result = await client.documents.ingest(file_path=str(test_file))
-
-        assert result.status == "completed"
-        assert result.successful_files >= 1
-
-    @pytest.mark.asyncio
     async def test_ingest_document_no_wait(self, client, test_file: Path):
         """Test document ingestion without waiting."""
         # wait=False returns immediately with task_id
@@ -96,6 +88,17 @@ class TestDocuments:
         # Can poll manually
         final_status = await client.documents.wait_for_task(result.task_id)
         assert final_status.status == "completed"
+        assert final_status.successful_files >= 1
+
+    @pytest.mark.asyncio
+    async def test_ingest_document(self, client, test_file: Path):
+        """Test document ingestion."""
+        # wait=True (default) polls until completion
+        result = await client.documents.ingest(file_path=str(test_file))
+
+        assert result.status == "completed"
+        assert result.successful_files >= 1
+
 
     @pytest.mark.asyncio
     async def test_delete_document(self, client, test_file: Path):
