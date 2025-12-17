@@ -100,9 +100,9 @@ class FlowBackupWarningModal(ModalScreen[tuple[bool, bool]]):
         with Container(id="dialog"):
             yield Label("⚠ Flow Backups Detected", id="title")
             yield Static(
-                f"Flow backups found in ./flows/backup\n\n"
+                f"Flow backups found in your flows/backup directory.\n\n"
                 f"Proceeding with {self.operation} will reset custom flows to defaults.\n"
-                f"Your customizations are backed up in ./flows/backup/\n\n"
+                f"Your customizations are backed up in the flows/backup/ directory.\n\n"
                 f"Choose whether to keep or delete the backup files:",
                 id="message"
             )

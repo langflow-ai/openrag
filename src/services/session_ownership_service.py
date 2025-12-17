@@ -13,9 +13,11 @@ logger = get_logger(__name__)
 
 class SessionOwnershipService:
     """Simple service to track which user owns which session"""
-    
+
     def __init__(self):
-        self.ownership_file = "session_ownership.json"
+        self.ownership_file = "data/session_ownership.json"
+        # Ensure data directory exists
+        os.makedirs(os.path.dirname(self.ownership_file), exist_ok=True)
         self.ownership_data = self._load_ownership_data()
     
     def _load_ownership_data(self) -> Dict[str, Dict[str, any]]:

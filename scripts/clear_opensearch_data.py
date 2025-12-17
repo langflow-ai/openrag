@@ -14,10 +14,17 @@ from src.tui.managers.container_manager import ContainerManager
 async def main():
     """Clear OpenSearch data directory."""
     cm = ContainerManager()
-    
-    opensearch_data_path = Path("opensearch-data")
+
+    # Get opensearch data path from env config (same as container_manager uses)
+    from src.tui.managers.env_manager import EnvManager
+    env_manager = EnvManager()
+    env_manager.load_existing_env()
+    opensearch_data_path = Path(
+        env_manager.config.opensearch_data_path.replace("$HOME", str(Path.home()))
+    ).expanduser()
+
     if not opensearch_data_path.exists():
-        print("opensearch-data directory does not exist")
+        print(f"opensearch-data directory does not exist at {opensearch_data_path}")
         return 0
     
     print("Clearing OpenSearch data directory...")

@@ -3,15 +3,13 @@ title: Troubleshoot OpenRAG
 slug: /support/troubleshoot
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
 This page provides troubleshooting advice for issues you might encounter when using OpenRAG or contributing to OpenRAG.
 
 ## OpenSearch fails to start
 
-Check that `OPENSEARCH_PASSWORD` set in [Environment variables](/reference/configuration) meets requirements.
-The password must contain at least 8 characters, and must contain at least one uppercase letter, one lowercase letter, one digit, and one special character that is strong.
+Check that the value of the `OPENSEARCH_PASSWORD` [environment variable](/reference/configuration) meets the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
+
+If you need to change the password, you must [reset the OpenRAG services](/manage-services).
 
 ## OpenRAG fails to start from the TUI with operation not supported
 
@@ -33,7 +31,8 @@ Replace `VERSION` with your installed Python version, such as `3.13`.
 
 ## Langflow connection issues
 
-Verify the `LANGFLOW_SUPERUSER` credentials set in [Environment variables](/reference/configuration) are correct.
+Verify that the value of the `LANGFLOW_SUPERUSER` environment variable is correct.
+For more information about this variable and how this variable controls Langflow access, see [Langflow settings](/reference/configuration#langflow-settings).
 
 ## Container out of memory errors
 
@@ -53,31 +52,52 @@ podman machine start
 
 ## Port conflicts
 
-Ensure ports 3000, 7860, 8000, 9200, 5601 are available.
+With the default [environment variable](/reference/configuration) values, OpenRAG requires the following ports to be available on the host machine:
+
+* 3000: Langflow application
+* 5001: Docling local ingestion service
+* 5601: OpenSearch Dashboards
+* 7860: Docling UI
+* 8000: Docling API
+* 9200: OpenSearch service
 
 ## OCR ingestion fails (easyocr not installed)
 
-If Docling ingestion fails with an OCR-related error and mentions `easyocr` is missing, this is likely due to a stale `uv` cache.
+Docling ingestion can fail with an OCR-related error that mentions `easyocr` is missing.
+This is likely due to a stale `uv` cache when you [install OpenRAG with `uvx`](/install-uvx).
 
-`easyocr` is already included as a dependency in OpenRAG's `pyproject.toml`. Project-managed installations using `uv sync` and `uv run` always sync dependencies directly from your `pyproject.toml`, so they should have `easyocr` installed.
+When you invoke OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project.
+The location and path of this cache depends on your operating system.
+For example, on macOS, this is typically a user cache directory, such as `/Users/USER_NAME/.cache/uv`.
 
-If you're running OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project. This cache can become stale.
+This cache can become stale, producing errors like missing dependencies.
 
-On macOS, this cache directory is typically a user cache directory such as `/Users/USER_NAME/.cache/uv`.
+1. [Exit the TUI](/tui).
 
-1. To clear the uv cache, run:
+2. Clear the `uv` cache:
 
    ```bash
    uv cache clean
    ```
 
-2. Start OpenRAG:
+   To clear the OpenRAG cache only, run:
+
+   ```bash
+   uv cache clean openrag
+   ```
+
+3. Invoke OpenRAG to restart the TUI:
 
    ```bash
    uvx openrag
    ```
 
-If you don't need OCR, you can disable OCR-based processing in your ingestion settings to avoid requiring `easyocr`.
+4. Click **Open App**, and then retry document ingestion.
+
+If you install OpenRAG with `uv`, dependencies are synced directly from your `pyproject.toml` file.
+This should automatically install `easyocr` because `easyocr` is included as a dependency in OpenRAG's `pyproject.toml`.
+
+If you don't need OCR, you can disable OCR-based processing in your [ingestion settings](/knowledge#knowledge-ingestion-settings) to avoid requiring `easyocr`.
 
 ## Upgrade fails due to Langflow container already exists {#langflow-container-already-exists-during-upgrade}
 
@@ -87,50 +107,33 @@ To resolve this issue, do the following:
 
 1. Remove only the Langflow container:
 
-   <Tabs groupId="Container software">
-   <TabItem value="Podman" label="Podman">
-
    1. Stop the Langflow container:
 
-      ```bash
+      ```bash title="Docker"
+      docker stop langflow
+      ```
+
+      ```bash title="Podman"
       podman stop langflow
       ```
 
    2. Remove the Langflow container:
 
-      ```bash
-      podman rm langflow --force
-      ```
-
-   </TabItem>
-   <TabItem value="Docker" label="Docker" default>
-
-   1. Stop the Langflow container:
-
-      ```bash
-      docker stop langflow
-      ```
-
-   2. Remove the Langflow container:
-
-      ```bash
+      ```bash title="Docker"
       docker rm langflow --force
       ```
 
-   </TabItem>
-   </Tabs>
+      ```bash title="Podman"
+      podman rm langflow --force
+      ```
 
-2. Retry the upgrade:
+2. Retry the [upgrade](/upgrade).
 
-   * [Upgrade self-managed containers](/docker#upgrade-containers)
-   * [Upgrade TUI-managed containers](/install#upgrade-containers)
+3. If reinstalling the Langflow container doesn't resolve the issue, then you must [reset all containers](/manage-services) or [reinstall OpenRAG](/reinstall).
 
-3. If reinstalling the Langflow container doesn't resolve the issue, you must reset your OpenRAG deployment:
+4. Retry the [upgrade](/upgrade).
 
-   * [Reset self-managed containers](/docker#reset-containers)
-   * [Reset TUI-managed containers](/install#reset-containers)
-
-4. Retry the upgrade.
+   If no updates are available after reinstalling OpenRAG, then you reinstalled at the latest version, and your deployment is up to date.
 
 ## Document ingestion or similarity search issues
 

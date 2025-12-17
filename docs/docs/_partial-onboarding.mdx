@@ -1,79 +1,134 @@
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
-import PartialOllama from '@site/docs/_partial-ollama.mdx';
 
-## Application onboarding
+## Complete the application onboarding process {#application-onboarding}
 
-The first time you start OpenRAG, regardless of how you installed it, you must complete application onboarding.
+The first time you start the OpenRAG application, you must complete the application onboarding process to select language and embedding models that are essential for OpenRAG features like the [**Chat**](/chat).
 
 Some of these variables, such as the embedding models, can be changed seamlessly after onboarding.
 Others are immutable and require you to destroy and recreate the OpenRAG containers.
-For more information, see [Environment variables](/reference/configuration).
+For more information, see the [OpenRAG environment variables reference](/reference/configuration).
 
-You can use different providers for your language model and embedding model, such as Anthropic for the language model and OpenAI for the embeddings model.
+You can use different providers for your language model and embedding model, such as Anthropic for the language model and OpenAI for the embedding model.
 Additionally, you can set multiple embedding models.
 
 You only need to complete onboarding for your preferred providers.
 
-    <Tabs groupId="Provider">
-    <TabItem value="Anthropic" label="Anthropic" default>
+<Tabs groupId="Provider">
+<TabItem value="Anthropic" label="Anthropic" default>
 
-    :::info
-    Anthropic doesn't provide embedding models. If you select Anthropic for your language model, you must select a different provider for embeddings.
-    :::
+:::info
+Anthropic doesn't provide embedding models. If you select Anthropic for your language model, you must select a different provider for the embedding model.
+:::
 
-    1. Enable **Use environment Anthropic API key** to automatically use your key from the `.env` file.
-    Alternatively, paste an Anthropic API key into the field.
-    2. Under **Advanced settings**, select your **Language Model**.
-    3. Click **Complete**.
-    4. In the second onboarding panel, select a provider for embeddings and select your **Embedding Model**.
-    5. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
-    Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-    6. Continue with the [Quickstart](/quickstart).
+1. Enter your Anthropic API key, or enable **Get API key from environment variable** to pull the key from your [OpenRAG `.env` file](/reference/configuration).
 
-    </TabItem>
-    <TabItem value="OpenAI" label="OpenAI">
+   If you set `ANTHROPIC_API_KEY` in your OpenRAG `.env` file, this value can be populated automatically.
 
-    1. Enable **Get API key from environment variable** to automatically enter your key from the TUI-generated `.env` file.
-    Alternatively, paste an OpenAI API key into the field.
-    2. Under **Advanced settings**, select your **Language Model**.
-    3. Click **Complete**.
-    4. In the second onboarding panel, select a provider for embeddings and select your **Embedding Model**.
-    5. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
-    Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-    6. Continue with the [Quickstart](/quickstart).
+2. Under **Advanced settings**, select the language model that you want to use.
 
-    </TabItem>
-    <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
+3. Click **Complete**.
 
-    1. Complete the fields for **watsonx.ai API Endpoint**, **IBM Project ID**, and **IBM API key**.
-    These values are found in your IBM watsonx deployment.
-    2. Under **Advanced settings**, select your **Language Model**.
-    3. Click **Complete**.
-    4. In the second onboarding panel, select a provider for embeddings and select your **Embedding Model**.
-    5. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
-    Alternatively, click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
-    6. Continue with the [Quickstart](/quickstart).
+4. Select a provider for embeddings, provide the required information, and then select the embedding model you want to use.
+For information about another provider's credentials and settings, see the instructions for that provider.
 
-    </TabItem>
-    <TabItem value="Ollama" label="Ollama">
+5. Click **Complete**.
 
-    :::info
-    Ollama isn't installed with OpenRAG. To install Ollama, see the [Ollama documentation](https://docs.ollama.com/).
-    :::
+   After you configure the embedding model, OpenRAG uses your credentials and models to ingest some [initial documents](/knowledge#default-documents). This tests the connection, and it allows you to ask OpenRAG about itself in the [**Chat**](/chat).
+   If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
+   Verify that the credential is valid and has access to the selected model, and then click **Complete** to retry ingestion.
 
-    1. To connect to an Ollama server running on your local machine, enter your Ollama server's base URL address.
-    The default Ollama server address is `http://localhost:11434`.
-    OpenRAG connects to the Ollama server and populates the model lists with the server's available models.
-    2. Select the **Embedding Model** and **Language Model** your Ollama server is running.
-        <details closed>
-        <summary>Ollama model selection and external server configuration</summary>
-        <PartialOllama />
-        </details>
-    3. Click **Complete**.
-    4. To complete the onboarding tasks, click **What is OpenRAG**, and then click **Add a Document**.
-    5. Continue with the [Quickstart](/quickstart).
+6. Continue through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the OpenRAG documentation.
 
-    </TabItem>
-    </Tabs>
+</TabItem>
+<TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
+
+1. Use the values from your IBM watsonx deployment for the **watsonx.ai API Endpoint**, **IBM Project ID**, and **IBM API key** fields.
+
+   If you set `WATSONX_API_KEY`, `WATSONX_API_URL`, or `WATSONX_PROJECT_ID` in your [OpenRAG `.env` file](/reference/configuration), these values can be populated automatically.
+
+2. Under **Advanced settings**, select the language model that you want to use.
+
+3. Click **Complete**.
+
+4. Select a provider for embeddings, provide the required information, and then select the embedding model you want to use.
+For information about another provider's credentials and settings, see the instructions for that provider.
+
+5. Click **Complete**.
+
+   After you configure the embedding model, OpenRAG uses your credentials and models to ingest some [initial documents](/knowledge#default-documents). This tests the connection, and it allows you to ask OpenRAG about itself in the [**Chat**](/chat).
+   If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
+   Verify that the credentials are valid and have access to the selected model, and then click **Complete** to retry ingestion.
+
+6. Continue through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the OpenRAG documentation.
+
+</TabItem>
+<TabItem value="Ollama" label="Ollama">
+
+:::info
+Ollama isn't installed with OpenRAG. You must install it separately if you want to use Ollama as a model provider.
+:::
+
+Using Ollama as your language and embedding model provider offers greater flexibility and configuration options for hosting models, but it can be advanced for new users.
+The recommendations given here are a reasonable starting point for users with at least one GPU and experience running LLMs locally.
+
+The OpenRAG team recommends the OpenAI `gpt-oss:20b` lanuage model and the [`nomic-embed-text`](https://ollama.com/library/nomic-embed-text) embedding model.
+However, `gpt-oss:20b` uses 16GB of RAM, so consider using Ollama Cloud or running Ollama on a remote machine.
+
+1. [Install Ollama locally or on a remote server](https://docs.ollama.com/), or [run models in Ollama Cloud](https://docs.ollama.com/cloud).
+
+   If you are running a remote server, it must be accessible from your OpenRAG deployment.
+
+2. In OpenRAG onboarding, connect to your Ollama server:
+
+   * **Local Ollama server**: Enter your Ollama server's base URL and port. The default Ollama server address is `http://localhost:11434`.
+   * **Ollama Cloud**: Because Ollama Cloud models run at the same address as a local Ollama server and automatically offload to Ollama's cloud service, you can use the same base URL and port as you would for a local Ollama server. The default address is `http://localhost:11434`.
+   * **Remote server**: Enter your remote Ollama server's base URL and port, such as `http://your-remote-server:11434`.
+
+   If the connection succeeds, OpenRAG populates the model lists with the server's available models.
+
+3. Select the model that your Ollama server is running.
+
+   Language model and embedding model selections are independent.
+   You can use the same or different servers for each model.
+
+   To use different providers for each model, you must configure both providers, and select the relevant model for each provider.
+
+4. Click **Complete**.
+
+   After you configure the embedding model, OpenRAG uses the address and models to ingest some [initial documents](/knowledge#default-documents). This tests the connection, and it allows you to ask OpenRAG about itself in the [**Chat**](/chat).
+   If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
+   Verify that the server address is valid, and that the selected model is running on the server.
+   Then, click **Complete** to retry ingestion.
+
+5. Continue through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the OpenRAG documentation.
+
+</TabItem>
+<TabItem value="OpenAI" label="OpenAI (default)">
+
+1. Enter your OpenAI API key, or enable **Get API key from environment variable** to pull the key from your [OpenRAG `.env` file](/reference/configuration).
+
+   If you set `OPENAI_API_KEY` in your OpenRAG `.env` file, this value can be populated automatically.
+
+2. Under **Advanced settings**, select the language model that you want to use.
+
+3. Click **Complete**.
+
+4. Select a provider for embeddings, provide the required information, and then select the embedding model you want to use.
+For information about another provider's credentials and settings, see the instructions for that provider.
+
+5. Click **Complete**.
+
+   After you configure the embedding model, OpenRAG uses your credentials and models to ingest some [initial documents](/knowledge#default-documents). This tests the connection, and it allows you to ask OpenRAG about itself in the [**Chat**](/chat).
+   If there is a problem with the model configuration, an error occurs and you are redirected back to the application onboarding screen.
+   Verify that the credential is valid and has access to the selected model, and then click **Complete** to retry ingestion.
+
+6. Continue through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+The overview demonstrates some basic functionality that is covered in the [quickstart](/quickstart#chat-with-documents) and in other parts of the OpenRAG documentation.
+
+</TabItem>
+</Tabs>
