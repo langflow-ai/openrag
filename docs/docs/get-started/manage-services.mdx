@@ -8,6 +8,7 @@ import TabItem from '@theme/TabItem';
 import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
 import PartialDockerComposeDownAndPrune from '@site/docs/_partial-docker-compose-down-and-prune.mdx';
 import PartialFactorResetWarning from '@site/docs/_partial-factory-reset-warning.mdx';
+import PartialExportFlows from '@site/docs/_partial-export-flows.mdx';
 
 Service management is an essential part of maintaining your OpenRAG deployment.
 
@@ -120,61 +121,45 @@ See [Upgrade OpenRAG](/upgrade).
 
 ## Reset containers (destructive) {#reset-containers}
 
-Reset your OpenRAG deployment by recreating the containers and removing some related data.
-
-To completely reset your OpenRAG deployment and delete all OpenRAG data, see [Reinstall OpenRAG](/reinstall).
-
-### Export customized flows before resetting containers {#export-customized-flows-before-resetting-containers}
-
-If you modified the built-in flows or created custom flows in your OpenRAG Langflow instance, and you want to preserve those changes, [export your flows](https://docs.langflow.org/concepts-flows-import) before resetting your OpenRAG containers.
-
-### Factory Reset with the TUI
-
 <PartialFactorResetWarning />
 
-1. To destroy and recreate your OpenRAG containers, open the TUI's **Status** menu (<kbd>3</kbd>), and then click **Factory Reset**.
+Use these steps to reset your OpenRAG deployment by recreating the containers and deleting all data in the `~/.openrag` directory _except_ for the `.env` file and the `/documents` subdirectory.
 
-2. Repeat the [setup process](/install#setup) to restart the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
+This restores your OpenRAG deployment to a near-initial state while preserving your configuration (in `.env`) and uploaded documents (in `/documents`).
+Your documents are reingested into a fresh OpenSearch index after the reset.
 
-### Rebuild self-managed containers
+To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall OpenRAG](/reinstall).
 
-This command destroys and recreates the containers. Data stored exclusively on the containers is lost, such as Langflow flows.
+<Tabs>
+<TabItem value="TUI" label="TUI-managed services" default>
 
-If you want to preserve customized flows, see [Export customized flows before resetting containers](#export-customized-flows-before-resetting-containers).
+<PartialExportFlows />
 
-The `.env` file and the `~/.openrag/documents` directory are preserved.
+2. To destroy and recreate your OpenRAG containers, open the TUI's **Status** menu (<kbd>3</kbd>), and then click **Factory Reset**.
 
-```bash title="Docker"
-docker compose up --build --force-recreate --remove-orphans
-```
+3. Repeat the [setup process](/install#setup) to restart the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
 
-```bash title="Podman"
-podman compose up --build --force-recreate --remove-orphans
-```
+</TabItem>
+<TabItem value="env" label="Self-managed services">
 
-### Destroy and recreate self-managed containers
+<PartialExportFlows />
 
-Use separate commands to destroy and recreate the containers if you want to modify the configuration or delete other OpenRAG data before recreating the containers.
+2. Recreate the containers:
 
-:::warning
-These are destructive operations that reset your OpenRAG deployment to an initial state.
-Destroyed containers and deleted data are lost and cannot be recovered after running this operation.
-:::
+   ```bash title="Docker"
+   docker compose up --build --force-recreate --remove-orphans
+   ```
 
-1. Destroy the containers, volumes, and local images, and then remove (prune) any additional container objects:
+   ```bash title="Podman"
+   podman compose up --build --force-recreate --remove-orphans
+   ```
 
-   <PartialDockerComposeDownAndPrune />
+3. Launch the OpenRAG app, and then repeat the [application onboarding process](/docker#application-onboarding).
 
-2. Optional: Remove OpenRAG's `.env` file and the `~/.openrag` directory, which aren't deleted by the previous commands.
+4. If you exported customized flows, [import your flows](https://docs.langflow.org/concepts-flows-import) into Langflow after completing the onboarding process.
 
-3. If you deleted the `.env` file, prepare a new `.env` before redeploying the containers.
-For more information, see [Deploy OpenRAG with self-managed services](/docker).
-
-4. Recreate the containers:
-
-   <PartialDockerComposeUp />
-
-5. Launch the OpenRAG app, and then repeat the [application onboarding process](/docker#application-onboarding).
+</TabItem>
+</Tabs>
 
 ## See also
 

@@ -8,6 +8,7 @@ import PartialDockerComposeDownAndPrune from '@site/docs/_partial-docker-compose
 import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
 import PartialDockerRemoveAndCleanupSteps from '@site/docs/_partial-docker-remove-and-cleanup-steps.mdx';
 import PartialFactorResetWarning from '@site/docs/_partial-factory-reset-warning.mdx';
+import PartialExportFlows from '@site/docs/_partial-export-flows.mdx';
 
 You can reset your OpenRAG deployment to its initial state by recreating the containers and deleting accessory data, such as the `.env` file and ingested documents.
 
@@ -16,49 +17,48 @@ These are destructive operations that reset your OpenRAG deployment to an initia
 Destroyed containers and deleted data are lost and cannot be recovered after running these operations.
 :::
 
-## Export customized flows before reinstalling
-
-If you modified the built-in flows or created custom flows in your OpenRAG Langflow instance, and you want to preserve those changes, [export your flows](https://docs.langflow.org/concepts-flows-import) before reinstalling OpenRAG.
-
 ## Reinstall TUI-managed containers
 
-1. In the TUI's **Status** menu (<kbd>3</kbd>), click **Factory Reset** to destroy your OpenRAG containers and some related data.
+<PartialExportFlows />
+
+2. In the TUI's **Status** menu (<kbd>3</kbd>), click **Factory Reset** to [reset your OpenRAG containers](/manage-services#reset-containers).
 
    <PartialFactorResetWarning />
 
 2. Exit the TUI with <kbd>q</kbd>.
 
-3. Optional: Remove data that wasn't deleted by the **Factory Reset** operation.
-For a completely fresh installation, delete all of this data.
+3. Optional: Delete or edit [OpenRAG's `.env` file](/reference/configuration), which is stored at `~/.openrag/tui`.
 
-   * **OpenRAG's `.env` file**: Contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth settings, and other [environment variables](/reference/configuration). If you delete this file, OpenRAG automatically generates a new one at `~/.openrag/tui` after you repeat the setup and onboarding process. Alternatively, you can create a prepopulated `.env` file in the expected directory before restarting OpenRAG.
-   * **The `~/.openrag` directory**: The `documents` subdirectory contains documents that you uploaded to OpenRAG. Delete these files to prevent documents from being reingested to your knowledge base after restarting OpenRAG. However, you might want to preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
+   This file contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth settings, and other environment variables. If you delete this file, the TUI automatically generates a new one after you repeat the setup and onboarding process. If you preserve this file, the TUI can read values from the existing `.env` file during setup and onboarding.
 
-4. Restart the TUI with `uv run openrag` or `uvx openrag`.
+4. Optional: Remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
+It is recommended that you preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
 
-5. Repeat the [setup process](/install#setup) to configure OpenRAG and restart all services.
+5. Restart the TUI with `uv run openrag` or `uvx openrag`.
+
+6. Repeat the [setup process](/install#setup) to configure OpenRAG and restart all services.
 Then, launch the OpenRAG app and repeat the [application onboarding process](/install#application-onboarding).
-
-   If OpenRAG detects a `.env` file during setup and onboarding, it automatically populates any OpenRAG passwords, OAuth credentials, and onboarding configuration set in that file.
 
 ## Reinstall self-managed containers with `docker compose` or `podman compose`
 
 Use these steps to reinstall OpenRAG containers with streamlined `docker compose` or `podman compose` commands:
 
-1. Destroy the containers, volumes, and local images, and then remove (prune) any additional container objects:
+<PartialExportFlows />
+
+2. Destroy the containers, volumes, and local images, and then remove (prune) any additional container objects:
 
    <PartialDockerComposeDownAndPrune />
 
-2. Optional: Remove OpenRAG's `.env` file and the `~/.openrag` directory, which aren't deleted by the previous commands.
+3. Optional: Edit OpenRAG's `.env` file if needed.
 
-3. If you deleted the `.env` file, prepare a new `.env` before redeploying the containers.
-For more information, see [Deploy OpenRAG with self-managed services](/docker).
+4. Optional: Remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
+It is recommended that you preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
 
-4. Redeploy OpenRAG:
+5. Redeploy OpenRAG:
 
    <PartialDockerComposeUp />
 
-5. Launch the OpenRAG app, and then repeat the [application onboarding process](/docker#application-onboarding).
+6. Launch the OpenRAG app, and then repeat the [application onboarding process](/docker#application-onboarding).
 
 ## Reinstall self-managed containers with discrete `docker` or `podman` commands
 
@@ -66,13 +66,18 @@ Use these commands to remove and clean up OpenRAG containers with discrete `dock
 
 If you want to reinstall one container, specify the container name in the commands instead of running the commands on all containers.
 
-1. Stop all running containers:
+<PartialExportFlows />
+
+2. Stop all running containers:
 
    <PartialDockerStopAll />
 
 <PartialDockerRemoveAndCleanupSteps />
 
-7. Optional: Remove OpenRAG's `.env` file and the `~/.openrag` directory, which aren't deleted by the previous commands.
+8. Optional: Edit OpenRAG's `.env` file if needed.
 
-8. If you removed all OpenRAG containers, [redeploy OpenRAG](/docker).
+9. Optional: If you removed all containers or specifically the OpenSearch container, then you can remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
+It is recommended that you preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
+
+10. If you removed all OpenRAG containers, [redeploy OpenRAG](/docker).
 If you removed only one container, redeploy that container with the appropriate `docker run` or `podman run` command.
