@@ -146,7 +146,7 @@ function KnowledgeSourcesPage() {
 
 	// Fetch API keys
 	const { data: apiKeysData, isLoading: apiKeysLoading } = useGetApiKeysQuery({
-		enabled: isAuthenticated,
+		enabled: isAuthenticated || isNoAuthMode,
 	});
 
 	// API key mutations
@@ -1392,7 +1392,7 @@ function KnowledgeSourcesPage() {
 			</Card>
 
 			{/* API Keys Section */}
-			{isAuthenticated && (
+			{(isAuthenticated || isNoAuthMode) && (
 				<Card>
 					<CardHeader>
 						<div className="flex items-center justify-between mb-3">
