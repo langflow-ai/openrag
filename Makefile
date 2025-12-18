@@ -267,7 +267,7 @@ test-ci:
 	done; \
 	echo "Running Python SDK integration tests"; \
 	cd sdks/python && \
-	uv pip install -e ".[dev]" && \
+	uv sync --extra dev && \
 	OPENRAG_URL=http://localhost:3000 uv run pytest tests/test_integration.py -vv -s || TEST_RESULT=1; \
 	cd ../..; \
 	echo "Running TypeScript SDK integration tests"; \
@@ -363,7 +363,7 @@ test-ci-local:
 	done; \
 	echo "Running Python SDK integration tests"; \
 	cd sdks/python && \
-	uv pip install -e ".[dev]" && \
+	uv sync --extra dev && \
 	OPENRAG_URL=http://localhost:3000 uv run pytest tests/test_integration.py -vv -s || TEST_RESULT=1; \
 	cd ../..; \
 	echo "Running TypeScript SDK integration tests"; \
@@ -393,7 +393,7 @@ test-sdk:
 	@echo "Make sure OpenRAG backend is running at localhost:8000 (make backend)"
 	@echo ""
 	@echo "Running Python SDK tests..."
-	cd sdks/python && uv pip install -e ".[dev]" && OPENRAG_URL=http://localhost:8000 uv run pytest tests/test_integration.py -vv -s
+	cd sdks/python && uv sync --extra dev && OPENRAG_URL=http://localhost:8000 uv run pytest tests/test_integration.py -vv -s
 	@echo ""
 	@echo "Running TypeScript SDK tests..."
 	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:8000 npm test
