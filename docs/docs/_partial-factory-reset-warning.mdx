@@ -1,14 +1,11 @@
 :::warning
-This is a destructive action that does the following:
+This is a destructive operation that does the following:
 
-* Destroys all OpenRAG containers, volumes, and local images with `docker compose down --volumes --remove-orphans --rmi local`.
-* Prunes any additional container objects with `docker system prune -f`.
-* Deletes the contents of OpenRAG's `config` and `./opensearch-data` directories.
-* Deletes the `conversations.json` file.
+* Destroys all OpenRAG containers, volumes, and local images.
+* Prunes any additional container objects.
+* Deletes the contents of the `~/.openrag` directory _except_ for OpenRAG's `.env` file and the `/documents` subdirectory.
 
 <p/>Destroyed containers and deleted data are lost and cannot be recovered after running this operation.
-
-This operation _doesn't_ remove the `.env` file or the contents of the `./openrag-documents` directory.
 :::
 
 <!--

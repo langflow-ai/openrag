@@ -64,7 +64,7 @@ The script installs OpenRAG dependencies, including Docker or Podman, and then i
    Command completed successfully
    ```
 
-   Your OpenRAG configuration and passwords are stored in an [OpenRAG `.env` file](/reference/configuration) file that is created automatically in your OpenRAG installation directory, which is the directory where you ran the installer script.
+   Your OpenRAG configuration and passwords are stored in an [OpenRAG `.env` file](/reference/configuration) file that is created automatically at `~/.openrag/tui`.
    Container definitions are stored in the `docker-compose` files in the same directory.
 
 7. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
@@ -96,7 +96,7 @@ You can click a document to view the chunks of the document as they are stored i
 
    For this quickstart, use either the <Icon name="File" aria-hidden="true"/> **File** or <Icon name="Folder" aria-hidden="true"/> **Folder** upload options to load documents from your local machine.
    **Folder** uploads an entire directory.
-   The default directory is the `/openrag-documents` subdirectory in your OpenRAG installation directory.
+   The default directory is `~/.openrag/documents`.
 
    For information about the cloud storage provider options, see [Ingest files with OAuth connectors](/ingestion#oauth-ingestion).
 
@@ -121,7 +121,7 @@ You can click a document to view the chunks of the document as they are stored i
 
 2. For greater insight into the underlying [Langflow flow](/agents) that drives the OpenRAG chat, click **Edit in Langflow** and then click **Proceed** to launch the Langflow visual editor in a new browser window.
 
-   If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from the `.env` file in your OpenRAG installation directory.
+   If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from the `.env` file at `~/.openrag/tui`.
 
    The **OpenRAG OpenSearch Agent** flow opens in a new browser window.
 

@@ -29,13 +29,7 @@ Use these steps to uninstall a self-managed OpenRAG deployment with streamlined 
 
    <PartialDockerComposeDownAndPrune />
 
-2. Remove data that wasn't deleted by the previous commands:
-
-   * OpenRAG's `.env` file
-   * The contents of OpenRAG's `config` directory
-   * The contents of the `./openrag-documents` directory
-   * The contents of the `./opensearch-data` directory
-   * The `conversations.json` file
+2. Remove OpenRAG's `.env` file and the `~/.openrag/documents` directory, which aren't deleted by the previous commands.
 
 3. Stop `docling-serve`:
 
@@ -53,13 +47,7 @@ Use these commands to uninstall a self-managed OpenRAG deployment with discrete 
 
 <PartialDockerRemoveAndCleanupSteps />
 
-7. Remove data that wasn't deleted by the previous commands:
-
-   * OpenRAG's `.env` file
-   * The contents of OpenRAG's `config` directory
-   * The contents of the `./openrag-documents` directory
-   * The contents of the `./opensearch-data` directory
-   * The `conversations.json` file
+7. Remove OpenRAG's `.env` file and the `~/.openrag/documents` directory, which aren't deleted by the previous commands.
 
 8. Stop `docling-serve`:
 
