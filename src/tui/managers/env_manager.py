@@ -58,7 +58,7 @@ class EnvConfig:
     # Langfuse settings (optional)
     langfuse_secret_key: str = ""
     langfuse_public_key: str = ""
-    langfuse_base_url: str = ""
+    langfuse_host: str = ""
 
     # Langflow auth settings
     langflow_auto_login: str = "False"
@@ -197,7 +197,7 @@ class EnvManager:
             "OPENRAG_VERSION": "openrag_version",
             "LANGFUSE_SECRET_KEY": "langfuse_secret_key",  # pragma: allowlist secret
             "LANGFUSE_PUBLIC_KEY": "langfuse_public_key",  # pragma: allowlist secret
-            "LANGFUSE_BASE_URL": "langfuse_base_url",
+            "LANGFUSE_HOST": "langfuse_host",
         }
         
         loaded_from_file = False
@@ -515,7 +515,7 @@ class EnvManager:
                 langfuse_vars = [
                     ("LANGFUSE_SECRET_KEY", self.config.langfuse_secret_key),
                     ("LANGFUSE_PUBLIC_KEY", self.config.langfuse_public_key),
-                    ("LANGFUSE_BASE_URL", self.config.langfuse_base_url),
+                    ("LANGFUSE_HOST", self.config.langfuse_host),
                 ]
 
                 langfuse_written = False

@@ -552,19 +552,19 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
         # Langfuse Base URL
-        yield Label("Langfuse Base URL (optional)")
+        yield Label("Langfuse Host (optional)")
         yield Static(
             Text("Leave empty for Langfuse Cloud, or set for self-hosted", style="dim"),
             classes="helper-text",
         )
-        current_value = getattr(self.env_manager.config, "langfuse_base_url", "")
+        current_value = getattr(self.env_manager.config, "langfuse_host", "")
         input_widget = Input(
             placeholder="https://cloud.langfuse.com",
             value=current_value,
-            id="input-langfuse_base_url",
+            id="input-langfuse_host",
         )
         yield input_widget
-        self.inputs["langfuse_base_url"] = input_widget
+        self.inputs["langfuse_host"] = input_widget
         yield Static(" ")
 
         # Other Settings Section
