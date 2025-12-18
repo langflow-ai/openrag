@@ -513,6 +513,58 @@ class ConfigScreen(Screen):
             self.inputs["aws_secret_access_key"] = input_widget
             yield Static(" ")
 
+        # Langfuse Section (available in both basic and full mode)
+        yield Static("Langfuse (Tracing)", classes="tab-header")
+        yield Static(" ")
+
+        # Langfuse Secret Key
+        yield Label("Langfuse Secret Key (optional)")
+        yield Static(
+            Text("Get keys from your Langfuse project settings", style="dim"),
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "langfuse_secret_key", "")
+        with Horizontal(id="langfuse-secret-key-row"):
+            input_widget = Input(
+                placeholder="sk-lf-...",
+                value=current_value,
+                password=True,
+                id="input-langfuse_secret_key",
+            )
+            yield input_widget
+            self.inputs["langfuse_secret_key"] = input_widget
+            yield Button("Show", id="toggle-langfuse-secret-key", variant="default")
+        yield Static(" ")
+
+        # Langfuse Public Key
+        yield Label("Langfuse Public Key (optional)")
+        current_value = getattr(self.env_manager.config, "langfuse_public_key", "")
+        with Horizontal(id="langfuse-public-key-row"):
+            input_widget = Input(
+                placeholder="pk-lf-...",
+                value=current_value,
+                password=True,
+                id="input-langfuse_public_key",
+            )
+            yield input_widget
+            self.inputs["langfuse_public_key"] = input_widget
+            yield Button("Show", id="toggle-langfuse-public-key", variant="default")
+        yield Static(" ")
+
+        # Langfuse Base URL
+        yield Label("Langfuse Host (optional)")
+        yield Static(
+            Text("Leave empty for Langfuse Cloud, or set for self-hosted", style="dim"),
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "langfuse_host", "")
+        input_widget = Input(
+            placeholder="https://cloud.langfuse.com",
+            value=current_value,
+            id="input-langfuse_host",
+        )
+        yield input_widget
+        self.inputs["langfuse_host"] = input_widget
         yield Static(" ")
 
         # Other Settings Section
@@ -710,6 +762,18 @@ class ConfigScreen(Screen):
         elif event.button.id == "toggle-watsonx-key":
             # Toggle watsonx API key visibility
             input_widget = self.inputs.get("watsonx_api_key")
+            if input_widget:
+                input_widget.password = not input_widget.password
+                event.button.label = "Hide" if not input_widget.password else "Show"
+        elif event.button.id == "toggle-langfuse-secret-key":
+            # Toggle Langfuse secret key visibility
+            input_widget = self.inputs.get("langfuse_secret_key")
+            if input_widget:
+                input_widget.password = not input_widget.password
+                event.button.label = "Hide" if not input_widget.password else "Show"
+        elif event.button.id == "toggle-langfuse-public-key":
+            # Toggle Langfuse public key visibility
+            input_widget = self.inputs.get("langfuse_public_key")
             if input_widget:
                 input_widget.password = not input_widget.password
                 event.button.label = "Hide" if not input_widget.password else "Show"

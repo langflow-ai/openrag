@@ -55,6 +55,11 @@ class EnvConfig:
     aws_secret_access_key: str = ""
     langflow_public_url: str = ""
 
+    # Langfuse settings (optional)
+    langfuse_secret_key: str = ""
+    langfuse_public_key: str = ""
+    langfuse_host: str = ""
+
     # Langflow auth settings
     langflow_auto_login: str = "False"
     langflow_new_user_is_active: str = "False"
@@ -190,6 +195,9 @@ class EnvManager:
             "LANGFLOW_ENABLE_SUPERUSER_CLI": "langflow_enable_superuser_cli",
             "DISABLE_INGEST_WITH_LANGFLOW": "disable_ingest_with_langflow",
             "OPENRAG_VERSION": "openrag_version",
+            "LANGFUSE_SECRET_KEY": "langfuse_secret_key",  # pragma: allowlist secret
+            "LANGFUSE_PUBLIC_KEY": "langfuse_public_key",  # pragma: allowlist secret
+            "LANGFUSE_HOST": "langfuse_host",
         }
         
         loaded_from_file = False
@@ -501,6 +509,24 @@ class EnvManager:
                         f.write(f"{var_name}={self._quote_env_value(var_value)}\n")
 
                 if optional_written:
+                    f.write("\n")
+
+                # Langfuse settings (optional)
+                langfuse_vars = [
+                    ("LANGFUSE_SECRET_KEY", self.config.langfuse_secret_key),
+                    ("LANGFUSE_PUBLIC_KEY", self.config.langfuse_public_key),
+                    ("LANGFUSE_HOST", self.config.langfuse_host),
+                ]
+
+                langfuse_written = False
+                for var_name, var_value in langfuse_vars:
+                    if var_value:
+                        if not langfuse_written:
+                            f.write("# Langfuse settings\n")
+                            langfuse_written = True
+                        f.write(f"{var_name}={self._quote_env_value(var_value)}\n")
+
+                if langfuse_written:
                     f.write("\n")
 
             return True
