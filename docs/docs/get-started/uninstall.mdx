@@ -41,11 +41,17 @@ Use these steps to uninstall a self-managed OpenRAG deployment with streamlined 
 
 Use these commands to uninstall a self-managed OpenRAG deployment with discrete `docker` or `podman` commands:
 
-<PartialDockerRemoveAndCleanupSteps />
+1. Stop all running containers:
 
-1. Remove OpenRAG's `.env` file and the `~/.openrag/documents` directory, which aren't deleted by the previous commands.
+   <PartialDockerStopAll />
 
-1. Stop `docling-serve`:
+2. Remove and clean up containers:
+
+   <PartialDockerRemoveAndCleanupSteps />
+
+3. Remove OpenRAG's `.env` file and the `~/.openrag/documents` directory, which aren't deleted by the previous commands.
+
+4. Stop `docling-serve`:
 
    ```bash
    uv run python scripts/docling_ctl.py stop

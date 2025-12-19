@@ -1,9 +1,3 @@
-import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
-
-1. Stop all running containers:
-
-   <PartialDockerStopAll />
-
 1. Remove all containers, including stopped containers:
 
    ```bash title="Docker"
@@ -14,7 +8,7 @@ import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
    podman rm --all --force
    ```
 
-1. Remove all images:
+2. Remove all images:
 
    ```bash title="Docker"
    docker rmi --force $(docker images -q)
@@ -24,7 +18,7 @@ import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
    podman rmi --all --force
    ```
 
-1. Remove all volumes:
+3. Remove all volumes:
 
    ```bash title="Docker"
    docker volume prune --force
@@ -34,7 +28,7 @@ import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
    podman volume prune --force
    ```
 
-1. Remove all networks except the default network:
+4. Remove all networks except the default network:
 
    ```bash title="Docker"
    docker network prune --force
@@ -44,7 +38,7 @@ import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
    podman network prune --force
    ```
 
-1. Clean up any leftover data:
+5. Clean up any leftover data:
 
    ```bash title="Docker"
    docker system prune --all --force --volumes
