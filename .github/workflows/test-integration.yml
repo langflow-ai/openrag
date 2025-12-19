@@ -100,3 +100,12 @@ jobs:
           fi
           echo "Keys directory after tests:"
           ls -la keys/ || echo "No keys directory"
+
+      - name: Dump Langflow logs on failure
+        if: failure()
+        run: |
+          echo "=== Langflow container logs ==="
+          docker logs langflow 2>&1 | tail -500 || echo "Could not get Langflow logs"
+          echo ""
+          echo "=== Backend container logs ==="
+          docker logs openrag-backend 2>&1 | tail -200 || echo "Could not get backend logs"
