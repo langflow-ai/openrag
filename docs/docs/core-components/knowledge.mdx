@@ -137,14 +137,17 @@ The default value is 200 characters, which represents an overlap of 20 percent i
 
 ### Set the local documents path {#set-the-local-documents-path}
 
-The default path for local uploads is the `./openrag-documents` subdirectory in your OpenRAG installation directory. This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container. Files added to the host or container directory are visible in both locations.
+The default path for local uploads is `~/.openrag/documents`. This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container. Files added to the host or container directory are visible in both locations.
 
 To change this location, modify the **Documents Paths** variable in either the [**Advanced Setup** menu](/install#setup) or in your [OpenRAG `.env` file](/reference/configuration).
 
 ## Delete knowledge {#delete-knowledge}
 
-To clear your entire knowledge base, delete the contents of the `./opensearch-data` folder in your OpenRAG installation directory.
+:::warning
 This is a destructive operation that cannot be undone.
+:::
+
+To clear your entire knowledge base, [reset your OpenRAG containers](/manage-services#reset-containers) or [reinstall OpenRAG](/reinstall).
 
 ## See also
 
