@@ -17,6 +17,9 @@ wheels/
 
 1001*.pdf
 *.json
+!**/package.json
+!**/package-lock.json
+!**/tsconfig.json
 !flows/*.json
 !src/tui/_assets/flows/*.json
 !src/tui/_assets/flows/components/*.json
@@ -29,3 +32,5 @@ config/
 
 # OpenSearch data directory
 opensearch-data/
+
+node_modules

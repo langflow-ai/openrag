@@ -1,6 +1,7 @@
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
 
 ## Complete the application onboarding process {#application-onboarding}
 
@@ -68,15 +69,13 @@ The overview demonstrates some basic functionality that is covered in the [quick
 </TabItem>
 <TabItem value="Ollama" label="Ollama">
 
+Using Ollama as your language and embedding model provider offers greater flexibility and configuration options for hosting models.
+However, it requires additional setup because Ollama isn't included with OpenRAG.
+You must deploy Ollama separately if you want to use Ollama as a model provider.
+
 :::info
-Ollama isn't installed with OpenRAG. You must install it separately if you want to use Ollama as a model provider.
+<PartialOllamaModels />
 :::
-
-Using Ollama as your language and embedding model provider offers greater flexibility and configuration options for hosting models, but it can be advanced for new users.
-The recommendations given here are a reasonable starting point for users with at least one GPU and experience running LLMs locally.
-
-The OpenRAG team recommends the OpenAI `gpt-oss:20b` language model and the [`nomic-embed-text`](https://ollama.com/library/nomic-embed-text) embedding model.
-However, `gpt-oss:20b` uses 16GB of RAM, so consider using Ollama Cloud or running Ollama on a remote machine.
 
 1. [Install Ollama locally or on a remote server](https://docs.ollama.com/), or [run models in Ollama Cloud](https://docs.ollama.com/cloud).
 
@@ -116,8 +115,6 @@ The overview demonstrates some basic functionality that is covered in the [quick
 <TabItem value="OpenAI" label="OpenAI (default)">
 
 1. Enter your OpenAI API key, or enable **Use environment API key** to pull the key from your [OpenRAG `.env` file](/reference/configuration).
-
-   If you set `OPENAI_API_KEY` in your OpenRAG `.env` file, this value can be populated automatically.
 
 2. Under **Advanced settings**, select the language model that you want to use.
 

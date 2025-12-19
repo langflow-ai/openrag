@@ -730,7 +730,15 @@ class LangflowFileProcessor(TaskProcessor):
             if not content_type:
                 content_type = 'application/octet-stream'
 
-            file_tuple = (original_filename, content, content_type)
+            # Rename .txt to .md for Langflow compatibility
+            # Langflow has issues processing text/plain files
+            langflow_filename = original_filename
+            if original_filename.lower().endswith('.txt'):
+                langflow_filename = original_filename[:-4] + '.md'
+                content_type = 'text/markdown'
+                logger.debug(f"Renamed {original_filename} to {langflow_filename} for Langflow")
+
+            file_tuple = (langflow_filename, content, content_type)
 
             # Get JWT token using same logic as DocumentFileProcessor
             # This will handle anonymous JWT creation if needed
