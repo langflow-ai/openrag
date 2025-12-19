@@ -10,8 +10,8 @@ The **OpenSearch Ingestion** flow is comprised of several components that work t
 
 * [**Docling Serve** component](https://docs.langflow.org/bundles-docling#docling-serve): Ingests files and processes them by connecting to OpenRAG's local Docling Serve service. The output is `DoclingDocument` data that contains the extracted text and metadata from the documents.
 * [**Export DoclingDocument** component](https://docs.langflow.org/bundles-docling#export-doclingdocument): Exports processed `DoclingDocument` data to Markdown format with image placeholders. This conversion standardizes the document data in preparation for further processing.
-* [**DataFrame Operations** component](https://docs.langflow.org/components-processing#dataframe-operations): Three of these components run sequentially to add metadata to the document data: `filename`, `file_size`, and `mimetype`.
-* [**Split Text** component](https://docs.langflow.org/components-processing#split-text): Splits the processed text into chunks, based on the configured [chunk size and overlap settings](/knowledge#knowledge-ingestion-settings).
+* [**DataFrame Operations** component](https://docs.langflow.org/dataframe-operations): Three of these components run sequentially to add metadata to the document data: `filename`, `file_size`, and `mimetype`.
+* [**Split Text** component](https://docs.langflow.org/split-text): Splits the processed text into chunks, based on the configured [chunk size and overlap settings](/knowledge#knowledge-ingestion-settings).
 * **Secret Input** component: If needed, four of these components securely fetch the [OAuth authentication](/knowledge#auth) configuration variables: `CONNECTOR_TYPE`, `OWNER`, `OWNER_EMAIL`, and `OWNER_NAME`.
 * **Create Data** component: Combines the authentication credentials from the **Secret Input** components into a structured data object that is associated with the document embeddings.
 * [**Embedding Model** component](https://docs.langflow.org/components-embedding-models): Generates vector embeddings using your selected [embedding model](/knowledge#set-the-embedding-model-and-dimensions).
