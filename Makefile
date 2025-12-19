@@ -390,13 +390,13 @@ test-ci-local:
 # SDK integration tests (requires running OpenRAG instance)
 test-sdk:
 	@echo "Running SDK integration tests..."
-	@echo "Make sure OpenRAG backend is running at localhost:8000 (make backend)"
+	@echo "Make sure OpenRAG is running at localhost:3000 (make up)"
 	@echo ""
 	@echo "Running Python SDK tests..."
-	cd sdks/python && uv sync --extra dev && OPENRAG_URL=http://localhost:8000 uv run pytest tests/test_integration.py -vv -s
+	cd sdks/python && uv sync --extra dev && OPENRAG_URL=http://localhost:3000 uv run pytest tests/test_integration.py -vv -s
 	@echo ""
 	@echo "Running TypeScript SDK tests..."
-	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:8000 npm test
+	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test
 
 lint:
 	@echo "🔍 Running linting checks..."
