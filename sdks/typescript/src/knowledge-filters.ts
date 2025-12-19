@@ -31,7 +31,7 @@ export class KnowledgeFiltersClient {
       queryData: JSON.stringify(options.queryData),
     };
 
-    const response = await this.client._request("POST", "/knowledge-filter", {
+    const response = await this.client._request("POST", "/api/v1/knowledge-filters", {
       body: JSON.stringify(body),
     });
 
@@ -58,7 +58,7 @@ export class KnowledgeFiltersClient {
 
     const response = await this.client._request(
       "POST",
-      "/knowledge-filter/search",
+      "/api/v1/knowledge-filters/search",
       {
         body: JSON.stringify(body),
       }
@@ -83,7 +83,7 @@ export class KnowledgeFiltersClient {
     try {
       const response = await this.client._request(
         "GET",
-        `/knowledge-filter/${filterId}`
+        `/api/v1/knowledge-filters/${filterId}`
       );
 
       const data = (await response.json()) as GetKnowledgeFilterResponse;
@@ -124,7 +124,7 @@ export class KnowledgeFiltersClient {
 
     const response = await this.client._request(
       "PUT",
-      `/knowledge-filter/${filterId}`,
+      `/api/v1/knowledge-filters/${filterId}`,
       {
         body: JSON.stringify(body),
       }
@@ -143,7 +143,7 @@ export class KnowledgeFiltersClient {
   async delete(filterId: string): Promise<boolean> {
     const response = await this.client._request(
       "DELETE",
-      `/knowledge-filter/${filterId}`
+      `/api/v1/knowledge-filters/${filterId}`
     );
 
     const data = (await response.json()) as DeleteKnowledgeFilterResponse;

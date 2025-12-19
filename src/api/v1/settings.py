@@ -1,12 +1,13 @@
 """
 Public API v1 Settings endpoint.
 
-Provides read-only access to configuration settings.
+Provides access to configuration settings.
 Uses API key authentication.
 """
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from utils.logging_config import get_logger
+from config.settings import get_openrag_config
 
 logger = get_logger(__name__)
 
@@ -59,3 +60,27 @@ async def get_settings_endpoint(request: Request):
             {"error": "Failed to get settings"},
             status_code=500,
         )
+
+
+async def update_settings_endpoint(request: Request, session_manager):
+    """
+    Update OpenRAG configuration settings.
+
+    POST /v1/settings
+
+    Request body (all fields optional):
+        {
+            "chunk_size": 1000,
+            "chunk_overlap": 200
+        }
+
+    Response:
+        {
+            "message": "Configuration updated successfully"
+        }
+
+    Note: This endpoint only allows updating a limited subset of settings.
+    Provider API keys and credentials cannot be updated via this endpoint.
+    """
+    from api.settings import update_settings
+    return await update_settings(request, session_manager)

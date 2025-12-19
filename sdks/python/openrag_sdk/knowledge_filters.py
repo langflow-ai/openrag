@@ -62,7 +62,7 @@ class KnowledgeFiltersClient:
 
         response = await self._client._request(
             "POST",
-            "/knowledge-filter",
+            "/api/v1/knowledge-filters",
             json=body,
         )
 
@@ -95,7 +95,7 @@ class KnowledgeFiltersClient:
 
         response = await self._client._request(
             "POST",
-            "/knowledge-filter/search",
+            "/api/v1/knowledge-filters/search",
             json=body,
         )
 
@@ -118,7 +118,7 @@ class KnowledgeFiltersClient:
         try:
             response = await self._client._request(
                 "GET",
-                f"/knowledge-filter/{filter_id}",
+                f"/api/v1/knowledge-filters/{filter_id}",
             )
 
             data = response.json()
@@ -174,7 +174,7 @@ class KnowledgeFiltersClient:
 
         response = await self._client._request(
             "PUT",
-            f"/knowledge-filter/{filter_id}",
+            f"/api/v1/knowledge-filters/{filter_id}",
             json=body,
         )
 
@@ -193,7 +193,7 @@ class KnowledgeFiltersClient:
         """
         response = await self._client._request(
             "DELETE",
-            f"/knowledge-filter/{filter_id}",
+            f"/api/v1/knowledge-filters/{filter_id}",
         )
 
         data = response.json()

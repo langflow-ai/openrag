@@ -52,7 +52,7 @@ class SettingsClient {
    * @returns Success response with message.
    */
   async update(options: SettingsUpdateOptions): Promise<SettingsUpdateResponse> {
-    const response = await this.client._request("POST", "/settings", {
+    const response = await this.client._request("POST", "/api/v1/settings", {
       body: JSON.stringify(options),
     });
     const data = await response.json();

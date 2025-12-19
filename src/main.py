@@ -58,7 +58,7 @@ from auth_middleware import optional_auth, require_auth
 from api_key_middleware import require_api_key
 from services.api_key_service import APIKeyService
 from api import keys as api_keys
-from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings
+from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings, knowledge_filters as v1_knowledge_filters
 
 # Configuration and setup
 from config.settings import (
@@ -1404,13 +1404,79 @@ async def create_app():
             ),
             methods=["DELETE"],
         ),
-        # Settings endpoint (read-only)
+        # Settings endpoints
         Route(
             "/v1/settings",
             require_api_key(services["api_key_service"])(
                 partial(v1_settings.get_settings_endpoint)
             ),
             methods=["GET"],
+        ),
+        Route(
+            "/v1/settings",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_settings.update_settings_endpoint,
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        # Knowledge filters endpoints
+        Route(
+            "/v1/knowledge-filters",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_knowledge_filters.create_endpoint,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/v1/knowledge-filters/search",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_knowledge_filters.search_endpoint,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
+            "/v1/knowledge-filters/{filter_id}",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_knowledge_filters.get_endpoint,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["GET"],
+        ),
+        Route(
+            "/v1/knowledge-filters/{filter_id}",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_knowledge_filters.update_endpoint,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["PUT"],
+        ),
+        Route(
+            "/v1/knowledge-filters/{filter_id}",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_knowledge_filters.delete_endpoint,
+                    knowledge_filter_service=services["knowledge_filter_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
         ),
     ]
 

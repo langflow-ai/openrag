@@ -55,7 +55,7 @@ class SettingsClient:
         else:
             body = {k: v for k, v in options.items() if v is not None}
 
-        response = await self._client._request("POST", "/settings", json=body)
+        response = await self._client._request("POST", "/api/v1/settings", json=body)
         data = response.json()
         return SettingsUpdateResponse(message=data.get("message", "Settings updated"))
 
