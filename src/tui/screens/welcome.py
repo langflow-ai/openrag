@@ -23,6 +23,7 @@ class WelcomeScreen(Screen):
 
     BINDINGS = [
         ("q", "quit", "Quit"),
+        ("r", "refresh", "Refresh"),
     ]
 
     def __init__(self):
@@ -305,16 +306,10 @@ class WelcomeScreen(Screen):
         else:
             self.default_button_id = "basic-setup-btn"
 
-        # Update the welcome text
-        try:
-            welcome_widget = self.query_one("#welcome-text")
-            welcome_widget.update(self._create_welcome_text())
-        except:
-            pass  # Widget might not be mounted yet
-
-        # Focus the appropriate button (the buttons are created correctly in compose,
-        # the issue was they weren't being updated after service operations)
-        self.call_after_refresh(self._focus_appropriate_button)
+        # Refresh the welcome text AND buttons based on the updated async state
+        # This ensures buttons match the actual service state (fixes issue where
+        # text showed "All services running" but buttons weren't updated)
+        await self._refresh_welcome_content()
 
     def _focus_appropriate_button(self) -> None:
         """Focus the appropriate button based on current state."""
@@ -341,8 +336,22 @@ class WelcomeScreen(Screen):
             os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
         )
 
-        # Re-detect service state
-        self._detect_services_sync()
+        # Re-detect container services using async method for accuracy
+        if self.container_manager.is_available():
+            services = await self.container_manager.get_service_status(force_refresh=True)
+            expected = set(self.container_manager.expected_services)
+            running_services = [
+                s.name for s in services.values() if s.status == ServiceStatus.RUNNING
+            ]
+            starting_services = [
+                s.name for s in services.values() if s.status == ServiceStatus.STARTING
+            ]
+            self.services_running = len(running_services) == len(expected) and len(starting_services) == 0
+        else:
+            self.services_running = False
+
+        # Re-detect native service state
+        self.docling_running = self.docling_manager.is_running()
 
         # Refresh the welcome content and buttons
         await self._refresh_welcome_content()
@@ -396,6 +405,38 @@ class WelcomeScreen(Screen):
         from .diagnostics import DiagnosticsScreen
 
         self.app.push_screen(DiagnosticsScreen())
+
+    def action_refresh(self) -> None:
+        """Refresh service state and update welcome screen."""
+        self.run_worker(self._refresh_state())
+
+    async def _refresh_state(self) -> None:
+        """Async refresh of service state."""
+        # Re-detect container services using async method for accuracy
+        if self.container_manager.is_available():
+            services = await self.container_manager.get_service_status(force_refresh=True)
+            expected = set(self.container_manager.expected_services)
+            running_services = [
+                s.name for s in services.values() if s.status == ServiceStatus.RUNNING
+            ]
+            starting_services = [
+                s.name for s in services.values() if s.status == ServiceStatus.STARTING
+            ]
+            self.services_running = len(running_services) == len(expected) and len(starting_services) == 0
+        else:
+            self.services_running = False
+
+        # Re-detect native service state
+        self.docling_running = self.docling_manager.is_running()
+
+        # Update OAuth config state
+        self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
+            os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
+        )
+
+        # Refresh the welcome content and buttons
+        await self._refresh_welcome_content()
+        self.notify("Refreshed", severity="information", timeout=2)
 
     def action_start_all_services(self) -> None:
         """Start all services (native first, then containers)."""
