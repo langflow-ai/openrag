@@ -18,6 +18,35 @@ let OpenRAGClient: typeof import("../src").OpenRAGClient;
 const BASE_URL = process.env.OPENRAG_URL || "http://localhost:3000";
 const SKIP_TESTS = process.env.SKIP_SDK_INTEGRATION_TESTS === "true";
 
+// Ensure the OpenRAG instance is onboarded before running tests
+async function ensureOnboarding(): Promise<void> {
+  const onboardingPayload = {
+    llm_provider: "openai",
+    embedding_provider: "openai",
+    embedding_model: "text-embedding-3-small",
+    llm_model: "gpt-4o-mini",
+    sample_data: false,
+  };
+
+  try {
+    const response = await fetch(`${BASE_URL}/api/onboarding`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(onboardingPayload),
+    });
+
+    if (response.status === 200 || response.status === 204) {
+      console.log("[SDK Tests] Onboarding completed successfully");
+    } else {
+      // May already be onboarded, which is fine
+      const text = await response.text();
+      console.log(`[SDK Tests] Onboarding returned ${response.status}: ${text.slice(0, 200)}`);
+    }
+  } catch (e) {
+    console.log(`[SDK Tests] Onboarding request failed: ${e}`);
+  }
+}
+
 // Create API key for tests
 async function createApiKey(): Promise<string> {
   // Use /api/keys to go through frontend proxy (frontend at :3000 proxies /api/* to backend)
@@ -57,6 +86,9 @@ describe.skipIf(SKIP_TESTS)("OpenRAG TypeScript SDK Integration", () => {
   let testFilePath: string;
 
   beforeAll(async () => {
+    // Ensure onboarding is done first (marks config as edited)
+    await ensureOnboarding();
+
     // Import SDK
     const sdk = await import("../src");
     OpenRAGClient = sdk.OpenRAGClient;

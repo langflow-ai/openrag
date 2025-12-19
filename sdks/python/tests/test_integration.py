@@ -22,6 +22,42 @@ pytestmark = pytest.mark.skipif(
 # Module-level cache for API key (created once, reused)
 _cached_api_key: str | None = None
 _base_url = os.environ.get("OPENRAG_URL", "http://localhost:3000")
+_onboarding_done = False
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_onboarding():
+    """Ensure the OpenRAG instance is onboarded before running tests.
+
+    This marks the config as 'edited' so that settings updates are allowed.
+    """
+    global _onboarding_done
+    if _onboarding_done:
+        return
+
+    onboarding_payload = {
+        "llm_provider": "openai",
+        "embedding_provider": "openai",
+        "embedding_model": "text-embedding-3-small",
+        "llm_model": "gpt-4o-mini",
+        "sample_data": False,
+    }
+
+    try:
+        response = httpx.post(
+            f"{_base_url}/api/onboarding",
+            json=onboarding_payload,
+            timeout=30.0,
+        )
+        if response.status_code in (200, 204):
+            print(f"[SDK Tests] Onboarding completed successfully")
+        else:
+            # May already be onboarded, which is fine
+            print(f"[SDK Tests] Onboarding returned {response.status_code}: {response.text[:200]}")
+    except Exception as e:
+        print(f"[SDK Tests] Onboarding request failed: {e}")
+
+    _onboarding_done = True
 
 
 def get_api_key() -> str:
