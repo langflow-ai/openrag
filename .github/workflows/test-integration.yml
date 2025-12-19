@@ -15,7 +15,7 @@ on:
         description: 'Build images locally instead of pulling from DockerHub'
         required: false
         type: boolean
-        default: false
+        default: true
 
 jobs:
   tests:
@@ -87,7 +87,10 @@ jobs:
           # Disable startup ingest noise unless a test enables it
           DISABLE_STARTUP_INGEST: "true"
         run: |
-          if [ "${{ inputs.use_local_images }}" == "true" ]; then
+          # For PRs, always build locally since we're testing new code
+          # For workflow_dispatch, use the input (defaults to true)
+          USE_LOCAL="${{ inputs.use_local_images }}"
+          if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
             echo "Running tests with locally built images..."
             make test-ci-local
           else
