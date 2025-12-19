@@ -55,7 +55,7 @@ help:
 # Development environments
 dev:
 	@echo "🚀 Starting OpenRAG with GPU support..."
-	docker compose up -d
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "✅ Services started!"
 	@echo "   Backend: http://localhost:8000"
 	@echo "   Frontend: http://localhost:3000"
@@ -65,7 +65,7 @@ dev:
 
 dev-cpu:
 	@echo "🚀 Starting OpenRAG with CPU only..."
-	docker compose -f docker-compose-cpu.yml up -d
+	docker compose up -d
 	@echo "✅ Services started!"
 	@echo "   Backend: http://localhost:8000"
 	@echo "   Frontend: http://localhost:3000"
@@ -93,7 +93,7 @@ infra:
 
 infra-cpu:
 	@echo "🔧 Starting infrastructure services only..."
-	docker-compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow
+	docker compose up -d opensearch dashboards langflow
 	@echo "✅ Infrastructure services started!"
 	@echo "   Langflow: http://localhost:7860"
 	@echo "   OpenSearch: http://localhost:9200"
@@ -103,14 +103,12 @@ infra-cpu:
 stop:
 	@echo "🛑 Stopping all containers..."
 	docker compose down
-	docker compose -f docker-compose-cpu.yml down 2>/dev/null || true
 
 restart: stop dev
 
 clean: stop
 	@echo "🧹 Cleaning up containers and volumes..."
 	docker compose down -v --remove-orphans
-	docker compose -f docker-compose-cpu.yml down -v --remove-orphans 2>/dev/null || true
 	docker system prune -f
 
 # Local development
@@ -210,13 +208,13 @@ test-ci:
 		chmod 644 keys/public_key.pem 2>/dev/null || true; \
 	fi; \
 	echo "Cleaning up old containers and volumes..."; \
-	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
+	docker compose down -v 2>/dev/null || true; \
 	echo "Pulling latest images..."; \
-	docker compose -f docker-compose-cpu.yml pull; \
+	docker compose pull; \
 	echo "Building OpenSearch image override..."; \
 	docker build --no-cache -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
 	echo "Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers"; \
-	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	docker compose up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
 	echo "Starting docling-serve..."; \
 	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
 	echo "Docling-serve started at $$DOCLING_ENDPOINT"; \
@@ -288,7 +286,7 @@ test-ci:
 	echo ""; \
 	echo "Tearing down infra"; \
 	uv run python scripts/docling_ctl.py stop || true; \
-	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
+	docker compose down -v 2>/dev/null || true; \
 	exit $$TEST_RESULT
 
 # CI-friendly integration test target with local builds: builds all images, brings up infra, waits, runs tests, tears down
@@ -305,14 +303,14 @@ test-ci-local:
 		chmod 644 keys/public_key.pem 2>/dev/null || true; \
 	fi; \
 	echo "Cleaning up old containers and volumes..."; \
-	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
+	docker compose down -v 2>/dev/null || true; \
 	echo "Building all images locally..."; \
 	docker build -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
 	docker build -t langflowai/openrag-backend:latest -f Dockerfile.backend .; \
 	docker build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
 	docker build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
 	echo "Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers"; \
-	docker compose -f docker-compose-cpu.yml up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	docker compose up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
 	echo "Starting docling-serve..."; \
 	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
 	echo "Docling-serve started at $$DOCLING_ENDPOINT"; \
@@ -394,7 +392,7 @@ test-ci-local:
 	fi; \
 	echo "Tearing down infra"; \
 	uv run python scripts/docling_ctl.py stop || true; \
-	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
+	docker compose down -v 2>/dev/null || true; \
 	exit $$TEST_RESULT
 
 # SDK integration tests (requires running OpenRAG instance)
