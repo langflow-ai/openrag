@@ -44,7 +44,7 @@ We will keep you updated on our progress.
 
 We appreciate your efforts in helping us maintain a secure platform, and we look forward to working together to resolve any issues responsibly.
 
-## Known Vulnerabilities
+## Known vulnerabilities
 
 The following known vulnerabilities are for the OpenRAG codebase.
 
@@ -53,7 +53,7 @@ For Langflow vulnerabilities, see the [Langflow SECURITY.md](https://github.com/
 
 There are no known vulnerabilities exclusive to the OpenRAG application at this time.
 
-## Security Configuration Guidelines
+## Security configuration guidelines
 
 ### Start the Langflow server with authentication enabled
 
