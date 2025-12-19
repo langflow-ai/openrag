@@ -28,8 +28,9 @@ def get_api_key() -> str:
     """Get or create an API key for testing."""
     global _cached_api_key
     if _cached_api_key is None:
+        # Use /api/keys to go through frontend proxy (frontend at :3000 proxies /api/* to backend)
         response = httpx.post(
-            f"{_base_url}/keys",
+            f"{_base_url}/api/keys",
             json={"name": "SDK Integration Test"},
             timeout=30.0,
         )

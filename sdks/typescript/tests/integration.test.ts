@@ -20,7 +20,8 @@ const SKIP_TESTS = process.env.SKIP_SDK_INTEGRATION_TESTS === "true";
 
 // Create API key for tests
 async function createApiKey(): Promise<string> {
-  const response = await fetch(`${BASE_URL}/keys`, {
+  // Use /api/keys to go through frontend proxy (frontend at :3000 proxies /api/* to backend)
+  const response = await fetch(`${BASE_URL}/api/keys`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: "TypeScript SDK Integration Test" }),
