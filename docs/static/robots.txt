@@ -1,11 +1,7 @@
 # Robots.txt for OpenRAG Documentation
 
-# Block all crawlers by default
+# Allow all crawlers
 User-agent: *
-Disallow: /
-
-# Allow specific crawlers
-User-agent: Googlebot
 Allow: /
 
 # Sitemap location
