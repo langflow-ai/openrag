@@ -1313,7 +1313,7 @@ async def create_app():
         # ===== Public API v1 Endpoints (API Key auth) =====
         # Chat endpoints
         Route(
-            "/api/v1/chat",
+            "/v1/chat",
             require_api_key(services["api_key_service"])(
                 partial(
                     v1_chat.chat_create_endpoint,
@@ -1324,7 +1324,7 @@ async def create_app():
             methods=["POST"],
         ),
         Route(
-            "/api/v1/chat",
+            "/v1/chat",
             require_api_key(services["api_key_service"])(
                 partial(
                     v1_chat.chat_list_endpoint,
@@ -1335,7 +1335,7 @@ async def create_app():
             methods=["GET"],
         ),
         Route(
-            "/api/v1/chat/{chat_id}",
+            "/v1/chat/{chat_id}",
             require_api_key(services["api_key_service"])(
                 partial(
                     v1_chat.chat_get_endpoint,
@@ -1346,7 +1346,7 @@ async def create_app():
             methods=["GET"],
         ),
         Route(
-            "/api/v1/chat/{chat_id}",
+            "/v1/chat/{chat_id}",
             require_api_key(services["api_key_service"])(
                 partial(
                     v1_chat.chat_delete_endpoint,
@@ -1358,7 +1358,7 @@ async def create_app():
         ),
         # Search endpoint
         Route(
-            "/api/v1/search",
+            "/v1/search",
             require_api_key(services["api_key_service"])(
                 partial(
                     v1_search.search_endpoint,
@@ -1370,7 +1370,7 @@ async def create_app():
         ),
         # Documents endpoints
         Route(
-            "/api/v1/documents/ingest",
+            "/v1/documents/ingest",
             require_api_key(services["api_key_service"])(
                 partial(
                     v1_documents.ingest_endpoint,
@@ -1383,7 +1383,7 @@ async def create_app():
             methods=["POST"],
         ),
         Route(
-            "/api/v1/tasks/{task_id}",
+            "/v1/tasks/{task_id}",
             require_api_key(services["api_key_service"])(
                 partial(
                     v1_documents.task_status_endpoint,
@@ -1394,7 +1394,7 @@ async def create_app():
             methods=["GET"],
         ),
         Route(
-            "/api/v1/documents",
+            "/v1/documents",
             require_api_key(services["api_key_service"])(
                 partial(
                     v1_documents.delete_document_endpoint,
@@ -1406,7 +1406,7 @@ async def create_app():
         ),
         # Settings endpoint (read-only)
         Route(
-            "/api/v1/settings",
+            "/v1/settings",
             require_api_key(services["api_key_service"])(
                 partial(v1_settings.get_settings_endpoint)
             ),

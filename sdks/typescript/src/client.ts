@@ -73,7 +73,7 @@ interface RequestOptions {
  *
  * The client can be configured via constructor arguments or environment variables:
  * - OPENRAG_API_KEY: API key for authentication
- * - OPENRAG_URL: Base URL for the OpenRAG API (default: http://localhost:8080)
+ * - OPENRAG_URL: Base URL for the OpenRAG frontend (default: http://localhost:3000)
  *
  * @example
  * ```typescript
@@ -89,7 +89,7 @@ interface RequestOptions {
  * ```
  */
 export class OpenRAGClient {
-  private static readonly DEFAULT_BASE_URL = "http://localhost:8080";
+  private static readonly DEFAULT_BASE_URL = "http://localhost:3000";
 
   private readonly _apiKey: string;
   private readonly _baseUrl: string;

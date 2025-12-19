@@ -32,7 +32,7 @@ The SDK can be configured via environment variables or constructor arguments:
 | Environment Variable | Constructor Argument | Description |
 |---------------------|---------------------|-------------|
 | `OPENRAG_API_KEY` | `api_key` | API key for authentication (required) |
-| `OPENRAG_URL` | `base_url` | Base URL for the API (default: `http://localhost:8080`) |
+| `OPENRAG_URL` | `base_url` | Base URL for the OpenRAG frontend (default: `http://localhost:3000`) |
 
 ```python
 # Using environment variables

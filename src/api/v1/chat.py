@@ -112,7 +112,7 @@ async def chat_create_endpoint(request: Request, chat_service, session_manager):
     """
     Send a chat message.
 
-    POST /api/v1/chat
+    POST /v1/chat
 
     Request body:
         {
@@ -221,7 +221,7 @@ async def chat_list_endpoint(request: Request, chat_service, session_manager):
     """
     List all conversations for the authenticated user.
 
-    GET /api/v1/chat
+    GET /v1/chat
 
     Response:
         {
@@ -268,7 +268,7 @@ async def chat_get_endpoint(request: Request, chat_service, session_manager):
     """
     Get a specific conversation with full message history.
 
-    GET /api/v1/chat/{chat_id}
+    GET /v1/chat/{chat_id}
 
     Response:
         {
@@ -339,7 +339,7 @@ async def chat_delete_endpoint(request: Request, chat_service, session_manager):
     """
     Delete a conversation.
 
-    DELETE /api/v1/chat/{chat_id}
+    DELETE /v1/chat/{chat_id}
 
     Response:
         {"success": true}

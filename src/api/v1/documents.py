@@ -23,7 +23,7 @@ async def ingest_endpoint(
     """
     Ingest a document into the knowledge base.
 
-    POST /api/v1/documents/ingest
+    POST /v1/documents/ingest
 
     Request: multipart/form-data with "file" field
 
@@ -57,7 +57,7 @@ async def task_status_endpoint(request: Request, task_service, session_manager):
     """
     Get the status of an ingestion task.
 
-    GET /api/v1/tasks/{task_id}
+    GET /v1/tasks/{task_id}
 
     Response:
         {
@@ -84,7 +84,7 @@ async def delete_document_endpoint(request: Request, document_service, session_m
     """
     Delete a document from the knowledge base.
 
-    DELETE /api/v1/documents
+    DELETE /v1/documents
 
     Request body:
         {

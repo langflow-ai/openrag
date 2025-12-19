@@ -66,7 +66,7 @@ class OpenRAGClient:
 
     The client can be configured via constructor arguments or environment variables:
     - OPENRAG_API_KEY: API key for authentication
-    - OPENRAG_URL: Base URL for the OpenRAG API (default: http://localhost:8080)
+    - OPENRAG_URL: Base URL for the OpenRAG frontend (default: http://localhost:3000)
 
     Usage:
         # Using environment variables
@@ -85,7 +85,7 @@ class OpenRAGClient:
             await client.close()
     """
 
-    DEFAULT_BASE_URL = "http://localhost:8080"
+    DEFAULT_BASE_URL = "http://localhost:3000"
 
     def __init__(
         self,

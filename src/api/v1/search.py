@@ -15,7 +15,7 @@ async def search_endpoint(request: Request, search_service, session_manager):
     """
     Perform semantic search on documents.
 
-    POST /api/v1/search
+    POST /v1/search
 
     Request body:
         {

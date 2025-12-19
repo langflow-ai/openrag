@@ -15,7 +15,7 @@ async def get_settings_endpoint(request: Request):
     """
     Get current OpenRAG configuration (read-only).
 
-    GET /api/v1/settings
+    GET /v1/settings
 
     Response:
         {
