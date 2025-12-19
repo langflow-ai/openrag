@@ -40,10 +40,10 @@ jobs:
           docker builder prune -af || true
           docker-compose -f docker-compose.yml down -v --remove-orphans || true
 
-      - name: Cleanup OpenSearch data (root-owned files)
+      - name: Cleanup root-owned files (OpenSearch data, config)
         run: |
           for i in 1 2 3; do
-            docker run --rm -v $(pwd):/work alpine rm -rf /work/opensearch-data && break
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done || true
