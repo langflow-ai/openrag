@@ -75,6 +75,7 @@ const sidebars = {
       label: "Chat",
     },
     "reference/configuration",
+    "support/contribute",
     "support/troubleshoot",
   ],
 };
