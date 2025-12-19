@@ -382,6 +382,16 @@ test-ci-local:
 	fi; \
 	echo "================================="; \
 	echo ""; \
+	if [ $$TEST_RESULT -ne 0 ]; then \
+		echo "=== Tests failed, dumping container logs ==="; \
+		echo ""; \
+		echo "=== Langflow logs (last 500 lines) ==="; \
+		docker logs langflow 2>&1 | tail -500 || echo "Could not get Langflow logs"; \
+		echo ""; \
+		echo "=== Backend logs (last 200 lines) ==="; \
+		docker logs openrag-backend 2>&1 | tail -200 || echo "Could not get backend logs"; \
+		echo ""; \
+	fi; \
 	echo "Tearing down infra"; \
 	uv run python scripts/docling_ctl.py stop || true; \
 	docker compose -f docker-compose-cpu.yml down -v 2>/dev/null || true; \
