@@ -1,6 +1,7 @@
 """Configuration screen for OpenRAG TUI."""
 
 import re
+from zxcvbn import zxcvbn
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.screen import Screen
@@ -98,35 +99,36 @@ class DocumentsPathValidator(Validator):
 
 
 class PasswordValidator(Validator):
-    """Validator for OpenSearch admin password."""
+    """Validator for OpenSearch admin password using zxcvbn strength estimation."""
+
+    # Minimum acceptable score (0-4 scale: 0=weak, 4=very strong)
+    MIN_SCORE = 3
 
     def validate(self, value: str) -> ValidationResult:
         # Allow empty value (will be auto-generated)
         if not value:
             return self.success()
 
-        # Minimum length: 8 characters
-        if len(value) < 8:
-            return self.failure("Password must be at least 8 characters long")
+        # Use zxcvbn to evaluate password strength
+        result = zxcvbn(value)
+        score = result["score"]
 
-        # Check for required character types
-        has_uppercase = bool(re.search(r"[A-Z]", value))
-        has_lowercase = bool(re.search(r"[a-z]", value))
-        has_digit = bool(re.search(r"[0-9]", value))
-        has_special = bool(re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?]", value))
+        if score < self.MIN_SCORE:
+            # Get feedback from zxcvbn
+            feedback = result.get("feedback", {})
+            warning = feedback.get("warning", "")
+            suggestions = feedback.get("suggestions", [])
 
-        missing = []
-        if not has_uppercase:
-            missing.append("uppercase letter")
-        if not has_lowercase:
-            missing.append("lowercase letter")
-        if not has_digit:
-            missing.append("digit")
-        if not has_special:
-            missing.append("special character")
+            # Build error message
+            strength_labels = ["very weak", "weak", "fair", "strong", "very strong"]
+            current_strength = strength_labels[score]
 
-        if missing:
-            return self.failure(f"Password must contain: {', '.join(missing)}")
+            if warning:
+                return self.failure(f"Password is {current_strength}: {warning}")
+            elif suggestions:
+                return self.failure(f"Password is {current_strength}. {suggestions[0]}")
+            else:
+                return self.failure(f"Password is {current_strength}. Use a longer, more unique password.")
 
         return self.success()
 
@@ -200,7 +202,7 @@ class ConfigScreen(Screen):
         # OpenSearch Admin Password
         yield Label("OpenSearch Admin Password *")
         yield Static(
-            "Min 8 chars with uppercase, lowercase, digit, and special character",
+            "Validate your password here: https://lowe.github.io/tryzxcvbn/",
             classes="helper-text",
         )
         current_value = getattr(self.env_manager.config, "opensearch_password", "")
