@@ -23,7 +23,7 @@ Provide as many specific details as possible to help us reproduce and fix the is
 - Potential impact or concerns
 - Any suggested fixes
 
-Your report is kept confidential, and these details aren't be shared without your consent
+Your report is kept confidential, and these details aren't shared without your consent.
 
 ### Response timeline
 
