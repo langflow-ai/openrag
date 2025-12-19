@@ -34,7 +34,8 @@ dependencies = [
     "structlog>=25.4.0",
     "docling-serve==1.5.0",
     "docling-core==2.48.1",
-    "easyocr>=1.7.1; sys_platform != 'darwin'"
+    "easyocr>=1.7.1; sys_platform != 'darwin'",
+    "zxcvbn>=4.5.0"
 ]
 
 [dependency-groups]
