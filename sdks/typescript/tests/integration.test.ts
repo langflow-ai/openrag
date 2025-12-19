@@ -2,7 +2,7 @@
  * Integration tests for OpenRAG TypeScript SDK.
  *
  * These tests run against a real OpenRAG instance.
- * Requires: OPENRAG_URL environment variable (defaults to http://localhost:8000)
+ * Requires: OPENRAG_URL environment variable (defaults to http://localhost:3000)
  *
  * Run with: npm test
  */
@@ -15,7 +15,7 @@ import * as os from "os";
 // Dynamic import to handle the SDK not being built yet
 let OpenRAGClient: typeof import("../src").OpenRAGClient;
 
-const BASE_URL = process.env.OPENRAG_URL || "http://localhost:8000";
+const BASE_URL = process.env.OPENRAG_URL || "http://localhost:3000";
 const SKIP_TESTS = process.env.SKIP_SDK_INTEGRATION_TESTS === "true";
 
 // Create API key for tests

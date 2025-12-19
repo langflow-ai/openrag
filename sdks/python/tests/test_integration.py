@@ -2,7 +2,7 @@
 Integration tests for OpenRAG Python SDK.
 
 These tests run against a real OpenRAG instance.
-Requires: OPENRAG_URL environment variable (defaults to http://localhost:8000)
+Requires: OPENRAG_URL environment variable (defaults to http://localhost:3000)
 
 Run with: pytest sdks/python/tests/test_integration.py -v
 """
@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(
 
 # Module-level cache for API key (created once, reused)
 _cached_api_key: str | None = None
-_base_url = os.environ.get("OPENRAG_URL", "http://localhost:8000")
+_base_url = os.environ.get("OPENRAG_URL", "http://localhost:3000")
 
 
 def get_api_key() -> str:
