@@ -70,16 +70,12 @@ If you want to reinstall one container, specify the container name in the comman
 
 <PartialExportFlows />
 
-2. Stop all running containers:
-
-   <PartialDockerStopAll />
-
 <PartialDockerRemoveAndCleanupSteps />
 
-8. Optional: Edit OpenRAG's `.env` file if needed.
+1. Optional: Edit OpenRAG's `.env` file if needed.
 
-9. Optional: If you removed all containers or specifically the OpenSearch container, then you can remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
+1. Optional: If you removed all containers or specifically the OpenSearch container, then you can remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
 It is recommended that you preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
 
-10. If you removed all OpenRAG containers, [redeploy OpenRAG](/docker).
+1. If you removed all OpenRAG containers, [redeploy OpenRAG](/docker).
 If you removed only one container, redeploy that container with the appropriate `docker run` or `podman run` command.

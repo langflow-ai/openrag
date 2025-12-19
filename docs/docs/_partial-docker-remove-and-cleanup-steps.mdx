@@ -1,4 +1,10 @@
-2. Remove all containers, including stopped containers:
+import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
+
+1. Stop all running containers:
+
+   <PartialDockerStopAll />
+
+1. Remove all containers, including stopped containers:
 
    ```bash title="Docker"
    docker rm --force $(docker ps -aq)
@@ -8,7 +14,7 @@
    podman rm --all --force
    ```
 
-3. Remove all images:
+1. Remove all images:
 
    ```bash title="Docker"
    docker rmi --force $(docker images -q)
@@ -18,7 +24,7 @@
    podman rmi --all --force
    ```
 
-4. Remove all volumes:
+1. Remove all volumes:
 
    ```bash title="Docker"
    docker volume prune --force
@@ -28,7 +34,7 @@
    podman volume prune --force
    ```
 
-5. Remove all networks except the default network:
+1. Remove all networks except the default network:
 
    ```bash title="Docker"
    docker network prune --force
@@ -38,7 +44,7 @@
    podman network prune --force
    ```
 
-6. Clean up any leftover data:
+1. Clean up any leftover data:
 
    ```bash title="Docker"
    docker system prune --all --force --volumes
