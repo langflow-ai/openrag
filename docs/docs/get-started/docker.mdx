@@ -114,29 +114,26 @@ The following variables are required or recommended:
    PID: 27746
    ```
 
-3. Deploy the OpenRAG containers locally using the appropriate Docker Compose file for your environment.
-Both files deploy the same services.
+3. Deploy the OpenRAG containers locally using the appropriate Docker Compose configuration for your environment.
 
-   * [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml): If your host machine has an NVIDIA GPU with CUDA support and compatible NVIDIA drivers, you can use this file  to deploy OpenRAG with accelerated processing.
+   * **GPU-accelerated deployment**: If your host machine has an NVIDIA GPU with CUDA support and compatible NVIDIA drivers, use the base `docker-compose.yml` file with the `docker-compose.gpu.yml` override.
 
       ```bash title="Docker"
-      docker compose build
+      docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+      ```
+
+      ```bash title="Podman"
+      podman compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+      ```
+
+   * **CPU-only deployment** (default): If your host machine doesn't have NVIDIA GPU support, use the base `docker-compose.yml` file.
+
+      ```bash title="Docker"
       docker compose up -d
       ```
 
       ```bash title="Podman"
-      podman compose build
       podman compose up -d
-      ```
-
-   * [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml): If your host machine doesn't have NVIDIA GPU support, use this file for a CPU-only OpenRAG deployment.
-
-      ```bash title="Docker"
-      docker compose -f docker-compose-cpu.yml up -d
-      ```
-
-      ```bash title="Podman"
-      podman compose -f docker-compose-cpu.yml up -d
       ```
 
 4. Wait for the OpenRAG containers to start, and then confirm that all containers are running:

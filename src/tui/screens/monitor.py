@@ -296,6 +296,8 @@ class MonitorScreen(Screen):
             self.run_worker(self._upgrade_services())
         elif button_id.startswith("reset-btn"):
             self.run_worker(self._reset_services())
+        elif button_id.startswith("prune-btn"):
+            self.run_worker(self._prune_images())
         elif button_id.startswith("docling-start-btn"):
             self.run_worker(self._start_docling_serve())
         elif button_id.startswith("docling-stop-btn"):
@@ -502,6 +504,16 @@ class MonitorScreen(Screen):
                     # Recreate empty config directory
                     config_path.mkdir(parents=True, exist_ok=True)
 
+                # Also delete legacy TUI config folder if it exists (~/.openrag/tui/config/)
+                tui_config_path = expand_path(env_manager.config.openrag_tui_config_path_legacy)
+                if tui_config_path.exists():
+                    success, msg = await self.container_manager.clear_directory_with_container(tui_config_path)
+                    if not success:
+                        # Fallback to regular rmtree if container method fails
+                        shutil.rmtree(tui_config_path)
+                    # Recreate empty config directory
+                    tui_config_path.mkdir(parents=True, exist_ok=True)
+
                 # Delete flow backups only if user chose to (and they actually exist)
                 if self._check_flow_backups():
                     if delete_backups:
@@ -564,6 +576,39 @@ class MonitorScreen(Screen):
                 return
         
         yield True, "Factory reset completed successfully"
+
+    async def _prune_images(self) -> None:
+        """Prune old OpenRAG images with progress updates."""
+        self.operation_in_progress = True
+        try:
+            # Show prune options modal
+            from tui.widgets.prune_options_modal import PruneOptionsModal
+            
+            prune_choice = await self.app.push_screen_wait(PruneOptionsModal())
+            
+            if prune_choice == "cancel":
+                self.notify("Prune cancelled", severity="information")
+                return
+            
+            # Choose the appropriate pruning method based on user choice
+            if prune_choice == "all":
+                # Stop services and prune all images
+                command_generator = self.container_manager.prune_all_images()
+                modal_title = "Stopping Services & Pruning All Images"
+            else:
+                # Prune only unused images (default)
+                command_generator = self.container_manager.prune_old_images()
+                modal_title = "Pruning Unused Images"
+            
+            # Show command output in modal dialog
+            modal = CommandOutputModal(
+                modal_title,
+                command_generator,
+                on_complete=None,  # We'll refresh in on_screen_resume instead
+            )
+            self.app.push_screen(modal)
+        finally:
+            self.operation_in_progress = False
 
     def _check_flow_backups(self) -> bool:
         """Check if there are any flow backups in flows/backup directory."""
@@ -861,9 +906,12 @@ class MonitorScreen(Screen):
                     Button("Start Services", variant="success", id=f"start-btn{suffix}")
                 )
 
-            # Always show upgrade and reset buttons
+            # Always show upgrade, prune, and reset buttons
             controls.mount(
                 Button("Upgrade", variant="warning", id=f"upgrade-btn{suffix}")
+            )
+            controls.mount(
+                Button("Prune Images", variant="default", id=f"prune-btn{suffix}")
             )
             controls.mount(Button("Factory Reset", variant="error", id=f"reset-btn{suffix}"))
 
