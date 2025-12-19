@@ -1,0 +1,13 @@
+OpenRAG isn't guaranteed to be compatible with all models that are available through Ollama.
+For example, some models might produce unexpected results, such as JSON-formatted output instead of natural language responses, and some models aren't appropriate for the types of tasks that OpenRAG performs, such as those that generate media.
+
+The OpenRAG team recommends the following models when using Ollama as your model provider:
+
+* **Language models**: `gpt-oss:20b` or `mistral-nemo:12b`.
+
+   If you choose `gpt-oss:20b`, consider using Ollama Cloud or running Ollama on a remote machine because this model requires at least 16GB of RAM.
+
+* **Embedding models**: [`nomic-embed-text:latest`](https://ollama.com/library/nomic-embed-text), `mxbai-embed-large:latest`, or `embeddinggemma:latest`.
+
+You can experiment with other models, but if you encounter issues that you are unable to resolve through other RAG best practices (like context filters and prompt engineering), try switching to one of the recommended models.
+You can submit an [OpenRAG GitHub issue](https://github.com/langflow-ai/openrag/issues) to request support for specific models.

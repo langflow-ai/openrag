@@ -351,6 +351,7 @@ class ModelsService:
                 if text_response.status_code == 200:
                     text_data = text_response.json()
                     text_models = text_data.get("resources", [])
+                    logger.info(f"Retrieved {len(text_models)} text chat models from Watson API")
 
                     for i, model in enumerate(text_models):
                         model_id = model.get("model_id", "")
@@ -363,6 +364,11 @@ class ModelsService:
                                 "default": i == 0,  # First model is default
                             }
                         )
+                else:
+                    logger.warning(
+                        f"Failed to retrieve text chat models. Status: {text_response.status_code}, "
+                        f"Response: {text_response.text[:200]}"
+                    )
 
                 # Fetch embedding models
                 embed_params = {
@@ -379,6 +385,7 @@ class ModelsService:
                 if embed_response.status_code == 200:
                     embed_data = embed_response.json()
                     embed_models = embed_data.get("resources", [])
+                    logger.info(f"Retrieved {len(embed_models)} embedding models from Watson API")
 
                     for i, model in enumerate(embed_models):
                         model_id = model.get("model_id", "")
@@ -391,6 +398,11 @@ class ModelsService:
                                 "default": i == 0,  # First model is default
                             }
                         )
+                else:
+                    logger.warning(
+                        f"Failed to retrieve embedding models. Status: {embed_response.status_code}, "
+                        f"Response: {embed_response.text[:200]}"
+                    )
 
             # Lightweight validation: API key is already validated by successfully getting bearer token
             # No need to make a generation request that consumes credits
@@ -400,7 +412,15 @@ class ModelsService:
                 logger.warning("No bearer token available - API key validation may have failed")
 
             if not language_models and not embedding_models:
-                raise Exception("No IBM models retrieved from API")
+                # Provide more specific error message about missing models
+                error_msg = (
+                    "API key is valid, but no models are available. "
+                    "This usually means your Watson Machine Learning (WML) project is not properly configured. "
+                    "Please ensure: (1) Your watsonx.ai project is associated with a WML service instance, "
+                    "and (2) The project has access to foundation models. "
+                    "Visit your watsonx.ai project settings to configure the WML service association."
+                )
+                raise Exception(error_msg)
 
             return {
                 "language_models": language_models,

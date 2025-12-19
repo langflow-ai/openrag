@@ -1,0 +1,22 @@
+:::warning
+This is a destructive operation that does the following:
+
+* Destroys all OpenRAG containers, volumes, and local images.
+* Prunes any additional container objects.
+* Deletes the contents of the `~/.openrag` directory _except_ for OpenRAG's `.env` file and the `/documents` subdirectory.
+
+<p/>Destroyed containers and deleted data are lost and cannot be recovered after running this operation.
+:::
+
+<!--
+Author's note: Don't remove the <p/> tag!
+For some reason, this specific usage consistently enforces the line break and indentation whether the partial is nested or not.
+
+Without the <p/> tag, when this partial is used inside a list (ex. nested under a step in a numbered list), there is no implicit line break after the last bullet.
+When this partial is used outside of a list (as a top-level paragraph), there is an implicit line break after the last bullet.
+
+Neither <br/> nor wrapping the entire line in <p> </p> worked consistently for both use cases.
+Either the line break was missing or the indentation was incorrect.
+
+This behavior was observed in Docusaurus 3.9.2 on 05 Dec 2025. In a future release, if this is not longer an issue, you can remove the tag and this note. :)
+-->

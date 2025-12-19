@@ -41,7 +41,8 @@ class WelcomeScreen(Screen):
         self.has_env_file = self.env_manager.env_file.exists()
 
         # Load .env file if it exists
-        load_dotenv()
+        # override=True ensures .env file values take precedence over existing environment variables
+        load_dotenv(override=True)
 
         # Check OAuth config immediately
         self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
@@ -67,11 +68,17 @@ class WelcomeScreen(Screen):
         yield Footer()
 
     def _check_flow_backups(self) -> bool:
-        """Check if there are any flow backups in ./flows/backup directory."""
-        backup_dir = Path("flows/backup")
+        """Check if there are any flow backups in flows/backup directory."""
+        from ..managers.env_manager import EnvManager
+
+        # Get flows path from env config
+        env_manager = EnvManager()
+        env_manager.load_existing_env()
+        flows_path = Path(env_manager.config.openrag_flows_path.replace("$HOME", str(Path.home()))).expanduser()
+        backup_dir = flows_path / "backup"
         if not backup_dir.exists():
             return False
-        
+
         try:
             # Check if there are any .json files in the backup directory
             backup_files = list(backup_dir.glob("*.json"))
@@ -89,7 +96,10 @@ class WelcomeScreen(Screen):
         try:
             # Use detected runtime command to check services
             import subprocess
-            compose_cmd = self.container_manager.runtime_info.compose_command + ["ps", "--format", "json"]
+            compose_cmd = self.container_manager.runtime_info.compose_command + [
+                "-f", str(self.container_manager.compose_file),
+                "ps", "--format", "json"
+            ]
             result = subprocess.run(
                 compose_cmd,
                 capture_output=True,
@@ -121,20 +131,38 @@ class WelcomeScreen(Screen):
 
                 # Check if services are running (exclude starting/created states)
                 # State can be lowercase or mixed case, so normalize it
-                running_services = []
-                starting_services = []
+                # Only consider expected services (filter out stale/leftover containers)
+                expected = set(self.container_manager.expected_services)
+                name_map = self.container_manager.container_name_map
+                running_services = set()
+                starting_services = set()
                 for s in services:
                     if not isinstance(s, dict):
                         continue
+                    # Get service name - try compose label first (most reliable for Podman)
+                    labels = s.get('Labels', {}) or {}
+                    service_name = labels.get('com.docker.compose.service', '')
+                    if not service_name:
+                        # Fall back to container name mapping
+                        container_name = s.get('Name') or s.get('Service', '')
+                        if not container_name:
+                            names = s.get('Names', [])
+                            if names and isinstance(names, list):
+                                container_name = names[0]
+                        # Map container name to service name using container_name_map
+                        service_name = name_map.get(container_name, container_name)
+                    # Skip if not an expected service
+                    if service_name not in expected:
+                        continue
                     state = str(s.get('State', '')).lower()
                     if state == 'running':
-                        running_services.append(s)
+                        running_services.add(service_name)
                     elif 'starting' in state or 'created' in state:
-                        starting_services.append(s)
-                
-                # Only consider services running if we have running services AND no starting services
-                # This prevents showing the button when containers are still coming up
-                self.services_running = len(running_services) > 0 and len(starting_services) == 0
+                        starting_services.add(service_name)
+
+                # Services are running if all expected services are in running state
+                # (i.e., we have all expected services running and none are still starting)
+                self.services_running = len(running_services) == len(expected) and len(starting_services) == 0
             else:
                 self.services_running = False
         except Exception:
@@ -248,15 +276,15 @@ class WelcomeScreen(Screen):
         # Check if services are running
         if self.container_manager.is_available():
             services = await self.container_manager.get_service_status()
+            expected = set(self.container_manager.expected_services)
             running_services = [
                 s.name for s in services.values() if s.status == ServiceStatus.RUNNING
             ]
             starting_services = [
                 s.name for s in services.values() if s.status == ServiceStatus.STARTING
             ]
-            # Only consider services running if we have running services AND no starting services
-            # This prevents showing the button when containers are still coming up
-            self.services_running = len(running_services) > 0 and len(starting_services) == 0
+            # Services are running if all expected services are in running state
+            self.services_running = len(running_services) == len(expected) and len(starting_services) == 0
         else:
             self.services_running = False
 

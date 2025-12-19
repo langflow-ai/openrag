@@ -1,0 +1,9 @@
+```bash title="Docker"
+docker compose down --volumes --remove-orphans --rmi local
+docker system prune -f
+```
+
+```bash title="Podman"
+podman compose down --volumes --remove-orphans --rmi local
+podman system prune -f
+```

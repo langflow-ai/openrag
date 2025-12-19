@@ -88,6 +88,7 @@ class LangflowHistoryService:
                 }
                 
                 # Extract function calls from content_blocks if present
+                # Convert to match streaming format: chunk.item.type === "tool_call"
                 content_blocks = msg.get("content_blocks", [])
                 if content_blocks:
                     chunks = []
@@ -95,23 +96,23 @@ class LangflowHistoryService:
                         if block.get("title") == "Agent Steps" and block.get("contents"):
                             for content in block["contents"]:
                                 if content.get("type") == "tool_use":
-                                    # Convert Langflow tool_use format to OpenRAG chunks format
+                                    # Convert Langflow tool_use format to match streaming chunks format
+                                    # Frontend expects: chunk.item.type === "tool_call" with tool_name, inputs, results
                                     chunk = {
-                                        "type": "function",
-                                        "function": {
-                                            "name": content.get("name", ""),
-                                            "arguments": content.get("tool_input", {}),
-                                            "response": content.get("output", {})
-                                        },
-                                        "function_call_result": content.get("output", {}),
-                                        "duration": content.get("duration"),
-                                        "error": content.get("error")
+                                        "type": "response.output_item.added",
+                                        "item": {
+                                            "type": "tool_call",
+                                            "tool_name": content.get("name", ""),
+                                            "inputs": content.get("tool_input", {}),
+                                            "results": content.get("output", {}),
+                                            "id": content.get("id") or content.get("run_id", ""),
+                                            "status": "completed" if not content.get("error") else "error"
+                                        }
                                     }
                                     chunks.append(chunk)
                     
                     if chunks:
                         converted_msg["chunks"] = chunks
-                        converted_msg["response_data"] = {"tool_calls": chunks}
                 
                 converted_messages.append(converted_msg)
                 

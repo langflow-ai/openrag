@@ -63,8 +63,8 @@ class AuthService:
 
         # We'll validate client credentials when creating the connector
 
-        # Create connection configuration
-        token_file = f"{connector_type}_{purpose}_{uuid.uuid4().hex[:8]}.json"
+        # Create connection configuration - use data/ directory for persistence
+        token_file = f"data/{connector_type}_{purpose}_{uuid.uuid4().hex[:8]}.json"
         config = {
             "token_file": token_file,
             "connector_type": connector_type,

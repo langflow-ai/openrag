@@ -1,0 +1,18 @@
+import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
+
+* Gather the credentials and connection details for your preferred model providers.
+You must have access to at least one language model and one embedding model.
+If a provider offers both types, you can use the same provider for both models.
+If a provider offers only one type, you must select two providers.
+
+   * **OpenAI**: Create an [OpenAI API key](https://platform.openai.com/api-keys).
+   * **Anthropic**: Create an [Anthropic API key](https://www.anthropic.com/docs/api/reference).
+   Anthropic provides language models only; you must select an additional provider for embeddings.
+   * **IBM watsonx.ai**: Get your watsonx.ai API endpoint, IBM project ID, and IBM API key from your watsonx deployment.
+   * **Ollama**: Deploy an [Ollama instance and models](https://docs.ollama.com/) locally, in the cloud, or on a remote server. Then, get your Ollama server's base URL and the names of the models that you want to use.
+
+      :::info
+      <PartialOllamaModels />
+      :::
+
+* Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.

@@ -2,7 +2,8 @@
 
 import asyncio
 import json
-import subprocess
+import os
+import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -86,11 +87,25 @@ class ContainerManager:
         }
 
     def _find_compose_file(self, filename: str) -> Path:
-        """Find compose file in current directory or package resources."""
-        # First check current working directory
-        cwd_path = Path(filename)
+        """Find compose file in centralized TUI directory, current directory, or package resources."""
+        from utils.paths import get_tui_compose_file
+        
         self._compose_search_log = f"Searching for {filename}:\n"
-        self._compose_search_log += f"  1. Current directory: {cwd_path.absolute()}"
+        
+        # First check centralized TUI directory (~/.openrag/tui/)
+        is_gpu = "gpu" in filename
+        tui_path = get_tui_compose_file(gpu=is_gpu)
+        self._compose_search_log += f"  1. TUI directory: {tui_path.absolute()}"
+        
+        if tui_path.exists():
+            self._compose_search_log += " ✓ FOUND"
+            return tui_path
+        else:
+            self._compose_search_log += " ✗ NOT FOUND"
+        
+        # Then check current working directory (for backward compatibility)
+        cwd_path = Path(filename)
+        self._compose_search_log += f"\n  2. Current directory: {cwd_path.absolute()}"
 
         if cwd_path.exists():
             self._compose_search_log += " ✓ FOUND"
@@ -98,28 +113,68 @@ class ContainerManager:
         else:
             self._compose_search_log += " ✗ NOT FOUND"
 
-        # Then check package resources
-        self._compose_search_log += f"\n  2. Package resources: "
+        # Finally check package resources
+        self._compose_search_log += f"\n  3. Package resources: "
         try:
             pkg_files = files("tui._assets")
             self._compose_search_log += f"{pkg_files}"
             compose_resource = pkg_files / filename
 
             if compose_resource.is_file():
-                self._compose_search_log += f" ✓ FOUND, copying to current directory"
-                # Copy to cwd for compose command to work
+                self._compose_search_log += f" ✓ FOUND, copying to TUI directory"
+                # Copy to TUI directory
+                tui_path.parent.mkdir(parents=True, exist_ok=True)
                 content = compose_resource.read_text()
-                cwd_path.write_text(content)
-                return cwd_path
+                tui_path.write_text(content)
+                return tui_path
             else:
                 self._compose_search_log += f" ✗ NOT FOUND"
         except Exception as e:
             self._compose_search_log += f" ✗ SKIPPED ({e})"
             # Don't log this as an error since it's expected when running from source
 
-        # Fall back to original path (will fail later if not found)
-        self._compose_search_log += f"\n  3. Falling back to: {cwd_path.absolute()}"
-        return Path(filename)
+        # Fall back to TUI path (will fail later if not found)
+        self._compose_search_log += f"\n  4. Falling back to: {tui_path.absolute()}"
+        return tui_path
+
+    def _get_env_from_file(self) -> Dict[str, str]:
+        """Read environment variables from .env file, prioritizing file values over os.environ.
+        
+        Uses python-dotenv's load_dotenv() for standard .env file parsing, which handles:
+        - Quoted values (single and double quotes)
+        - Variable expansion (${VAR})
+        - Multiline values
+        - Escaped characters
+        - Comments
+        
+        This ensures Docker Compose commands use the latest values from .env file,
+        even if os.environ has stale values.
+        """
+        from dotenv import load_dotenv
+        from utils.paths import get_tui_env_file
+        
+        env = dict(os.environ)  # Start with current environment
+        
+        # Check centralized TUI .env location first
+        tui_env_file = get_tui_env_file()
+        if tui_env_file.exists():
+            env_file = tui_env_file
+        else:
+            # Fall back to CWD .env for backward compatibility
+            env_file = Path(".env")
+        
+        if env_file.exists():
+            try:
+                # Load .env file with override=True to ensure file values take precedence
+                # This loads into os.environ, then we copy to our dict
+                load_dotenv(dotenv_path=env_file, override=True)
+                # Update our dict with all environment variables (including those from .env)
+                env.update(os.environ)
+                logger.debug(f"Loaded environment from {env_file}")
+            except Exception as e:
+                logger.debug(f"Error reading .env file for Docker Compose: {e}")
+        
+        return env
 
     def is_available(self) -> bool:
         """Check if container runtime with compose is available."""
@@ -153,7 +208,6 @@ class ContainerManager:
                 continue
                 
             try:
-                import re
                 content = compose_file.read_text()
                 current_service = None
                 in_ports_section = False
@@ -239,17 +293,31 @@ class ContainerManager:
             use_gpu = not cpu_mode
         
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        cmd = self.runtime_info.compose_command.copy()
+        
+        # Add --env-file to explicitly specify the .env location
+        from utils.paths import get_tui_env_file
+        tui_env_file = get_tui_env_file()
+        if tui_env_file.exists():
+            cmd.extend(["--env-file", str(tui_env_file)])
+        elif Path(".env").exists():
+            cmd.extend(["--env-file", ".env"])
+        
+        cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
         cmd.extend(args)
 
         try:
+            # Get environment variables from .env file to ensure latest values
+            env = self._get_env_from_file()
+            
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=Path.cwd(),
+                env=env,
             )
 
             stdout, stderr = await process.communicate()
@@ -281,17 +349,31 @@ class ContainerManager:
             use_gpu = not cpu_mode
         
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        cmd = self.runtime_info.compose_command.copy()
+        
+        # Add --env-file to explicitly specify the .env location
+        from utils.paths import get_tui_env_file
+        tui_env_file = get_tui_env_file()
+        if tui_env_file.exists():
+            cmd.extend(["--env-file", str(tui_env_file)])
+        elif Path(".env").exists():
+            cmd.extend(["--env-file", ".env"])
+        
+        cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
         cmd.extend(args)
 
         try:
+            # Get environment variables from .env file to ensure latest values
+            env = self._get_env_from_file()
+            
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=Path.cwd(),
+                env=env,
             )
 
             if process.stdout:
@@ -350,17 +432,31 @@ class ContainerManager:
             use_gpu = not cpu_mode
         
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        cmd = self.runtime_info.compose_command.copy()
+        
+        # Add --env-file to explicitly specify the .env location
+        from utils.paths import get_tui_env_file
+        tui_env_file = get_tui_env_file()
+        if tui_env_file.exists():
+            cmd.extend(["--env-file", str(tui_env_file)])
+        elif Path(".env").exists():
+            cmd.extend(["--env-file", ".env"])
+        
+        cmd.extend(["-f", str(self.compose_file)])
         if use_gpu and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
         cmd.extend(args)
 
         try:
+            # Get environment variables from .env file to ensure latest values
+            env = self._get_env_from_file()
+            
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=Path.cwd(),
+                env=env,
             )
         except Exception as e:
             success_flag["value"] = False
@@ -752,13 +848,24 @@ class ContainerManager:
 
     async def _parse_compose_images(self) -> list[str]:
         """Get resolved image names from compose files using docker/podman compose, with robust fallbacks."""
+        from utils.paths import get_tui_env_file
+        
         images: set[str] = set()
 
         # Try both GPU and CPU modes to get all images
         for use_gpu in [True, False]:
             try:
                 # Build compose command with override pattern
-                cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+                cmd = self.runtime_info.compose_command.copy()
+                
+                # Add --env-file to explicitly specify the .env location
+                tui_env_file = get_tui_env_file()
+                if tui_env_file.exists():
+                    cmd.extend(["--env-file", str(tui_env_file)])
+                elif Path(".env").exists():
+                    cmd.extend(["--env-file", ".env"])
+                
+                cmd.extend(["-f", str(self.compose_file)])
                 if use_gpu and self.gpu_compose_file.exists():
                     cmd.extend(["-f", str(self.gpu_compose_file)])
                 cmd.extend(["config", "--format", "json"])
@@ -779,7 +886,16 @@ class ContainerManager:
                         continue
 
                 # Fallback to YAML output (for older compose versions)
-                cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+                cmd = self.runtime_info.compose_command.copy()
+                
+                # Add --env-file to explicitly specify the .env location
+                tui_env_file = get_tui_env_file()
+                if tui_env_file.exists():
+                    cmd.extend(["--env-file", str(tui_env_file)])
+                elif Path(".env").exists():
+                    cmd.extend(["--env-file", ".env"])
+                
+                cmd.extend(["-f", str(self.compose_file)])
                 if use_gpu and self.gpu_compose_file.exists():
                     cmd.extend(["-f", str(self.gpu_compose_file)])
                 cmd.append("config")
@@ -924,9 +1040,8 @@ class ContainerManager:
         up_success = {"value": True}
         error_messages = []
         
-        async for message, replace_last in self._stream_compose_command(["up", "-d"], up_success, cpu_mode):
+        async for message, replace_last in self._stream_compose_command(["up", "-d", "--no-build"], up_success, cpu_mode):
             # Detect error patterns in the output
-            import re
             lower_msg = message.lower()
             
             # Check for common error patterns
@@ -1000,7 +1115,7 @@ class ContainerManager:
         # Restart with new images using streaming output
         restart_success = True
         async for message, replace_last in self._run_compose_command_streaming(
-            ["up", "-d", "--force-recreate"], cpu_mode
+            ["up", "-d", "--force-recreate", "--no-build"], cpu_mode
         ):
             yield False, message, replace_last
             # Check for error patterns in the output
@@ -1012,6 +1127,39 @@ class ContainerManager:
         else:
             yield False, "Some errors occurred during service restart", False
 
+    async def clear_directory_with_container(self, path: Path) -> tuple[bool, str]:
+        """Clear a directory using a container to handle container-owned files.
+
+        Args:
+            path: The directory to clear (contents will be deleted, directory recreated)
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if not self.is_available():
+            return False, "No container runtime available"
+
+        if not path.exists():
+            return True, "Directory does not exist, nothing to clear"
+
+        path = path.absolute()
+
+        # Use alpine container to delete files owned by container user
+        cmd = [
+            "run", "--rm",
+            "-v", f"{path}:/work:Z",
+            "alpine",
+            "sh", "-c",
+            "rm -rf /work/* /work/.[!.]* 2>/dev/null; echo done"
+        ]
+
+        success, stdout, stderr = await self._run_runtime_command(cmd)
+
+        if success and "done" in stdout:
+            return True, f"Cleared {path}"
+        else:
+            return False, f"Failed to clear {path}: {stderr or 'Unknown error'}"
+
     async def clear_opensearch_data_volume(self) -> AsyncIterator[tuple[bool, str]]:
         """Clear opensearch data using a temporary container with proper permissions."""
         if not self.is_available():
@@ -1020,45 +1168,23 @@ class ContainerManager:
 
         yield False, "Clearing OpenSearch data volume..."
 
-        # Get the absolute path to opensearch-data directory
-        opensearch_data_path = Path("opensearch-data").absolute()
-        
+        # Get opensearch data path from env config
+        from .env_manager import EnvManager
+        env_manager = EnvManager()
+        env_manager.load_existing_env()
+        opensearch_data_path = Path(env_manager.config.opensearch_data_path.replace("$HOME", str(Path.home()))).expanduser().absolute()
+
         if not opensearch_data_path.exists():
             yield True, "OpenSearch data directory does not exist, skipping"
             return
-        
-        # Use the opensearch container with proper volume mount flags
-        # :Z flag ensures proper SELinux labeling and UID mapping for rootless containers
-        cmd = [
-            "run",
-            "--rm",
-            "-v", f"{opensearch_data_path}:/usr/share/opensearch/data:Z",
-            "langflowai/openrag-opensearch:latest",
-            "bash", "-c",
-            "rm -rf /usr/share/opensearch/data/* /usr/share/opensearch/data/.[!.]* && echo 'Cleared successfully'"
-        ]
-        
-        success, stdout, stderr = await self._run_runtime_command(cmd)
-        
-        if success and "Cleared successfully" in stdout:
+
+        # Use alpine with root to clear container-owned files
+        success, msg = await self.clear_directory_with_container(opensearch_data_path)
+
+        if success:
             yield True, "OpenSearch data cleared successfully"
         else:
-            # If it fails, try with the base opensearch image
-            yield False, "Retrying with base OpenSearch image..."
-            cmd = [
-                "run",
-                "--rm",
-                "-v", f"{opensearch_data_path}:/usr/share/opensearch/data:Z",
-                "opensearchproject/opensearch:3.0.0",
-                "bash", "-c",
-                "rm -rf /usr/share/opensearch/data/* /usr/share/opensearch/data/.[!.]* && echo 'Cleared successfully'"
-            ]
-            success, stdout, stderr = await self._run_runtime_command(cmd)
-            
-            if success and "Cleared successfully" in stdout:
-                yield True, "OpenSearch data cleared successfully"
-            else:
-                yield False, f"Failed to clear OpenSearch data: {stderr if stderr else 'Unknown error'}"
+            yield False, f"Failed to clear OpenSearch data: {msg}"
 
     async def reset_services(self) -> AsyncIterator[tuple[bool, str]]:
         """Reset all services (stop, remove containers/volumes, clear data) and yield progress updates."""
@@ -1104,17 +1230,21 @@ class ContainerManager:
             return
 
         # Build compose command with override pattern
-        cmd = self.runtime_info.compose_command + ["-f", str(self.compose_file)]
+        cmd = self.runtime_info.compose_command.copy() + ["-f", str(self.compose_file)]
         if self.use_gpu_compose and self.gpu_compose_file.exists():
             cmd.extend(["-f", str(self.gpu_compose_file)])
         cmd.extend(["logs", "-f", service_name])
 
         try:
+            # Get environment variables from .env file to ensure latest values
+            env = self._get_env_from_file()
+            
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=Path.cwd(),
+                env=env,
             )
 
             if process.stdout:

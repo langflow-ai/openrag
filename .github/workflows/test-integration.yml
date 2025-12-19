@@ -38,8 +38,12 @@ jobs:
           docker builder prune -af || true
           docker-compose -f docker-compose.yml down -v --remove-orphans || true
 
+      - name: Cleanup OpenSearch data (root-owned files)
+        run: |
+          docker run --rm -v $(pwd):/work alpine rm -rf /work/opensearch-data || true
+
       - run: df -h
-      
+
       - name: Checkout
         uses: actions/checkout@v4
         
