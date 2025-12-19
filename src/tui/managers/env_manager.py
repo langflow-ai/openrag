@@ -79,6 +79,7 @@ class EnvConfig:
     openrag_config_path: str = "$HOME/.openrag/config"
     openrag_data_path: str = "$HOME/.openrag/data"  # Backend data (conversations, tokens, etc.)
     opensearch_data_path: str = "$HOME/.openrag/data/opensearch-data"
+    openrag_tui_config_path_legacy: str = "$HOME/.openrag/tui/config"
     
     # Container version (linked to TUI version)
     openrag_version: str = ""

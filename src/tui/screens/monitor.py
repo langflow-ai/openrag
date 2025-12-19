@@ -502,6 +502,16 @@ class MonitorScreen(Screen):
                     # Recreate empty config directory
                     config_path.mkdir(parents=True, exist_ok=True)
 
+                # Also delete legacy TUI config folder if it exists (~/.openrag/tui/config/)
+                tui_config_path = expand_path(env_manager.config.openrag_tui_config_path_legacy)
+                if tui_config_path.exists():
+                    success, msg = await self.container_manager.clear_directory_with_container(tui_config_path)
+                    if not success:
+                        # Fallback to regular rmtree if container method fails
+                        shutil.rmtree(tui_config_path)
+                    # Recreate empty config directory
+                    tui_config_path.mkdir(parents=True, exist_ok=True)
+
                 # Delete flow backups only if user chose to (and they actually exist)
                 if self._check_flow_backups():
                     if delete_backups:
