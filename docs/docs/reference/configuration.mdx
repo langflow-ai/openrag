@@ -5,62 +5,40 @@ slug: /reference/configuration
 
 import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
 
-OpenRAG recognizes environment variables from the following sources:
+OpenRAG's `.env` file is the primary configuration file for OpenRAG.
+Environment variables in `.env` always take precedence over other sources.
 
-* [Environment variables](#configure-environment-variables): Values set in the `.env` file in the OpenRAG installation directory.
-* [Langflow runtime overrides](#langflow-runtime-overrides): Langflow components can set environment variables at runtime.
-* [Default or fallback values](#default-values-and-fallbacks): These values are default or fallback values if OpenRAG doesn't find a value.
+For deployments managed with the Terminal User Interface (TUI), this file is located at `~/.openrag/tui`, and it can be created automatically during [installation](/install-options).
 
-## Configure environment variables
+For [self-managed deployments](/docker), this file can be located at the root of your OpenRAG project directory or referenced from another location.
 
-Environment variables are set in a `.env` file in the root of your OpenRAG project directory.
+For an example, see [`.env.example` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/.env.example).
 
-For an example `.env` file, see [`.env.example` in the OpenRAG repository](https://github.com/langflow-ai/openrag/blob/main/.env.example).
+:::tip
+OpenRAG's Docker Compose files are populated automatically using values from the `.env` file, so you don't need to edit the Docker Compose files manually.
+:::
 
-The Docker Compose files are populated with values from your `.env`, so you don't need to edit the Docker Compose files manually.
+If a variable isn't set, OpenRAG uses default or fallback values where available.
+Not all variables have default values, and errors can occur if required variables aren't set.
+Default values can be found in the reference tables on this page and in [`config_manager.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/config_manager.py), [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py), and [`logging_config.py`](https://github.com/langflow-ai/openrag/blob/main/src/utils/logging_config.py).
 
-Environment variables always take precedence over other variables.
+You can [temporarily set Langflow variables at runtime](#modify-a-flow-at-runtime).
+However, these temporary overrides don't overlap with most OpenRAG environment variables.
+The only exceptions are flow-level Langflow settings, such as the language model used in a flow.
 
-### Set environment variables {#set-environment-variables}
+## Edit the `.env` file {#set-environment-variables}
 
-Environment variables are either mutable or immutable.
+During [installation](/install-options), an initial `.env` file is created automatically or manually.
+You can edit this file to change OpenRAG configuration settings after installation.
 
-If you edit mutable environment variables, you can apply the changes by stopping and restarting the OpenRAG services after editing the `.env` file:
+Each OpenRAG environment variable is either mutable or immutable.
+This determines the actions you must take to apply changes after editing the `.env` file:
 
-1. [Stop the OpenRAG services](/manage-services).
+* **Mutable environment variables**: You can apply changes to mutable environment variables by [stopping and restarting the OpenRAG services](/manage-services) after editing the `.env` file.
 
-2. Edit your `.env` file.
+* **Immutable environment variables**: You must [redeploy OpenRAG](/reinstall) with your modified `.env` file if you change immutable environment variables.
 
-3. [Restart the OpenRAG services](/manage-services).
-
-If you edit immutable environment variables, you must [redeploy OpenRAG](/reinstall) with your modified `.env` file.
-For example, with self-managed services, do the following:
-
-1. Stop the deployment:
-
-   ```bash title="Docker"
-   docker compose down
-   ```
-
-   ```bash title="Podman"
-   podman compose down
-   ```
-
-2. Edit your `.env` file.
-
-3. Redeploy OpenRAG:
-
-   <PartialDockerComposeUp />
-
-4. Restart the Docling service.
-
-5. Launch the OpenRAG app, and then repeat the [application onboarding process](/install#application-onboarding). The values in your `.env` file are automatically populated.
-
-## Supported environment variables
-
-All OpenRAG configuration can be controlled through environment variables.
-
-### Model provider settings {#model-provider-settings}
+## Model provider settings {#model-provider-settings}
 
 Configure which models and providers OpenRAG uses to generate text and embeddings.
 You only need to provide credentials for the providers you are using in OpenRAG.
@@ -80,7 +58,7 @@ Some of these variables are immutable and can only be changed by redeploying Ope
 | `WATSONX_ENDPOINT` | Not set | Custom provider endpoint for the IBM watsonx.ai model provider. |
 | `WATSONX_PROJECT_ID` | Not set | Project ID for the IBM watsonx.ai model provider. |
 
-### Document processing settings {#document-processing-settings}
+## Document processing settings {#document-processing-settings}
 
 Control how OpenRAG [processes and ingests documents](/ingestion) into your knowledge base.
 
@@ -91,10 +69,10 @@ Control how OpenRAG [processes and ingests documents](/ingestion) into your know
 | `DISABLE_INGEST_WITH_LANGFLOW` | `false` | Disable Langflow ingestion pipeline. |
 | `DOCLING_OCR_ENGINE` | Set by OS | OCR engine for document processing. For macOS, `ocrmac`. For any other OS, `easyocr`. |
 | `OCR_ENABLED` | `false` | Enable OCR for image processing. |
-| `OPENRAG_DOCUMENTS_PATHS` | `./openrag-documents` | Document paths for ingestion. |
+| `OPENRAG_DOCUMENTS_PATHS` | `~/.openrag/documents` | Document paths for ingestion. |
 | `PICTURE_DESCRIPTIONS_ENABLED` | `false` | Enable picture descriptions. |
 
-### Langflow settings {#langflow-settings}
+## Langflow settings {#langflow-settings}
 
 Configure the OpenRAG Langflow server's authentication, contact point, and built-in flow definitions.
 
@@ -120,7 +98,7 @@ For better security, it is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so t
 | `LANGFLOW_CHAT_FLOW_ID`, `LANGFLOW_INGEST_FLOW_ID`, `NUDGES_FLOW_ID` | Built-in flow IDs | These variables are set automatically to the IDs of the chat, ingestion, and nudges [flows](/agents). The default values are found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change these values if you want to replace a built-in flow with your own custom flow. The flow JSON must be present in your version of the OpenRAG codebase. For example, if you [deploy self-managed services](/docker), you can add the flow JSON to your local clone of the OpenRAG repository before deploying OpenRAG. |
 | `SYSTEM_PROMPT` | `You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context.` | System prompt instructions for the agent driving the **Chat** flow. |
 
-### OAuth provider settings
+## OAuth provider settings
 
 Configure [OAuth providers](/ingestion#oauth-ingestion) and external service integrations.
 
@@ -131,7 +109,7 @@ Configure [OAuth providers](/ingestion#oauth-ingestion) and external service int
 | `MICROSOFT_GRAPH_OAUTH_CLIENT_ID`<br/>`MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET` | Not set | Enable the [Microsoft Graph OAuth client](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth) integration by providing [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). |
 | `WEBHOOK_BASE_URL` | Not set | Base URL for OAuth connector webhook endpoints. If this variable isn't set, a default base URL is used. |
 
-### OpenSearch settings
+## OpenSearch settings
 
 Configure OpenSearch database authentication.
 
@@ -142,7 +120,7 @@ Configure OpenSearch database authentication.
 | `OPENSEARCH_USERNAME` | `admin` | OpenSearch administrator username. |
 | `OPENSEARCH_PASSWORD` | Must be set at start up | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the TUI's [**Basic/Advanced Setup**](/install#setup). |
 
-### System settings
+## System settings
 
 Configure general system components, session management, and logging.
 
@@ -157,22 +135,3 @@ Configure general system components, session management, and logging.
 | `OPENRAG_VERSION` | `latest` | The version of the OpenRAG Docker images to run. For more information, see [Upgrade OpenRAG](/upgrade) |
 | `SERVICE_NAME` | `openrag` | Service name for logging. |
 | `SESSION_SECRET` | Automatically generated | Session management. |
-
-## Langflow runtime overrides
-
-You can modify [flow](/agents) settings at runtime without permanently changing the flow's configuration.
-
-Runtime overrides are implemented through _tweaks_, which are one-time parameter modifications that are passed to specific Langflow components during flow execution.
-
-For more information on tweaks, see the Langflow documentation on [Input schema (tweaks)](https://docs.langflow.org/concepts-publish#input-schema).
-
-## Default values and fallbacks
-
-If a variable isn't set by environment variables or a configuration file, OpenRAG can use a default value if one is defined in the codebase.
-Default values can be found in the OpenRAG repository:
-
-* OpenRAG configuration: [`config_manager.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/config_manager.py)
-
-* System configuration: [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py)
-
-* Logging configuration: [`logging_config.py`](https://github.com/langflow-ai/openrag/blob/main/src/utils/logging_config.py)

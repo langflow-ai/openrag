@@ -4,11 +4,11 @@ slug: /
 hide_table_of_contents: true
 ---
 
-OpenRAG is an open-source package for building agentic RAG systems that integrates with a wide range of orchestration tools, vector databases, and LLM providers.
+OpenRAG is an open-source package for building agentic RAG systems that integrates with a wide range of orchestration tools, databases, and LLM providers.
 
 OpenRAG connects and amplifies three popular, proven open-source projects into one powerful platform:
 
-* [Langflow](https://docs.langflow.org): Langflow is a versatile tool for building and deploying AI agents and MCP servers. It supports all major LLMs, vector databases, and a growing library of AI tools.
+* [Langflow](https://docs.langflow.org): Langflow is a versatile tool for building and deploying AI agents and MCP servers. It supports all major LLMs, popular vector databases, and a growing library of AI tools.
 
    OpenRAG uses several built-in flows, and it provides full access to all Langflow features through the embedded Langflow visual editor.
 
@@ -17,7 +17,7 @@ OpenRAG connects and amplifies three popular, proven open-source projects into o
 * [OpenSearch](https://docs.opensearch.org/latest/): OpenSearch is a community-driven, Apache 2.0-licensed open source search and analytics suite that makes it easy to ingest, search, visualize, and analyze data.
 It provides powerful hybrid search capabilities with enterprise-grade security and multi-tenancy support.
 
-   OpenRAG uses OpenSearch as the underlying vector database for storing and retrieving your documents and associated vector data (embeddings). You can ingest documents from a variety of sources, including your local filesystem and OAuth authenticated connectors to popular cloud storage services.
+   OpenRAG uses OpenSearch as the underlying database for storing and retrieving your documents and associated vector data (embeddings). You can ingest documents from a variety of sources, including your local filesystem and OAuth authenticated connectors to popular cloud storage services.
 
 * [Docling](https://docling-project.github.io/docling/): Docling simplifies document processing, supports many file formats and advanced PDF parsing, and provides seamless integrations with the generative AI ecosystem.
 
@@ -59,7 +59,7 @@ flowchart TD
 
 * **OpenRAG backend**: The central orchestration service that coordinates all other components.
 
-* **Langflow**: This container runs a Langflow instance. It provides the embedded Langflow visual editor for editing and creating flow, and it connects to the **OpenSearch** container for vector storage and retrieval.
+* **Langflow**: This container runs a Langflow instance. It provides the embedded Langflow visual editor for editing and creating flow, and it connects to the **OpenSearch** container for document storage and retrieval.
 
 * **Docling Serve**: This is a local document processing service managed by the **OpenRAG backend**.
 

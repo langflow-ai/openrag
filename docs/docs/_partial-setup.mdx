@@ -37,7 +37,7 @@ If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setu
 
 4. Click **Save Configuration**.
 
-   Your passwords and API key, if provided, are stored in the [OpenRAG `.env` file](/reference/configuration) in your OpenRAG installation directory.
+   Your passwords and API key, if provided, are stored in the [OpenRAG `.env` file](/reference/configuration) at `~/.openrag/tui`.
    If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
 
 5. Click **Start All Services** to start the OpenRAG services that run in containers.
@@ -81,7 +81,7 @@ If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setu
    If you aren't sure which models or providers to use, you must provide an OpenAI API key to use OpenRAG's default model configuration.
    If you want to use a different model provider, you can leave this field empty.
 
-4. To upload documents from external storage, such as Google Drive, add the required OAuth credentials for the connectors that you want to use. These settings can be populated automatically if OpenRAG detects these credentials in an [OpenRAG `.env` file](/reference/configuration) in the OpenRAG installation directory.
+4. To upload documents from external storage, such as Google Drive, add the required OAuth credentials for the connectors that you want to use. These settings can be populated automatically if OpenRAG detects these credentials in an [OpenRAG `.env` file](/reference/configuration) at `~/.openrag/tui`.
 
    * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
    * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
@@ -95,7 +95,7 @@ Register these redirect values with your OAuth provider as they are presented in
 
 6. Click **Save Configuration**.
 
-   Your passwords, API key, and OAuth credentials, if provided, are stored in the [OpenRAG `.env` file](/reference/configuration) in your OpenRAG installation directory.
+   Your passwords, API key, and OAuth credentials, if provided, are stored in the [OpenRAG `.env` file](/reference/configuration) at `~/.openrag/tui`.
    If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
 
 7. Click **Start All Services** to start the OpenRAG services that run in containers.

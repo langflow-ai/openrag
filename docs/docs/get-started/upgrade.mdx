@@ -5,6 +5,7 @@ slug: /upgrade
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import PartialExportFlows from '@site/docs/_partial-export-flows.mdx';
 
 Use these steps to upgrade your OpenRAG deployment to the latest version or a specific version.
 
@@ -21,12 +22,14 @@ Upgrading the Python package also upgrades Docling by bumping the dependency in 
 
 This is a two-part process because upgrading the OpenRAG Python package updates the Terminal User Interface (TUI) and Python code, but the container versions are controlled by environment variables in your [OpenRAG `.env` file](/reference/configuration).
 
-1. To check for updates, open the TUI's **Status** menu (<kbd>3</kbd>), and then click **Upgrade**.
+<PartialExportFlows />
 
-2. If there is an update, stop all OpenRAG services.
+2. To check for updates, open the TUI's **Status** menu (<kbd>3</kbd>), and then click **Upgrade**.
+
+3. If there is an update, stop all OpenRAG services.
 In the **Status** menu, click **Stop Services**.
 
-3. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
+4. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
 The commands to upgrade the package depend on how you installed OpenRAG.
 
    <Tabs>
@@ -109,12 +112,12 @@ The commands to upgrade the package depend on how you installed OpenRAG.
    </TabItem>
    </Tabs>
 
-4. In the OpenRAG TUI, click **Start All Services**, and then wait while the upgraded containers start.
+5. In the OpenRAG TUI, click **Start All Services**, and then wait while the upgraded containers start.
 
    When you start services after upgrading the Python package, OpenRAG runs `docker compose pull` to get the appropriate container images matching the version specified in your OpenRAG `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
 
    :::tip Pin container versions
-   In the `.env` file, the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) is set to `latest` by default, which pulls the `latest` available container images.
+   In the OpenRAG `.env` file, the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) is set to `latest` by default, which pulls the `latest` available container images.
    To pin a specific container image version, you can set `OPENRAG_VERSION` to the desired container image version, such as `OPENRAG_VERSION=0.1.33`.
 
    However, when you upgrade the Python package, OpenRAG automatically attempts to keep the `OPENRAG_VERSION` synchronized with the Python package version.
@@ -124,24 +127,27 @@ The commands to upgrade the package depend on how you installed OpenRAG.
 
    If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
 
-5. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
+6. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
 
-6. When the upgrade process is complete, you can close the **Status** window and continue using OpenRAG.
+7. When the upgrade process is complete, you can close the **Status** window and continue using OpenRAG.
 
 ## Upgrade self-managed containers
 
-To fetch and apply the latest container images while preserving your OpenRAG data, run the commands for your container management tool.
-By default, OpenRAG's `docker-compose` files pull the latest container images.
+<PartialExportFlows />
 
-```bash title="Docker"
-docker compose pull
-docker compose up -d --force-recreate
-```
+2. Fetch and apply the latest container images while preserving your OpenRAG data:
 
-```bash title="Podman"
-podman compose pull
-podman compose up -d --force-recreate
-```
+   ```bash title="Docker"
+   docker compose pull
+   docker compose up -d --force-recreate
+   ```
+
+   ```bash title="Podman"
+   podman compose pull
+   podman compose up -d --force-recreate
+   ```
+
+   By default, OpenRAG's `docker-compose` files pull the latest container images.
 
 ## See also
 
