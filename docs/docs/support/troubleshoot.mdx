@@ -74,7 +74,7 @@ For example, on macOS, this is typically a user cache directory, such as `~/.cac
 
 This cache can become stale, producing errors like missing dependencies.
 
-1. [Exit the TUI](/tui).
+1. If the TUI is open, press <kbd>q</kbd> to exit the TUI.
 
 2. Clear the `uv` cache:
 
@@ -94,7 +94,7 @@ This cache can become stale, producing errors like missing dependencies.
    uvx openrag
    ```
 
-4. Click **Open App**, and then retry document ingestion.
+4. Click **Launch OpenRAG**, and then retry document ingestion.
 
 If you install OpenRAG with `uv`, dependencies are synced directly from your `pyproject.toml` file.
 This should automatically install `easyocr` because `easyocr` is included as a dependency in OpenRAG's `pyproject.toml`.

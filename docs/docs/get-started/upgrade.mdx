@@ -14,7 +14,7 @@ Use these steps to upgrade your OpenRAG deployment to the latest version or a sp
 If you modified the built-in flows or created custom flows in your OpenRAG Langflow instance, [export your flows](https://docs.langflow.org/concepts-flows-import) before upgrading.
 This ensure that you won't lose your flows after upgrading, and you can reference the exported flows if there are any breaking changes in the new version.
 
-## Upgrade TUI-managed installations
+## Upgrade TUI-managed deployments
 
 To upgrade OpenRAG, you need to upgrade the OpenRAG Python package, and then upgrade the OpenRAG containers.
 
@@ -24,12 +24,13 @@ This is a two-part process because upgrading the OpenRAG Python package updates 
 
 <PartialExportFlows />
 
-2. To check for updates, open the TUI's **Status** menu (<kbd>3</kbd>), and then click **Upgrade**.
+2. To check for updates, click **Status** in the TUI, and then click **Upgrade**.
 
-3. If there is an update, stop all OpenRAG services.
-In the **Status** menu, click **Stop Services**.
+3. If there is an update available, press <kbd>Esc</kbd> to close the **Status** page, then then click **Stop All Services**.
 
-4. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
+4. Press <kbd>q</kbd> to exit the TUI.
+
+5. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
 The commands to upgrade the package depend on how you installed OpenRAG.
 
    <Tabs>
@@ -112,7 +113,7 @@ The commands to upgrade the package depend on how you installed OpenRAG.
    </TabItem>
    </Tabs>
 
-5. In the OpenRAG TUI, click **Start All Services**, and then wait while the upgraded containers start.
+6. In the OpenRAG TUI, click **Start Services**, and then wait while the services start.
 
    When you start services after upgrading the Python package, OpenRAG runs `docker compose pull` to get the appropriate container images matching the version specified in your OpenRAG `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
 
@@ -127,11 +128,9 @@ The commands to upgrade the package depend on how you installed OpenRAG.
 
    If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
 
-6. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
+7. After the containers start, click **Close**, and then click **Launch OpenRAG**.
 
-7. When the upgrade process is complete, you can close the **Status** window and continue using OpenRAG.
-
-## Upgrade self-managed containers
+## Upgrade self-managed deployments
 
 <PartialExportFlows />
 
@@ -148,6 +147,8 @@ The commands to upgrade the package depend on how you installed OpenRAG.
    ```
 
    By default, OpenRAG's `docker-compose` files pull the latest container images.
+
+3. After the containers start, access the OpenRAG application at `http://localhost:3000`.
 
 ## See also
 

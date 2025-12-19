@@ -46,15 +46,20 @@ The script installs OpenRAG dependencies, including Docker or Podman, and then i
    The entire process can take a few minutes.
    Once the environment is ready, the OpenRAG [Terminal User Interface (TUI)](/tui) starts.
 
-   ![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
+   ![OpenRAG TUI Interface](@site/static/img/openrag_tui_dec_2025.png)
 
 3. In the TUI, click **Basic Setup**.
 
-4. Click **Generate Passwords** to create administrator passwords for your OpenRAG OpenSearch and Langflow services.
+4. For **Langflow Admin Password**, click **Generate Password** to create a Langflow administrator password and username.
 
-5. Leave the **OpenAI API key** field empty.
+5. Use the default values for all other fields.
 
-6. Click **Save Configuration**, and then click **Start All Services**.
+6. Click **Save Configuration**.
+
+   Your OpenRAG configuration and passwords are stored in an [OpenRAG `.env` file](/reference/configuration) file that is created automatically at `~/.openrag/tui`.
+   OpenRAG container definitions are stored in the `docker-compose` files in the same directory.
+
+7. Click **Start OpenRAG** to start the OpenRAG services.
 
    This process can take some time while OpenRAG pulls and runs the container images.
    If all services start successfully, the TUI prints a confirmation message:
@@ -64,12 +69,7 @@ The script installs OpenRAG dependencies, including Docker or Podman, and then i
    Command completed successfully
    ```
 
-   Your OpenRAG configuration and passwords are stored in an [OpenRAG `.env` file](/reference/configuration) file that is created automatically at `~/.openrag/tui`.
-   Container definitions are stored in the `docker-compose` files in the same directory.
-
-7. Under [**Native Services**](/manage-services), click **Start** to start the Docling service.
-
-8. From the TUI main menu, click **Open App** to launch the OpenRAG application and start the application onboarding process.
+8. Click **Close**, and then click **Launch OpenRAG** to access the OpenRAG application and start the application onboarding process.
 
 9. For this quickstart, select the **OpenAI** model provider, enter your OpenAI API key, and then click **Complete**. Use the default settings for all other model options.
 

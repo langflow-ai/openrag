@@ -66,23 +66,23 @@ To enable multiple connectors, you must register an app and generate credentials
 <Tabs>
 <TabItem value="TUI" label="TUI-managed services" default>
 
-If you use the [Terminal User Interface (TUI)](/tui) to manage your OpenRAG services, enter OAuth credentials in the **Advanced Setup** menu.
+If you use the [Terminal User Interface (TUI)](/tui) to manage your OpenRAG services, enter OAuth credentials on the **Advanced Setup** page.
 You can do this during [installation](/install#setup), or you can add the credentials afterwards:
 
-1. If OpenRAG is running, open the TUI's **Status** menu (<kbd>3</kbd>), and then click **Stop Services**.
+1. If OpenRAG is running, click **Stop All Services** in the TUI.
 
-2. Open the **Advanced Setup** menu (<kbd>2</kbd>), and then add the OAuth credentials for the cloud storage providers that you want to use:
+2. Open the **Advanced Setup** page, and then add the OAuth credentials for the cloud storage providers that you want to use under **API Keys**:
 
-   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
    * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
    * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
+   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
 
-3. The TUI presents redirect URIs for your OAuth app that you must register with your OAuth provider.
-These are the URLs your OAuth provider will redirect back to after users authenticate and grant access to their cloud storage.
+3. Register the redirect URIs shown in the TUI in your OAuth provider.
+These are the URLs your OAuth provider will use to redirect users back to OpenRAG after they sign in.
 
 4. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
 
-5. Click **Start All Services** to restart the OpenRAG containers with OAuth enabled.
+5. Click **Start Services** to restart the OpenRAG containers with OAuth enabled.
 
 6. Launch the OpenRAG app.
 You should be prompted to sign in to your OAuth provider before being redirected to your OpenRAG instance.
@@ -100,13 +100,6 @@ You can do this during [initial set up](/docker#setup), or you can add the crede
 
 2. Edit your OpenRAG `.env` file to add the OAuth credentials for the cloud storage providers that you want to use:
 
-   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
-
-      ```env
-      AWS_ACCESS_KEY_ID=
-      AWS_SECRET_ACCESS_KEY=
-      ```
-
    * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
 
       ```env
@@ -120,12 +113,21 @@ You can do this during [initial set up](/docker#setup), or you can add the crede
       MICROSOFT_GRAPH_OAUTH_CLIENT_ID=
       MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=
       ```
+   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+
+      ```env
+      AWS_ACCESS_KEY_ID=
+      AWS_SECRET_ACCESS_KEY=
+      ```
 
 3. Save the `.env` file.
 
 4. Restart your OpenRAG containers:
 
    <PartialDockerComposeUp />
+
+5. Access the OpenRAG frontend at `http://localhost:3000`.
+You should be prompted to sign in to your OAuth provider before being redirected to your OpenRAG instance.
 
 </TabItem>
 </Tabs>

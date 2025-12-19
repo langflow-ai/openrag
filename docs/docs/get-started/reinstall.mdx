@@ -21,22 +21,22 @@ Destroyed containers and deleted data are lost and cannot be recovered after run
 
 <PartialExportFlows />
 
-2. In the TUI's **Status** menu (<kbd>3</kbd>), click **Factory Reset** to [reset your OpenRAG containers](/manage-services#reset-containers).
+2. In the TUI, click **Status**, and then click **Factory Reset** to [reset your OpenRAG containers](/manage-services#reset-containers).
 
    <PartialFactorResetWarning />
 
-2. Exit the TUI with <kbd>q</kbd>.
+3. Press <kbd>Esc</kbd> to close the **Status** page, and then press <kbd>q</kbd> to exit the TUI.
 
-3. Optional: Delete or edit [OpenRAG's `.env` file](/reference/configuration), which is stored at `~/.openrag/tui`.
+4. Optional: Delete or edit [OpenRAG's `.env` file](/reference/configuration), which is stored at `~/.openrag/tui`.
 
    This file contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth settings, and other environment variables. If you delete this file, the TUI automatically generates a new one after you repeat the setup and onboarding process. If you preserve this file, the TUI can read values from the existing `.env` file during setup and onboarding.
 
-4. Optional: Remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
+5. Optional: Remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
 It is recommended that you preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
 
-5. Restart the TUI with `uv run openrag` or `uvx openrag`.
+6. Restart the TUI with `uv run openrag` or `uvx openrag`.
 
-6. Repeat the [setup process](/install#setup) to configure OpenRAG and restart all services.
+7. Repeat the [setup process](/install#setup) to configure OpenRAG and restart all services.
 Then, launch the OpenRAG app and repeat the [application onboarding process](/install#application-onboarding).
 
 ## Reinstall self-managed containers with `docker compose` or `podman compose`
@@ -74,12 +74,14 @@ If you want to reinstall one container, specify the container name in the comman
 
    <PartialDockerStopAll />
 
-<PartialDockerRemoveAndCleanupSteps />
+3. Remove and clean up containers:
 
-8. Optional: Edit OpenRAG's `.env` file if needed.
+   <PartialDockerRemoveAndCleanupSteps />
 
-9. Optional: If you removed all containers or specifically the OpenSearch container, then you can remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
+4. Optional: Edit OpenRAG's `.env` file if needed.
+
+5. Optional: If you removed all containers or specifically the OpenSearch container, then you can remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
 It is recommended that you preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
 
-10. If you removed all OpenRAG containers, [redeploy OpenRAG](/docker).
+6. If you removed all OpenRAG containers, [redeploy OpenRAG](/docker).
 If you removed only one container, redeploy that container with the appropriate `docker run` or `podman run` command.

@@ -19,25 +19,23 @@ If you [installed OpenRAG](/install-options) with the automated installer script
 
 For [self-managed deployments](/docker), run Docker or Podman commands to manage your OpenRAG services.
 
-## Monitor services
+## Monitor services and view logs
 
 <Tabs>
 <TabItem value="TUI" label="TUI-managed services" default>
 
-* **TUI Status menu**: In the **Status** menu (<kbd>3</kbd>), you can access streaming logs for all OpenRAG services.
-Select the service you want to view, and then press <kbd>l</kbd>.
-To copy the logs, click **Copy to Clipboard**.
+In the TUI, click **Status** to access diagnostics and controls for all OpenRAG services, including container health, ports, and image versions.
 
-* **TUI Diagnostics menu**: The TUI's **Diagnostics** menu (<kbd>4</kbd>) provides health monitoring for your container runtimes and monitoring of your OpenSearch instance.
+To view streaming logs, click the name of a service, and then press <kbd>l</kbd>.
 
-* **Docling**: See [Stop, start, and inspect native services](#start-native-services).
+For the Docling native service, see [Stop, start, and inspect native services](#start-native-services).
 
 </TabItem>
 <TabItem value="env" label="Self-managed services">
 
-* **Containers**: Get container logs with [`docker compose logs`](https://docs.docker.com/reference/cli/docker/compose/logs/) or [`podman logs`](https://docs.podman.io/en/latest/markdown/podman-logs.1.html).
+For self-managed container services, you can get container logs with [`docker compose logs`](https://docs.docker.com/reference/cli/docker/compose/logs/) or [`podman logs`](https://docs.podman.io/en/latest/markdown/podman-logs.1.html).
 
-* **Docling**: See [Stop, start, and inspect native services](#start-native-services).
+For the Docling native service, see [Stop, start, and inspect native services](#start-native-services).
 
 </TabItem>
 </Tabs>
@@ -47,10 +45,9 @@ To copy the logs, click **Copy to Clipboard**.
 <Tabs>
 <TabItem value="TUI" label="TUI-managed services" default>
 
-In the TUI's **Status** menu (<kbd>3</kbd>), click **Stop Services** to stop all OpenRAG container-based services.
-Then, click **Start All Services** to restart the OpenRAG containers.
+On the TUI's **Status** page, you can stop, start, and restart OpenRAG's container-based services.
 
-When you click **Start All Services**, the following processes are triggered:
+When you click **Restart** or **Start Services**, the following processes are triggered:
 
 1. OpenRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses because there are separate Docker Compose files for GPU and CPU deployments.
 
@@ -75,10 +72,13 @@ A _native service_ in OpenRAG is a service that runs locally on your machine, no
 <Tabs>
 <TabItem value="TUI" label="TUI-managed services" default>
 
-From the TUI's **Status** menu (<kbd>3</kbd>), click **Native Services** to do the following:
+On the TUI's **Status** page, you can stop, start, restart, and inspect OpenRAG's native services.
 
-* View the service's status, port, and process ID (PID).
-* Stop, start, and restart native services.
+The **Native Services** section lists the status, port, and process ID (PID) for each native service.
+
+To manage a native service, click the service's name, and then click **Stop**, **Start** or **Restart**.
+
+To view the logs for a native service, click the service's name, and then press <kbd>l</kbd>.
 
 </TabItem>
 <TabItem value="env" label="Self-managed services">
@@ -135,7 +135,7 @@ To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall O
 
 <PartialExportFlows />
 
-2. To destroy and recreate your OpenRAG containers, open the TUI's **Status** menu (<kbd>3</kbd>), and then click **Factory Reset**.
+2. To destroy and recreate your OpenRAG containers, click **Status** in the TUI, and then click **Factory Reset**.
 
 3. Repeat the [setup process](/install#setup) to restart the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
 
