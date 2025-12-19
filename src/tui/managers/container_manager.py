@@ -1338,3 +1338,279 @@ class ContainerManager:
             self.platform_detector.check_podman_macos_memory()
         )
         return is_sufficient, message
+
+    async def prune_old_images(self) -> AsyncIterator[tuple[bool, str]]:
+        """Prune old OpenRAG images and dependencies, keeping only the latest versions.
+        
+        This method:
+        1. Lists all images
+        2. Identifies OpenRAG-related images (openrag-backend, openrag-frontend, langflow, opensearch, dashboards)
+        3. For each repository, keeps only the latest/currently used image
+        4. Removes old images
+        5. Prunes dangling images
+        
+        Yields:
+            Tuples of (success, message) for progress updates
+        """
+        if not self.is_available():
+            yield False, "No container runtime available"
+            return
+
+        yield False, "Scanning for OpenRAG images..."
+
+        # Get list of all images
+        success, stdout, stderr = await self._run_runtime_command(
+            ["images", "--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}"]
+        )
+
+        if not success:
+            yield False, f"Failed to list images: {stderr}"
+            return
+
+        # Parse images and group by repository
+        openrag_repos = {
+            "langflowai/openrag-backend",
+            "langflowai/openrag-frontend",
+            "langflowai/openrag-langflow",
+            "langflowai/openrag-opensearch",
+            "langflowai/openrag-dashboards",
+            "langflow/langflow",  # Also include base langflow images
+            "opensearchproject/opensearch",
+            "opensearchproject/opensearch-dashboards",
+        }
+
+        images_by_repo = {}
+        for line in stdout.strip().split("\n"):
+            if not line.strip():
+                continue
+            
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            
+            image_tag, image_id, created_at = parts[0], parts[1], parts[2]
+            
+            # Skip <none> tags (dangling images will be handled separately)
+            if "<none>" in image_tag:
+                continue
+            
+            # Extract repository name (without tag)
+            if ":" in image_tag:
+                repo = image_tag.rsplit(":", 1)[0]
+            else:
+                repo = image_tag
+            
+            # Check if this is an OpenRAG-related image
+            if any(openrag_repo in repo for openrag_repo in openrag_repos):
+                if repo not in images_by_repo:
+                    images_by_repo[repo] = []
+                images_by_repo[repo].append({
+                    "full_tag": image_tag,
+                    "id": image_id,
+                    "created": created_at,
+                })
+
+        if not images_by_repo:
+            yield True, "No OpenRAG images found to prune"
+            # Still run dangling image cleanup
+            yield False, "Cleaning up dangling images..."
+            success, stdout, stderr = await self._run_runtime_command(
+                ["image", "prune", "-f"]
+            )
+            if success:
+                yield True, "Dangling images cleaned up"
+            else:
+                yield False, f"Failed to prune dangling images: {stderr}"
+            return
+
+        # Get currently used images (from running/stopped containers)
+        services = await self.get_service_status(force_refresh=True)
+        current_images = set()
+        for service_info in services.values():
+            if service_info.image and service_info.image != "N/A":
+                current_images.add(service_info.image)
+
+        yield False, f"Found {len(images_by_repo)} OpenRAG image repositories"
+
+        # For each repository, remove old images (keep latest and currently used)
+        total_removed = 0
+        for repo, images in images_by_repo.items():
+            if len(images) <= 1:
+                # Only one image for this repo, skip
+                continue
+
+            # Sort by creation date (newest first)
+            # Note: This is a simple string comparison which works for ISO dates
+            images.sort(key=lambda x: x["created"], reverse=True)
+
+            # Keep the newest image and any currently used images
+            images_to_remove = []
+            for i, img in enumerate(images):
+                # Keep the first (newest) image
+                if i == 0:
+                    continue
+                # Keep currently used images
+                if img["full_tag"] in current_images:
+                    continue
+                # Mark for removal
+                images_to_remove.append(img)
+
+            if not images_to_remove:
+                yield False, f"No old images to remove for {repo}"
+                continue
+
+            # Remove old images
+            for img in images_to_remove:
+                yield False, f"Removing old image: {img['full_tag']}"
+                success, stdout, stderr = await self._run_runtime_command(
+                    ["rmi", img["id"]]
+                )
+                if success:
+                    total_removed += 1
+                    yield False, f"  ✓ Removed {img['full_tag']}"
+                else:
+                    # Don't fail the whole operation if one image fails
+                    # (might be in use by another container)
+                    yield False, f"  ⚠ Could not remove {img['full_tag']}: {stderr.strip()}"
+
+        if total_removed > 0:
+            yield True, f"Removed {total_removed} old image(s)"
+        else:
+            yield True, "No old images were removed"
+
+        # Clean up dangling images (untagged images)
+        yield False, "Cleaning up dangling images..."
+        success, stdout, stderr = await self._run_runtime_command(
+            ["image", "prune", "-f"]
+        )
+        
+        if success:
+            # Parse output to see if anything was removed
+            if stdout.strip():
+                yield True, f"Dangling images cleaned: {stdout.strip()}"
+            else:
+                yield True, "No dangling images to clean"
+        else:
+            yield False, f"Failed to prune dangling images: {stderr}"
+
+        yield True, "Image pruning completed"
+
+    async def prune_all_images(self) -> AsyncIterator[tuple[bool, str]]:
+        """Stop services and prune ALL OpenRAG images and dependencies.
+        
+        This is a more aggressive pruning that:
+        1. Stops all running services
+        2. Removes ALL OpenRAG-related images (not just old versions)
+        3. Prunes dangling images
+        
+        This frees up maximum disk space but requires re-downloading images on next start.
+        
+        Yields:
+            Tuples of (success, message) for progress updates
+        """
+        if not self.is_available():
+            yield False, "No container runtime available"
+            return
+
+        # Step 1: Stop all services first
+        yield False, "Stopping all services..."
+        async for success, message in self.stop_services():
+            yield success, message
+            if not success and "failed" in message.lower():
+                yield False, "Failed to stop services, aborting prune"
+                return
+
+        # Give services time to fully stop
+        import asyncio
+        await asyncio.sleep(2)
+
+        yield False, "Scanning for OpenRAG images..."
+
+        # Get list of all images
+        success, stdout, stderr = await self._run_runtime_command(
+            ["images", "--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}"]
+        )
+
+        if not success:
+            yield False, f"Failed to list images: {stderr}"
+            return
+
+        # Parse images and identify ALL OpenRAG-related images
+        openrag_repos = {
+            "langflowai/openrag-backend",
+            "langflowai/openrag-frontend",
+            "langflowai/openrag-langflow",
+            "langflowai/openrag-opensearch",
+            "langflowai/openrag-dashboards",
+            "langflow/langflow",
+            "opensearchproject/opensearch",
+            "opensearchproject/opensearch-dashboards",
+        }
+
+        images_to_remove = []
+        for line in stdout.strip().split("\n"):
+            if not line.strip():
+                continue
+            
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue
+            
+            image_tag, image_id = parts[0], parts[1]
+            
+            # Skip <none> tags (will be handled by prune)
+            if "<none>" in image_tag:
+                continue
+            
+            # Extract repository name (without tag)
+            if ":" in image_tag:
+                repo = image_tag.rsplit(":", 1)[0]
+            else:
+                repo = image_tag
+            
+            # Check if this is an OpenRAG-related image
+            if any(openrag_repo in repo for openrag_repo in openrag_repos):
+                images_to_remove.append({
+                    "full_tag": image_tag,
+                    "id": image_id,
+                })
+
+        if not images_to_remove:
+            yield True, "No OpenRAG images found to remove"
+        else:
+            yield False, f"Found {len(images_to_remove)} OpenRAG image(s) to remove"
+
+            # Remove all OpenRAG images
+            total_removed = 0
+            for img in images_to_remove:
+                yield False, f"Removing image: {img['full_tag']}"
+                success, stdout, stderr = await self._run_runtime_command(
+                    ["rmi", "-f", img["id"]]  # Force remove
+                )
+                if success:
+                    total_removed += 1
+                    yield False, f"  ✓ Removed {img['full_tag']}"
+                else:
+                    yield False, f"  ⚠ Could not remove {img['full_tag']}: {stderr.strip()}"
+
+            if total_removed > 0:
+                yield True, f"Removed {total_removed} OpenRAG image(s)"
+            else:
+                yield False, "No images were removed"
+
+        # Clean up dangling images
+        yield False, "Cleaning up dangling images..."
+        success, stdout, stderr = await self._run_runtime_command(
+            ["image", "prune", "-f"]
+        )
+        
+        if success:
+            if stdout.strip():
+                yield True, f"Dangling images cleaned: {stdout.strip()}"
+            else:
+                yield True, "No dangling images to clean"
+        else:
+            yield False, f"Failed to prune dangling images: {stderr}"
+
+        yield True, "All OpenRAG images removed successfully"
+
