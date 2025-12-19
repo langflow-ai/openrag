@@ -25,13 +25,22 @@ Keyboard shortcuts for additional menus are printed at the bottom of the TUI scr
 
 ## Manage services with the TUI
 
-Use the TUI's **Status** and **Diagnostics** menus to access controls and information for your OpenRAG services.
+Use the TUI's **Status** page to access controls and information for your OpenRAG services.
 For more information, see [Manage OpenRAG services](/manage-services).
+
+## Toggle GPU/CPU mode
+
+You can toggle between GPU and CPU mode from within the TUI if your system has compatible GPU hardware and drivers installed.
+
+In the TUI, click **Status**, and then click **Switch to GPU Mode** or **Switch to CPU Mode**.
+
+This change requires restarting all OpenRAG services because each mode has its own `docker-compose` file.
 
 ## Exit the OpenRAG TUI
 
-To exit the OpenRAG TUI, go to the TUI main menu, and then press <kbd>q</kbd>.
+To exit the OpenRAG TUI, press <kbd>q</kbd> on the TUI main page.
 
-Your OpenRAG containers continue to run until they are stopped.
+Exiting the TUI doesn't stop your OpenRAG services.
+Your OpenRAG services continue to run until they are stopped from within the TUI or by another process that inadvertently stops them.
 
 To restart the TUI, see [Access the TUI](#access-the-tui).

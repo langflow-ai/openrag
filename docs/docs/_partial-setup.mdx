@@ -30,7 +30,7 @@ If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setu
 3. Optional: Under **API Keys**, enter your model provider credentials, or leave these fields empty if you want to configure model provider credentials during the application onboarding process.
 
    There is no material difference between providing these values now or during the [application onboarding process](#application-onboarding).
-   If you provide a credential now, it can be populated automatically during the application onboarding process if you enable the **Get API key from environment variable** option.
+   If you provide a credential now, it can be populated automatically during the application onboarding process if you enable the **Use environment API key** option.
 
    OpenRAG's core functionality requires access to language and embedding models.
    By default, OpenRAG uses OpenAI models.
@@ -46,7 +46,7 @@ If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setu
    Your passwords and API keys, if provided, are stored in the [OpenRAG `.env` file](/reference/configuration) at `~/.openrag/tui`.
    If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
 
-6. Click **Start OpenRAG** to start the OpenRAG container services.
+6. Click **Start OpenRAG** to start the OpenRAG services.
 
    This process can take some time while OpenRAG pulls and runs the container images.
    If all services start successfully, the TUI prints a confirmation message:
@@ -56,12 +56,9 @@ If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setu
    Command completed successfully
    ```
 
-8. Launch the OpenRAG application:
+7. Click **Close**, and then click **Launch OpenRAG** or navigate to `localhost:3000` in your browser.
 
-   * From the TUI main menu, click **Open App**.
-   * In your browser, navigate to `localhost:3000`.
-
-9. Continue with the [application onboarding process](#application-onboarding).
+8. Continue with the [application onboarding process](#application-onboarding).
 
 </TabItem>
 <TabItem value="Advanced setup" label="Advanced setup">
@@ -80,7 +77,7 @@ If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setu
 3. Optional: Under **API Keys**, enter your model provider credentials, or leave the **OpenAI**, **Anthropic**, **Ollama**, and **IBM watsonx.ai** fields empty if you want to configure model provider credentials during the application onboarding process.
 
    There is no material difference between providing these values now or during the [application onboarding process](#application-onboarding).
-   If you provide a credential now, it can be populated automatically during the application onboarding process if you enable the **Get API key from environment variable** option.
+   If you provide a credential now, it can be populated automatically during the application onboarding process if you enable the **Use environment API key** option.
 
    OpenRAG's core functionality requires access to language and embedding models.
    By default, OpenRAG uses OpenAI models.
@@ -109,7 +106,7 @@ These are the URLs your OAuth provider will use to redirect users back to OpenRA
    Your passwords, API key, and OAuth credentials, if provided, are stored in the [OpenRAG `.env` file](/reference/configuration) at `~/.openrag/tui`.
    If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
 
-8. Click **Start OpenRAG** to start the OpenRAG container services.
+8. Click **Start OpenRAG** to start the OpenRAG services.
 
    This process can take some time while OpenRAG pulls and runs the container images.
    If all services start successfully, the TUI prints a confirmation message:
@@ -119,10 +116,7 @@ These are the URLs your OAuth provider will use to redirect users back to OpenRA
    Command completed successfully
    ```
 
-9. Launch the OpenRAG application:
-
-   * From the TUI main menu, click **Open App**.
-   * In your browser, navigate to `localhost:3000`.
+9. Click **Close**, and then click **Launch OpenRAG** or navigate to `localhost:3000` in your browser.
 
 10. If you enabled OAuth connectors, you must sign in to your OAuth provider before being redirected to your OpenRAG instance.
 
