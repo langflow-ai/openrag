@@ -24,7 +24,7 @@ This is a two-part process because upgrading the OpenRAG Python package updates 
 
 <PartialExportFlows />
 
-2. To check for updates, open the TUI's **Status** menu (<kbd>3</kbd>), and then click **Upgrade**.
+2. To check for updates, open the TUI's **Status** menu, and then click **Upgrade**.
 
 3. If there is an update, stop all OpenRAG services.
 In the **Status** menu, click **Stop Services**.
@@ -112,7 +112,7 @@ The commands to upgrade the package depend on how you installed OpenRAG.
    </TabItem>
    </Tabs>
 
-5. In the OpenRAG TUI, click **Start All Services**, and then wait while the upgraded containers start.
+5. In the OpenRAG TUI, click **Start Services**, and then wait while the upgraded containers start.
 
    When you start services after upgrading the Python package, OpenRAG runs `docker compose pull` to get the appropriate container images matching the version specified in your OpenRAG `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
 
