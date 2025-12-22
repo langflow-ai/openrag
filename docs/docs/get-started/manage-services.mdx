@@ -161,6 +161,16 @@ To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall O
 </TabItem>
 </Tabs>
 
+## Prune images
+
+Use image pruning to free up disk space by removing unused OpenRAG container images.
+
+For TUI-managed services, use the TUI's **Prune Images** option to clean up your OpenRAG container images.
+You can choose to prune unused images only or all images.
+If you prune all images, the OpenRAG services are stopped, all images are pruned, and then the required images are pulled the next time you start the OpenRAG services.
+
+For self-managed services, use [`docker image prune`](https://docs.docker.com/engine/reference/commandline/image_prune/) or [`podman image prune`](https://docs.podman.io/en/latest/markdown/podman-image-prune.1.html) to remove unused images.
+
 ## See also
 
 * [Uninstall OpenRAG](/uninstall)
