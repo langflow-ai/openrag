@@ -236,11 +236,22 @@ All errors were file-specific, and they didn't stop the pipeline.
 
 ## Troubleshoot ingestion {#troubleshoot-ingestion}
 
+The following issues can occur during document ingestion.
+
+### Failed or slow ingestion
+
 If an ingestion task fails, do the following:
 
 * Make sure you are uploading supported file types.
 * Split excessively large files into smaller files before uploading.
 * Remove unusual embedded content, such as videos or animations, before uploading. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
+* Make sure your Podman/Docker VM has sufficient memory for the ingestion tasks.
+The minimum recommendation is 8 GB of RAM.
+If you regularly upload large files, more RAM is recommended.
+For more information, see [Memory issue with Podman on macOS](/support/troubleshoot#memory-issue-with-podman-on-macos) and [Container out of memory errors](/support/troubleshoot#container-out-of-memory-errors).
+* If OCR ingestion fails due to OCR missing, see [OCR ingestion fails (easyocr not installed)](/support/troubleshoot#ocr-ingestion-fails-easyocr-not-installed).
+
+### Problems when referencing documents in chat
 
 If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](/knowledge#browse-knowledge) to confirm that the documents are uploaded in full, and the chunks are correct.
 
