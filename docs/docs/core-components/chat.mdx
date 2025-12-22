@@ -100,3 +100,11 @@ To simplify this integration, you can get pre-configured code snippets directly 
 The following example demonstrates how to generate and use code snippets for the **OpenRAG OpenSearch Agent** flow:
 
 <PartialIntegrateChat />
+
+## Troubleshoot chat {#troubleshoot-chat}
+
+The following issues can occur when using the OpenRAG **Chat** feature:
+
+* Documents seem to be missing or interpreted incorrectly: See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
+* Service is suddenly unavailable when it was working previously: If there is no other obvious cause, such as the service or container VM being stopped or disconnected, there might be a problem with the flow configuration. Use the [**Restore flow** option](/agents#revert-a-built-in-flow-to-its-original-configuration) to revert the **OpenRAG OpenSearch Agent** flow to its original configuration.
+If you made customizations to the flow, make sure to [export your flow](https://docs.langflow.org/concepts-flows-import) before restoring the flow.

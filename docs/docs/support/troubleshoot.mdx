@@ -7,13 +7,17 @@ import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
 
 This page provides troubleshooting advice for issues you might encounter when using OpenRAG or contributing to OpenRAG.
 
-## OpenSearch fails to start
+## Installation and start up issues
+
+The following issues relate to OpenRAG installation and start up.
+
+### OpenSearch fails to start
 
 Check that the value of the `OPENSEARCH_PASSWORD` [environment variable](/reference/configuration) meets the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
 
 If you need to change the password, you must [reset the OpenRAG services](/manage-services).
 
-## OpenRAG fails to start from the TUI with operation not supported
+### OpenRAG fails to start from the TUI with operation not supported
 
 This error occurs when starting OpenRAG with the TUI in [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
 
@@ -21,7 +25,7 @@ The error occurs because OpenRAG is running within a WSL environment, so `webbro
 
 To access the OpenRAG application, open a web browser and enter `http://localhost:3000` in the address bar.
 
-## OpenRAG installation fails with unable to get local issuer certificate
+### OpenRAG installation fails with unable to get local issuer certificate
 
 If you are installing OpenRAG on macOS, and the installation fails with `unable to get local issuer certificate`, run the following command, and then retry the installation:
 
@@ -36,14 +40,18 @@ Replace `VERSION` with your installed Python version, such as `3.13`.
 Verify that the value of the `LANGFLOW_SUPERUSER` environment variable is correct.
 For more information about this variable and how this variable controls Langflow access, see [Langflow settings](/reference/configuration#langflow-settings).
 
-## Container out of memory errors
+## Container out of memory errors {#container-out-of-memory-errors}
 
-Increase Docker memory allocation or use the CPU-only deployment (base `docker-compose.yml` without GPU override) to reduce memory usage.
+Increase your container VM's allocated memory, or use a CPU-only deployment to reduce memory usage.
 
-## Memory issue with Podman on macOS
+For TUI-managed deployments, you can enable **CPU mode** on the TUI's **Status** page.
+
+For self-managed deployments, CPU-only deployments use the `docker-compose.yml` file that doesn't have GPU overrides.
+
+## Memory issue with Podman on macOS {#memory-issue-with-podman-on-macos}
 
 If you're using Podman on macOS, you might need to increase VM memory on your Podman machine.
-This example increases the machine size to 8 GB of RAM, which should be sufficient to run OpenRAG.
+This example increases the machine size to 8 GB of RAM, which is the minimum recommended RAM for OpenRAG:
 
 ```bash
 podman machine stop
@@ -63,7 +71,7 @@ With the default [environment variable](/reference/configuration) values, OpenRA
 * 8000: Docling API
 * 9200: OpenSearch service
 
-## OCR ingestion fails (easyocr not installed)
+## OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
 
 Docling ingestion can fail with an OCR-related error that mentions `easyocr` is missing.
 This is likely due to a stale `uv` cache when you [install OpenRAG with `uvx`](/install-uvx).
@@ -144,3 +152,7 @@ See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
 ## Ollama model issues
 
 <PartialOllamaModels />
+
+## Chat issues
+
+See [Troubleshoot chat](/core-components/chat#troubleshoot-chat).
