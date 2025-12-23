@@ -1,0 +1,58 @@
+---
+title: Remove OpenRAG
+slug: /uninstall
+---
+
+import PartialDockerComposeDownAndPrune from '@site/docs/_partial-docker-compose-down-and-prune.mdx';
+import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
+import PartialDockerRemoveAndCleanupSteps from '@site/docs/_partial-docker-remove-and-cleanup-steps.mdx';
+
+:::tip
+If you want to reset your OpenRAG containers without removing OpenRAG entirely, see [Reset OpenRAG containers](/manage-services) and [Reinstall OpenRAG](/reinstall).
+:::
+
+## Uninstall TUI-managed deployments
+
+If you used the [automated installer script](/install) or [`uvx`](/install-uvx) to install OpenRAG, clear your `uv` cache (`uv cache clean`) to remove the TUI environment, and then delete the `~/.openrag` directory.
+
+If you used [`uv`](/install-uv) to install OpenRAG, run `uv remove openrag` in your Python project, and then delete the `~/.openrag` directory.
+
+## Uninstall self-managed deployments
+
+For self-managed services, destroy the containers, prune any additional container objects, delete any remaining OpenRAG files, and then shut down the Docling service.
+
+### Uninstall with `docker compose` or `podman compose`
+
+Use these steps to uninstall a self-managed OpenRAG deployment with streamlined `docker compose` or `podman compose` commands:
+
+1. Destroy the containers, volumes, and local images, and then remove (prune) any additional container objects:
+
+   <PartialDockerComposeDownAndPrune />
+
+2. Remove OpenRAG's `.env` file and the `~/.openrag/documents` directory, which aren't deleted by the previous commands.
+
+3. Stop `docling-serve`:
+
+   ```bash
+   uv run python scripts/docling_ctl.py stop
+   ```
+
+### Uninstall with discrete `docker` or `podman` commands
+
+Use these commands to uninstall a self-managed OpenRAG deployment with discrete `docker` or `podman` commands:
+
+1. Stop all running containers:
+
+   <PartialDockerStopAll />
+
+2. Remove and clean up containers:
+
+   <PartialDockerRemoveAndCleanupSteps />
+
+3. Remove OpenRAG's `.env` file and the `~/.openrag/documents` directory, which aren't deleted by the previous commands.
+
+4. Stop `docling-serve`:
+
+   ```bash
+   uv run python scripts/docling_ctl.py stop
+   ```

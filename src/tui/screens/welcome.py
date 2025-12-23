@@ -23,6 +23,7 @@ class WelcomeScreen(Screen):
 
     BINDINGS = [
         ("q", "quit", "Quit"),
+        ("r", "refresh", "Refresh"),
     ]
 
     def __init__(self):
@@ -41,7 +42,8 @@ class WelcomeScreen(Screen):
         self.has_env_file = self.env_manager.env_file.exists()
 
         # Load .env file if it exists
-        load_dotenv()
+        # override=True ensures .env file values take precedence over existing environment variables
+        load_dotenv(override=True)
 
         # Check OAuth config immediately
         self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
@@ -67,11 +69,17 @@ class WelcomeScreen(Screen):
         yield Footer()
 
     def _check_flow_backups(self) -> bool:
-        """Check if there are any flow backups in ./flows/backup directory."""
-        backup_dir = Path("flows/backup")
+        """Check if there are any flow backups in flows/backup directory."""
+        from ..managers.env_manager import EnvManager
+
+        # Get flows path from env config
+        env_manager = EnvManager()
+        env_manager.load_existing_env()
+        flows_path = Path(env_manager.config.openrag_flows_path.replace("$HOME", str(Path.home()))).expanduser()
+        backup_dir = flows_path / "backup"
         if not backup_dir.exists():
             return False
-        
+
         try:
             # Check if there are any .json files in the backup directory
             backup_files = list(backup_dir.glob("*.json"))
@@ -89,7 +97,10 @@ class WelcomeScreen(Screen):
         try:
             # Use detected runtime command to check services
             import subprocess
-            compose_cmd = self.container_manager.runtime_info.compose_command + ["ps", "--format", "json"]
+            compose_cmd = self.container_manager.runtime_info.compose_command + [
+                "-f", str(self.container_manager.compose_file),
+                "ps", "--format", "json"
+            ]
             result = subprocess.run(
                 compose_cmd,
                 capture_output=True,
@@ -121,20 +132,38 @@ class WelcomeScreen(Screen):
 
                 # Check if services are running (exclude starting/created states)
                 # State can be lowercase or mixed case, so normalize it
-                running_services = []
-                starting_services = []
+                # Only consider expected services (filter out stale/leftover containers)
+                expected = set(self.container_manager.expected_services)
+                name_map = self.container_manager.container_name_map
+                running_services = set()
+                starting_services = set()
                 for s in services:
                     if not isinstance(s, dict):
                         continue
+                    # Get service name - try compose label first (most reliable for Podman)
+                    labels = s.get('Labels', {}) or {}
+                    service_name = labels.get('com.docker.compose.service', '')
+                    if not service_name:
+                        # Fall back to container name mapping
+                        container_name = s.get('Name') or s.get('Service', '')
+                        if not container_name:
+                            names = s.get('Names', [])
+                            if names and isinstance(names, list):
+                                container_name = names[0]
+                        # Map container name to service name using container_name_map
+                        service_name = name_map.get(container_name, container_name)
+                    # Skip if not an expected service
+                    if service_name not in expected:
+                        continue
                     state = str(s.get('State', '')).lower()
                     if state == 'running':
-                        running_services.append(s)
+                        running_services.add(service_name)
                     elif 'starting' in state or 'created' in state:
-                        starting_services.append(s)
-                
-                # Only consider services running if we have running services AND no starting services
-                # This prevents showing the button when containers are still coming up
-                self.services_running = len(running_services) > 0 and len(starting_services) == 0
+                        starting_services.add(service_name)
+
+                # Services are running if all expected services are in running state
+                # (i.e., we have all expected services running and none are still starting)
+                self.services_running = len(running_services) == len(expected) and len(starting_services) == 0
             else:
                 self.services_running = False
         except Exception:
@@ -248,15 +277,15 @@ class WelcomeScreen(Screen):
         # Check if services are running
         if self.container_manager.is_available():
             services = await self.container_manager.get_service_status()
+            expected = set(self.container_manager.expected_services)
             running_services = [
                 s.name for s in services.values() if s.status == ServiceStatus.RUNNING
             ]
             starting_services = [
                 s.name for s in services.values() if s.status == ServiceStatus.STARTING
             ]
-            # Only consider services running if we have running services AND no starting services
-            # This prevents showing the button when containers are still coming up
-            self.services_running = len(running_services) > 0 and len(starting_services) == 0
+            # Services are running if all expected services are in running state
+            self.services_running = len(running_services) == len(expected) and len(starting_services) == 0
         else:
             self.services_running = False
 
@@ -277,16 +306,10 @@ class WelcomeScreen(Screen):
         else:
             self.default_button_id = "basic-setup-btn"
 
-        # Update the welcome text
-        try:
-            welcome_widget = self.query_one("#welcome-text")
-            welcome_widget.update(self._create_welcome_text())
-        except:
-            pass  # Widget might not be mounted yet
-
-        # Focus the appropriate button (the buttons are created correctly in compose,
-        # the issue was they weren't being updated after service operations)
-        self.call_after_refresh(self._focus_appropriate_button)
+        # Refresh the welcome text AND buttons based on the updated async state
+        # This ensures buttons match the actual service state (fixes issue where
+        # text showed "All services running" but buttons weren't updated)
+        await self._refresh_welcome_content()
 
     def _focus_appropriate_button(self) -> None:
         """Focus the appropriate button based on current state."""
@@ -313,8 +336,22 @@ class WelcomeScreen(Screen):
             os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
         )
 
-        # Re-detect service state
-        self._detect_services_sync()
+        # Re-detect container services using async method for accuracy
+        if self.container_manager.is_available():
+            services = await self.container_manager.get_service_status(force_refresh=True)
+            expected = set(self.container_manager.expected_services)
+            running_services = [
+                s.name for s in services.values() if s.status == ServiceStatus.RUNNING
+            ]
+            starting_services = [
+                s.name for s in services.values() if s.status == ServiceStatus.STARTING
+            ]
+            self.services_running = len(running_services) == len(expected) and len(starting_services) == 0
+        else:
+            self.services_running = False
+
+        # Re-detect native service state
+        self.docling_running = self.docling_manager.is_running()
 
         # Refresh the welcome content and buttons
         await self._refresh_welcome_content()
@@ -368,6 +405,38 @@ class WelcomeScreen(Screen):
         from .diagnostics import DiagnosticsScreen
 
         self.app.push_screen(DiagnosticsScreen())
+
+    def action_refresh(self) -> None:
+        """Refresh service state and update welcome screen."""
+        self.run_worker(self._refresh_state())
+
+    async def _refresh_state(self) -> None:
+        """Async refresh of service state."""
+        # Re-detect container services using async method for accuracy
+        if self.container_manager.is_available():
+            services = await self.container_manager.get_service_status(force_refresh=True)
+            expected = set(self.container_manager.expected_services)
+            running_services = [
+                s.name for s in services.values() if s.status == ServiceStatus.RUNNING
+            ]
+            starting_services = [
+                s.name for s in services.values() if s.status == ServiceStatus.STARTING
+            ]
+            self.services_running = len(running_services) == len(expected) and len(starting_services) == 0
+        else:
+            self.services_running = False
+
+        # Re-detect native service state
+        self.docling_running = self.docling_manager.is_running()
+
+        # Update OAuth config state
+        self.has_oauth_config = bool(os.getenv("GOOGLE_OAUTH_CLIENT_ID")) or bool(
+            os.getenv("MICROSOFT_GRAPH_OAUTH_CLIENT_ID")
+        )
+
+        # Refresh the welcome content and buttons
+        await self._refresh_welcome_content()
+        self.notify("Refreshed", severity="information", timeout=2)
 
     def action_start_all_services(self) -> None:
         """Start all services (native first, then containers)."""

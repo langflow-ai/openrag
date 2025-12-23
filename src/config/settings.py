@@ -143,6 +143,28 @@ INDEX_BODY = {
     },
 }
 
+# API Keys index for public API authentication
+API_KEYS_INDEX_NAME = "api_keys"
+API_KEYS_INDEX_BODY = {
+    "settings": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+    },
+    "mappings": {
+        "properties": {
+            "key_id": {"type": "keyword"},
+            "key_hash": {"type": "keyword"},  # SHA-256 hash, never store plaintext
+            "key_prefix": {"type": "keyword"},  # First 8 chars for display (e.g., "orag_abc1")
+            "user_id": {"type": "keyword"},
+            "user_email": {"type": "keyword"},
+            "name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+            "created_at": {"type": "date"},
+            "last_used_at": {"type": "date"},
+            "revoked": {"type": "boolean"},
+        }
+    },
+}
+
 # Convenience base URL for Langflow REST API
 LANGFLOW_BASE_URL = f"{LANGFLOW_URL}/api/v1"
 

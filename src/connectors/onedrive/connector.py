@@ -15,7 +15,7 @@ class OneDriveConnector(BaseConnector):
 
     # Required BaseConnector class attributes
     CLIENT_ID_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_ID"
-    CLIENT_SECRET_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"
+    CLIENT_SECRET_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"  # pragma: allowlist secret
 
     # Connector metadata
     CONNECTOR_NAME = "OneDrive"
@@ -58,9 +58,8 @@ class OneDriveConnector(BaseConnector):
         except Exception as e:
             logger.debug(f"Failed to get client_secret: {e}")
 
-        # Token file setup
-        project_root = Path(__file__).resolve().parent.parent.parent.parent
-        token_file = config.get("token_file") or str(project_root / "onedrive_token.json")
+        # Token file setup - use data/ directory for persistence
+        token_file = config.get("token_file") or "data/onedrive_token.json"
         Path(token_file).parent.mkdir(parents=True, exist_ok=True)
 
         # Only initialize OAuth if we have credentials
@@ -72,7 +71,7 @@ class OneDriveConnector(BaseConnector):
                 oauth_token_file = config["token_file"]
             else:
                 # Use a per-connection cache file to avoid collisions with other connectors
-                oauth_token_file = f"onedrive_token_{connection_id}.json"
+                oauth_token_file = f"data/onedrive_token_{connection_id}.json"
 
             # MSA & org both work via /common for OneDrive personal testing
             authority = "https://login.microsoftonline.com/common"
@@ -395,7 +394,7 @@ class OneDriveConnector(BaseConnector):
             headers = {"Authorization": f"Bearer {token}"}
 
             async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=60)
+                response = await client.get(url, headers=headers, timeout=60, follow_redirects=True)
                 response.raise_for_status()
                 return response.content
 
@@ -407,7 +406,7 @@ class OneDriveConnector(BaseConnector):
         """Download file content from direct download URL."""
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get(download_url, timeout=60)
+                response = await client.get(download_url, timeout=60, follow_redirects=True)
                 response.raise_for_status()
                 return response.content
         except Exception as e:

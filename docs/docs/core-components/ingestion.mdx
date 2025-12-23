@@ -8,6 +8,8 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 import PartialIngestionFlow from '@site/docs/_partial-ingestion-flow.mdx';
+import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
+import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
 
 Upload documents to your [OpenRAG OpenSearch instance](/knowledge) to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
 Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
@@ -30,7 +32,7 @@ You can upload files and folders from your local machine to your knowledge base:
 
 3. To upload one file, click <Icon name="File" aria-hidden="true"/> **File**. To upload all documents in a folder, click <Icon name="Folder" aria-hidden="true"/> **Folder**.
 
-   The default path is the `./documents` subdirectory in your OpenRAG installation directory.
+   The default path is `~/.openrag/documents`.
    To change this path, see [Set the local documents path](/knowledge#set-the-local-documents-path).
 
 The selected files are processed in the background through the **OpenSearch Ingestion** flow.
@@ -62,63 +64,41 @@ Before users can connect their own cloud storage accounts, you must configure th
 To enable multiple connectors, you must register an app and generate credentials for each provider.
 
 <Tabs>
-<TabItem value="TUI" label="TUI Advanced Setup" default>
+<TabItem value="TUI" label="TUI-managed services" default>
 
-If you use the TUI to manage your OpenRAG containers, provide OAuth credentials in the **Advanced Setup**.
-
+If you use the [Terminal User Interface (TUI)](/tui) to manage your OpenRAG services, enter OAuth credentials on the **Advanced Setup** page.
 You can do this during [installation](/install#setup), or you can add the credentials afterwards:
 
-1. If OpenRAG is running, stop it: Go to [**Status**](/install#tui-container-management), and then click **Stop Services**.
+1. If OpenRAG is running, click **Stop All Services** in the TUI.
 
-2. Click **Advanced Setup**, and then add the OAuth credentials for the cloud storage providers that you want to use:
+2. Open the **Advanced Setup** page, and then add the OAuth credentials for the cloud storage providers that you want to use under **API Keys**:
 
-   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
    * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
    * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
-
-3. The OpenRAG TUI presents redirect URIs for your OAuth app that you must register with your OAuth provider.
-These are the URLs your OAuth provider will redirect back to after users authenticate and grant access to their cloud storage.
-
-4. Click **Save Configuration**.
-
-   OpenRAG regenerates the [`.env`](/reference/configuration) file with the given credentials.
-
-5. Click **Start Container Services**.
-
-</TabItem>
-<TabItem value="env" label="Docker Compose .env file">
-
-If you [install OpenRAG with self-managed containers](/docker), set OAuth credentials in the `.env` file for Docker Compose.
-
-You can do this during [initial set up](/docker#install-openrag-with-docker-compose), or you can add the credentials afterwards:
-
-1. Stop your OpenRAG deployment.
-
-   <Tabs>
-   <TabItem value="podman" label="Podman">
-
-   ```bash
-   podman stop --all
-   ```
-
-   </TabItem>
-   <TabItem value="docker" label="Docker">
-
-   ```bash
-   docker stop $(docker ps -q)
-   ```
-
-   </TabItem>
-   </Tabs>
-
-2. Edit the `.env` file for Docker Compose to add the OAuth credentials for the cloud storage providers that you want to use:
-
    * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
 
-      ```env
-      AWS_ACCESS_KEY_ID=
-      AWS_SECRET_ACCESS_KEY=
-      ```
+3. Register the redirect URIs shown in the TUI in your OAuth provider.
+These are the URLs your OAuth provider will use to redirect users back to OpenRAG after they sign in.
+
+4. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
+
+5. Click **Start Services** to restart the OpenRAG containers with OAuth enabled.
+
+6. Launch the OpenRAG app.
+You should be prompted to sign in to your OAuth provider before being redirected to your OpenRAG instance.
+
+</TabItem>
+<TabItem value="env" label="Self-managed services">
+
+If you [installed OpenRAG with self-managed services](/docker), set OAuth credentials in your [OpenRAG `.env` file](/reference/configuration).
+
+You can do this during [initial set up](/docker#setup), or you can add the credentials afterwards:
+
+1. Stop all OpenRAG containers:
+
+   <PartialDockerStopAll />
+
+2. Edit your OpenRAG `.env` file to add the OAuth credentials for the cloud storage providers that you want to use:
 
    * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
 
@@ -133,27 +113,21 @@ You can do this during [initial set up](/docker#install-openrag-with-docker-comp
       MICROSOFT_GRAPH_OAUTH_CLIENT_ID=
       MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=
       ```
+   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+
+      ```env
+      AWS_ACCESS_KEY_ID=
+      AWS_SECRET_ACCESS_KEY=
+      ```
 
 3. Save the `.env` file.
 
-4. Restart your OpenRAG deployment:
+4. Restart your OpenRAG containers:
 
-   <Tabs>
-   <TabItem value="podman" label="Podman">
+   <PartialDockerComposeUp />
 
-   ```bash
-   podman-compose up -d
-   ```
-
-   </TabItem>
-   <TabItem value="docker" label="Docker">
-
-   ```bash
-   docker-compose up -d
-   ```
-
-   </TabItem>
-   </Tabs>
+5. Access the OpenRAG frontend at `http://localhost:3000`.
+You should be prompted to sign in to your OAuth provider before being redirected to your OpenRAG instance.
 
 </TabItem>
 </Tabs>
@@ -238,6 +212,7 @@ All errors were file-specific, and they didn't stop the pipeline.
 
    * Machine: Apple M4 Pro
    * Podman VM:
+
      * Name: podman-machine-default
      * Type: applehv
      * vCPUs: 7
@@ -261,11 +236,22 @@ All errors were file-specific, and they didn't stop the pipeline.
 
 ## Troubleshoot ingestion {#troubleshoot-ingestion}
 
+The following issues can occur during document ingestion.
+
+### Failed or slow ingestion
+
 If an ingestion task fails, do the following:
 
 * Make sure you are uploading supported file types.
 * Split excessively large files into smaller files before uploading.
 * Remove unusual embedded content, such as videos or animations, before uploading. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
+* Make sure your Podman/Docker VM has sufficient memory for the ingestion tasks.
+The minimum recommendation is 8 GB of RAM.
+If you regularly upload large files, more RAM is recommended.
+For more information, see [Memory issue with Podman on macOS](/support/troubleshoot#memory-issue-with-podman-on-macos) and [Container out of memory errors](/support/troubleshoot#container-out-of-memory-errors).
+* If OCR ingestion fails due to OCR missing, see [OCR ingestion fails (easyocr not installed)](/support/troubleshoot#ocr-ingestion-fails-easyocr-not-installed).
+
+### Problems when referencing documents in chat
 
 If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](/knowledge#browse-knowledge) to confirm that the documents are uploaded in full, and the chunks are correct.
 

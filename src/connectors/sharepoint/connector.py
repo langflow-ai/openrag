@@ -16,7 +16,7 @@ class SharePointConnector(BaseConnector):
 
     # Required BaseConnector class attributes
     CLIENT_ID_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_ID"
-    CLIENT_SECRET_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"
+    CLIENT_SECRET_ENV_VAR = "MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET"  # pragma: allowlist secret
     
     # Connector metadata
     CONNECTOR_NAME = "SharePoint"
@@ -66,20 +66,19 @@ class SharePointConnector(BaseConnector):
             logger.debug(f"Failed to get client_secret: {e}")
             pass  # Credentials not available, that's OK for listing
 
-        # Token file setup
-        project_root = Path(__file__).resolve().parent.parent.parent.parent
-        token_file = config.get("token_file") or str(project_root / "sharepoint_token.json")
+        # Token file setup - use data/ directory for persistence
+        token_file = config.get("token_file") or "data/sharepoint_token.json"
         Path(token_file).parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Only initialize OAuth if we have credentials
         if self.client_id and self.client_secret:
             connection_id = config.get("connection_id", "default")
-            
+
             # Use token_file from config if provided, otherwise generate one
             if config.get("token_file"):
                 oauth_token_file = config["token_file"]
             else:
-                oauth_token_file = f"sharepoint_token_{connection_id}.json"
+                oauth_token_file = f"data/sharepoint_token_{connection_id}.json"
             
             authority = f"https://login.microsoftonline.com/{self.tenant_id}" if self.tenant_id != "common" else "https://login.microsoftonline.com/common"
             
@@ -463,7 +462,7 @@ class SharePointConnector(BaseConnector):
             headers = {"Authorization": f"Bearer {token}"}
             
             async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=60)
+                response = await client.get(url, headers=headers, timeout=60, follow_redirects=True)
                 response.raise_for_status()
                 return response.content
             
@@ -536,7 +535,7 @@ class SharePointConnector(BaseConnector):
         """Download file content from direct download URL"""
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get(download_url, timeout=60)
+                response = await client.get(download_url, timeout=60, follow_redirects=True)
                 response.raise_for_status()
                 return response.content
         except Exception as e:

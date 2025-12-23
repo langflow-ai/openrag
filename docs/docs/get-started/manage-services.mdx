@@ -1,0 +1,176 @@
+---
+title: Manage OpenRAG containers and services
+slug: /manage-services
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
+import PartialDockerComposeDownAndPrune from '@site/docs/_partial-docker-compose-down-and-prune.mdx';
+import PartialFactorResetWarning from '@site/docs/_partial-factory-reset-warning.mdx';
+import PartialExportFlows from '@site/docs/_partial-export-flows.mdx';
+
+Service management is an essential part of maintaining your OpenRAG deployment.
+
+Most OpenRAG services run in containers.
+However, some services, like Docling, run directly on the local machine.
+
+If you [installed OpenRAG](/install-options) with the automated installer script, `uv`, or `uvx`, you can use the [Terminal User Interface (TUI)](/tui) to manage your OpenRAG configuration and services.
+
+For [self-managed deployments](/docker), run Docker or Podman commands to manage your OpenRAG services.
+
+## Monitor services and view logs
+
+<Tabs>
+<TabItem value="TUI" label="TUI-managed services" default>
+
+In the TUI, click **Status** to access diagnostics and controls for all OpenRAG services, including container health, ports, and image versions.
+
+To view streaming logs, click the name of a service, and then press <kbd>l</kbd>.
+
+For the Docling native service, see [Stop, start, and inspect native services](#start-native-services).
+
+</TabItem>
+<TabItem value="env" label="Self-managed services">
+
+For self-managed container services, you can get container logs with [`docker compose logs`](https://docs.docker.com/reference/cli/docker/compose/logs/) or [`podman logs`](https://docs.podman.io/en/latest/markdown/podman-logs.1.html).
+
+For the Docling native service, see [Stop, start, and inspect native services](#start-native-services).
+
+</TabItem>
+</Tabs>
+
+## Stop and start containers
+
+<Tabs>
+<TabItem value="TUI" label="TUI-managed services" default>
+
+On the TUI's **Status** page, you can stop, start, and restart OpenRAG's container-based services.
+
+When you click **Restart** or **Start Services**, the following processes are triggered:
+
+1. OpenRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses because there are separate Docker Compose files for GPU and CPU deployments.
+
+2. OpenRAG pulls the OpenRAG container images with `docker compose pull` if any images are missing.
+
+3. OpenRAG deploys the containers with `docker compose up -d`.
+
+</TabItem>
+<TabItem value="env" label="Self-managed services">
+
+Use [`docker compose down`](https://docs.docker.com/reference/cli/docker/compose/down/) and [`docker compose up -d`](https://docs.docker.com/reference/cli/docker/compose/up/).
+
+To stop or start individual containers, use targeted commands like `docker stop CONTAINER_ID` and `docker start CONTAINER_ID`.
+
+</TabItem>
+</Tabs>
+
+## Stop, start, and inspect native services (Docling) {#start-native-services}
+
+A _native service_ in OpenRAG is a service that runs locally on your machine, not within a container. For example, the `docling serve` process is an OpenRAG native service because this document processing service runs on your local machine, separate from the OpenRAG containers.
+
+<Tabs>
+<TabItem value="TUI" label="TUI-managed services" default>
+
+On the TUI's **Status** page, you can stop, start, restart, and inspect OpenRAG's native services.
+
+The **Native Services** section lists the status, port, and process ID (PID) for each native service.
+
+To manage a native service, click the service's name, and then click **Stop**, **Start** or **Restart**.
+
+To view the logs for a native service, click the service's name, and then press <kbd>l</kbd>.
+
+</TabItem>
+<TabItem value="env" label="Self-managed services">
+
+Because the Docling service doesn't run in a container, you must start and stop it manually on the host machine:
+
+* Stop `docling serve`:
+
+   ```bash
+   uv run python scripts/docling_ctl.py stop
+   ```
+
+* Start `docling serve`:
+
+   ```bash
+   uv run python scripts/docling_ctl.py start --port 5001
+   ```
+
+* Check that `docling serve` is running:
+
+   ```bash
+   uv run python scripts/docling_ctl.py status
+   ```
+
+   If `docling serve` is running, the output includes the status, address, and process ID (PID):
+
+   ```text
+   Status: running
+   Endpoint: http://127.0.0.1:5001
+   Docs: http://127.0.0.1:5001/docs
+   PID: 27746
+   ```
+
+</TabItem>
+</Tabs>
+
+## Upgrade services
+
+See [Upgrade OpenRAG](/upgrade).
+
+## Reset containers (destructive) {#reset-containers}
+
+<PartialFactorResetWarning />
+
+Use these steps to reset your OpenRAG deployment by recreating the containers and deleting all data in the `~/.openrag` directory _except_ for the `.env` file and the `/documents` subdirectory.
+
+This restores your OpenRAG deployment to a near-initial state while preserving your configuration (in `.env`) and uploaded documents (in `/documents`).
+Your documents are reingested into a fresh OpenSearch index after the reset.
+
+To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall OpenRAG](/reinstall).
+
+<Tabs>
+<TabItem value="TUI" label="TUI-managed services" default>
+
+<PartialExportFlows />
+
+2. To destroy and recreate your OpenRAG containers, click **Status** in the TUI, and then click **Factory Reset**.
+
+3. Repeat the [setup process](/install#setup) to restart the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
+
+</TabItem>
+<TabItem value="env" label="Self-managed services">
+
+<PartialExportFlows />
+
+2. Recreate the containers:
+
+   ```bash title="Docker"
+   docker compose up --build --force-recreate --remove-orphans
+   ```
+
+   ```bash title="Podman"
+   podman compose up --build --force-recreate --remove-orphans
+   ```
+
+3. Launch the OpenRAG app, and then repeat the [application onboarding process](/docker#application-onboarding).
+
+4. If you exported customized flows, [import your flows](https://docs.langflow.org/concepts-flows-import) into Langflow after completing the onboarding process.
+
+</TabItem>
+</Tabs>
+
+## Prune images
+
+Use image pruning to free up disk space by removing unused OpenRAG container images.
+
+For TUI-managed services, use the TUI's **Prune Images** option to clean up your OpenRAG container images.
+You can choose to prune unused images only or all images.
+If you prune all images, the OpenRAG services are stopped, all images are pruned, and then the required images are pulled the next time you start the OpenRAG services.
+
+For self-managed services, use [`docker image prune`](https://docs.docker.com/engine/reference/commandline/image_prune/) or [`podman image prune`](https://docs.podman.io/en/latest/markdown/podman-image-prune.1.html) to remove unused images.
+
+## See also
+
+* [Uninstall OpenRAG](/uninstall)

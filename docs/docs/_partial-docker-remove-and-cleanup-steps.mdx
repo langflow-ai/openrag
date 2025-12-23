@@ -1,0 +1,49 @@
+1. Remove all containers, including stopped containers:
+
+   ```bash title="Docker"
+   docker rm --force $(docker ps -aq)
+   ```
+
+   ```bash title="Podman"
+   podman rm --all --force
+   ```
+
+2. Remove all images:
+
+   ```bash title="Docker"
+   docker rmi --force $(docker images -q)
+   ```
+
+   ```bash title="Podman"
+   podman rmi --all --force
+   ```
+
+3. Remove all volumes:
+
+   ```bash title="Docker"
+   docker volume prune --force
+   ```
+
+   ```bash title="Podman"
+   podman volume prune --force
+   ```
+
+4. Remove all networks except the default network:
+
+   ```bash title="Docker"
+   docker network prune --force
+   ```
+
+   ```bash title="Podman"
+   podman network prune --force
+   ```
+
+5. Clean up any leftover data:
+
+   ```bash title="Docker"
+   docker system prune --all --force --volumes
+   ```
+
+   ```bash title="Podman"
+   podman system prune --all --force --volumes
+   ```

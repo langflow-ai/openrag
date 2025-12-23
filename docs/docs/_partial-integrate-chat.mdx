@@ -4,8 +4,8 @@ import TabItem from '@theme/TabItem';
 
 1. Open the **OpenRAG OpenSearch Agent** flow in the Langflow visual editor: From the **Chat** window, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, click **Edit in Langflow**, and then click **Proceed**.
 
-2. Create a [Langflow API key](https://docs.langflow.org/api-keys-and-authentication), which is a user-specific token required to send requests to the Langflow server.
-This key doesn't grant access to OpenRAG.
+2. Optional: If you don't want to use the Langflow API key that is generated automatically when you install OpenRAG, you can create a [Langflow API key](https://docs.langflow.org/api-keys-and-authentication).
+This key doesn't grant access to OpenRAG; it is only for authenticating with the Langflow API.
 
    1. In the Langflow visual editor, click your user icon in the header, and then select **Settings**.
    2. Click **Langflow API Keys**, and then click <Icon name="Plus" aria-hidden="true"/> **Add New**.
@@ -109,6 +109,6 @@ This key doesn't grant access to OpenRAG.
 If the request is successful, the response includes many details about the flow run, including the session ID, inputs, outputs, components, durations, and more.
 
 In production, you won't pass the raw response to the user in its entirety.
-Instead, you extract and reformat relevant fields for different use cases, as demonstrated in the [Langflow quickstart](https://docs.langflow.org/quickstart#extract-data-from-the-response).
+Instead, you extract and reformat relevant fields for different use cases, as demonstrated in the [Langflow quickstart](https://docs.langflow.org/get-started-quickstart#extract-data-from-the-response).
 For example, you could pass the chat output text to a front-end user-facing application, and store specific fields in logs and backend data stores for monitoring, chat history, or analytics.
 You could also pass the output from one flow as input to another flow.

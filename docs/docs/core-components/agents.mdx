@@ -4,8 +4,6 @@ slug: /agents
 ---
 
 import Icon from "@site/src/components/icon/icon";
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
 
 OpenRAG includes a built-in [Langflow](https://docs.langflow.org/) instance for creating and managing functional application workflows called _flows_.
 In a flow, the individual workflow steps are represented by [_components_](https://docs.langflow.org/concepts-components) that are connected together to form a complete process.
@@ -34,7 +32,7 @@ For example, to view and edit the built-in **Chat** flow (the **OpenRAG OpenSear
 
    If prompted to acknowledge that you are entering Langflow, click **Proceed**.
 
-   If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from the `.env` file in your OpenRAG installation directory.
+   If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from your [OpenRAG `.env` file](/reference/configuration).
 
    ![OpenRAG OpenSearch Agent flow](/img/opensearch-agent-flow.png)
 
@@ -61,11 +59,17 @@ In addition to OpenRAG's built-in flows, all Langflow features are available thr
 
 Explore the [Langflow documentation](https://docs.langflow.org/) to learn more about the Langflow platform, features, and visual editor.
 
+## Modify a flow at runtime {#modify-a-flow-at-runtime}
+
+You can use _tweaks_ to modify flow settings at runtime without permanently changing the flow's configuration.
+Tweaks are one-time parameter modifications that are passed to specific Langflow components during flow execution.
+For more information on tweaks, see the Langflow documentation on [Input schema (tweaks)](https://docs.langflow.org/concepts-publish#input-schema).
+
 ## Set the Langflow version
 
 By default, OpenRAG is pinned to the latest Langflow Docker image for stability.
 
-If necessary, you can set a specific Langflow version with the [`LANGFLOW_VERSION`](/reference/configuration). However, there are risks to changing this setting:
+If necessary, you can set a specific Langflow version with the `LANGFLOW_VERSION` [environment variable](/reference/configuration). However, there are risks to changing this setting:
 
 * The [Langflow documentation](https://docs.langflow.org/) describes the functionality present in the latest release of the Langflow OSS Python package. If your `LANGFLOW_VERSION` is different, the Langflow documentation might not align with the features and default settings in your OpenRAG installation.
 

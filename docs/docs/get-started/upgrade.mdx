@@ -1,0 +1,156 @@
+---
+title: Upgrade OpenRAG
+slug: /upgrade
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import PartialExportFlows from '@site/docs/_partial-export-flows.mdx';
+
+Use these steps to upgrade your OpenRAG deployment to the latest version or a specific version.
+
+## Export customized flows before upgrading
+
+If you modified the built-in flows or created custom flows in your OpenRAG Langflow instance, [export your flows](https://docs.langflow.org/concepts-flows-import) before upgrading.
+This ensure that you won't lose your flows after upgrading, and you can reference the exported flows if there are any breaking changes in the new version.
+
+## Upgrade TUI-managed deployments
+
+To upgrade OpenRAG, you need to upgrade the OpenRAG Python package, and then upgrade the OpenRAG containers.
+
+Upgrading the Python package also upgrades Docling by bumping the dependency in `pyproject.toml`.
+
+This is a two-part process because upgrading the OpenRAG Python package updates the Terminal User Interface (TUI) and Python code, but the container versions are controlled by environment variables in your [OpenRAG `.env` file](/reference/configuration).
+
+<PartialExportFlows />
+
+2. To check for updates, click **Status** in the TUI, and then click **Upgrade**.
+
+3. If there is an update available, press <kbd>Esc</kbd> to close the **Status** page, then then click **Stop All Services**.
+
+4. Press <kbd>q</kbd> to exit the TUI.
+
+5. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
+The commands to upgrade the package depend on how you installed OpenRAG.
+
+   <Tabs>
+   <TabItem value="installer" label="Script or uvx" default>
+
+   Use these steps to upgrade the Python package if you installed OpenRAG using the [installer script](/install) or [`uvx`](/install-uvx):
+
+   1. Navigate to your OpenRAG workspace directory:
+
+      ```bash
+      cd openrag-workspace
+      ```
+
+   2. Upgrade the OpenRAG package:
+
+      ```bash
+      uvx --from openrag openrag
+      ```
+
+      You can invoke a specific version using any of the [`uvx` version specifiers](https://docs.astral.sh/uv/guides/tools/#requesting-specific-versions), such as `--from`:
+
+      ```bash
+      uvx --from openrag==0.1.30 openrag
+      ```
+
+   </TabItem>
+   <TabItem value="uv-add" label="uv add">
+
+   Use these steps to upgrade the Python package if you installed OpenRAG with [`uv add`](/install-uv):
+
+   1. Navigate to your project directory:
+
+      ```bash
+      cd YOUR_PROJECT_NAME
+      ```
+
+   2. Update OpenRAG to the latest version:
+
+      ```bash
+      uv add --upgrade openrag
+      ```
+
+      To upgrade to a specific version:
+
+      ```bash
+      uv add --upgrade openrag==0.1.33
+      ```
+
+   3. Start the OpenRAG TUI:
+
+      ```bash
+      uv run openrag
+      ```
+
+   </TabItem>
+   <TabItem value="uv-pip" label="uv pip install">
+
+   Use these steps to upgrade the Python package if you installed OpenRAG with [`uv pip install`](/install-uv):
+
+   1. Activate your virtual environment.
+
+   2. Upgrade OpenRAG:
+
+      ```bash
+      uv pip install --upgrade openrag
+      ```
+
+      To upgrade to a specific version:
+
+      ```bash
+      uv pip install --upgrade openrag==0.1.33
+      ```
+
+   3. Start the OpenRAG TUI:
+
+      ```bash
+      uv run openrag
+      ```
+
+   </TabItem>
+   </Tabs>
+
+6. In the OpenRAG TUI, click **Start Services**, and then wait while the services start.
+
+   When you start services after upgrading the Python package, OpenRAG runs `docker compose pull` to get the appropriate container images matching the version specified in your OpenRAG `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
+
+   :::tip Pin container versions
+   In the OpenRAG `.env` file, the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) is set to `latest` by default, which pulls the `latest` available container images.
+   To pin a specific container image version, you can set `OPENRAG_VERSION` to the desired container image version, such as `OPENRAG_VERSION=0.1.33`.
+
+   However, when you upgrade the Python package, OpenRAG automatically attempts to keep the `OPENRAG_VERSION` synchronized with the Python package version.
+   You might need to edit the `.env` file after upgrading the Python package to enforce a different container version.
+   The TUI warns you if it detects a version mismatch.
+   :::
+
+   If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
+
+7. After the containers start, click **Close**, and then click **Launch OpenRAG**.
+
+## Upgrade self-managed deployments
+
+<PartialExportFlows />
+
+2. Fetch and apply the latest container images while preserving your OpenRAG data:
+
+   ```bash title="Docker"
+   docker compose pull
+   docker compose up -d --force-recreate
+   ```
+
+   ```bash title="Podman"
+   podman compose pull
+   podman compose up -d --force-recreate
+   ```
+
+   By default, OpenRAG's `docker-compose` files pull the latest container images.
+
+3. After the containers start, access the OpenRAG application at `http://localhost:3000`.
+
+## See also
+
+* [Manage OpenRAG services](/manage-services)
+* [Troubleshoot OpenRAG](/support/troubleshoot)

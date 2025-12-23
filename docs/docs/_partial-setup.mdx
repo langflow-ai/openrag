@@ -1,0 +1,126 @@
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import PartialOpenSearchAuthMode from '@site/docs/_partial-opensearch-auth-mode.mdx';
+
+You can use either **Basic Setup** or **Advanced Setup** to configure OpenRAG.
+This choice determines how OpenRAG authenticates with your deployment's [OpenSearch instance](/knowledge), and it controls user access to documents stored in your OpenSearch knowledge base:
+
+<PartialOpenSearchAuthMode />
+
+:::info
+You must use **Advanced Setup** if you want to [use OAuth connectors to upload documents from cloud storage](/ingestion#oauth-ingestion).
+:::
+
+If OpenRAG detects OAuth credentials during setup, it recommends **Advanced Setup** in the TUI.
+
+<Tabs groupId="Setup method">
+<TabItem value="Basic setup" label="Basic setup" default>
+
+1. In the TUI, select **Basic Setup**.
+
+2. Enter administrator passwords for the OpenRAG OpenSearch and Langflow services.
+
+   The OpenSearch password is required, and a secure password is automatically generated if you don't provide one manually.
+
+   The Langflow password is recommended but optional.
+   If the Langflow password is empty, the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
+
+   You can click **Generate Password** to create a Langflow password and username automatically.
+
+3. Optional: Under **API Keys**, enter your model provider credentials, or leave these fields empty if you want to configure model provider credentials during the application onboarding process.
+
+   There is no material difference between providing these values now or during the [application onboarding process](#application-onboarding).
+   If you provide a credential now, it can be populated automatically during the application onboarding process if you enable the **Use environment API key** option.
+
+   OpenRAG's core functionality requires access to language and embedding models.
+   By default, OpenRAG uses OpenAI models.
+   If you aren't sure which models or providers to use, you must provide an OpenAI API key to use OpenRAG's default model configuration.
+
+4. Optional: Under **Others**, edit the [knowledge base](/knowledge) paths if you don't want to use the default paths:
+
+   * **Documents Paths**: One or more paths to directories are where OpenRAG looks for documents to ingest.
+   * **OpenSearch Data PAth**: Specify the path where you want OpenRAG to create your OpenSearch index.
+
+5. Click **Save Configuration**.
+
+   Your passwords and API keys, if provided, are stored in the [OpenRAG `.env` file](/reference/configuration) at `~/.openrag/tui`.
+   If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
+
+6. Click **Start OpenRAG** to start the OpenRAG services.
+
+   This process can take some time while OpenRAG pulls and runs the container images.
+   If all services start successfully, the TUI prints a confirmation message:
+
+   ```text
+   Services started successfully
+   Command completed successfully
+   ```
+
+7. Click **Close**, and then click **Launch OpenRAG** or navigate to `localhost:3000` in your browser.
+
+8. Continue with the [application onboarding process](#application-onboarding).
+
+</TabItem>
+<TabItem value="Advanced setup" label="Advanced setup">
+
+1. In the TUI, select **Advanced Setup**.
+
+2. Enter administrator passwords for the OpenRAG OpenSearch and Langflow services.
+
+   The OpenSearch password is required, and a secure password is automatically generated if you don't provide one manually.
+
+   The Langflow password is recommended but optional.
+   If the Langflow password is empty, the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
+
+   You can click **Generate Password** to create a Langflow password and username automatically.
+
+3. Optional: Under **API Keys**, enter your model provider credentials, or leave the **OpenAI**, **Anthropic**, **Ollama**, and **IBM watsonx.ai** fields empty if you want to configure model provider credentials during the application onboarding process.
+
+   There is no material difference between providing these values now or during the [application onboarding process](#application-onboarding).
+   If you provide a credential now, it can be populated automatically during the application onboarding process if you enable the **Use environment API key** option.
+
+   OpenRAG's core functionality requires access to language and embedding models.
+   By default, OpenRAG uses OpenAI models.
+   If you aren't sure which models or providers to use, you must provide an OpenAI API key to use OpenRAG's default model configuration.
+
+4. Recommended: To upload documents from external storage, such as Google Drive, add the required OAuth credentials for the connectors that you want to use under **API Keys**. These settings can be populated automatically if OpenRAG detects these credentials in an [OpenRAG `.env` file](/reference/configuration) at `~/.openrag/tui`.
+
+   * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
+   * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
+   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+
+   You can [manage OAuth credentials](/ingestion#oauth-ingestion) later, but it is recommended to configure them during initial set up.
+
+5. Register the redirect URIs shown in the TUI in your OAuth provider.
+These are the URLs your OAuth provider will use to redirect users back to OpenRAG after they sign in.
+
+6. Optional: Under **Others**, you can edit the following settings if needed:
+
+   * **Documents Paths**: Use the default path or provide one or more paths to directories are where OpenRAG looks for documents to ingest in to your [knowledge base](/knowledge).
+   * **OpenSearch Data Path**: Specify the path where you want OpenRAG to create your OpenSearch index.
+   * **Langflow Public URL (`LANGFLOW_PUBLIC_URL`)** : Sets the base address to access the Langflow web interface. This is where users interact with flows in a browser.
+   * **Webhook Base URL (`WEBHOOK_BASE_URL`)**: If applicable, set the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`.
+
+7. Click **Save Configuration**.
+
+   Your passwords, API key, and OAuth credentials, if provided, are stored in the [OpenRAG `.env` file](/reference/configuration) at `~/.openrag/tui`.
+   If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
+
+8. Click **Start OpenRAG** to start the OpenRAG services.
+
+   This process can take some time while OpenRAG pulls and runs the container images.
+   If all services start successfully, the TUI prints a confirmation message:
+
+   ```text
+   Services started successfully
+   Command completed successfully
+   ```
+
+9. Click **Close**, and then click **Launch OpenRAG** or navigate to `localhost:3000` in your browser.
+
+10. If you enabled OAuth connectors, you must sign in to your OAuth provider before being redirected to your OpenRAG instance.
+
+11. Continue with the [application onboarding process](#application-onboarding).
+
+</TabItem>
+</Tabs>

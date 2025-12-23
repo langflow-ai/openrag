@@ -1,0 +1,46 @@
+---
+title: Use the TUI
+slug: /tui
+---
+
+The OpenRAG Terminal User Interface (TUI) provides a simplified and guided experience for configuring, managing, and monitoring your OpenRAG deployment directly from the terminal.
+
+![OpenRAG TUI Interface](@site/static/img/openrag_tui_dec_2025.png)
+
+If you install OpenRAG with the [automatic installer script](/install), [`uv`](/install-uv), or [`uvx`](/install-uvx), you use the TUI to manage your OpenRAG deployment.
+The TUI guides you through the initial setup, automatically manages your OpenRAG `.env` and `docker-compose` files, and provides convenient access to [service management](/manage-services) controls.
+
+In contrast, when you [deploy OpenRAG with self-managed services](/docker), you must manually configure OpenRAG by preparing a `.env` file, and then use Docker or Podman commands to deploy and manage your OpenRAG services.
+
+## Access the TUI {#access-the-tui}
+
+If you installed OpenRAG with `uv`, access the TUI with `uv run openrag`.
+
+If you installed OpenRAG with the automatic installer script or `uvx`, access the TUI with `uvx openrag`.
+
+## Navigate the TUI
+
+You can navigate the TUI with your mouse or keyboard.
+Keyboard shortcuts for additional menus are printed at the bottom of the TUI screen.
+
+## Manage services with the TUI
+
+Use the TUI's **Status** page to access controls and information for your OpenRAG services.
+For more information, see [Manage OpenRAG services](/manage-services).
+
+## Toggle GPU/CPU mode
+
+You can toggle between GPU and CPU mode from within the TUI if your system has compatible GPU hardware and drivers installed.
+
+In the TUI, click **Status**, and then click **Switch to GPU Mode** or **Switch to CPU Mode**.
+
+This change requires restarting all OpenRAG services because each mode has its own `docker-compose` file.
+
+## Exit the OpenRAG TUI
+
+To exit the OpenRAG TUI, press <kbd>q</kbd> on the TUI main page.
+
+Exiting the TUI doesn't stop your OpenRAG services.
+Your OpenRAG services continue to run until they are stopped from within the TUI or by another process that inadvertently stops them.
+
+To restart the TUI, see [Access the TUI](#access-the-tui).

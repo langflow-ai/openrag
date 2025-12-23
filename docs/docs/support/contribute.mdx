@@ -1,0 +1,155 @@
+---
+title: Contribute to OpenRAG
+slug: /support/contribute
+---
+
+There are several ways you can interact with the OpenRAG community and contribute to the OpenRAG codebase.
+
+## Star OpenRAG on GitHub
+
+If you like OpenRAG, you can star the [OpenRAG GitHub repository](https://github.com/langflow-ai/openrag).
+Stars help other users find OpenRAG more easily, and quickly understand that other users have found it useful.
+
+Because OpenRAG is open-source, the more visible the repository is, the more likely the codebase is to attract contributors.
+
+## Watch the GitHub repository
+
+You can watch the [OpenRAG GitHub repository](https://github.com/langflow-ai/openrag) to get notified about new releases and other repository activity.
+
+To get release notifications only, select **Releases only**.
+
+If you select **Watching**, you will receive notifications about new releases as well as issues, discussions, and pull requests. For information about customizing repository notifications, see the [GitHub documentation on repository subscriptions](https://docs.github.com/en/subscriptions-and-notifications/how-tos/managing-subscriptions-for-activity-on-github/viewing-your-subscriptions).
+
+## Request enhancements and get help through GitHub
+
+You can report bugs, submit feature requests, and get help with OpenRAG through the GitHub repository.
+
+The repository is the best place to report bugs and request enhancements to ensure that they are tracked by OpenRAG maintainers.
+
+### GitHub issues
+
+The [Issues page in the OpenRAG repository](https://github.com/langflow-ai/openrag/issues) is actively updated with bugs and feature requests.
+
+:::tip
+The best way to promote a request or bug is to comment on an existing issue that matches your request.
+
+Before you report a bug or submit a feature request, search for existing similar issues.
+If you find one, add a comment with any relevant details instead of opening a new issue.
+
+Highly active issues are more likely to receive attention from contributors.
+:::
+
+Feature planning for OpenRAG is tracked through the [Projects page in the OpenRAG repository](https://github.com/langflow-ai/openrag/projects).
+
+### GitHub discussions
+
+If you need help with your code or OpenRAG in general, you can visit the [OpenRAG GitHub Discussions page](https://github.com/langflow-ai/openrag/discussions).
+
+The OpenRAG team doesn't provide individual support over email, and the team believes that public discussions help more users by virtue of their discoverability.
+
+## Community guidelines and tips
+
+Because the OpenRAG repository is public, the OpenRAG team asks that you follow these guidelines when submitting questions and issues:
+
+* **Provide as many details as possible**: Simply stating that a feature doesn't work isn't helpful. The OpenRAG team needs details in order to recreate and find the issue.
+* **Explain what exactly went wrong**: Include error messages and descriptions of _how_ your code failed, not just the fact that it failed.
+* **Retrace your steps**: Explain what happened before the error, what you expected to happen instead of the error, and any recent changes you made, such as upgrading OpenRAG or a dependency.
+* **Describe your environment**: Include your operating system, OpenRAG version, Python version, and any other environment-related details that could have contributed to the issue.
+* **Include snippets of the code that failed**: Be sure to omit any sensitive values, and only provide parts that are relevant to the failure rather than the entire script. Providing code snippets makes it much easier to reproduce errors, troubleshoot, and provide specific advice.
+  * If your submission includes long sections of code, logs, or tracebacks, wrap them in [details tags](https://developer.mozilla.org/en/docs/Web/HTML/Element/details) (`<details> PASTE CODE HERE </details>`) to collapse the content and make it easier to read your submission.
+* **Omit sensitive information**: Other than the information available on your public GitHub profile, don't include sensitive or personally identifying data, such as security keys, full names, personal identification numbers, addresses, and phone numbers.
+* **Be kind**: Although bugs can be frustrating with any software, remember that your messages are read by real people who want to help. While you don't have to be saccharine, there's no need to be rude to get support.
+  * Your issues and discussions are attached to your GitHub account, and they can be read by anyone on the internet, including current and potential employers and colleagues.
+  * The OpenRAG repository is a public GitHub repository and, therefore, subject to the [GitHub Code of Conduct](https://docs.github.com/en/site-policy/github-terms/github-community-code-of-conduct).
+
+## Contribute to the codebase
+
+If you want to contribute code to OpenRAG, you can do so by submitting a pull request (PR) to the OpenRAG GitHub repository.
+
+See [CONTRIBUTING.md](https://github.com/langflow-ai/openrag/blob/main/CONTRIBUTING.md) to set up your development environment and learn about the contribution process.
+
+### Tips for successful submissions
+
+* Explain the motivation for your submission in the PR description.
+Clarify how the change benefits the OpenRAG codebase and its users.
+
+* Keep PRs small and focused on a single change or set of related changes.
+
+* If applicable, include tests that verify your changes.
+
+* Add documentation for new features, or edit existing documentation (if needed) when modifying existing code.
+For more information, see [Contribute documentation](#contribute-documentation).
+
+### Use of AI tools in contributions
+
+If you use AI tools to generate significant portions of the code in your PR, the OpenRAG team asks that you do the following:
+
+* Consider disclosing significant use of AI tools in your pull request description, particularly if you are unable to expertly review your own code contributions. For example: `I used an AI tool to generate the code for <function>, but I am not an expert in <language>. There might be some inefficiencies or antipatterns present.`
+* Avoid using AI tools to generate large volumes of code if you don't have personal knowledge of that language and the functionality being implemented. Instead, consider submitting a feature request to the [Issues page in the OpenRAG repository](https://github.com/langflow-ai/openrag/issues).
+* Be critical when reviewing code or documentation generated by AI tools to ensure it is accurate, efficient, and avoids antipatterns and vulnerabilities.
+* Don't flood the repository with AI-generated pull requests.
+Low quality and spam contributions can be closed without review at the discretion of the maintainers.
+Repeated low-quality contributions can lead to a ban on contributions.
+
+## Contribute documentation {#contribute-documentation}
+
+The OpenRAG documentation is built using [Docusaurus](https://docusaurus.io/) and written in [Markdown](https://docusaurus.io/docs/markdown-features).
+For style guidance, see the [Google Developer Documentation Style Guide](https://developers.google.com/style).
+
+1. Install [Node.js](https://nodejs.org/en/download/package-manager) and [Yarn](https://yarnpkg.com/)
+
+2. Fork the [OpenRAG GitHub repository](https://github.com/langflow-ai/openrag).
+
+3. Add the new remote to your local repository on your local machine:
+
+    ```bash
+    git remote add FORK_NAME https://github.com/GIT_USERNAME/openrag.git
+    ```
+
+    Replace the following:
+
+    * `FORK_NAME`: A name for your fork of the repository
+    * `GIT_USERNAME`: Your Git username
+
+4. Change to the `/docs` directory in your local repository:
+
+    ```bash
+    cd openrag/docs
+    ```
+
+    If you're running a development container for code contributions, run the documentation build from outside the container on your host terminal.
+    The documentation build might not work properly when run from inside the development container workspace.
+
+5. Install dependencies and start a local Docusaurus static site with hot reload:
+
+    ```bash
+    yarn install
+    yarn start
+    ```
+
+    The documentation is served at `http://localhost:3000`.
+
+6. To edit and create content, work with the `.mdx` files in the `openrag/docs/docs` directory.
+
+    Create new files in `.mdx` format.
+
+    Navigation is defined in `openrag/docs/sidebars.js`.
+
+    Most pages use a `slug` for shorthand cross-referencing, rather than supplying the full or relative directory path.
+    For example, if a page has a `slug` of `/cool-page`, you can link to it with `[Cool page](/cool-page)` from any other `/docs` page.
+
+7. Recommended: After making some changes, run `yarn build` to build the site locally with more robust logging.
+This can help you find broken links before creating a PR.
+
+8. Create a pull request against the `main` branch of the OpenRAG repository with a clear title and description of your changes:
+
+   * Provide a clear title in the format of `Docs: <summary of change>`. For example, `Docs: fix broken link on contributing page`. Pull request titles appear in OpenRAG's release notes, so they should explain what the PR does as explicitly as possible.
+   * Explain why and how you made the changes in the pull request description.
+   * If the pull request closes an issue, include `Closes #NUMBER` in the description, such as `Closes #1234`.
+   * If you used AI tools to write significant portions of the documentation, consider disclosing this in the PR description.
+
+9. Add the `documentation` label to your pull request.
+
+10. Keep an eye on your pull request in case an OpenRAG maintainer requests changes or asks questions.
+
+   OpenRAG technical writers can directly edit documentation PRs to enforce style guidelines and fix errors.

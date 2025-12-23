@@ -14,6 +14,7 @@ jobs:
     outputs:
       skip_release: ${{ steps.version.outputs.skip_release }}
       version: ${{ steps.version.outputs.version }}
+      docker_version: ${{ steps.version.outputs.docker_version }}
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     steps:
       - name: Checkout
@@ -25,6 +26,12 @@ jobs:
           VERSION=$(grep '^version = ' pyproject.toml | cut -d '"' -f 2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
+
+          # Normalize version per PEP 440 for Docker tags
+          # e.g., "0.1.53-rc2" -> "0.1.53rc2" to match Python's importlib.metadata
+          DOCKER_VERSION=$(echo "$VERSION" | sed -E 's/-?(rc|alpha|beta|dev|post)/\1/g')
+          echo "docker_version=$DOCKER_VERSION" >> $GITHUB_OUTPUT
+          echo "Docker Version: $DOCKER_VERSION"
 
           # Check if tag already exists
           if git rev-parse "v$VERSION" >/dev/null 2>&1; then
@@ -117,13 +124,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract version from pyproject.toml
-        id: version
-        run: |
-          VERSION=$(grep '^version = ' pyproject.toml | cut -d '"' -f 2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -141,7 +141,7 @@ jobs:
           file: ${{ matrix.file }}
           platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ matrix.tag }}:${{ steps.version.outputs.version }}-${{ matrix.arch }}
+          tags: ${{ matrix.tag }}:${{ needs.check-version.outputs.docker_version }}-${{ matrix.arch }}
           cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
 
@@ -153,12 +153,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract version from pyproject.toml
-        id: version
-        run: |
-          VERSION=$(grep '^version = ' pyproject.toml | cut -d '"' -f 2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -167,7 +161,7 @@ jobs:
 
       - name: Create and push multi-arch manifests
         run: |
-          VERSION=${{ steps.version.outputs.version }}
+          VERSION=${{ needs.check-version.outputs.docker_version }}
 
           # Create versioned tags
           docker buildx imagetools create -t langflowai/openrag-backend:$VERSION \
@@ -224,13 +218,6 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
 
-      - name: Extract version from pyproject.toml
-        id: version
-        run: |
-          VERSION=$(grep '^version = ' pyproject.toml | cut -d '"' -f 2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
       - name: Build wheel and source distribution
         run: |
           uv build
@@ -253,8 +240,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: Release ${{ steps.version.outputs.version }}
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: Release ${{ needs.check-version.outputs.version }}
           draft: false
           prerelease: ${{ needs.check-version.outputs.is_prerelease }}
           generate_release_notes: true
@@ -264,8 +251,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-     # - name: Publish to PyPI
-      #  run: |
-       #   uv publish
-        # env:
-          # UV_PUBLISH_TOKEN: ${{ secrets.UV_PUBLISH_TOKEN }}
+      - name: Publish to PyPI
+        run: |
+          uv publish
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.UV_PUBLISH_TOKEN }}

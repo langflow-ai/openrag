@@ -1,469 +1,82 @@
 ---
-title: Install OpenRAG with TUI
+title: Install OpenRAG with the automatic installer script
 slug: /install
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
-import PartialWsl from '@site/docs/_partial-wsl-install.mdx';
+import PartialSetup from '@site/docs/_partial-setup.mdx';
+import PartialPrereqCommon from '@site/docs/_partial-prereq-common.mdx';
+import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
+import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
+import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
+import PartialOpenSearchAuthMode from '@site/docs/_partial-opensearch-auth-mode.mdx';
+import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
 
-[Install OpenRAG](#install) and then run the [OpenRAG Terminal User Interface(TUI)](#setup) to start your OpenRAG deployment with a guided setup process.
+:::tip
+To quickly install and test OpenRAG's core features, try the [quickstart](/quickstart).
+:::
 
-The OpenRAG Terminal User Interface (TUI) allows you to set up, configure, and monitor your OpenRAG deployment directly from the terminal.
+The installer script installs `uv`, Docker or Podman, Docker Compose, and OpenRAG.
+Then, it installs and runs OpenRAG with `uvx`.
 
-![OpenRAG TUI Interface](@site/static/img/OpenRAG_TUI_2025-09-10T13_04_11_757637.svg)
+When you install OpenRAG with the installer script, you will use the [Terminal User Interface (TUI)](/tui) to configure and manage your OpenRAG deployment.
 
-Instead of starting OpenRAG using Docker commands and manually editing values in the `.env` file, the TUI walks you through the setup. It prompts for variables where required, creates a `.env` file for you, and then starts OpenRAG.
-
-Once OpenRAG is running, use the TUI to monitor your application, control your containers, and retrieve logs.
-
-If you prefer running Podman or Docker containers and manually editing `.env` files, see [Install OpenRAG Containers](/docker).
+This installation method is best for testing OpenRAG by running it outside of a Python project.
+For other installation methods, see [Select an installation method](/install-options).
 
 ## Prerequisites
 
-- All OpenRAG installations require [Python](https://www.python.org/downloads/release/python-3100/) version 3.13 or later.
+<PartialPrereqWindows />
 
-- If you aren't using the automatic installer script, install the following:
+<PartialPrereqPython />
 
-   - [uv](https://docs.astral.sh/uv/getting-started/installation/).
-   - [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/).
-   - [`podman-compose`](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or [Docker Compose](https://docs.docker.com/compose/install/). To use Docker Compose with Podman, you must alias Docker Compose commands to Podman commands.
+<PartialPrereqCommon />
 
-- Microsoft Windows only: To run OpenRAG on Windows, you must use the Windows Subsystem for Linux (WSL).
+## Run the installer script {#install}
 
-   <details>
-   <summary>Install WSL for OpenRAG</summary>
+1. Create a directory to store your OpenRAG configuration files and data, and then change to that directory:
 
-   <PartialWsl />
+   ```bash
+   mkdir openrag-workspace
+   cd openrag-workspace
+   ```
 
-   </details>
+2. Get and run the installer script:
 
-- Prepare model providers and credentials.
+   ```bash
+   curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
+   ```
 
-   During [application onboarding](#application-onboarding), you must select language model and embedding model providers.
-   If your chosen provider offers both types, you can use the same provider for both selections.
-   If your provider offers only one type, such as Anthropic, you must select two providers.
+   The installer script installs OpenRAG with [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) in the directory where you run the script.
 
-   Gather the credentials and connection details for your chosen model providers before starting onboarding:
+3. Wait while the installer script prepares your environment and installs OpenRAG.
+You might be prompted to install certain dependencies if they aren't already present in your environment.
 
-   - OpenAI: Create an [OpenAI API key](https://platform.openai.com/api-keys).
-   - Anthropic language models: Create an [Anthropic API key](https://www.anthropic.com/docs/api/reference).
-   - IBM watsonx.ai: Get your watsonx.ai API endpoint, IBM project ID, and IBM API key from your watsonx deployment.
-   - Ollama: Use the [Ollama documentation](https://docs.ollama.com/) to set up your Ollama instance locally, in the cloud, or on a remote server, and then get your Ollama server's base URL.
+   The entire process can take a few minutes.
+   Once the environment is ready, the OpenRAG TUI starts.
 
-- Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. If you don't have GPU capabilities, OpenRAG provides an alternate CPU-only deployment.
+   ![OpenRAG TUI Interface](@site/static/img/openrag_tui_dec_2025.png)
 
-## Install OpenRAG {#install}
-
-Choose an installation method based on your needs:
-
-* For new users, the automatic installer script detects and installs prerequisites and then runs OpenRAG. 
-* For a quick test, use `uvx` to run OpenRAG without creating a project or modifying files.
-* Use `uv add` to install OpenRAG as a managed dependency in a new or existing Python project.
-* Use `uv pip install` to install OpenRAG into an existing virtual environment.
-
-<Tabs groupId="Installation method">
-  <TabItem value="installer" label="Automatic installer" default>
-
-    The script detects and installs uv, Docker/Podman, and Docker Compose prerequisites, then runs OpenRAG with `uvx`.
-
-    1. Create a directory to store the OpenRAG configuration files:
-       ```bash
-       mkdir openrag-workspace
-       cd openrag-workspace
-       ```
-
-    2. Run the installer:
-       ```bash
-       curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
-       ```
-
-    The TUI creates a `.env` file and docker-compose files in the current working directory.
-
-  </TabItem>
-  <TabItem value="uvx" label="Quick test with uvx">
-
-    Use `uvx` to quickly run OpenRAG without creating a project or modifying any files.
-
-    1. Create a directory to store the OpenRAG configuration files:
-       ```bash
-       mkdir openrag-workspace
-       cd openrag-workspace
-       ```
-
-    2. Run OpenRAG:
-       ```bash
-       uvx openrag
-       ```
-
-       To run a specific version:
-       ```bash
-       uvx --from openrag==0.1.30 openrag
-       ```
-
-    The TUI creates a `.env` file and docker-compose files in the current working directory.
-
-  </TabItem>
-  <TabItem value="uv-add" label="Python project with uv add">
-
-    Use `uv add` to install OpenRAG as a dependency in your Python project. This adds OpenRAG to your `pyproject.toml` and lockfile, making your installation reproducible and version-controlled.
-
-    1. Create a new project with a virtual environment:
-       ```bash
-       uv init YOUR_PROJECT_NAME
-       cd YOUR_PROJECT_NAME
-       ```
-
-       The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
-
-    2. Add OpenRAG to your project:
-       ```bash
-       uv add openrag
-       ```
-
-       To add a specific version:
-       ```bash
-       uv add openrag==0.1.30
-       ```
-
-    3. Start the OpenRAG TUI:
-       ```bash
-       uv run openrag
-       ```
-
-    <details closed>
-      <summary>Install a local wheel</summary>
-      
-      If you downloaded the OpenRAG wheel to your local machine, install it by specifying its path:
-
-      1. Add the wheel to your project:
-         ```bash
-         uv add PATH/TO/openrag-VERSION-py3-none-any.whl
-         ```
-
-         Replace `PATH/TO/` and `VERSION` with the path and version of your downloaded OpenRAG `.whl` file.
-
-      2. Run OpenRAG:
-         ```bash
-         uv run openrag
-         ```
-    </details>
-
-  </TabItem>
-  <TabItem value="uv-pip" label="Existing virtual environment with uv pip install">
-
-    Use `uv pip install` to install OpenRAG into an existing virtual environment that isn't managed by `uv`.
-
-    :::tip
-    For new projects, `uv add` is recommended as it manages dependencies in your project's lockfile.
-    :::
-
-    1. Activate your virtual environment.
-
-    2. Install OpenRAG:
-       ```bash
-       uv pip install openrag
-       ```
-
-    3. Run OpenRAG:
-       ```bash
-       uv run openrag
-       ```
-
-  </TabItem>
-</Tabs>
-
-Continue with [Set up OpenRAG with the TUI](#setup).
+   Because the installer script uses `uvx`, it creates a cached, ephemeral environment in your local `uv` cache, and your OpenRAG configuration files and data are stored separately from the `uv` cache.
+   Clearing the cache doesn't delete your entire OpenRAG installation, only the temporary TUI environment.
+   After clearing the cache, run `uvx openrag` to [access the TUI](/tui) and continue with your preserved configuration and data.
 
 If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
 
 ## Set up OpenRAG with the TUI {#setup}
 
-The OpenRAG setup process creates a `.env` file at the root of your OpenRAG directory, and then starts OpenRAG.
-If it detects a `.env` file in the OpenRAG root directory, it sources any variables from the `.env` file.
+When you install OpenRAG with the installer script, you manage the OpenRAG services with the TUI.
+The TUI guides you through the initial configuration process before you start the OpenRAG services.
 
-The TUI offers two setup methods to populate the required values. **Basic Setup** can generate all minimum required values for OpenRAG. However, **Basic Setup** doesn't enable [OAuth connectors for cloud storage](/knowledge#auth). If you want to use OAuth connectors to upload documents from cloud storage, select **Advanced Setup**.
-If OpenRAG detects OAuth credentials, it recommends **Advanced Setup**.
+Your configuration values are stored in an [OpenRAG `.env` file](/reference/configuration) that is created automatically at `~/.openrag/tui`.
+If OpenRAG detects an existing `.env` file in this directory, then the TUI can populate those values automatically during setup and onboarding.
 
-<Tabs groupId="Setup method">
-  <TabItem value="Basic setup" label="Basic setup" default>
+Container definitions are stored in the `docker-compose` files in the same directory as the OpenRAG `.env` file.
 
-   1. To install OpenRAG with **Basic Setup**, click **Basic Setup** or press <kbd>1</kbd>.
-   2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
-
-       The OpenSearch password is required. The Langflow admin password is optional.
-       If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
-
-   3. Optional: Paste your OpenAI API key in the OpenAI API key field. You can also provide this during onboarding or choose a different model provider.
-   4. Click **Save Configuration**.
-   Your passwords are saved in the `.env` file used to start OpenRAG.
-   5. To start OpenRAG, click **Start All Services**.
-      Startup pulls container images and runs them, so it can take some time.
-      When startup is complete, the TUI displays the following:
-      ```bash
-      Services started successfully
-      Command completed successfully
-      ```
-   6. To start the Docling service, under **Native Services**, click **Start**.
-   7. To open the OpenRAG application, navigate to the TUI main menu, and then click **Open App**.
-   Alternatively, in your browser, navigate to `localhost:3000`.
-   8. Continue with [application onboarding](#application-onboarding).
-  </TabItem>
-  <TabItem value="Advanced setup" label="Advanced setup">
-
-   1. To install OpenRAG with **Advanced Setup**, click **Advanced Setup** or press <kbd>2</kbd>.
-   2. Click **Generate Passwords** to generate passwords for OpenSearch and Langflow.
-
-       The OpenSearch password is required. The Langflow admin password is optional.
-       If no Langflow admin password is generated, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required.
-
-   3. Paste your OpenAI API key in the OpenAI API key field.
-   4. If you want to upload documents from external storage, such as Google Drive, add the required OAuth credentials for the connectors that you want to use. These settings can be populated automatically if OpenRAG detects these credentials in a `.env` file in the OpenRAG installation directory.
-
-       * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
-       * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
-       * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
-
-       You can [manage OAuth credentials](/ingestion#oauth-ingestion) later, but it is recommended to configure them during initial set up.
-
-   5. The OpenRAG TUI presents redirect URIs for your OAuth app.
-   These are the URLs your OAuth provider will redirect back to after user sign-in.
-   Register these redirect values with your OAuth provider as they are presented in the TUI.
-   6. Click **Save Configuration**.
-   7. To start OpenRAG, click **Start All Services**.
-      Startup pulls container images and runs them, so it can take some time.
-      When startup is complete, the TUI displays the following:
-      ```bash
-      Services started successfully
-      Command completed successfully
-      ```
-   8. To start the Docling service, under **Native Services**, click **Start**.
-   9. To open the OpenRAG application, navigate to the TUI main menu, and then click **Open App**.
-   Alternatively, in your browser, navigate to `localhost:3000`.
-
-   10. If you enabled OAuth connectors, you must sign in to your OAuth provider before being redirected to your OpenRAG instance.
-
-   11. Two additional variables are available for **Advanced Setup** at this point.
-   Only change these variables if you have a non-default network configuration for your deployment, such as using a reverse proxy or custom domain.
-
-       * `LANGFLOW_PUBLIC_URL`: Sets the base address to access the Langflow web interface. This is where users interact with flows in a browser.
-
-       * `WEBHOOK_BASE_URL`: Sets the base address of the OpenRAG OAuth connector endpoint.
-       Supported webhook endpoints:
-
-           - Amazon S3: Not applicable.
-           - Google Drive: `/connectors/google_drive/webhook`
-           - OneDrive: `/connectors/onedrive/webhook`
-           - SharePoint: `/connectors/sharepoint/webhook`
-
-   12. Continue with [application onboarding](#application-onboarding).
-  </TabItem>
-</Tabs>
+<PartialSetup />
 
 <PartialOnboarding />
 
-## Exit the OpenRAG TUI
-
-To exit the OpenRAG TUI, navigate to the main menu, and then press <kbd>q</kbd>.
-The OpenRAG containers continue to run until they are stopped.
-For more information, see [Manage OpenRAG containers with the TUI ](#tui-container-management).
-
-To relaunch the TUI, run `uv run openrag`.
-If you installed OpenRAG with `uvx`, run `uvx openrag`.
-
-## Manage OpenRAG containers with the TUI {#tui-container-management}
-
-After installation, the TUI can deploy, manage, and upgrade your OpenRAG containers.
-
-### Diagnostics
-
-The **Diagnostics** menu provides health monitoring for your container runtimes and monitoring of your OpenSearch security.
-
-### Status {#status}
-
-The **Status** menu displays information on your container deployment.
-Here you can check container health, find your service ports, view logs, and upgrade your containers.
-
-* **Logs**: To view streaming logs, select the container you want to view, and press <kbd>l</kbd>.
-To copy the logs, click **Copy to Clipboard**.
-
-* **Upgrade**: Check for updates. For more information, see [upgrade OpenRAG](#upgrade).
-
-* **Factory Reset**: This is a destructive action that [resets your containers](#reset-containers).
-
-* **Native services**: [View and manage OpenRAG services](#start-all-services) that run directly on your local machine instead of a container.
-
-### Reset containers {#reset-containers}
-
-Reset your OpenRAG deployment by recreating the containers and removing some related data.
-
-:::warning
-This is a destructive action that destroys the following:
-
-* All OpenRAG containers, volumes, and local images
-* Any additional Docker objects
-* The contents of OpenRAG's `config` and `./opensearch-data` directories
-* The `conversations.json` file
-
-This operation _doesn't_ remove the `.env` file or the contents of the `./openrag-documents` directory.
-:::
-
-1. To destroy and recreate your OpenRAG containers, go to the TUI [**Status** menu](#status), and then click **Factory Reset**.
-
-   This function runs the following commands _and_ deletes the contents of OpenRAG's `config` and `./opensearch-data` directories.
-
-   ```bash
-   docker compose down --volumes --remove-orphans --rmi local
-   docker system prune -f
-   ```
-
-2. If you reset your containers as part of reinstalling OpenRAG, continue the [reinstallation process](#reinstall) after resetting the containers.
-Otherwise, in the TUI **Setup** menu, repeat the [setup process](#setup) to start the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
-
-### Start all services {#start-all-services}
-
-Through the TUI, you can view and manage OpenRAG services that run in containers and directly on your local machine.
-
-#### Start containers
-
-On the TUI main page or the **Setup** menu, click **Start All Services** to start the OpenRAG containers and launch OpenRAG itself.
-
-When you start all services, the following processes happen:
-
-1. OpenRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses.
-
-2. OpenRAG pulls the OpenRAG container images with `docker compose pull` if any images are missing.
-
-3. OpenRAG deploys the containers with `docker compose up -d`.
-
-#### Start native services (Docling)
-
-A _native service_ in OpenRAG is a service that runs locally on your machine, not within a container. For example, the `docling serve` process is an OpenRAG native service because this document processing service runs on your local machine, separate from the OpenRAG containers.
-
-From the **Status** menu, you can view the status, port, and process ID (PID) of the OpenRAG native services.
-You can also click **Stop** or **Restart** to stop and start OpenRAG native services.
-
-## Upgrade OpenRAG {#upgrade}
-
-To upgrade OpenRAG, upgrade the OpenRAG Python package, and then upgrade the OpenRAG containers.
-
-This is a two part process because upgrading the OpenRAG Python package updates the TUI and Python code, but the container versions are controlled by environment variables in your `.env` file.
-
-1. Stop your OpenRAG containers: In the OpenRAG TUI, go to the **Status** menu, and then click **Stop Services**.
-
-2. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
-
-    <Tabs groupId="Installation method">
-    <TabItem value="installer" label="Automatic installer or uvx" default>
-
-    Use these steps to upgrade the Python package if you installed OpenRAG using the automatic installer or `uvx`:
-
-    1. Navigate to your OpenRAG workspace directory:
-
-        ```bash
-        cd openrag-workspace
-        ```
-
-    2. Upgrade the OpenRAG package:
-
-        ```bash
-        uvx --from openrag openrag
-        ```
-
-        To upgrade to a specific version:
-
-        ```bash
-        uvx --from openrag==0.1.33 openrag
-        ```
-
-    </TabItem>
-    <TabItem value="uv-add" label="Python project (uv add)">
-
-    Use these steps to upgrade the Python package if you installed OpenRAG in a Python project with `uv add`:
-
-    1. Navigate to your project directory:
-
-        ```bash
-        cd YOUR_PROJECT_NAME
-        ```
-
-    2. Update OpenRAG to the latest version:
-
-        ```bash
-        uv add --upgrade openrag
-        ```
-
-        To upgrade to a specific version:
-
-        ```bash
-        uv add --upgrade openrag==0.1.33
-        ```
-
-    3. Start the OpenRAG TUI:
-
-        ```bash
-        uv run openrag
-        ```
-
-    </TabItem>
-    <TabItem value="uv-pip" label="Virtual environment (uv pip install)">
-
-    Use these steps to upgrade the Python package if you installed OpenRAG in a venv with `uv pip install`:
-
-    1. Activate your virtual environment.
-
-    2. Upgrade OpenRAG:
-
-        ```bash
-        uv pip install --upgrade openrag
-        ```
-
-        To upgrade to a specific version:
-
-        ```bash
-        uv pip install --upgrade openrag==0.1.33
-        ```
-
-    3. Start the OpenRAG TUI:
-
-        ```bash
-        uv run openrag
-        ```
-
-    </TabItem>
-    </Tabs>
-
-3. Start the upgraded OpenRAG containers: In the OpenRAG TUI, click **Start All Services**, and then wait while the containers start.
-
-    After upgrading the Python package, OpenRAG runs `docker compose pull` to get the appropriate container images matching the version specified in your OpenRAG `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
-
-    In the `.env` file, the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) is set to `latest` by default, which it pulls the `latest` available container images.
-    To pin a specific container image version, you can set `OPENRAG_VERSION` to the desired container image version, such as `OPENRAG_VERSION=0.1.33`.
-
-    However, when you upgrade the Python package, OpenRAG automatically attempts to keep the `OPENRAG_VERSION` synchronized with the Python package version.
-    You might need to edit the `.env` file after upgrading the Python package to enforce a different container version.
-    The TUI warns you if it detects a version mismatch.
-
-    If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
-
-4. When the upgrade process is complete, you can close the **Status** window and continue using OpenRAG.
-
-## Reinstall OpenRAG {#reinstall}
-
-Reset your OpenRAG deployment by recreating the containers and, optionally, removing related data:
-
-1. In the TUI, [reset your containers](#reset-containers) to destroy the following:
-
-   * All existing OpenRAG containers, volumes, and local images
-   * Any additional Docker objects
-   * The contents of OpenRAG's `config` and `./opensearch-data` directories
-   * The `conversations.json` file
-
-2. Optional: Remove data that wasn't deleted by the **Factory Reset** operation. For a completely fresh installation, delete all of this data.
-
-    * **OpenRAG's `.env` file**: Contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth settings, and other [environment variables](/reference/configuration). If you delete this file, you must either repeat the [setup process](#setup) to create a new `.env` file, or add a populated `.env` file to your OpenRAG installation directory before restarting OpenRAG.
-    * **The contents of the `./openrag-documents` directory**: Contains documents that you uploaded to OpenRAG. Delete these files to prevent documents from being reingested to your knowledge base after restarting OpenRAG. However, you might want to preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
-
-3. In the TUI **Setup** menu, repeat the [setup process](#setup) to configure OpenRAG, restart the services, and launch the OpenRAG app, and repeat [application onboarding](#application-onboarding).
-If OpenRAG detects a `.env` file, it automatically populates any OpenRAG passwords, OAuth credentials, and onboarding configuration set in that file.
+<PartialInstallNextSteps />

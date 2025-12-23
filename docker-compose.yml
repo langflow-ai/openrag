@@ -80,10 +80,11 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     volumes:
-      - ./openrag-documents:/app/openrag-documents:Z
-      - ./keys:/app/keys:Z
-      - ./flows:/app/flows:U,z
-      - ./config:/app/config:Z
+      - ${OPENRAG_DOCUMENTS_PATH:-./openrag-documents}:/app/openrag-documents:Z
+      - ${OPENRAG_KEYS_PATH:-./keys}:/app/keys:Z
+      - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
+      - ${OPENRAG_CONFIG_PATH:-./config}:/app/config:Z
+      - ${OPENRAG_DATA_PATH:-./data}:/app/data:Z
 
   openrag-frontend:
     image: langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
@@ -100,7 +101,7 @@ services:
 
   langflow:
     volumes:
-      - ./flows:/app/flows:U,z
+      - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
     image: langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
     build:
       context: .
@@ -109,7 +110,9 @@ services:
     ports:
       - "7860:7860"
     environment:
-      - LANGFLOW_DEACTIVATE_TRACING=true
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-None}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-None}
       - WATSONX_API_KEY=${WATSONX_API_KEY:-None}
@@ -130,7 +133,6 @@ services:
       - MIMETYPE=None
       - FILESIZE=0
       - SELECTED_EMBEDDING_MODEL=${SELECTED_EMBEDDING_MODEL:-}
-      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
       - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_API_KEY,WATSONX_ENDPOINT,WATSONX_PROJECT_ID,OLLAMA_BASE_URL
       - LANGFLOW_LOG_LEVEL=DEBUG
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}

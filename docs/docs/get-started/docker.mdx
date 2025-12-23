@@ -1,118 +1,112 @@
 ---
-title: Install OpenRAG containers
+title: Deploy OpenRAG with self-managed services
 slug: /docker
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
-import PartialWsl from '@site/docs/_partial-wsl-install.mdx';
+import PartialPrereqCommon from '@site/docs/_partial-prereq-common.mdx';
+import PartialPrereqNoScript from '@site/docs/_partial-prereq-no-script.mdx';
+import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
+import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
+import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
+import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
 
-OpenRAG has two Docker Compose files. Both files deploy the same applications and containers locally, but they are for different environments:
+To manage your own OpenRAG services, deploy OpenRAG with Docker or Podman.
 
-- [`docker-compose.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml) is an OpenRAG deployment with GPU support for accelerated AI processing. This Docker Compose file requires an NVIDIA GPU with [CUDA](https://docs.nvidia.com/cuda/) support.
-
-- [`docker-compose-cpu.yml`](https://github.com/langflow-ai/openrag/blob/main/docker-compose-cpu.yml) is a CPU-only version of OpenRAG for systems without NVIDIA GPU support. Use this Docker Compose file for environments where GPU drivers aren't available.
+Use this installation method if you don't want to [use the Terminal User Interface (TUI)](/tui), or you need to run OpenRAG in an environment where using the TUI is unfeasible.
 
 ## Prerequisites
 
-- Install the following:
+<PartialPrereqWindows />
 
-   - [Python](https://www.python.org/downloads/release/python-3100/) version 3.13 or later.
-   - [uv](https://docs.astral.sh/uv/getting-started/installation/).
-   - [Podman](https://podman.io/docs/installation) (recommended) or [Docker](https://docs.docker.com/get-docker/).
-   - [`podman-compose`](https://docs.podman.io/en/latest/markdown/podman-compose.1.html) or [Docker Compose](https://docs.docker.com/compose/install/). To use Docker Compose with Podman, you must alias Docker Compose commands to Podman commands.
+<PartialPrereqPython />
 
-- Microsoft Windows only: To run OpenRAG on Windows, you must use the Windows Subsystem for Linux (WSL).
+<PartialPrereqNoScript />
 
-   <details>
-   <summary>Install WSL for OpenRAG</summary>
+<PartialPrereqCommon />
 
-   <PartialWsl />
+## Prepare your deployment {#setup}
 
-   </details>
+1. Clone the OpenRAG repository:
 
-- Prepare model providers and credentials.
-
-   During [application onboarding](#application-onboarding), you must select language model and embedding model providers.
-   If your chosen provider offers both types, you can use the same provider for both selections.
-   If your provider offers only one type, such as Anthropic, you must select two providers.
-
-   Gather the credentials and connection details for your chosen model providers before starting onboarding:
-
-   - OpenAI: Create an [OpenAI API key](https://platform.openai.com/api-keys).
-   - Anthropic language models: Create an [Anthropic API key](https://www.anthropic.com/docs/api/reference).
-   - IBM watsonx.ai: Get your watsonx.ai API endpoint, IBM project ID, and IBM API key from your watsonx deployment.
-   - Ollama: Use the [Ollama documentation](https://docs.ollama.com/) to set up your Ollama instance locally, in the cloud, or on a remote server, and then get your Ollama server's base URL.
-
-- Optional: Install GPU support with an NVIDIA GPU, [CUDA](https://docs.nvidia.com/cuda/) support, and compatible NVIDIA drivers on the OpenRAG host machine. This is required to use the GPU-accelerated Docker Compose file. If you choose not to use GPU support, you must use the CPU-only Docker Compose file instead.
-
-## Install OpenRAG with Docker Compose
-
-To install OpenRAG with Docker Compose, do the following:
-
-1. Clone the OpenRAG repository.
    ```bash
    git clone https://github.com/langflow-ai/openrag.git
+   ```
+
+2. Change to the root of the cloned repository:
+
+   ```bash
    cd openrag
    ```
 
-2. Install dependencies.
+3. Install dependencies:
+
    ```bash
    uv sync
    ```
 
-3. Copy the example `.env` file included in the repository root.
-  The example file includes all environment variables with comments to guide you in finding and setting their values.
+4. Create a `.env` file at the root of the cloned repository.
+
+   You can create an empty file or copy the repository's [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example) file.
+   The example file contains some of the [OpenRAG environment variables](/reference/configuration) to get you started with configuring your deployment.
+
    ```bash
    cp .env.example .env
    ```
 
-   Alternatively, create a new `.env` file in the repository root.
-   ```
-   touch .env
-   ```
+5. Edit the `.env` file to configure your deployment using [OpenRAG environment variables](/reference/configuration).
+The OpenRAG Docker Compose files pull values from your `.env` file to configure the OpenRAG containers.
+The following variables are required or recommended:
 
-4. The Docker Compose files are populated with the values from your `.env` file. 
-   The `OPENSEARCH_PASSWORD` value must be set.
-   `OPENSEARCH_PASSWORD` can be automatically generated when using the TUI, but for a Docker Compose installation, you can set it manually instead. To generate an OpenSearch admin password, see the [OpenSearch documentation](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
+   * **`OPENSEARCH_PASSWORD` (Required)**: Sets the OpenSearch administrator password. It must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
 
-   The following values are optional:
+   * **`LANGFLOW_SUPERUSER`**: The username for the Langflow administrator user. If `LANGFLOW_SUPERUSER` isn't set, then the default value is `admin`.
 
-   ```bash
-   OPENAI_API_KEY=your_openai_api_key
-   LANGFLOW_SECRET_KEY=your_secret_key
-   ```
+   * **`LANGFLOW_SUPERUSER_PASSWORD` (Strongly recommended)**: Sets the Langflow administrator password, and determines the Langflow server's default authentication mode. If `LANGFLOW_SUPERUSER_PASSWORD` isn't set, then the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
 
-   `OPENAI_API_KEY` is optional. You can provide it during [application onboarding](#application-onboarding) or choose a different model provider. If you want to set it in your `.env` file, you can find your OpenAI API key in your [OpenAI account](https://platform.openai.com/api-keys).
+   * **`LANGFLOW_SECRET_KEY` (Strongly recommended)**: A secret encryption key for internal Langflow operations. It is recommended to [generate your own Langflow secret key](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key). If `LANGFLOW_SECRET_KEY` isn't set, then Langflow generates a secret key automatically.
 
-   `LANGFLOW_SECRET_KEY` is optional. Langflow will auto-generate it if not set. For more information, see the [Langflow documentation](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key).
+   * **Model provider credentials**: Provide credentials for your preferred model providers. If none of these are set in the `.env` file, you must configure at least one provider during the [application onboarding process](#application-onboarding).
 
-   The following Langflow configuration values are optional but important to consider:
+      * `OPENAI_API_KEY`
+      * `ANTHROPIC_API_KEY`
+      * `OLLAMA_ENDPOINT`
+      * `WATSONX_API_KEY`
+      * `WATSONX_ENDPOINT`
+      * `WATSONX_PROJECT_ID`
 
-   ```bash
-   LANGFLOW_SUPERUSER=admin
-   LANGFLOW_SUPERUSER_PASSWORD=your_langflow_password
-   ```
+   * **OAuth provider credentials**: To upload documents from external storage, such as Google Drive, set the required OAuth credentials for the connectors that you want to use. You can [manage OAuth credentials](/ingestion#oauth-ingestion) later, but it is recommended to configure them during initial set up so you don't have to rebuild the containers.
 
-   `LANGFLOW_SUPERUSER` defaults to `admin`. You can omit it or set it to a different username. `LANGFLOW_SUPERUSER_PASSWORD` is optional. If omitted, Langflow runs in [autologin mode](https://docs.langflow.org/api-keys-and-authentication#langflow-auto-login) with no password required. If set, Langflow requires password authentication.
-   
-   For more information on configuring OpenRAG with environment variables, see [Environment variables](/reference/configuration).
+      * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
+      * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
+      * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
 
-5. Start `docling serve` on the host machine.
-   OpenRAG Docker installations require that `docling serve` is running on port 5001 on the host machine.
-   This enables [Mac MLX](https://opensource.apple.com/projects/mlx/) support for document processing.
-   
+   For more information and variables, see [OpenRAG environment variables](/reference/configuration).
+
+## Start services
+
+1. Start `docling serve` on port 5001 on the host machine:
+
    ```bash
    uv run python scripts/docling_ctl.py start --port 5001
    ```
-   
-6. Confirm `docling serve` is running.
-   ```
+
+   Docling cannot run inside a Docker container due to system-level dependencies, so you must manage it as a separate service on the host machine.
+   For more information, see [Stop, start, and inspect native services](/manage-services#start-native-services).
+
+   This port is required to deploy OpenRAG successfully; don't use a different port.
+   Additionally, this enables the [MLX framework](https://opensource.apple.com/projects/mlx/) for accelerated performance on Apple Silicon Mac machines.
+
+2. Confirm `docling serve` is running.
+
+   ```bash
    uv run python scripts/docling_ctl.py status
    ```
 
-   Make sure the response shows that `docling serve` is running, for example:
+   If `docling serve` is running, the output includes the status, address, and process ID (PID):
+
    ```bash
    Status: running
    Endpoint: http://127.0.0.1:5001
@@ -120,239 +114,52 @@ To install OpenRAG with Docker Compose, do the following:
    PID: 27746
    ```
 
-7. Deploy OpenRAG locally with Docker Compose based on your deployment type.
+3. Deploy the OpenRAG containers locally using the appropriate Docker Compose configuration for your environment.
 
-   <Tabs groupId="Compose file">
-     <TabItem value="docker-compose.yml" label="docker-compose.yml" default>
-   ```bash
-   docker compose build
-   docker compose up -d
-   ```   
-     </TabItem>
-     <TabItem value="docker-compose-cpu.yml" label="docker-compose-cpu.yml">
-   
-   ```bash
-   docker compose -f docker-compose-cpu.yml up -d
-   ```
-   
-     </TabItem>
-   </Tabs>
+   * **GPU-accelerated deployment**: If your host machine has an NVIDIA GPU with CUDA support and compatible NVIDIA drivers, use the base `docker-compose.yml` file with the `docker-compose.gpu.yml` override.
 
-   The OpenRAG Docker Compose file starts five containers:
-   | Container Name | Default Address | Purpose |
-   |---|---|---|
-   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
-   | OpenRAG Frontend | http://localhost:3000 | React web interface for users. |
-   | Langflow | http://localhost:7860 | AI workflow engine and flow management. |
-   | OpenSearch | http://localhost:9200 | Vector database for document storage. |
-   | OpenSearch Dashboards | http://localhost:5601 | Database administration interface. |
-
-8. Verify installation by confirming all services are running.
-
-   ```bash
-   docker compose ps
-   ```
-
-   You can now access OpenRAG at the following endpoints:
-
-   - **Frontend**: http://localhost:3000
-   - **Backend API**: http://localhost:8000
-   - **Langflow**: http://localhost:7860
-
-9. Continue with [application onboarding](#application-onboarding).
-
-To stop `docling serve` when you're done with your OpenRAG deployment, run:
-
-```bash
-uv run python scripts/docling_ctl.py stop
-```
-
-<PartialOnboarding />
-
-## Container management commands
-
-Manage your OpenRAG containers with the following commands.
-These commands are also available in the TUI's [Status menu](/install#status).
-
-### Upgrade containers {#upgrade-containers}
-
-Upgrade your containers to the latest version while preserving your data.
-
-```bash
-docker compose pull
-docker compose up -d --force-recreate
-```
-
-### Reset containers (destructive) {#reset-containers}
-
-:::warning
-These are destructive operations that reset your OpenRAG deployment to an initial state.
-Be aware that data is lost and cannot be recovered after running these commands.
-:::
-
-<Tabs>
-<TabItem value="docker-compose" label="Docker Compose" default>
-
-* Rebuild containers: This command destroys and recreates the containers. Data stored exclusively on the containers is lost, such as Langflow flows.
-The `.env` file, `config` directory, `./openrag-documents` directory, `./opensearch-data` directory, and the `conversations.json` file are preserved.
-
-   ```bash
-   docker compose up --build --force-recreate --remove-orphans
-   ```
-
-* Destroy and recreate containers with the option for additional data removal: These commands destroy the containers, and then recreate them.
-This allows you to delete other OpenRAG data before recreating the containers.
-
-   1. Destroy the containers, volumes, and local images, and then remove (prune) any additional Docker objects:
-
-      ```bash
-      docker compose down --volumes --remove-orphans --rmi local
-      docker system prune -f
+      ```bash title="Docker"
+      docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
       ```
 
-   2. Optional: Remove data that wasn't deleted by the previous commands:
+      ```bash title="Podman"
+      podman compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+      ```
 
-      * OpenRAG's `.env` file
-      * The contents of OpenRAG's `config` directory
-      * The contents of the `./openrag-documents` directory
-      * The contents of the `./opensearch-data` directory
-      * The `conversations.json` file
+   * **CPU-only deployment** (default): If your host machine doesn't have NVIDIA GPU support, use the base `docker-compose.yml` file.
 
-   3. Recreate the containers:
-
-      ```bash
+      ```bash title="Docker"
       docker compose up -d
       ```
 
-</TabItem>
-<TabItem value="Podman-compose" label="Podman Compose">
-
-* Rebuild containers: This command destroys and recreates the containers. Data stored exclusively on the containers is lost, such as Langflow flows.
-The `.env` file, `config` directory, `./openrag-documents` directory, `./opensearch-data` directory, and the `conversations.json` file are preserved.
-
-   ```bash
-   podman-compose up --build --force-recreate --remove-orphans
-   ```
-
-* Destroy and recreate containers with the option for additional data removal: These commands destroy the containers, and then recreate them.
-This allows you to delete other OpenRAG data before recreating the containers.
-
-   1. Destroy the containers, volumes, and local images, and then remove (prune) any additional Podman objects:
-
-      ```bash
-      podman-compose down --volumes --remove-orphans --rmi local
-      podman system prune -f
+      ```bash title="Podman"
+      podman compose up -d
       ```
 
-   2. Optional: Remove data that wasn't deleted by the previous commands:
+4. Wait for the OpenRAG containers to start, and then confirm that all containers are running:
 
-      * OpenRAG's `.env` file
-      * The contents of OpenRAG's `config` directory
-      * The contents of the `./openrag-documents` directory
-      * The contents of the `./opensearch-data` directory
-      * The `conversations.json` file
-
-   3. Recreate the containers:
-
-      ```bash
-      podman-compose up -d
-      ```
-
-</TabItem>
-<TabItem value="docker" label="Docker">
-
-1. Stop all running containers:
-
-   ```bash
-   docker stop $(docker ps -q)
+   ```bash title="Docker"
+   docker compose ps
    ```
 
-2. Remove all containers, including stopped containers:
-
-   ```bash
-   docker rm --force $(docker ps -aq)
+   ```bash title="Podman"
+   podman compose ps
    ```
 
-3. Remove all images:
+   The OpenRAG Docker Compose files deploy the following containers:
 
-   ```bash
-   docker rmi --force $(docker images -q)
-   ```
+   | Container Name | Default address | Purpose |
+   |---|---|---|
+   | OpenRAG Backend | http://localhost:8000 | FastAPI server and core functionality. |
+   | OpenRAG Frontend | http://localhost:3000 | React web interface for user interaction. |
+   | Langflow | http://localhost:7860 | [AI workflow engine](/agents). |
+   | OpenSearch | http://localhost:9200 | Datastore for [knowledge](/knowledge). |
+   | OpenSearch Dashboards | http://localhost:5601 | OpenSearch database administration interface. |
 
-4. Remove all volumes:
+   When the containers are running, you can access your OpenRAG services at their addresses.
 
-   ```bash
-   docker volume prune --force
-   ```
+5. Access the OpenRAG frontend at `http://localhost:3000`, and then continue with the [application onboarding process](#application-onboarding).
 
-5. Remove all networks except the default network:
+<PartialOnboarding />
 
-   ```bash
-   docker network prune --force
-   ```
-
-6. Clean up any leftover data:
-
-   ```bash
-   docker system prune --all --force --volumes
-   ```
-
-7. Optional: Remove data that wasn't deleted by the previous commands:
-
-   * OpenRAG's `.env` file
-   * The contents of OpenRAG's `config` directory
-   * The contents of the `./openrag-documents` directory
-   * The contents of the `./opensearch-data` directory
-   * The `conversations.json` file
-
-</TabItem>
-<TabItem value="podman" label="Podman">
-
-1. Stop all running containers:
-
-   ```bash
-   podman stop --all
-   ```
-
-2. Remove all containers, including stopped containers:
-
-   ```bash
-   podman rm --all --force
-   ```
-
-3. Remove all images:
-
-   ```bash
-   podman rmi --all --force
-   ```
-
-4. Remove all volumes:
-
-   ```bash
-   podman volume prune --force
-   ```
-
-5. Remove all networks except the default network:
-
-   ```bash
-   podman network prune --force
-   ```
-
-6. Clean up any leftover data:
-
-   ```bash
-   podman system prune --all --force --volumes
-   ```
-
-7. Optional: Remove data that wasn't deleted by the previous commands:
-
-   * OpenRAG's `.env` file
-   * The contents of OpenRAG's `config` directory
-   * The contents of the `./openrag-documents` directory
-   * The contents of the `./opensearch-data` directory
-   * The `conversations.json` file
-
-</TabItem>
-</Tabs>
-
-After resetting your containers, you must repeat [application onboarding](#application-onboarding).
+<PartialInstallNextSteps />

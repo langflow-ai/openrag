@@ -1,0 +1,58 @@
+{
+  "name": "openrag-sdk",
+  "version": "0.1.1",
+  "description": "Official TypeScript/JavaScript SDK for OpenRAG API",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "openrag",
+    "rag",
+    "retrieval",
+    "ai",
+    "sdk",
+    "api",
+    "typescript",
+    "javascript"
+  ],
+  "author": "OpenRAG Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/langflow-ai/openrag"
+  },
+  "homepage": "https://docs.openr.ag/sdk/typescript",
+  "bugs": {
+    "url": "https://github.com/langflow-ai/openrag/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

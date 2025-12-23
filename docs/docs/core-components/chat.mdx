@@ -31,10 +31,10 @@ When you inspect this flow, you can edit the components to customize the agent's
 
 ![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
 
-* [**Chat Input** component](https://docs.langflow.org/components-io): This component starts the flow when it receives a chat message. It is connected to the **Agent** component's **Input** port.
+* [**Chat Input** component](https://docs.langflow.org/chat-input-and-output#chat-input): This component starts the flow when it receives a chat message. It is connected to the **Agent** component's **Input** port.
 When you use the OpenRAG **Chat**, your chat messages are passed to the **Chat Input** component, which then sends them to the **Agent** component for processing.
 
-* [**Agent** component](https://docs.langflow.org/agents): This component orchestrates the entire flow by processing chat messages, searching the knowledge base, and organizing the retrieved information into a cohesive response.
+* [**Agent** component](https://docs.langflow.org/components-agents): This component orchestrates the entire flow by processing chat messages, searching the knowledge base, and organizing the retrieved information into a cohesive response.
 The agent's general behavior is defined by the prompt in the **Agent Instructions** field and the model connected to the **Language Model** port.
 One or more specialized tools can be attached to the **Tools** port to extend the agent's capabilities. In this case, there are two tools: **MCP Tools** and **OpenSearch**.
 
@@ -66,10 +66,10 @@ This flow fetches content from URLs, and then stores the content in your OpenRAG
 
    It is critical that the embedding model used here matches the embedding model used when you [upload documents to your knowledge base](/ingestion). Mismatched models and dimensions can degrade the quality of similarity search results causing the agent to retrieve irrelevant documents from your knowledge base.
 
-* [**Text Input** component](https://docs.langflow.org/components-io): Connected to the **OpenSearch** component's **Search Filters** port, this component is populated with a Langflow global variable named `OPENRAG-QUERY-FILTER`. If a global or chat-level [knowledge filter](/knowledge-filters) is set, then the variable contains the filter expression, which limits the documents that the agent can access in the knowledge base.
+* [**Text Input** component](https://docs.langflow.org/text-input-and-output#text-input): Connected to the **OpenSearch** component's **Search Filters** port, this component is populated with a Langflow global variable named `OPENRAG-QUERY-FILTER`. If a global or chat-level [knowledge filter](/knowledge-filters) is set, then the variable contains the filter expression, which limits the documents that the agent can access in the knowledge base.
 If no knowledge filter is set, then the `OPENRAG-QUERY-FILTER` variable is empty, and the agent can access all documents in the knowledge base.
 
-* [**Chat Output** component](https://docs.langflow.org/components-io): Connected to the **Agent** component's **Output** port, this component returns the agent's generated response as a chat message.
+* [**Chat Output** component](https://docs.langflow.org/chat-input-and-output#chat-output): Connected to the **Agent** component's **Output** port, this component returns the agent's generated response as a chat message.
 
 ## Nudges {#nudges}
 
@@ -100,3 +100,11 @@ To simplify this integration, you can get pre-configured code snippets directly 
 The following example demonstrates how to generate and use code snippets for the **OpenRAG OpenSearch Agent** flow:
 
 <PartialIntegrateChat />
+
+## Troubleshoot chat {#troubleshoot-chat}
+
+The following issues can occur when using the OpenRAG **Chat** feature:
+
+* Documents seem to be missing or interpreted incorrectly: See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
+* Service is suddenly unavailable when it was working previously: If there is no other obvious cause, such as the service or container VM being stopped or disconnected, there might be a problem with the flow configuration. Use the [**Restore flow** option](/agents#revert-a-built-in-flow-to-its-original-configuration) to revert the **OpenRAG OpenSearch Agent** flow to its original configuration.
+If you made customizations to the flow, make sure to [export your flow](https://docs.langflow.org/concepts-flows-import) before restoring the flow.

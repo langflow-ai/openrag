@@ -4,13 +4,12 @@ slug: /knowledge
 ---
 
 import Icon from "@site/src/components/icon/icon";
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
+import PartialOpenSearchAuthMode from '@site/docs/_partial-opensearch-auth-mode.mdx';
 
 OpenRAG includes a built-in [OpenSearch](https://docs.opensearch.org/latest/) instance that serves as the underlying datastore for your _knowledge_ (documents).
 This specialized database is used to store and retrieve your documents and the associated vector data (embeddings).
 
-The documents in your OpenSearch knowledge base provide specialized context in addition to the general knowledge available to the language model that you select when you [install OpenRAG](/install) or [edit a flow](/agents).
+The documents in your OpenSearch knowledge base provide specialized context in addition to the general knowledge available to the language model that you select when you [install OpenRAG](/install-options) or [edit a flow](/agents).
 
 You can [upload documents](/ingestion) from a variety of sources to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
 Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
@@ -26,26 +25,22 @@ The **Knowledge** page lists the documents OpenRAG has ingested into your OpenSe
 To explore the raw contents of your knowledge base, click <Icon name="Library" aria-hidden="true"/> **Knowledge** to get a list of all ingested documents.
 Click a document to view the chunks produced from splitting the document during ingestion.
 
-By default, OpenRAG includes some initial documents about OpenRAG. You can use these documents to ask OpenRAG about itself, and to test the [**Chat**](/chat) feature before uploading your own documents.
-If you [delete these documents](#delete-knowledge), you won't be able to ask OpenRAG about itself and it's own functionality.
+### Default documents {#default-documents}
+
+By default, OpenRAG includes some initial documents about OpenRAG.
+These documents are ingested automatically during the [application onboarding process](/install#application-onboarding).
+
+You can use these documents to ask OpenRAG about itself, and to test the [**Chat**](/chat) feature before uploading your own documents.
+
+If you [delete](#delete-knowledge) these documents, you won't be able to ask OpenRAG about itself and it's own functionality.
 It is recommended that you keep these documents, and use [filters](/knowledge-filters) to separate them from your other knowledge.
 
 ## OpenSearch authentication and document access {#auth}
 
-When you [install OpenRAG](/install), you can choose between two setup modes: **Basic Setup** and **Advanced Setup**.
-The mode you choose determines how OpenRAG authenticates with OpenSearch and controls access to documents:
+When you [install OpenRAG](/install-options), you provide the initial configuration values for your OpenRAG services, including authentication credentials for OpenSearch and OAuth connectors.
+This configuration determines how OpenRAG authenticates with your deployment's OpenSearch instance, and it controls user access to documents in your knowledge base:
 
-* **Basic Setup (no-auth mode)**: If you choose **Basic Setup**, then OpenRAG is installed in no-auth mode.
-This mode uses one, anonymous JWT token for OpenSearch authentication.
-There is no differentiation between users.
-All users that access your OpenRAG instance can access all documents uploaded to your OpenSearch knowledge base.
-
-* **Advanced Setup (OAuth mode)**: If you choose **Advanced Setup**, then OpenRAG is installed in OAuth mode.
-This mode uses a unique JWT token for each OpenRAG user, and each document is tagged with user ownership. Documents are filtered by user owner.
-This means users see only the documents that they uploaded or have access to.
-
-You can enable OAuth mode after installation.
-For more information, see [Ingest files with OAuth connectors](/ingestion#oauth-ingestion).
+<PartialOpenSearchAuthMode />
 
 ## OpenSearch indexes
 
@@ -75,18 +70,18 @@ If needed, you can use [filters](/knowledge-filters) to separate documents that 
 
 ### Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
 
-When you [install OpenRAG](/install), you select at least one embedding model during [application onboarding](/install#application-onboarding).
+When you [install OpenRAG](/install-options), you select at least one embedding model during the [application onboarding process](/install#application-onboarding).
 OpenRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
 
 In the OpenRAG repository, you can find the complete list of supported models in [`models_service.py`](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py) and the corresponding vector dimensions in [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
 
-During application onboarding, you can select from the supported models.
+During the application onboarding process, you can select from the supported models.
 The default embedding dimension is `1536`, and the default model is the OpenAI `text-embedding-3-small`.
 
-If you want to use an unsupported model, you must manually set the model in your [OpenRAG configuration](/reference/configuration).
+If you want to use an unsupported model, you must manually set the model in your [OpenRAG `.env` file](/reference/configuration).
 If you use an unsupported embedding model that doesn't have defined dimensions in `settings.py`, then OpenRAG falls back to the default dimensions (1536) and logs a warning. OpenRAG's OpenSearch instance and flows continue to work, but [similarity search](https://www.ibm.com/think/topics/vector-search) quality can be affected if the actual model dimensions aren't 1536.
 
-To change the embedding model after onboarding, it is recommended that you modify the embedding model setting in the OpenRAG **Settings** page or in your [OpenRAG configuration](/reference/configuration).
+To change the embedding model after onboarding, it is recommended that you modify the embedding model setting in the OpenRAG **Settings** page or in your [OpenRAG `.env` file](/reference/configuration).
 This will automatically update all relevant [OpenRAG flows](/agents) to use the new embedding model configuration.
 
 ### Set Docling parameters
@@ -97,35 +92,26 @@ When you [upload documents](/ingestion), Docling processes the files, splits the
 
 You can use either Docling Serve or OpenRAG's built-in Docling ingestion pipeline to process documents.
 
-<Tabs>
-<TabItem value="serve" label="Docling Serve ingestion" default>
-
-By default, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve).
+* **Docling Serve ingestion**: By default, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve).
 This means that OpenRAG starts a `docling serve` process on your local machine and runs Docling ingestion through an API service.
 
-</TabItem>
-<TabItem value="docling" label="Built-in Docling ingestion">
+* **Built-in Docling ingestion**: If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG environment variables](/reference/configuration#document-processing-settings).
 
-If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG environment variables](/reference/configuration#document-processing).
+   The built-in pipeline uses the Docling processor directly instead of through the Docling Serve API.
 
-The built-in pipeline uses the Docling processor directly instead of through the Docling Serve API.
-
-For the underlying functionality, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
-
-</TabItem>
-</Tabs>
+   For the underlying functionality, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
 
 To modify the Docling ingestion and embedding parameters, click <Icon name="Settings2" aria-hidden="true"/> **Settings** in the OpenRAG user interface.
 
 :::tip
 OpenRAG warns you if `docling serve` isn't running.
-You can [start and stop OpenRAG services](/install#tui-container-management) from the TUI main menu with **Start Native Services** or **Stop Native Services**.
+For information about starting and stopping OpenRAG native services, like Docling, see [Manage OpenRAG services](/manage-services).
 :::
 
 * **Embedding model**: Select the model to use to generate vector embeddings for your documents.
 
    This is initially set during installation.
-   The recommended way to change this setting is in the OpenRAG **Settings** or your [OpenRAG configuration](/reference/configuration).
+   The recommended way to change this setting is in the OpenRAG **Settings** or your [OpenRAG `.env` file](/reference/configuration).
    This will automatically update all relevant [OpenRAG flows](/agents) to use the new embedding model configuration.
 
    If you uploaded documents prior to changing the embedding model, you can [create filters](/knowledge-filters) to separate documents embedded with different models, or you can reupload all documents to regenerate embeddings with the new model.
@@ -151,14 +137,17 @@ The default value is 200 characters, which represents an overlap of 20 percent i
 
 ### Set the local documents path {#set-the-local-documents-path}
 
-The default path for local uploads is the `./openrag-documents` subdirectory in your OpenRAG installation directory. This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container. Files added to the host or container directory are visible in both locations.
+The default path for local uploads is `~/.openrag/documents`. This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container. Files added to the host or container directory are visible in both locations.
 
-To change this location, modify the **Documents Paths** variable in either the [**Advanced Setup** menu](/install#setup) or in the `.env` used by Docker Compose.
+To change this location, modify the **Documents Paths** variable in either the [**Advanced Setup** menu](/install#setup) or in your [OpenRAG `.env` file](/reference/configuration).
 
 ## Delete knowledge {#delete-knowledge}
 
-To clear your entire knowledge base, delete the contents of the `./opensearch-data` folder in your OpenRAG installation directory.
+:::warning
 This is a destructive operation that cannot be undone.
+:::
+
+To clear your entire knowledge base, [reset your OpenRAG containers](/manage-services#reset-containers) or [reinstall OpenRAG](/reinstall).
 
 ## See also
 

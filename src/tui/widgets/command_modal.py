@@ -315,15 +315,22 @@ class CommandOutputModal(ModalScreen):
                                 asyncio.create_task(callback_result)
 
                         self.call_after_refresh(_invoke_callback)
+        except asyncio.CancelledError:
+            # Modal was dismissed while command was running - this is fine
+            pass
         except Exception as e:
             self._update_output(f"Error: {e}", False)
             output.text = "\n".join(self._output_lines)
             output.move_cursor((len(self._output_lines), 0))
         finally:
-            # Enable the close button and focus it
-            close_btn = self.query_one("#close-btn", Button)
-            close_btn.disabled = False
-            close_btn.focus()
+            # Enable the close button and focus it (if modal still exists)
+            try:
+                close_btn = self.query_one("#close-btn", Button)
+                close_btn.disabled = False
+                close_btn.focus()
+            except Exception:
+                # Modal was already dismissed
+                pass
 
     def _update_output(self, message: str, replace_last: bool = False) -> None:
         """Update the output buffer by appending or replacing the last line.

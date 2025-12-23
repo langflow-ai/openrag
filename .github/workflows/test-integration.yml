@@ -7,6 +7,7 @@ on:
       - 'tests/**.py'
       - 'pyproject.toml'
       - 'uv.lock'
+      - 'sdks/**'
       - '.github/workflows/test-integration.yml'
   workflow_dispatch:
     inputs:
@@ -14,7 +15,7 @@ on:
         description: 'Build images locally instead of pulling from DockerHub'
         required: false
         type: boolean
-        default: false
+        default: true
 
 jobs:
   tests:
@@ -27,6 +28,7 @@ jobs:
       LANGFLOW_NEW_USER_IS_ACTIVE: "True"
       LANGFLOW_ENABLE_SUPERUSER_CLI: "True"
       LANGFLOW_CHAT_FLOW_ID: ${{ vars.LANGFLOW_CHAT_FLOW_ID || '1098eea1-6649-4e1d-aed1-b77249fb8dd0' }}
+      LANGFLOW_INGEST_FLOW_ID: ${{ vars.LANGFLOW_INGEST_FLOW_ID || '5488df7c-b93f-4f87-a446-b67028bc0813' }}
       NUDGES_FLOW_ID: ${{ vars.NUDGES_FLOW_ID || 'ebc01d31-1976-46ce-a385-b0240327226c' }}
 
     steps:
@@ -38,8 +40,16 @@ jobs:
           docker builder prune -af || true
           docker-compose -f docker-compose.yml down -v --remove-orphans || true
 
+      - name: Cleanup root-owned files (OpenSearch data, config)
+        run: |
+          for i in 1 2 3; do
+            docker run --rm -v $(pwd):/work alpine sh -c "rm -rf /work/opensearch-data /work/config" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || true
+
       - run: df -h
-      
+
       - name: Checkout
         uses: actions/checkout@v4
         
@@ -53,6 +63,11 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Python version
         run: uv python install 3.13
@@ -73,7 +88,10 @@ jobs:
           # Disable startup ingest noise unless a test enables it
           DISABLE_STARTUP_INGEST: "true"
         run: |
-          if [ "${{ inputs.use_local_images }}" == "true" ]; then
+          # For PRs, always build locally since we're testing new code
+          # For workflow_dispatch, use the input (defaults to true)
+          USE_LOCAL="${{ inputs.use_local_images }}"
+          if [ "${{ github.event_name }}" == "pull_request" ] || [ "$USE_LOCAL" != "false" ]; then
             echo "Running tests with locally built images..."
             make test-ci-local
           else
