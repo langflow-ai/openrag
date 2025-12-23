@@ -394,7 +394,7 @@ class OneDriveConnector(BaseConnector):
             headers = {"Authorization": f"Bearer {token}"}
 
             async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=60)
+                response = await client.get(url, headers=headers, timeout=60, follow_redirects=True)
                 response.raise_for_status()
                 return response.content
 
@@ -406,7 +406,7 @@ class OneDriveConnector(BaseConnector):
         """Download file content from direct download URL."""
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.get(download_url, timeout=60)
+                response = await client.get(download_url, timeout=60, follow_redirects=True)
                 response.raise_for_status()
                 return response.content
         except Exception as e:
