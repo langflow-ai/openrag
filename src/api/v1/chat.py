@@ -58,7 +58,10 @@ async def chat_create_endpoint(request: Request, chat_service, session_manager):
         return {"type": "http.request", "body": body}
 
     internal_request = Request(request.scope, receive)
-    internal_request.state = request.state  # Copy state for auth
+
+    # Copy state attributes individually (state property has no setter)
+    internal_request.state.user = request.state.user
+    internal_request.state.jwt_token = getattr(request.state, "jwt_token", None)
 
     # Call internal Langflow endpoint
     return await langflow_endpoint(internal_request, chat_service, session_manager)
