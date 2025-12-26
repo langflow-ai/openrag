@@ -5,11 +5,12 @@ import logging
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.types import TextContent, Tool
 
 from openrag_mcp.config import get_config
-from openrag_mcp.tools.chat import register_chat_tools
-# from openrag_mcp.tools.search import register_search_tools
-# from openrag_mcp.tools.documents import register_document_tools
+from openrag_mcp.tools.chat import get_chat_tools, handle_chat_tool
+from openrag_mcp.tools.search import get_search_tools, handle_search_tool
+from openrag_mcp.tools.documents import get_document_tools, handle_document_tool
 
 # Configure logging to stderr (stdout is used for MCP protocol)
 logging.basicConfig(
@@ -29,10 +30,35 @@ def create_server() -> Server:
     # Create server instance
     server = Server("openrag-mcp")
 
-    # Register all tools
-    register_chat_tools(server)
-    # register_search_tools(server)
-    # register_document_tools(server)
+    # Register a single list_tools handler that combines all tools
+    @server.list_tools()
+    async def list_all_tools() -> list[Tool]:
+        """List all available tools."""
+        tools = []
+        tools.extend(get_chat_tools())
+        tools.extend(get_search_tools())
+        tools.extend(get_document_tools())
+        return tools
+
+    # Register a single call_tool handler that dispatches to appropriate handler
+    @server.call_tool()
+    async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+        """Handle all tool calls by dispatching to the appropriate handler."""
+        # Try each handler in order
+        result = await handle_chat_tool(name, arguments)
+        if result is not None:
+            return result
+
+        result = await handle_search_tool(name, arguments)
+        if result is not None:
+            return result
+
+        result = await handle_document_tool(name, arguments)
+        if result is not None:
+            return result
+
+        # Unknown tool
+        return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     logger.info("OpenRAG MCP server initialized with all tools")
     return server
@@ -68,4 +94,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

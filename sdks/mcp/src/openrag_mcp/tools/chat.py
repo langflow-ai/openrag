@@ -2,7 +2,6 @@
 
 import logging
 
-from mcp.server import Server
 from mcp.types import TextContent, Tool
 
 from openrag_sdk import (
@@ -18,105 +17,101 @@ from openrag_mcp.config import get_openrag_client
 logger = logging.getLogger("openrag-mcp.chat")
 
 
-def register_chat_tools(server: Server) -> None:
-    """Register chat-related tools with the MCP server."""
-
-    @server.list_tools()
-    async def list_chat_tools() -> list[Tool]:
-        """List chat tools."""
-        return [
-            Tool(
-                name="openrag_chat",
-                description=(
-                    "Send a message to OpenRAG and get a RAG-enhanced response. "
-                    "The response is informed by documents in your knowledge base. "
-                    "Use chat_id to continue a previous conversation, or filter_id "
-                    "to apply a knowledge filter."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "message": {
-                            "type": "string",
-                            "description": "Your question or message to send to OpenRAG",
-                        },
-                        "chat_id": {
-                            "type": "string",
-                            "description": "Optional conversation ID to continue a previous chat",
-                        },
-                        "filter_id": {
-                            "type": "string",
-                            "description": "Optional knowledge filter ID to apply",
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum number of sources to retrieve (default: 10)",
-                            "default": 10,
-                        },
-                        "score_threshold": {
-                            "type": "number",
-                            "description": "Minimum relevance score threshold (default: 0)",
-                            "default": 0,
-                        },
-                    },
-                    "required": ["message"],
-                },
+def get_chat_tools() -> list[Tool]:
+    """Return chat-related tools."""
+    return [
+        Tool(
+            name="openrag_chat",
+            description=(
+                "Send a message to OpenRAG and get a RAG-enhanced response. "
+                "The response is informed by documents in your knowledge base. "
+                "Use chat_id to continue a previous conversation, or filter_id "
+                "to apply a knowledge filter."
             ),
-        ]
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "Your question or message to send to OpenRAG",
+                    },
+                    "chat_id": {
+                        "type": "string",
+                        "description": "Optional conversation ID to continue a previous chat",
+                    },
+                    "filter_id": {
+                        "type": "string",
+                        "description": "Optional knowledge filter ID to apply",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of sources to retrieve (default: 10)",
+                        "default": 10,
+                    },
+                    "score_threshold": {
+                        "type": "number",
+                        "description": "Minimum relevance score threshold (default: 0)",
+                        "default": 0,
+                    },
+                },
+                "required": ["message"],
+            },
+        ),
+    ]
 
-    @server.call_tool()
-    async def call_chat_tool(name: str, arguments: dict) -> list[TextContent]:
-        """Handle chat tool calls."""
-        if name != "openrag_chat":
-            return []
 
-        message = arguments.get("message", "")
-        chat_id = arguments.get("chat_id")
-        filter_id = arguments.get("filter_id")
-        limit = arguments.get("limit", 10)
-        score_threshold = arguments.get("score_threshold", 0)
+async def handle_chat_tool(name: str, arguments: dict) -> list[TextContent] | None:
+    """Handle chat tool calls. Returns None if tool not handled."""
+    if name != "openrag_chat":
+        return None
 
-        if not message:
-            return [TextContent(type="text", text="Error: message is required")]
+    message = arguments.get("message", "")
+    chat_id = arguments.get("chat_id")
+    filter_id = arguments.get("filter_id")
+    limit = arguments.get("limit", 10)
+    score_threshold = arguments.get("score_threshold", 0)
 
-        try:
-            client = get_openrag_client()
-            response = await client.chat.create(
-                message=message,
-                chat_id=chat_id,
-                filter_id=filter_id,
-                limit=limit,
-                score_threshold=score_threshold,
-            )
+    if not message:
+        return [TextContent(type="text", text="Error: message is required")]
 
-            # Build formatted response
-            output_parts = [response.response]
+    try:
+        client = get_openrag_client()
+        response = await client.chat.create(
+            message=message,
+            chat_id=chat_id,
+            filter_id=filter_id,
+            limit=limit,
+            score_threshold=score_threshold,
+        )
 
-            if response.sources:
-                output_parts.append("\n\n---\n**Sources:**")
-                for i, source in enumerate(response.sources, 1):
-                    output_parts.append(f"\n{i}. {source.filename} (relevance: {source.score:.2f})")
+        # Build formatted response
+        output_parts = [response.response]
 
-            if response.chat_id:
-                output_parts.append(f"\n\n_Chat ID: {response.chat_id}_")
+        if response.sources:
+            output_parts.append("\n\n---\n**Sources:**")
+            for i, source in enumerate(response.sources, 1):
+                output_parts.append(f"\n{i}. {source.filename} (relevance: {source.score:.2f})")
 
-            return [TextContent(type="text", text="".join(output_parts))]
+        if response.chat_id:
+            output_parts.append(f"\n\n_Chat ID: {response.chat_id}_")
 
-        except AuthenticationError as e:
-            logger.error(f"Authentication error: {e.message}")
-            return [TextContent(type="text", text=f"Authentication error: {e.message}")]
-        except ValidationError as e:
-            logger.error(f"Validation error: {e.message}")
-            return [TextContent(type="text", text=f"Invalid request: {e.message}")]
-        except RateLimitError as e:
-            logger.error(f"Rate limit error: {e.message}")
-            return [TextContent(type="text", text=f"Rate limited: {e.message}")]
-        except ServerError as e:
-            logger.error(f"Server error: {e.message}")
-            return [TextContent(type="text", text=f"Server error: {e.message}")]
-        except OpenRAGError as e:
-            logger.error(f"OpenRAG error: {e.message}")
-            return [TextContent(type="text", text=f"Error: {e.message}")]
-        except Exception as e:
-            logger.error(f"Chat error: {e}")
-            return [TextContent(type="text", text=f"Error: {str(e)}")]
+        return [TextContent(type="text", text="".join(output_parts))]
+
+    except AuthenticationError as e:
+        logger.error(f"Authentication error: {e.message}")
+        return [TextContent(type="text", text=f"Authentication error: {e.message}")]
+    except ValidationError as e:
+        logger.error(f"Validation error: {e.message}")
+        return [TextContent(type="text", text=f"Invalid request: {e.message}")]
+    except RateLimitError as e:
+        logger.error(f"Rate limit error: {e.message}")
+        return [TextContent(type="text", text=f"Rate limited: {e.message}")]
+    except ServerError as e:
+        logger.error(f"Server error: {e.message}")
+        return [TextContent(type="text", text=f"Server error: {e.message}")]
+    except OpenRAGError as e:
+        logger.error(f"OpenRAG error: {e.message}")
+        return [TextContent(type="text", text=f"Error: {e.message}")]
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        return [TextContent(type="text", text=f"Error: {str(e)}")]

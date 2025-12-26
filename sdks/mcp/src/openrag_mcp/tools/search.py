@@ -2,95 +2,139 @@
 
 import logging
 
-from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from openrag_mcp.config import get_client
+from openrag_sdk import (
+    AuthenticationError,
+    OpenRAGError,
+    RateLimitError,
+    SearchFilters,
+    ServerError,
+    ValidationError,
+)
+
+from openrag_mcp.config import get_openrag_client
 
 logger = logging.getLogger("openrag-mcp.search")
 
 
-def register_search_tools(server: Server) -> None:
-    """Register search-related tools with the MCP server."""
-
-    @server.list_tools()
-    async def list_search_tools() -> list[Tool]:
-        """List search tools."""
-        return [
-            Tool(
-                name="openrag_search",
-                description=(
-                    "Search the OpenRAG knowledge base using semantic search. "
-                    "Returns matching document chunks with relevance scores."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The search query",
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum number of results (default: 10)",
-                            "default": 10,
-                        },
-                    },
-                    "required": ["query"],
-                },
+def get_search_tools() -> list[Tool]:
+    """Return search-related tools."""
+    return [
+        Tool(
+            name="openrag_search",
+            description=(
+                "Search the OpenRAG knowledge base using semantic search. "
+                "Returns matching document chunks with relevance scores. "
+                "Optionally filter by data sources or document types."
             ),
-        ]
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results (default: 10)",
+                        "default": 10,
+                    },
+                    "score_threshold": {
+                        "type": "number",
+                        "description": "Minimum relevance score threshold (default: 0)",
+                        "default": 0,
+                    },
+                    "filter_id": {
+                        "type": "string",
+                        "description": "Optional knowledge filter ID to apply",
+                    },
+                    "data_sources": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of filenames to filter by",
+                    },
+                    "document_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of MIME types to filter by (e.g., 'application/pdf')",
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+    ]
 
-    @server.call_tool()
-    async def call_search_tool(name: str, arguments: dict) -> list[TextContent]:
-        """Handle search tool calls."""
-        if name != "openrag_search":
-            return []
 
-        query = arguments.get("query", "")
-        limit = arguments.get("limit", 10)
+async def handle_search_tool(name: str, arguments: dict) -> list[TextContent] | None:
+    """Handle search tool calls. Returns None if tool not handled."""
+    if name != "openrag_search":
+        return None
 
-        if not query:
-            return [TextContent(type="text", text="Error: query is required")]
+    query = arguments.get("query", "")
+    limit = arguments.get("limit", 10)
+    score_threshold = arguments.get("score_threshold", 0)
+    filter_id = arguments.get("filter_id")
+    data_sources = arguments.get("data_sources")
+    document_types = arguments.get("document_types")
 
-        try:
-            async with get_client() as client:
-                payload = {
-                    "query": query,
-                    "limit": limit,
-                }
+    if not query:
+        return [TextContent(type="text", text="Error: query is required")]
 
-                response = await client.post("/api/v1/search", json=payload)
-                response.raise_for_status()
-                data = response.json()
+    try:
+        client = get_openrag_client()
 
-                results = data.get("results", [])
+        # Build filters if provided
+        filters = None
+        if data_sources or document_types:
+            filters = SearchFilters(
+                data_sources=data_sources,
+                document_types=document_types,
+            )
 
-                if not results:
-                    return [TextContent(type="text", text="No results found.")]
+        response = await client.search.query(
+            query=query,
+            limit=limit,
+            score_threshold=score_threshold,
+            filter_id=filter_id,
+            filters=filters,
+        )
 
-                # Format results
-                output_parts = [f"Found {len(results)} result(s):\n"]
+        if not response.results:
+            return [TextContent(type="text", text="No results found.")]
 
-                for i, result in enumerate(results, 1):
-                    filename = result.get("filename", "Unknown")
-                    score = result.get("score", 0)
-                    content = result.get("content", "")
-                    page = result.get("page_number")
+        # Format results
+        output_parts = [f"Found {len(response.results)} result(s):\n"]
 
-                    output_parts.append(f"\n---\n**{i}. {filename}**")
-                    if page:
-                        output_parts.append(f" (page {page})")
-                    output_parts.append(f"\nRelevance: {score:.2f}\n")
+        for i, result in enumerate(response.results, 1):
+            output_parts.append(f"\n---\n**{i}. {result.filename}**")
+            if result.page:
+                output_parts.append(f" (page {result.page})")
+            output_parts.append(f"\nRelevance: {result.score:.2f}\n")
 
-                    # Truncate long content
-                    if len(content) > 500:
-                        content = content[:500] + "..."
-                    output_parts.append(f"\n{content}\n")
+            # Truncate long content
+            content = result.text
+            if len(content) > 500:
+                content = content[:500] + "..."
+            output_parts.append(f"\n{content}\n")
 
-                return [TextContent(type="text", text="".join(output_parts))]
+        return [TextContent(type="text", text="".join(output_parts))]
 
-        except Exception as e:
-            logger.error(f"Search error: {e}")
-            return [TextContent(type="text", text=f"Error: {str(e)}")]
-
+    except AuthenticationError as e:
+        logger.error(f"Authentication error: {e.message}")
+        return [TextContent(type="text", text=f"Authentication error: {e.message}")]
+    except ValidationError as e:
+        logger.error(f"Validation error: {e.message}")
+        return [TextContent(type="text", text=f"Invalid request: {e.message}")]
+    except RateLimitError as e:
+        logger.error(f"Rate limit error: {e.message}")
+        return [TextContent(type="text", text=f"Rate limited: {e.message}")]
+    except ServerError as e:
+        logger.error(f"Server error: {e.message}")
+        return [TextContent(type="text", text=f"Server error: {e.message}")]
+    except OpenRAGError as e:
+        logger.error(f"OpenRAG error: {e.message}")
+        return [TextContent(type="text", text=f"Error: {e.message}")]
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        return [TextContent(type="text", text=f"Error: {str(e)}")]
