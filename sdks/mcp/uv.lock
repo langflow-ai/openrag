@@ -337,12 +337,27 @@ source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "mcp" },
+    { name = "openrag-sdk" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "mcp", specifier = ">=1.0.0" },
+    { name = "openrag-sdk", specifier = ">=0.1.0" },
+]
+
+[[package]]
+name = "openrag-sdk"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d7/9e/7a10ddb6742417970163d11aed40146bb3340532f17c1099434d8667a4e0/openrag_sdk-0.1.0.tar.gz", hash = "sha256:cf99fddf254c6c72295c73498877c56f68287d33a072ca2171f490de7df8617e", size = 17116 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/74/3c/6962d87b8b4604ef8cf776bf7d4e416a0025d5f08f5400ecc47b35616ae0/openrag_sdk-0.1.0-py3-none-any.whl", hash = "sha256:6b99be26b64a61e2347a4ce8f530b673a119d59bfe11ff5ead6318b9a3fb9dac", size = 15756 },
 ]
 
 [[package]]

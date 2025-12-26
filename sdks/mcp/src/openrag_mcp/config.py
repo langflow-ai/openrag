@@ -2,6 +2,8 @@
 
 import os
 
+from openrag_sdk import OpenRAGClient
+
 
 class Config:
     """Configuration loaded from environment variables."""
@@ -26,6 +28,7 @@ class Config:
 
 
 _config: Config | None = None
+_openrag_client: OpenRAGClient | None = None
 
 
 def get_config() -> Config:
@@ -36,8 +39,21 @@ def get_config() -> Config:
     return _config
 
 
+def get_openrag_client() -> OpenRAGClient:
+    """Get singleton OpenRAGClient instance."""
+    global _openrag_client
+    if _openrag_client is None:
+        # OpenRAGClient reads OPENRAG_API_KEY and OPENRAG_URL from env
+        _openrag_client = OpenRAGClient()
+    return _openrag_client
+
+
 def get_client():
-    """Get an httpx async client configured for OpenRAG."""
+    """Get an httpx async client configured for OpenRAG.
+    
+    This is kept for backward compatibility with operations
+    not yet supported by the SDK (list_documents, ingest_url).
+    """
     import httpx
 
     config = get_config()
@@ -46,4 +62,3 @@ def get_client():
         headers=config.headers,
         timeout=60.0,
     )
-

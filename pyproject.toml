@@ -35,7 +35,8 @@ dependencies = [
     "docling-serve==1.5.0",
     "docling-core==2.48.1",
     "easyocr>=1.7.1; sys_platform != 'darwin'",
-    "zxcvbn>=4.5.0"
+    "zxcvbn>=4.5.0",
+    "openrag-sdk>=0.1.0",
 ]
 
 [dependency-groups]

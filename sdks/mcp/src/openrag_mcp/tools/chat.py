@@ -1,12 +1,19 @@
 """Chat tool for OpenRAG MCP server."""
 
-import json
 import logging
 
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from openrag_mcp.config import get_client
+from openrag_sdk import (
+    AuthenticationError,
+    OpenRAGError,
+    RateLimitError,
+    ServerError,
+    ValidationError,
+)
+
+from openrag_mcp.config import get_openrag_client
 
 logger = logging.getLogger("openrag-mcp.chat")
 
@@ -23,7 +30,8 @@ def register_chat_tools(server: Server) -> None:
                 description=(
                     "Send a message to OpenRAG and get a RAG-enhanced response. "
                     "The response is informed by documents in your knowledge base. "
-                    "Use chat_id to continue a previous conversation."
+                    "Use chat_id to continue a previous conversation, or filter_id "
+                    "to apply a knowledge filter."
                 ),
                 inputSchema={
                     "type": "object",
@@ -36,10 +44,19 @@ def register_chat_tools(server: Server) -> None:
                             "type": "string",
                             "description": "Optional conversation ID to continue a previous chat",
                         },
+                        "filter_id": {
+                            "type": "string",
+                            "description": "Optional knowledge filter ID to apply",
+                        },
                         "limit": {
                             "type": "integer",
                             "description": "Maximum number of sources to retrieve (default: 10)",
                             "default": 10,
+                        },
+                        "score_threshold": {
+                            "type": "number",
+                            "description": "Minimum relevance score threshold (default: 0)",
+                            "default": 0,
                         },
                     },
                     "required": ["message"],
@@ -55,46 +72,51 @@ def register_chat_tools(server: Server) -> None:
 
         message = arguments.get("message", "")
         chat_id = arguments.get("chat_id")
+        filter_id = arguments.get("filter_id")
         limit = arguments.get("limit", 10)
+        score_threshold = arguments.get("score_threshold", 0)
 
         if not message:
             return [TextContent(type="text", text="Error: message is required")]
 
         try:
-            async with get_client() as client:
-                payload = {
-                    "message": message,
-                    "stream": False,
-                    "limit": limit,
-                }
-                if chat_id:
-                    payload["chat_id"] = chat_id
+            client = get_openrag_client()
+            response = await client.chat.create(
+                message=message,
+                chat_id=chat_id,
+                filter_id=filter_id,
+                limit=limit,
+                score_threshold=score_threshold,
+            )
 
-                response = await client.post("/api/v1/chat", json=payload)
-                response.raise_for_status()
-                data = response.json()
+            # Build formatted response
+            output_parts = [response.response]
 
-                # Format the response
-                result_text = data.get("response", "")
-                sources = data.get("sources", [])
-                new_chat_id = data.get("chat_id")
+            if response.sources:
+                output_parts.append("\n\n---\n**Sources:**")
+                for i, source in enumerate(response.sources, 1):
+                    output_parts.append(f"\n{i}. {source.filename} (relevance: {source.score:.2f})")
 
-                # Build formatted response
-                output_parts = [result_text]
+            if response.chat_id:
+                output_parts.append(f"\n\n_Chat ID: {response.chat_id}_")
 
-                if sources:
-                    output_parts.append("\n\n---\n**Sources:**")
-                    for i, source in enumerate(sources, 1):
-                        filename = source.get("filename", "Unknown")
-                        score = source.get("score", 0)
-                        output_parts.append(f"\n{i}. {filename} (relevance: {score:.2f})")
+            return [TextContent(type="text", text="".join(output_parts))]
 
-                if new_chat_id:
-                    output_parts.append(f"\n\n_Chat ID: {new_chat_id}_")
-
-                return [TextContent(type="text", text="".join(output_parts))]
-
+        except AuthenticationError as e:
+            logger.error(f"Authentication error: {e.message}")
+            return [TextContent(type="text", text=f"Authentication error: {e.message}")]
+        except ValidationError as e:
+            logger.error(f"Validation error: {e.message}")
+            return [TextContent(type="text", text=f"Invalid request: {e.message}")]
+        except RateLimitError as e:
+            logger.error(f"Rate limit error: {e.message}")
+            return [TextContent(type="text", text=f"Rate limited: {e.message}")]
+        except ServerError as e:
+            logger.error(f"Server error: {e.message}")
+            return [TextContent(type="text", text=f"Server error: {e.message}")]
+        except OpenRAGError as e:
+            logger.error(f"OpenRAG error: {e.message}")
+            return [TextContent(type="text", text=f"Error: {e.message}")]
         except Exception as e:
             logger.error(f"Chat error: {e}")
             return [TextContent(type="text", text=f"Error: {str(e)}")]
-

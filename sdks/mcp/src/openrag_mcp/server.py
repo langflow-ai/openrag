@@ -8,8 +8,8 @@ from mcp.server.stdio import stdio_server
 
 from openrag_mcp.config import get_config
 from openrag_mcp.tools.chat import register_chat_tools
-from openrag_mcp.tools.search import register_search_tools
-from openrag_mcp.tools.documents import register_document_tools
+# from openrag_mcp.tools.search import register_search_tools
+# from openrag_mcp.tools.documents import register_document_tools
 
 # Configure logging to stderr (stdout is used for MCP protocol)
 logging.basicConfig(
@@ -31,8 +31,8 @@ def create_server() -> Server:
 
     # Register all tools
     register_chat_tools(server)
-    register_search_tools(server)
-    register_document_tools(server)
+    # register_search_tools(server)
+    # register_document_tools(server)
 
     logger.info("OpenRAG MCP server initialized with all tools")
     return server

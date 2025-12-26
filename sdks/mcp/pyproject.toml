@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
     "mcp>=1.0.0",
     "httpx>=0.27.0",
+    "openrag-sdk>=0.1.0",
 ]
 
 [project.scripts]
