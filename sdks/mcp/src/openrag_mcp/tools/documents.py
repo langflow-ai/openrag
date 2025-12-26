@@ -15,126 +15,42 @@ from openrag_sdk import (
 )
 
 from openrag_mcp.config import get_openrag_client
+from openrag_mcp.tools.registry import register_tool
 
 logger = logging.getLogger("openrag-mcp.documents")
 
 
-def get_document_tools() -> list[Tool]:
-    """Return document-related tools."""
-    return [
-        Tool(
-            name="openrag_ingest_file",
-            description=(
-                "Ingest a local file into the OpenRAG knowledge base. "
-                "Supported formats: PDF, DOCX, TXT, MD, HTML, and more. "
-                "By default waits for ingestion to complete. Set wait=false to return immediately."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "Absolute path to the file to ingest",
-                    },
-                    "wait": {
-                        "type": "boolean",
-                        "description": "Wait for ingestion to complete (default: true). Set to false to return immediately with task_id.",
-                        "default": True,
-                    },
-                },
-                "required": ["file_path"],
+# ============================================================================
+# Tool: openrag_ingest_file
+# ============================================================================
+
+INGEST_FILE_TOOL = Tool(
+    name="openrag_ingest_file",
+    description=(
+        "Ingest a local file into the OpenRAG knowledge base. "
+        "Supported formats: PDF, DOCX, TXT, MD, HTML, and more. "
+        "By default waits for ingestion to complete. Set wait=false to return immediately."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "file_path": {
+                "type": "string",
+                "description": "Absolute path to the file to ingest",
             },
-        ),
-        Tool(
-            name="openrag_ingest_url",
-            description=(
-                "Ingest content from a URL into the OpenRAG knowledge base. "
-                "The URL content will be fetched, processed, and stored."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL to fetch and ingest",
-                    },
-                },
-                "required": ["url"],
+            "wait": {
+                "type": "boolean",
+                "description": "Wait for ingestion to complete (default: true). Set to false to return immediately with task_id.",
+                "default": True,
             },
-        ),
-        Tool(
-            name="openrag_get_task_status",
-            description=(
-                "Check the status of an ingestion task. "
-                "Use the task_id returned from openrag_ingest_file when wait=false."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "task_id": {
-                        "type": "string",
-                        "description": "The task ID to check status for",
-                    },
-                },
-                "required": ["task_id"],
-            },
-        ),
-        Tool(
-            name="openrag_wait_for_task",
-            description=(
-                "Wait for an ingestion task to complete. "
-                "Polls the task status until it completes or fails."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "task_id": {
-                        "type": "string",
-                        "description": "The task ID to wait for",
-                    },
-                    "timeout": {
-                        "type": "number",
-                        "description": "Maximum seconds to wait (default: 300)",
-                        "default": 300,
-                    },
-                },
-                "required": ["task_id"],
-            },
-        ),
-        Tool(
-            name="openrag_delete_document",
-            description="Delete a document from the OpenRAG knowledge base.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "filename": {
-                        "type": "string",
-                        "description": "Name of the file to delete",
-                    },
-                },
-                "required": ["filename"],
-            },
-        ),
-    ]
+        },
+        "required": ["file_path"],
+    },
+)
 
 
-async def handle_document_tool(name: str, arguments: dict) -> list[TextContent] | None:
-    """Handle document tool calls. Returns None if tool not handled."""
-    if name == "openrag_ingest_file":
-        return await _ingest_file(arguments)
-    elif name == "openrag_ingest_url":
-        return await _ingest_url(arguments)
-    elif name == "openrag_get_task_status":
-        return await _get_task_status(arguments)
-    elif name == "openrag_wait_for_task":
-        return await _wait_for_task(arguments)
-    elif name == "openrag_delete_document":
-        return await _delete_document(arguments)
-    return None
-
-
-async def _ingest_file(arguments: dict) -> list[TextContent]:
-    """Ingest a local file into OpenRAG using the SDK."""
+async def handle_ingest_file(arguments: dict) -> list[TextContent]:
+    """Handle openrag_ingest_file tool calls."""
     file_path = arguments.get("file_path", "")
     wait = arguments.get("wait", True)
 
@@ -154,11 +70,10 @@ async def _ingest_file(arguments: dict) -> list[TextContent]:
         response = await client.documents.ingest(file_path=path, wait=wait)
 
         if wait:
-            # Response is IngestTaskStatus when wait=True
             status = response.status
             successful = response.successful_files
             failed = response.failed_files
-            
+
             if status == "completed":
                 result = f"Successfully ingested '{path.name}'."
                 result += f"\nStatus: {status}"
@@ -170,7 +85,6 @@ async def _ingest_file(arguments: dict) -> list[TextContent]:
                 result += f"\nSuccessful files: {successful}"
                 result += f"\nFailed files: {failed}"
         else:
-            # Response is IngestResponse when wait=False
             result = f"Successfully queued '{response.filename or path.name}' for ingestion."
             if response.task_id:
                 result += f"\nTask ID: {response.task_id}"
@@ -201,11 +115,31 @@ async def _ingest_file(arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=f"Error ingesting file: {str(e)}")]
 
 
-async def _ingest_url(arguments: dict) -> list[TextContent]:
-    """Ingest content from a URL into OpenRAG.
+# ============================================================================
+# Tool: openrag_ingest_url
+# ============================================================================
 
-    Note: This uses the SDK's chat to trigger URL ingestion via the agent.
-    """
+INGEST_URL_TOOL = Tool(
+    name="openrag_ingest_url",
+    description=(
+        "Ingest content from a URL into the OpenRAG knowledge base. "
+        "The URL content will be fetched, processed, and stored."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "The URL to fetch and ingest",
+            },
+        },
+        "required": ["url"],
+    },
+)
+
+
+async def handle_ingest_url(arguments: dict) -> list[TextContent]:
+    """Handle openrag_ingest_url tool calls."""
     url = arguments.get("url", "")
 
     if not url:
@@ -215,7 +149,6 @@ async def _ingest_url(arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text="Error: url must start with http:// or https://")]
 
     try:
-        # Use chat with a special prompt to trigger URL ingestion via the agent
         client = get_openrag_client()
         response = await client.chat.create(
             message=f"Please ingest the content from this URL into the knowledge base: {url}",
@@ -237,8 +170,31 @@ async def _ingest_url(arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=f"Error ingesting URL: {str(e)}")]
 
 
-async def _get_task_status(arguments: dict) -> list[TextContent]:
-    """Get the status of an ingestion task."""
+# ============================================================================
+# Tool: openrag_get_task_status
+# ============================================================================
+
+GET_TASK_STATUS_TOOL = Tool(
+    name="openrag_get_task_status",
+    description=(
+        "Check the status of an ingestion task. "
+        "Use the task_id returned from openrag_ingest_file when wait=false."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "task_id": {
+                "type": "string",
+                "description": "The task ID to check status for",
+            },
+        },
+        "required": ["task_id"],
+    },
+)
+
+
+async def handle_get_task_status(arguments: dict) -> list[TextContent]:
+    """Handle openrag_get_task_status tool calls."""
     task_id = arguments.get("task_id", "")
 
     if not task_id:
@@ -276,8 +232,36 @@ async def _get_task_status(arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=f"Error getting task status: {str(e)}")]
 
 
-async def _wait_for_task(arguments: dict) -> list[TextContent]:
-    """Wait for an ingestion task to complete."""
+# ============================================================================
+# Tool: openrag_wait_for_task
+# ============================================================================
+
+WAIT_FOR_TASK_TOOL = Tool(
+    name="openrag_wait_for_task",
+    description=(
+        "Wait for an ingestion task to complete. "
+        "Polls the task status until it completes or fails."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "task_id": {
+                "type": "string",
+                "description": "The task ID to wait for",
+            },
+            "timeout": {
+                "type": "number",
+                "description": "Maximum seconds to wait (default: 300)",
+                "default": 300,
+            },
+        },
+        "required": ["task_id"],
+    },
+)
+
+
+async def handle_wait_for_task(arguments: dict) -> list[TextContent]:
+    """Handle openrag_wait_for_task tool calls."""
     task_id = arguments.get("task_id", "")
     timeout = arguments.get("timeout", 300)
 
@@ -318,8 +302,28 @@ async def _wait_for_task(arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=f"Error waiting for task: {str(e)}")]
 
 
-async def _delete_document(arguments: dict) -> list[TextContent]:
-    """Delete a document from the knowledge base using the SDK."""
+# ============================================================================
+# Tool: openrag_delete_document
+# ============================================================================
+
+DELETE_DOCUMENT_TOOL = Tool(
+    name="openrag_delete_document",
+    description="Delete a document from the OpenRAG knowledge base.",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "filename": {
+                "type": "string",
+                "description": "Name of the file to delete",
+            },
+        },
+        "required": ["filename"],
+    },
+)
+
+
+async def handle_delete_document(arguments: dict) -> list[TextContent]:
+    """Handle openrag_delete_document tool calls."""
     filename = arguments.get("filename", "")
 
     if not filename:
@@ -355,3 +359,14 @@ async def _delete_document(arguments: dict) -> list[TextContent]:
     except Exception as e:
         logger.error(f"Delete document error: {e}")
         return [TextContent(type="text", text=f"Error deleting document: {str(e)}")]
+
+
+# ============================================================================
+# Register all tools
+# ============================================================================
+
+register_tool(INGEST_FILE_TOOL, handle_ingest_file)
+register_tool(INGEST_URL_TOOL, handle_ingest_url)
+register_tool(GET_TASK_STATUS_TOOL, handle_get_task_status)
+register_tool(WAIT_FOR_TASK_TOOL, handle_wait_for_task)
+register_tool(DELETE_DOCUMENT_TOOL, handle_delete_document)

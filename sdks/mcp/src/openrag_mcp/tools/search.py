@@ -14,63 +14,58 @@ from openrag_sdk import (
 )
 
 from openrag_mcp.config import get_openrag_client
+from openrag_mcp.tools.registry import register_tool
 
 logger = logging.getLogger("openrag-mcp.search")
 
 
-def get_search_tools() -> list[Tool]:
-    """Return search-related tools."""
-    return [
-        Tool(
-            name="openrag_search",
-            description=(
-                "Search the OpenRAG knowledge base using semantic search. "
-                "Returns matching document chunks with relevance scores. "
-                "Optionally filter by data sources or document types."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results (default: 10)",
-                        "default": 10,
-                    },
-                    "score_threshold": {
-                        "type": "number",
-                        "description": "Minimum relevance score threshold (default: 0)",
-                        "default": 0,
-                    },
-                    "filter_id": {
-                        "type": "string",
-                        "description": "Optional knowledge filter ID to apply",
-                    },
-                    "data_sources": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional list of filenames to filter by",
-                    },
-                    "document_types": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional list of MIME types to filter by (e.g., 'application/pdf')",
-                    },
-                },
-                "required": ["query"],
+# Tool definition
+SEARCH_TOOL = Tool(
+    name="openrag_search",
+    description=(
+        "Search the OpenRAG knowledge base using semantic search. "
+        "Returns matching document chunks with relevance scores. "
+        "Optionally filter by data sources or document types."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The search query",
             },
-        ),
-    ]
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of results (default: 10)",
+                "default": 10,
+            },
+            "score_threshold": {
+                "type": "number",
+                "description": "Minimum relevance score threshold (default: 0)",
+                "default": 0,
+            },
+            "filter_id": {
+                "type": "string",
+                "description": "Optional knowledge filter ID to apply",
+            },
+            "data_sources": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of filenames to filter by",
+            },
+            "document_types": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of MIME types to filter by (e.g., 'application/pdf')",
+            },
+        },
+        "required": ["query"],
+    },
+)
 
 
-async def handle_search_tool(name: str, arguments: dict) -> list[TextContent] | None:
-    """Handle search tool calls. Returns None if tool not handled."""
-    if name != "openrag_search":
-        return None
-
+async def handle_search(arguments: dict) -> list[TextContent]:
+    """Handle openrag_search tool calls."""
     query = arguments.get("query", "")
     limit = arguments.get("limit", 10)
     score_threshold = arguments.get("score_threshold", 0)
@@ -138,3 +133,7 @@ async def handle_search_tool(name: str, arguments: dict) -> list[TextContent] | 
     except Exception as e:
         logger.error(f"Search error: {e}")
         return [TextContent(type="text", text=f"Error: {str(e)}")]
+
+
+# Register the tool
+register_tool(SEARCH_TOOL, handle_search)

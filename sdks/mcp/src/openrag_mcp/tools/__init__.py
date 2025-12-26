@@ -1,14 +1,14 @@
-"""OpenRAG MCP tools."""
+"""OpenRAG MCP tools.
 
-from openrag_mcp.tools.chat import get_chat_tools, handle_chat_tool
-from openrag_mcp.tools.search import get_search_tools, handle_search_tool
-from openrag_mcp.tools.documents import get_document_tools, handle_document_tool
+Import this module to register all tools with the registry.
+"""
 
-__all__ = [
-    "get_chat_tools",
-    "handle_chat_tool",
-    "get_search_tools",
-    "handle_search_tool",
-    "get_document_tools",
-    "handle_document_tool",
-]
+# Import tools to trigger registration
+from openrag_mcp.tools import chat  # noqa: F401
+from openrag_mcp.tools import search  # noqa: F401
+from openrag_mcp.tools import documents  # noqa: F401
+
+# Re-export registry functions for convenience
+from openrag_mcp.tools.registry import get_all_tools, get_handler
+
+__all__ = ["get_all_tools", "get_handler"]
