@@ -96,15 +96,16 @@ export function KnowledgeFilterPanel() {
       setQuery(parsedFilterData.query || "");
 
       // Set the actual filter selections from the saved knowledge filter
-      const filters = parsedFilterData.filters;
+      const filters = parsedFilterData.filters || {};
 
       // Use the exact selections from the saved filter
       // Empty arrays mean "none selected" not "all selected"
+      // Provide defaults for missing fields to handle API-created filters
       const processedFilters = {
-        data_sources: filters.data_sources,
-        document_types: filters.document_types,
-        owners: filters.owners,
-        connector_types: filters.connector_types || ["*"],
+        data_sources: filters.data_sources ?? ["*"],
+        document_types: filters.document_types ?? ["*"],
+        owners: filters.owners ?? ["*"],
+        connector_types: filters.connector_types ?? ["*"],
       };
 
       console.log("[DEBUG] Loading filter selections:", processedFilters);
@@ -114,8 +115,8 @@ export function KnowledgeFilterPanel() {
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
       setName(selectedFilter.name);
       setDescription(selectedFilter.description || "");
-      setColor(parsedFilterData.color);
-      setIconKey(parsedFilterData.icon);
+      setColor(parsedFilterData.color ?? "zinc");
+      setIconKey(parsedFilterData.icon ?? "filter");
     }
   }, [selectedFilter, parsedFilterData]);
 
@@ -123,13 +124,20 @@ export function KnowledgeFilterPanel() {
   useEffect(() => {
     if (createMode && parsedFilterData) {
       setQuery(parsedFilterData.query || "");
-      setSelectedFilters(parsedFilterData.filters);
+      // Provide defaults for missing filter fields
+      const filters = parsedFilterData.filters || {};
+      setSelectedFilters({
+        data_sources: filters.data_sources ?? ["*"],
+        document_types: filters.document_types ?? ["*"],
+        owners: filters.owners ?? ["*"],
+        connector_types: filters.connector_types ?? ["*"],
+      });
       setResultLimit(parsedFilterData.limit || 10);
       setScoreThreshold(parsedFilterData.scoreThreshold || 0);
       setName("");
       setDescription("");
-      setColor(parsedFilterData.color);
-      setIconKey(parsedFilterData.icon);
+      setColor(parsedFilterData.color ?? "zinc");
+      setIconKey(parsedFilterData.icon ?? "filter");
     }
   }, [createMode, parsedFilterData]);
 

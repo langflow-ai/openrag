@@ -50,7 +50,10 @@ export function MultiSelect({
   const [open, setOpen] = React.useState(false);
   const [searchValue, setSearchValue] = React.useState("");
 
-  const isAllSelected = value.includes("*");
+  // Normalize value to empty array if undefined/null to prevent crashes
+  const safeValue = value ?? [];
+
+  const isAllSelected = safeValue.includes("*");
 
   const filteredOptions = options.filter((option) =>
     option.label.toLowerCase().includes(searchValue.toLowerCase()),
@@ -66,12 +69,12 @@ export function MultiSelect({
       }
     } else {
       let newValue: string[];
-      if (value.includes(optionValue)) {
+      if (safeValue.includes(optionValue)) {
         // Remove the item
-        newValue = value.filter((v) => v !== optionValue && v !== "*");
+        newValue = safeValue.filter((v) => v !== optionValue && v !== "*");
       } else {
         // Add the item and remove "All" if present
-        newValue = [...value.filter((v) => v !== "*"), optionValue];
+        newValue = [...safeValue.filter((v) => v !== "*"), optionValue];
 
         // Check max selection limit
         if (maxSelection && newValue.length > maxSelection) {
@@ -87,7 +90,7 @@ export function MultiSelect({
       return allOptionLabel;
     }
 
-    if (value.length === 0) {
+    if (safeValue.length === 0) {
       return placeholder;
     }
 
@@ -96,7 +99,7 @@ export function MultiSelect({
       .toLowerCase()
       .replace("select ", "")
       .replace("...", "");
-    return `${value.length} ${noun}`;
+    return `${safeValue.length} ${noun}`;
   };
 
   return (
@@ -152,7 +155,7 @@ export function MultiSelect({
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4",
-                      value.includes(option.value)
+                      safeValue.includes(option.value)
                         ? "opacity-100"
                         : "opacity-0",
                     )}
