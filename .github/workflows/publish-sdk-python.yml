@@ -2,8 +2,10 @@ name: Publish Python SDK
 
 on:
   push:
-    tags:
-      - 'sdk-py-v*'
+    branches:
+      - main
+    paths:
+      - 'sdks/python/pyproject.toml'
 
 jobs:
   publish:
@@ -25,21 +27,33 @@ jobs:
       - name: Install build tools
         run: pip install build twine
 
-      - name: Extract version from tag
+      - name: Extract version from pyproject.toml
         id: version
         run: |
-          VERSION=${GITHUB_REF_NAME#sdk-py-v}
+          VERSION=$(grep -Po '(?<=^version = ")[^"]*' pyproject.toml)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Update version in pyproject.toml
+      - name: Check if version already published
+        id: check
         run: |
-          sed -i "s/^version = .*/version = \"${{ steps.version.outputs.version }}\"/" pyproject.toml
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/openrag-sdk/${{ steps.version.outputs.version }}/json)
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build package
+        if: steps.check.outputs.exists == 'false'
         run: python -m build
 
       - name: Publish to PyPI
+        if: steps.check.outputs.exists == 'false'
         run: twine upload dist/*
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Skip publish (version exists)
+        if: steps.check.outputs.exists == 'true'
+        run: echo "Version ${{ steps.version.outputs.version }} already exists on PyPI, skipping publish"
