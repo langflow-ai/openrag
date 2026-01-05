@@ -157,13 +157,18 @@ You can [monitor ingestion](#monitor-ingestion) to see the progress of the uploa
 
 ## Ingest knowledge from URLs {#url-flow}
 
+When using the OpenRAG chat, you can enter URLs into the chat to be ingested in real-time during your conversation.
+
+:::tip
+Use [UTF-8 encoding](https://www.w3schools.com/tags/ref_urlencode.ASP) for URLs with special characters other than the standard slash, period, and colon characters.
+For example, use `https://en.wikipedia.org/wiki/Caf%C3%A9` instead of `https://en.wikipedia.org/wiki/Café` or `https://en.wikipedia.org/wiki/Coffee%5Fculture` instead of  `https://en.wikipedia.org/wiki/Coffee_culture`.
+:::
+
 The **OpenSearch URL Ingestion** flow is used to ingest web content from URLs.
 This flow isn't directly accessible from the OpenRAG user interface.
 Instead, this flow is called by the [**OpenRAG OpenSearch Agent** flow](/chat#flow) as a Model Context Protocol (MCP) tool.
 The agent can call this component to fetch web content from a given URL, and then ingest that content into your OpenSearch knowledge base.
-
 Like all OpenRAG flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it.
-
 For more information about MCP in Langflow, see the Langflow documentation on [MCP clients](https://docs.langflow.org/mcp-client) and [MCP servers](https://docs.langflow.org/mcp-tutorial).
 
 ## Monitor ingestion
