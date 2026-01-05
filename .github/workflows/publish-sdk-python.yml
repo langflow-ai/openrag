@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'sdks/python/pyproject.toml'
+  workflow_dispatch:
 
 jobs:
   publish:

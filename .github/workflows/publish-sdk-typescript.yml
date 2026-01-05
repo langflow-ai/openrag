@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'sdks/typescript/package.json'
+  workflow_dispatch:
 
 jobs:
   publish:
