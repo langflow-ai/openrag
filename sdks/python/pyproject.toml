@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openrag-sdk"
-version = "0.1.1"
+version = "0.1.2"
 description = "Official Python SDK for OpenRAG API"
 readme = "README.md"
 license = "MIT"
@@ -59,3 +59,4 @@ select = ["E", "F", "I", "UP"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
+
