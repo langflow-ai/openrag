@@ -37,9 +37,9 @@ class DoclingManager:
         self._starting = False
         self._external_process = False
 
-        # PID file to track docling-serve across sessions (in current working directory)
-        from pathlib import Path
-        self._pid_file = Path.cwd() / ".docling.pid"
+        # PID file to track docling-serve across sessions (centralized in ~/.openrag/tui/)
+        from utils.paths import get_tui_dir
+        self._pid_file = get_tui_dir() / ".docling.pid"
 
         # Log storage - simplified, no queue
         self._log_buffer: List[str] = []
