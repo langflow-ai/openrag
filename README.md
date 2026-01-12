@@ -26,47 +26,22 @@ OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables 
 
 ## Quickstart
 
-To run OpenRAG without creating or modifying any project files, use `uvx`:
+The recommended way to get started with OpenRAG is through the official documentation quickstart guide, which contains up-to-date installation steps, prerequisites, and usage examples:
 
-```bash
-uvx openrag
-```
+👉 https://docs.openr.ag/quickstart
 
-This command runs OpenRAG without installing it to your project or globally.
-
-To run a specific version of OpenRAG, run `uvx --from openrag==VERSION openrag`.
+The GitHub repository focuses on the source code. Please refer to the documentation for setup and usage instructions.
 
 ## Install Python package
 
-To add the OpenRAG Python package to a Python project, use `uv`:
+OpenRAG can be installed as a Python package. For detailed installation steps, environment requirements, and environment setup guidance (e.g., managing virtual environments), see the official documentation:
 
-1. Create a new project with a virtual environment using `uv init`:
+👉 https://docs.openr.ag/install  
+👉 https://docs.astral.sh/uv/pip/environments
 
-   ```bash
-   uv init YOUR_PROJECT_NAME
-   cd YOUR_PROJECT_NAME
-   ```
+This ensures you are following the most current and supported setup.
 
-   The `(venv)` prompt doesn't change, but `uv` commands will automatically use the project's virtual environment.
-   For more information on virtual environments, see the [uv documentation](https://docs.astral.sh/uv/pip/environments).
 
-2. Add OpenRAG to your project:
-
-   ```bash
-   uv add openrag
-   ```
-
-   To add a specific version of OpenRAG, run `uv add openrag==VERSION`.
-
-3. Start the OpenRAG terminal user interface (TUI):
-
-   ```bash
-   uv run openrag
-   ```
-
-4. Continue with the [Quickstart](https://docs.openr.ag/quickstart).
-
-For all installation options, see the [OpenRAG installation guide](https://docs.openr.ag/install).
 
 ## Docker or Podman installation
 
