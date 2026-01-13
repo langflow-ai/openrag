@@ -1,5 +1,7 @@
 """Main TUI application for OpenRAG."""
 
+import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable, Optional
@@ -683,6 +685,51 @@ def migrate_legacy_data_directories():
     logger.info("Data migration completed successfully")
 
 
+def generate_jwt_keys(keys_dir: Path):
+    """Generate RSA keys for JWT signing if they don't exist.
+
+    This pre-generates keys on the host so containers can read them,
+    avoiding permission issues with Podman rootless mode.
+    """
+    private_key_path = keys_dir / "private_key.pem"
+    public_key_path = keys_dir / "public_key.pem"
+
+    if private_key_path.exists() and public_key_path.exists():
+        logger.debug("JWT keys already exist")
+        return
+
+    try:
+        # Generate private key
+        subprocess.run(
+            ["openssl", "genrsa", "-out", str(private_key_path), "2048"],
+            check=True,
+            capture_output=True,
+        )
+        # Set restrictive permissions on private key (readable by owner only)
+        os.chmod(private_key_path, 0o600)
+
+        # Generate public key from private key
+        subprocess.run(
+            [
+                "openssl",
+                "rsa",
+                "-in", str(private_key_path),
+                "-pubout",
+                "-out", str(public_key_path),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        # Set permissions on public key (readable by all)
+        os.chmod(public_key_path, 0o644)
+
+        logger.info("Generated RSA keys for JWT signing")
+    except FileNotFoundError:
+        logger.warning("openssl not found, skipping JWT key generation (will be generated in container)")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to generate RSA keys: {e}")
+
+
 def setup_host_directories():
     """Initialize OpenRAG directory structure on the host.
 
@@ -703,10 +750,13 @@ def setup_host_directories():
         base_dir / "data",
         base_dir / "data" / "opensearch-data",
     ]
-    
+
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Ensured directory exists: {directory}")
+
+    # Generate JWT keys on host to avoid container permission issues
+    generate_jwt_keys(base_dir / "keys")
 
 
 def run_tui():
