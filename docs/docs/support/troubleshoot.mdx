@@ -35,6 +35,33 @@ open "/Applications/Python VERSION/Install Certificates.command"
 
 Replace `VERSION` with your installed Python version, such as `3.13`.
 
+### Some images failed to pull on Amazon EC2 with GPU support {#some-images-failed-to-pull-on-amazon-ec2-with-gpu-support}
+
+When installing OpenRAG on an Amazon EC2 instance with GPU acceleration enabled, some Docker images might fail to pull.
+
+To resolve this issue, do the following:
+
+1. [Stop the OpenRAG containers](/manage-services#stop-and-start-containers).
+
+2. In your `~/.openrag` directory, edit the `docker-compose.gpu.yml` file as follows:
+
+   ```yaml
+   services:
+   openrag-backend:
+      environment:
+         - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+         - NVIDIA_VISIBLE_DEVICES=all
+      deploy:
+         resources:
+         reservations:
+            devices:
+               - driver: nvidia
+               count: all
+               capabilities: [gpu]
+   ```
+
+3. [Restart the OpenRAG containers](/manage-services#stop-and-start-containers).
+
 ### Application onboarding gets stuck on Google Chrome
 
 If the OpenRAG onboarding process gets stuck when using Google Chrome, try clearing your browser's cache.
