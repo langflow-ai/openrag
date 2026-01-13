@@ -12,6 +12,7 @@ import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
 import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
+import PartialGpuModeTip from '@site/docs/_partial-gpu-mode-tip.mdx';
 
 To manage your own OpenRAG services, deploy OpenRAG with Docker or Podman.
 
@@ -136,15 +137,8 @@ The following variables are required or recommended:
    podman compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
    ```
 
-   tip:::
-   GPU acceleration isn't required for most use cases.
-   OpenRAG's CPU-only deployment doesn't prevent you from using GPU acceleration in external services, such as Ollama servers.
-
-   GPU acceleration is required only for specific use cases, typically involving customization of the ingestion flows or ingestion logic.
-   For example, writing alternate ingest logic in OpenRAG that uses GPUs directly in the container, or customizing the ingestion flows to use Langflow's Docling component with GPU acceleration instead of the `docling serve` service.
-
-   If you are deploying OpenRAG on an Amazon EC2 instance with GPU acceleration enabled, you must edit the `docker-compose.gpu.yml` file before deploying the OpenRAG containers.
-   For more information, see [Some images failed to pull on Amazon EC2 with GPU support](/support/troubleshoot#some-images-failed-to-pull-on-amazon-ec2-with-gpu-support).
+   :::tip
+   <PartialGpuModeTip />
    :::
 
 4. Wait for the OpenRAG containers to start, and then confirm that all containers are running:
