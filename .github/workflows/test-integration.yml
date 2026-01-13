@@ -72,12 +72,6 @@ jobs:
       - name: Python version
         run: uv python install 3.13
 
-      - name: Install docker-compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-          docker-compose --version
-
       - name: Install dependencies
         run: uv sync
 
