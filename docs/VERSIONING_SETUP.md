@@ -28,7 +28,6 @@ docs: {
 See the [Docusaurus docs](https://docusaurus.io/docs/versioning) for more info.
 
 1. Use the Docusaurus CLI command to create a version.
-You can use `yarn` instead of `npm`.
 ```bash
 # Create version 1.0.0 from current docs
 npm run docusaurus docs:version 1.0.0
