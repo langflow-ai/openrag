@@ -129,13 +129,13 @@ The following variables are required or recommended:
 
    * **GPU-accelerated deployment**: If your host machine has an NVIDIA GPU with CUDA support and compatible NVIDIA drivers, use the base `docker-compose.yml` file with the `docker-compose.gpu.yml` override:
 
-   ```bash title="Docker"
-   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-   ```
+      ```bash title="Docker"
+      docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+      ```
 
-   ```bash title="Podman"
-   podman compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-   ```
+      ```bash title="Podman"
+      podman compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+      ```
 
    :::tip
    <PartialGpuModeTip />
