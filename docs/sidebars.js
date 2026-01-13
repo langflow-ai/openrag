@@ -75,6 +75,11 @@ const sidebars = {
       label: "Chat",
     },
     "reference/configuration",
+    {
+      type: "doc",
+      id: "reference/api-sdk-overview",
+      label: "APIs and SDKs",
+    },
     "support/contribute",
     "support/troubleshoot",
   ],

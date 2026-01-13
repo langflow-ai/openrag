@@ -17,14 +17,6 @@ const config = {
   favicon: 'img/favicon.ico',
 
   headTags: [
-    // Algolia site verification meta tag
-    {
-      tagName: "meta",
-      attributes: {
-        name: "algolia-site-verification",
-        content: "424339D27FB7921F",
-      },
-    },
     ...(isProduction
       ? [
           // Google Consent Mode - Set defaults before Google tags load
