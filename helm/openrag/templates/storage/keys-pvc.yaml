@@ -1,0 +1,18 @@
+{{- if and .Values.backend.enabled .Values.backend.persistence.keys.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "openrag.fullname" . }}-keys
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.backend.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.backend.persistence.keys.accessMode }}
+  {{- if .Values.backend.persistence.keys.storageClass }}
+  storageClassName: {{ .Values.backend.persistence.keys.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.persistence.keys.size }}
+{{- end }}
