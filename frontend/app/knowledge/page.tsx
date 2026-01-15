@@ -361,6 +361,15 @@ function SearchPage() {
     }
   };
 
+  // enables pagination in the grid
+  const pagination = true;
+
+  // sets 25 rows per page (default is 100)
+  const paginationPageSize = 25;
+
+  // allows the user to select the page size from a predefined list of page sizes
+  const paginationPageSizeSelector = [10, 25, 50, 100];
+
   return (
     <>
       <div className="flex flex-col h-full">
@@ -408,6 +417,9 @@ function SearchPage() {
           getRowId={(params: GetRowIdParams<File>) => params.data?.filename}
           domLayout="normal"
           onSelectionChanged={onSelectionChanged}
+          pagination={pagination}
+          paginationPageSize={paginationPageSize}
+          paginationPageSizeSelector={paginationPageSizeSelector}
           noRowsOverlayComponent={() => (
             <div className="text-center pb-[45px]">
               <div className="text-lg text-primary font-semibold">
