@@ -236,6 +236,15 @@ const config = {
           },
         ],
       },
+      algolia: {
+        appId: "SMEA51Q5OL",
+        // public key, safe to commit
+        apiKey: "b2ec302e9880e8979ad6a68f0c36271e",
+        indexName: "openrag-algolia",
+        contextualSearch: true,
+        searchParameters: {},
+        searchPagePath: "search",
+      },
       prism: {
         theme: prismThemes.github,
         darkTheme: prismThemes.dracula,
