@@ -30,6 +30,29 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.langflow.flows.loadDefaults }}
+      initContainers:
+        - name: load-default-flows
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              FLOWS_DIR="{{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.flowsSubPath }}"
+              mkdir -p "$FLOWS_DIR"
+              if [ -z "$(ls -A $FLOWS_DIR 2>/dev/null)" ]; then
+                echo "Loading default flows..."
+                cp /default-flows/*.json "$FLOWS_DIR/"
+                echo "Flows loaded: $(ls $FLOWS_DIR)"
+              else
+                echo "Flows already exist, skipping."
+              fi
+          volumeMounts:
+            - name: langflow-data
+              mountPath: {{ .Values.langflow.persistence.mountPath }}
+            - name: default-flows
+              mountPath: /default-flows
+      {{- end }}
       containers:
         - name: langflow
           image: "{{ .Values.langflow.image.repository }}:{{ .Values.langflow.image.tag | default .Values.global.imageTag }}"
@@ -196,6 +219,19 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if .Values.langflow.flows.loadDefaults }}
+        - name: default-flows
+          projected:
+            sources:
+              - configMap:
+                  name: {{ include "openrag.fullname" . }}-flow-ingestion
+              - configMap:
+                  name: {{ include "openrag.fullname" . }}-flow-agent
+              - configMap:
+                  name: {{ include "openrag.fullname" . }}-flow-nudges
+              - configMap:
+                  name: {{ include "openrag.fullname" . }}-flow-url
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
