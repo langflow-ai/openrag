@@ -71,6 +71,7 @@ langflow:
 
   # Flow configuration (UUIDs for Langflow workflows)
   flows:
+    loadDefaults: true                        # Load default OpenRAG flows on first deployment
     chatFlowId: "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
     ingestFlowId: "5488df7c-b93f-4f87-a446-b67028bc0813"
     urlIngestFlowId: "72c3d17c-2dac-4a73-b48a-6518473d7830"
