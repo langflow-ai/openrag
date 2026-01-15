@@ -12,6 +12,7 @@ import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
 import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
+import PartialGpuModeTip from '@site/docs/_partial-gpu-mode-tip.mdx';
 
 To manage your own OpenRAG services, deploy OpenRAG with Docker or Podman.
 
@@ -116,7 +117,17 @@ The following variables are required or recommended:
 
 3. Deploy the OpenRAG containers locally using the appropriate Docker Compose configuration for your environment:
 
-   * **GPU-accelerated deployment**: If your host machine has an NVIDIA GPU with CUDA support and compatible NVIDIA drivers, use the base `docker-compose.yml` file with the `docker-compose.gpu.yml` override.
+   * **CPU-only deployment** (default, recommended): If your host machine doesn't have NVIDIA GPU support, use the base `docker-compose.yml` file:
+
+      ```bash title="Docker"
+      docker compose up -d
+      ```
+
+      ```bash title="Podman"
+      podman compose up -d
+      ```
+
+   * **GPU-accelerated deployment**: If your host machine has an NVIDIA GPU with CUDA support and compatible NVIDIA drivers, use the base `docker-compose.yml` file with the `docker-compose.gpu.yml` override:
 
       ```bash title="Docker"
       docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
@@ -126,15 +137,9 @@ The following variables are required or recommended:
       podman compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
       ```
 
-   * **CPU-only deployment** (default): If your host machine doesn't have NVIDIA GPU support, use the base `docker-compose.yml` file.
-
-      ```bash title="Docker"
-      docker compose up -d
-      ```
-
-      ```bash title="Podman"
-      podman compose up -d
-      ```
+   :::tip
+   <PartialGpuModeTip />
+   :::
 
 4. Wait for the OpenRAG containers to start, and then confirm that all containers are running:
 
