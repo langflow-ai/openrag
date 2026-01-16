@@ -11,7 +11,7 @@ import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 
 After you [upload documents to your knowledge base](/ingestion), you can use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat** feature to interact with your knowledge through natural language queries.
 
-The OpenRAG **Chat** uses an LLM-powered agent to understand your queries, retrieve relevant information from your knowledge base, and generate context-aware responses.
+The OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat** uses an LLM-powered agent to understand your queries, retrieve relevant information from your knowledge base, and generate context-aware responses.
 The agent can also fetch information from URLs and new documents that you provide during the chat session.
 To limit the knowledge available to the agent, use [filters](/knowledge-filters).
 
@@ -24,7 +24,7 @@ Try chatting, uploading documents, and modifying chat settings in the [quickstar
 
 ## OpenRAG OpenSearch Agent flow {#flow}
 
-When you use the OpenRAG **Chat**, the **OpenRAG OpenSearch Agent** flow runs in the background to retrieve relevant information from your knowledge base and generate a response.
+When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, the **OpenRAG OpenSearch Agent** flow runs in the background to retrieve relevant information from your knowledge base and generate a response.
 
 If you [inspect the flow in Langflow](/agents#inspect-and-modify-flows), you'll see that it is comprised of eight components that work together to ingest chat messages, retrieve relevant information from your knowledge base, and then generate responses.
 When you inspect this flow, you can edit the components to customize the agent's behavior.
@@ -32,7 +32,7 @@ When you inspect this flow, you can edit the components to customize the agent's
 ![OpenRAG Open Search Agent Flow](/img/opensearch-agent-flow.png)
 
 * [**Chat Input** component](https://docs.langflow.org/chat-input-and-output#chat-input): This component starts the flow when it receives a chat message. It is connected to the **Agent** component's **Input** port.
-When you use the OpenRAG **Chat**, your chat messages are passed to the **Chat Input** component, which then sends them to the **Agent** component for processing.
+When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, your chat messages are passed to the **Chat Input** component, which then sends them to the **Agent** component for processing.
 
 * [**Agent** component](https://docs.langflow.org/components-agents): This component orchestrates the entire flow by processing chat messages, searching the knowledge base, and organizing the retrieved information into a cohesive response.
 The agent's general behavior is defined by the prompt in the **Agent Instructions** field and the model connected to the **Language Model** port.
@@ -73,12 +73,18 @@ If no knowledge filter is set, then the `OPENRAG-QUERY-FILTER` variable is empty
 
 ## Nudges {#nudges}
 
-When you use the OpenRAG **Chat**, the **OpenRAG OpenSearch Nudges** flow runs in the background to pull additional context from your knowledge base and chat history.
+When you use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, the **OpenRAG OpenSearch Nudges** flow runs in the background to pull additional context from your knowledge base and chat history.
 
-Nudges appear as prompts in the chat.
-Click a nudge to accept it and provide the nudge's context to the OpenRAG **Chat** agent (the **OpenRAG OpenSearch Agent** flow).
+Nudges appear as prompts in the chat, and they are based on the contents of your OpenRAG OpenSearch knowledge base.
+Click a nudge to accept it and start a chat based on the nudge.
 
 Like OpenRAG's other built-in flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it if you want to change the nudge behavior.
+However, this flow is specifically designed to work with the OpenRAG chat and knowledge base.
+Major changes to this flow might break the nudge functionality or produce irrelevant nudges.
+
+The **Nudges** flow consists of **Embedding model**, **Language model**, **OpenSearch**, **Input/Output*, and other components that browse your knowledge base, identify key themes and possible insights, and then produce prompts based on the findings.
+
+For example, if your knowledge base contains documents about cybersecurity, possible nudges might include `Explain zero trust architecture principles` or `How to identify a social engineering attack`.
 
 ## Upload documents to the chat
 

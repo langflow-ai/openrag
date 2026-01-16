@@ -20,11 +20,18 @@ You can customize these flows and create your own flows using OpenRAG's embedded
 
 All OpenRAG flows are designed to be modular, performant, and provider-agnostic.
 
-To modify a flow in OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
-From here, you can manage model provider configurations and edit commonly used parameters, such as the **Language model** and **Agent Instructions**.
-To further explore and edit a flow, click **Edit in Langflow** to launch the embedded [Langflow visual editor](https://docs.langflow.org/concepts-overview) where you can fully [customize the flow](https://docs.langflow.org/concepts-flows) to suit your use case.
+To view and modify a flow in OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+From here, you can manage OAuth connectors, model providers, and common parameters for the **Agent** and **Knowledge Ingestion** flows.
 
-For example, the following steps explain how to view and edit the built-in **Agent** flow, which is the **OpenRAG OpenSearch Agent** flow used for the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**:
+To further explore and edit flows, click **Edit in Langflow** to launch the embedded [Langflow visual editor](https://docs.langflow.org/concepts-overview) where you can fully [customize the flow](https://docs.langflow.org/concepts-flows) to suit your use case.
+
+:::tip
+After you click **Edit in Langflow**, you can access and edit all of OpenRAG's built-in flows from the Langflow editor's [**Projects** page](https://docs.langflow.org/concepts-flows#projects).
+
+If you edit any flows other than the **Agent** or **Knowledge Ingestion** flows, it is recommended that you [export the flows](https://docs.langflow.org/concepts-flows-import) before editing so you can revert them to their original state if needed.
+:::
+
+For example, the following steps explain how to edit the built-in **Agent** flow, which is the **OpenRAG OpenSearch Agent** flow used for the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**:
 
 1. In OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then find the **Agent** section.
 
@@ -49,8 +56,11 @@ This ensures that the chat doesn't persist any context from the previous convers
 
 ### Revert a built-in flow to its original configuration {#revert-a-built-in-flow-to-its-original-configuration}
 
-After you edit a built-in flow, you can click **Restore flow** on the **Settings** page to revert the flow to its original state when you first installed OpenRAG.
+After you edit the **Agent** or **Knowledge Ingestion** built-in flows, you can click **Restore flow** on the **Settings** page to revert either flow to its original state when you first installed OpenRAG.
 This is a destructive action that discards all customizations to the flow.
+
+This option isn't available for other built-in flows such as the **Nudges** flow.
+To restore these flows to their original state, you must reimport the flow from a backup (if you exported one before editing), or [reset](/manage-services#reset-containers) or [reinstall](/reinstall) OpenRAG.
 
 ## Build custom flows and use other Langflow functionality
 
