@@ -1,0 +1,18 @@
+{{- if .Values.langflow.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openrag.fullname" . }}-langflow
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.langflow.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.langflow.service.type }}
+  ports:
+    - port: {{ .Values.langflow.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "openrag.langflow.selectorLabels" . | nindent 4 }}
+{{- end }}

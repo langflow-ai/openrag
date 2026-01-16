@@ -3,6 +3,8 @@ title: Use the TUI
 slug: /tui
 ---
 
+import PartialGpuModeTip from '@site/docs/_partial-gpu-mode-tip.mdx';
+
 The OpenRAG Terminal User Interface (TUI) provides a simplified and guided experience for configuring, managing, and monitoring your OpenRAG deployment directly from the terminal.
 
 ![OpenRAG TUI Interface](@site/static/img/openrag_tui_dec_2025.png)
@@ -35,6 +37,10 @@ You can toggle between GPU and CPU mode from within the TUI if your system has c
 In the TUI, click **Status**, and then click **Switch to GPU Mode** or **Switch to CPU Mode**.
 
 This change requires restarting all OpenRAG services because each mode has its own `docker-compose` file.
+
+:::tip
+<PartialGpuModeTip />
+:::
 
 ## Exit the OpenRAG TUI
 

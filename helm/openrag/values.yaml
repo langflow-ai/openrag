@@ -1,0 +1,408 @@
+# OpenRAG Helm Chart Values
+# This chart deploys OpenRAG with external OpenSearch SaaS connection
+
+# Override names
+nameOverride: ""
+fullnameOverride: ""
+
+# Global settings
+global:
+  # Tenant identification - used for resource naming and namespace
+  tenant:
+    name: ""                              # Required for multi-tenant: tenant identifier (e.g., "acme")
+    namespace: ""                         # Optional: override namespace (defaults to tenant name or release namespace)
+
+  # Image settings
+  imageRegistry: "langflowai"
+  imagePullPolicy: IfNotPresent
+  imageTag: "latest"                      # Override with specific version in production
+  imagePullSecrets: []
+
+  # External OpenSearch SaaS connection (OpenSearch is NOT deployed by this chart)
+  opensearch:
+    host: ""                              # Required: OpenSearch SaaS endpoint (e.g., "my-cluster.us-east-1.es.amazonaws.com")
+    port: 443                             # Default HTTPS port for managed OpenSearch
+    scheme: "https"                       # https for production SaaS
+    username: "admin"                     # OpenSearch username
+    password: ""                          # OpenSearch password (stored in secret)
+
+  # Shared OAuth credentials (same across all tenants)
+  oauth:
+    google:
+      enabled: false
+      clientId: ""                        # Google OAuth client ID
+      clientSecret: ""                    # Google OAuth client secret
+    microsoft:
+      enabled: false
+      clientId: ""                        # Microsoft Graph OAuth client ID
+      clientSecret: ""                    # Microsoft Graph OAuth client secret
+
+# ============================================================================
+# Langflow Configuration
+# ============================================================================
+langflow:
+  enabled: true
+
+  image:
+    repository: langflowai/openrag-langflow
+    tag: ""                               # Uses global.imageTag if empty
+
+  # Single pod - vertical scaling only (SQLite requires single writer)
+  replicaCount: 1
+
+  # Resource requests/limits for vertical scaling
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "4"
+      memory: "8Gi"
+
+  # Persistence for SQLite DB and flows
+  persistence:
+    enabled: true
+    storageClass: ""                      # Empty uses cluster default
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    mountPath: /app/data
+    flowsSubPath: flows
+    dbSubPath: langflow.db
+
+  # Flow configuration (UUIDs for Langflow workflows)
+  flows:
+    loadDefaults: true                        # Load default OpenRAG flows on first deployment
+    chatFlowId: "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
+    ingestFlowId: "5488df7c-b93f-4f87-a446-b67028bc0813"
+    urlIngestFlowId: "72c3d17c-2dac-4a73-b48a-6518473d7830"
+    nudgesFlowId: "ebc01d31-1976-46ce-a385-b0240327226c"
+    loadPath: /app/flows
+
+  # Authentication settings
+  auth:
+    autoLogin: false
+    superuser: "admin"                    # Langflow superuser username
+    superuserPassword: ""                 # Langflow superuser password (stored in secret)
+    secretKey: ""                         # Langflow secret key for JWT (stored in secret)
+    newUserIsActive: false
+    enableSuperuserCli: false
+
+  # Runtime settings
+  deactivateTracing: true
+  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
+
+  # Variables to expose to flows
+  variablesToGetFromEnvironment: "JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_API_KEY,WATSONX_ENDPOINT,WATSONX_PROJECT_ID,OLLAMA_BASE_URL"
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 7860
+
+# ============================================================================
+# OpenRAG Backend Configuration
+# ============================================================================
+backend:
+  enabled: true
+
+  image:
+    repository: langflowai/openrag-backend
+    tag: ""                               # Uses global.imageTag if empty
+
+  # Single pod for vertical scaling
+  replicaCount: 1
+
+  # Resource requests/limits
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "4"
+      memory: "16Gi"
+
+  # Persistence for documents, keys, and config
+  persistence:
+    documents:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      size: 50Gi
+      mountPath: /app/openrag-documents
+    keys:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      size: 1Gi
+      mountPath: /app/keys
+    config:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      size: 1Gi
+      mountPath: /app/config
+
+  # Feature flags
+  features:
+    disableIngestWithLangflow: false      # Set true to use traditional processor instead of Langflow
+
+  # Langflow public URL (for UI links to Langflow)
+  langflowPublicUrl: ""                   # e.g., "https://langflow.example.com"
+
+  # Webhook configuration for continuous ingestion
+  webhook:
+    enabled: false
+    baseUrl: ""                           # DNS routable URL for webhooks (e.g., ngrok URL)
+
+  # AWS credentials for S3 integration
+  aws:
+    enabled: false
+    accessKeyId: ""
+    secretAccessKey: ""
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8000
+
+# ============================================================================
+# OpenRAG Frontend Configuration
+# ============================================================================
+frontend:
+  enabled: true
+
+  image:
+    repository: langflowai/openrag-frontend
+    tag: ""                               # Uses global.imageTag if empty
+
+  # Can be multiple replicas (stateless)
+  replicaCount: 2
+
+  # Resource requests/limits
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 3000
+
+# ============================================================================
+# OpenSearch Dashboards Configuration (Optional)
+# ============================================================================
+dashboards:
+  enabled: false                          # Enable only if dashboards available in OS SaaS
+
+  image:
+    repository: opensearchproject/opensearch-dashboards
+    tag: "3.0.0"
+
+  replicaCount: 1
+
+  # Resource requests/limits
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 30
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 5601
+
+# ============================================================================
+# Ingress Configuration
+# ============================================================================
+ingress:
+  enabled: true
+  className: "nginx"                      # nginx, alb, traefik, etc.
+
+  # Annotations for ingress controller
+  annotations: {}
+    # For nginx:
+    # nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    # For AWS ALB:
+    # alb.ingress.kubernetes.io/scheme: internet-facing
+    # alb.ingress.kubernetes.io/target-type: ip
+
+  # Host configuration
+  hosts:
+    frontend:
+      host: ""                            # e.g., "openrag.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+    backend:
+      host: ""                            # e.g., "api.openrag.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+    langflow:
+      enabled: false                      # Optional: expose Langflow directly
+      host: ""                            # e.g., "langflow.openrag.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+    dashboards:
+      enabled: false                      # Only if dashboards.enabled is true
+      host: ""
+      paths:
+        - path: /
+          pathType: Prefix
+
+  # TLS configuration
+  tls:
+    enabled: false
+    # Use existing secret:
+    # secretName: "openrag-tls"
+
+    # Or use cert-manager:
+    certManager:
+      enabled: false
+      issuerRef:
+        name: "letsencrypt-prod"
+        kind: "ClusterIssuer"
+
+# ============================================================================
+# LLM Provider API Keys
+# ============================================================================
+llmProviders:
+  openai:
+    enabled: false
+    apiKey: ""                            # OpenAI API key (stored in secret)
+  anthropic:
+    enabled: false
+    apiKey: ""                            # Anthropic API key (stored in secret)
+  watsonx:
+    enabled: false
+    apiKey: ""                            # WatsonX API key (stored in secret)
+    endpoint: "https://us-south.ml.cloud.ibm.com"
+    projectId: ""                         # WatsonX project ID
+  ollama:
+    enabled: false
+    endpoint: ""                          # Ollama endpoint URL (e.g., "http://ollama:11434")
+
+# ============================================================================
+# Application Config (config.yaml contents)
+# ============================================================================
+appConfig:
+  agent:
+    llmModel: "claude-sonnet-4-5-20250929"
+    llmProvider: "anthropic"
+    # System prompt can be customized here
+    systemPrompt: ""                      # Leave empty to use default
+  knowledge:
+    chunkOverlap: 200
+    chunkSize: 1000
+    embeddingModel: "text-embedding-3-large"
+    embeddingProvider: "openai"
+    ocr: false
+    pictureDescriptions: false
+    tableStructure: true
+
+# ============================================================================
+# Service Account
+# ============================================================================
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# ============================================================================
+# Pod Security
+# ============================================================================
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsUser: 1000
+  runAsGroup: 1000
+
+# ============================================================================
+# Node Placement
+# ============================================================================
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# ============================================================================
+# Pod Disruption Budgets
+# ============================================================================
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
