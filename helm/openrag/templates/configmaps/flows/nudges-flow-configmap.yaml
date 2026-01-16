@@ -1,0 +1,12 @@
+{{- if .Values.langflow.flows.loadDefaults }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openrag.fullname" . }}-flow-nudges
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.labels" . | nindent 4 }}
+data:
+  openrag_nudges.json: |-
+{{ .Files.Get "flows/openrag_nudges.json" | indent 4 }}
+{{- end }}
