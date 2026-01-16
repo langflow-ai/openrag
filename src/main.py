@@ -21,6 +21,7 @@ from functools import partial
 
 from starlette.applications import Starlette
 from starlette.routing import Route
+from starlette.responses import JSONResponse
 
 # Set multiprocessing start method to 'spawn' for CUDA compatibility
 multiprocessing.set_start_method("spawn", force=True)
@@ -456,6 +457,24 @@ async def _ingest_default_documents_langflow(services, file_paths):
         file_count=len(file_paths),
     )
 
+async def opensearch_health_ready(request):
+    """Readiness probe: verifies OpenSearch dependency is reachable."""
+    try:
+        # Fast check that the cluster is reachable/auth works
+        await asyncio.wait_for(clients.opensearch.info(), timeout=5.0)
+        return JSONResponse(
+            {"status": "ready", "dependencies": {"opensearch": "up"}},
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            {
+                "status": "not_ready",
+                "dependencies": {"opensearch": "down"},
+                "error": str(e),
+            },
+            status_code=503,
+        )
 
 async def _ingest_default_documents_openrag(services, file_paths):
     """Ingest default documents using traditional OpenRAG processor."""
@@ -1146,6 +1165,11 @@ async def create_app():
             require_auth(services["session_manager"])(
                 provider_health.check_provider_health
             ),
+            methods=["GET"],
+        ),
+        Route(
+            "/search/health",
+            opensearch_health_ready,
             methods=["GET"],
         ),
         # Models endpoints

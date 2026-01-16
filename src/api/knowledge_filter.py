@@ -8,6 +8,42 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def normalize_query_data(query_data: str | dict) -> str:
+    """
+    Normalize query_data to ensure all required fields exist with defaults.
+    This prevents frontend crashes when API-created filters have incomplete data.
+    """
+    # Parse if string
+    if isinstance(query_data, str):
+        try:
+            data = json.loads(query_data)
+        except json.JSONDecodeError:
+            data = {}
+    else:
+        data = query_data or {}
+
+    # Ensure filters object exists with all required fields
+    filters = data.get("filters") or {}
+    normalized_filters = {
+        "data_sources": filters.get("data_sources", ["*"]),
+        "document_types": filters.get("document_types", ["*"]),
+        "owners": filters.get("owners", ["*"]),
+        "connector_types": filters.get("connector_types", ["*"]),
+    }
+
+    # Build normalized query_data with defaults
+    normalized = {
+        "query": data.get("query", ""),
+        "filters": normalized_filters,
+        "limit": data.get("limit", 10),
+        "scoreThreshold": data.get("scoreThreshold", 0),
+        "color": data.get("color", "zinc"),
+        "icon": data.get("icon", "filter"),
+    }
+
+    return json.dumps(normalized)
+
+
 async def create_knowledge_filter(
     request: Request, knowledge_filter_service, session_manager
 ):
@@ -25,6 +61,15 @@ async def create_knowledge_filter(
     if not query_data:
         return JSONResponse({"error": "Query data is required"}, status_code=400)
 
+    # Normalize query_data to ensure all required fields exist
+    try:
+        normalized_query_data = normalize_query_data(query_data)
+    except Exception as e:
+        logger.error(f"Failed to normalize query_data: {e}")
+        return JSONResponse(
+            {"error": f"Invalid queryData format: {str(e)}"}, status_code=400
+        )
+
     user = request.state.user
     jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
 
@@ -34,7 +79,7 @@ async def create_knowledge_filter(
         "id": filter_id,
         "name": name,
         "description": description,
-        "query_data": query_data,  # Store the full search query JSON
+        "query_data": normalized_query_data,  # Store normalized query JSON with defaults
         "owner": user.user_id,
         "allowed_users": payload.get("allowedUsers", []),  # ACL field for future use
         "allowed_groups": payload.get("allowedGroups", []),  # ACL field for future use
@@ -158,12 +203,22 @@ async def update_knowledge_filter(
             {"error": "Failed to delete existing knowledge filter"}, status_code=500
         )
 
+    # Normalize query_data if provided, otherwise use existing
+    query_data = payload.get("queryData", existing_filter["query_data"])
+    try:
+        normalized_query_data = normalize_query_data(query_data)
+    except Exception as e:
+        logger.error(f"Failed to normalize query_data: {e}")
+        return JSONResponse(
+            {"error": f"Invalid queryData format: {str(e)}"}, status_code=400
+        )
+
     # Create updated knowledge filter document with same ID
     updated_filter = {
         "id": filter_id,
         "name": payload.get("name", existing_filter["name"]),
         "description": payload.get("description", existing_filter["description"]),
-        "query_data": payload.get("queryData", existing_filter["query_data"]),
+        "query_data": normalized_query_data,
         "owner": existing_filter["owner"],
         "allowed_users": payload.get(
             "allowedUsers", existing_filter.get("allowed_users", [])

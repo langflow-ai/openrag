@@ -29,7 +29,7 @@ services:
       - "9200:9200"
       - "9600:9600"
     volumes:
-      - ${OPENSEARCH_DATA_PATH:-./opensearch-data}:/usr/share/opensearch/data:Z
+      - ${OPENSEARCH_DATA_PATH:-./opensearch-data}:/usr/share/opensearch/data:U,z
 
   dashboards:
     image: opensearchproject/opensearch-dashboards:3.0.0
@@ -81,7 +81,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     volumes:
       - ${OPENRAG_DOCUMENTS_PATH:-./openrag-documents}:/app/openrag-documents:Z
-      - ${OPENRAG_KEYS_PATH:-./keys}:/app/keys:Z
+      - ${OPENRAG_KEYS_PATH:-./keys}:/app/keys:U,z
       - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
       - ${OPENRAG_CONFIG_PATH:-./config}:/app/config:Z
       - ${OPENRAG_DATA_PATH:-./data}:/app/data:Z
