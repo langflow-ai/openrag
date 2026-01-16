@@ -1,0 +1,106 @@
+name: Documentation Issue
+description: Report an issue with documentation or request new documentation
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve OpenRAG's documentation! Please provide details about the issue or your request.
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      description: What type of documentation issue is this?
+      options:
+        - Incorrect information
+        - Missing documentation
+        - Outdated content
+        - Unclear or confusing
+        - Typo or grammatical error
+        - Broken links
+        - Request for new documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: doc-area
+    attributes:
+      label: Documentation Area
+      description: Which area of documentation does this relate to?
+      multiple: true
+      options:
+        - Getting Started / Quickstart
+        - Installation (uvx, Docker, Podman)
+        - Configuration / Settings
+        - Ingestion & Document Processing
+        - Search & Retrieval
+        - Chat Interface
+        - Knowledge Filters
+        - Connectors (Google Drive, OneDrive, SharePoint)
+        - TUI (Terminal User Interface)
+        - API Reference
+        - SDK Documentation (Python/TypeScript)
+        - Troubleshooting
+        - Contributing Guide
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: doc-url
+    attributes:
+      label: Documentation URL
+      description: If applicable, provide a link to the specific documentation page.
+      placeholder: "https://docs.openr.ag/..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: current-content
+    attributes:
+      label: Current Content
+      description: If reporting an issue, what does the documentation currently say?
+      placeholder: Quote or describe the current documentation content.
+    validations:
+      required: false
+
+  - type: textarea
+    id: issue-description
+    attributes:
+      label: Issue Description
+      description: Describe the problem or what documentation you'd like to see added.
+      placeholder: |
+        For issues: Explain what's wrong or confusing about the current documentation.
+        For requests: Describe what topic you'd like documented and why it would be helpful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-content
+    attributes:
+      label: Suggested Content
+      description: If you have suggestions for how to fix or improve the documentation, please share them.
+      placeholder: Provide suggested text, corrections, or an outline for new documentation.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or examples here.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Would you be interested in contributing to fix this documentation issue?
+      options:
+        - label: I would be willing to submit a pull request to fix this issue.
+          required: false
+
