@@ -62,12 +62,15 @@ Some of these variables are immutable and can only be changed by redeploying Ope
 
 Control how OpenRAG [processes and ingests documents](/ingestion) into your knowledge base.
 
+Most of these settings can be configured on the OpenRAG **Settings** page or in the `.env` file.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CHUNK_OVERLAP` | `200` | Overlap between chunks. |
 | `CHUNK_SIZE` | `1000` | Text chunk size for document processing. |
 | `DISABLE_INGEST_WITH_LANGFLOW` | `false` | Disable Langflow ingestion pipeline. |
 | `DOCLING_OCR_ENGINE` | Set by OS | OCR engine for document processing. For macOS, `ocrmac`. For any other OS, `easyocr`. |
+| `DOCLING_SERVE_URL` | `http://**HOST_IP**:5001` | URL for the [Docling Serve instance](/knowledge#select-a-docling-implementation). By default, OpenRAG starts a local `docling serve` process and auto-detects the host. To use your own local or remote Docling Serve instance, set this variable to the full path to the target instance. The service must run on port 5001. |
 | `OCR_ENABLED` | `false` | Enable OCR for image processing. |
 | `OPENRAG_DOCUMENTS_PATH` | `~/.openrag/documents` | The [local documents path](/knowledge#set-the-local-documents-path) for ingestion. |
 | `PICTURE_DESCRIPTIONS_ENABLED` | `false` | Enable picture descriptions. |

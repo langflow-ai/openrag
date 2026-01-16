@@ -126,10 +126,10 @@ The default embedding dimension is `1536`, and the default model is the OpenAI `
 If you want to use an unsupported model, you must manually set the model in your [OpenRAG `.env` file](/reference/configuration).
 If you use an unsupported embedding model that doesn't have defined dimensions in `settings.py`, then OpenRAG falls back to the default dimensions (1536) and logs a warning. OpenRAG's OpenSearch instance and flows continue to work, but [similarity search](https://www.ibm.com/think/topics/vector-search) quality can be affected if the actual model dimensions aren't 1536.
 
-To change the embedding model after onboarding, it is recommended that you modify the embedding model configuration on the OpenRAG **Settings** page or in your [OpenRAG `.env` file](/reference/configuration).
+To change the embedding model after onboarding, modify the embedding model configuration on the OpenRAG **Settings** page or in your [OpenRAG `.env` file](/reference/configuration).
 This ensures that all relevant [OpenRAG flows](/agents) are updated to use the new embedding model configuration.
 
-If you edit these settings in the `.env` or `docker-compose` files, you must [stop and restart the OpenRAG containers](/manage-services#stop-and-start-containers) to apply the changes.
+If you edit these settings in the `.env` file, you must [stop and restart the OpenRAG containers](/manage-services#stop-and-start-containers) to apply the changes.
 
 ### Set Docling parameters
 
@@ -137,14 +137,17 @@ OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document 
 
 When you [upload documents](/ingestion), Docling processes the files, splits them into chunks, and stores them as separate, structured documents in your OpenSearch knowledge base.
 
-#### Select a Docling implementation
+#### Select a Docling implementation {#select-a-docling-implementation}
 
 You can use either Docling Serve or OpenRAG's built-in Docling ingestion pipeline to process documents.
 
 * **Docling Serve ingestion**: By default, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve).
-This means that OpenRAG starts a `docling serve` process on your local machine and runs Docling ingestion through an API service.
+It starts a local `docling serve` process, and then runs Docling ingestion through the Docling Serve API.
 
-* **Built-in Docling ingestion**: If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG environment variables](/reference/configuration#document-processing-settings).
+   To use a remote `docling serve` instance or your own local instance, set `DOCLING_SERVE_URL=http://**HOST_IP**:5001` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings).
+   The service must run on port 5001.
+
+* **Built-in Docling ingestion**: If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings).
 The built-in pipeline uses the Docling processor directly instead of through the Docling Serve API.
 For the underlying functionality, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
 
