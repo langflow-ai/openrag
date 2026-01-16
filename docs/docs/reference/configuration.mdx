@@ -99,7 +99,7 @@ For better security, it is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so t
 | `LANGFLOW_SUPERUSER_PASSWORD` | Not set | Langflow administrator password. If this variable isn't set, then the Langflow server starts _without_ authentication enabled. It is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so the [Langflow server starts with authentication enabled](https://docs.langflow.org/api-keys-and-authentication#start-a-langflow-server-with-authentication-enabled). |
 | `LANGFLOW_URL` | `http://localhost:7860` | URL for the Langflow instance. |
 | `LANGFLOW_CHAT_FLOW_ID`, `LANGFLOW_INGEST_FLOW_ID`, `NUDGES_FLOW_ID` | Built-in flow IDs | These variables are set automatically to the IDs of the chat, ingestion, and nudges [flows](/agents). The default values are found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change these values if you want to replace a built-in flow with your own custom flow. The flow JSON must be present in your version of the OpenRAG codebase. For example, if you [deploy self-managed services](/docker), you can add the flow JSON to your local clone of the OpenRAG repository before deploying OpenRAG. |
-| `SYSTEM_PROMPT` | `You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context.` | System prompt instructions for the agent driving the **Agent** flow (OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**). |
+| `SYSTEM_PROMPT` | `You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context.` | System prompt instructions for the agent driving the **Agent** flow (OpenRAG **Chat**). |
 
 ## OAuth provider settings
 
