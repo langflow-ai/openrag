@@ -4,6 +4,7 @@ slug: /knowledge-filters
 ---
 
 import Icon from "@site/src/components/icon/icon";
+import PartialAnonymousUserOwner from '@site/docs/_partial-anonymous-user-owner.mdx';
 
 OpenRAG's knowledge filters help you organize and manage your [knowledge base](/knowledge) by creating pre-defined views of your documents.
 
@@ -41,16 +42,25 @@ This is purely cosmetic, but it can help you visually distinguish different sets
    Use the filter settings to narrow the scope of documents that the filter captures:
 
    * **Search Query**: Enter a natural language text string for semantic search.
-   When you apply a filter that has a **Search Query**, only documents matching the search query are included.
-   It is recommended that you use the **Score Threshold** setting to avoid returning irrelevant documents.
+
+      When you apply a filter that has a **Search Query**, only documents matching the search query are included.
+      It is recommended that you also use the **Score Threshold** setting to avoid returning irrelevant documents.
+
    * **Data Sources**: Select specific files and folders to include in the filter.
-   This is useful if you want to create a filter for a specific project or topic and you know the specific documents you want to include.
-   Similarly, if you upload a folder of documents, you might want to create a filter that only includes the documents from that folder.
+
+      This is useful if you want to create a filter for a specific project or topic and you know the specific documents you want to include.
+      Similarly, if you upload a folder of documents or enable an OAuth connector, you might want to create a filter that only includes the documents from that source.
+
    * **Document Types**: Filter by file type.
+
    * **Owners**: Filter by the user that uploaded the documents.
-   **Anonymous User** means a document was uploaded in an OpenRAG environment where OAuth isn't configured.
-   * **Connectors**: Filter by [upload source](/ingestion), such as the local file system or a Google Drive OAuth connector.
+
+      <PartialAnonymousUserOwner />
+
+   * **Connectors**: Filter by [upload source](/ingestion), such as the local file system or an OAuth connector.
+
    * **Response Limit**: Set the maximum number of results to return from the knowledge base. The default is `10`, which means the filter returns only the top 10 most relevant documents.
+
    * **Score Threshold**: Set the minimum relevance score for similarity search. The default score is `0`. A threshold is recommended to avoid returned irrelevant documents.
 
 6. Click **Create Filter**.
@@ -65,7 +75,7 @@ On the filter settings pane, edit the filter as desired, and then click **Update
 In the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, click <Icon name="Funnel" aria-hidden="true"/> **Filter**, and then select the filter to apply.
 Chat filters apply to one chat session only.
 
-You can also use filters when [browsing the **Knowledge** page](/knowledge#browse-knowledge).
+You can also use filters when [browsing your knowledge base](/knowledge#browse-knowledge).
 This is a helpful way to test filters and manage knowledge bases that have many documents.
 
 ## Delete a filter
