@@ -88,7 +88,7 @@ The following variables are required or recommended:
 
 ## Start services
 
-1. Start `docling serve` on port 5001 on the host machine:
+1. To use the default Docling Serve implementation, start `docling serve` on port 5001 on the host machine using the included script:
 
    ```bash
    uv run python scripts/docling_ctl.py start --port 5001
@@ -97,10 +97,16 @@ The following variables are required or recommended:
    Docling cannot run inside a Docker container due to system-level dependencies, so you must manage it as a separate service on the host machine.
    For more information, see [Stop, start, and inspect native services](/manage-services#start-native-services).
 
-   This port is required to deploy OpenRAG successfully; don't use a different port.
+   Port 5001 is required to deploy OpenRAG successfully; don't use a different port.
    Additionally, this enables the [MLX framework](https://opensource.apple.com/projects/mlx/) for accelerated performance on Apple Silicon Mac machines.
 
+   :::tip
+   If you don't want to use the default Docling Serve implementation, see [Select a Docling implementation](/knowledge#select-a-docling-implementation).
+   :::
+
 2. Confirm `docling serve` is running.
+
+   The following command checks the status of the default Docling Serve implementation:
 
    ```bash
    uv run python scripts/docling_ctl.py status
