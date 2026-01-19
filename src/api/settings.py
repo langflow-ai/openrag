@@ -686,6 +686,7 @@ async def onboarding(request, flows_service, session_manager=None):
             "llm_model",
             "embedding_provider",
             "embedding_model",
+            "delete_existing_index",
             "sample_data",
             # Provider-specific fields
             "openai_api_key",
@@ -975,10 +976,26 @@ async def onboarding(request, flows_service, session_manager=None):
                 # Import here to avoid circular imports
                 from main import init_index
 
+                # Handle delete_existing_index
+                delete_existing_index = False
+                if "delete_existing_index" in body:
+                    delete_existing_index = body["delete_existing_index"]
+                    if not isinstance(delete_existing_index, bool):
+                        return JSONResponse(
+                            {"error": "delete_existing_index must be a boolean value"}, status_code=400
+                        )
+                    if delete_existing_index:
+                        await TelemetryClient.send_event(
+                            Category.ONBOARDING,
+                            MessageId.ORB_ONBOARD_DELETE_EXISTING_INDEX
+                        )
+                        logger.info("Delete existing index requested during onboarding")
+
                 logger.info(
-                    "Initializing OpenSearch index after onboarding configuration"
+                    f"Initializing OpenSearch index after onboarding configuration"
                 )
-                await init_index()
+                await init_index(delete_existing=delete_existing_index)
+
                 logger.info("OpenSearch index initialization completed successfully")
             except Exception as e:
                 if isinstance(e, ValueError):

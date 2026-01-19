@@ -179,7 +179,7 @@ async def _ensure_opensearch_index():
         # The service can still function, document operations might fail later
 
 
-async def init_index():
+async def init_index(delete_existing: bool = False):
     """Initialize OpenSearch index and security roles"""
     await wait_for_opensearch()
 
@@ -197,8 +197,16 @@ async def init_index():
         endpoint=getattr(embedding_provider_config, "endpoint", None)
     )
 
+    index_exists = await clients.opensearch.indices.exists(index=INDEX_NAME)
+    if index_exists and delete_existing:
+        # Asked to delete the existing index ..
+        logger.info(f"Deleting index '{INDEX_NAME}'...")
+        resp = await clients.opensearch.indices.delete(index=INDEX_NAME)
+        logger.info(f"Deleted index '{INDEX_NAME}', response: {resp}")
+        index_exists = False
+
     # Create documents index
-    if not await clients.opensearch.indices.exists(index=INDEX_NAME):
+    if not index_exists:
         await clients.opensearch.indices.create(
             index=INDEX_NAME, body=dynamic_index_body
         )
