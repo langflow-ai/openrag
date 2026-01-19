@@ -992,7 +992,7 @@ async def onboarding(request, flows_service, session_manager=None):
                         logger.info("Delete existing index requested during onboarding")
 
                 logger.info(
-                    f"Initializing OpenSearch index after onboarding configuration"
+                    "Initializing OpenSearch index after onboarding configuration"
                 )
                 await init_index(delete_existing=delete_existing_index)
 
