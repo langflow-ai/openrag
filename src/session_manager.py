@@ -158,6 +158,8 @@ class SessionManager:
             "preferred_username": user.email,
             "email_verified": True,
             "roles": ["openrag_user"],  # Backend role for OpenSearch
+            "user_roles": ["openrag_user"],  # compatible with OpenSearch's roles_key
+            "user_id": user.user_id,  # compatible with OpenSearch's subject_key
         }
 
         token = jwt.encode(token_payload, self.private_key, algorithm="RS256")
