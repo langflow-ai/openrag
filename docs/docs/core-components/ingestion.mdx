@@ -171,26 +171,37 @@ The agent can call this component to fetch web content from a given URL, and the
 Like all OpenRAG flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it.
 For more information about MCP in Langflow, see the Langflow documentation on [MCP clients](https://docs.langflow.org/mcp-client) and [MCP servers](https://docs.langflow.org/mcp-tutorial).
 
-## Monitor ingestion
+## Monitor ingestion {#monitor-ingestion}
 
-Document ingestion tasks run in the background.
+Depending on the amount of data to ingest, document ingestion can take a few seconds, minutes, or longer.
+For this reason, document ingestion tasks run in the background.
 
 In the OpenRAG user interface, a badge is shown on <Icon name="Bell" aria-hidden="true"/> **Tasks** when OpenRAG tasks are active.
-Click <Icon name="Bell" aria-hidden="true"/> **Tasks** to inspect and cancel tasks:
+Click <Icon name="Bell" aria-hidden="true"/> **Tasks** to inspect and cancel tasks.
+Tasks are separated into multiple sections:
 
-* **Active Tasks**: All tasks that are **Pending**, **Running**, or **Processing**.
-For each active task, depending on its state, you can find the task ID, start time, duration, number of files processed, and the total files enqueued for processing.
+* The **Active Tasks** section includes all tasks that are **Pending**, **Running**, or **Processing**:
 
-* **Pending**: The task is queued and waiting to start.
+   * **Pending**: The task is queued and waiting to start.
+   * **Running**: The task is actively processing files.
+   * **Processing**: The task is performing ingestion operations.
 
-* **Running**: The task is actively processing files.
+   To stop an active task, click <Icon name="X" aria-hidden="true"/> **Cancel**. Canceling a task stops processing immediately and marks the ingestion as failed.
 
-* **Processing**: The task is performing ingestion operations.
+* The **Recent Tasks** section lists recently finished tasks.
 
-* **Failed**: Something went wrong during ingestion, or the task was manually canceled.
-For troubleshooting advice, see [Troubleshoot ingestion](#troubleshoot-ingestion).
+   :::warning
+   **Completed** doesn't mean success.
 
-To stop an active task, click <Icon name="X" aria-hidden="true"/> **Cancel**. Canceling a task stops processing immediately and marks the task as **Failed**.
+   A completed task can report successful ingestions, failed ingestions, or both, depending on the number of files processed.
+   :::
+
+   Check the **Success** and **Failed** counts for each completed task to determine the overall success rate.
+
+   **Failed** means something went wrong during ingestion, or the task was manually canceled.
+   For more information, see [Troubleshoot ingestion](#troubleshoot-ingestion).
+
+For each task, depending on its state, you can find the task ID, start time, duration, number of files processed successfully, number of files that failed, and the number of files enqueued for processing.
 
 ### Ingestion performance expectations
 
@@ -247,9 +258,9 @@ The following issues can occur during document ingestion.
 
 If an ingestion task fails, do the following:
 
-* Make sure you are uploading supported file types.
-* Split excessively large files into smaller files before uploading.
-* Remove unusual embedded content, such as videos or animations, before uploading. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
+* Make sure you uploaded only supported file types.
+* Split very large files into smaller files.
+* Remove unusual or complex embedded content, such as videos or animations. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
 * Make sure your Podman/Docker VM has sufficient memory for the ingestion tasks.
 The minimum recommendation is 8 GB of RAM.
 If you regularly upload large files, more RAM is recommended.
@@ -261,17 +272,17 @@ For more information, see [Memory issue with Podman on macOS](/support/troublesh
 If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](/knowledge#browse-knowledge) to confirm that the documents are uploaded in full, and the chunks are correct.
 
 If the documents are present and well-formed, check your [knowledge filters](/knowledge-filters).
-If a global filter is applied, make sure the expected documents are included in the global filter.
-If the global filter excludes any documents, the agent cannot access those documents unless you apply a chat-level filter or change the global filter.
+If you applied a filter to the chat, make sure the expected documents aren't excluded by the filter settings.
+You can test this by applying the filter when you [browse the knowledge base](/knowledge#browse-knowledge).
+If the filter excludes any documents, the agent cannot access those documents.
+Be aware that some settings create dynamic filters that don't always produce the same results, such as a **Search query** combined with a low **Response limit**.
 
-If text is missing or incorrectly processed, you need to reupload the documents after modifying the ingestion parameters or the documents themselves.
+If the document chunks have missing, incorrect, or unexpected text, you must [delete the documents](/knowledge#delete-knowledge) from your knowledge base, modify the [ingestion parameters](/knowledge#knowledge-ingestion-settings) or the documents themselves, and then reingest the documents.
 For example:
 
 * Break combined documents into separate files for better metadata context.
 * Make sure scanned documents are legible enough for extraction, and enable the **OCR** option. Poorly scanned documents might require additional preparation or rescanning before ingestion.
-* Adjust the **Chunk Size** and **Chunk Overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
-
-For more information about modifying ingestion parameters and flows, see [Knowledge ingestion settings](/knowledge#knowledge-ingestion-settings).
+* Adjust the **Chunk size** and **Chunk overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
 
 ## See also
 

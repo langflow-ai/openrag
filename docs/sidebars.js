@@ -82,6 +82,11 @@ const sidebars = {
     },
     "support/contribute",
     "support/troubleshoot",
+    {
+      type: "link",
+      label: "Changelog",
+      href: "https://github.com/langflow-ai/openrag/releases",
+    },
   ],
 };
 
