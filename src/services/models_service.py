@@ -1,3 +1,5 @@
+import os
+
 import httpx
 from typing import Dict, List
 from utils.container_utils import transform_localhost_url
@@ -54,8 +56,10 @@ class ModelsService:
             async with httpx.AsyncClient() as client:
                 # Lightweight validation: just check if API key is valid
                 # This doesn't consume credits, only validates the key
+                from api.provider_validation import get_openai_url
+                url = get_openai_url(endpoint="/v1/models")
                 response = await client.get(
-                    "https://api.openai.com/v1/models", headers=headers, timeout=10.0
+                    url, headers=headers, timeout=10.0
                 )
 
             if response.status_code == 200:

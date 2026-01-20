@@ -1,6 +1,8 @@
 """Provider validation utilities for testing API keys and models during onboarding."""
 
 import json
+import os
+
 import httpx
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
@@ -107,6 +109,9 @@ def _extract_error_details(response: httpx.Response) -> str:
             return parsed
         return response_text
 
+def get_openai_url(endpoint: str) -> str:
+    api_base = os.environ.get("OPENAI_API_BASE", "https://api.openai.com")
+    return f"{api_base}{endpoint}"
 
 async def validate_provider_setup(
     provider: str,
@@ -248,10 +253,11 @@ async def _test_openai_lightweight_health(api_key: str) -> None:
             "Content-Type": "application/json",
         }
 
+        url = get_openai_url(endpoint="/v1/models")
         async with httpx.AsyncClient() as client:
             # Use /v1/models endpoint which validates the key without consuming credits
             response = await client.get(
-                "https://api.openai.com/v1/models",
+                url=url,
                 headers=headers,
                 timeout=10.0,  # Short timeout for lightweight check
             )
@@ -309,8 +315,9 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
         async with httpx.AsyncClient() as client:
             # Try with max_tokens first
             payload = {**base_payload, "max_tokens": 50}
+            url = get_openai_url(endpoint="/v1/chat/completions")
             response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
+                url=url,
                 headers=headers,
                 json=payload,
                 timeout=30.0,
@@ -320,8 +327,9 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str) -> No
             if response.status_code != 200:
                 logger.info("max_tokens parameter failed, trying max_completion_tokens instead")
                 payload = {**base_payload, "max_completion_tokens": 50}
+                url = get_openai_url(endpoint="/v1/chat/completions")
                 response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    url=url,
                     headers=headers,
                     json=payload,
                     timeout=30.0,
@@ -356,8 +364,9 @@ async def _test_openai_embedding(api_key: str, embedding_model: str) -> None:
         }
 
         async with httpx.AsyncClient() as client:
+            url = get_openai_url(endpoint="/v1/embeddings")
             response = await client.post(
-                "https://api.openai.com/v1/embeddings",
+                url=url,
                 headers=headers,
                 json=payload,
                 timeout=30.0,
