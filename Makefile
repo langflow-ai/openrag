@@ -10,6 +10,8 @@ ifneq (,$(wildcard .env))
   $(foreach var,$(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env),$(eval $(var):=$(shell echo $($(var)) | sed "s/^'//;s/'$$//")))
 endif
 
+hostname ?= 0.0.0.0
+
 .PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install \
        test test-integration test-ci test-ci-local test-sdk \
        backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
@@ -123,7 +125,8 @@ backend:
 frontend:
 	@echo "⚛️  Starting frontend locally..."
 	@if [ ! -d "frontend/node_modules" ]; then echo "📦 Installing frontend dependencies first..."; cd frontend && npm install; fi
-	cd frontend && npx next dev
+	cd frontend && npx next dev \
+		--hostname $(hostname)
 
 # Installation
 install: install-be install-fe
