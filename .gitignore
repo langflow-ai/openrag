@@ -34,3 +34,7 @@ config/
 opensearch-data/
 
 node_modules
+
+# AI Tools
+/CLAUDE.md
+/.claude
