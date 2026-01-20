@@ -131,7 +131,7 @@ install: install-be install-fe
 
 install-be:
 	@echo "📦 Installing backend dependencies..."
-	uv sync --extra torch-cu128
+	uv sync
 
 install-fe:
 	@echo "📦 Installing frontend dependencies..."
