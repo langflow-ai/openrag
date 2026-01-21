@@ -140,6 +140,9 @@ class SessionManager:
         """Create JWT token for an existing user"""
         # Use OpenSearch-compatible issuer for OIDC validation
         oidc_issuer = "http://openrag-backend:8000"
+        openrag_fqdn = os.getenv("OPENRAG_FQDN")
+        if openrag_fqdn:
+            oidc_issuer = f"http://{openrag_fqdn}:8000"
 
         # Create JWT token with OIDC-compliant claims
         now = datetime.utcnow()
@@ -159,7 +162,6 @@ class SessionManager:
             "email_verified": True,
             "roles": ["openrag_user"],  # Backend role for OpenSearch
             "user_roles": ["openrag_user"],  # compatible with OpenSearch's roles_key
-            "user_id": user.user_id,  # compatible with OpenSearch's subject_key
         }
 
         token = jwt.encode(token_payload, self.private_key, algorithm="RS256")
