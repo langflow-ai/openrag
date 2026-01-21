@@ -1,3 +1,5 @@
+import os
+
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 import json
@@ -8,7 +10,11 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 async def oidc_discovery(request: Request, session_manager):
     """OIDC discovery endpoint"""
-    base_url = str(request.base_url).rstrip("/")
+    openrag_fqdn = os.getenv("OPENRAG_FQDN")
+    if openrag_fqdn:
+        base_url = f"http://{openrag_fqdn}:8000"
+    else:
+        base_url = str(request.base_url).rstrip("/")
 
     discovery_config = {
         "issuer": base_url,
@@ -43,6 +49,10 @@ async def jwks_endpoint(request: Request, session_manager):
     try:
         # Get the public key from session manager
         public_key_pem = session_manager.public_key_pem
+
+        if public_key_pem is None:
+            # Symmetric key in use - no JWKS available
+            return JSONResponse({"keys": []})
 
         # Parse the PEM to extract key components
         public_key = serialization.load_pem_public_key(public_key_pem.encode())
