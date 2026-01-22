@@ -144,11 +144,10 @@ dev-branch:
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml up -d
 	@echo ""
 	@echo "✅ Dev environment started!"
-	@echo "   Langflow ($(BRANCH)): http://localhost:7860"
-	@echo "   Backend: http://localhost:8000"
-	@echo "   Frontend: http://localhost:3000"
-	@echo "   OpenSearch: http://localhost:9200"
-	@echo "   Dashboards: http://localhost:5601"
+	@echo "   Langflow ($(BRANCH)): http://localhost:7861"
+	@echo "   Frontend: http://localhost:3001"
+	@echo "   OpenSearch: http://localhost:9201"
+	@echo "   Dashboards: http://localhost:5602"
 
 build-langflow-dev:
 	@echo "🔨 Building Langflow dev image from branch: $(BRANCH)"

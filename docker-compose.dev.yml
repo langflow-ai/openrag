@@ -1,6 +1,12 @@
 # Development Docker Compose - builds Langflow from source
 # Usage: GIT_BRANCH=test-openai-responses docker compose -f docker-compose.dev.yml up -d
 # Or use Make commands: make dev-branch BRANCH=test-openai-responses
+#
+# Dev ports (different from production to allow parallel running):
+#   Frontend:   3001 (prod: 3000)
+#   Langflow:   7861 (prod: 7860)
+#   OpenSearch: 9201 (prod: 9200)
+#   Dashboards: 5602 (prod: 5601)
 
 services:
   opensearch:
@@ -26,10 +32,10 @@ services:
         wait
       "
     ports:
-      - "9200:9200"
-      - "9600:9600"
+      - "9201:9200"
+      - "9601:9600"
     volumes:
-      - ${OPENSEARCH_DATA_PATH:-./opensearch-data}:/usr/share/opensearch/data:U,z
+      - ${OPENSEARCH_DATA_PATH:-./opensearch-data-dev}:/usr/share/opensearch/data:U,z
 
   dashboards:
     image: opensearchproject/opensearch-dashboards:3.0.0
@@ -41,7 +47,7 @@ services:
       OPENSEARCH_USERNAME: "admin"
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
     ports:
-      - "5601:5601"
+      - "5602:5601"
 
   openrag-backend:
     image: langflowai/openrag-backend:${OPENRAG_VERSION:-latest}
@@ -97,7 +103,7 @@ services:
     environment:
       - OPENRAG_BACKEND_HOST=openrag-backend
     ports:
-      - "3000:3000"
+      - "3001:3000"
 
   langflow:
     build:
@@ -110,7 +116,7 @@ services:
       shm_size: '2gb'
     container_name: langflow-dev
     ports:
-      - "7860:7860"
+      - "7861:7860"
     volumes:
       - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
     environment:
