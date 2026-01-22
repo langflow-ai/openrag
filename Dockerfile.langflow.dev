@@ -1,0 +1,56 @@
+# Development Dockerfile for building Langflow from source
+# Allows building from any Git branch/repo for testing
+
+FROM python:3.12-slim AS builder
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV RUSTFLAGS="--cfg reqwest_unstable"
+
+# Accept build arguments for git repository and branch
+ARG GIT_REPO=https://github.com/langflow-ai/langflow.git
+ARG GIT_BRANCH=main
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    ca-certificates \
+    gnupg \
+    npm \
+    rustc cargo pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for faster Python package management
+RUN pip install uv
+
+# Clone the repository and checkout the specified branch
+RUN echo "Cloning ${GIT_REPO} branch ${GIT_BRANCH}..." && \
+    git clone --depth 1 --branch ${GIT_BRANCH} ${GIT_REPO} /app
+
+# Install backend dependencies
+RUN uv sync --frozen --no-install-project --no-editable --extra postgresql
+
+# Build frontend (split into steps to reduce peak memory usage)
+WORKDIR /app/src/frontend
+# Install dependencies first
+RUN npm ci --maxsockets 1
+# Build with reduced memory - 2GB should be safer for most systems
+RUN NODE_OPTIONS="--max_old_space_size=2048 --max-semi-space-size=128" npm run build
+# Copy built frontend
+RUN mkdir -p /app/src/backend/base/langflow/frontend && \
+    cp -r build/* /app/src/backend/base/langflow/frontend/
+
+# Return to app directory and install the project
+WORKDIR /app
+RUN uv sync --frozen --no-dev --no-editable --extra postgresql
+
+# Expose ports
+EXPOSE 7860
+
+# Start the backend server
+CMD ["uv", "run", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]

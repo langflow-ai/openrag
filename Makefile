@@ -12,22 +12,45 @@ endif
 
 hostname ?= 0.0.0.0
 
+# Default values for dev-branch builds (can be overridden via command line)
+# Usage: make dev-branch BRANCH=test-openai-responses REPO=https://github.com/myorg/langflow.git
+BRANCH ?= main
+REPO ?= https://github.com/langflow-ai/langflow.git
+
+# Auto-detect container runtime: prefer docker, fall back to podman
+CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
+COMPOSE_CMD := $(CONTAINER_RUNTIME) compose
+
 .PHONY: help dev dev-cpu dev-local infra stop clean build logs shell-backend shell-frontend install \
        test test-integration test-ci test-ci-local test-sdk \
        backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
-       shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup
+       shell-be shell-lf shell-os restart status health db-reset flow-upload quick setup \
+       dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev
 
 # Default target
 help:
 	@echo "OpenRAG Development Commands"
 	@echo ""
 	@echo "Development:"
-	@echo "  dev          - Start full stack with GPU support (docker compose)"
-	@echo "  dev-cpu      - Start full stack with CPU only (docker compose)"
+	@echo "  dev          - Start full stack with GPU support ($(COMPOSE_CMD))"
+	@echo "  dev-cpu      - Start full stack with CPU only ($(COMPOSE_CMD))"
 	@echo "  dev-local    - Start infrastructure only, run backend/frontend locally"
 	@echo "  infra        - Start infrastructure services only (alias for dev-local)"
 	@echo "  stop         - Stop all containers"
 	@echo "  restart      - Restart all containers"
+	@echo ""
+	@echo "Branch Development (build Langflow from source):"
+	@echo "  dev-branch         - Build & run full stack with custom Langflow branch"
+	@echo "                       Usage: make dev-branch BRANCH=test-openai-responses"
+	@echo "                              make dev-branch BRANCH=feature-x REPO=https://github.com/org/langflow.git"
+	@echo "  build-langflow-dev - Build only the Langflow dev image (no cache)"
+	@echo "  stop-dev           - Stop dev environment containers"
+	@echo "  restart-dev        - Restart dev environment"
+	@echo "  clean-dev          - Stop dev containers and remove volumes"
+	@echo "  logs-dev           - Show all dev container logs"
+	@echo "  logs-lf-dev        - Show Langflow dev logs"
+	@echo "  shell-lf-dev       - Shell into Langflow dev container"
+	@echo "  status-dev         - Show dev container status"
 	@echo ""
 	@echo "Local Development:"
 	@echo "  backend      - Run backend locally (requires infrastructure)"
@@ -60,7 +83,7 @@ OPENRAG_ENV_FILE := $(shell if [ -f ~/.openrag/tui/.env ]; then echo "--env-file
 
 dev:
 	@echo "🚀 Starting OpenRAG with GPU support..."
-	docker compose $(OPENRAG_ENV_FILE) -f docker-compose.yml -f docker-compose.gpu.yml up -d
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "✅ Services started!"
 	@echo "   Backend: http://localhost:8000"
 	@echo "   Frontend: http://localhost:3000"
@@ -70,7 +93,7 @@ dev:
 
 dev-cpu:
 	@echo "🚀 Starting OpenRAG with CPU only..."
-	docker compose $(OPENRAG_ENV_FILE) up -d
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d
 	@echo "✅ Services started!"
 	@echo "   Backend: http://localhost:8000"
 	@echo "   Frontend: http://localhost:3000"
@@ -80,7 +103,7 @@ dev-cpu:
 
 dev-local:
 	@echo "🔧 Starting infrastructure only (for local development)..."
-	docker compose $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
 	@echo "✅ Infrastructure started!"
 	@echo "   Langflow: http://localhost:7860"
 	@echo "   OpenSearch: http://localhost:9200"
@@ -90,7 +113,7 @@ dev-local:
 
 infra:
 	@echo "🔧 Starting infrastructure services only..."
-	docker compose $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
 	@echo "✅ Infrastructure services started!"
 	@echo "   Langflow: http://localhost:7860"
 	@echo "   OpenSearch: http://localhost:9200"
@@ -98,23 +121,82 @@ infra:
 
 infra-cpu:
 	@echo "🔧 Starting infrastructure services only..."
-	docker compose $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
 	@echo "✅ Infrastructure services started!"
 	@echo "   Langflow: http://localhost:7860"
 	@echo "   OpenSearch: http://localhost:9200"
 	@echo "   Dashboards: http://localhost:5601"
 
+# =============================================================================
+# Development Branch Builds (build Langflow from source)
+# =============================================================================
+# Usage: make dev-branch BRANCH=test-openai-responses
+#        make dev-branch BRANCH=feature-x REPO=https://github.com/myorg/langflow.git
+
+dev-branch:
+	@echo "🔨 Building Langflow from branch: $(BRANCH)"
+	@echo "   Repository: $(REPO)"
+	@echo ""
+	@echo "⏳ This may take several minutes for the first build..."
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml build langflow
+	@echo ""
+	@echo "🚀 Starting OpenRAG with custom Langflow build..."
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml up -d
+	@echo ""
+	@echo "✅ Dev environment started!"
+	@echo "   Langflow ($(BRANCH)): http://localhost:7861"
+	@echo "   Frontend: http://localhost:3001"
+	@echo "   OpenSearch: http://localhost:9201"
+	@echo "   Dashboards: http://localhost:5602"
+
+build-langflow-dev:
+	@echo "🔨 Building Langflow dev image from branch: $(BRANCH)"
+	@echo "   Repository: $(REPO)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml build --no-cache langflow
+	@echo "✅ Langflow dev image built!"
+
+stop-dev:
+	@echo "🛑 Stopping dev environment containers..."
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml down
+
+restart-dev:
+	@echo "🔄 Restarting dev environment with branch: $(BRANCH)"
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml down
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml up -d
+	@echo "✅ Dev environment restarted!"
+
+clean-dev:
+	@echo "🧹 Cleaning up dev containers and volumes..."
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml down -v --remove-orphans
+	@echo "✅ Dev environment cleaned!"
+
+logs-dev:
+	@echo "📋 Showing all dev container logs..."
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml logs -f
+
+logs-lf-dev:
+	@echo "📋 Showing Langflow dev logs..."
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml logs -f langflow
+
+shell-lf-dev:
+	@echo "🐚 Opening shell in Langflow dev container..."
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml exec langflow /bin/bash
+
+status-dev:
+	@echo "📊 Dev container status:"
+	@$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml ps 2>/dev/null || echo "No dev containers running"
+
 # Container management
 stop:
 	@echo "🛑 Stopping all containers..."
-	docker compose $(OPENRAG_ENV_FILE) down
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) down
 
 restart: stop dev
 
 clean: stop
 	@echo "🧹 Cleaning up containers and volumes..."
-	docker compose $(OPENRAG_ENV_FILE) down -v --remove-orphans
-	docker system prune -f
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) down -v --remove-orphans
+	$(CONTAINER_RUNTIME) system prune -f
 
 # Local development
 backend:
@@ -143,52 +225,52 @@ install-fe:
 # Building
 build:
 	@echo "Building all Docker images locally..."
-	docker build -t langflowai/openrag-opensearch:latest -f Dockerfile .
-	docker build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
-	docker build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
-	docker build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
 
 build-be:
 	@echo "Building backend image..."
-	docker build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
 
 build-fe:
 	@echo "Building frontend image..."
-	docker build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
 
 # Logging and debugging
 logs:
 	@echo "📋 Showing all container logs..."
-	docker compose $(OPENRAG_ENV_FILE) logs -f
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) logs -f
 
 logs-be:
 	@echo "📋 Showing backend logs..."
-	docker compose $(OPENRAG_ENV_FILE) logs -f openrag-backend
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) logs -f openrag-backend
 
 logs-fe:
 	@echo "📋 Showing frontend logs..."
-	docker compose $(OPENRAG_ENV_FILE) logs -f openrag-frontend
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) logs -f openrag-frontend
 
 logs-lf:
 	@echo "📋 Showing langflow logs..."
-	docker compose $(OPENRAG_ENV_FILE) logs -f langflow
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) logs -f langflow
 
 logs-os:
 	@echo "📋 Showing opensearch logs..."
-	docker compose $(OPENRAG_ENV_FILE) logs -f opensearch
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) logs -f opensearch
 
 # Shell access
 shell-be:
 	@echo "🐚 Opening shell in backend container..."
-	docker compose $(OPENRAG_ENV_FILE) exec openrag-backend /bin/bash
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) exec openrag-backend /bin/bash
 
 shell-lf:
 	@echo "🐚 Opening shell in langflow container..."
-	docker compose $(OPENRAG_ENV_FILE) exec langflow /bin/bash
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) exec langflow /bin/bash
 
 shell-os:
 	@echo "🐚 Opening shell in opensearch container..."
-	docker compose $(OPENRAG_ENV_FILE) exec opensearch /bin/bash
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) exec opensearch /bin/bash
 
 # Testing and quality
 test:
@@ -214,23 +296,23 @@ test-ci:
 		chmod 644 keys/public_key.pem 2>/dev/null || true; \
 	fi; \
 	echo "Cleaning up old containers and volumes..."; \
-	docker compose down -v 2>/dev/null || true; \
+	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	echo "Pulling latest images..."; \
-	docker compose pull; \
+	$(COMPOSE_CMD) pull; \
 	echo "Building OpenSearch image override..."; \
-	docker build --no-cache -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build --no-cache -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
 	echo "Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers"; \
-	docker compose up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	$(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
 	echo "Starting docling-serve..."; \
 	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
 	echo "Docling-serve started at $$DOCLING_ENDPOINT"; \
 	echo "Waiting for backend OIDC endpoint..."; \
 	for i in $$(seq 1 60); do \
-		docker exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+		$(CONTAINER_RUNTIME) exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "Waiting for OpenSearch security config to be fully applied..."; \
 	for i in $$(seq 1 60); do \
-		if docker logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
+		if $(CONTAINER_RUNTIME) logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
 			echo "✓ Security configuration applied"; \
 			break; \
 		fi; \
@@ -292,7 +374,7 @@ test-ci:
 	echo ""; \
 	echo "Tearing down infra"; \
 	uv run python scripts/docling_ctl.py stop || true; \
-	docker compose down -v 2>/dev/null || true; \
+	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	exit $$TEST_RESULT
 
 # CI-friendly integration test target with local builds: builds all images, brings up infra, waits, runs tests, tears down
@@ -309,24 +391,24 @@ test-ci-local:
 		chmod 644 keys/public_key.pem 2>/dev/null || true; \
 	fi; \
 	echo "Cleaning up old containers and volumes..."; \
-	docker compose down -v 2>/dev/null || true; \
+	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	echo "Building all images locally..."; \
-	docker build -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
-	docker build -t langflowai/openrag-backend:latest -f Dockerfile.backend .; \
-	docker build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
-	docker build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
 	echo "Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers"; \
-	docker compose up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	$(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
 	echo "Starting docling-serve..."; \
 	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
 	echo "Docling-serve started at $$DOCLING_ENDPOINT"; \
 	echo "Waiting for backend OIDC endpoint..."; \
 	for i in $$(seq 1 60); do \
-		docker exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
+		$(CONTAINER_RUNTIME) exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
 	done; \
 	echo "Waiting for OpenSearch security config to be fully applied..."; \
 	for i in $$(seq 1 60); do \
-		if docker logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
+		if $(CONTAINER_RUNTIME) logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
 			echo "✓ Security configuration applied"; \
 			break; \
 		fi; \
@@ -390,15 +472,15 @@ test-ci-local:
 		echo "=== Tests failed, dumping container logs ==="; \
 		echo ""; \
 		echo "=== Langflow logs (last 500 lines) ==="; \
-		docker logs langflow 2>&1 | tail -500 || echo "Could not get Langflow logs"; \
+		$(CONTAINER_RUNTIME) logs langflow 2>&1 | tail -500 || echo "Could not get Langflow logs"; \
 		echo ""; \
 		echo "=== Backend logs (last 200 lines) ==="; \
-		docker logs openrag-backend 2>&1 | tail -200 || echo "Could not get backend logs"; \
+		$(CONTAINER_RUNTIME) logs openrag-backend 2>&1 | tail -200 || echo "Could not get backend logs"; \
 		echo ""; \
 	fi; \
 	echo "Tearing down infra"; \
 	uv run python scripts/docling_ctl.py stop || true; \
-	docker compose down -v 2>/dev/null || true; \
+	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	exit $$TEST_RESULT
 
 # SDK integration tests (requires running OpenRAG instance)
@@ -420,7 +502,7 @@ lint:
 # Service status
 status:
 	@echo "📊 Container status:"
-	@docker compose $(OPENRAG_ENV_FILE) ps 2>/dev/null || echo "No containers running"
+	@$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) ps 2>/dev/null || echo "No containers running"
 
 health:
 	@echo "🏥 Health check:"
