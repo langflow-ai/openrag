@@ -1,5 +1,10 @@
 # Contributing to OpenRAG
 
+![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
+![Node.js](https://img.shields.io/badge/node.js-18+-green.svg)
+
 Welcome to OpenRAG! This guide will help you set up your development environment and start contributing quickly.
 
 ## Table of Contents
@@ -36,10 +41,11 @@ make setup        # Install dependencies and create .env
 make dev          # Start OpenRAG
 ```
 
-That's it! OpenRAG is now running at:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **Langflow**: http://localhost:7860
+> [!TIP]
+> That's it! OpenRAG is now running at:
+> - **Frontend**: http://localhost:3000
+> - **Backend API**: http://localhost:8000
+> - **Langflow**: http://localhost:7860
 
 ---
 
@@ -68,6 +74,9 @@ podman machine init --memory 8192 --cpus 4
 podman machine start
 ```
 
+> [!IMPORTANT]
+> 8GB RAM is the minimum recommended for running OpenRAG smoothly. If you experience crashes or slowness, increase the memory allocation.
+
 ### Verify Prerequisites
 
 ```bash
@@ -89,6 +98,9 @@ make setup
 ```
 
 ### 2. Configure Environment
+
+> [!WARNING]
+> You must configure your `.env` file before starting OpenRAG.
 
 Edit the `.env` file with your credentials:
 
@@ -128,6 +140,9 @@ make stop         # Stop and remove all containers
 
 ### B) Local Development (Recommended for Development)
 
+> [!TIP]
+> This is the **recommended workflow** for active development. It provides faster code reloading and easier debugging.
+
 Run infrastructure in Docker, but backend/frontend locally for faster iteration.
 
 ```bash
@@ -160,6 +175,9 @@ make dev-branch BRANCH=my-feature-branch
 # Use a different repository
 make dev-branch BRANCH=feature-x REPO=https://github.com/myorg/langflow.git
 ```
+
+> [!NOTE]
+> The first build may take several minutes as it compiles Langflow from source.
 
 **Additional branch commands:**
 ```bash
@@ -235,6 +253,9 @@ make clear-os-data  # Clear OpenSearch data directory completely
 
 ### Full Factory Reset
 
+> [!CAUTION]
+> This will delete all data, containers, and volumes. Use only when you need a completely fresh start.
+
 ```bash
 make factory-reset  # Complete reset: containers, volumes, and data
 ```
@@ -243,7 +264,8 @@ make factory-reset  # Complete reset: containers, volumes, and data
 
 ## Makefile Help System
 
-The Makefile provides organized help for all commands:
+> [!TIP]
+> The Makefile provides color-coded, organized help for all commands. Run `make help` to get started!
 
 ```bash
 make help         # Main help with common commands
@@ -303,12 +325,16 @@ openrag/
 
 ### Port Conflicts
 
-Ensure these ports are available:
-- 3000 (Frontend)
-- 7860 (Langflow)
-- 8000 (Backend)
-- 9200 (OpenSearch)
-- 5601 (OpenSearch Dashboards)
+> [!NOTE]
+> Ensure these ports are available before starting OpenRAG:
+
+| Port | Service |
+|------|---------|
+| 3000 | Frontend |
+| 7860 | Langflow |
+| 8000 | Backend |
+| 9200 | OpenSearch |
+| 5601 | OpenSearch Dashboards |
 
 ### Memory Issues
 
@@ -324,7 +350,8 @@ podman machine start
 
 ### Environment Reset
 
-If things aren't working, try a full reset:
+> [!TIP]
+> If things aren't working, try a full reset:
 
 ```bash
 make stop
@@ -366,6 +393,9 @@ make health
 4. **Commit**: Use clear, descriptive commit messages
 5. **PR Description**: Explain changes and include testing instructions
 
+> [!IMPORTANT]
+> All PRs must pass CI tests before merging.
+
 ---
 
 ## Getting Help
@@ -376,4 +406,6 @@ make health
 - Use `make status` and `make health` for debugging
 - View logs with `make logs`
 
-Thank you for contributing to OpenRAG!
+---
+
+Thank you for contributing to OpenRAG! 🚀
