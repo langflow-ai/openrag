@@ -25,7 +25,7 @@ COMPOSE_CMD := $(CONTAINER_RUNTIME) compose
 # COLOR DEFINITIONS
 ######################
 RED=\033[0;31m
-GREEN=\033[0;32m
+PURPLE=\033[38;2;119;62;255m
 YELLOW=\033[1;33m
 CYAN=\033[0;36m
 NC=\033[0m
@@ -51,7 +51,7 @@ check_tools: ## Verify required tools are installed
 	@command -v uv >/dev/null 2>&1 || { echo "$(RED)uv is not installed. Aborting.$(NC)"; exit 1; }
 	@command -v npm >/dev/null 2>&1 || { echo "$(RED)npm is not installed. Aborting.$(NC)"; exit 1; }
 	@command -v $(CONTAINER_RUNTIME) >/dev/null 2>&1 || { echo "$(RED)$(CONTAINER_RUNTIME) is not installed. Aborting.$(NC)"; exit 1; }
-	@echo "$(GREEN)All required tools are installed.$(NC)"
+	@echo "$(PURPLE)All required tools are installed.$(NC)"
 
 ######################
 # HELP SYSTEM
@@ -59,174 +59,174 @@ check_tools: ## Verify required tools are installed
 
 help: ## Show main help with common commands
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
-	@echo "$(GREEN)                    OPENRAG MAKEFILE COMMANDS                       $(NC)"
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                    OPENRAG MAKEFILE COMMANDS                       $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
-	@echo "$(GREEN)Quick Start:$(NC)"
-	@echo "  $(GREEN)make setup$(NC)           - Initialize project (install dependencies, create .env)"
-	@echo "  $(GREEN)make dev$(NC)             - Start full stack with GPU support"
-	@echo "  $(GREEN)make dev-cpu$(NC)         - Start full stack with CPU only"
-	@echo "  $(GREEN)make stop$(NC)            - Stop all containers"
+	@echo "$(PURPLE)Quick Start:$(NC)"
+	@echo "  $(PURPLE)make setup$(NC)           - Initialize project (install dependencies, create .env)"
+	@echo "  $(PURPLE)make dev$(NC)             - Start full stack with GPU support"
+	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop all containers"
 	@echo ''
-	@echo "$(GREEN)Common Commands:$(NC)"
-	@echo "  $(GREEN)make backend$(NC)         - Run backend locally"
-	@echo "  $(GREEN)make frontend$(NC)        - Run frontend locally"
-	@echo "  $(GREEN)make test$(NC)            - Run all backend tests"
-	@echo "  $(GREEN)make logs$(NC)            - Show logs from all containers"
-	@echo "  $(GREEN)make status$(NC)          - Show container status"
-	@echo "  $(GREEN)make health$(NC)          - Check health of all services"
+	@echo "$(PURPLE)Common Commands:$(NC)"
+	@echo "  $(PURPLE)make backend$(NC)         - Run backend locally"
+	@echo "  $(PURPLE)make frontend$(NC)        - Run frontend locally"
+	@echo "  $(PURPLE)make test$(NC)            - Run all backend tests"
+	@echo "  $(PURPLE)make logs$(NC)            - Show logs from all containers"
+	@echo "  $(PURPLE)make status$(NC)          - Show container status"
+	@echo "  $(PURPLE)make health$(NC)          - Check health of all services"
 	@echo ''
-	@echo "$(GREEN)Specialized Help Commands:$(NC)"
-	@echo "  $(GREEN)make help_dev$(NC)        - Development environment commands"
-	@echo "  $(GREEN)make help_docker$(NC)     - Docker and container commands"
-	@echo "  $(GREEN)make help_test$(NC)       - Testing commands"
-	@echo "  $(GREEN)make help_local$(NC)      - Local development commands"
-	@echo "  $(GREEN)make help_utils$(NC)      - Utility commands (logs, cleanup, etc.)"
+	@echo "$(PURPLE)Specialized Help Commands:$(NC)"
+	@echo "  $(PURPLE)make help_dev$(NC)        - Development environment commands"
+	@echo "  $(PURPLE)make help_docker$(NC)     - Docker and container commands"
+	@echo "  $(PURPLE)make help_test$(NC)       - Testing commands"
+	@echo "  $(PURPLE)make help_local$(NC)      - Local development commands"
+	@echo "  $(PURPLE)make help_utils$(NC)      - Utility commands (logs, cleanup, etc.)"
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
 
 help_dev: ## Show development environment commands
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
-	@echo "$(GREEN)                 DEVELOPMENT ENVIRONMENT COMMANDS                   $(NC)"
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                 DEVELOPMENT ENVIRONMENT COMMANDS                   $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
-	@echo "$(GREEN)Full Stack Development:$(NC)"
-	@echo "  $(GREEN)make dev$(NC)             - Start full stack with GPU support ($(COMPOSE_CMD))"
-	@echo "  $(GREEN)make dev-cpu$(NC)         - Start full stack with CPU only"
-	@echo "  $(GREEN)make stop$(NC)            - Stop all containers"
-	@echo "  $(GREEN)make restart$(NC)         - Restart all containers"
+	@echo "$(PURPLE)Full Stack Development:$(NC)"
+	@echo "  $(PURPLE)make dev$(NC)             - Start full stack with GPU support ($(COMPOSE_CMD))"
+	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop all containers"
+	@echo "  $(PURPLE)make restart$(NC)         - Restart all containers"
 	@echo ''
-	@echo "$(GREEN)Infrastructure Only:$(NC)"
-	@echo "  $(GREEN)make dev-local$(NC)       - Start infrastructure only (for local backend/frontend)"
-	@echo "  $(GREEN)make infra$(NC)           - Start infrastructure services only (alias)"
-	@echo "  $(GREEN)make infra-cpu$(NC)       - Start infrastructure with CPU only"
-	@echo "  $(GREEN)make quick$(NC)           - Quick start infrastructure + instructions"
+	@echo "$(PURPLE)Infrastructure Only:$(NC)"
+	@echo "  $(PURPLE)make dev-local$(NC)       - Start infrastructure only (for local backend/frontend)"
+	@echo "  $(PURPLE)make infra$(NC)           - Start infrastructure services only (alias)"
+	@echo "  $(PURPLE)make infra-cpu$(NC)       - Start infrastructure with CPU only"
+	@echo "  $(PURPLE)make quick$(NC)           - Quick start infrastructure + instructions"
 	@echo ''
-	@echo "$(GREEN)Branch Development (build Langflow from source):$(NC)"
-	@echo "  $(GREEN)make dev-branch$(NC)      - Build & run with custom Langflow branch"
+	@echo "$(PURPLE)Branch Development (build Langflow from source):$(NC)"
+	@echo "  $(PURPLE)make dev-branch$(NC)      - Build & run with custom Langflow branch"
 	@echo "                         Usage: make dev-branch BRANCH=test-openai-responses"
 	@echo "                                make dev-branch BRANCH=feature-x REPO=https://github.com/org/langflow.git"
-	@echo "  $(GREEN)make build-langflow-dev$(NC) - Build only the Langflow dev image (no cache)"
-	@echo "  $(GREEN)make stop-dev$(NC)        - Stop dev environment containers"
-	@echo "  $(GREEN)make restart-dev$(NC)     - Restart dev environment"
-	@echo "  $(GREEN)make clean-dev$(NC)       - Stop dev containers and remove volumes"
-	@echo "  $(GREEN)make logs-dev$(NC)        - Show all dev container logs"
-	@echo "  $(GREEN)make logs-lf-dev$(NC)     - Show Langflow dev logs"
-	@echo "  $(GREEN)make shell-lf-dev$(NC)    - Shell into Langflow dev container"
-	@echo "  $(GREEN)make status-dev$(NC)      - Show dev container status"
+	@echo "  $(PURPLE)make build-langflow-dev$(NC) - Build only the Langflow dev image (no cache)"
+	@echo "  $(PURPLE)make stop-dev$(NC)        - Stop dev environment containers"
+	@echo "  $(PURPLE)make restart-dev$(NC)     - Restart dev environment"
+	@echo "  $(PURPLE)make clean-dev$(NC)       - Stop dev containers and remove volumes"
+	@echo "  $(PURPLE)make logs-dev$(NC)        - Show all dev container logs"
+	@echo "  $(PURPLE)make logs-lf-dev$(NC)     - Show Langflow dev logs"
+	@echo "  $(PURPLE)make shell-lf-dev$(NC)    - Shell into Langflow dev container"
+	@echo "  $(PURPLE)make status-dev$(NC)      - Show dev container status"
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
 
 help_docker: ## Show Docker and container commands
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
-	@echo "$(GREEN)                    DOCKER & CONTAINER COMMANDS                     $(NC)"
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                    DOCKER & CONTAINER COMMANDS                     $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
-	@echo "$(GREEN)Build Images:$(NC)"
-	@echo "  $(GREEN)make build$(NC)           - Build all Docker images locally"
-	@echo "  $(GREEN)make build-be$(NC)        - Build backend Docker image only"
-	@echo "  $(GREEN)make build-fe$(NC)        - Build frontend Docker image only"
+	@echo "$(PURPLE)Build Images:$(NC)"
+	@echo "  $(PURPLE)make build$(NC)           - Build all Docker images locally"
+	@echo "  $(PURPLE)make build-be$(NC)        - Build backend Docker image only"
+	@echo "  $(PURPLE)make build-fe$(NC)        - Build frontend Docker image only"
 	@echo ''
-	@echo "$(GREEN)Container Management:$(NC)"
-	@echo "  $(GREEN)make stop$(NC)            - Stop all containers"
-	@echo "  $(GREEN)make restart$(NC)         - Restart all containers"
-	@echo "  $(GREEN)make clean$(NC)           - Stop containers and remove volumes"
-	@echo "  $(GREEN)make status$(NC)          - Show container status"
+	@echo "$(PURPLE)Container Management:$(NC)"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop all containers"
+	@echo "  $(PURPLE)make restart$(NC)         - Restart all containers"
+	@echo "  $(PURPLE)make clean$(NC)           - Stop containers and remove volumes"
+	@echo "  $(PURPLE)make status$(NC)          - Show container status"
 	@echo ''
-	@echo "$(GREEN)Shell Access:$(NC)"
-	@echo "  $(GREEN)make shell-be$(NC)        - Shell into backend container"
-	@echo "  $(GREEN)make shell-lf$(NC)        - Shell into langflow container"
-	@echo "  $(GREEN)make shell-os$(NC)        - Shell into opensearch container"
+	@echo "$(PURPLE)Shell Access:$(NC)"
+	@echo "  $(PURPLE)make shell-be$(NC)        - Shell into backend container"
+	@echo "  $(PURPLE)make shell-lf$(NC)        - Shell into langflow container"
+	@echo "  $(PURPLE)make shell-os$(NC)        - Shell into opensearch container"
 	@echo ''
-	@echo "$(YELLOW)Note:$(NC) Using container runtime: $(GREEN)$(CONTAINER_RUNTIME)$(NC)"
+	@echo "$(YELLOW)Note:$(NC) Using container runtime: $(PURPLE)$(CONTAINER_RUNTIME)$(NC)"
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
 
 help_test: ## Show testing commands
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
-	@echo "$(GREEN)                       TESTING COMMANDS                             $(NC)"
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                       TESTING COMMANDS                             $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
-	@echo "$(GREEN)Unit & Integration Tests:$(NC)"
-	@echo "  $(GREEN)make test$(NC)            - Run all backend tests"
-	@echo "  $(GREEN)make test-integration$(NC) - Run integration tests (requires infra)"
+	@echo "$(PURPLE)Unit & Integration Tests:$(NC)"
+	@echo "  $(PURPLE)make test$(NC)            - Run all backend tests"
+	@echo "  $(PURPLE)make test-integration$(NC) - Run integration tests (requires infra)"
 	@echo ''
-	@echo "$(GREEN)CI Tests:$(NC)"
-	@echo "  $(GREEN)make test-ci$(NC)         - Start infra, run integration + SDK tests, tear down"
+	@echo "$(PURPLE)CI Tests:$(NC)"
+	@echo "  $(PURPLE)make test-ci$(NC)         - Start infra, run integration + SDK tests, tear down"
 	@echo "                         (uses DockerHub images)"
-	@echo "  $(GREEN)make test-ci-local$(NC)   - Same as test-ci but builds all images locally"
+	@echo "  $(PURPLE)make test-ci-local$(NC)   - Same as test-ci but builds all images locally"
 	@echo ''
-	@echo "$(GREEN)SDK Tests:$(NC)"
-	@echo "  $(GREEN)make test-sdk$(NC)        - Run SDK integration tests"
+	@echo "$(PURPLE)SDK Tests:$(NC)"
+	@echo "  $(PURPLE)make test-sdk$(NC)        - Run SDK integration tests"
 	@echo "                         (requires running OpenRAG at localhost:3000)"
 	@echo ''
-	@echo "$(GREEN)Code Quality:$(NC)"
-	@echo "  $(GREEN)make lint$(NC)            - Run linting checks"
+	@echo "$(PURPLE)Code Quality:$(NC)"
+	@echo "  $(PURPLE)make lint$(NC)            - Run linting checks"
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
 
 help_local: ## Show local development commands
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
-	@echo "$(GREEN)                   LOCAL DEVELOPMENT COMMANDS                       $(NC)"
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                   LOCAL DEVELOPMENT COMMANDS                       $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
-	@echo "$(GREEN)Run Services Locally:$(NC)"
-	@echo "  $(GREEN)make backend$(NC)         - Run backend locally (requires infrastructure)"
-	@echo "  $(GREEN)make frontend$(NC)        - Run frontend locally"
+	@echo "$(PURPLE)Run Services Locally:$(NC)"
+	@echo "  $(PURPLE)make backend$(NC)         - Run backend locally (requires infrastructure)"
+	@echo "  $(PURPLE)make frontend$(NC)        - Run frontend locally"
 	@echo ''
-	@echo "$(GREEN)Installation:$(NC)"
-	@echo "  $(GREEN)make install$(NC)         - Install all dependencies"
-	@echo "  $(GREEN)make install-be$(NC)      - Install backend dependencies (uv)"
-	@echo "  $(GREEN)make install-fe$(NC)      - Install frontend dependencies (npm)"
-	@echo "  $(GREEN)make setup$(NC)           - Full setup (install deps + create .env)"
+	@echo "$(PURPLE)Installation:$(NC)"
+	@echo "  $(PURPLE)make install$(NC)         - Install all dependencies"
+	@echo "  $(PURPLE)make install-be$(NC)      - Install backend dependencies (uv)"
+	@echo "  $(PURPLE)make install-fe$(NC)      - Install frontend dependencies (npm)"
+	@echo "  $(PURPLE)make setup$(NC)           - Full setup (install deps + create .env)"
 	@echo ''
-	@echo "$(GREEN)Typical Workflow:$(NC)"
+	@echo "$(PURPLE)Typical Workflow:$(NC)"
 	@echo "  1. $(CYAN)make dev-local$(NC)     - Start infrastructure"
 	@echo "  2. $(CYAN)make backend$(NC)       - Run backend in one terminal"
 	@echo "  3. $(CYAN)make frontend$(NC)      - Run frontend in another terminal"
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
 
 help_utils: ## Show utility commands
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
-	@echo "$(GREEN)                       UTILITY COMMANDS                             $(NC)"
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)                       UTILITY COMMANDS                             $(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
-	@echo "$(GREEN)Logs:$(NC)"
-	@echo "  $(GREEN)make logs$(NC)            - Show logs from all containers"
-	@echo "  $(GREEN)make logs-be$(NC)         - Show backend container logs"
-	@echo "  $(GREEN)make logs-fe$(NC)         - Show frontend container logs"
-	@echo "  $(GREEN)make logs-lf$(NC)         - Show langflow container logs"
-	@echo "  $(GREEN)make logs-os$(NC)         - Show opensearch container logs"
+	@echo "$(PURPLE)Logs:$(NC)"
+	@echo "  $(PURPLE)make logs$(NC)            - Show logs from all containers"
+	@echo "  $(PURPLE)make logs-be$(NC)         - Show backend container logs"
+	@echo "  $(PURPLE)make logs-fe$(NC)         - Show frontend container logs"
+	@echo "  $(PURPLE)make logs-lf$(NC)         - Show langflow container logs"
+	@echo "  $(PURPLE)make logs-os$(NC)         - Show opensearch container logs"
 	@echo ''
-	@echo "$(GREEN)Status & Health:$(NC)"
-	@echo "  $(GREEN)make status$(NC)          - Show container status"
-	@echo "  $(GREEN)make health$(NC)          - Check health of all services"
+	@echo "$(PURPLE)Status & Health:$(NC)"
+	@echo "  $(PURPLE)make status$(NC)          - Show container status"
+	@echo "  $(PURPLE)make health$(NC)          - Check health of all services"
 	@echo ''
-	@echo "$(GREEN)Database Operations:$(NC)"
-	@echo "  $(GREEN)make db-reset$(NC)        - Reset OpenSearch indices"
-	@echo "  $(GREEN)make clear-os-data$(NC)   - Clear OpenSearch data directory"
+	@echo "$(PURPLE)Database Operations:$(NC)"
+	@echo "  $(PURPLE)make db-reset$(NC)        - Reset OpenSearch indices"
+	@echo "  $(PURPLE)make clear-os-data$(NC)   - Clear OpenSearch data directory"
 	@echo ''
-	@echo "$(GREEN)Cleanup:$(NC)"
-	@echo "  $(GREEN)make clean$(NC)           - Stop containers and remove volumes"
-	@echo "  $(GREEN)make clean-dev$(NC)       - Clean dev environment"
+	@echo "$(PURPLE)Cleanup:$(NC)"
+	@echo "  $(PURPLE)make clean$(NC)           - Stop containers and remove volumes"
+	@echo "  $(PURPLE)make clean-dev$(NC)       - Clean dev environment"
 	@echo ''
-	@echo "$(GREEN)Flows:$(NC)"
-	@echo "  $(GREEN)make flow-upload$(NC)     - Upload flow to Langflow"
+	@echo "$(PURPLE)Flows:$(NC)"
+	@echo "  $(PURPLE)make flow-upload$(NC)     - Upload flow to Langflow"
 	@echo "                         Usage: make flow-upload FLOW_FILE=path/to/flow.json"
 	@echo ''
-	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
+	@echo "$(PURPLE)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
 
 ######################
@@ -239,7 +239,7 @@ OPENRAG_ENV_FILE := $(shell if [ -f ~/.openrag/tui/.env ]; then echo "--env-file
 dev: ## Start full stack with GPU support
 	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.yml -f docker-compose.gpu.yml up -d
-	@echo "$(GREEN)Services started!$(NC)"
+	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://localhost:8000"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
@@ -249,7 +249,7 @@ dev: ## Start full stack with GPU support
 dev-cpu: ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d
-	@echo "$(GREEN)Services started!$(NC)"
+	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://localhost:8000"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
@@ -259,7 +259,7 @@ dev-cpu: ## Start full stack with CPU only
 dev-local: ## Start infrastructure only (for local development)
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
-	@echo "$(GREEN)Infrastructure started!$(NC)"
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
@@ -269,7 +269,7 @@ dev-local: ## Start infrastructure only (for local development)
 infra: ## Start infrastructure services only
 	@echo "$(YELLOW)Starting infrastructure services only...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
-	@echo "$(GREEN)Infrastructure services started!$(NC)"
+	@echo "$(PURPLE)Infrastructure services started!$(NC)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
@@ -277,7 +277,7 @@ infra: ## Start infrastructure services only
 infra-cpu: ## Start infrastructure services only (CPU)
 	@echo "$(YELLOW)Starting infrastructure services only...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
-	@echo "$(GREEN)Infrastructure services started!$(NC)"
+	@echo "$(PURPLE)Infrastructure services started!$(NC)"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
@@ -298,7 +298,7 @@ dev-branch: ## Build & run full stack with custom Langflow branch
 	@echo "$(YELLOW)Starting OpenRAG with custom Langflow build...$(NC)"
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml up -d
 	@echo ""
-	@echo "$(GREEN)Dev environment started!$(NC)"
+	@echo "$(PURPLE)Dev environment started!$(NC)"
 	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:7861"
 	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:3001"
 	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:9201"
@@ -308,23 +308,23 @@ build-langflow-dev: ## Build only the Langflow dev image (no cache)
 	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"
 	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml build --no-cache langflow
-	@echo "$(GREEN)Langflow dev image built!$(NC)"
+	@echo "$(PURPLE)Langflow dev image built!$(NC)"
 
 stop-dev: ## Stop dev environment containers
 	@echo "$(YELLOW)Stopping dev environment containers...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml down
-	@echo "$(GREEN)Dev environment stopped.$(NC)"
+	@echo "$(PURPLE)Dev environment stopped.$(NC)"
 
 restart-dev: ## Restart dev environment
 	@echo "$(YELLOW)Restarting dev environment with branch: $(BRANCH)$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml down
 	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml up -d
-	@echo "$(GREEN)Dev environment restarted!$(NC)"
+	@echo "$(PURPLE)Dev environment restarted!$(NC)"
 
 clean-dev: ## Stop dev containers and remove volumes
 	@echo "$(YELLOW)Cleaning up dev containers and volumes...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml down -v --remove-orphans
-	@echo "$(GREEN)Dev environment cleaned!$(NC)"
+	@echo "$(PURPLE)Dev environment cleaned!$(NC)"
 
 logs-dev: ## Show all dev container logs
 	@echo "$(YELLOW)Showing all dev container logs...$(NC)"
@@ -339,7 +339,7 @@ shell-lf-dev: ## Shell into Langflow dev container
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml exec langflow /bin/bash
 
 status-dev: ## Show dev container status
-	@echo "$(GREEN)Dev container status:$(NC)"
+	@echo "$(PURPLE)Dev container status:$(NC)"
 	@$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml ps 2>/dev/null || echo "$(YELLOW)No dev containers running$(NC)"
 
 ######################
@@ -349,7 +349,7 @@ status-dev: ## Show dev container status
 stop: ## Stop all containers
 	@echo "$(YELLOW)Stopping all containers...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) down
-	@echo "$(GREEN)All containers stopped.$(NC)"
+	@echo "$(PURPLE)All containers stopped.$(NC)"
 
 restart: stop dev ## Restart all containers
 
@@ -357,7 +357,7 @@ clean: stop ## Stop containers and remove volumes
 	@echo "$(YELLOW)Cleaning up containers and volumes...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) down -v --remove-orphans
 	$(CONTAINER_RUNTIME) system prune -f
-	@echo "$(GREEN)Cleanup complete!$(NC)"
+	@echo "$(PURPLE)Cleanup complete!$(NC)"
 
 ######################
 # LOCAL DEVELOPMENT
@@ -379,17 +379,17 @@ frontend: ## Run frontend locally
 ######################
 
 install: install-be install-fe ## Install all dependencies
-	@echo "$(GREEN)All dependencies installed!$(NC)"
+	@echo "$(PURPLE)All dependencies installed!$(NC)"
 
 install-be: ## Install backend dependencies
 	@echo "$(YELLOW)Installing backend dependencies...$(NC)"
 	uv sync
-	@echo "$(GREEN)Backend dependencies installed.$(NC)"
+	@echo "$(PURPLE)Backend dependencies installed.$(NC)"
 
 install-fe: ## Install frontend dependencies
 	@echo "$(YELLOW)Installing frontend dependencies...$(NC)"
 	cd frontend && npm install
-	@echo "$(GREEN)Frontend dependencies installed.$(NC)"
+	@echo "$(PURPLE)Frontend dependencies installed.$(NC)"
 
 ######################
 # DOCKER BUILD
@@ -405,17 +405,17 @@ build: ## Build all Docker images locally
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
 	@echo "$(CYAN)Building Langflow image...$(NC)"
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
-	@echo "$(GREEN)All images built successfully!$(NC)"
+	@echo "$(PURPLE)All images built successfully!$(NC)"
 
 build-be: ## Build backend Docker image
 	@echo "$(YELLOW)Building backend image...$(NC)"
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
-	@echo "$(GREEN)Backend image built.$(NC)"
+	@echo "$(PURPLE)Backend image built.$(NC)"
 
 build-fe: ## Build frontend Docker image
 	@echo "$(YELLOW)Building frontend image...$(NC)"
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
-	@echo "$(GREEN)Frontend image built.$(NC)"
+	@echo "$(PURPLE)Frontend image built.$(NC)"
 
 ######################
 # LOGGING
@@ -464,7 +464,7 @@ shell-os: ## Shell into opensearch container
 test: ## Run all backend tests
 	@echo "$(YELLOW)Running all backend tests...$(NC)"
 	uv run pytest tests/ -v
-	@echo "$(GREEN)Tests complete.$(NC)"
+	@echo "$(PURPLE)Tests complete.$(NC)"
 
 test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(YELLOW)Running integration tests (requires infrastructure)...$(NC)"
@@ -493,7 +493,7 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 	$(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
 	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
 	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
-	echo "$(GREEN)Docling-serve started at $$DOCLING_ENDPOINT$(NC)"; \
+	echo "$(PURPLE)Docling-serve started at $$DOCLING_ENDPOINT$(NC)"; \
 	echo "$(YELLOW)Waiting for backend OIDC endpoint...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		$(CONTAINER_RUNTIME) exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
@@ -501,7 +501,7 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 	echo "$(YELLOW)Waiting for OpenSearch security config to be fully applied...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		if $(CONTAINER_RUNTIME) logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
-			echo "$(GREEN)Security configuration applied$(NC)"; \
+			echo "$(PURPLE)Security configuration applied$(NC)"; \
 			break; \
 		fi; \
 		sleep 2; \
@@ -509,7 +509,7 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 	echo "$(YELLOW)Verifying OIDC authenticator is active in OpenSearch...$(NC)"; \
 	AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null); \
 	if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
-		echo "$(GREEN)OIDC authenticator configured$(NC)"; \
+		echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
 		echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
 	else \
 		echo "$(RED)OIDC authenticator NOT found in security config!$(NC)"; \
@@ -525,7 +525,7 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 	for i in $$(seq 1 60); do \
 		curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1 && break || sleep 2; \
 	done; \
-	echo "$(GREEN)Running integration tests$(NC)"; \
+	echo "$(PURPLE)Running integration tests$(NC)"; \
 	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
 	GOOGLE_OAUTH_CLIENT_ID="" \
 	GOOGLE_OAUTH_CLIENT_SECRET="" \
@@ -539,12 +539,12 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 	for i in $$(seq 1 60); do \
 		curl -s http://localhost:3000/ >/dev/null 2>&1 && break || sleep 2; \
 	done; \
-	echo "$(GREEN)Running Python SDK integration tests$(NC)"; \
+	echo "$(PURPLE)Running Python SDK integration tests$(NC)"; \
 	cd sdks/python && \
 	uv sync --extra dev && \
 	OPENRAG_URL=http://localhost:3000 uv run pytest tests/test_integration.py -vv -s || TEST_RESULT=1; \
 	cd ../..; \
-	echo "$(GREEN)Running TypeScript SDK integration tests$(NC)"; \
+	echo "$(PURPLE)Running TypeScript SDK integration tests$(NC)"; \
 	cd sdks/typescript && \
 	npm install && npm run build && \
 	OPENRAG_URL=http://localhost:3000 npm test || TEST_RESULT=1; \
@@ -588,7 +588,7 @@ test-ci-local: ## Same as test-ci but builds all images locally
 	$(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
 	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
 	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
-	echo "$(GREEN)Docling-serve started at $$DOCLING_ENDPOINT$(NC)"; \
+	echo "$(PURPLE)Docling-serve started at $$DOCLING_ENDPOINT$(NC)"; \
 	echo "$(YELLOW)Waiting for backend OIDC endpoint...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		$(CONTAINER_RUNTIME) exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
@@ -596,7 +596,7 @@ test-ci-local: ## Same as test-ci but builds all images locally
 	echo "$(YELLOW)Waiting for OpenSearch security config to be fully applied...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		if $(CONTAINER_RUNTIME) logs os 2>&1 | grep -q "Security configuration applied successfully"; then \
-			echo "$(GREEN)Security configuration applied$(NC)"; \
+			echo "$(PURPLE)Security configuration applied$(NC)"; \
 			break; \
 		fi; \
 		sleep 2; \
@@ -604,7 +604,7 @@ test-ci-local: ## Same as test-ci but builds all images locally
 	echo "$(YELLOW)Verifying OIDC authenticator is active in OpenSearch...$(NC)"; \
 	AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null); \
 	if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
-		echo "$(GREEN)OIDC authenticator configured$(NC)"; \
+		echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
 		echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
 	else \
 		echo "$(RED)OIDC authenticator NOT found in security config!$(NC)"; \
@@ -620,7 +620,7 @@ test-ci-local: ## Same as test-ci but builds all images locally
 	for i in $$(seq 1 60); do \
 		curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1 && break || sleep 2; \
 	done; \
-	echo "$(GREEN)Running integration tests$(NC)"; \
+	echo "$(PURPLE)Running integration tests$(NC)"; \
 	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
 	GOOGLE_OAUTH_CLIENT_ID="" \
 	GOOGLE_OAUTH_CLIENT_SECRET="" \
@@ -634,12 +634,12 @@ test-ci-local: ## Same as test-ci but builds all images locally
 	for i in $$(seq 1 60); do \
 		curl -s http://localhost:3000/ >/dev/null 2>&1 && break || sleep 2; \
 	done; \
-	echo "$(GREEN)Running Python SDK integration tests$(NC)"; \
+	echo "$(PURPLE)Running Python SDK integration tests$(NC)"; \
 	cd sdks/python && \
 	uv sync --extra dev && \
 	OPENRAG_URL=http://localhost:3000 uv run pytest tests/test_integration.py -vv -s || TEST_RESULT=1; \
 	cd ../..; \
-	echo "$(GREEN)Running TypeScript SDK integration tests$(NC)"; \
+	echo "$(PURPLE)Running TypeScript SDK integration tests$(NC)"; \
 	cd sdks/typescript && \
 	npm install && npm run build && \
 	OPENRAG_URL=http://localhost:3000 npm test || TEST_RESULT=1; \
@@ -674,28 +674,28 @@ test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:30
 	@echo "$(YELLOW)Running SDK integration tests...$(NC)"
 	@echo "$(CYAN)Make sure OpenRAG is running at localhost:3000 (make dev)$(NC)"
 	@echo ""
-	@echo "$(GREEN)Running Python SDK tests...$(NC)"
+	@echo "$(PURPLE)Running Python SDK tests...$(NC)"
 	cd sdks/python && uv sync --extra dev && OPENRAG_URL=http://localhost:3000 uv run pytest tests/test_integration.py -vv -s
 	@echo ""
-	@echo "$(GREEN)Running TypeScript SDK tests...$(NC)"
+	@echo "$(PURPLE)Running TypeScript SDK tests...$(NC)"
 	cd sdks/typescript && npm install && npm run build && OPENRAG_URL=http://localhost:3000 npm test
-	@echo "$(GREEN)SDK tests complete.$(NC)"
+	@echo "$(PURPLE)SDK tests complete.$(NC)"
 
 lint: ## Run linting checks
 	@echo "$(YELLOW)Running linting checks...$(NC)"
 	cd frontend && npm run lint
-	@echo "$(GREEN)Frontend linting complete.$(NC)"
+	@echo "$(PURPLE)Frontend linting complete.$(NC)"
 
 ######################
 # STATUS & HEALTH
 ######################
 
 status: ## Show container status
-	@echo "$(GREEN)Container status:$(NC)"
+	@echo "$(PURPLE)Container status:$(NC)"
 	@$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) ps 2>/dev/null || echo "$(YELLOW)No containers running$(NC)"
 
 health: ## Check health of all services
-	@echo "$(GREEN)Health check:$(NC)"
+	@echo "$(PURPLE)Health check:$(NC)"
 	@echo "$(CYAN)Backend:$(NC)    $$(curl -s http://localhost:8000/health 2>/dev/null || echo '$(RED)Not responding$(NC)')"
 	@echo "$(CYAN)Langflow:$(NC)   $$(curl -s http://localhost:7860/health 2>/dev/null || echo '$(RED)Not responding$(NC)')"
 	@echo "$(CYAN)OpenSearch:$(NC) $$(curl -s -k -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200 2>/dev/null | jq -r .tagline 2>/dev/null || echo '$(RED)Not responding$(NC)')"
@@ -708,12 +708,12 @@ db-reset: ## Reset OpenSearch indices
 	@echo "$(YELLOW)Resetting OpenSearch indices...$(NC)"
 	curl -X DELETE "http://localhost:9200/documents" -u admin:$${OPENSEARCH_PASSWORD} || true
 	curl -X DELETE "http://localhost:9200/knowledge_filters" -u admin:$${OPENSEARCH_PASSWORD} || true
-	@echo "$(GREEN)Indices reset. Restart backend to recreate.$(NC)"
+	@echo "$(PURPLE)Indices reset. Restart backend to recreate.$(NC)"
 
 clear-os-data: ## Clear OpenSearch data directory
 	@echo "$(YELLOW)Clearing OpenSearch data directory...$(NC)"
 	@uv run python scripts/clear_opensearch_data.py
-	@echo "$(GREEN)OpenSearch data cleared.$(NC)"
+	@echo "$(PURPLE)OpenSearch data cleared.$(NC)"
 
 ######################
 # FLOW MANAGEMENT
@@ -725,20 +725,20 @@ flow-upload: ## Upload flow to Langflow
 	curl -X POST "http://localhost:7860/api/v1/flows" \
 		-H "Content-Type: application/json" \
 		-d @$(FLOW_FILE)
-	@echo "$(GREEN)Flow uploaded.$(NC)"
+	@echo "$(PURPLE)Flow uploaded.$(NC)"
 
 ######################
 # QUICK START & SETUP
 ######################
 
 quick: dev-local ## Quick start: infrastructure + instructions
-	@echo "$(GREEN)Quick start: infrastructure running!$(NC)"
+	@echo "$(PURPLE)Quick start: infrastructure running!$(NC)"
 	@echo "$(YELLOW)Run these in separate terminals:$(NC)"
 	@echo "  $(CYAN)make backend$(NC)"
 	@echo "  $(CYAN)make frontend$(NC)"
 
 setup: check_tools ## Set up development environment
 	@echo "$(YELLOW)Setting up development environment...$(NC)"
-	@if [ ! -f .env ]; then cp .env.example .env && echo "$(GREEN)Created .env from template$(NC)"; fi
+	@if [ ! -f .env ]; then cp .env.example .env && echo "$(PURPLE)Created .env from template$(NC)"; fi
 	@$(MAKE) install
-	@echo "$(GREEN)Setup complete! Run 'make dev' to start.$(NC)"
+	@echo "$(PURPLE)Setup complete! Run 'make dev' to start.$(NC)"
