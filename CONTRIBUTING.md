@@ -5,7 +5,11 @@
 ![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
 ![Node.js](https://img.shields.io/badge/node.js-18+-green.svg)
 
-Welcome to OpenRAG! This guide will help you set up your development environment and start contributing quickly.
+**Thank you for your interest in contributing to OpenRAG!** 🎉
+
+Whether you're fixing a bug, adding a feature, improving documentation, or just exploring — every contribution matters and helps make OpenRAG better for everyone.
+
+This guide will help you set up your development environment and start contributing quickly.
 
 ## Table of Contents
 
