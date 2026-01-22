@@ -1,28 +1,72 @@
 # Contributing to OpenRAG
 
-Thank you for your interest in contributing to OpenRAG! This guide will help you set up your development environment and understand the development workflow.
+Welcome to OpenRAG! This guide will help you set up your development environment and start contributing quickly.
 
-## 🛠️ Development Setup
+## Quick Start (5 Minutes)
 
-### Prerequisites
-
-- Docker or Podman with Compose installed
-- Make (for development commands)
-- Python 3.13+ with uv package manager
-- Node.js 18+ and npm
-
-### Set up OpenRAG for development
-
-1. Set up your development environment.
+Get OpenRAG running in three commands:
 
 ```bash
-# Clone and setup environment
-git clone https://github.com/langflow-ai/openrag.git
-cd openrag
-make setup  # Creates .env and installs dependencies
+make check_tools  # Verify you have all prerequisites
+make setup        # Install dependencies and create .env
+make dev          # Start OpenRAG
 ```
 
-2. Configure the `.env` file with your API keys and credentials.
+That's it! OpenRAG is now running at:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **Langflow**: http://localhost:7860
+
+---
+
+## Prerequisites
+
+### Required Tools
+
+| Tool | Version | Installation |
+|------|---------|--------------|
+| Docker or Podman | Latest | [Docker](https://docs.docker.com/get-docker/) or [Podman](https://podman.io/getting-started/installation) |
+| Python | 3.13+ | With [uv](https://github.com/astral-sh/uv) package manager |
+| Node.js | 18+ | With npm |
+| Make | Any | Usually pre-installed on macOS/Linux |
+
+### Podman Setup (macOS)
+
+If using Podman on macOS, configure the VM with enough memory (8GB recommended):
+
+```bash
+# Stop and remove existing machine (if any)
+podman machine stop
+podman machine rm
+
+# Create new machine with 8GB RAM and 4 CPUs
+podman machine init --memory 8192 --cpus 4
+podman machine start
+```
+
+### Verify Prerequisites
+
+```bash
+make check_tools
+```
+
+You should see: `All required tools are installed.`
+
+---
+
+## Initial Setup
+
+### 1. Clone and Setup
+
+```bash
+git clone https://github.com/langflow-ai/openrag.git
+cd openrag
+make setup
+```
+
+### 2. Configure Environment
+
+Edit the `.env` file with your credentials:
 
 ```bash
 # Required
@@ -30,248 +74,211 @@ OPENAI_API_KEY=your_openai_api_key
 OPENSEARCH_PASSWORD=your_secure_password
 LANGFLOW_SUPERUSER=admin
 LANGFLOW_SUPERUSER_PASSWORD=your_secure_password
-LANGFLOW_CHAT_FLOW_ID=your_chat_flow_id
-LANGFLOW_INGEST_FLOW_ID=your_ingest_flow_id
-NUDGES_FLOW_ID=your_nudges_flow_id
 ```
 
-For extended configuration, including ingestion and optional variables, see [docs/reference/configuration.mdx](docs/docs/reference/configuration.mdx).
+For all configuration options, see [docs/reference/configuration.mdx](docs/docs/reference/configuration.mdx).
 
-3. Start OpenRAG.
+### 3. Start OpenRAG
 
 ```bash
-# Full stack with GPU support
-make dev
-
-# Or CPU only
-make dev-cpu
+make dev      # With GPU support
+# or
+make dev-cpu  # CPU only
 ```
 
-Access the services:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **Langflow**: http://localhost:7860
-- **OpenSearch**: http://localhost:9200
-- **OpenSearch Dashboards**: http://localhost:5601
+---
 
-## 🔧 Development Commands
+## Development Workflows
 
-All development tasks are managed through the Makefile. Run `make help` to see all available commands.
+Choose the workflow that fits your needs:
 
-### Environment Management
+### A) Full Docker Stack (Simplest)
+
+Everything runs in containers. Best for testing the full system.
 
 ```bash
-# Setup development environment
-make setup                    # Initial setup: creates .env, installs dependencies
-
-# Start development environments
-make dev                     # Full stack with GPU support
-make dev-cpu                 # Full stack with CPU only
-make infra                   # Infrastructure only (for local development)
-
-# Container management
-make stop                    # Stop all containers
-make restart                 # Restart all containers
-make clean                   # Stop and remove containers/volumes
-make status                  # Show container status
-make health                  # Check service health
+make dev          # Start with GPU support
+make dev-cpu      # Start with CPU only
+make stop         # Stop and remove all containers
 ```
 
-### Local Development Workflow
+### B) Local Development (Recommended for Development)
 
-For faster development iteration, run infrastructure in Docker and backend/frontend locally:
+Run infrastructure in Docker, but backend/frontend locally for faster iteration.
 
 ```bash
-# Terminal 1: Start infrastructure
-make infra
+# Terminal 1: Start infrastructure (OpenSearch, Langflow, Dashboards)
+make dev-local
 
 # Terminal 2: Run backend locally
 make backend
 
-# Terminal 3: Run frontend locally  
+# Terminal 3: Run frontend locally
 make frontend
+
+# Terminal 4 (optional): Start docling for document processing
+make docling
 ```
 
-This setup provides:
+**Benefits:**
 - Faster code reloading
 - Direct access to logs and debugging
 - Easier testing and iteration
 
-### Dependency Management
+### C) Branch Development (Custom Langflow)
+
+Build and run OpenRAG with a custom Langflow branch:
 
 ```bash
-make install                 # Install all dependencies
-make install-be             # Install backend dependencies (uv)
-make install-fe             # Install frontend dependencies (npm)
+# Use a specific branch
+make dev-branch BRANCH=my-feature-branch
+
+# Use a different repository
+make dev-branch BRANCH=feature-x REPO=https://github.com/myorg/langflow.git
 ```
 
-### Building and Testing
+**Additional branch commands:**
+```bash
+make build-langflow-dev  # Rebuild Langflow image (no cache)
+make stop-dev            # Stop branch dev containers
+make restart-dev         # Restart branch dev environment
+make clean-dev           # Clean branch dev containers and volumes
+make logs-lf-dev         # View Langflow dev logs
+make shell-lf-dev        # Shell into Langflow dev container
+```
+
+### D) Docling Service (Document Processing)
+
+Docling handles document parsing and OCR:
 
 ```bash
-# Build Docker images
-make build                   # Build all images
-make build-be               # Build backend image only
-make build-fe               # Build frontend image only
-
-# Testing and quality
-make test                   # Run backend tests
-make lint                   # Run linting checks
+make docling       # Start docling-serve
+make docling-stop  # Stop docling-serve
 ```
 
-### Debugging
+---
+
+## Service Management
+
+### Stop All Services
 
 ```bash
-# View logs
-make logs                   # All container logs
-make logs-be                # Backend logs only
-make logs-fe                # Frontend logs only
-make logs-lf                # Langflow logs only
-make logs-os                # OpenSearch logs only
-
-# Shell access
-make shell-be               # Shell into backend container
-make shell-lf               # Shell into langflow container
-make shell-os               # Shell into opensearch container
+make stop  # Stops and removes all OpenRAG containers
 ```
 
-### Database Operations
+### Check Status
 
 ```bash
-# Reset OpenSearch indices
-make db-reset               # Delete and recreate indices
+make status  # Show container status
+make health  # Check health of all services
 ```
 
-### Flow Management
+### View Logs
 
 ```bash
-# Upload flow to Langflow
-make flow-upload FLOW_FILE=path/to/flow.json
+make logs     # All container logs
+make logs-be  # Backend logs only
+make logs-fe  # Frontend logs only
+make logs-lf  # Langflow logs only
+make logs-os  # OpenSearch logs only
 ```
 
-## 🏗️ Architecture Overview
+### Shell Access
 
-### Backend (Python/Starlette)
-- **API Layer**: RESTful endpoints in `src/api/`
-- **Services**: Business logic in `src/services/`
-- **Models**: Data models and processors in `src/models/`
-- **Connectors**: External service integrations in `src/connectors/`
-- **Configuration**: Settings management in `src/config/`
-
-### Frontend (Next.js/React)
-- **Pages**: Next.js app router in `frontend/src/app/`
-- **Components**: Reusable UI components in `frontend/src/components/`
-- **Contexts**: State management in `frontend/src/contexts/`
-- **Hooks**: Custom React hooks in `frontend/hooks/`
-
-### Infrastructure
-- **OpenSearch**: Vector database and search engine
-- **Langflow**: Visual flow builder for LLM workflows
-- **Docker**: Containerization and orchestration
-
-## 🧪 Testing
-
-### Backend Tests
 ```bash
-make test                   # Run all backend tests
-uv run pytest              # Direct pytest execution
-uv run pytest -v           # Verbose test output
+make shell-be  # Shell into backend container
+make shell-lf  # Shell into Langflow container
+make shell-os  # Shell into OpenSearch container
 ```
 
-### Frontend Tests
+---
+
+## Reset & Cleanup
+
+### Stop and Clean Containers
+
 ```bash
-cd frontend && npm test     # Run frontend tests
-cd frontend && npm run lint # Frontend linting
+make stop   # Stop and remove containers
+make clean  # Stop, remove containers, and delete volumes
 ```
 
-## 📝 Code Style
+### Reset Database
 
-### Backend
-- Follow PEP 8 style guidelines
-- Use type hints where appropriate
-- Document functions and classes with docstrings
-- Use structured logging with `structlog`
-
-### Frontend
-- Follow React/Next.js best practices
-- Use TypeScript for type safety
-- Follow the established component structure
-- Use Tailwind CSS for styling
-
-## 🔍 Debugging Tips
-
-### Backend Debugging
 ```bash
-# Enable debug logging
-export LOG_LEVEL=DEBUG
-
-# Run backend locally for debugging
-make infra && make backend
-
-# Check OpenSearch indices
-curl -X GET "http://localhost:9200/_cat/indices?v" \
-  -u admin:$(grep OPENSEARCH_PASSWORD .env | cut -d= -f2)
+make db-reset       # Reset OpenSearch indices (keeps data directory)
+make clear-os-data  # Clear OpenSearch data directory completely
 ```
 
-### Frontend Debugging
+### Full Factory Reset
+
 ```bash
-# Run with detailed logs
-cd frontend && npm run dev
-
-# Build and analyze bundle
-cd frontend && npm run build
+make factory-reset  # Complete reset: containers, volumes, and data
 ```
 
-### Container Debugging
+---
+
+## Makefile Help System
+
+The Makefile provides organized help for all commands:
+
 ```bash
-# Check container status
-make status
-
-# View real-time logs
-make logs
-
-# Shell into containers
-make shell-be  # Backend container
-make shell-lf  # Langflow container
+make help         # Main help with common commands
+make help_dev     # Development environment commands
+make help_docker  # Docker and container commands
+make help_test    # Testing commands
+make help_local   # Local development commands
+make help_utils   # Utility commands (logs, cleanup, etc.)
 ```
 
-## 🚀 Deployment Testing
+---
 
-### Local Testing
+## Testing
+
+### Run Tests
+
 ```bash
-# Test full stack deployment
-make clean && make dev
-
-# Test CPU-only deployment
-make clean && make dev-cpu
+make test              # Run all backend tests
+make test-integration  # Run integration tests (requires infra)
+make test-sdk          # Run SDK tests (requires running OpenRAG)
+make lint              # Run linting checks
 ```
 
-### Performance Testing
+### CI Tests
+
 ```bash
-# Monitor resource usage
-docker stats
-
-# Check service health
-make health
+make test-ci        # Full CI: start infra, run tests, tear down
+make test-ci-local  # Same as above, but builds images locally
 ```
 
-## 📚 Development Resources
+---
 
-### Key Files
-- `src/main.py` - Backend application entry point
-- `src/config/settings.py` - Configuration management
-- `frontend/src/app/layout.tsx` - Frontend root layout
-- `docker-compose.yml` - Container orchestration
-- `Makefile` - Development commands
+## Project Structure
 
-### Documentation
-- API documentation: Available at `http://localhost:8000/docs` when backend is running
-- Component Storybook: (if implemented) at `http://localhost:6006`
-- OpenSearch: `http://localhost:5601` (Dashboards)
-- Langflow: `http://localhost:7860`
+```
+openrag/
+├── src/                    # Backend Python code
+│   ├── api/               # REST API endpoints
+│   ├── services/          # Business logic
+│   ├── models/            # Data models
+│   ├── connectors/        # External integrations
+│   └── config/            # Configuration
+├── frontend/              # Next.js frontend
+│   ├── app/              # App router pages
+│   ├── components/       # React components
+│   └── contexts/         # State management
+├── flows/                 # Langflow flow definitions
+├── docs/                  # Documentation
+├── tests/                 # Test files
+├── Makefile              # Development commands
+└── docker-compose.yml    # Container orchestration
+```
 
-## 🐛 Common Issues
+---
+
+## Troubleshooting
 
 ### Port Conflicts
+
 Ensure these ports are available:
 - 3000 (Frontend)
 - 7860 (Langflow)
@@ -280,38 +287,69 @@ Ensure these ports are available:
 - 5601 (OpenSearch Dashboards)
 
 ### Memory Issues
-- Use `make dev-cpu` for CPU-only mode
-- Increase Docker memory allocation
-- Podman on macOS: increase the VM memory if needed
+
+If containers crash or are slow:
 
 ```bash
+# For Podman on macOS, increase VM memory
 podman machine stop
 podman machine rm
-podman machine init --memory 8192   # 8 GB example
+podman machine init --memory 8192 --cpus 4
 podman machine start
 ```
 
-### Environment Issues
+### Environment Reset
+
+If things aren't working, try a full reset:
+
 ```bash
-# Reset environment
+make stop
 make clean
 cp .env.example .env  # Reconfigure as needed
 make setup
+make dev
 ```
 
-## 📋 Pull Request Guidelines
+### Check Service Health
+
+```bash
+make health
+```
+
+---
+
+## Code Style
+
+### Backend (Python)
+- Follow PEP 8 style guidelines
+- Use type hints
+- Document with docstrings
+- Use `structlog` for logging
+
+### Frontend (TypeScript/React)
+- Follow React/Next.js best practices
+- Use TypeScript for type safety
+- Use Tailwind CSS for styling
+- Follow established component patterns
+
+---
+
+## Pull Request Guidelines
 
 1. **Fork and Branch**: Create a feature branch from `main`
-2. **Test**: Ensure all tests pass with `make test` and `make lint`
-3. **Documentation**: Update relevant documentation
-4. **Commit Messages**: Use clear, descriptive commit messages
+2. **Test**: Ensure tests pass with `make test` and `make lint`
+3. **Document**: Update relevant documentation
+4. **Commit**: Use clear, descriptive commit messages
 5. **PR Description**: Explain changes and include testing instructions
 
-## 🤝 Getting Help
+---
 
-- Check existing issues and discussions
+## Getting Help
+
+- Run `make help` to see all available commands
+- Check existing [issues](https://github.com/langflow-ai/openrag/issues)
+- Review [documentation](docs/)
 - Use `make status` and `make health` for debugging
-- Review logs with `make logs`
-- Join our community discussions
+- View logs with `make logs`
 
-Thank you for contributing to OpenRAG! 🚀
+Thank you for contributing to OpenRAG!

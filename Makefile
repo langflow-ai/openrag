@@ -439,6 +439,7 @@ docling: ## Start docling-serve for document processing
 docling-stop: ## Stop docling-serve
 	@echo "$(YELLOW)Stopping docling-serve...$(NC)"
 	@uv run python scripts/docling_ctl.py stop
+	@echo "$(PURPLE)Docling-serve stopped.$(NC)"
 
 ######################
 # INSTALLATION
