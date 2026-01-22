@@ -38,7 +38,7 @@ NC=\033[0m
        shell-backend shell-frontend install \
        test test-integration test-ci test-ci-local test-sdk lint \
        backend frontend docling docling-stop install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
-       shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload quick setup factory-reset \
+       shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
        dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev
 
 all: help
@@ -104,7 +104,6 @@ help_dev: ## Show development environment commands
 	@echo "$(PURPLE)Infrastructure Only:$(NC)"
 	@echo "  $(PURPLE)make dev-local$(NC)       - Start infrastructure only (for local backend/frontend)"
 	@echo "  $(PURPLE)make dev-local-cpu$(NC)   - Start infrastructure for local backend/frontend with CPU only"
-	@echo "  $(PURPLE)make quick$(NC)           - Quick start infrastructure CPU only + instructions"
 	@echo ''
 	@echo "$(PURPLE)Branch Development (build Langflow from source):$(NC)"
 	@echo "  $(PURPLE)make dev-branch$(NC)      - Build & run with custom Langflow branch"
@@ -780,14 +779,8 @@ flow-upload: ## Upload flow to Langflow
 	@echo "$(PURPLE)Flow uploaded.$(NC)"
 
 ######################
-# QUICK START & SETUP
+# SETUP
 ######################
-
-quick: dev-local-cpu ## Quick start: infrastructure + instructions
-	@echo "$(PURPLE)Quick start: infrastructure running!$(NC)"
-	@echo "$(YELLOW)Run these in separate terminals:$(NC)"
-	@echo "  $(CYAN)make backend$(NC)"
-	@echo "  $(CYAN)make frontend$(NC)"
 
 setup: check_tools ## Set up development environment
 	@echo "$(YELLOW)Setting up development environment...$(NC)"
