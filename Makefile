@@ -67,7 +67,7 @@ help: ## Show main help with common commands
 	@echo "  $(PURPLE)make setup$(NC)           - Initialize project (install dependencies, create .env)"
 	@echo "  $(PURPLE)make dev$(NC)             - Start full stack with GPU support"
 	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
-	@echo "  $(PURPLE)make stop$(NC)            - Stop all containers"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
 	@echo ''
 	@echo "$(PURPLE)Common Commands:$(NC)"
 	@echo "  $(PURPLE)make backend$(NC)         - Run backend locally"
@@ -98,7 +98,7 @@ help_dev: ## Show development environment commands
 	@echo "$(PURPLE)Full Stack Development:$(NC)"
 	@echo "  $(PURPLE)make dev$(NC)             - Start full stack with GPU support ($(COMPOSE_CMD))"
 	@echo "  $(PURPLE)make dev-cpu$(NC)         - Start full stack with CPU only"
-	@echo "  $(PURPLE)make stop$(NC)            - Stop all containers"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
 	@echo "  $(PURPLE)make restart$(NC)         - Restart all containers"
 	@echo ''
 	@echo "$(PURPLE)Infrastructure Only:$(NC)"
@@ -133,7 +133,7 @@ help_docker: ## Show Docker and container commands
 	@echo "  $(PURPLE)make build-fe$(NC)        - Build frontend Docker image only"
 	@echo ''
 	@echo "$(PURPLE)Container Management:$(NC)"
-	@echo "  $(PURPLE)make stop$(NC)            - Stop all containers"
+	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
 	@echo "  $(PURPLE)make restart$(NC)         - Restart all containers"
 	@echo "  $(PURPLE)make clean$(NC)           - Stop containers and remove volumes"
 	@echo "  $(PURPLE)make status$(NC)          - Show container status"
@@ -358,10 +358,12 @@ status-dev: ## Show dev container status
 # CONTAINER MANAGEMENT
 ######################
 
-stop: ## Stop all containers
-	@echo "$(YELLOW)Stopping all containers...$(NC)"
-	$(COMPOSE_CMD) down
-	@echo "$(PURPLE)All containers stopped.$(NC)"
+stop: ## Stop and remove all OpenRAG containers
+	@echo "$(YELLOW)Stopping and removing all OpenRAG containers...$(NC)"
+	@$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) down --remove-orphans 2>/dev/null || true
+	@$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+	@$(CONTAINER_RUNTIME) ps -a --filter "name=openrag" --filter "name=langflow" --filter "name=opensearch" -q | xargs -r $(CONTAINER_RUNTIME) rm -f 2>/dev/null || true
+	@echo "$(PURPLE)All OpenRAG containers stopped and removed.$(NC)"
 
 restart: stop dev ## Restart all containers
 
