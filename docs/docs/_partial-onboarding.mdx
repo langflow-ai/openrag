@@ -87,9 +87,10 @@ You must deploy Ollama separately if you want to use Ollama as a model provider.
    * **Ollama Cloud**: Because Ollama Cloud models run at the same address as a local Ollama server and automatically offload to Ollama's cloud service, you can use the same base URL and port as you would for a local Ollama server. The default address is `http://localhost:11434`.
    * **Remote server**: Enter your remote Ollama server's base URL and port, such as `http://your-remote-server:11434`.
 
-3. Select the language model that your Ollama server is running.
+3. Select a language model that your Ollama server is running.
 
-   If your server isn't running any language models, you must either deploy a language model on your Ollama server, or use another provider for the language model.
+   OpenRAG only lists language models that support tool calling.
+   If your server isn't running any compatible language models, you must either deploy a compatible language model on your Ollama server, or use another provider for the language model.
 
    Language model and embedding model selections are independent.
    You can use the same or different servers for each model.
