@@ -60,7 +60,8 @@ services:
     environment:
       - OPENSEARCH_HOST=opensearch
       - LANGFLOW_URL=http://langflow:7860
-      - LANGFLOW_PUBLIC_URL=${LANGFLOW_PUBLIC_URL}
+      # Override public URL to use dev port 7861
+      - LANGFLOW_PUBLIC_URL=http://localhost:7861
       - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN}
       - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
       - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
