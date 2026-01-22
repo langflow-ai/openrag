@@ -289,16 +289,32 @@ dev-branch: ## Build & run full stack with custom Langflow branch
 	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
 	@echo ""
 	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.dev.yml build langflow
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml build langflow
 	@echo ""
 	@echo "$(YELLOW)Starting OpenRAG with custom Langflow build...$(NC)"
-	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.dev.yml up -d
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml up -d
 	@echo ""
 	@echo "$(PURPLE)Dev environment started!$(NC)"
-	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:7861"
-	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:3001"
-	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:9201"
-	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:5602"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:7860"
+	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:3000"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:9200"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:5601"
+
+dev-branch-cpu: ## Build & run full stack with custom Langflow branch and CPU only mode
+	@echo "$(YELLOW)Building Langflow from branch: $(BRANCH)$(NC)"
+	@echo "   $(CYAN)Repository:$(NC) $(REPO)"
+	@echo ""
+	@echo "$(YELLOW)This may take several minutes for the first build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml build langflow
+	@echo ""
+	@echo "$(YELLOW)Starting OpenRAG (CPU only) with custom Langflow build...$(NC)"
+	GIT_BRANCH=$(BRANCH) GIT_REPO=$(REPO) $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.dev.yml up -d
+	@echo ""
+	@echo "$(PURPLE)Dev environment started!$(NC)"
+	@echo "   $(CYAN)Langflow ($(BRANCH)):$(NC) http://localhost:7860"
+	@echo "   $(CYAN)Frontend:$(NC)              http://localhost:3000"
+	@echo "   $(CYAN)OpenSearch:$(NC)            http://localhost:9200"
+	@echo "   $(CYAN)Dashboards:$(NC)            http://localhost:5601"
 
 build-langflow-dev: ## Build only the Langflow dev image (no cache)
 	@echo "$(YELLOW)Building Langflow dev image from branch: $(BRANCH)$(NC)"
