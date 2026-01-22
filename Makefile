@@ -34,11 +34,11 @@ NC=\033[0m
 # PHONY TARGETS
 ######################
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils \
-       dev dev-cpu dev-local infra infra-cpu stop clean build logs \
+       dev dev-cpu dev-local dev-local-cpu stop clean build logs \
        shell-backend shell-frontend install \
        test test-integration test-ci test-ci-local test-sdk lint \
-       backend frontend install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
-       shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload quick setup \
+       backend frontend docling docling-stop install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
+       shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload quick setup factory-reset \
        dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev
 
 all: help
@@ -72,6 +72,8 @@ help: ## Show main help with common commands
 	@echo "$(PURPLE)Common Commands:$(NC)"
 	@echo "  $(PURPLE)make backend$(NC)         - Run backend locally"
 	@echo "  $(PURPLE)make frontend$(NC)        - Run frontend locally"
+	@echo "  $(PURPLE)make docling$(NC)         - Start docling-serve for document processing"
+	@echo "  $(PURPLE)make docling-stop$(NC)    - Stop docling-serve"
 	@echo "  $(PURPLE)make test$(NC)            - Run all backend tests"
 	@echo "  $(PURPLE)make logs$(NC)            - Show logs from all containers"
 	@echo "  $(PURPLE)make status$(NC)          - Show container status"
@@ -101,9 +103,8 @@ help_dev: ## Show development environment commands
 	@echo ''
 	@echo "$(PURPLE)Infrastructure Only:$(NC)"
 	@echo "  $(PURPLE)make dev-local$(NC)       - Start infrastructure only (for local backend/frontend)"
-	@echo "  $(PURPLE)make infra$(NC)           - Start infrastructure services only (alias)"
-	@echo "  $(PURPLE)make infra-cpu$(NC)       - Start infrastructure with CPU only"
-	@echo "  $(PURPLE)make quick$(NC)           - Quick start infrastructure + instructions"
+	@echo "  $(PURPLE)make dev-local-cpu$(NC)   - Start infrastructure for local backend/frontend with CPU only"
+	@echo "  $(PURPLE)make quick$(NC)           - Quick start infrastructure CPU only + instructions"
 	@echo ''
 	@echo "$(PURPLE)Branch Development (build Langflow from source):$(NC)"
 	@echo "  $(PURPLE)make dev-branch$(NC)      - Build & run with custom Langflow branch"
@@ -182,6 +183,8 @@ help_local: ## Show local development commands
 	@echo "$(PURPLE)Run Services Locally:$(NC)"
 	@echo "  $(PURPLE)make backend$(NC)         - Run backend locally (requires infrastructure)"
 	@echo "  $(PURPLE)make frontend$(NC)        - Run frontend locally"
+	@echo "  $(PURPLE)make docling$(NC)         - Start docling-serve for document processing"
+	@echo "  $(PURPLE)make docling-stop$(NC)    - Stop docling-serve"
 	@echo ''
 	@echo "$(PURPLE)Installation:$(NC)"
 	@echo "  $(PURPLE)make install$(NC)         - Install all dependencies"
@@ -221,6 +224,7 @@ help_utils: ## Show utility commands
 	@echo "$(PURPLE)Cleanup:$(NC)"
 	@echo "  $(PURPLE)make clean$(NC)           - Stop containers and remove volumes"
 	@echo "  $(PURPLE)make clean-dev$(NC)       - Clean dev environment"
+	@echo "  $(PURPLE)make factory-reset$(NC)   - Complete reset (stop, remove volumes, clear data)"
 	@echo ''
 	@echo "$(PURPLE)Flows:$(NC)"
 	@echo "  $(PURPLE)make flow-upload$(NC)     - Upload flow to Langflow"
@@ -240,7 +244,7 @@ dev: ## Start full stack with GPU support
 	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
-	@echo "   $(CYAN)Backend:$(NC)    http://localhost:8000"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
@@ -250,37 +254,33 @@ dev-cpu: ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
 	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d
 	@echo "$(PURPLE)Services started!$(NC)"
-	@echo "   $(CYAN)Backend:$(NC)    http://localhost:8000"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Frontend:$(NC)   http://localhost:3000"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
 
-dev-local: ## Start infrastructure only (for local development)
+dev-local: ## Start infrastructure for local development
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
-	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) -f docker-compose.yml -f docker-compose.gpu.yml up -d opensearch openrag-backend dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
 	@echo ""
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
-infra: ## Start infrastructure services only
-	@echo "$(YELLOW)Starting infrastructure services only...$(NC)"
-	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
-	@echo "$(PURPLE)Infrastructure services started!$(NC)"
+dev-local-cpu: ## Start infrastructure for local development, with CPU only
+	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d opensearch openrag-backend dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
 	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
 	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
 	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
-
-infra-cpu: ## Start infrastructure services only (CPU)
-	@echo "$(YELLOW)Starting infrastructure services only...$(NC)"
-	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) up -d opensearch dashboards langflow
-	@echo "$(PURPLE)Infrastructure services started!$(NC)"
-	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
-	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
-	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 ######################
 # BRANCH DEVELOPMENT
@@ -359,6 +359,49 @@ clean: stop ## Stop containers and remove volumes
 	$(CONTAINER_RUNTIME) system prune -f
 	@echo "$(PURPLE)Cleanup complete!$(NC)"
 
+factory-reset: ## Complete reset (stop, remove volumes, clear data, remove images)
+	@echo "$(RED)WARNING: This will completely reset OpenRAG!$(NC)"
+	@echo "$(YELLOW)This will:$(NC)"
+	@echo "  - Stop all containers"
+	@echo "  - Remove all volumes"
+	@echo "  - Delete opensearch-data directory"
+	@echo "  - Delete config directory"
+	@echo "  - Delete JWT keys (private_key.pem, public_key.pem)"
+	@echo "  - Remove local OpenRAG images"
+	@echo ""
+	@read -p "Are you sure? Type 'yes' to continue: " confirm; \
+	if [ "$$confirm" != "yes" ]; then \
+		echo "$(CYAN)Factory reset cancelled.$(NC)"; \
+		exit 0; \
+	fi
+	@echo ""
+	@echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"
+	$(COMPOSE_CMD) $(OPENRAG_ENV_FILE) down -v --remove-orphans --rmi local || true
+	@echo "$(YELLOW)Removing local data directories...$(NC)"
+	@if [ -d "opensearch-data" ]; then \
+		echo "Removing opensearch-data..."; \
+		uv run python scripts/clear_opensearch_data.py 2>/dev/null || \
+		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/opensearch-data:/data" alpine sh -c "rm -rf /data/*" 2>/dev/null || \
+		rm -rf opensearch-data/* 2>/dev/null || true; \
+		rm -rf opensearch-data 2>/dev/null || true; \
+		echo "$(PURPLE)opensearch-data removed$(NC)"; \
+	fi
+	@if [ -d "config" ]; then \
+		echo "Removing config..."; \
+		rm -rf config; \
+		echo "$(PURPLE)config removed$(NC)"; \
+	fi
+	@if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
+		echo "Removing JWT keys..."; \
+		rm -f keys/private_key.pem keys/public_key.pem; \
+		echo "$(PURPLE)JWT keys removed$(NC)"; \
+	fi
+	@echo "$(YELLOW)Cleaning up system...$(NC)"
+	$(CONTAINER_RUNTIME) system prune -f
+	@echo ""
+	@echo "$(PURPLE)Factory reset complete!$(NC)"
+	@echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)"
+
 ######################
 # LOCAL DEVELOPMENT
 ######################
@@ -373,6 +416,15 @@ frontend: ## Run frontend locally
 	@if [ ! -d "frontend/node_modules" ]; then echo "$(YELLOW)Installing frontend dependencies first...$(NC)"; cd frontend && npm install; fi
 	cd frontend && npx next dev \
 		--hostname $(hostname)
+
+docling: ## Start docling-serve for document processing
+	@echo "$(YELLOW)Starting docling-serve...$(NC)"
+	@uv run python scripts/docling_ctl.py start
+	@echo "$(PURPLE)Docling-serve started! Use 'make docling-stop' to stop it.$(NC)"
+
+docling-stop: ## Stop docling-serve
+	@echo "$(YELLOW)Stopping docling-serve...$(NC)"
+	@uv run python scripts/docling_ctl.py stop
 
 ######################
 # INSTALLATION
@@ -468,7 +520,7 @@ test: ## Run all backend tests
 
 test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(YELLOW)Running integration tests (requires infrastructure)...$(NC)"
-	@echo "$(CYAN)Make sure to run 'make infra' first!$(NC)"
+	@echo "$(CYAN)Make sure to run 'make dev-local' first!$(NC)"
 	uv run pytest tests/integration/ -v
 
 test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub images)
@@ -731,7 +783,7 @@ flow-upload: ## Upload flow to Langflow
 # QUICK START & SETUP
 ######################
 
-quick: dev-local ## Quick start: infrastructure + instructions
+quick: dev-local-cpu ## Quick start: infrastructure + instructions
 	@echo "$(PURPLE)Quick start: infrastructure running!$(NC)"
 	@echo "$(YELLOW)Run these in separate terminals:$(NC)"
 	@echo "  $(CYAN)make backend$(NC)"
