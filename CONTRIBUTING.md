@@ -2,6 +2,30 @@
 
 Welcome to OpenRAG! This guide will help you set up your development environment and start contributing quickly.
 
+## Table of Contents
+
+- [Quick Start (5 Minutes)](#quick-start-5-minutes)
+- [Prerequisites](#prerequisites)
+  - [Required Tools](#required-tools)
+  - [Podman Setup (macOS)](#podman-setup-macos)
+- [Initial Setup](#initial-setup)
+- [Development Workflows](#development-workflows)
+  - [A) Full Docker Stack](#a-full-docker-stack-simplest)
+  - [B) Local Development](#b-local-development-recommended-for-development)
+  - [C) Branch Development](#c-branch-development-custom-langflow)
+  - [D) Docling Service](#d-docling-service-document-processing)
+- [Service Management](#service-management)
+- [Reset & Cleanup](#reset--cleanup)
+- [Makefile Help System](#makefile-help-system)
+- [Testing](#testing)
+- [Project Structure](#project-structure)
+- [Troubleshooting](#troubleshooting)
+- [Code Style](#code-style)
+- [Pull Request Guidelines](#pull-request-guidelines)
+- [Getting Help](#getting-help)
+
+---
+
 ## Quick Start (5 Minutes)
 
 Get OpenRAG running in three commands:
