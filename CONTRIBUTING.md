@@ -395,7 +395,8 @@ If you want to propose your changes to the OpenRAG maintainers, make sure your c
 
 1. **Fork and Branch**: Create a feature branch from `main`
 2. **Test**: Ensure tests pass with `make test` and `make lint`
-3. **Document**: Update relevant documentation
+3. **Document**: Update relevant documentation.
+To build and test documentation changes, see [Contribute OpenRAG documentation](https://docs.openr.ag/support/contribute#contribute-documentation).
 4. **Commit**: Use clear, descriptive commit messages
 5. **PR Description**: Explain changes and include testing instructions
 
