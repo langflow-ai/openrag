@@ -93,38 +93,36 @@ You should see: `All required tools are installed.`
 
 ## Initial Setup
 
-### 1. Clone and Setup
 
-```bash
-git clone https://github.com/langflow-ai/openrag.git
-cd openrag
-make setup
-```
+1. Clone the repo and setup the project:
 
-### 2. Configure Environment
+   ```bash
+   git clone https://github.com/langflow-ai/openrag.git
+   cd openrag
+   make setup
+   ```
 
-> [!WARNING]
-> You must configure your `.env` file before starting OpenRAG.
+2. Configure the required environment variables before starting OpenRAG:
 
-Edit the `.env` file with your credentials:
+   ```env
+   OPENAI_API_KEY=
+   OPENSEARCH_PASSWORD=
+   LANGFLOW_SUPERUSER=admin
+   LANGFLOW_SUPERUSER_PASSWORD=
+   ```
 
-```bash
-# Required
-OPENAI_API_KEY=your_openai_api_key
-OPENSEARCH_PASSWORD=your_secure_password
-LANGFLOW_SUPERUSER=admin
-LANGFLOW_SUPERUSER_PASSWORD=your_secure_password
-```
+   The `OPENSEARCH_PASSWORD` must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
 
-For all configuration options, see [docs/reference/configuration.mdx](docs/docs/reference/configuration.mdx).
+   If `LANGFLOW_SUPERUSER_PASSWORD` isn't set, then the Langflow instance starts without authentication enabled.
 
-### 3. Start OpenRAG
+   For more information, see the [OpenRAG environment variables reference](https://docs.openr.ag/reference/configuration).
 
-```bash
-make dev      # With GPU support
-# or
-make dev-cpu  # CPU only
-```
+3. Start OpenRAG using one of the options described in the next section.
+    ```bash
+    make dev      # With GPU support
+    # or
+    make dev-cpu  # CPU only
+    ```
 
 ---
 
@@ -376,6 +374,14 @@ make dev
 make health
 ```
 
+### Need More Help?
+
+- Run `make help` to see all available commands
+- Check existing [issues](https://github.com/langflow-ai/openrag/issues)
+- Review [documentation](docs/)
+- Use `make status` and `make health` for debugging
+- View logs with `make logs`
+
 ---
 
 ## Code Style
@@ -410,16 +416,5 @@ To build and test documentation changes, see [Contribute OpenRAG documentation](
 
 For more information and suggestions for successful contributions, see [Contribute to OpenRAG](https://docs.openr.ag/support/contribute#contribute-to-the-codebase).
 
----
-
-## Getting Help
-
-- Run `make help` to see all available commands
-- Check existing [issues](https://github.com/langflow-ai/openrag/issues)
-- Review [documentation](docs/)
-- Use `make status` and `make health` for debugging
-- View logs with `make logs`
-
----
 
 Thank you for contributing to OpenRAG! 🚀
