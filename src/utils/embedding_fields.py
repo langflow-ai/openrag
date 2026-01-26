@@ -134,7 +134,7 @@ async def ensure_embedding_field_exists(
                     "name": "disk_ann",
                     "engine": "jvector",
                     "space_type": "l2",
-                    "parameters": {"ef_construction": 100, "m": 16},
+                    "parameters": {"ef_construction": 512, "m": 16},
                 },
             },
             # Also ensure the embedding_model tracking field exists as keyword
