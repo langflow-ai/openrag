@@ -19,7 +19,7 @@ on:
 
 jobs:
   tests:
-    runs-on: [self-hosted, linux, ARM64, langflow-ai-arm64-40gb]
+    runs-on: ubuntu-latest
     env:
       # Prefer repository/environment variable first, then secret, then a sane fallback
       OPENSEARCH_PASSWORD: ${{ vars.OPENSEARCH_PASSWORD || secrets.OPENSEARCH_PASSWORD || 'OpenRag#2025!' }}
@@ -33,6 +33,11 @@ jobs:
 
     steps:
       - run: df -h
+
+      - name: Install docker-compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
       
       - name: Cleanup Docker cache
         run: |
