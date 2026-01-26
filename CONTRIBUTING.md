@@ -45,11 +45,11 @@ make setup        # Install dependencies and create .env
 make dev          # Start OpenRAG
 ```
 
-> [!TIP]
-> That's it! OpenRAG is now running at:
-> - **Frontend**: http://localhost:3000
-> - **Backend API**: http://localhost:8000
-> - **Langflow**: http://localhost:7860
+OpenRAG is now running locally on the following ports:
+
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **Langflow**: http://localhost:7860
 
 ---
 
