@@ -389,7 +389,9 @@ make health
 
 ---
 
-## Pull Request Guidelines
+## Create a Pull Request
+
+If you want to propose your changes to the OpenRAG maintainers, make sure your code is fully tested and ready for review:
 
 1. **Fork and Branch**: Create a feature branch from `main`
 2. **Test**: Ensure tests pass with `make test` and `make lint`
