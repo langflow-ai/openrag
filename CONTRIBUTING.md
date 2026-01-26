@@ -132,7 +132,7 @@ make dev-cpu  # CPU only
 
 Choose the workflow that fits your needs:
 
-### A) Full Docker Stack (Simplest)
+### Full Docker Stack (Simplest)
 
 Everything runs in containers. Best for testing the full system.
 
