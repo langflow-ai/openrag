@@ -403,6 +403,8 @@ To build and test documentation changes, see [Contribute OpenRAG documentation](
 > [!IMPORTANT]
 > All PRs must pass CI tests before merging.
 
+For more information and suggestions for successful contributions, see [Contribute to OpenRAG](https://docs.openr.ag/support/contribute#contribute-to-the-codebase).
+
 ---
 
 ## Getting Help
