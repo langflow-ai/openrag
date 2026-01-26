@@ -3,7 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY } from "@/lib/constants";
+import { useUpdateOnboardingStateMutation } from "./useUpdateOnboardingStateMutation";
 
 export interface OnboardingVariables {
   // Provider selection
@@ -36,12 +36,14 @@ export const useOnboardingMutation = (
   options?: Omit<
     UseMutationOptions<OnboardingResponse, Error, OnboardingVariables>,
     "mutationFn"
-  >,
+  >
 ) => {
   const queryClient = useQueryClient();
 
+  const updateOnboardingMutation = useUpdateOnboardingStateMutation();
+
   async function submitOnboarding(
-    variables: OnboardingVariables,
+    variables: OnboardingVariables
   ): Promise<OnboardingResponse> {
     const response = await fetch("/api/onboarding", {
       method: "POST",
@@ -62,10 +64,15 @@ export const useOnboardingMutation = (
   return useMutation({
     mutationFn: submitOnboarding,
     onSuccess: (data) => {
-      // Store OpenRAG Docs filter ID if returned
-      if (data.openrag_docs_filter_id && typeof window !== "undefined") {
-        localStorage.setItem(
-          ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY,
+      // Save OpenRAG docs filter ID if sample data was ingested
+      if (data.openrag_docs_filter_id) {
+        // Save to backend
+        updateOnboardingMutation.mutateAsync({
+          openrag_docs_filter_id: data.openrag_docs_filter_id,
+        });
+
+        console.log(
+          "Saved OpenRAG docs filter ID:",
           data.openrag_docs_filter_id
         );
       }

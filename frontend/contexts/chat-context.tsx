@@ -10,7 +10,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { ONBOARDING_STEP_KEY } from "@/lib/constants";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 
 export type EndpointType = "chat" | "langflow";
@@ -129,28 +128,15 @@ export function ChatProvider({ children }: ChatProviderProps) {
     return false;
   });
 
-  // Sync onboarding completion state with settings.edited and localStorage
+  // Sync onboarding completion state with settings from backend
   useEffect(() => {
-    const checkOnboarding = () => {
-      if (typeof window !== "undefined") {
-        // Onboarding is complete if settings.edited is true AND step key is null
-        const stepKeyExists = localStorage.getItem(ONBOARDING_STEP_KEY) !== null;
-        const isEdited = settings?.edited === true;
-        // Complete if edited is true and step key doesn't exist (onboarding flow finished)
-        setIsOnboardingComplete(isEdited && !stepKeyExists);
-      }
-    };
-
-    // Check on mount and when settings change
-    checkOnboarding();
-
-    // Listen for storage events (for cross-tab sync)
-    window.addEventListener("storage", checkOnboarding);
-
-    return () => {
-      window.removeEventListener("storage", checkOnboarding);
-    };
-  }, [settings?.edited]);
+    const TOTAL_ONBOARDING_STEPS = 4;
+    // Onboarding is complete if current_step >= 4
+    const isComplete =
+      settings?.onboarding?.current_step !== undefined &&
+      settings.onboarding.current_step >= TOTAL_ONBOARDING_STEPS;
+    setIsOnboardingComplete(isComplete);
+  }, [settings?.onboarding?.current_step]);
 
   const setOnboardingComplete = useCallback((complete: boolean) => {
     setIsOnboardingComplete(complete);
