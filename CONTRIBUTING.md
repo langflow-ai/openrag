@@ -35,7 +35,7 @@ This guide will help you set up your development environment and start contribut
 
 ---
 
-## Quick Start (5 Minutes)
+## Quickstart
 
 Get OpenRAG running in three commands:
 
