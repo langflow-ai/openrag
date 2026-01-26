@@ -1159,6 +1159,13 @@ async def create_app():
             ),
             methods=["POST"],
         ),
+        Route(
+            "/onboarding/state",
+            require_auth(services["session_manager"])(
+                settings.update_onboarding_state
+            ),
+            methods=["POST"],
+        ),
         # Provider health check endpoint
         Route(
             "/provider/health",
