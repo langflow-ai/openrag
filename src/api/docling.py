@@ -1,5 +1,6 @@
 """Docling service proxy endpoints."""
 
+import os
 import socket
 import struct
 from pathlib import Path
@@ -73,9 +74,15 @@ def determine_docling_host() -> str:
     return "localhost"
 
 
-# Detect the host IP once at startup
-HOST_IP = determine_docling_host()
-DOCLING_SERVICE_URL = f"http://{HOST_IP}:5001"
+# Use explicit URL if provided, otherwise auto-detect host
+_docling_url_override = os.getenv("DOCLING_SERVE_URL")
+if _docling_url_override:
+    DOCLING_SERVICE_URL = _docling_url_override.rstrip("/")
+    HOST_IP = _docling_url_override  # For display in health responses
+    logger.info("Using DOCLING_SERVE_URL override: %s", DOCLING_SERVICE_URL)
+else:
+    HOST_IP = determine_docling_host()
+    DOCLING_SERVICE_URL = f"http://{HOST_IP}:5001"
 
 
 async def health(request: Request) -> JSONResponse:

@@ -1,0 +1,113 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for OpenRAG
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please provide as much detail as possible to help us understand your request.
+
+  - type: dropdown
+    id: feature-area
+    attributes:
+      label: Feature Area
+      description: Which area(s) of OpenRAG does this feature relate to?
+      multiple: true
+      options:
+        - Ingestion (document processing, upload, Docling)
+        - Retrieval (search, OpenSearch, hybrid search)
+        - Chat (chat interface, conversations, AI responses)
+        - Knowledge Filters (partitions, document filtering)
+        - Settings (configuration, model providers)
+        - TUI (Terminal User Interface)
+        - Connectors (Google Drive, OneDrive, SharePoint)
+        - Frontend (Next.js UI, components)
+        - Backend/API (Python/Starlette)
+        - Infrastructure (Docker, OpenSearch, Langflow)
+        - SDK (Python or TypeScript SDK)
+        - Onboarding (setup wizard, initial configuration)
+        - Authentication (OIDC, API keys)
+        - New Area
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-description
+    attributes:
+      label: Problem Description
+      description: Is your feature request related to a problem? Please describe.
+      placeholder: A clear and concise description of what the problem is. E.g., "I'm always frustrated when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see implemented.
+      placeholder: A clear and concise description of what you want to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Describe your use case and how this feature would benefit you or others.
+      placeholder: |
+        As a [type of user], I want [goal] so that [benefit].
+        
+        Example: As a developer, I want to filter documents by custom metadata so that I can organize my knowledge base more effectively.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative solutions or features you've considered.
+      placeholder: What other approaches have you thought about? Why wouldn't they work as well?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to your workflow?
+      options:
+        - Nice to have
+        - Would improve my workflow
+        - Critical for my use case
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, mockups, screenshots, or examples about the feature request here.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Would you be interested in contributing to this feature?
+      options:
+        - label: I would be willing to help implement this feature.
+          required: false
+        - label: I can help test this feature once implemented.
+          required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please confirm the following before submitting.
+      options:
+        - label: I have searched existing issues and discussions to ensure this feature hasn't been requested before.
+          required: true
+

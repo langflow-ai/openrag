@@ -17,8 +17,8 @@ import {
   type TaskFileEntry,
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
-import { ONBOARDING_STEP_KEY } from "@/lib/constants";
 
 // Task interface is now imported from useGetTasksQuery
 export type { Task };
@@ -90,11 +90,18 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     },
   });
 
+  // Get settings to check if onboarding is active
+  const { data: settings } = useGetSettingsQuery();
+  
   // Helper function to check if onboarding is active
   const isOnboardingActive = useCallback(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(ONBOARDING_STEP_KEY) !== null;
-  }, []);
+    const TOTAL_ONBOARDING_STEPS = 4;
+    // Onboarding is active if current_step < 4
+    return (
+      settings?.onboarding?.current_step !== undefined &&
+      settings.onboarding.current_step < TOTAL_ONBOARDING_STEPS
+    );
+  }, [settings?.onboarding?.current_step]);
 
   const refetchSearch = useCallback(() => {
     queryClient.invalidateQueries({

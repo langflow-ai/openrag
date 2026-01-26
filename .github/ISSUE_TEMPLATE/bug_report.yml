@@ -1,0 +1,155 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in OpenRAG
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below to help us understand and fix the issue.
+
+  - type: input
+    id: openrag-version
+    attributes:
+      label: OpenRAG Version
+      description: What version of OpenRAG are you using? Run `openrag --version` or check your package version.
+      placeholder: "e.g., 0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment-method
+    attributes:
+      label: Deployment Method
+      description: How are you running OpenRAG?
+      options:
+        - uvx (uvx openrag)
+        - uv add (installed in project)
+        - Docker
+        - Podman
+        - Local development (make dev)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      description: What operating system are you using?
+      placeholder: "e.g., macOS 14.0, Ubuntu 22.04, Windows 11"
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      description: What Python version are you using? Run `python --version` to check.
+      placeholder: "e.g., 3.13.0"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Affected Area
+      description: Which area(s) of OpenRAG does this bug affect? Select all that apply.
+      multiple: true
+      options:
+        - Ingestion (document processing, upload, Docling)
+        - Retrieval (search, OpenSearch, hybrid search)
+        - Chat (chat interface, conversations, AI responses)
+        - Knowledge Filters (partitions, document filtering)
+        - Settings (configuration, model providers)
+        - TUI (Terminal User Interface)
+        - Connectors (Google Drive, OneDrive, SharePoint)
+        - Frontend (Next.js UI, components)
+        - Backend/API (Python/Starlette)
+        - Infrastructure (Docker, OpenSearch, Langflow)
+        - SDK (Python or TypeScript SDK)
+        - Onboarding (setup wizard, initial configuration)
+        - Authentication (OIDC, API keys)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: A clear and concise description of what actually happened.
+      placeholder: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: |
+        Please copy and paste any relevant log output. 
+        You can get logs using `make logs` for Docker deployments or check the terminal output.
+        This will be automatically formatted into code, so no need for backticks.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: If applicable, add screenshots to help explain your problem.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here (e.g., browser version, specific document types, model provider being used).
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please confirm the following before submitting.
+      options:
+        - label: I have searched existing issues to ensure this bug hasn't been reported before.
+          required: true
+        - label: I have provided all the requested information.
+          required: true
+

@@ -5,6 +5,7 @@ slug: /knowledge
 
 import Icon from "@site/src/components/icon/icon";
 import PartialOpenSearchAuthMode from '@site/docs/_partial-opensearch-auth-mode.mdx';
+import PartialAnonymousUserOwner from '@site/docs/_partial-anonymous-user-owner.mdx';
 
 OpenRAG includes a built-in [OpenSearch](https://docs.opensearch.org/latest/) instance that serves as the underlying datastore for your _knowledge_ (documents).
 This specialized database is used to store and retrieve your documents and the associated vector data (embeddings).
@@ -23,17 +24,61 @@ You can configure how documents are ingested and how the **Chat** interacts with
 The **Knowledge** page lists the documents OpenRAG has ingested into your OpenSearch database, specifically in an [OpenSearch index](https://docs.opensearch.org/latest/getting-started/intro/#index) named `documents`.
 
 To explore the raw contents of your knowledge base, click <Icon name="Library" aria-hidden="true"/> **Knowledge** to get a list of all ingested documents.
-Click a document to view the chunks produced from splitting the document during ingestion.
+
+### Inspect knowledge
+
+For each document, the **Knowledge** page provides the following information:
+
+* **Source**: Name of the ingested content, such as the file name.
+
+* **Size**
+
+* **Type**
+
+* **Owner**: User that uploaded the document.
+
+   <PartialAnonymousUserOwner />
+
+* **Chunks**: Number of chunks created by splitting the document during ingestion.
+
+   Click a document to view the individual chunks and technical details related to chunking.
+   If the chunks seem incorrect or incomplete, see [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
+
+* **Avg score**: Average similarity score across all chunks of the document.
+
+   If you [search the knowledge base](#search-knowledge), the **Avg score** column shows the similarity score for your search query or filter.
+
+* **Embedding model** and **Dimensions**: The embedding model and dimensions used to embed the chunks.
+
+* **Status**: Status of document ingestion.
+If ingestion is complete and successful, then the status is **Active**.
+For more information, see [Monitor ingestion](/ingestion#monitor-ingestion).
+
+### Search knowledge {#search-knowledge}
+
+You can use the search field on the **Knowledge** page to find documents using semantic search and knowledge filters:
+
+To search all documents, enter a search string in the search field, and then press <kbd>Enter</kbd>.
+
+To apply a [knowledge filter](/knowledge-filters), select the filter from the **Knowledge Filters** list.
+The filter settings pane opens, and the filter appears in the search field.
+To remove the filter, close the filter settings pane or clear the filter from the search field.
+
+You can use the filter alone or in combination with a search string.
+If a knowledge filter has a **Search Query**, that query is applied in addition to any text string you enter in the search field.
+
+Only one filter can be applied at a time.
 
 ### Default documents {#default-documents}
 
 By default, OpenRAG includes some initial documents about OpenRAG.
 These documents are ingested automatically during the [application onboarding process](/install#application-onboarding).
 
-You can use these documents to ask OpenRAG about itself, and to test the [**Chat**](/chat) feature before uploading your own documents.
+You can use these documents to ask OpenRAG about itself, or to test the [**Chat**](/chat) feature before uploading your own documents.
 
-If you [delete](#delete-knowledge) these documents, you won't be able to ask OpenRAG about itself and it's own functionality.
+If you [delete these documents](#delete-knowledge), then you won't be able to ask OpenRAG about itself and it's own functionality.
 It is recommended that you keep these documents, and use [filters](/knowledge-filters) to separate them from your other knowledge.
+An **OpenRAG Docs** filter is created automatically for these documents.
 
 ## OpenSearch authentication and document access {#auth}
 
@@ -49,7 +94,7 @@ An [OpenSearch index](https://docs.opensearch.org/latest/getting-started/intro/#
 By default, all documents you upload to your OpenRAG knowledge base are stored in an index named `documents`.
 
 It is possible to change the index name by [editing the ingestion flow](/agents#inspect-and-modify-flows).
-However, this can impact dependent processes, such as the [filters](/knowledge-filters) and [**Chat**](/chat) flow, that reference the `documents` index by default.
+However, this can impact dependent processes, such as the [filters](/knowledge-filters) and [**Chat**](/chat), that reference the `documents` index by default.
 Make sure you edit other flows as needed to ensure all processes use the same index name.
 
 If you encounter errors or unexpected behavior after changing the index name, you can [revert the flows to their original configuration](/agents#revert-a-built-in-flow-to-its-original-configuration), or [delete knowledge](/knowledge#delete-knowledge) to clear the existing documents from your knowledge base.
@@ -81,8 +126,10 @@ The default embedding dimension is `1536`, and the default model is the OpenAI `
 If you want to use an unsupported model, you must manually set the model in your [OpenRAG `.env` file](/reference/configuration).
 If you use an unsupported embedding model that doesn't have defined dimensions in `settings.py`, then OpenRAG falls back to the default dimensions (1536) and logs a warning. OpenRAG's OpenSearch instance and flows continue to work, but [similarity search](https://www.ibm.com/think/topics/vector-search) quality can be affected if the actual model dimensions aren't 1536.
 
-To change the embedding model after onboarding, it is recommended that you modify the embedding model setting in the OpenRAG **Settings** page or in your [OpenRAG `.env` file](/reference/configuration).
-This will automatically update all relevant [OpenRAG flows](/agents) to use the new embedding model configuration.
+To change the embedding model after onboarding, modify the embedding model configuration on the OpenRAG **Settings** page or in your [OpenRAG `.env` file](/reference/configuration).
+This ensures that all relevant [OpenRAG flows](/agents) are updated to use the new embedding model configuration.
+
+If you edit these settings in the `.env` file, you must [stop and restart the OpenRAG containers](/manage-services#stop-and-start-containers) to apply the changes.
 
 ### Set Docling parameters
 
@@ -90,32 +137,39 @@ OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document 
 
 When you [upload documents](/ingestion), Docling processes the files, splits them into chunks, and stores them as separate, structured documents in your OpenSearch knowledge base.
 
+#### Select a Docling implementation {#select-a-docling-implementation}
+
 You can use either Docling Serve or OpenRAG's built-in Docling ingestion pipeline to process documents.
 
 * **Docling Serve ingestion**: By default, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve).
-This means that OpenRAG starts a `docling serve` process on your local machine and runs Docling ingestion through an API service.
+It starts a local `docling serve` process, and then runs Docling ingestion through the Docling Serve API.
 
-* **Built-in Docling ingestion**: If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG environment variables](/reference/configuration#document-processing-settings).
+   To use a remote `docling serve` instance or your own local instance, set `DOCLING_SERVE_URL=http://**HOST_IP**:5001` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings).
+   The service must run on port 5001.
 
-   The built-in pipeline uses the Docling processor directly instead of through the Docling Serve API.
+* **Built-in Docling ingestion**: If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings).
+The built-in pipeline uses the Docling processor directly instead of through the Docling Serve API.
+For the underlying functionality, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
 
-   For the underlying functionality, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
+#### Configure Docling ingestion settings
 
-To modify the Docling ingestion and embedding parameters, click <Icon name="Settings2" aria-hidden="true"/> **Settings** in the OpenRAG user interface.
+To modify the Docling document processing and embedding parameters, click <Icon name="Settings2" aria-hidden="true"/> **Settings** in OpenRAG, and then find the **Knowledge Ingest** section.
 
 :::tip
-OpenRAG warns you if `docling serve` isn't running.
+The TUI warns you if `docling serve` isn't running.
 For information about starting and stopping OpenRAG native services, like Docling, see [Manage OpenRAG services](/manage-services).
 :::
+
+You can edit the following parameters:
 
 * **Embedding model**: Select the model to use to generate vector embeddings for your documents.
 
    This is initially set during installation.
-   The recommended way to change this setting is in the OpenRAG **Settings** or your [OpenRAG `.env` file](/reference/configuration).
-   This will automatically update all relevant [OpenRAG flows](/agents) to use the new embedding model configuration.
+   The recommended way to change this setting is in the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** or your [OpenRAG `.env` file](/reference/configuration).
+   This ensures that all relevant [OpenRAG flows](/agents) are updated to use the new embedding model configuration.
 
    If you uploaded documents prior to changing the embedding model, you can [create filters](/knowledge-filters) to separate documents embedded with different models, or you can reupload all documents to regenerate embeddings with the new model.
-   If you want to use multiple embeddings models, similarity search (in the **Chat**) can take longer as it searching each model's embeddings separately.
+   If you want to use multiple embeddings models, similarity search (in the **Chat**) can take longer as it searches each model's embeddings separately.
 
 * **Chunk size**: Set the number of characters for each text chunk when breaking down a file.
 Larger chunks yield more context per chunk, but can include irrelevant information. Smaller chunks yield more precise semantic search, but can lack context.
@@ -125,7 +179,7 @@ The default value is 1000 characters, which is usually a good balance between co
 Use larger overlap values for documents where context is most important. Use smaller overlap values for simpler documents or when optimization is most important.
 The default value is 200 characters, which represents an overlap of 20 percent if the **Chunk size** is 1000. This is suitable for general use. For faster processing, decrease the overlap to approximately 10 percent. For more complex documents where you need to preserve context across chunks, increase it to approximately 40 percent.
 
-* **Table Structure**: Enables Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/) tool for parsing tables. Instead of treating tables as plain text, tables are output as structured table data with preserved relationships and metadata. This option is enabled by default.
+* **Table structure**: Enables Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/) tool for parsing tables. Instead of treating tables as plain text, tables are output as structured table data with preserved relationships and metadata. This option is enabled by default.
 
 * **OCR**: Enables Optical Character Recognition (OCR) processing when extracting text from images and ingesting scanned documents. This setting is best suited for processing text-based documents faster with Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/). Images are ignored and not processed.
 
@@ -147,7 +201,12 @@ To change this location, modify the **Documents Paths** variable in either the [
 This is a destructive operation that cannot be undone.
 :::
 
-To clear your entire knowledge base, [reset your OpenRAG containers](/manage-services#reset-containers) or [reinstall OpenRAG](/reinstall).
+To delete documents from your knowledge base, click <Icon name="Library" aria-hidden="true"/> **Knowledge**, use the checkboxes to select one or more documents, and then click **Delete**.
+If you select the checkbox at the top of the list, all documents are selected and your entire knowledge base will be deleted.
+
+To delete an individual document, you can also click <Icon name="Ellipsis" aria-hidden="true"/> **More** next to that document, and then select **Delete**.
+
+To completely clear your entire knowledge base and OpenSearch index, [reset your OpenRAG containers](/manage-services#reset-containers) or [reinstall OpenRAG](/reinstall).
 
 ## See also
 

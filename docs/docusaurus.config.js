@@ -17,14 +17,6 @@ const config = {
   favicon: 'img/favicon.ico',
 
   headTags: [
-    // Algolia site verification meta tag
-    {
-      tagName: "meta",
-      attributes: {
-        name: "algolia-site-verification",
-        content: "424339D27FB7921F",
-      },
-    },
     ...(isProduction
       ? [
           // Google Consent Mode - Set defaults before Google tags load
@@ -135,7 +127,7 @@ const config = {
   baseUrl: process.env.BASE_URL ? process.env.BASE_URL : '/',
 
   // Control search engine indexing - set to true to prevent indexing
-  noIndex: true,
+  noIndex: false,
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
@@ -184,6 +176,19 @@ const config = {
         theme: {
           customCss: './src/css/custom.css',
         },
+        // Use preset-classic sitemap https://docusaurus.io/docs/api/plugins/@docusaurus/plugin-sitemap
+        sitemap: {
+          lastmod: 'date',
+          changefreq: 'weekly',
+          priority: 0.5,
+          ignorePatterns: ['/tags/**'],
+          filename: 'sitemap.xml',
+          createSitemapItems: async (params) => {
+            const {defaultCreateSitemapItems, ...rest} = params;
+            const items = await defaultCreateSitemapItems(rest);
+            return items.filter((item) => !item.url.includes('/page/'));
+          },
+        },
       }),
     ],
   ],
@@ -230,6 +235,15 @@ const config = {
             ],
           },
         ],
+      },
+      algolia: {
+        appId: "SMEA51Q5OL",
+        // public key, safe to commit
+        apiKey: "b2ec302e9880e8979ad6a68f0c36271e",
+        indexName: "openrag-algolia",
+        contextualSearch: true,
+        searchParameters: {},
+        searchPagePath: "search",
       },
       prism: {
         theme: prismThemes.github,
