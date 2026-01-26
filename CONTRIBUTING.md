@@ -146,7 +146,7 @@ Run infrastructure in Docker, but backend/frontend locally for faster iteration.
 
 ```bash
 # Terminal 1: Start infrastructure (OpenSearch, Langflow, Dashboards)
-make dev-local
+make dev-local-cpu
 
 # Terminal 2: Run backend locally
 make backend
