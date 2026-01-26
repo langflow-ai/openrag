@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -9,6 +10,7 @@ import {
 } from "@/app/api/queries/useGetConversationsQuery";
 import { getFilterById } from "@/app/api/queries/useGetFilterByIdQuery";
 import type { Settings } from "@/app/api/queries/useGetSettingsQuery";
+import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import { OnboardingContent } from "@/app/onboarding/_components/onboarding-content";
 import { ProgressBar } from "@/app/onboarding/_components/progress-bar";
 import { AnimatedConditional } from "@/components/animated-conditional";
@@ -19,13 +21,6 @@ import { useChat } from "@/contexts/chat-context";
 import {
   ANIMATION_DURATION,
   HEADER_HEIGHT,
-  ONBOARDING_ASSISTANT_MESSAGE_KEY,
-  ONBOARDING_CARD_STEPS_KEY,
-  ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY,
-  ONBOARDING_SELECTED_NUDGE_KEY,
-  ONBOARDING_STEP_KEY,
-  ONBOARDING_UPLOAD_STEPS_KEY,
-  ONBOARDING_USER_DOC_FILTER_ID_KEY,
   SIDEBAR_WIDTH,
   TOTAL_ONBOARDING_STEPS,
 } from "@/lib/constants";
@@ -40,6 +35,7 @@ export function ChatRenderer({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient(); // Move hook to component level
   const { isAuthenticated, isNoAuthMode } = useAuth();
   const {
     endpoint,
@@ -50,20 +46,26 @@ export function ChatRenderer({
     setOnboardingComplete,
   } = useChat();
 
-  // Initialize onboarding state based on local storage and settings
+  // Initialize onboarding state from backend settings
   const [currentStep, setCurrentStep] = useState<number>(() => {
-    if (typeof window === "undefined") return 0;
-    const savedStep = localStorage.getItem(ONBOARDING_STEP_KEY);
-    return savedStep !== null ? parseInt(savedStep, 10) : 0;
+    return settings?.onboarding?.current_step ?? 0;
   });
 
   const [showLayout, setShowLayout] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    const savedStep = localStorage.getItem(ONBOARDING_STEP_KEY);
-    // Show layout if settings.edited is true and if no onboarding step is saved
-    const isEdited = settings?.edited ?? true;
-    return isEdited ? savedStep === null : false;
+    // Show layout only if onboarding is complete (current_step >= TOTAL_ONBOARDING_STEPS)
+    // This means onboarding will show even if edited=true, as long as it's not complete
+    const onboardingStep = settings?.onboarding?.current_step ?? 0;
+    return onboardingStep >= TOTAL_ONBOARDING_STEPS;
   });
+
+  // Update currentStep and showLayout when settings change
+  useEffect(() => {
+    if (settings?.onboarding?.current_step !== undefined) {
+      setCurrentStep(settings.onboarding.current_step);
+      // Update showLayout based on whether onboarding is complete
+      setShowLayout(settings.onboarding.current_step >= TOTAL_ONBOARDING_STEPS);
+    }
+  }, [settings?.onboarding?.current_step]);
 
   // Only fetch conversations on chat page
   const isOnChatPage = pathname === "/" || pathname === "/chat";
@@ -86,13 +88,18 @@ export function ChatRenderer({
 
   // Helper to store default filter ID for new conversations after onboarding
   const storeDefaultFilterForNewConversations = useCallback(
-    async (preferUserDoc: boolean) => {
-      if (typeof window === "undefined") return;
+    async (preferUserDoc: boolean, settingsToUse?: Settings) => {
+      // Use provided settings or fall back to prop
+      const currentSettings = settingsToUse || settings;
+      
+      if (typeof window === "undefined") {
+        return;
+      }
 
       // Check if we already have a default filter set
       const existingDefault = localStorage.getItem("default_conversation_filter_id");
+      
       if (existingDefault) {
-        console.log("[FILTER] Default filter already set:", existingDefault);
         // Try to apply it to context state (don't save to localStorage to avoid overwriting)
         try {
           const filter = await getFilterById(existingDefault);
@@ -108,22 +115,19 @@ export function ChatRenderer({
         }
       }
 
-      // Try to get the appropriate filter ID
+      // Try to get the appropriate filter ID from settings
       let filterId: string | null = null;
 
       if (preferUserDoc) {
         // Completed full onboarding - prefer user document filter
-        filterId = localStorage.getItem(ONBOARDING_USER_DOC_FILTER_ID_KEY);
-        console.log("[FILTER] User doc filter ID:", filterId);
+        filterId = currentSettings?.onboarding?.user_doc_filter_id || null;
       }
 
       // Fall back to OpenRAG docs filter
       if (!filterId) {
-        filterId = localStorage.getItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY);
-        console.log("[FILTER] OpenRAG docs filter ID:", filterId);
+        filterId = currentSettings?.onboarding?.openrag_docs_filter_id || null;
       }
 
-      console.log("[FILTER] Final filter ID to use:", filterId);
 
       if (filterId) {
         // Store this as the default filter for new conversations
@@ -133,83 +137,89 @@ export function ChatRenderer({
         // The default_conversation_filter_id will be used when a new conversation is started
         try {
           const filter = await getFilterById(filterId);
-          console.log("[FILTER] Loaded filter:", filter);
           if (filter) {
             // Pass null to skip localStorage save - this prevents overwriting existing conversation filters
             setConversationFilter(filter, null);
-            console.log("[FILTER] Set conversation filter (no save):", filter.id);
           }
         } catch (error) {
-          console.error("Failed to set onboarding filter:", error);
+          console.error("[FILTER] Failed to set onboarding filter:", error);
         }
-      } else {
-        console.log("[FILTER] No filter ID found, not setting default");
       }
     },
-    [setConversationFilter]
+    [setConversationFilter, settings?.onboarding?.user_doc_filter_id, settings?.onboarding?.openrag_docs_filter_id]
   );
 
-  // Save current step to local storage whenever it changes
-  useEffect(() => {
-    if (typeof window !== "undefined" && !showLayout) {
-      localStorage.setItem(ONBOARDING_STEP_KEY, currentStep.toString());
-    }
-  }, [currentStep, showLayout]);
+  // Note: Current step is now saved to backend via handleStepComplete
+  // No need to save on every change, only on completion
+
+  const updateOnboardingMutation = useUpdateOnboardingStateMutation();
 
   const handleStepComplete = async () => {
     if (currentStep < TOTAL_ONBOARDING_STEPS - 1) {
-      setCurrentStep(currentStep + 1);
+      const nextStep = currentStep + 1;
+      setCurrentStep(nextStep);
+      // Save step to backend
+      await updateOnboardingMutation.mutateAsync({ current_step: nextStep });
     } else {
-      // Onboarding is complete - remove from local storage and show layout
-      if (typeof window !== "undefined") {
-        localStorage.removeItem(ONBOARDING_STEP_KEY);
-        localStorage.removeItem(ONBOARDING_ASSISTANT_MESSAGE_KEY);
-        localStorage.removeItem(ONBOARDING_SELECTED_NUDGE_KEY);
-        localStorage.removeItem(ONBOARDING_CARD_STEPS_KEY);
-        localStorage.removeItem(ONBOARDING_UPLOAD_STEPS_KEY);
-      }
+
+      // IMPORTANT: Refetch settings to get the latest filter IDs that were saved during onboarding
+      // The filter IDs are saved asynchronously by mutations, so we need fresh data
+      await queryClient.refetchQueries({ queryKey: ["settings"] });
+      
+      // Get the fresh settings after refetch
+      const freshSettings = queryClient.getQueryData(["settings"]) as Settings | undefined;
+
+      // Store the user document filter as default for new conversations
+      // Pass fresh settings to ensure we have the latest filter IDs
+      await storeDefaultFilterForNewConversations(true, freshSettings);
+
+      // Onboarding is complete - set step to TOTAL_ONBOARDING_STEPS to indicate completion
+      // and clear intermediate state in backend (but keep filter IDs for reference)
+      await updateOnboardingMutation.mutateAsync({
+        current_step: TOTAL_ONBOARDING_STEPS,
+        assistant_message: null,
+        selected_nudge: null,
+        card_steps: null,
+        upload_steps: null,
+        // Keep filter IDs - they're useful for reference and don't need to be cleared
+      });
 
       // Mark onboarding as complete in context
       setOnboardingComplete(true);
-
-      // Store the user document filter as default for new conversations FIRST
-      // This must happen before startNewConversation() so the filter is available
-      await storeDefaultFilterForNewConversations(true);
 
       // Clear ALL conversation state so next message starts fresh
       // This will pick up the default filter we just set
       await startNewConversation();
 
-      // Clean up onboarding filter IDs now that we've set the default
-      if (typeof window !== "undefined") {
-        localStorage.removeItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY);
-        localStorage.removeItem(ONBOARDING_USER_DOC_FILTER_ID_KEY);
-        console.log("[FILTER] Cleaned up onboarding filter IDs");
-      }
-
       setShowLayout(true);
     }
   };
 
-  const handleStepBack = () => {
+  const handleStepBack = async () => {
     if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
+      const prevStep = currentStep - 1;
+      setCurrentStep(prevStep);
+      // Save step to backend
+      await updateOnboardingMutation.mutateAsync({ current_step: prevStep });
     }
   };
 
-  const handleSkipOnboarding = () => {
-    // Skip onboarding by marking it as complete
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(ONBOARDING_STEP_KEY);
-      localStorage.removeItem(ONBOARDING_ASSISTANT_MESSAGE_KEY);
-      localStorage.removeItem(ONBOARDING_SELECTED_NUDGE_KEY);
-      localStorage.removeItem(ONBOARDING_CARD_STEPS_KEY);
-      localStorage.removeItem(ONBOARDING_UPLOAD_STEPS_KEY);
-    }
+  const handleSkipOnboarding = async () => {
+    // Skip onboarding by marking it as complete in backend
+    await updateOnboardingMutation.mutateAsync({
+      current_step: TOTAL_ONBOARDING_STEPS,
+      assistant_message: null,
+      selected_nudge: null,
+      card_steps: null,
+      upload_steps: null,
+      openrag_docs_filter_id: null,
+      user_doc_filter_id: null,
+    });
+    
     // Mark onboarding as complete in context
     setOnboardingComplete(true);
     // Store the OpenRAG docs filter as default for new conversations
-    storeDefaultFilterForNewConversations(false);
+    await storeDefaultFilterForNewConversations(false);
     setShowLayout(true);
   };
 
