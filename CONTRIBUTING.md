@@ -130,7 +130,12 @@ make dev-cpu  # CPU only
 
 ## Development Workflows
 
-Choose the workflow that fits your needs:
+There are multiple ways to start OpenRAG based on your use case:
+
+* Local development environment: Recommended for development.
+* Full Docker stack: Simple build that runs everything in containers. Not ideal for development. Best for testing the full system.
+* Branch development: Build OpenRAG with a fork or branch of the [Langflow repository](https://github.com/langflow-ai/langflow).
+* Docling only: Run the Docling service by itself.
 
 ### Full Docker Stack (Simplest)
 
