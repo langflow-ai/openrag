@@ -6,7 +6,6 @@ slug: /chat
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
-import PartialIntegrateChat from '@site/docs/_partial-integrate-chat.mdx';
 import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 
 After you [upload documents to your knowledge base](/ingestion), you can use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat** feature to interact with your knowledge through natural language queries.
@@ -100,12 +99,141 @@ If tool calls and knowledge appear normal, but the agent's responses seem off-to
 
 ## Integrate OpenRAG chat into an application
 
-You can integrate OpenRAG flows into your applications using the [Langflow API](https://docs.langflow.org/api-reference-api-examples).
-To simplify this integration, you can get pre-configured code snippets directly from the embedded Langflow visual editor.
+You can integrate OpenRAG flows into your applications using the OpenRAG SDKs (recommended) or the Langflow API.
+
+:::info
+It is strongly recommended that you use the OpenRAG SDKs to interact with OpenRAG programmatically or integrate OpenRAG into an application.
+This is because OpenRAG passes specific configuration settings to the Langflow API when it runs a flow or conducts a chat session.
+For more information, see the following:
+
+* [Python SDK README](https://github.com/langflow-ai/openrag/tree/main/sdks/python)
+* [TypeScript/JavaScript SDK README](https://github.com/langflow-ai/openrag/tree/main/sdks/typescript)
+:::
+
+<details>
+<summary>Use the Langflow API (Not recommended)</summary>
+
+To trigger a flow with the [Langflow API](https://docs.langflow.org/api-reference-api-examples), you can get pre-configured code snippets directly from the embedded Langflow visual editor.
+However, these snippets don't include OpenRAG-specific configuration settings, so the behavior won't be identical to using OpenRAG directly.
 
 The following example demonstrates how to generate and use code snippets for the **OpenRAG OpenSearch Agent** flow:
 
-<PartialIntegrateChat />
+1. Open the **OpenRAG OpenSearch Agent** flow in the Langflow visual editor:
+
+   1. In OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+   2. Click **Edit in Langflow**, and then click **Proceed** to launch the Langflow visual editor.
+   3. If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from your [OpenRAG `.env` file](/reference/configuration).
+
+2. Optional: If you don't want to use the Langflow API key that is generated automatically when you install OpenRAG, you can create a [Langflow API key](https://docs.langflow.org/api-keys-and-authentication).
+This key doesn't grant access to OpenRAG; it is only for authenticating with the Langflow API.
+
+   1. In the Langflow visual editor, click your user icon in the header, and then select **Settings**.
+   2. Click **Langflow API Keys**, and then click <Icon name="Plus" aria-hidden="true"/> **Add New**.
+   3. Name your key, and then click **Create API Key**.
+   4. Copy the API key and store it securely.
+   5. Exit the Langflow **Settings** page to return to the visual editor.
+
+3. Click **Share**, and then select **API access** to get pregenerated code snippets that call the Langflow API and run the flow.
+
+   These code snippets construct API requests with your Langflow server URL (`LANGFLOW_SERVER_ADDRESS`), the flow to run (`FLOW_ID`), required headers (`LANGFLOW_API_KEY`, `Content-Type`), and a payload containing the required inputs to run the flow, including a default chat input message.
+
+   In production, you would modify the inputs to suit your application logic. For example, you could replace the default chat input message with dynamic user input.
+
+   <Tabs>
+   <TabItem value="python" label="Python">
+
+   ```python
+   import requests
+   import os
+   import uuid
+
+   api_key = 'LANGFLOW_API_KEY'
+   url = "http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID"  # The complete API endpoint URL for this flow
+
+   # Request payload configuration
+   payload = {
+       "output_type": "chat",
+       "input_type": "chat",
+       "input_value": "hello world!"
+   }
+   payload["session_id"] = str(uuid.uuid4())
+
+   headers = {"x-api-key": api_key}
+
+   try:
+       # Send API request
+       response = requests.request("POST", url, json=payload, headers=headers)
+       response.raise_for_status()  # Raise exception for bad status codes
+
+       # Print response
+       print(response.text)
+
+   except requests.exceptions.RequestException as e:
+       print(f"Error making API request: {e}")
+   except ValueError as e:
+       print(f"Error parsing response: {e}")
+   ```
+
+   </TabItem>
+   <TabItem value="typescript" label="TypeScript">
+
+   ```typescript
+   const crypto = require('crypto');
+   const apiKey = 'LANGFLOW_API_KEY';
+   const payload = {
+       "output_type": "chat",
+       "input_type": "chat",
+       "input_value": "hello world!"
+   };
+   payload.session_id = crypto.randomUUID();
+
+   const options = {
+       method: 'POST',
+       headers: {
+           'Content-Type': 'application/json',
+           "x-api-key": apiKey
+       },
+       body: JSON.stringify(payload)
+   };
+
+   fetch('http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID', options)
+       .then(response => response.json())
+       .then(response => console.warn(response))
+       .catch(err => console.error(err));
+   ```
+
+   </TabItem>
+   <TabItem value="curl" label="curl">
+
+   ```bash
+   curl --request POST \
+     --url 'http://LANGFLOW_SERVER_ADDRESS/api/v1/run/FLOW_ID?stream=false' \
+     --header 'Content-Type: application/json' \
+     --header "x-api-key: LANGFLOW_API_KEY" \
+     --data '{
+       "output_type": "chat",
+       "input_type": "chat",
+       "input_value": "hello world!"
+     }'
+   ```
+
+   </TabItem>
+   </Tabs>
+
+4. Copy your preferred snippet, and then run it:
+
+   * **Python**: Paste the snippet into a `.py` file, save it, and then run it with `python filename.py`.
+   * **TypeScript**: Paste the snippet into a `.ts` file, save it, and then run it with `ts-node filename.ts`.
+   * **curl**: Paste and run snippet directly in your terminal.
+
+If the request is successful, the response includes many details about the flow run, including the session ID, inputs, outputs, components, durations, and more.
+
+In production, you won't pass the raw response to the user in its entirety.
+Instead, you extract and reformat relevant fields for different use cases, as demonstrated in the [Langflow quickstart](https://docs.langflow.org/get-started-quickstart#extract-data-from-the-response).
+For example, you could pass the chat output text to a front-end user-facing application, and store specific fields in logs and backend data stores for monitoring, chat history, or analytics.
+You could also pass the output from one flow as input to another flow.
+
+</details>
 
 ## Troubleshoot chat {#troubleshoot-chat}
 
