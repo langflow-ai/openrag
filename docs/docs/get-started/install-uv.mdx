@@ -47,8 +47,12 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
 1. Create a new `uv`-managed Python project:
 
    ```bash
-   uv init PROJECT_NAME
+   uv init PROJECT_NAME --python 3.13
    ```
+
+   The `--python` flag ensures that your project uses the minimum required Python version for OpenRAG.
+   You can use a later Python version, if you prefer.
+   Or, you can omit this flag if your system's default Python version is 3.13 or later.
 
 2. Change into your new project directory:
 
