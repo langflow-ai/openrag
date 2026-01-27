@@ -1,6 +1,6 @@
 import copy
 from typing import Any, Dict
-from src.main import _ensure_opensearch_index
+
 from agentd.tool_decorator import tool
 from config.settings import EMBED_MODEL, clients, INDEX_NAME, get_embedding_model, WATSONX_EMBEDDING_DIMENSIONS
 from auth_context import get_auth_context
@@ -68,8 +68,8 @@ class SearchService:
         opensearch_client = self.session_manager.get_user_opensearch_client(
             user_id, jwt_token
         )
+        from src.main import _ensure_opensearch_index
         await _ensure_opensearch_index()
-
 
         if not is_wildcard_match_all:
             # Build filter clauses first so we can use them in model detection
