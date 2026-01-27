@@ -656,7 +656,7 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))" 2>/dev/null || echo ""); \
 	if [ -n "$$TEST_TOKEN" ]; then \
 		echo "$(YELLOW)Testing JWT against OpenSearch...$(NC)"; \
-		HTTP_CODE=$$(curl -k -s -w "%{http_code}" -o /tmp/os_diag.txt -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
+		HTTP_CODE=$$(curl -k -s -w "%%{http_code}" -o /tmp/os_diag.txt -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
 		echo "HTTP $$HTTP_CODE: $$(cat /tmp/os_diag.txt | head -c 150)"; \
 	fi; \
 	echo "$(CYAN)=================================$(NC)"; \
@@ -751,7 +751,7 @@ test-ci-local: ## Same as test-ci but builds all images locally
 	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))" 2>/dev/null || echo ""); \
 	if [ -n "$$TEST_TOKEN" ]; then \
 		echo "$(YELLOW)Testing JWT against OpenSearch...$(NC)"; \
-		HTTP_CODE=$$(curl -k -s -w "%{http_code}" -o /tmp/os_diag.txt -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
+		HTTP_CODE=$$(curl -k -s -w "%%{http_code}" -o /tmp/os_diag.txt -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
 		echo "HTTP $$HTTP_CODE: $$(cat /tmp/os_diag.txt | head -c 150)"; \
 	fi; \
 	echo "$(CYAN)=================================$(NC)"; \
