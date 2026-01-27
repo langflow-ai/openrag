@@ -86,7 +86,15 @@ class SessionManager:
                 if isinstance(key, rsa.RSAPrivateKey):
                     self.algorithm = "RS256"
                 elif isinstance(key, ec.EllipticCurvePrivateKey):
-                    self.algorithm = "ES256"  # or choose based on curve if you support ES384/ES512
+                    curve = key.curve
+                    if isinstance(curve, ec.SECP256R1):
+                        self.algorithm = "ES256"
+                    elif isinstance(curve, ec.SECP384R1):
+                        self.algorithm = "ES384"
+                    elif isinstance(curve, ec.SECP521R1):
+                        self.algorithm = "ES512"
+                    else:
+                        raise ValueError(f"Unsupported EC curve: {curve.name}")
                 elif isinstance(key, (ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey)):
                     self.algorithm = "EdDSA"
                 else:
