@@ -10,11 +10,12 @@ import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 import PartialIngestionFlow from '@site/docs/_partial-ingestion-flow.mdx';
 import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
 import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
+import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 
 Upload documents to your [OpenRAG OpenSearch instance](/knowledge) to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
 Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
 
-OpenRAG can ingest knowledge from direct file uploads, URLs, and OAuth authenticated connectors.
+OpenRAG can ingest knowledge from direct file uploads, URLs, and cloud storage connectors.
 
 Knowledge ingestion is powered by OpenRAG's built-in knowledge ingestion flows that use Docling to process documents before storing the documents in your OpenSearch database.
 During ingestion, documents are broken into smaller chunks of content that are then embedded using your selected [embedding model](/knowledge#set-the-embedding-model-and-dimensions).
@@ -45,9 +46,9 @@ You can [monitor ingestion](#monitor-ingestion) to see the progress of the uploa
 
 <PartialTempKnowledge />
 
-## Ingest files with OAuth connectors {#oauth-ingestion}
+## Ingest files with cloud storage connectors {#oauth-ingestion}
 
-OpenRAG can use OAuth authenticated connectors to ingest documents from the following external services:
+OpenRAG can use cloud storage connectors to ingest documents from the following external services:
 
 * AWS S3
 * Google Drive
@@ -56,12 +57,16 @@ OpenRAG can use OAuth authenticated connectors to ingest documents from the foll
 
 These connectors enable seamless ingestion of files from cloud storage to your OpenRAG knowledge base.
 
-Individual users can connect their personal cloud storage accounts to OpenRAG. Each user must separately authorize OpenRAG to access their own cloud storage. When a user connects a cloud storage service, they are redirected to authenticate with that service provider and grant OpenRAG permission to sync documents from their personal cloud storage.
+OAuth credentials are used to authorize access to cloud storage services.
 
-### Enable OAuth connectors
+### Configure cloud storage connectors
 
-Before users can connect their own cloud storage accounts, you must configure the provider's OAuth credentials in OpenRAG. Typically, this requires that you register OpenRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key.
+Before you can ingest documents from cloud storage, you must authorize OpenRAG's access to your cloud storage services.
+
+Typically, this requires that you register OpenRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key.
 To enable multiple connectors, you must register an app and generate credentials for each provider.
+
+Then, add the OAuth credentials to your OpenRAG configuration:
 
 <Tabs>
 <TabItem value="TUI" label="TUI-managed services" default>
@@ -73,19 +78,23 @@ You can do this during [installation](/install#setup), or you can add the creden
 
 2. Open the **Advanced Setup** page, and then add the OAuth credentials for the cloud storage providers that you want to use under **API Keys**:
 
-   * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
-   * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
-   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+   <PartialOAuthCredentials />
 
-3. Register the redirect URIs shown in the TUI in your OAuth provider.
-These are the URLs your OAuth provider will use to redirect users back to OpenRAG after they sign in.
+3. For each connector you configured, register the redirect URI shown in the TUI in your cloud service's OAuth configuration.
 
-4. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
+   For Google, this URL is used to redirect users back to OpenRAG after they sign in, and for the cloud storage connector webhooks.
 
-5. Click **Start Services** to restart the OpenRAG containers with OAuth enabled.
+   For Microsoft and Amazon, this URL is used for the cloud storage connector webhooks.
 
-6. Launch the OpenRAG app.
-You should be prompted to sign in to your OAuth provider before being redirected to your OpenRAG instance.
+4. Optional: Under **Others**, set the **Webhook Base URL (`WEBHOOK_BASE_URL`)** to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
+
+5. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
+
+6. Click **Start Services** to restart the OpenRAG containers with the new configuration.
+
+7. Launch the OpenRAG app.
+
+   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
 
 </TabItem>
 <TabItem value="env" label="Self-managed services">
@@ -98,48 +107,45 @@ You can do this during [initial set up](/docker#setup), or you can add the crede
 
    <PartialDockerStopAll />
 
-2. Edit your OpenRAG `.env` file to add the OAuth credentials for the cloud storage providers that you want to use:
+2. Edit your OpenRAG `.env` file, and then add the [OAuth and cloud storage environment variables](/reference/configuration#oauth-and-cloud-storage-connector-settings) for the providers that you want to use:
 
-   * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
+   ```env
+   GOOGLE_OAUTH_CLIENT_ID=
+   GOOGLE_OAUTH_CLIENT_SECRET=
 
-      ```env
-      GOOGLE_OAUTH_CLIENT_ID=
-      GOOGLE_OAUTH_CLIENT_SECRET=
-      ```
+   MICROSOFT_GRAPH_OAUTH_CLIENT_ID=
+   MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=
 
-   * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
+   AWS_ACCESS_KEY_ID=
+   AWS_SECRET_ACCESS_KEY=
+   ```
 
-      ```env
-      MICROSOFT_GRAPH_OAUTH_CLIENT_ID=
-      MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=
-      ```
-   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+   <PartialOAuthCredentials />
 
-      ```env
-      AWS_ACCESS_KEY_ID=
-      AWS_SECRET_ACCESS_KEY=
-      ```
+3. Optional: Set the `WEBHOOK_BASE_URL` to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
 
-3. Save the `.env` file.
+4. For each connector, you must register an OpenRAG OAuth redirect URI in your cloud service's OAuth configuration.
 
-4. Restart your OpenRAG containers:
+   For Google, this URL is used to redirect users back to OpenRAG after they sign in, and for the cloud storage connector webhooks.
+
+   For Microsoft and Amazon, this URL is used for the cloud storage connector webhooks.
+
+5. Save the `.env` file.
+
+6. Restart your OpenRAG containers:
 
    <PartialDockerComposeUp />
 
-5. Access the OpenRAG frontend at `http://localhost:3000`.
-You should be prompted to sign in to your OAuth provider before being redirected to your OpenRAG instance.
+7. Access the OpenRAG frontend at `http://localhost:3000`.
+
+   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
 
 </TabItem>
 </Tabs>
 
-### Authenticate and ingest files from cloud storage
+### Ingest files from cloud storage
 
-After you start OpenRAG with OAuth connectors enabled, each user is prompted to authenticate with the OAuth provider upon accessing your OpenRAG instance.
-Individual authentication is required to access a user's cloud storage from your OpenRAG instance.
-For example, if a user navigates to the default OpenRAG URL at `http://localhost:3000`, they are redirected to the OAuth provider's sign-in page.
-After authenticating and granting the required permissions for OpenRAG, the user is redirected back to OpenRAG.
-
-To ingest knowledge with an OAuth connector, do the following:
+To ingest knowledge with a cloud storage connector, do the following:
 
 1. Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to view your OpenSearch knowledge base.
 
@@ -161,7 +167,7 @@ When using the OpenRAG chat, you can enter URLs into the chat to be ingested in 
 
 :::info
 The chat cannot ingest URLs that end in static document file extensions like `.pdf`.
-To upload these types of files, see [Ingest local files and folders](#ingest-local-files-and-folders) and [Ingest files with OAuth connectors](#oauth-ingestion).
+To upload these types of files, see [Ingest local files and folders](#ingest-local-files-and-folders) and [Ingest files with cloud storage connectors](#oauth-ingestion).
 :::
 
 OpenRAG runs the **OpenSearch URL Ingestion** flow to ingest web content from URLs.
