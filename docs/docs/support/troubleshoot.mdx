@@ -4,6 +4,7 @@ slug: /support/troubleshoot
 ---
 
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
+import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 
 This page provides troubleshooting advice for issues you might encounter when using OpenRAG or contributing to OpenRAG.
 
@@ -153,9 +154,23 @@ To resolve this issue, do the following:
 
 See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
 
-## Ollama model issues
+## Ollama model issues {#ollama-model-issues}
 
 <PartialOllamaModels />
+
+## IBM watsonx.ai model issues {#ibm-watsonxai-model-issues}
+
+<PartialWatsonxModels />
+
+## Language model isn't listed in OpenRAG settings or onboarding
+
+If your language model isn't listed in the OpenRAG settings or application onboarding, then the model likely doesn't support tool calling, which is required for OpenRAG.
+You must select a different model.
+If no other models are listed, make sure your model provider API key or instance has access to models that support tool calling.
+
+See also [Ollama model issues](#ollama-model-issues), [IBM watsonx.ai model issues](#ibm-watsonxai-model-issues), and [Troubleshoot chat](/chat#troubleshoot-chat).
+
+You can submit an [OpenRAG GitHub issue](https://github.com/langflow-ai/openrag/issues) to request support for specific models.
 
 ## Chat issues
 
