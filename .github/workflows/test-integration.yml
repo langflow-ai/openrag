@@ -34,16 +34,11 @@ jobs:
     steps:
       - run: df -h
 
-      - name: Install docker-compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-      
       - name: Cleanup Docker cache
         run: |
           docker system prune -af || true
           docker builder prune -af || true
-          docker-compose -f docker-compose.yml down -v --remove-orphans || true
+          docker compose -f docker-compose.yml down -v --remove-orphans || true
 
       - name: Cleanup root-owned files (OpenSearch data, config)
         run: |
