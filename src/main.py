@@ -108,7 +108,7 @@ async def wait_for_opensearch():
 
     for attempt in range(max_retries):
         try:
-            await clients.opensearch.info()
+            await clients.opensearch.ping()
             logger.info("OpenSearch is ready")
             await TelemetryClient.send_event(Category.OPENSEARCH_SETUP, MessageId.ORB_OS_CONN_ESTABLISHED)
             return
