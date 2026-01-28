@@ -68,12 +68,20 @@ podman machine start
 
 With the default [environment variable](/reference/configuration) values, OpenRAG requires the following ports to be available on the host machine:
 
-* 3000: Langflow application
-* 5001: Docling local ingestion service
+* 3000: OpenRAG Frontend web interface
 * 5601: OpenSearch Dashboards
-* 7860: Docling UI
-* 8000: Docling API
+* 7860: Langflow service
+* 8000: OpenRAG Backend API
 * 9200: OpenSearch service
+
+If any of these ports are already in use, you can configure alternative ports by setting environment variables in your `.env` file:
+
+* Set `FRONTEND_PORT` to change the frontend port (default: `3000`)
+* Set `LANGFLOW_PORT` to change the Langflow port (default: `7860`)
+
+If you change `LANGFLOW_PORT`, also update `LANGFLOW_PUBLIC_URL` to match the new port. For example, if you set `LANGFLOW_PORT=8760`, set `LANGFLOW_PUBLIC_URL=http://localhost:8760`.
+
+After updating your `.env` file, restart your OpenRAG services to apply the changes.
 
 ## OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
 

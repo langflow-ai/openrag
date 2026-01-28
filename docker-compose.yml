@@ -97,7 +97,7 @@ services:
     environment:
       - OPENRAG_BACKEND_HOST=openrag-backend
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
 
   langflow:
     volumes:
@@ -108,11 +108,12 @@ services:
       dockerfile: Dockerfile.langflow
     container_name: langflow
     ports:
-      - "7860:7860"
+      - "${LANGFLOW_PORT:-7860}:7860"
     environment:
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - LANGFLOW_DEACTIVATE_TRACING
       - OPENAI_API_KEY=${OPENAI_API_KEY:-None}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-None}
       - WATSONX_API_KEY=${WATSONX_API_KEY:-None}
