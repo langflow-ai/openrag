@@ -10,6 +10,7 @@ import {
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
 import { useOnboardingRollbackMutation } from "@/app/api/mutations/useOnboardingRollbackMutation";
+import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
@@ -25,7 +26,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ONBOARDING_CARD_STEPS_KEY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { AnimatedProviderSteps } from "./animated-provider-steps";
 import { AnthropicOnboarding } from "./anthropic-onboarding";
@@ -305,15 +305,6 @@ const OnboardingCard = ({
   const onboardingMutation = useOnboardingMutation({
     onSuccess: (data) => {
       console.log("Onboarding completed successfully", data);
-
-      // Save OpenRAG docs filter ID if sample data was ingested
-      if (data.openrag_docs_filter_id && typeof window !== "undefined") {
-        localStorage.setItem(
-          "onboarding_openrag_docs_filter_id",
-          data.openrag_docs_filter_id
-        );
-        console.log("Saved OpenRAG docs filter ID:", data.openrag_docs_filter_id);
-      }
 
       // Update provider health cache to healthy since backend just validated
       const provider =
@@ -674,7 +665,6 @@ const OnboardingCard = ({
             setCurrentStep={setCurrentStep}
             steps={isEmbedding ? EMBEDDING_STEP_LIST : STEP_LIST}
             processingStartTime={processingStartTime}
-            storageKey={ONBOARDING_CARD_STEPS_KEY}
             hasError={!!error}
           />
         </motion.div>

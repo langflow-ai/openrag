@@ -1,0 +1,16 @@
+# Development Docker Compose - builds Langflow from source
+# Usage: GIT_BRANCH=test-openai-responses docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.dev.yml up -d
+# Usage (CPU only): GIT_BRANCH=test-openai-responses docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Or use Make commands: make dev-branch BRANCH=test-openai-responses
+# Make commands (CPU only): make dev-branch-cpu BRANCH=test-openai-responses
+
+services:
+  langflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.langflow.dev
+      args:
+        GIT_REPO: ${GIT_REPO:-https://github.com/langflow-ai/langflow.git}
+        GIT_BRANCH: ${GIT_BRANCH:-main}
+      # Increase memory for build (npm build is memory intensive)
+      shm_size: '2gb'

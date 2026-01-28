@@ -12,7 +12,9 @@ import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
 import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
+import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 import PartialGpuModeTip from '@site/docs/_partial-gpu-mode-tip.mdx';
+import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 
 To manage your own OpenRAG services, deploy OpenRAG with Docker or Podman.
 
@@ -78,17 +80,34 @@ The following variables are required or recommended:
       * `WATSONX_ENDPOINT`
       * `WATSONX_PROJECT_ID`
 
-   * **OAuth provider credentials**: To upload documents from external storage, such as Google Drive, set the required OAuth credentials for the connectors that you want to use. You can [manage OAuth credentials](/ingestion#oauth-ingestion) later, but it is recommended to configure them during initial set up so you don't have to rebuild the containers.
+6. To enable [OAuth mode](/knowledge#auth) or [cloud storage connectors](/ingestion#oauth-ingestion), do the following:
 
-      * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
-      * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
-      * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+   1. In your `.env` file, set the [OAuth environment variables](/reference/configuration#oauth-and-cloud-storage-connector-settings) for the providers that you want to use:
 
-   For more information and variables, see [OpenRAG environment variables](/reference/configuration).
+      ```env
+      GOOGLE_OAUTH_CLIENT_ID=
+      GOOGLE_OAUTH_CLIENT_SECRET=
+
+      MICROSOFT_GRAPH_OAUTH_CLIENT_ID=
+      MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=
+
+      AWS_ACCESS_KEY_ID=
+      AWS_SECRET_ACCESS_KEY=
+      ```
+
+      <PartialOAuthCredentials />
+
+   2. Optional: Set the `WEBHOOK_BASE_URL` to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
+
+   3. For each provider, you must register an OpenRAG OAuth redirect URI in your cloud service's OAuth configuration.
+
+      For Google, this URL is used to redirect users back to OpenRAG after they sign in, and for the cloud storage connector webhooks.
+
+      For Microsoft and Amazon, this URL is used for the cloud storage connector webhooks.
 
 ## Start services
 
-1. Start `docling serve` on port 5001 on the host machine:
+1. To use the default Docling Serve implementation, start `docling serve` on port 5001 on the host machine using the included script:
 
    ```bash
    uv run python scripts/docling_ctl.py start --port 5001
@@ -97,10 +116,16 @@ The following variables are required or recommended:
    Docling cannot run inside a Docker container due to system-level dependencies, so you must manage it as a separate service on the host machine.
    For more information, see [Stop, start, and inspect native services](/manage-services#start-native-services).
 
-   This port is required to deploy OpenRAG successfully; don't use a different port.
+   Port 5001 is required to deploy OpenRAG successfully; don't use a different port.
    Additionally, this enables the [MLX framework](https://opensource.apple.com/projects/mlx/) for accelerated performance on Apple Silicon Mac machines.
 
+   :::tip
+   If you don't want to use the default Docling Serve implementation, see [Select a Docling implementation](/knowledge#select-a-docling-implementation).
+   :::
+
 2. Confirm `docling serve` is running.
+
+   The following command checks the status of the default Docling Serve implementation:
 
    ```bash
    uv run python scripts/docling_ctl.py status
@@ -117,7 +142,7 @@ The following variables are required or recommended:
 
 3. Deploy the OpenRAG containers locally using the appropriate Docker Compose configuration for your environment:
 
-   * **CPU-only deployment** (default, recommended): If your host machine doesn't have NVIDIA GPU support, use the base `docker-compose.yml` file:
+   * **CPU-only deployment (Default and recommended)**: If your host machine doesn't have NVIDIA GPU support, use the base `docker-compose.yml` file:
 
       ```bash title="Docker"
       docker compose up -d
@@ -164,6 +189,8 @@ The following variables are required or recommended:
    When the containers are running, you can access your OpenRAG services at their addresses.
 
 5. Access the OpenRAG frontend at `http://localhost:3000`, and then continue with the [application onboarding process](#application-onboarding).
+
+   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
 
 <PartialOnboarding />
 

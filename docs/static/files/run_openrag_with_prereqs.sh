@@ -62,7 +62,9 @@ ensure_path_has_common_bins() {
   [ -d /usr/local/bin ] && add+=("/usr/local/bin")
   [ -d "/Applications/Docker.app/Contents/Resources/bin" ] && add+=("/Applications/Docker.app/Contents/Resources/bin")
   [ -d "$HOME/.docker/cli-plugins" ] && add+=("$HOME/.docker/cli-plugins")
-  for p in "${add[@]}"; do case ":$PATH:" in *":$p:"*) ;; *) PATH="$p:$PATH" ;; esac; done
+  if [ ${#add[@]} -gt 0 ]; then
+    for p in "${add[@]}"; do case ":$PATH:" in *":$p:"*) ;; *) PATH="$p:$PATH" ;; esac; done
+  fi
   export PATH
 }
 ensure_path_has_common_bins
@@ -304,7 +306,18 @@ install_podman_if_missing() {
         }
       fi
       if has_cmd brew; then
+        # Install krunkit if not present
+        if ! brew list krunkit >/dev/null 2>&1; then
+          say ">>> Installing krunkit (Podman dependency)..."
+          brew tap slp/krunkit
+          brew install krunkit
+        else
+          say ">>> krunkit already installed."
+        fi
+        say ">>> Installing Podman..."
         brew install podman
+        say ">>> Installing Podman Desktop..."
+        brew install --cask podman-desktop
       fi
       ;;
     Linux|WSL)
@@ -326,9 +339,17 @@ ensure_podman_ready() {
     local min_memory_mb=8192  # 8 GB minimum
 
     # Check if any machine exists
-    if ! podman machine list 2>/dev/null | grep -qE '(running|stopped)'; then
-      say ">>> Podman machine does not exist. Initializing with 8GB memory…"
-      podman machine init --memory "$min_memory_mb" || {
+    if ! podman machine list 2>/dev/null | tail -n +2 | grep -q .; then
+      say ">>> Podman machine does not exist. Initializing with 8GB memory (rootful mode)…"
+      # Clean up orphaned system connections if they exist
+      if podman system connection list 2>/dev/null | tail -n +2 | grep -q .; then
+        say ">>> Removing orphaned system connections..."
+        # Remove all connections to ensure clean slate
+        podman system connection list 2>/dev/null | tail -n +2 | awk '{print $1}' | while read -r conn; do
+          podman system connection rm "$conn" 2>/dev/null || true
+        done
+      fi
+      podman machine init --memory "$min_memory_mb" --rootful || {
         say ">>> Failed to initialize Podman machine."
         return 1
       }
@@ -347,8 +368,8 @@ ensure_podman_ready() {
             say ">>> Failed to remove existing machine."
             return 1
           }
-          say ">>> Initializing new Podman machine with ${min_memory_mb}MB memory…"
-          podman machine init --memory "$min_memory_mb" || {
+          say ">>> Initializing new Podman machine with ${min_memory_mb}MB memory (rootful mode)…"
+          podman machine init --memory "$min_memory_mb" --rootful || {
             say ">>> Failed to initialize Podman machine."
             return 1
           }
@@ -418,7 +439,7 @@ else
   install_podman_if_missing          # no reinstall if present
   ensure_podman_ready
   # Optional: podman-compose for compose-like UX
-  if ! command -v podman-compose >/dev/null 2>&1; then
+  if ! command -v podman-compose >/dev/null 2>&1 && ! podman compose version >/dev/null 2>&1; then
     if ask_yes_no "Install podman-compose (optional)?"; then
       if [ "$PLATFORM" = "macOS" ]; then
         # Ensure Homebrew is available for podman-compose on macOS

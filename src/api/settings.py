@@ -65,6 +65,16 @@ async def get_settings(request, session_manager):
             "ingest_flow_id": LANGFLOW_INGEST_FLOW_ID,
             "langflow_public_url": LANGFLOW_PUBLIC_URL,
             "edited": openrag_config.edited,
+            # Onboarding state
+            "onboarding": {
+                "current_step": openrag_config.onboarding.current_step,
+                "assistant_message": openrag_config.onboarding.assistant_message,
+                "selected_nudge": openrag_config.onboarding.selected_nudge,
+                "card_steps": openrag_config.onboarding.card_steps,
+                "upload_steps": openrag_config.onboarding.upload_steps,
+                "openrag_docs_filter_id": openrag_config.onboarding.openrag_docs_filter_id,
+                "user_doc_filter_id": openrag_config.onboarding.user_doc_filter_id,
+            },
             # OpenRAG configuration
             "providers": {
                 "openai": {
@@ -1087,6 +1097,10 @@ async def onboarding(request, flows_service, session_manager=None):
                         "Created OpenRAG Docs knowledge filter",
                         filter_id=openrag_docs_filter_id,
                     )
+                    # Save the filter ID to the config
+                    current_config.onboarding.openrag_docs_filter_id = openrag_docs_filter_id
+                    if not config_manager.save_config_file(current_config):
+                        logger.error("Failed to save openrag_docs_filter_id to config")
             except Exception as e:
                 logger.error(
                     "Failed to create OpenRAG Docs knowledge filter", error=str(e)
@@ -1351,6 +1365,65 @@ async def _update_langflow_chunk_settings(config, flows_service):
     except Exception as e:
         logger.error(f"Failed to update chunk settings: {str(e)}")
         raise
+
+
+async def update_onboarding_state(request):
+    """Update onboarding state in configuration"""
+    try:
+        await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
+        
+        # Parse request body
+        body = await request.json()
+        
+        # Validate allowed fields
+        allowed_fields = {
+            "current_step",
+            "assistant_message",
+            "selected_nudge",
+            "card_steps",
+            "upload_steps",
+            "openrag_docs_filter_id",
+            "user_doc_filter_id",
+        }
+        
+        # Check for invalid fields
+        invalid_fields = set(body.keys()) - allowed_fields
+        if invalid_fields:
+            return JSONResponse(
+                {
+                    "error": f"Invalid fields: {', '.join(invalid_fields)}. Allowed fields: {', '.join(allowed_fields)}"
+                },
+                status_code=400,
+            )
+        
+        # Update onboarding state using config manager
+        success = config_manager.update_onboarding_state(**body)
+        
+        if not success:
+            return JSONResponse(
+                {"error": "Failed to update onboarding state"},
+                status_code=500,
+            )
+        
+        logger.info(f"Onboarding state updated: {body}")
+        
+        return JSONResponse(
+            {
+                "message": "Onboarding state updated successfully",
+                "updated_fields": list(body.keys()),
+            }
+        )
+    
+    except json.JSONDecodeError:
+        return JSONResponse(
+            {"error": "Invalid JSON in request body"}, status_code=400
+        )
+    except Exception as e:
+        logger.error(f"Error updating onboarding state: {str(e)}")
+        return JSONResponse(
+            {"error": f"Failed to update onboarding state: {str(e)}"},
+            status_code=500,
+        )
 
 
 async def reapply_all_settings(session_manager = None):

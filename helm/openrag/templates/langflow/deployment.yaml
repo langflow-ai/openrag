@@ -126,7 +126,16 @@ spec:
                 secretKeyRef:
                   name: {{ include "openrag.fullname" . }}-langflow
                   key: superuser-password
-            # OpenSearch password (for flows)
+            # OpenSearch connection (for flows)
+            - name: OPENSEARCH_HOST
+              value: {{ .Values.global.opensearch.host | quote }}
+            - name: OPENSEARCH_PORT
+              value: {{ .Values.global.opensearch.port | quote }}
+            - name: OPENSEARCH_URL
+              value: {{ include "openrag.opensearch.url" . | quote }}
+            # Docling service URL (for document processing in flows)
+            - name: DOCLING_SERVE_URL
+              value: "http://host.docker.internal:5001"
             {{- if .Values.global.opensearch.password }}
             - name: OPENSEARCH_PASSWORD
               valueFrom:

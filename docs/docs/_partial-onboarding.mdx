@@ -2,19 +2,19 @@ import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
+import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 
 ## Complete the application onboarding process {#application-onboarding}
 
 The first time you start the OpenRAG application, you must complete the application onboarding process to select language and embedding models that are essential for OpenRAG features like the [**Chat**](/chat).
 
-Some of these variables, such as the embedding models, can be changed seamlessly after onboarding.
-Others are immutable and require you to destroy and recreate the OpenRAG containers.
-For more information, see the [OpenRAG environment variables reference](/reference/configuration).
+Some of these options, such as the models, can be changed in OpenRAG's **Settings** after onboarding is complete.
+Other options are immutable and require you to destroy and recreate the OpenRAG containers, as explained in the [OpenRAG environment variables reference](/reference/configuration).
+
+To complete onboarding, you must configure at least one language model and one embedding model.
 
 You can use different providers for your language model and embedding model, such as Anthropic for the language model and OpenAI for the embedding model.
-Additionally, you can set multiple embedding models.
-
-You only need to complete onboarding for your preferred providers.
+Additionally, you can select multiple embedding models.
 
 <Tabs groupId="Provider">
 <TabItem value="Anthropic" label="Anthropic" default>
@@ -26,6 +26,9 @@ Anthropic doesn't provide embedding models. If you select Anthropic for your lan
 1. Enter your Anthropic API key, or enable **Use environment API key** to pull the key from your [OpenRAG `.env` file](/reference/configuration).
 
 2. Under **Advanced settings**, select the language model that you want to use.
+
+   Language models must support tool calling to be compatible with OpenRAG.
+   Incompatible models aren't listed.
 
 3. Click **Complete**.
 
@@ -44,6 +47,10 @@ The overview demonstrates some basic functionality that is covered in the [quick
 </TabItem>
 <TabItem value="IBM watsonx.ai" label="IBM watsonx.ai">
 
+:::info
+<PartialWatsonxModels />
+:::
+
 1. For **watsonx.ai API Endpoint**, select the base URL for your watsonx.ai model deployment.
 
 2. Enter your watsonx.ai deployment's project ID and API key.
@@ -51,6 +58,9 @@ The overview demonstrates some basic functionality that is covered in the [quick
    You can enable **Use environment API key** to pull the key from your [OpenRAG `.env` file](/reference/configuration).
 
 3. Under **Advanced settings**, select the language model that you want to use.
+
+   Language models must support tool calling to be compatible with OpenRAG.
+   Incompatible models aren't listed.
 
 4. Click **Complete**.
 
@@ -87,9 +97,10 @@ You must deploy Ollama separately if you want to use Ollama as a model provider.
    * **Ollama Cloud**: Because Ollama Cloud models run at the same address as a local Ollama server and automatically offload to Ollama's cloud service, you can use the same base URL and port as you would for a local Ollama server. The default address is `http://localhost:11434`.
    * **Remote server**: Enter your remote Ollama server's base URL and port, such as `http://your-remote-server:11434`.
 
-3. Select the language model that your Ollama server is running.
+3. Select a language model that your Ollama server is running.
 
-   If your server isn't running any language models, you must either deploy a language model on your Ollama server, or use another provider for the language model.
+   OpenRAG only lists language models that support tool calling.
+   If your server isn't running any compatible language models, you must either deploy a compatible language model on your Ollama server, or use another provider for the language model.
 
    Language model and embedding model selections are independent.
    You can use the same or different servers for each model.
@@ -117,6 +128,9 @@ The overview demonstrates some basic functionality that is covered in the [quick
 1. Enter your OpenAI API key, or enable **Use environment API key** to pull the key from your [OpenRAG `.env` file](/reference/configuration).
 
 2. Under **Advanced settings**, select the language model that you want to use.
+
+   Language models must support tool calling to be compatible with OpenRAG.
+   Incompatible models aren't listed.
 
 3. Click **Complete**.
 

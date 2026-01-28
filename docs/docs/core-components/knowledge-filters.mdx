@@ -4,6 +4,7 @@ slug: /knowledge-filters
 ---
 
 import Icon from "@site/src/components/icon/icon";
+import PartialAnonymousUserOwner from '@site/docs/_partial-anonymous-user-owner.mdx';
 
 OpenRAG's knowledge filters help you organize and manage your [knowledge base](/knowledge) by creating pre-defined views of your documents.
 
@@ -26,36 +27,61 @@ After uploading your own documents, it is recommended that you create your own f
 
 To create a knowledge filter, do the following:
 
-1. Click **Knowledge**, and then click <Icon name="Plus" aria-hidden="true"/> **Knowledge Filters**.
+1. Click <Icon name="Library" aria-hidden="true"/> **Knowledge**, and then click <Icon name="Plus" aria-hidden="true"/> **Knowledge Filters**.
 
-2. Enter a **Name** and **Description**, and then click **Create Filter**.
+2. Enter a **Name**.
 
-   By default, new filters match all documents in your knowledge base.
-   Modify the filter to customize it.
+3. Optional: Click the filter icon next to the filter name to select a different icon and color for the filter.
+This is purely cosmetic, but it can help you visually distinguish different sets of filters, such as different projects or sources.
 
-3. To modify the filter, click <Icon name="Library" aria-hidden="true"/> **Knowledge**, and then click your new filter. You can edit the following settings:
+4. Optional: Enter a **Description**.
 
-   * **Search Query**: Enter text for semantic search, such as `financial reports from Q4`.
-   * **Data Sources**: Select specific data sources or folders to include.
+5. Customize the filter settings.
+
+   By default, filters match all documents in your knowledge base.
+   Use the filter settings to narrow the scope of documents that the filter captures:
+
+   * **Search Query**: Enter a natural language text string for semantic search.
+
+      When you apply a filter that has a **Search Query**, only documents matching the search query are included.
+      It is recommended that you also use the **Score Threshold** setting to avoid returning irrelevant documents.
+
+   * **Data Sources**: Select specific files and folders to include in the filter.
+
+      This is useful if you want to create a filter for a specific project or topic and you know the specific documents you want to include.
+      For example, if you upload a folder, you could create a filter that only includes the documents from that folder.
+
    * **Document Types**: Filter by file type.
-   * **Owners**: Filter by the user that uploaded the documents.
-   * **Connectors**: Filter by [upload source](/ingestion), such as the local file system or a Google Drive OAuth connector.
-   * **Response Limit**: Set the maximum number of results to return from the knowledge base. The default is `10`.
-   * **Score Threshold**: Set the minimum relevance score for similarity search. The default score is `0`.
 
-4. To save your changes, click **Update Filter**.
+   * **Owners**: Filter by the user that uploaded the documents.
+
+      <PartialAnonymousUserOwner />
+
+   * **Connectors**: Filter by [upload source](/ingestion), such as the local file system or a cloud storage connector.
+
+   * **Response Limit**: Set the maximum number of results to return from the knowledge base. The default is `10`, which means the filter returns only the top 10 most relevant documents.
+
+   * **Score Threshold**: Set the minimum relevance score for similarity search. The default score is `0`. A threshold is recommended to avoid returned irrelevant documents.
+
+6. Click **Create Filter**.
+
+## Edit a filter
+
+To modify a filter, click <Icon name="Library" aria-hidden="true"/> **Knowledge**, and then click the filter you want to edit in the **Knowledge Filters** list.
+On the filter settings pane, edit the filter as desired, and then click **Update Filter**.
 
 ## Apply a filter {#apply-a-filter}
 
-* **Apply a global filter**: Click <Icon name="Library" aria-hidden="true"/> **Knowledge**, and then enable the toggle next to your preferred filter. Only one filter can be the global filter. The global filter applies to all chat sessions.
-
-* **Apply a chat filter**: In the <Icon name="MessageSquare" aria-hidden="true"/> **Chat** window, click <Icon name="Funnel" aria-hidden="true"/> **Filter**, and then select the filter to apply.
+In the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, click <Icon name="Funnel" aria-hidden="true"/> **Filter**, and then select the filter to apply.
 Chat filters apply to one chat session only.
+
+You can also use filters when [browsing your knowledge base](/knowledge#browse-knowledge).
+This is a helpful way to test filters and manage knowledge bases that have many documents.
 
 ## Delete a filter
 
 1. Click <Icon name="Library" aria-hidden="true"/> **Knowledge**.
 
-2. Click the filter that you want to delete.
+2. In the **Knowledge Filters** list, click the filter that you want to delete.
 
-3. Click **Delete Filter**.
+3. In the filter settings pane, click **Delete Filter**.

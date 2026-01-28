@@ -10,11 +10,12 @@ import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 import PartialIngestionFlow from '@site/docs/_partial-ingestion-flow.mdx';
 import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
 import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
+import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 
 Upload documents to your [OpenRAG OpenSearch instance](/knowledge) to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
 Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
 
-OpenRAG can ingest knowledge from direct file uploads, URLs, and OAuth authenticated connectors.
+OpenRAG can ingest knowledge from direct file uploads, URLs, and cloud storage connectors.
 
 Knowledge ingestion is powered by OpenRAG's built-in knowledge ingestion flows that use Docling to process documents before storing the documents in your OpenSearch database.
 During ingestion, documents are broken into smaller chunks of content that are then embedded using your selected [embedding model](/knowledge#set-the-embedding-model-and-dimensions).
@@ -45,9 +46,9 @@ You can [monitor ingestion](#monitor-ingestion) to see the progress of the uploa
 
 <PartialTempKnowledge />
 
-## Ingest files with OAuth connectors {#oauth-ingestion}
+## Ingest files with cloud storage connectors {#oauth-ingestion}
 
-OpenRAG can use OAuth authenticated connectors to ingest documents from the following external services:
+OpenRAG can use cloud storage connectors to ingest documents from the following external services:
 
 * AWS S3
 * Google Drive
@@ -56,12 +57,16 @@ OpenRAG can use OAuth authenticated connectors to ingest documents from the foll
 
 These connectors enable seamless ingestion of files from cloud storage to your OpenRAG knowledge base.
 
-Individual users can connect their personal cloud storage accounts to OpenRAG. Each user must separately authorize OpenRAG to access their own cloud storage. When a user connects a cloud storage service, they are redirected to authenticate with that service provider and grant OpenRAG permission to sync documents from their personal cloud storage.
+OAuth credentials are used to authorize access to cloud storage services.
 
-### Enable OAuth connectors
+### Configure cloud storage connectors
 
-Before users can connect their own cloud storage accounts, you must configure the provider's OAuth credentials in OpenRAG. Typically, this requires that you register OpenRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key.
+Before you can ingest documents from cloud storage, you must authorize OpenRAG's access to your cloud storage services.
+
+Typically, this requires that you register OpenRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key.
 To enable multiple connectors, you must register an app and generate credentials for each provider.
+
+Then, add the OAuth credentials to your OpenRAG configuration:
 
 <Tabs>
 <TabItem value="TUI" label="TUI-managed services" default>
@@ -73,19 +78,23 @@ You can do this during [installation](/install#setup), or you can add the creden
 
 2. Open the **Advanced Setup** page, and then add the OAuth credentials for the cloud storage providers that you want to use under **API Keys**:
 
-   * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
-   * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
-   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+   <PartialOAuthCredentials />
 
-3. Register the redirect URIs shown in the TUI in your OAuth provider.
-These are the URLs your OAuth provider will use to redirect users back to OpenRAG after they sign in.
+3. For each connector you configured, register the redirect URI shown in the TUI in your cloud service's OAuth configuration.
 
-4. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
+   For Google, this URL is used to redirect users back to OpenRAG after they sign in, and for the cloud storage connector webhooks.
 
-5. Click **Start Services** to restart the OpenRAG containers with OAuth enabled.
+   For Microsoft and Amazon, this URL is used for the cloud storage connector webhooks.
 
-6. Launch the OpenRAG app.
-You should be prompted to sign in to your OAuth provider before being redirected to your OpenRAG instance.
+4. Optional: Under **Others**, set the **Webhook Base URL (`WEBHOOK_BASE_URL`)** to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
+
+5. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
+
+6. Click **Start Services** to restart the OpenRAG containers with the new configuration.
+
+7. Launch the OpenRAG app.
+
+   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
 
 </TabItem>
 <TabItem value="env" label="Self-managed services">
@@ -98,48 +107,45 @@ You can do this during [initial set up](/docker#setup), or you can add the crede
 
    <PartialDockerStopAll />
 
-2. Edit your OpenRAG `.env` file to add the OAuth credentials for the cloud storage providers that you want to use:
+2. Edit your OpenRAG `.env` file, and then add the [OAuth and cloud storage environment variables](/reference/configuration#oauth-and-cloud-storage-connector-settings) for the providers that you want to use:
 
-   * **Google**: Provide your Google OAuth Client ID and Google OAuth Client Secret. You can generate these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). For more information, see the [Google OAuth client documentation](https://developers.google.com/identity/protocols/oauth2).
+   ```env
+   GOOGLE_OAUTH_CLIENT_ID=
+   GOOGLE_OAUTH_CLIENT_SECRET=
 
-      ```env
-      GOOGLE_OAUTH_CLIENT_ID=
-      GOOGLE_OAUTH_CLIENT_SECRET=
-      ```
+   MICROSOFT_GRAPH_OAUTH_CLIENT_ID=
+   MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=
 
-   * **Microsoft**: For the Microsoft OAuth Client ID and Microsoft OAuth Client Secret, provide [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). For more information, see the [Microsoft Graph OAuth client documentation](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth).
+   AWS_ACCESS_KEY_ID=
+   AWS_SECRET_ACCESS_KEY=
+   ```
 
-      ```env
-      MICROSOFT_GRAPH_OAUTH_CLIENT_ID=
-      MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=
-      ```
-   * **Amazon**: Provide your AWS Access Key ID and AWS Secret Access Key with access to your S3 instance. For more information, see the AWS documentation on [Configuring access to AWS applications](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html).
+   <PartialOAuthCredentials />
 
-      ```env
-      AWS_ACCESS_KEY_ID=
-      AWS_SECRET_ACCESS_KEY=
-      ```
+3. Optional: Set the `WEBHOOK_BASE_URL` to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
 
-3. Save the `.env` file.
+4. For each connector, you must register an OpenRAG OAuth redirect URI in your cloud service's OAuth configuration.
 
-4. Restart your OpenRAG containers:
+   For Google, this URL is used to redirect users back to OpenRAG after they sign in, and for the cloud storage connector webhooks.
+
+   For Microsoft and Amazon, this URL is used for the cloud storage connector webhooks.
+
+5. Save the `.env` file.
+
+6. Restart your OpenRAG containers:
 
    <PartialDockerComposeUp />
 
-5. Access the OpenRAG frontend at `http://localhost:3000`.
-You should be prompted to sign in to your OAuth provider before being redirected to your OpenRAG instance.
+7. Access the OpenRAG frontend at `http://localhost:3000`.
+
+   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
 
 </TabItem>
 </Tabs>
 
-### Authenticate and ingest files from cloud storage
+### Ingest files from cloud storage
 
-After you start OpenRAG with OAuth connectors enabled, each user is prompted to authenticate with the OAuth provider upon accessing your OpenRAG instance.
-Individual authentication is required to access a user's cloud storage from your OpenRAG instance.
-For example, if a user navigates to the default OpenRAG URL at `http://localhost:3000`, they are redirected to the OAuth provider's sign-in page.
-After authenticating and granting the required permissions for OpenRAG, the user is redirected back to OpenRAG.
-
-To ingest knowledge with an OAuth connector, do the following:
+To ingest knowledge with a cloud storage connector, do the following:
 
 1. Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to view your OpenSearch knowledge base.
 
@@ -161,7 +167,7 @@ When using the OpenRAG chat, you can enter URLs into the chat to be ingested in 
 
 :::info
 The chat cannot ingest URLs that end in static document file extensions like `.pdf`.
-To upload these types of files, see [Ingest local files and folders](#ingest-local-files-and-folders) and [Ingest files with OAuth connectors](#oauth-ingestion).
+To upload these types of files, see [Ingest local files and folders](#ingest-local-files-and-folders) and [Ingest files with cloud storage connectors](#oauth-ingestion).
 :::
 
 OpenRAG runs the **OpenSearch URL Ingestion** flow to ingest web content from URLs.
@@ -171,26 +177,37 @@ The agent can call this component to fetch web content from a given URL, and the
 Like all OpenRAG flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it.
 For more information about MCP in Langflow, see the Langflow documentation on [MCP clients](https://docs.langflow.org/mcp-client) and [MCP servers](https://docs.langflow.org/mcp-tutorial).
 
-## Monitor ingestion
+## Monitor ingestion {#monitor-ingestion}
 
-Document ingestion tasks run in the background.
+Depending on the amount of data to ingest, document ingestion can take a few seconds, minutes, or longer.
+For this reason, document ingestion tasks run in the background.
 
 In the OpenRAG user interface, a badge is shown on <Icon name="Bell" aria-hidden="true"/> **Tasks** when OpenRAG tasks are active.
-Click <Icon name="Bell" aria-hidden="true"/> **Tasks** to inspect and cancel tasks:
+Click <Icon name="Bell" aria-hidden="true"/> **Tasks** to inspect and cancel tasks.
+Tasks are separated into multiple sections:
 
-* **Active Tasks**: All tasks that are **Pending**, **Running**, or **Processing**.
-For each active task, depending on its state, you can find the task ID, start time, duration, number of files processed, and the total files enqueued for processing.
+* The **Active Tasks** section includes all tasks that are **Pending**, **Running**, or **Processing**:
 
-* **Pending**: The task is queued and waiting to start.
+   * **Pending**: The task is queued and waiting to start.
+   * **Running**: The task is actively processing files.
+   * **Processing**: The task is performing ingestion operations.
 
-* **Running**: The task is actively processing files.
+   To stop an active task, click <Icon name="X" aria-hidden="true"/> **Cancel**. Canceling a task stops processing immediately and marks the ingestion as failed.
 
-* **Processing**: The task is performing ingestion operations.
+* The **Recent Tasks** section lists recently finished tasks.
 
-* **Failed**: Something went wrong during ingestion, or the task was manually canceled.
-For troubleshooting advice, see [Troubleshoot ingestion](#troubleshoot-ingestion).
+   :::warning
+   **Completed** doesn't mean success.
 
-To stop an active task, click <Icon name="X" aria-hidden="true"/> **Cancel**. Canceling a task stops processing immediately and marks the task as **Failed**.
+   A completed task can report successful ingestions, failed ingestions, or both, depending on the number of files processed.
+   :::
+
+   Check the **Success** and **Failed** counts for each completed task to determine the overall success rate.
+
+   **Failed** means [something went wrong during ingestion](#troubleshoot-ingestion), or the task was manually canceled.
+   Details about failed tasks are cleared when you refresh or leave the **Knowledge** page.
+
+For each task, depending on its state, you can find the task ID, start time, duration, number of files processed successfully, number of files that failed, and the number of files enqueued for processing.
 
 ### Ingestion performance expectations
 
@@ -247,9 +264,9 @@ The following issues can occur during document ingestion.
 
 If an ingestion task fails, do the following:
 
-* Make sure you are uploading supported file types.
-* Split excessively large files into smaller files before uploading.
-* Remove unusual embedded content, such as videos or animations, before uploading. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
+* Make sure you uploaded only supported file types.
+* Split very large files into smaller files.
+* Remove unusual or complex embedded content, such as videos or animations. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
 * Make sure your Podman/Docker VM has sufficient memory for the ingestion tasks.
 The minimum recommendation is 8 GB of RAM.
 If you regularly upload large files, more RAM is recommended.
@@ -261,17 +278,17 @@ For more information, see [Memory issue with Podman on macOS](/support/troublesh
 If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](/knowledge#browse-knowledge) to confirm that the documents are uploaded in full, and the chunks are correct.
 
 If the documents are present and well-formed, check your [knowledge filters](/knowledge-filters).
-If a global filter is applied, make sure the expected documents are included in the global filter.
-If the global filter excludes any documents, the agent cannot access those documents unless you apply a chat-level filter or change the global filter.
+If you applied a filter to the chat, make sure the expected documents aren't excluded by the filter settings.
+You can test this by applying the filter when you [browse the knowledge base](/knowledge#browse-knowledge).
+If the filter excludes any documents, the agent cannot access those documents.
+Be aware that some settings create dynamic filters that don't always produce the same results, such as a **Search query** combined with a low **Response limit**.
 
-If text is missing or incorrectly processed, you need to reupload the documents after modifying the ingestion parameters or the documents themselves.
+If the document chunks have missing, incorrect, or unexpected text, you must [delete the documents](/knowledge#delete-knowledge) from your knowledge base, modify the [ingestion parameters](/knowledge#knowledge-ingestion-settings) or the documents themselves, and then reingest the documents.
 For example:
 
 * Break combined documents into separate files for better metadata context.
 * Make sure scanned documents are legible enough for extraction, and enable the **OCR** option. Poorly scanned documents might require additional preparation or rescanning before ingestion.
-* Adjust the **Chunk Size** and **Chunk Overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
-
-For more information about modifying ingestion parameters and flows, see [Knowledge ingestion settings](/knowledge#knowledge-ingestion-settings).
+* Adjust the **Chunk size** and **Chunk overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
 
 ## See also
 

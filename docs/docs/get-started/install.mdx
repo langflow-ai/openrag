@@ -7,12 +7,13 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
 import PartialSetup from '@site/docs/_partial-setup.mdx';
+import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 import PartialPrereqCommon from '@site/docs/_partial-prereq-common.mdx';
 import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
 import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
-import PartialOpenSearchAuthMode from '@site/docs/_partial-opensearch-auth-mode.mdx';
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
+import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 
 :::tip
 To quickly install and test OpenRAG's core features, try the [quickstart](/quickstart).
@@ -43,10 +44,11 @@ For other installation methods, see [Select an installation method](/install-opt
    cd openrag-workspace
    ```
 
-2. Get and run the installer script:
+2. Download and run the OpenRAG installer script:
 
    ```bash
-   curl -fsSL https://docs.openr.ag/files/run_openrag_with_prereqs.sh | bash
+   curl -O https://docs.openr.ag/files/run_openrag_with_prereqs.sh
+   bash run_openrag_with_prereqs.sh
    ```
 
    The installer script installs OpenRAG with [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) in the directory where you run the script.
