@@ -134,8 +134,10 @@ Configure general system components, session management, and logging.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `FRONTEND_PORT` | `3000` | Host port for the OpenRAG frontend web interface. Change this if port 3000 is already in use on your system. |
 | `LANGFLOW_KEY_RETRIES` | `15` | Number of retries for Langflow key generation. |
 | `LANGFLOW_KEY_RETRY_DELAY` | `2.0` | Delay between retries in seconds. |
+| `LANGFLOW_PORT` | `7860` | Host port for the Langflow service. Change this if port 7860 is already in use on your system. If you change this, also update `LANGFLOW_PUBLIC_URL` to match the new port. |
 | `LANGFLOW_VERSION` | `OPENRAG_VERSION` | Langflow Docker image version. By default, OpenRAG uses the `OPENRAG_VERSION` for the Langflow Docker image version. |
 | `LOG_FORMAT` | Not set | Set to `json` to enabled JSON-formatted log output. If this variable isn't set, then the default logging format is used. |
 | `LOG_LEVEL` | `INFO` | Logging level. Can be one of `DEBUG`, `INFO`, `WARNING`, or `ERROR`. `DEBUG` provides the most detailed logs but can impact performance. |

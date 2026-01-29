@@ -106,6 +106,15 @@ This configuration isn't recommended unless you _must_ maintain a different serv
 If you experience errors or other issues with port mapping, submit an [OpenRAG GitHub issue](https://github.com/langflow-ai/openrag/issues) for additional support.
 :::
 
+If any of these ports are already in use, you can configure alternative ports by setting environment variables in your `.env` file:
+
+* Set `FRONTEND_PORT` to change the frontend port (default: `3000`)
+* Set `LANGFLOW_PORT` to change the Langflow port (default: `7860`)
+
+If you change `LANGFLOW_PORT`, also update `LANGFLOW_PUBLIC_URL` to match the new port. For example, if you set `LANGFLOW_PORT=8760`, set `LANGFLOW_PUBLIC_URL=http://localhost:8760`.
+
+After updating your `.env` file, restart your OpenRAG services to apply the changes.
+
 ## OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
 
 Docling ingestion can fail with an OCR-related error that mentions `easyocr` is missing.
