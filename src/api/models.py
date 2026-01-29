@@ -50,7 +50,7 @@ async def get_openai_models(request, models_service, session_manager):
             except Exception as e:
                 logger.error(f"Failed to get config: {e}")
         if not api_base:
-            api_base = os.environ.get("OPENAI_BASE_API", "https://api.openai.com")
+            api_base = os.environ.get("OPENAI_API_BASE", "https://api.openai.com")
 
         models = await models_service.get_openai_models(api_key=api_key, api_base=api_base)
         return JSONResponse(models)
