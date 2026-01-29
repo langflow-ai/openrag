@@ -4,7 +4,6 @@ slug: /knowledge
 ---
 
 import Icon from "@site/src/components/icon/icon";
-import PartialOpenSearchAuthMode from '@site/docs/_partial-opensearch-auth-mode.mdx';
 import PartialAnonymousUserOwner from '@site/docs/_partial-anonymous-user-owner.mdx';
 
 OpenRAG includes a built-in [OpenSearch](https://docs.opensearch.org/latest/) instance that serves as the underlying datastore for your _knowledge_ (documents).
@@ -83,9 +82,23 @@ An **OpenRAG Docs** filter is created automatically for these documents.
 ## OpenSearch authentication and document access {#auth}
 
 When you [install OpenRAG](/install-options), you provide the initial configuration values for your OpenRAG services, including authentication credentials for OpenSearch and OAuth connectors.
-This configuration determines how OpenRAG authenticates with your deployment's OpenSearch instance, and it controls user access to documents in your knowledge base:
 
-<PartialOpenSearchAuthMode />
+:::warning
+Google is the only supported OAuth provider for OpenRAG.
+
+Other [OAuth credentials](/reference/configuration#oauth-and-cloud-storage-connector-settings) are used only to authorize cloud storage connectors.
+:::
+
+The presence of Google OAuth credentials determines how OpenRAG authenticates with your deployment's OpenSearch instance, and how it controls user access to documents in your knowledge base:
+
+* **No-auth mode**: If you don't provide Google OAuth credentials, then the OpenRAG OpenSearch instance runs in no-auth mode. This mode uses one anonymous JWT token for OpenSearch authentication. There is no differentiation between users; all users that access your OpenRAG instance can access all documents uploaded to your knowledge base.
+
+* **OAuth mode**: If you provide Google OAuth credentials, then the OpenRAG OpenSearch instance runs in OAuth mode. This mode uses a unique JWT token for each OpenRAG user, and each document is tagged with user ownership. Documents are filtered by user owner; users see only the documents that they uploaded or have access to through their cloud storage accounts.
+
+:::tip
+To enable OAuth mode after initial setup, you must [configure the Google Drive cloud storage connector for document ingestion](/ingestion#oauth-ingestion).
+This is because OpenRAG uses Google OAuth credentials for both OAuth mode _and_ the Google Drive cloud storage connector.
+:::
 
 ## OpenSearch indexes
 

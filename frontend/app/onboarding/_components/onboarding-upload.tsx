@@ -3,14 +3,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useCreateFilter } from "@/app/api/mutations/useCreateFilter";
+import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import { useGetNudgesQuery } from "@/app/api/queries/useGetNudgesQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
 import { Button } from "@/components/ui/button";
-import {
-	ONBOARDING_UPLOAD_STEPS_KEY,
-	ONBOARDING_USER_DOC_FILTER_ID_KEY,
-} from "@/lib/constants";
 import { uploadFile } from "@/lib/upload-utils";
 
 interface OnboardingUploadProps {
@@ -27,6 +24,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
   const [isCreatingFilter, setIsCreatingFilter] = useState(false);
 
   const createFilterMutation = useCreateFilter();
+  const updateOnboardingMutation = useUpdateOnboardingStateMutation();
 
   const STEP_LIST = [
     "Uploading your document",
@@ -103,12 +101,13 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
             description: `Filter for ${filename}`,
             queryData: queryData,
           })
-          .then((result) => {
-            if (result.filter?.id && typeof window !== "undefined") {
-              localStorage.setItem(
-                ONBOARDING_USER_DOC_FILTER_ID_KEY,
-                result.filter.id,
-              );
+          .then(async (result) => {
+            if (result.filter?.id) {
+              // Save to backend
+              await updateOnboardingMutation.mutateAsync({
+                user_doc_filter_id: result.filter.id,
+              });
+              
               console.log(
                 "Created knowledge filter for uploaded document",
                 result.filter.id,
@@ -267,7 +266,6 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
             setCurrentStep={setCurrentStep}
             isCompleted={false}
             steps={STEP_LIST}
-            storageKey={ONBOARDING_UPLOAD_STEPS_KEY}
           />
         </motion.div>
       )}
