@@ -1,0 +1,27 @@
+import Icon from "@site/src/components/icon/icon";
+
+1. In OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then find the **Agent** section.
+
+2. If you only need to edit the language model or agent instructions, edit those fields directly on the **Settings** page.
+Language model changes are saved automatically.
+To apply new instructions, click **Save Agent Instructions**.
+
+3. To edit all flow settings and components with full customization capabilities, edit the flow in the Langflow visual editor:
+
+   1. Click **Edit in Langflow** to launch the Langflow visual editor in a new browser tab.
+
+   2. If prompted to acknowledge that you are entering Langflow, click **Proceed**.
+
+   3. If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from your [OpenRAG `.env` file](/reference/configuration).
+
+   4. In the Langflow header, click **Starter Project** to go to the [Langflow **Projects** page](https://docs.langflow.org/concepts-flows#projects), and then [unlock the flow](https://docs.langflow.org/concepts-flows#lock-a-flow).
+
+   5. On the **Projects** page, click the **OpenRAG OpenSearch Agent** flow to open the visual editor with the flow unlocked.
+
+      ![OpenRAG OpenSearch Agent flow](/img/opensearch-agent-flow.png)
+
+   6. Modify the flow as desired, and then press <kbd>Command</kbd>+<kbd>S</kbd> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to save your changes.
+   Then, you can close the Langflow browser tab, or leave it open if you want to continue experimenting with the flow editor.
+
+4. After you modify any **Agent** flow settings, go to the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**, and then click <Icon name="Plus" aria-hidden="true"/> **Start new conversation** in the **Conversations** list.
+This ensures that the chat doesn't persist any context from the previous conversation with the original flow settings.

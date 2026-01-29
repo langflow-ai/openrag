@@ -108,7 +108,7 @@ async def wait_for_opensearch():
 
     for attempt in range(max_retries):
         try:
-            await clients.opensearch.info()
+            await clients.opensearch.ping()
             logger.info("OpenSearch is ready")
             await TelemetryClient.send_event(Category.OPENSEARCH_SETUP, MessageId.ORB_OS_CONN_ESTABLISHED)
             return
@@ -384,7 +384,7 @@ async def ingest_default_documents_when_ready(services):
             await _ingest_default_documents_openrag(services, file_paths)
         else:
             await _ingest_default_documents_langflow(services, file_paths)
-        
+
         await TelemetryClient.send_event(Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_COMPLETE)
 
     except Exception as e:
@@ -457,6 +457,11 @@ async def _ingest_default_documents_langflow(services, file_paths):
         file_count=len(file_paths),
     )
 
+async def health_check(request):
+    """Simple liveness probe: Indicates that the OpenRAG Backend service is online and running."""
+    return JSONResponse({"status": "ok"}, status_code=200)
+
+
 async def opensearch_health_ready(request):
     """Readiness probe: verifies OpenSearch dependency is reachable."""
     try:
@@ -507,48 +512,48 @@ async def _ingest_default_documents_openrag(services, file_paths):
 
 async def _update_mcp_servers_with_provider_credentials(services):
     """Update MCP servers with provider credentials at startup.
-    
+
     This is especially important for no-auth mode where users don't go through
     the OAuth login flow that would normally set these credentials.
     """
     try:
         auth_service = services.get("auth_service")
         session_manager = services.get("session_manager")
-        
+
         if not auth_service or not auth_service.langflow_mcp_service:
             logger.debug("MCP service not available, skipping credential update")
             return
-        
+
         config = get_openrag_config()
-        
+
         # Build global vars with provider credentials using utility function
         from utils.langflow_headers import build_mcp_global_vars_from_config
-        
+
         global_vars = build_mcp_global_vars_from_config(config)
-        
+
         # In no-auth mode, add the anonymous JWT token and user details
         if is_no_auth_mode() and session_manager:
             from session_manager import AnonymousUser
-            
+
             # Create/get anonymous JWT for no-auth mode
             anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
             if anonymous_jwt:
                 global_vars["JWT"] = anonymous_jwt
-            
+
             # Add anonymous user details
             anonymous_user = AnonymousUser()
             global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
             global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted for spaces)
             global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
-            
+
             logger.info("Added anonymous JWT and user details to MCP servers for no-auth mode")
-        
+
         if global_vars:
             result = await auth_service.langflow_mcp_service.update_mcp_servers_with_global_vars(global_vars)
             logger.info("Updated MCP servers with provider credentials at startup", **result)
         else:
             logger.debug("No provider credentials configured, skipping MCP server update")
-            
+
     except Exception as e:
         logger.warning("Failed to update MCP servers with provider credentials at startup", error=str(e))
         # Don't fail startup if MCP update fails
@@ -567,7 +572,7 @@ async def startup_tasks(services):
 
     # Configure alerting security
     await configure_alerting_security()
-    
+
     # Update MCP servers with provider credentials (especially important for no-auth mode)
     await _update_mcp_servers_with_provider_credentials(services)
 
@@ -578,7 +583,7 @@ async def startup_tasks(services):
             logger.info("Checking if Langflow flows were reset")
             flows_service = services["flows_service"]
             reset_flows = await flows_service.check_flows_reset()
-            
+
             if reset_flows:
                 logger.info(
                     f"Detected reset flows: {', '.join(reset_flows)}. Reapplying all settings."
@@ -676,7 +681,7 @@ async def initialize_services():
             await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_LOAD_FAILED)
     else:
         logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
-    
+
     await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_SUCCESS)
 
     langflow_file_service = LangflowFileService()
@@ -1159,12 +1164,25 @@ async def create_app():
             ),
             methods=["POST"],
         ),
+        Route(
+            "/onboarding/state",
+            require_auth(services["session_manager"])(
+                settings.update_onboarding_state
+            ),
+            methods=["POST"],
+        ),
         # Provider health check endpoint
         Route(
             "/provider/health",
             require_auth(services["session_manager"])(
                 provider_health.check_provider_health
             ),
+            methods=["GET"],
+        ),
+        # Health check endpoints
+        Route(
+            "/health",
+            health_check,
             methods=["GET"],
         ),
         Route(
@@ -1523,13 +1541,13 @@ async def create_app():
             while True:
                 try:
                     await asyncio.sleep(5 * 60)  # Wait 5 minutes
-                    
+
                     # Check if onboarding has been completed
                     config = get_openrag_config()
                     if not config.edited:
                         logger.debug("Onboarding not completed yet, skipping periodic backup")
                         continue
-                    
+
                     flows_service = services.get("flows_service")
                     if flows_service:
                         logger.info("Running periodic flow backup")

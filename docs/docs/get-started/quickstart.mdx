@@ -6,9 +6,9 @@ slug: /quickstart
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
-import PartialIntegrateChat from '@site/docs/_partial-integrate-chat.mdx';
 import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
 import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
+import PartialEditAgentFlow from '@site/docs/_partial-edit-agent-flow.mdx';
 
 Use this quickstart to install OpenRAG, and then try some of OpenRAG's core features.
 
@@ -34,13 +34,14 @@ The script installs OpenRAG dependencies, including Docker or Podman, and then i
    cd openrag-workspace
    ```
 
-2. [Download the OpenRAG install script](https://docs.openr.ag/files/run_openrag_with_prereqs.sh), move it to your OpenRAG directory, and then run it:
+2. Download and run the OpenRAG install script:
 
    ```bash
+   curl -O https://docs.openr.ag/files/run_openrag_with_prereqs.sh
    bash run_openrag_with_prereqs.sh
    ```
 
-   Wait while the installer script prepares your environment and installs OpenRAG.
+3. Wait while the installer script prepares your environment and installs OpenRAG.
    You might be prompted to install certain dependencies if they aren't already present in your environment.
 
    The entire process can take a few minutes.
@@ -48,18 +49,18 @@ The script installs OpenRAG dependencies, including Docker or Podman, and then i
 
    ![OpenRAG TUI Interface](@site/static/img/openrag_tui_dec_2025.png)
 
-3. In the TUI, click **Basic Setup**.
+4. In the TUI, click **Basic Setup**.
 
-4. For **Langflow Admin Password**, click **Generate Password** to create a Langflow administrator password and username.
+5. For **Langflow Admin Password**, click **Generate Password** to create a Langflow administrator password and username.
 
-5. Use the default values for all other fields.
+6. Use the default values for all other fields.
 
-6. Click **Save Configuration**.
+7. Click **Save Configuration**.
 
    Your OpenRAG configuration and passwords are stored in an [OpenRAG `.env` file](/reference/configuration) file that is created automatically at `~/.openrag/tui`.
    OpenRAG container definitions are stored in the `docker-compose` files in the same directory.
 
-7. Click **Start OpenRAG** to start the OpenRAG services.
+8. Click **Start OpenRAG** to start the OpenRAG services.
 
    This process can take some time while OpenRAG pulls and runs the container images.
    If all services start successfully, the TUI prints a confirmation message:
@@ -69,11 +70,11 @@ The script installs OpenRAG dependencies, including Docker or Podman, and then i
    Command completed successfully
    ```
 
-8. Click **Close**, and then click **Launch OpenRAG** to access the OpenRAG application and start the application onboarding process.
+9. Click **Close**, and then click **Launch OpenRAG** to access the OpenRAG application and start the application onboarding process.
 
-9. For this quickstart, select the **OpenAI** model provider, enter your OpenAI API key, and then click **Complete**. Use the default settings for all other model options.
+10. For this quickstart, select the **OpenAI** model provider, enter your OpenAI API key, and then click **Complete**. Use the default settings for all other model options.
 
-10. Click through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+11. Click through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
 You can complete this quickstart without going through the overview.
 The overview demonstrates some basic functionality that is covered in the next section and in other parts of the OpenRAG documentation.
 
@@ -98,7 +99,7 @@ You can click a document to view the chunks of the document as they are stored i
    **Folder** uploads an entire directory.
    The default directory is `~/.openrag/documents`.
 
-   For information about the cloud storage provider options, see [Ingest files with OAuth connectors](/ingestion#oauth-ingestion).
+   For other ingestion options, see [Ingest knowledge](/ingestion).
 
 5. Return to the **Chat** window, and then ask a question related to the documents that you just uploaded.
 
@@ -115,45 +116,24 @@ You can click a document to view the chunks of the document as they are stored i
 
 ## Change the language model and chat settings {#change-components}
 
-1. To change the knowledge ingestion settings, agent behavior, or language model, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+In OpenRAG, you can change some chat and ingestion settings directly on the **Settings** page.
+For full customization capabilities, you can edit the underlying [Langflow flows](/agents) in the OpenRAG's embedded Langflow visual editor.
 
-   The **Settings** page provides quick access to commonly used parameters like the **Language model** and **Agent Instructions**.
+For this quickstart, try changing the **Language Model** or **Agent Instructions**.
+Editing the flow in Langflow is optional.
 
-2. For greater insight into the underlying [Langflow flow](/agents) that drives the OpenRAG chat, click **Edit in Langflow** and then click **Proceed** to launch the Langflow visual editor in a new browser window.
+<PartialEditAgentFlow />
 
-   If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from the `.env` file at `~/.openrag/tui`.
+5. Ask the same question you asked in [Load and chat with documents](#chat-with-documents) to see how the response differs from the original settings.
 
-   The **OpenRAG OpenSearch Agent** flow opens in a new browser window.
-
-   ![OpenRAG OpenSearch Agent flow](/img/opensearch-agent-flow.png)
-
-3. For this quickstart, try changing the model.
-Click the **Language Model** component, and then change the **Model Name** to a different OpenAI model.
-
-   After you edit a built-in flow, you can click **Restore flow** on the **Settings** page to revert the flow to its original state when you first installed OpenRAG.
-
-4. Press <kbd>Command</kbd>+<kbd>S</kbd> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to save your changes.
-
-   You can close the Langflow browser window, or leave it open if you want to continue experimenting with the flow editor.
-
-5. Switch to your OpenRAG browser window, and then click <Icon name="Plus" aria-hidden="true"/> in the **Conversations** tab to start a new conversation.
-This ensures that the chat doesn't persist any context from the previous conversation with the original model.
-
-6. Ask the same question you asked in [Load and chat with documents](#chat-with-documents) to see how the response differs from the original model.
-
-## Integrate OpenRAG into an application
-
-Langflow in OpenRAG includes pre-built flows that you can integrate into your applications using the [Langflow API](https://docs.langflow.org/api-reference-api-examples).
-You can use these flows as-is or modify them to better suit your needs, as demonstrated in [Change the language model and chat settings](#change-components).
-
-You can send and receive requests with the Langflow API using Python, TypeScript, or curl.
-
-<PartialIntegrateChat />
+6. To undo your changes, go to **Settings**, and then click **Restore flow** to revert the flow to its original state when you first installed OpenRAG.
 
 ## Next steps
 
 * **Reinstall OpenRAG with your preferred settings**: This quickstart used `uvx` and a minimal setup to demonstrate OpenRAG's core functionality.
 It is recommended that you [reinstall OpenRAG](/reinstall) with your preferred configuration and [installation method](/install-options).
+
+* **Use the OpenRAG SDKs**: To interact with OpenRAG programmatically, use the [OpenRAG SDKs](/reference/api-sdk-overview).
 
 * **Learn more about OpenRAG**: Explore OpenRAG and the OpenRAG documentation to learn more about its features and functionality.
 
