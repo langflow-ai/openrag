@@ -14,6 +14,7 @@ logger = get_logger(__name__)
 class OpenAIConfig:
     """OpenAI provider configuration."""
     api_key: str = ""
+    endpoint: str = ""
     configured: bool = False
 
 
@@ -223,6 +224,8 @@ class ConfigManager:
         # OpenAI provider settings
         if os.getenv("OPENAI_API_KEY"):
             config_data["providers"]["openai"]["api_key"] = os.getenv("OPENAI_API_KEY")
+        if os.getenv("OPENAI_API_BASE"):
+            config_data["providers"]["openai"]["endpoint"] = os.getenv("OPENAI_API_BASE")
 
         # Anthropic provider settings
         if os.getenv("ANTHROPIC_API_KEY"):
