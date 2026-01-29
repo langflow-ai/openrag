@@ -45,7 +45,7 @@ class ModelsService:
     def __init__(self):
         self.session_manager = None
 
-    async def get_openai_models(self, api_key: str) -> Dict[str, List[Dict[str, str]]]:
+    async def get_openai_models(self, api_key: str, api_base: str) -> Dict[str, List[Dict[str, str]]]:
         """Fetch available models from OpenAI API with lightweight validation"""
         try:
             headers = {
@@ -56,8 +56,8 @@ class ModelsService:
             async with httpx.AsyncClient() as client:
                 # Lightweight validation: just check if API key is valid
                 # This doesn't consume credits, only validates the key
-                from api.provider_validation import get_openai_url
-                url = get_openai_url(endpoint="/v1/models")
+                url = f"{api_base}/v1/models"
+                logger.debug("Getting openai models.", url=url)
                 response = await client.get(
                     url, headers=headers, timeout=10.0
                 )
