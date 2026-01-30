@@ -408,47 +408,47 @@ clean: stop ## Stop containers and remove volumes
 	@echo "$(PURPLE)Cleanup complete!$(NC)"
 
 factory-reset: ## Complete reset (stop, remove volumes, clear data, remove images)
-	@echo "$(RED)WARNING: This will completely reset OpenRAG!$(NC)"
-	@echo "$(YELLOW)This will:$(NC)"
-	@echo "  - Stop all containers"
-	@echo "  - Remove all volumes"
-	@echo "  - Delete opensearch-data directory"
-	@echo "  - Delete config directory"
-	@echo "  - Delete JWT keys (private_key.pem, public_key.pem)"
-	@echo "  - Remove local OpenRAG images"
-	@echo ""
-	@read -p "Are you sure? Type 'yes' to continue: " confirm; \
+	@echo "$(RED)WARNING: This will completely reset OpenRAG!$(NC)"; \
+	echo "$(YELLOW)This will:$(NC)"; \
+	echo "  - Stop all containers"; \
+	echo "  - Remove all volumes"; \
+	echo "  - Delete opensearch-data directory"; \
+	echo "  - Delete config directory"; \
+	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
+	echo "  - Remove local OpenRAG images"; \
+	echo ""; \
+	read -p "Are you sure? Type 'yes' to continue: " confirm; \
 	if [ "$$confirm" != "yes" ]; then \
 		echo "$(CYAN)Factory reset cancelled.$(NC)"; \
 		exit 0; \
-	fi
-	@echo ""
-	@echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"
-	$(COMPOSE_CMD) down -v --remove-orphans --rmi local || true
-	@echo "$(YELLOW)Removing local data directories...$(NC)"
-	@if [ -d "opensearch-data" ]; then \
+	fi; \
+	echo ""; \
+	echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
+	$(COMPOSE_CMD) down -v --remove-orphans --rmi local || true; \
+	echo "$(YELLOW)Removing local data directories...$(NC)"; \
+	if [ -d "opensearch-data" ]; then \
 		echo "Removing opensearch-data..."; \
 		uv run python scripts/clear_opensearch_data.py 2>/dev/null || \
 		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/opensearch-data:/data" alpine sh -c "rm -rf /data/*" 2>/dev/null || \
 		rm -rf opensearch-data/* 2>/dev/null || true; \
 		rm -rf opensearch-data 2>/dev/null || true; \
 		echo "$(PURPLE)opensearch-data removed$(NC)"; \
-	fi
-	@if [ -d "config" ]; then \
+	fi; \
+	if [ -d "config" ]; then \
 		echo "Removing config..."; \
 		rm -rf config; \
 		echo "$(PURPLE)config removed$(NC)"; \
-	fi
-	@if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
+	fi; \
+	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
 		echo "Removing JWT keys..."; \
 		rm -f keys/private_key.pem keys/public_key.pem; \
 		echo "$(PURPLE)JWT keys removed$(NC)"; \
-	fi
-	@echo "$(YELLOW)Cleaning up system...$(NC)"
-	$(CONTAINER_RUNTIME) system prune -f
-	@echo ""
-	@echo "$(PURPLE)Factory reset complete!$(NC)"
-	@echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)"
+	fi; \
+	echo "$(YELLOW)Cleaning up system...$(NC)"; \
+	$(CONTAINER_RUNTIME) system prune -f; \
+	echo ""; \
+	echo "$(PURPLE)Factory reset complete!$(NC)"; \
+	echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)";
 
 ######################
 # LOCAL DEVELOPMENT
