@@ -131,26 +131,40 @@ async def connector_status(request: Request, connector_service, session_manager)
         user_id=user.user_id, connector_type=connector_type
     )
 
-    # Get the connector for each connection
-    connection_client_ids = {}
+    # Get the connector for each connection and verify authentication
+    connection_details = {}
+    verified_active_connections = []
+    
     for connection in connections:
         try:
             connector = await connector_service._get_connector(connection.connection_id)
             if connector is not None:
-                connection_client_ids[connection.connection_id] = connector.get_client_id()
+                # Actually verify the connection by trying to authenticate
+                is_authenticated = await connector.authenticate()
+                connection_details[connection.connection_id] = {
+                    "client_id": connector.get_client_id(),
+                    "is_authenticated": is_authenticated,
+                }
+                if is_authenticated and connection.is_active:
+                    verified_active_connections.append(connection)
             else:
-                connection_client_ids[connection.connection_id] = None
+                connection_details[connection.connection_id] = {
+                    "client_id": None,
+                    "is_authenticated": False,
+                }
         except Exception as e:
             logger.warning(
-                "Could not get connector for connection",
+                "Could not verify connector authentication",
                 connection_id=connection.connection_id,
                 error=str(e),
             )
-            connection.connector = None
+            connection_details[connection.connection_id] = {
+                "client_id": None,
+                "is_authenticated": False,
+            }
 
-    # Check if there are any active connections
-    active_connections = [conn for conn in connections if conn.is_active]
-    has_authenticated_connection = len(active_connections) > 0
+    # Only count connections that are both active AND actually authenticated
+    has_authenticated_connection = len(verified_active_connections) > 0
 
     return JSONResponse(
         {
@@ -161,8 +175,9 @@ async def connector_status(request: Request, connector_service, session_manager)
                 {
                     "connection_id": conn.connection_id,
                     "name": conn.name,
-                    "client_id": connection_client_ids.get(conn.connection_id),
-                    "is_active": conn.is_active,
+                    "client_id": connection_details.get(conn.connection_id, {}).get("client_id"),
+                    "is_active": conn.is_active and connection_details.get(conn.connection_id, {}).get("is_authenticated", False),
+                    "is_authenticated": connection_details.get(conn.connection_id, {}).get("is_authenticated", False),
                     "created_at": conn.created_at.isoformat(),
                     "last_sync": conn.last_sync.isoformat() if conn.last_sync else None,
                 }
@@ -345,6 +360,81 @@ async def connector_webhook(request: Request, connector_service, session_manager
         return JSONResponse(
             {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
         )
+
+async def connector_disconnect(request: Request, connector_service, session_manager):
+    """Disconnect a connector by deleting its connection"""
+    connector_type = request.path_params.get("connector_type")
+    user = request.state.user
+
+    try:
+        # Get connections for this connector type and user
+        connections = await connector_service.connection_manager.list_connections(
+            user_id=user.user_id, connector_type=connector_type
+        )
+
+        if not connections:
+            return JSONResponse(
+                {"error": f"No {connector_type} connections found"},
+                status_code=404,
+            )
+
+        # Delete all connections for this connector type and user
+        deleted_count = 0
+        for connection in connections:
+            try:
+                # Get the connector to cleanup any subscriptions
+                connector = await connector_service._get_connector(connection.connection_id)
+                if connector and hasattr(connector, 'cleanup_subscription'):
+                    subscription_id = connection.config.get("webhook_channel_id")
+                    if subscription_id:
+                        try:
+                            await connector.cleanup_subscription(subscription_id)
+                        except Exception as e:
+                            logger.warning(
+                                "Failed to cleanup subscription",
+                                connection_id=connection.connection_id,
+                                error=str(e),
+                            )
+            except Exception as e:
+                logger.warning(
+                    "Could not get connector for cleanup",
+                    connection_id=connection.connection_id,
+                    error=str(e),
+                )
+
+            # Delete the connection
+            success = await connector_service.connection_manager.delete_connection(
+                connection.connection_id
+            )
+            if success:
+                deleted_count += 1
+
+        logger.info(
+            "Disconnected connector",
+            connector_type=connector_type,
+            user_id=user.user_id,
+            deleted_count=deleted_count,
+        )
+
+        return JSONResponse(
+            {
+                "status": "disconnected",
+                "connector_type": connector_type,
+                "deleted_connections": deleted_count,
+            }
+        )
+
+    except Exception as e:
+        logger.error(
+            "Failed to disconnect connector",
+            connector_type=connector_type,
+            error=str(e),
+        )
+        return JSONResponse(
+            {"error": f"Disconnect failed: {str(e)}"},
+            status_code=500,
+        )
+
 
 async def connector_token(request: Request, connector_service, session_manager):
     """Get access token for connector API calls (e.g., Pickers)."""
