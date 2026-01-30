@@ -25,6 +25,7 @@ interface CloudConnector {
   clientId: string;
   hasAccessToken: boolean;
   accessTokenError?: string;
+  baseUrl?: string;
 }
 
 export default function UploadProviderPage() {
@@ -83,8 +84,8 @@ export default function UploadProviderPage() {
         const statusData = await statusResponse.json();
         const connections = statusData.connections || [];
         const activeConnection = connections.find(
-          (conn: { is_active: boolean; connection_id: string }) =>
-            conn.is_active,
+          (conn: { is_active: boolean; is_authenticated?: boolean; connection_id: string }) =>
+            conn.is_active && conn.is_authenticated,
         );
         const isConnected = activeConnection !== undefined;
 
@@ -124,6 +125,7 @@ export default function UploadProviderPage() {
           clientId: activeConnection?.client_id,
           hasAccessToken,
           accessTokenError,
+          baseUrl: activeConnection?.base_url,
         });
       } catch (error) {
         console.error("Failed to load connector info:", error);
@@ -352,6 +354,7 @@ export default function UploadProviderPage() {
           isIngesting={isIngesting}
           accessToken={accessToken || undefined}
           clientId={connector.clientId}
+          baseUrl={connector.baseUrl}
           onSettingsChange={setIngestSettings}
         />
       </div>

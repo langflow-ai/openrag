@@ -47,13 +47,10 @@ export const UnifiedCloudPicker = ({
   const effectiveBaseUrl = baseUrl || autoBaseUrl;
 
   // Auto-detect base URL for OneDrive personal accounts
+  // For SharePoint, we require the baseUrl to be provided from the connector config
   useEffect(() => {
-    if (
-      (provider === "onedrive" || provider === "sharepoint") &&
-      !baseUrl &&
-      accessToken &&
-      !autoBaseUrl
-    ) {
+    if (provider === "onedrive" && !baseUrl && accessToken && !autoBaseUrl) {
+      // Only auto-set for OneDrive, not SharePoint
       const getBaseUrl = async () => {
         setIsLoadingBaseUrl(true);
         try {
@@ -164,6 +161,15 @@ export const UnifiedCloudPicker = ({
       <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
         Configuration required: Client ID missing for{" "}
         {provider === "sharepoint" ? "SharePoint" : "OneDrive"}.
+      </div>
+    );
+  }
+
+  if (provider === "sharepoint" && !baseUrl && isAuthenticated) {
+    return (
+      <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
+        Configuration required: SharePoint site URL is not configured. 
+        Please ensure your SharePoint connector has a valid site URL (e.g., https://contoso.sharepoint.com/sites/yoursite).
       </div>
     );
   }

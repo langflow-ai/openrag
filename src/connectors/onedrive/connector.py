@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from urllib.parse import urlparse
 import httpx
 
 from ..base import BaseConnector, ConnectorDocument, DocumentACL
@@ -44,6 +45,7 @@ class OneDriveConnector(BaseConnector):
         self.client_id = None
         self.client_secret = None
         self.redirect_uri = config.get("redirect_uri", "http://localhost")
+        self._base_url = config.get("base_url")  # Generic URL field for OneDrive/SharePoint domain
 
         # Try to get credentials, but don't fail if they're missing
         try:
@@ -106,6 +108,16 @@ class OneDriveConnector(BaseConnector):
         """Base URL for Microsoft Graph API calls."""
         return f"https://graph.microsoft.com/{self._graph_api_version}"
 
+    @property
+    def base_url(self) -> Optional[str]:
+        """Generic base URL property (OneDrive/SharePoint domain)"""
+        return self._base_url
+    
+    @base_url.setter
+    def base_url(self, value: str):
+        """Set base URL"""
+        self._base_url = value
+
     def emit(self, doc: ConnectorDocument) -> None:
         """Emit a ConnectorDocument instance."""
         logger.debug(f"Emitting OneDrive document: {doc.id} ({doc.filename})")
@@ -156,6 +168,46 @@ class OneDriveConnector(BaseConnector):
         except Exception as e:
             logger.error(f"OAuth callback failed: {e}")
             raise
+
+    async def _detect_base_url(self) -> Optional[str]:
+        """Override base class method to detect OneDrive URL"""
+        return await self._detect_onedrive_url()
+    
+    async def _detect_onedrive_url(self) -> Optional[str]:
+        """Auto-detect OneDrive URL from Microsoft Graph API"""
+        try:
+            access_token = self.oauth.get_access_token()
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            }
+            
+            async with httpx.AsyncClient() as client:
+                # Get user's default drive to extract OneDrive URL
+                response = await client.get(
+                    f"{self._graph_base_url}/me/drive",
+                    headers=headers,
+                    timeout=30.0,
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    web_url = data.get("webUrl", "")
+                    
+                    # Extract the domain from the webUrl
+                    # e.g., "https://onedrive.live.com/..." or "https://company-my.sharepoint.com/..."
+                    if web_url:
+                        parsed = urlparse(web_url)
+                        onedrive_url = f"{parsed.scheme}://{parsed.netloc}"
+                        logger.debug(f"Detected OneDrive URL: {onedrive_url}")
+                        return onedrive_url
+                else:
+                    logger.warning(f"Failed to get drive info: {response.status_code}")
+                    
+        except Exception as e:
+            logger.warning(f"Failed to auto-detect OneDrive URL: {e}")
+        
+        return None
 
     def sync_once(self) -> None:
         """

@@ -186,12 +186,18 @@ export class OneDriveHandler {
       return;
     }
 
+    // For SharePoint, use the SharePoint site URL as endpoint hint
+    // For OneDrive, use the default OneDrive API endpoint
+    const endpointHint = this.provider === "sharepoint" && this.baseUrl
+      ? this.baseUrl
+      : "api.onedrive.com";
+
     window.OneDrive.open({
       clientId: this.clientId,
       action: "query",
       multiSelect: true,
       advanced: {
-        endpointHint: "api.onedrive.com",
+        endpointHint: endpointHint,
         accessToken: this.accessToken,
       },
       success: (response: any) => {

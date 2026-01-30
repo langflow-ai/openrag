@@ -46,7 +46,8 @@ class SharePointConnector(BaseConnector):
         self.client_id = None
         self.client_secret = None
         self.tenant_id = config.get("tenant_id", "common")
-        self.sharepoint_url = config.get("sharepoint_url")
+        # base_url is the generic field name, sharepoint_url is kept for backward compatibility
+        self.sharepoint_url = config.get("base_url") or config.get("sharepoint_url")
         self.redirect_uri = config.get("redirect_uri", "http://localhost")
         
         # Try to get credentials, but don't fail if they're missing
@@ -111,6 +112,16 @@ class SharePointConnector(BaseConnector):
         """Base URL for Microsoft Graph API calls"""
         return f"https://graph.microsoft.com/{self._graph_api_version}"
     
+    @property
+    def base_url(self) -> Optional[str]:
+        """Generic base URL property (returns sharepoint_url for SharePoint connector)"""
+        return self.sharepoint_url
+    
+    @base_url.setter
+    def base_url(self, value: str):
+        """Set base URL (updates sharepoint_url internally)"""
+        self.sharepoint_url = value
+    
     def emit(self, doc: ConnectorDocument) -> None:
         """
         Emit a ConnectorDocument instance.
@@ -158,12 +169,60 @@ class SharePointConnector(BaseConnector):
             success = await self.oauth.handle_authorization_callback(auth_code, self.redirect_uri)
             if success:
                 self._authenticated = True
-                return {"status": "success"}
+                
+                # Auto-detect base URL from user's drive
+                detected_url = await self._detect_base_url()
+                if detected_url:
+                    self.base_url = detected_url
+                    logger.info(f"Auto-detected base URL: {detected_url}")
+                
+                return {"status": "success", "base_url": self.base_url}
             else:
                 raise ValueError("OAuth callback failed")
         except Exception as e:
             logger.error(f"OAuth callback failed: {e}")
             raise
+    
+    async def _detect_base_url(self) -> Optional[str]:
+        """Override base class method to detect SharePoint URL"""
+        return await self._detect_sharepoint_url()
+    
+    async def _detect_sharepoint_url(self) -> Optional[str]:
+        """Auto-detect SharePoint URL from Microsoft Graph API"""
+        try:
+            access_token = self.oauth.get_access_token()
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            }
+            
+            async with httpx.AsyncClient() as client:
+                # Get user's default drive to extract SharePoint URL
+                response = await client.get(
+                    f"{self._graph_base_url}/me/drive",
+                    headers=headers,
+                    timeout=30.0,
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    web_url = data.get("webUrl", "")
+                    
+                    # Extract the SharePoint domain from the webUrl
+                    # e.g., "https://ibmciodev-my.sharepoint.com/personal/user/Documents"
+                    # -> "https://ibmciodev-my.sharepoint.com"
+                    if web_url:
+                        parsed = urlparse(web_url)
+                        sharepoint_url = f"{parsed.scheme}://{parsed.netloc}"
+                        logger.debug(f"Detected SharePoint URL: {sharepoint_url}")
+                        return sharepoint_url
+                else:
+                    logger.warning(f"Failed to get drive info: {response.status_code}")
+                    
+        except Exception as e:
+            logger.warning(f"Failed to auto-detect SharePoint URL: {e}")
+        
+        return None
     
     def sync_once(self) -> None:
         """

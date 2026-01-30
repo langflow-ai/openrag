@@ -3,11 +3,14 @@ import uuid
 import json
 import httpx
 import aiofiles
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 import asyncio
 
 from config.settings import WEBHOOK_BASE_URL, is_no_auth_mode
+
+logger = logging.getLogger(__name__)
 from session_manager import SessionManager
 from services.langflow_mcp_service import LangflowMCPService
 from connectors.google_drive.oauth import GoogleDriveOAuth
@@ -376,12 +379,32 @@ class AuthService:
         self, connection_id: str, connection_config
     ) -> dict:
         """Handle data source connection - keep the connection for syncing"""
-        return {
+        result = {
             "status": "authenticated",
             "connection_id": connection_id,
             "purpose": "data_source",
             "connector_type": connection_config.connector_type,
         }
+        
+        # For SharePoint/OneDrive, auto-detect the base URL after authentication
+        if connection_config.connector_type in ("sharepoint", "onedrive"):
+            try:
+                # Get the connector to detect base URL
+                connector = await self.connector_service.connection_manager.get_connector(
+                    connection_id
+                )
+                if connector and hasattr(connector, '_detect_base_url'):
+                    detected_url = await connector._detect_base_url()
+                    if detected_url:
+                        # Update connection config with detected URL (generic field name)
+                        connection_config.config["base_url"] = detected_url
+                        await self.connector_service.connection_manager.save_connections()
+                        result["base_url"] = detected_url
+                        logger.info(f"Auto-detected base URL: {detected_url}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-detect base URL: {e}")
+        
+        return result
 
     async def get_user_info(self, request) -> Optional[dict]:
         """Get current user information from request"""

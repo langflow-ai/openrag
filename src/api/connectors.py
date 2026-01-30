@@ -141,9 +141,18 @@ async def connector_status(request: Request, connector_service, session_manager)
             if connector is not None:
                 # Actually verify the connection by trying to authenticate
                 is_authenticated = await connector.authenticate()
+                
+                # Get base URL if available (for SharePoint/OneDrive connectors)
+                base_url = None
+                if hasattr(connector, 'base_url'):
+                    base_url = connector.base_url
+                elif hasattr(connector, 'sharepoint_url'):
+                    base_url = connector.sharepoint_url  # Backward compatibility
+                
                 connection_details[connection.connection_id] = {
                     "client_id": connector.get_client_id(),
                     "is_authenticated": is_authenticated,
+                    "base_url": base_url,
                 }
                 if is_authenticated and connection.is_active:
                     verified_active_connections.append(connection)
@@ -151,6 +160,7 @@ async def connector_status(request: Request, connector_service, session_manager)
                 connection_details[connection.connection_id] = {
                     "client_id": None,
                     "is_authenticated": False,
+                    "base_url": None,
                 }
         except Exception as e:
             logger.warning(
@@ -161,6 +171,7 @@ async def connector_status(request: Request, connector_service, session_manager)
             connection_details[connection.connection_id] = {
                 "client_id": None,
                 "is_authenticated": False,
+                "base_url": None,
             }
 
     # Only count connections that are both active AND actually authenticated
@@ -178,6 +189,7 @@ async def connector_status(request: Request, connector_service, session_manager)
                     "client_id": connection_details.get(conn.connection_id, {}).get("client_id"),
                     "is_active": conn.is_active and connection_details.get(conn.connection_id, {}).get("is_authenticated", False),
                     "is_authenticated": connection_details.get(conn.connection_id, {}).get("is_authenticated", False),
+                    "base_url": connection_details.get(conn.connection_id, {}).get("base_url"),
                     "created_at": conn.created_at.isoformat(),
                     "last_sync": conn.last_sync.isoformat() if conn.last_sync else None,
                 }

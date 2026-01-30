@@ -15,11 +15,14 @@ class OneDriveOAuth:
     # Reserved scopes that must NOT be sent on token or silent calls
     RESERVED_SCOPES = {"openid", "profile", "offline_access"}
 
-    # For PERSONAL Microsoft Accounts (OneDrive consumer):
+    # For Microsoft Accounts (OneDrive consumer & work/school):
     # - Use AUTH_SCOPES for interactive auth (consent + refresh token issuance)
     # - Use RESOURCE_SCOPES for acquire_token_silent / refresh paths
-    AUTH_SCOPES = ["User.Read", "Files.Read.All", "offline_access"]
-    RESOURCE_SCOPES = ["User.Read", "Files.Read.All"]
+    # NOTE: Using Files.Read (not Files.Read.All) to avoid requiring admin consent
+    # for work/school accounts. Files.Read only accesses the user's own files.
+    # Files.Read.Selected allows access to files explicitly selected via file picker.
+    AUTH_SCOPES = ["User.Read", "Files.Read", "Files.Read.Selected", "offline_access"]
+    RESOURCE_SCOPES = ["User.Read", "Files.Read", "Files.Read.Selected"]
     SCOPES = AUTH_SCOPES  # Backward-compat alias if something references .SCOPES
 
     # Kept for reference; MSAL derives endpoints from `authority`
@@ -202,7 +205,7 @@ class OneDriveOAuth:
             # Interactive auth includes offline_access
             "scopes": self.AUTH_SCOPES,
             "redirect_uri": redirect_uri,
-            "prompt": "consent",  # ensure refresh token on first run
+            "prompt": "select_account",  # Let user pick account without forcing consent
         }
         if state:
             kwargs["state"] = state  # Optional CSRF protection

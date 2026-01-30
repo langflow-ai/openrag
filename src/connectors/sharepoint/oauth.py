@@ -15,11 +15,13 @@ class SharePointOAuth:
     # Reserved scopes that must NOT be sent on token or silent calls
     RESERVED_SCOPES = {"openid", "profile", "offline_access"}
 
-    # For PERSONAL Microsoft Accounts (OneDrive consumer):
+    # For SharePoint (work/school accounts):
     # - Use AUTH_SCOPES for interactive auth (consent + refresh token issuance)
     # - Use RESOURCE_SCOPES for acquire_token_silent / refresh paths
-    AUTH_SCOPES = ["User.Read", "Files.Read.All", "offline_access"]
-    RESOURCE_SCOPES = ["User.Read", "Files.Read.All"]
+    # NOTE: Using Files.Read and Files.Read.Selected to avoid admin consent.
+    # This limits access to files the user personally has access to.
+    AUTH_SCOPES = ["User.Read", "Files.Read", "Files.Read.Selected", "offline_access"]
+    RESOURCE_SCOPES = ["User.Read", "Files.Read", "Files.Read.Selected"]
     SCOPES = AUTH_SCOPES  # Backward compatibility alias
 
     # Kept for reference; MSAL derives endpoints from `authority`
@@ -205,7 +207,7 @@ class SharePointOAuth:
             # IMPORTANT: interactive auth includes offline_access
             "scopes": self.AUTH_SCOPES,
             "redirect_uri": redirect_uri,
-            "prompt": "consent",  # ensure refresh token on first run
+            "prompt": "select_account",  # Let user pick account without forcing consent
         }
         if state:
             kwargs["state"] = state  # Optional CSRF protection

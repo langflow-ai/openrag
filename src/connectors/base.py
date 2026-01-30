@@ -147,3 +147,11 @@ class BaseConnector(ABC):
     @property
     def is_authenticated(self) -> bool:
         return self._authenticated
+
+    async def _detect_base_url(self) -> Optional[str]:
+        """Auto-detect base URL for the connector.
+        
+        Default implementation returns None.
+        Subclasses (OneDrive, SharePoint) should override this method.
+        """
+        return None
