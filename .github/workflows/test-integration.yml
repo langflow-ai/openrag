@@ -33,12 +33,12 @@ jobs:
 
     steps:
       - run: df -h
-      
+
       - name: Cleanup Docker cache
         run: |
           docker system prune -af || true
           docker builder prune -af || true
-          docker-compose -f docker-compose.yml down -v --remove-orphans || true
+          docker compose -f docker-compose.yml down -v --remove-orphans || true
 
       - name: Cleanup root-owned files (OpenSearch data, config)
         run: |
