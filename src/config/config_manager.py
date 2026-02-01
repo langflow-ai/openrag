@@ -52,7 +52,7 @@ class ProvidersConfig:
     def get_provider_config(self, provider: str):
         """Get configuration for a specific provider."""
         provider_lower = provider.lower()
-        if provider_lower == "openai":
+        if provider_lower.startswith("openai"):
             return self.openai
         elif provider_lower == "anthropic":
             return self.anthropic

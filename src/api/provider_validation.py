@@ -139,8 +139,8 @@ async def validate_provider_setup(
     try:
         logger.info(f"Starting validation for provider: {provider_lower} (test_completion={test_completion})")
 
-        if provider == "openai" and not endpoint:
-            endpoint = os.environ.get("OPENAI_BASE_API", "https://api.openai.com")
+        if provider.startswith("openai") and not endpoint:
+            endpoint = os.environ.get("OPENAI_API_BASE", "https://api.openai.com")
 
         if test_completion:
             # Full validation with completion/embedding tests (consumes credits)
@@ -253,7 +253,7 @@ async def _test_openai_lightweight_health(api_key: str, endpoint: str) -> None:
         }
 
         url = f"{endpoint}/v1/models"
-        logger.debug("Testing openai lightweight health", url=url)
+        logger.info("Testing openai lightweight health", url=url)
         async with httpx.AsyncClient() as client:
             # Use /v1/models endpoint which validates the key without consuming credits
             response = await client.get(
@@ -316,7 +316,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str, endpo
             # Try with max_tokens first
             payload = {**base_payload, "max_tokens": 50}
             url = f"{endpoint}/v1/chat/completions"
-            logger.debug("Test openai completion tools", url=url)
+            logger.info("Test openai completion tools", url=url)
             response = await client.post(
                 url=url,
                 headers=headers,
@@ -328,7 +328,7 @@ async def _test_openai_completion_with_tools(api_key: str, llm_model: str, endpo
             if response.status_code != 200:
                 logger.info("max_tokens parameter failed, trying max_completion_tokens instead")
                 payload = {**base_payload, "max_completion_tokens": 50}
-                logger.debug("Test openai completion tools", url=url)
+                logger.info("Test openai completion tools", url=url)
                 response = await client.post(
                     url=url,
                     headers=headers,
