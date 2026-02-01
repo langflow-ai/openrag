@@ -4,6 +4,7 @@ slug: /support/troubleshoot
 ---
 
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
+import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 
 This page provides troubleshooting advice for issues you might encounter when using OpenRAG or contributing to OpenRAG.
 
@@ -66,14 +67,53 @@ podman machine start
 
 ## Port conflicts
 
-With the default [environment variable](/reference/configuration) values, OpenRAG requires the following ports to be available on the host machine:
+With the default [environment variable](/reference/configuration) configuration, OpenRAG requires the following ports to be available on the host machine:
 
-* 3000: Langflow application
-* 5001: Docling local ingestion service
-* 5601: OpenSearch Dashboards
-* 7860: Docling UI
-* 8000: Docling API
-* 9200: OpenSearch service
+* `3000`: OpenRAG frontend
+* `7860`: Langflow service
+* `8000`: OpenRAG backend
+* `9200`: OpenSearch service
+* `5601`: OpenSearch dashboards
+* `5001`: Docling service
+
+### Map the OpenRAG frontend port
+
+If you need to run the OpenRAG frontend on a different port, you can map the [`openrag-frontend`](https://github.com/langflow-ai/openrag/blob/main/docker-compose.yml#L89) service to a different port in the `docker-compose` file.
+
+For TUI-managed deployments, the `docker-compose` file is located at `~/.openrag/tui`.
+
+For example, the following configuration maps the OpenRAG frontend to `3808` on the host machine:
+
+```yaml
+  openrag-frontend:
+    image: langflowai/openrag-frontend:${OPENRAG_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: openrag-frontend
+    depends_on:
+      - openrag-backend
+    environment:
+      - OPENRAG_BACKEND_HOST=openrag-backend
+    ports:
+      - "3808:3000" # Map host port 3808 to container port 3000
+```
+
+You must [restart the containers](/manage-services#stop-and-start-containers) after making this change.
+
+:::tip
+This configuration isn't recommended unless you _must_ maintain a different service on host port 3000.
+If you experience errors or other issues with port mapping, submit an [OpenRAG GitHub issue](https://github.com/langflow-ai/openrag/issues) for additional support.
+:::
+
+If any of these ports are already in use, you can configure alternative ports by setting environment variables in your `.env` file:
+
+* Set `FRONTEND_PORT` to change the frontend port (default: `3000`)
+* Set `LANGFLOW_PORT` to change the Langflow port (default: `7860`)
+
+If you change `LANGFLOW_PORT`, also update `LANGFLOW_PUBLIC_URL` to match the new port. For example, if you set `LANGFLOW_PORT=8760`, set `LANGFLOW_PUBLIC_URL=http://localhost:8760`.
+
+After updating your `.env` file, restart your OpenRAG services to apply the changes.
 
 ## OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
 
@@ -153,9 +193,23 @@ To resolve this issue, do the following:
 
 See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
 
-## Ollama model issues
+## Ollama model issues {#ollama-model-issues}
 
 <PartialOllamaModels />
+
+## IBM watsonx.ai model issues {#ibm-watsonxai-model-issues}
+
+<PartialWatsonxModels />
+
+## Language model isn't listed in OpenRAG settings or onboarding
+
+If your language model isn't listed in the OpenRAG settings or application onboarding, then the model likely doesn't support tool calling, which is required for OpenRAG.
+You must select a different model.
+If no other models are listed, make sure your model provider API key or instance has access to models that support tool calling.
+
+See also [Ollama model issues](#ollama-model-issues), [IBM watsonx.ai model issues](#ibm-watsonxai-model-issues), and [Troubleshoot chat](/chat#troubleshoot-chat).
+
+You can submit an [OpenRAG GitHub issue](https://github.com/langflow-ai/openrag/issues) to request support for specific models.
 
 ## Chat issues
 
