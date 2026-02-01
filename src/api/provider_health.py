@@ -42,7 +42,7 @@ async def check_provider_health(request):
             provider = current_config.agent.llm_provider
 
         # Validate provider name
-        valid_providers = ["openai_ete", "openai", "ollama", "watsonx", "anthropic"]
+        valid_providers = ["openai", "ollama", "watsonx", "anthropic"]
         if provider not in valid_providers:
             return JSONResponse(
                 {
