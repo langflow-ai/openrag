@@ -139,7 +139,7 @@ async def validate_provider_setup(
     try:
         logger.info(f"Starting validation for provider: {provider_lower} (test_completion={test_completion})")
 
-        if provider.startswith("openai") and not endpoint:
+        if provider == "openai" and not endpoint:
             endpoint = os.environ.get("OPENAI_API_BASE", "https://api.openai.com")
 
         if test_completion:
@@ -187,7 +187,7 @@ async def _test_lightweight_health(
 ) -> None:
     """Test provider health with lightweight check (no credits consumed)."""
 
-    if provider.startswith("openai"):
+    if provider == "openai":
         await _test_openai_lightweight_health(api_key, endpoint)
     elif provider == "watsonx":
         await _test_watsonx_lightweight_health(api_key, endpoint, project_id)
@@ -208,7 +208,7 @@ async def _test_completion_with_tools(
 ) -> None:
     """Test completion with tool calling for the provider."""
 
-    if provider.startswith("openai"):
+    if provider == "openai":
         await _test_openai_completion_with_tools(api_key, llm_model, endpoint)
     elif provider == "watsonx":
         await _test_watsonx_completion_with_tools(api_key, llm_model, endpoint, project_id)
@@ -229,7 +229,7 @@ async def _test_embedding(
 ) -> None:
     """Test embedding generation for the provider."""
 
-    if provider.startswith("openai"):
+    if provider == "openai":
         await _test_openai_embedding(api_key, embedding_model, endpoint)
     elif provider == "watsonx":
         await _test_watsonx_embedding(api_key, embedding_model, endpoint, project_id)
