@@ -448,7 +448,7 @@ async def _ingest_default_documents_langflow(services, file_paths):
         tweaks=default_tweaks,
         settings=None,  # Use default ingestion settings
         delete_after_ingest=True,  # Clean up after ingestion
-        replace_duplicates=False,
+        replace_duplicates=True,
     )
 
     logger.info(
