@@ -251,56 +251,80 @@ class SharePointOAuth:
 
     async def is_authenticated(self) -> bool:
         """Check if we have valid credentials (simplified like Google Drive)."""
+        logger.info(f"SharePoint is_authenticated: Starting check, token_file={self.token_file}")
         try:
             # First try to load credentials if we haven't already
             if not self._current_account:
-                await self.load_credentials()
+                logger.info("SharePoint is_authenticated: No current account, loading credentials")
+                load_result = await self.load_credentials()
+                logger.info(f"SharePoint is_authenticated: load_credentials returned {load_result}")
+
+            logger.info(f"SharePoint is_authenticated: current_account={self._current_account is not None}")
 
             # If we have an account, try to get a token (MSAL will refresh if needed)
             if self._current_account:
+                logger.info(f"SharePoint is_authenticated: Trying acquire_token_silent with account {self._current_account.get('username', 'unknown')}")
+                logger.info(f"SharePoint is_authenticated: RESOURCE_SCOPES={self.RESOURCE_SCOPES}")
                 # IMPORTANT: use RESOURCE_SCOPES here
                 result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=self._current_account)
                 if result and "access_token" in result:
+                    logger.info("SharePoint is_authenticated: Successfully acquired token with account")
                     return True
                 else:
-                    error_msg = (result or {}).get("error") or "No result returned"
-                    logger.debug(f"Token acquisition failed for current account: {error_msg}")
+                    error_msg = (result or {}).get("error") or (result or {}).get("error_description") or "No result returned"
+                    logger.warning(f"SharePoint is_authenticated: Token acquisition failed for current account: {error_msg}")
+                    logger.warning(f"SharePoint is_authenticated: Full result: {result}")
 
             # Fallback: try without specific account
+            logger.info("SharePoint is_authenticated: Fallback - trying acquire_token_silent without account")
             result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=None)
             if result and "access_token" in result:
                 # Update current account if this worked
                 accounts = self.app.get_accounts()
+                logger.info(f"SharePoint is_authenticated: Fallback succeeded, found {len(accounts)} accounts")
                 if accounts:
                     self._current_account = accounts[0]
                 return True
 
+            logger.warning(f"SharePoint is_authenticated: Fallback also failed, result: {result}")
             return False
 
         except Exception as e:
-            logger.error(f"Authentication check failed: {e}")
+            logger.error(f"SharePoint is_authenticated: Exception: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def get_access_token(self) -> str:
         """Get an access token for Microsoft Graph (simplified like Google Drive)."""
+        logger.info(f"SharePoint get_access_token: Starting, current_account={self._current_account is not None}")
         try:
             # Try with current account first
             if self._current_account:
+                logger.info(f"SharePoint get_access_token: Trying with account {self._current_account.get('username', 'unknown')}")
                 result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=self._current_account)
                 if result and "access_token" in result:
+                    logger.info("SharePoint get_access_token: Success with current account")
                     return result["access_token"]
+                else:
+                    logger.warning(f"SharePoint get_access_token: Failed with account, result: {result}")
 
             # Fallback: try without specific account
+            logger.info("SharePoint get_access_token: Fallback - trying without account")
             result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=None)
             if result and "access_token" in result:
+                logger.info("SharePoint get_access_token: Fallback success")
                 return result["access_token"]
 
             # If we get here, authentication has failed
             error_msg = (result or {}).get("error_description") or (result or {}).get("error") or "No valid authentication"
+            logger.error(f"SharePoint get_access_token: All attempts failed, error: {error_msg}")
             raise ValueError(f"Failed to acquire access token: {error_msg}")
 
         except Exception as e:
-            logger.error(f"Failed to get access token: {e}")
+            logger.error(f"SharePoint get_access_token: Exception: {e}")
+            import traceback
+            traceback.print_exc()
             raise
 
     async def revoke_credentials(self):

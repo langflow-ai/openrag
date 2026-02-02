@@ -146,8 +146,12 @@ async def connector_status(request: Request, connector_service, session_manager)
                 base_url = None
                 if hasattr(connector, 'base_url'):
                     base_url = connector.base_url
+                    logger.debug(f"connector_status: Got base_url from connector.base_url: {base_url}")
                 elif hasattr(connector, 'sharepoint_url'):
                     base_url = connector.sharepoint_url  # Backward compatibility
+                    logger.debug(f"connector_status: Got base_url from connector.sharepoint_url: {base_url}")
+                else:
+                    logger.debug(f"connector_status: Connector has no base_url or sharepoint_url attribute")
                 
                 connection_details[connection.connection_id] = {
                     "client_id": connector.get_client_id(),
