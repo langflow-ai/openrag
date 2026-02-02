@@ -29,6 +29,40 @@ PURPLE=\033[38;2;119;62;255m
 YELLOW=\033[1;33m
 CYAN=\033[0;36m
 NC=\033[0m
+GREEN=\033[0;32m
+
+######################
+# REUSABLE FUNCTIONS
+######################
+
+# JWT OpenSearch test function - tests that JWT authentication works against OpenSearch
+# Usage: $(call test_jwt_opensearch)
+define test_jwt_opensearch
+	echo "$(CYAN)=== JWT OpenSearch Authentication Test ===$(NC)"; \
+	echo "$(YELLOW)Generating test JWT token...$(NC)"; \
+	TEST_TOKEN=$$(uv run python -c 'from utils.logging_config import configure_logging; configure_logging(log_level="CRITICAL"); \
+	    from src.session_manager import SessionManager, AnonymousUser; \
+	    sm = SessionManager("test"); \
+	    print(sm.create_jwt_token(AnonymousUser()))' 2>/dev/null); \
+	if [ -z "$$TEST_TOKEN" ]; then \
+	    echo "$(RED)Failed to generate JWT token$(NC)"; \
+	    exit 1; \
+	fi; \
+	echo "$(YELLOW)Testing JWT against OpenSearch...$(NC)"; \
+	RESPONSE_FILE=$$(mktemp /tmp/jwt-os-diag.XXXXXX); \
+	curl --fail-with-body -k -s \
+	    -o "$$RESPONSE_FILE" \
+	    -H "Authorization: Bearer $$TEST_TOKEN" \
+	    -H "Content-Type: application/json" \
+	    https://localhost:9200/documents/_search \
+	    -d '{"query":{"match_all":{}}}' \
+	    || { echo "$(RED)curl command failed (network error or HTTP 4xx/5xx)$(NC)"; cat "$$RESPONSE_FILE" 2>/dev/null | head -c 400; rm -f "$$RESPONSE_FILE"; exit 1; }; \
+	echo "$(GREEN)Success - OpenSearch accepted JWT$(NC)"; \
+	echo "Response preview:"; \
+	head -c 200 "$$RESPONSE_FILE" | sed 's/^/  /' || true; \
+	rm -f "$$RESPONSE_FILE"; \
+	echo "";
+endef
 
 ######################
 # PHONY TARGETS
@@ -36,7 +70,7 @@ NC=\033[0m
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils \
        dev dev-cpu dev-local dev-local-cpu stop clean build logs \
        shell-backend shell-frontend install \
-       test test-integration test-ci test-ci-local test-sdk lint \
+       test test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
        backend frontend docling docling-stop install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
        dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev
@@ -200,6 +234,10 @@ help_test: ## Show testing commands
 	@echo "$(PURPLE)SDK Tests:$(NC)"
 	@echo "  $(PURPLE)make test-sdk$(NC)        - Run SDK integration tests"
 	@echo "                         (requires running OpenRAG at localhost:3000)"
+	@echo ''
+	@echo "$(PURPLE)Diagnostic Tests:$(NC)"
+	@echo "  $(PURPLE)make test-os-jwt$(NC)     - Test JWT authentication against OpenSearch"
+	@echo "                         (requires running OpenSearch)"
 	@echo ''
 	@echo "$(PURPLE)Code Quality:$(NC)"
 	@echo "  $(PURPLE)make lint$(NC)            - Run linting checks"
@@ -408,47 +446,47 @@ clean: stop ## Stop containers and remove volumes
 	@echo "$(PURPLE)Cleanup complete!$(NC)"
 
 factory-reset: ## Complete reset (stop, remove volumes, clear data, remove images)
-	@echo "$(RED)WARNING: This will completely reset OpenRAG!$(NC)"
-	@echo "$(YELLOW)This will:$(NC)"
-	@echo "  - Stop all containers"
-	@echo "  - Remove all volumes"
-	@echo "  - Delete opensearch-data directory"
-	@echo "  - Delete config directory"
-	@echo "  - Delete JWT keys (private_key.pem, public_key.pem)"
-	@echo "  - Remove local OpenRAG images"
-	@echo ""
-	@read -p "Are you sure? Type 'yes' to continue: " confirm; \
+	@echo "$(RED)WARNING: This will completely reset OpenRAG!$(NC)"; \
+	echo "$(YELLOW)This will:$(NC)"; \
+	echo "  - Stop all containers"; \
+	echo "  - Remove all volumes"; \
+	echo "  - Delete opensearch-data directory"; \
+	echo "  - Delete config directory"; \
+	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
+	echo "  - Remove local OpenRAG images"; \
+	echo ""; \
+	read -p "Are you sure? Type 'yes' to continue: " confirm; \
 	if [ "$$confirm" != "yes" ]; then \
 		echo "$(CYAN)Factory reset cancelled.$(NC)"; \
 		exit 0; \
-	fi
-	@echo ""
-	@echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"
-	$(COMPOSE_CMD) down -v --remove-orphans --rmi local || true
-	@echo "$(YELLOW)Removing local data directories...$(NC)"
-	@if [ -d "opensearch-data" ]; then \
+	fi; \
+	echo ""; \
+	echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
+	$(COMPOSE_CMD) down -v --remove-orphans --rmi local || true; \
+	echo "$(YELLOW)Removing local data directories...$(NC)"; \
+	if [ -d "opensearch-data" ]; then \
 		echo "Removing opensearch-data..."; \
 		uv run python scripts/clear_opensearch_data.py 2>/dev/null || \
 		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/opensearch-data:/data" alpine sh -c "rm -rf /data/*" 2>/dev/null || \
 		rm -rf opensearch-data/* 2>/dev/null || true; \
 		rm -rf opensearch-data 2>/dev/null || true; \
 		echo "$(PURPLE)opensearch-data removed$(NC)"; \
-	fi
-	@if [ -d "config" ]; then \
+	fi; \
+	if [ -d "config" ]; then \
 		echo "Removing config..."; \
 		rm -rf config; \
 		echo "$(PURPLE)config removed$(NC)"; \
-	fi
-	@if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
+	fi; \
+	if [ -f "keys/private_key.pem" ] || [ -f "keys/public_key.pem" ]; then \
 		echo "Removing JWT keys..."; \
 		rm -f keys/private_key.pem keys/public_key.pem; \
 		echo "$(PURPLE)JWT keys removed$(NC)"; \
-	fi
-	@echo "$(YELLOW)Cleaning up system...$(NC)"
-	$(CONTAINER_RUNTIME) system prune -f
-	@echo ""
-	@echo "$(PURPLE)Factory reset complete!$(NC)"
-	@echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)"
+	fi; \
+	echo "$(YELLOW)Cleaning up system...$(NC)"; \
+	$(CONTAINER_RUNTIME) system prune -f; \
+	echo ""; \
+	echo "$(PURPLE)Factory reset complete!$(NC)"; \
+	echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)";
 
 ######################
 # LOCAL DEVELOPMENT
@@ -650,17 +688,9 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 	npm install && npm run build && \
 	OPENRAG_URL=http://localhost:3000 npm test || TEST_RESULT=1; \
 	cd ../..; \
-	echo ""; \
-	echo "$(CYAN)=== Post-test JWT diagnostics ===$(NC)"; \
-	echo "$(YELLOW)Generating test JWT token...$(NC)"; \
-	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))" 2>/dev/null || echo ""); \
-	if [ -n "$$TEST_TOKEN" ]; then \
-		echo "$(YELLOW)Testing JWT against OpenSearch...$(NC)"; \
-		HTTP_CODE=$$(curl -k -s -w "%{http_code}" -o /tmp/os_diag.txt -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
-		echo "HTTP $$HTTP_CODE: $$(cat /tmp/os_diag.txt | head -c 150)"; \
-	fi; \
 	echo "$(CYAN)=================================$(NC)"; \
 	echo ""; \
+	($(call test_jwt_opensearch)) || TEST_RESULT=1; \
 	echo "$(YELLOW)Tearing down infra$(NC)"; \
 	uv run python scripts/docling_ctl.py stop || true; \
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
@@ -745,15 +775,6 @@ test-ci-local: ## Same as test-ci but builds all images locally
 	npm install && npm run build && \
 	OPENRAG_URL=http://localhost:3000 npm test || TEST_RESULT=1; \
 	cd ../..; \
-	echo ""; \
-	echo "$(CYAN)=== Post-test JWT diagnostics ===$(NC)"; \
-	echo "$(YELLOW)Generating test JWT token...$(NC)"; \
-	TEST_TOKEN=$$(uv run python -c "from src.session_manager import SessionManager, AnonymousUser; sm = SessionManager('test'); print(sm.create_jwt_token(AnonymousUser()))" 2>/dev/null || echo ""); \
-	if [ -n "$$TEST_TOKEN" ]; then \
-		echo "$(YELLOW)Testing JWT against OpenSearch...$(NC)"; \
-		HTTP_CODE=$$(curl -k -s -w "%{http_code}" -o /tmp/os_diag.txt -H "Authorization: Bearer $$TEST_TOKEN" -H "Content-Type: application/json" https://localhost:9200/documents/_search -d '{"query":{"match_all":{}}}' 2>&1); \
-		echo "HTTP $$HTTP_CODE: $$(cat /tmp/os_diag.txt | head -c 150)"; \
-	fi; \
 	echo "$(CYAN)=================================$(NC)"; \
 	echo ""; \
 	if [ $$TEST_RESULT -ne 0 ]; then \
@@ -766,10 +787,14 @@ test-ci-local: ## Same as test-ci but builds all images locally
 		$(CONTAINER_RUNTIME) logs openrag-backend 2>&1 | tail -200 || echo "$(RED)Could not get backend logs$(NC)"; \
 		echo ""; \
 	fi; \
+	($(call test_jwt_opensearch)) || TEST_RESULT=1; \
 	echo "$(YELLOW)Tearing down infra$(NC)"; \
 	uv run python scripts/docling_ctl.py stop || true; \
 	$(COMPOSE_CMD) down -v 2>/dev/null || true; \
 	exit $$TEST_RESULT
+
+test-os-jwt: ## Test JWT authentication against OpenSearch
+	@$(call test_jwt_opensearch)
 
 test-sdk: ## Run SDK integration tests (requires running OpenRAG at localhost:3000)
 	@echo "$(YELLOW)Running SDK integration tests...$(NC)"
