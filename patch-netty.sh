@@ -8,6 +8,25 @@ DOWNLOAD_DIR="/tmp/netty-${NETTY_VERSION}"
 # Create download directory
 mkdir -p "${DOWNLOAD_DIR}"
 
+# Download with retry logic for transient network failures
+download_with_retry() {
+    local url="$1"
+    local output="$2"
+    local max_retries=3
+    local retry_delay=5
+    
+    for i in $(seq 1 $max_retries); do
+        if curl -fsSL "$url" -o "$output"; then
+            return 0
+        fi
+        echo "    Attempt $i failed, retrying in ${retry_delay}s..."
+        sleep $retry_delay
+    done
+    
+    echo "    ERROR: Failed to download after $max_retries attempts: $url"
+    return 1
+}
+
 # List of unique Netty artifacts
 # Some of them are not used below, but we'll keep the complete set here
 NETTY_ARTIFACTS=(
@@ -32,8 +51,8 @@ for artifact in "${NETTY_ARTIFACTS[@]}"; do
     jar_file="${artifact}-${NETTY_VERSION}.jar"
     if [ ! -f "${DOWNLOAD_DIR}/${jar_file}" ]; then
         echo "  Downloading ${artifact}..."
-        curl -fsSL "${MAVEN_BASE_URL}/${artifact}/${NETTY_VERSION}/${jar_file}" \
-            -o "${DOWNLOAD_DIR}/${jar_file}"
+        download_with_retry "${MAVEN_BASE_URL}/${artifact}/${NETTY_VERSION}/${jar_file}" \
+            "${DOWNLOAD_DIR}/${jar_file}"
     fi
 done
 
