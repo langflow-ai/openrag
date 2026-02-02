@@ -575,7 +575,7 @@ function KnowledgeSourcesPage() {
 							result.oauth_config.redirect_uri,
 						)}&` +
 						`access_type=offline&` +
-						`prompt=consent&` +
+						`prompt=select_account&` +
 						`state=${result.connection_id}`;
 
 					window.location.href = authUrl;
