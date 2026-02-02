@@ -98,7 +98,18 @@ export const UnifiedCloudPicker = ({
   ]);
 
   const handleAddFiles = () => {
+    // === DIAGNOSTIC LOGGING ===
+    console.log("=== UnifiedCloudPicker handleAddFiles ===");
+    console.log("Provider:", provider);
+    console.log("Client ID:", clientId);
+    console.log("Base URL (from prop):", baseUrl);
+    console.log("Auto Base URL:", autoBaseUrl);
+    console.log("Effective Base URL:", effectiveBaseUrl);
+    console.log("Is Picker Loaded:", isPickerLoaded);
+    console.log("Has Access Token:", !!accessToken);
+    
     if (!isPickerLoaded || !accessToken) {
+      console.error("Cannot open picker: isPickerLoaded=", isPickerLoaded, "hasAccessToken=", !!accessToken);
       return;
     }
 

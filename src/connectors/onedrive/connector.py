@@ -103,6 +103,10 @@ class OneDriveConnector(BaseConnector):
             'file_ids': config.get('file_ids') or config.get('selected_files') or config.get('selected_file_ids'),
             'folder_ids': config.get('folder_ids') or config.get('selected_folders') or config.get('selected_folder_ids'),
         })()
+        
+        # Cache for file metadata including download URLs
+        # This allows direct download without Graph API for sharing IDs
+        self._file_infos: Dict[str, Dict[str, Any]] = {}
 
     @property
     def _graph_base_url(self) -> str:
@@ -118,6 +122,26 @@ class OneDriveConnector(BaseConnector):
     def base_url(self, value: str):
         """Set base URL"""
         self._base_url = value
+
+    def set_file_infos(self, file_infos: List[Dict[str, Any]]) -> None:
+        """
+        Cache file metadata including download URLs for later use.
+        This allows direct download without Graph API calls for sharing IDs.
+        
+        Args:
+            file_infos: List of file info dicts with {id, name, mimeType, downloadUrl, size}
+        """
+        self._file_infos = {}
+        for info in file_infos:
+            file_id = info.get("id")
+            if file_id:
+                self._file_infos[file_id] = info
+                if info.get("downloadUrl"):
+                    logger.debug(f"Cached download URL for file {file_id}: {info.get('name')}")
+
+    def get_cached_file_info(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """Get cached file info by ID."""
+        return self._file_infos.get(file_id)
 
     def emit(self, doc: ConnectorDocument) -> None:
         """Emit a ConnectorDocument instance."""
@@ -376,8 +400,56 @@ class OneDriveConnector(BaseConnector):
             if not await self.authenticate():
                 raise RuntimeError("OneDrive authentication failed during file content retrieval")
 
+            # First, check for cached file info with download URL
+            # This is used for OneDrive sharing IDs that can't be resolved via Graph API
+            cached_info = self.get_cached_file_info(file_id)
+            if cached_info and cached_info.get("downloadUrl"):
+                logger.info(f"Using cached download URL for file {file_id}")
+                content = await self._download_file_from_url(cached_info["downloadUrl"])
+                
+                acl = DocumentACL(
+                    owner="",
+                    user_permissions={},
+                    group_permissions={},
+                )
+                
+                return ConnectorDocument(
+                    id=file_id,
+                    filename=cached_info.get("name", "Unknown"),
+                    mimetype=cached_info.get("mimeType", "application/octet-stream"),
+                    content=content,
+                    source_url=cached_info.get("webUrl", ""),
+                    acl=acl,
+                    modified_time=datetime.now(),
+                    created_time=datetime.now(),
+                    metadata={
+                        "onedrive_path": "",
+                        "size": cached_info.get("size", 0),
+                    },
+                )
+
+            # Fall back to Graph API for regular file IDs
             file_metadata = await self._get_file_metadata_by_id(file_id)
             if not file_metadata:
+                # Last-resort: try shares endpoint download directly if this is a sharing ID
+                if '!' in file_id and file_id.split('!', 1)[1].startswith('s'):
+                    logger.info(f"No metadata for sharing ID {file_id}, attempting direct shares download")
+                    token = self.oauth.get_access_token()
+                    headers = {"Authorization": f"Bearer {token}"}
+                    shares_content = await self._download_via_shares_endpoint(file_id, headers)
+                    if shares_content is not None:
+                        acl = DocumentACL(owner="", user_permissions={}, group_permissions={})
+                        return ConnectorDocument(
+                            id=file_id,
+                            filename="Unknown",
+                            mimetype="application/octet-stream",
+                            content=shares_content,
+                            source_url="",
+                            acl=acl,
+                            modified_time=datetime.now(),
+                            created_time=datetime.now(),
+                            metadata={"onedrive_path": "", "size": 0},
+                        )
                 raise ValueError(f"File not found: {file_id}")
 
             download_url = file_metadata.get("download_url")
@@ -415,13 +487,19 @@ class OneDriveConnector(BaseConnector):
             raise
 
     async def _get_file_metadata_by_id(self, file_id: str) -> Optional[Dict[str, Any]]:
-        """Get file metadata by ID using Graph API."""
+        """Get file metadata by ID using Graph API.
+        
+        Handles multiple ID formats:
+        - Standard item ID: uses /me/drive/items/{id}
+        - Personal OneDrive format (driveId!itemId): uses /drives/{driveId}/items/{itemId}
+        - Sharing IDs (with !s prefix): uses /shares endpoint
+        """
         try:
-            url = f"{self._graph_base_url}/me/drive/items/{file_id}"
-            params = dict(self._default_params)
-
-            response = await self._make_graph_request(url, params=params)
-            item = response.json()
+            # Try different endpoints based on ID format
+            item = await self._fetch_item_metadata(file_id)
+            
+            if not item:
+                return None
 
             # Check if it's a folder
             if item.get("folder"):
@@ -451,12 +529,117 @@ class OneDriveConnector(BaseConnector):
             logger.error(f"Failed to get file metadata for {file_id}: {e}")
             return None
 
+    async def _fetch_item_metadata(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch item metadata, trying multiple endpoints for different ID formats."""
+        import base64
+        params = dict(self._default_params)
+        
+        # Check if ID contains '!' which indicates driveId!itemId format
+        if '!' in file_id:
+            parts = file_id.split('!', 1)
+            if len(parts) == 2:
+                drive_id = parts[0]
+                item_id = parts[1]
+                
+                # Handle sharing IDs (item ID starts with 's')
+                if item_id.startswith('s'):
+                    logger.info(f"Detected sharing ID format for {file_id}")
+                    
+                    # Try multiple encoding approaches for the shares endpoint
+                    share_encodings = [
+                        # Approach 1: Encode the full ID with "u!" prefix
+                        base64.urlsafe_b64encode(f"u!{file_id}".encode()).decode().rstrip('='),
+                        # Approach 2: Encode just the share token with "s!" prefix
+                        base64.urlsafe_b64encode(f"s!{item_id}".encode()).decode().rstrip('='),
+                        # Approach 3: Encode the ID directly
+                        base64.urlsafe_b64encode(file_id.encode()).decode().rstrip('='),
+                        # Approach 4: Use the ID as-is (some APIs accept this)
+                        f"u!{file_id}",
+                    ]
+                    
+                    for i, encoded in enumerate(share_encodings):
+                        try:
+                            url = f"{self._graph_base_url}/shares/{encoded}/driveItem"
+                            logger.debug(f"Trying shares endpoint approach {i+1}: {url}")
+                            response = await self._make_graph_request(url, params=params)
+                            if response.status_code == 200:
+                                logger.info(f"Shares endpoint approach {i+1} succeeded")
+                                return response.json()
+                            else:
+                                logger.debug(f"Shares approach {i+1} failed with status {response.status_code}")
+                        except Exception as e:
+                            logger.debug(f"Shares approach {i+1} failed: {e}")
+                
+                # Try: /drives/{driveId}/items/{itemId} with full item ID (including 's' prefix)
+                logger.info(f"Trying drives endpoint: /drives/{drive_id}/items/{item_id}")
+                try:
+                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}"
+                    response = await self._make_graph_request(url, params=params)
+                    if response.status_code == 200:
+                        return response.json()
+                except Exception as e:
+                    logger.debug(f"Drives endpoint failed: {e}")
+                
+                # Try: /drives/{driveId}/items/{itemId} without 's' prefix
+                if item_id.startswith('s'):
+                    clean_item_id = item_id[1:]  # Remove 's' prefix
+                    logger.info(f"Trying drives endpoint without 's' prefix: /drives/{drive_id}/items/{clean_item_id}")
+                    try:
+                        url = f"{self._graph_base_url}/drives/{drive_id}/items/{clean_item_id}"
+                        response = await self._make_graph_request(url, params=params)
+                        if response.status_code == 200:
+                            return response.json()
+                    except Exception as e:
+                        logger.debug(f"Drives endpoint (no prefix) failed: {e}")
+                
+                # Try: /me/drive/items/{full_id} as fallback
+                logger.info(f"Trying standard endpoint: /me/drive/items/{file_id}")
+                try:
+                    url = f"{self._graph_base_url}/me/drive/items/{file_id}"
+                    response = await self._make_graph_request(url, params=params)
+                    if response.status_code == 200:
+                        return response.json()
+                except Exception as e:
+                    logger.debug(f"Standard endpoint failed: {e}")
+        else:
+            # Standard item ID without '!'
+            url = f"{self._graph_base_url}/me/drive/items/{file_id}"
+            response = await self._make_graph_request(url, params=params)
+            if response.status_code == 200:
+                return response.json()
+        
+        logger.error(f"All endpoints failed for file_id: {file_id}")
+        return None
+
     async def _download_file_content(self, file_id: str) -> bytes:
-        """Download file content by file ID using Graph API."""
+        """Download file content by file ID using Graph API.
+        
+        Handles multiple ID formats like _get_file_metadata_by_id.
+        """
         try:
-            url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
             token = self.oauth.get_access_token()
             headers = {"Authorization": f"Bearer {token}"}
+            
+            # Build URL based on ID format
+            if '!' in file_id:
+                parts = file_id.split('!', 1)
+                if len(parts) == 2:
+                    drive_id = parts[0]
+                    item_id = parts[1]
+                    
+                    # If this looks like a sharing ID (starts with 's'), try shares endpoint first
+                    if item_id.startswith('s'):
+                        content = await self._download_via_shares_endpoint(file_id, headers)
+                        if content is not None:
+                            return content
+
+                    # Try drives endpoint for driveId!itemId format (including the 's' prefix)
+                    url = f"{self._graph_base_url}/drives/{drive_id}/items/{item_id}/content"
+                    logger.info(f"Downloading via drives endpoint: {url}")
+                else:
+                    url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
+            else:
+                url = f"{self._graph_base_url}/me/drive/items/{file_id}/content"
 
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, headers=headers, timeout=60, follow_redirects=True)
@@ -466,6 +649,34 @@ class OneDriveConnector(BaseConnector):
         except Exception as e:
             logger.error(f"Failed to download file content for {file_id}: {e}")
             raise
+
+    async def _download_via_shares_endpoint(self, file_id: str, headers: Dict[str, str]) -> Optional[bytes]:
+        """
+        Attempt to download content using the Graph /shares endpoint for sharing IDs.
+        """
+        import base64
+
+        share_encodings = [
+            base64.urlsafe_b64encode(f"u!{file_id}".encode()).decode().rstrip('='),
+            base64.urlsafe_b64encode(f"s!{file_id}".encode()).decode().rstrip('='),
+            base64.urlsafe_b64encode(file_id.encode()).decode().rstrip('='),
+            f"u!{file_id}",
+        ]
+
+        for i, encoded in enumerate(share_encodings):
+            try:
+                url = f"{self._graph_base_url}/shares/{encoded}/driveItem/content"
+                logger.info(f"Attempting shares download (approach {i+1}): {url}")
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, headers=headers, timeout=60, follow_redirects=True)
+                    if response.status_code == 200:
+                        return response.content
+                    else:
+                        logger.debug(f"Shares download approach {i+1} failed with status {response.status_code}")
+            except Exception as e:
+                logger.debug(f"Shares download approach {i+1} failed: {e}")
+
+        return None
 
     async def _download_file_from_url(self, download_url: str) -> bytes:
         """Download file content from direct download URL."""

@@ -18,11 +18,23 @@ class OneDriveOAuth:
     # For Microsoft Accounts (OneDrive consumer & work/school):
     # - Use AUTH_SCOPES for interactive auth (consent + refresh token issuance)
     # - Use RESOURCE_SCOPES for acquire_token_silent / refresh paths
-    # NOTE: Using Files.Read (not Files.Read.All) to avoid requiring admin consent
-    # for work/school accounts. Files.Read only accesses the user's own files.
-    # Files.Read.Selected allows access to files explicitly selected via file picker.
-    AUTH_SCOPES = ["User.Read", "Files.Read", "Files.Read.Selected", "offline_access"]
-    RESOURCE_SCOPES = ["User.Read", "Files.Read", "Files.Read.Selected"]
+    # NOTE: Including Sites.Read.All for SharePoint/OneDrive for Business access.
+    # Sites.Read.All requires admin consent for work/school accounts.
+    AUTH_SCOPES = [
+        "User.Read",
+        "Files.Read",
+        "Files.Read.All",  # Access all files user can access
+        "Files.Read.Selected",
+        "Sites.Read.All",  # Read SharePoint sites (for File Picker and OneDrive for Business)
+        "offline_access"
+    ]
+    RESOURCE_SCOPES = [
+        "User.Read",
+        "Files.Read",
+        "Files.Read.All",
+        "Files.Read.Selected",
+        "Sites.Read.All"
+    ]
     SCOPES = AUTH_SCOPES  # Backward-compat alias if something references .SCOPES
 
     # Kept for reference; MSAL derives endpoints from `authority`

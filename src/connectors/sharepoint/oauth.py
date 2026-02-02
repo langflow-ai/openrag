@@ -18,10 +18,23 @@ class SharePointOAuth:
     # For SharePoint (work/school accounts):
     # - Use AUTH_SCOPES for interactive auth (consent + refresh token issuance)
     # - Use RESOURCE_SCOPES for acquire_token_silent / refresh paths
-    # NOTE: Using Files.Read and Files.Read.Selected to avoid admin consent.
-    # This limits access to files the user personally has access to.
-    AUTH_SCOPES = ["User.Read", "Files.Read", "Files.Read.Selected", "offline_access"]
-    RESOURCE_SCOPES = ["User.Read", "Files.Read", "Files.Read.Selected"]
+    # NOTE: Including Sites.Read.All for SharePoint site access and AllSites.Read for SharePoint API.
+    # Sites.Read.All requires admin consent for work/school accounts.
+    AUTH_SCOPES = [
+        "User.Read",
+        "Files.Read",
+        "Files.Read.All",  # Access all files user can access
+        "Files.Read.Selected",
+        "Sites.Read.All",  # Read SharePoint sites (for File Picker)
+        "offline_access"
+    ]
+    RESOURCE_SCOPES = [
+        "User.Read",
+        "Files.Read",
+        "Files.Read.All",
+        "Files.Read.Selected",
+        "Sites.Read.All"
+    ]
     SCOPES = AUTH_SCOPES  # Backward compatibility alias
 
     # Kept for reference; MSAL derives endpoints from `authority`
@@ -326,6 +339,67 @@ class SharePointOAuth:
             import traceback
             traceback.print_exc()
             raise
+
+    def get_access_token_for_resource(self, resource_url: str) -> str:
+        """
+        Get an access token for a specific SharePoint resource.
+        
+        The SharePoint File Picker v8 requires a token with the SharePoint URL as the audience,
+        not Microsoft Graph. This method acquires a token with SharePoint-specific scopes.
+        
+        Args:
+            resource_url: The SharePoint site URL (e.g., https://contoso.sharepoint.com)
+        
+        Returns:
+            Access token with the SharePoint resource as the audience
+        """
+        logger.info(f"SharePoint get_access_token_for_resource: resource_url={resource_url}")
+        
+        # Use /.default to request whatever permissions are configured for this resource
+        # in the Azure AD app registration
+        sharepoint_scopes = [f"{resource_url.rstrip('/')}/.default"]
+        logger.info(f"SharePoint get_access_token_for_resource: scopes={sharepoint_scopes}")
+        
+        try:
+            # Try with current account first
+            if self._current_account:
+                logger.info(f"SharePoint get_access_token_for_resource: Trying with account {self._current_account.get('username', 'unknown')}")
+                result = self.app.acquire_token_silent(sharepoint_scopes, account=self._current_account)
+                if result and "access_token" in result:
+                    logger.info("SharePoint get_access_token_for_resource: Success with current account")
+                    return result["access_token"]
+                else:
+                    error_msg = (result or {}).get("error_description") or (result or {}).get("error") or "Unknown error"
+                    logger.warning(f"SharePoint get_access_token_for_resource: Failed with account: {error_msg}")
+
+            # Fallback: try without specific account
+            logger.info("SharePoint get_access_token_for_resource: Fallback - trying without account")
+            result = self.app.acquire_token_silent(sharepoint_scopes, account=None)
+            if result and "access_token" in result:
+                logger.info("SharePoint get_access_token_for_resource: Fallback success")
+                return result["access_token"]
+
+            # If silent acquisition fails, we may need to acquire interactively or via refresh
+            # Try using the refresh token if available
+            error_msg = (result or {}).get("error_description") or (result or {}).get("error") or "No valid authentication"
+            logger.error(f"SharePoint get_access_token_for_resource: All attempts failed: {error_msg}")
+            
+            # Provide helpful error message
+            if "AADSTS65001" in str(error_msg) or "consent" in str(error_msg).lower():
+                raise ValueError(
+                    f"Admin consent required for SharePoint API access. "
+                    f"Please grant consent in Azure AD for the SharePoint resource: {resource_url}"
+                )
+            
+            raise ValueError(f"Failed to acquire SharePoint token: {error_msg}")
+
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"SharePoint get_access_token_for_resource: Exception: {e}")
+            import traceback
+            traceback.print_exc()
+            raise ValueError(f"Failed to acquire SharePoint token: {str(e)}")
 
     async def revoke_credentials(self):
         """Clear token cache and remove token file (like Google Drive)."""

@@ -107,6 +107,10 @@ class SharePointConnector(BaseConnector):
             'file_ids': config.get('file_ids') or config.get('selected_files') or config.get('selected_file_ids'),
             'folder_ids': config.get('folder_ids') or config.get('selected_folders') or config.get('selected_folder_ids'),
         })()
+        
+        # Cache for file metadata including download URLs
+        # This allows direct download without Graph API for sharing IDs
+        self._file_infos: Dict[str, Dict[str, Any]] = {}
     
     @property
     def _graph_base_url(self) -> str:
@@ -122,6 +126,26 @@ class SharePointConnector(BaseConnector):
     def base_url(self, value: str):
         """Set base URL (updates sharepoint_url internally)"""
         self.sharepoint_url = value
+
+    def set_file_infos(self, file_infos: List[Dict[str, Any]]) -> None:
+        """
+        Cache file metadata including download URLs for later use.
+        This allows direct download without Graph API calls for sharing IDs.
+        
+        Args:
+            file_infos: List of file info dicts with {id, name, mimeType, downloadUrl, size}
+        """
+        self._file_infos = {}
+        for info in file_infos:
+            file_id = info.get("id")
+            if file_id:
+                self._file_infos[file_id] = info
+                if info.get("downloadUrl"):
+                    logger.debug(f"Cached download URL for file {file_id}: {info.get('name')}")
+
+    def get_cached_file_info(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """Get cached file info by ID."""
+        return self._file_infos.get(file_id)
     
     def emit(self, doc: ConnectorDocument) -> None:
         """
@@ -435,7 +459,36 @@ class SharePointConnector(BaseConnector):
             if not await self.authenticate():
                 raise RuntimeError("SharePoint authentication failed during file content retrieval")
             
-            # First get file metadata using Graph API
+            # First, check for cached file info with download URL
+            # This is used for SharePoint sharing IDs that can't be resolved via Graph API
+            cached_info = self.get_cached_file_info(file_id)
+            if cached_info and cached_info.get("downloadUrl"):
+                logger.info(f"Using cached download URL for file {file_id}")
+                content = await self._download_file_from_url(cached_info["downloadUrl"])
+                
+                acl = DocumentACL(
+                    owner="",
+                    user_permissions={},
+                    group_permissions={},
+                )
+                
+                return ConnectorDocument(
+                    id=file_id,
+                    filename=cached_info.get("name", "Unknown"),
+                    mimetype=cached_info.get("mimeType", "application/octet-stream"),
+                    content=content,
+                    source_url=cached_info.get("webUrl", ""),
+                    acl=acl,
+                    modified_time=datetime.now(),
+                    created_time=datetime.now(),
+                    metadata={
+                        "sharepoint_path": "",
+                        "sharepoint_url": self.sharepoint_url,
+                        "size": cached_info.get("size", 0),
+                    },
+                )
+            
+            # Fall back to Graph API for regular file IDs
             file_metadata = await self._get_file_metadata_by_id(file_id)
             
             if not file_metadata:

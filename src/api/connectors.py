@@ -23,7 +23,21 @@ async def connector_sync(request: Request, connector_service, session_manager):
     connector_type = request.path_params.get("connector_type", "google_drive")
     data = await request.json()
     max_files = data.get("max_files")
-    selected_files = data.get("selected_files")
+    selected_files_raw = data.get("selected_files")
+    
+    # Normalize selected_files to handle both formats:
+    # - Legacy: array of strings ["id1", "id2"]
+    # - New: array of objects [{id, name, downloadUrl, ...}]
+    selected_files = None
+    file_infos = None
+    if selected_files_raw:
+        if isinstance(selected_files_raw[0], str):
+            # Legacy format: just IDs
+            selected_files = selected_files_raw
+        else:
+            # New format: file objects with metadata
+            selected_files = [f.get("id") for f in selected_files_raw if f.get("id")]
+            file_infos = selected_files_raw
 
     try:
         await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START)
@@ -95,6 +109,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
                 user.user_id,
                 selected_files,
                 jwt_token=jwt_token,
+                file_infos=file_infos,
             )
         else:
             task_id = await connector_service.sync_connector_files(
@@ -532,8 +547,21 @@ async def connector_token(request: Request, connector_service, session_manager):
                 if not ok:
                     return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
-                # Now safe to fetch access token
-                access_token = connector.oauth.get_access_token()
+                # Check if a specific resource is requested (for SharePoint File Picker v8)
+                # The File Picker requires a token with SharePoint as the audience, not Graph
+                resource = request.query_params.get("resource")
+                
+                if resource and ".sharepoint.com" in resource:
+                    # SharePoint File Picker v8 needs a SharePoint-scoped token
+                    logger.info(f"Acquiring SharePoint-scoped token for resource: {resource}")
+                    if hasattr(connector.oauth, "get_access_token_for_resource"):
+                        access_token = connector.oauth.get_access_token_for_resource(resource)
+                    else:
+                        # Fallback for connectors without resource-specific token support
+                        access_token = connector.oauth.get_access_token()
+                else:
+                    # Default: Microsoft Graph token
+                    access_token = connector.oauth.get_access_token()
                 # MSAL result has expiry, but we’re returning a raw token; keep expires_in None for simplicity
                 return JSONResponse({"access_token": access_token, "expires_in": None})
             except ValueError as e:
