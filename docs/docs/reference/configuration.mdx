@@ -52,10 +52,11 @@ These variables are initially set during the [application onboarding process](/i
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for generating vector embeddings for documents in the knowledge base and similarity search queries. Can be changed after the application onboarding process. Accepts one or more models. |
-| `LLM_MODEL` | `gpt-4o-mini` | Language model for language processing and text generation in the **Chat** feature. |
-| `MODEL_PROVIDER` | `openai` | Model provider, as one of `openai`, `watsonx`, `ollama`, or `anthropic`. |
-| `ANTHROPIC_API_KEY` | Not set | API key for the Anthropic language model provider. |
+| `EMBEDDING_PROVIDER` | `openai` | Embedding model provider, as one of `openai`, `watsonx`, or `ollama`. |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model for generating vector embeddings for documents in the knowledge base and similarity search queries. Can be changed after the application onboarding process. |
+| `LLM_PROVIDER` | `openai` | Language model provider, as one of `openai`, `watsonx`, `ollama`, or `anthropic`. |
+| `LLM_MODEL` | `gpt-4o-mini` | Language model for language processing and text generation in the **Chat** feature. Can be changed after the application onboarding process. |
+| `ANTHROPIC_API_KEY` | Not set | API key for the Anthropic model provider. |
 | `OPENAI_API_KEY` | Not set | API key for the OpenAI model provider, which is also the default model provider. |
 | `OLLAMA_ENDPOINT` | Not set | Custom provider endpoint for the Ollama model provider. |
 | `WATSONX_API_KEY` | Not set | API key for the IBM watsonx.ai model provider. |
@@ -65,17 +66,17 @@ These variables are initially set during the [application onboarding process](/i
 ## Document processing settings {#document-processing-settings}
 
 Controls some aspects of how OpenRAG [processes and ingests documents](/ingestion) into your knowledge base.
-For the embedding model and Docling engine settings, see [Knowledge ingestion settings](/knowledge#knowledge-ingestion-settings).
+
+For the embedding model and Docling engine variables that you can set on the OpenRAG **Settings** page, see [Knowledge ingestion settings](/knowledge#knowledge-ingestion-settings).
+
+For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#langflow-settings).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DISABLE_INGEST_WITH_LANGFLOW` | `false` | Disable Langflow ingestion pipeline if you don't want to use the default [Docling Serve instance](/knowledge#select-a-docling-implementation). |
 | `DOCLING_SERVE_URL` | `http://HOST_IP:5001` | URL for the [Docling Serve instance](/knowledge#select-a-docling-implementation). By default, OpenRAG starts a local `docling serve` process and auto-detects the host. To use your own local or remote Docling Serve instance, set this variable to the full path to the target instance. The service must run on port 5001. |
 | `OPENRAG_DOCUMENTS_PATH` | `~/.openrag/documents` | The [local documents path](/knowledge#set-the-local-documents-path) for ingestion. |
-
-<!-- Author's Note: Don't delete the commented-out variables. I am in the process of determining which ones can be set in the .env and which cannot. -->
-
-<!-- TBD: OPENRAG_DOCUMENTS_PATH -->
+| `HOST_DOCKER_INTERNAL` | `host.docker.internal` | Host address for accessing services running on the host machine from within Docker containers. This is used to connect to the local Docling Serve instance started by OpenRAG. If your system uses a different hostname for this purpose, set this variable accordingly. |
 
 ## Langflow settings {#langflow-settings}
 
@@ -99,8 +100,14 @@ For better security, it is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so t
 | `LANGFLOW_SECRET_KEY` | Automatically generated | Secret encryption key for Langflow internal operations. It is recommended to [generate your own Langflow secret key](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key) for this variable. If this variable isn't set, then Langflow generates a secret key automatically.  |
 | `LANGFLOW_SUPERUSER` | `admin` | Username for the Langflow administrator user. |
 | `LANGFLOW_SUPERUSER_PASSWORD` | Not set | Langflow administrator password. If this variable isn't set, then the Langflow server starts _without_ authentication enabled. It is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so the [Langflow server starts with authentication enabled](https://docs.langflow.org/api-keys-and-authentication#start-a-langflow-server-with-authentication-enabled). |
-| `LANGFLOW_CHAT_FLOW_ID`, `LANGFLOW_INGEST_FLOW_ID`, `NUDGES_FLOW_ID` | Built-in flow IDs | These variables are set automatically to the IDs of the chat, ingestion, and nudges [flows](/agents). The default values are found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change these values if you want to replace a built-in flow with your own custom flow. The flow JSON must be present in your version of the OpenRAG codebase. For example, if you [deploy self-managed services](/docker), you can add the flow JSON to your local clone of the OpenRAG repository before deploying OpenRAG. |
+| `LANGFLOW_CHAT_FLOW_ID`, `LANGFLOW_INGEST_FLOW_ID`, `NUDGES_FLOW_ID`, `LANGFLOW_URL_INGEST_FLOW_ID` | Built-in flow IDs | These variables are set automatically to the IDs of the chat, Docling ingestion, URL ingestion, and nudges [flows](/agents). The default values are found in [`.env.example`](https://github.com/langflow-ai/openrag/blob/main/.env.example). Only change these values if you want to replace a built-in flow with your own custom flow. The flow JSON must be present in your version of the OpenRAG codebase. For example, if you [deploy self-managed services](/docker), you can add the flow JSON to your local clone of the OpenRAG repository before deploying OpenRAG. |
+| `LANGFUSE_SECRET_KEY` | Not set | Optional Langfuse secret key to enable the [Langflow integration with Langfuse](/knowledge#langfuse-integration). |
+| `LANGFUSE_PUBLIC_KEY` | Not set | Optional Langfuse public key to enable the [Langflow integration with Langfuse](/knowledge#langfuse-integration). |
+| `LANGFUSE_HOST` | Not set | Leave empty for Langfuse Cloud. Required for self-hosted Langfuse deployments if `LANGFUSE_SECRET_KEY` and `LANGFUSE_PUBLIC_KEY` are set. The address must be relative to the OpenRAG container deployment. For example, `http://localhost:3002` or `http://host.docker.internal:3000`. |
+| `LANGFLOW_TIMEOUT` | 2400 | Langflow HTTP timeout limit in seconds. Increase this value if you experience timeouts when ingesting very large PDFs. |
+| `LANGFLOW_CONNECT_TIMEOUT` | `30` | Langflow HTTP connection timeout limit in seconds. Increase this value if you experience timeouts when ingesting very large PDFs. |
 
+<!-- Author's Note: Don't delete the commented-out variables. I am in the process of determining which ones can be set in the .env and which cannot. See issue #568 -->
 
 <!-- | `LANGFLOW_KEY` | Automatically generated | A Langflow API key to run flows with Langflow API calls. Because Langflow API keys are server-specific, allow OpenRAG to generate this key initially. You can create additional Langflow API keys after deploying OpenRAG. | -->
 <!-- | `LANGFLOW_URL` | `http://localhost:7860` | URL for the Langflow instance. | -->
@@ -131,6 +138,7 @@ Configure OpenSearch database authentication.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `OPENSEARCH_DATA_PATH` | `./opensearch-data` | The path where OpenRAG creates your OpenSearch index data. This persists through updates. |
 | `OPENSEARCH_PASSWORD` | Must be set during setup or in the Dockerfile. | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the TUI's [**Basic/Advanced Setup**](/install#setup). |
 
 <!-- | `OPENSEARCH_HOST` | `localhost` | OpenSearch service host. | -->
@@ -145,6 +153,7 @@ Configure general system components, session management, and logging.
 |----------|---------|-------------|
 | `FRONTEND_PORT` | `3000` | Host port for the OpenRAG frontend web interface. Change this if port 3000 is already in use on your system. |
 | `OPENRAG_VERSION` | `latest` | The version of the OpenRAG Docker images to run. For more information, see [Upgrade OpenRAG](/upgrade) |
+| `NEXT_ALLOWED_DEV_ORIGINS` | `http://localhost:3000` | Only used when [running OpenRAG in development mode](/support/contribute). Accepts a comma-separated list of hostnames to allow additional origins to make requests to the Next.js development server. |
 
 <!-- | `LOG_FORMAT` | Not set | Set to `json` to enabled JSON-formatted log output. If this variable isn't set, then the default logging format is used. | -->
 <!-- | `LOG_LEVEL` | `INFO` | Logging level. Can be one of `DEBUG`, `INFO`, `WARNING`, or `ERROR`. `DEBUG` provides the most detailed logs but can impact performance. | -->

@@ -82,8 +82,7 @@ You can do this during [installation](/install#setup), or you can add the creden
 
 3. For each connector you configured, register the redirect URIs shown in the TUI in your OAuth apps.
 
-   The redirect URIs are used for the cloud storage connector webhooks.
-   For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
+   The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
 
 4. Optional: Under **Others**, set the **Webhook Base URL** to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
 
@@ -130,8 +129,7 @@ You can do this during [initial set up](/docker#setup), or you can add the crede
    * Local deployments: `http://localhost:3000/auth/callback`
    * Production deployments: `https://your-domain.com/auth/callback`
 
-   The redirect URIs are used for the cloud storage connector webhooks.
-   For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
+   The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
 
 6. Restart your OpenRAG containers:
 
@@ -273,6 +271,12 @@ The minimum recommendation is 8 GB of RAM.
 If you regularly upload large files, more RAM is recommended.
 For more information, see [Memory issue with Podman on macOS](/support/troubleshoot#memory-issue-with-podman-on-macos) and [Container out of memory errors](/support/troubleshoot#container-out-of-memory-errors).
 * If OCR ingestion fails due to OCR missing, see [OCR ingestion fails (easyocr not installed)](/support/troubleshoot#ocr-ingestion-fails-easyocr-not-installed).
+
+### Ingesting very large PDFs (more than 300 pages)
+
+Ingesting very large PDFs can take 30 minutes or more.
+
+If Langflow timesout while processing very large PDFs, increase the `LANGFLOW_TIMEOUT` and `LANGFLOW_CONNECT_TIMEOUT` environment variables in your [OpenRAG `.env` file](/reference/configuration).
 
 ### Problems when referencing documents in chat
 
