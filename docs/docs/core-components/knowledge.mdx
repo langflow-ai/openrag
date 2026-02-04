@@ -190,7 +190,7 @@ The default value is 1000 characters, which is usually a good balance between co
 
 * **Chunk overlap**: Set the number of characters to overlap over chunk boundaries.
 Use larger overlap values for documents where context is most important. Use smaller overlap values for simpler documents or when optimization is most important.
-The default value is 200 characters, which represents an overlap of 20 percent if the **Chunk size** is 1000. This is suitable for general use. For faster processing, decrease the overlap to approximately 10 percent. For more complex documents where you need to preserve context across chunks, increase it to approximately 40 percent.
+The default value is 200 characters, which represents an overlap of 20 percent with the default **Chunk size** of 1000. This is suitable for general use. For faster processing, decrease the overlap to approximately 10 percent. For more complex documents where you need to preserve context across chunks, increase it to approximately 40 percent.
 
 * **Table structure**: Enables Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/) tool for parsing tables. Instead of treating tables as plain text, tables are output as structured table data with preserved relationships and metadata. This option is enabled by default.
 

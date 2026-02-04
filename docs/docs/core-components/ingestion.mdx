@@ -80,13 +80,11 @@ You can do this during [installation](/install#setup), or you can add the creden
 
    <PartialOAuthCredentials />
 
-3. For each connector you configured, register the redirect URI shown in the TUI in your cloud service's OAuth configuration.
+3. For each connector you configured, register the redirect URIs shown in the TUI in your OAuth apps.
 
-   For Google, this URL is used to redirect users back to OpenRAG after they sign in, and for the cloud storage connector webhooks.
+   The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
 
-   For Microsoft and Amazon, this URL is used for the cloud storage connector webhooks.
-
-4. Optional: Under **Others**, set the **Webhook Base URL (`WEBHOOK_BASE_URL`)** to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
+4. Optional: Under **Others**, set the **Webhook Base URL** to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
 
 5. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
 
@@ -124,13 +122,14 @@ You can do this during [initial set up](/docker#setup), or you can add the crede
 
 3. Optional: Set the `WEBHOOK_BASE_URL` to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
 
-4. For each connector, you must register an OpenRAG OAuth redirect URI in your cloud service's OAuth configuration.
+4. Save the `.env` file.
 
-   For Google, this URL is used to redirect users back to OpenRAG after they sign in, and for the cloud storage connector webhooks.
+5. For each connector, you must register the OpenRAG redirect URIs in your OAuth apps:
 
-   For Microsoft and Amazon, this URL is used for the cloud storage connector webhooks.
+   * Local deployments: `http://localhost:3000/auth/callback`
+   * Production deployments: `https://your-domain.com/auth/callback`
 
-5. Save the `.env` file.
+   The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
 
 6. Restart your OpenRAG containers:
 
@@ -272,6 +271,12 @@ The minimum recommendation is 8 GB of RAM.
 If you regularly upload large files, more RAM is recommended.
 For more information, see [Memory issue with Podman on macOS](/support/troubleshoot#memory-issue-with-podman-on-macos) and [Container out of memory errors](/support/troubleshoot#container-out-of-memory-errors).
 * If OCR ingestion fails due to OCR missing, see [OCR ingestion fails (easyocr not installed)](/support/troubleshoot#ocr-ingestion-fails-easyocr-not-installed).
+
+### Ingesting very large PDFs (more than 300 pages)
+
+Ingesting very large PDFs can take 30 minutes or more.
+
+If Langflow timesout while processing very large PDFs, increase the `LANGFLOW_TIMEOUT` and `LANGFLOW_CONNECT_TIMEOUT` environment variables in your [OpenRAG `.env` file](/reference/configuration).
 
 ### Problems when referencing documents in chat
 
