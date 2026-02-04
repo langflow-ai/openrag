@@ -176,7 +176,7 @@ const OnboardingCard = ({
 
   // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
-    enabled: currentStep !== null, // Only poll when onboarding has started
+    enabled: currentStep !== null && !isCompleted, // Only poll when onboarding has started and stop once step is complete
     refetchInterval: currentStep !== null ? 1000 : false, // Poll every 1 second during onboarding
   });
 
