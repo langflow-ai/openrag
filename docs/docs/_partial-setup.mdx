@@ -34,14 +34,19 @@ import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
    By default, OpenRAG uses OpenAI models.
    If you aren't sure which models or providers to use, you must provide an OpenAI API key to use OpenRAG's default model configuration.
 
-4. **Advanced Setup** only: To enable OAuth mode or cloud storage connectors, enter the relevant OAuth credentials under **API Keys**, and then register the redirect URIs shown in the TUI in your OAuth apps.
+4. **Advanced Setup** only: To enable OAuth mode or cloud storage connectors, do the following:
 
-   The credentials can be populated automatically if OpenRAG detects these credentials in an [OpenRAG `.env` file](/reference/configuration) at `~/.openrag/tui`.
+   1. Register OpenRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key. To enable multiple connectors, you must register an app and generate credentials for each provider.
 
-   <PartialOAuthCredentials />
+   2. Enter the relevant OAuth credentials under **API Keys** in the TUI's **Advanced Setup**:
 
-   The redirect URIs are used for the cloud storage connector webhooks.
-   For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
+      <PartialOAuthCredentials />
+
+      The credentials can be populated automatically if OpenRAG detects these credentials in an [OpenRAG `.env` file](/reference/configuration) at `~/.openrag/tui`.
+
+   3. Register the redirect URIs shown in the TUI in your OAuth apps.
+
+      The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
 
 5. Optional: Under **Langfuse (Tracing)**, enter Langfuse credentials to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse):
 
