@@ -45,6 +45,12 @@ If the OpenRAG onboarding process gets stuck when using Google Chrome, try clear
 Verify that the value of the `LANGFLOW_SUPERUSER` environment variable is correct.
 For more information about this variable and how this variable controls Langflow access, see [Langflow settings](/reference/configuration#langflow-settings).
 
+## No container runtime found
+
+When you start the TUI, a `No container runtime found` error indicates that OpenRAG cannot find a running Docker or Podman machine.
+
+Make sure Docker or Podman is installed, available in the PATH, and a VM is running.
+
 ## Container out of memory errors {#container-out-of-memory-errors}
 
 Increase your container VM's allocated memory, or use a CPU-only deployment to reduce memory usage.
