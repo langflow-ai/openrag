@@ -153,11 +153,11 @@ class TaskService:
             upload_task.status = TaskStatus.RUNNING
             upload_task.updated_at = time.time()
 
-            # Process files with limited concurrency to avoid overwhelming the system
-            max_workers = get_worker_count()
-            semaphore = asyncio.Semaphore(
-                max_workers * 2
-            )  # Allow 2x process pool size for async I/O
+            # Process items with limited concurrency
+            # - Semaphore matches worker count
+            # - Potential bottlenecks related to downstream Langflow / Docling capacity rather than backend I/O
+            worker_count = get_worker_count()
+            semaphore = asyncio.Semaphore(worker_count)
 
             async def process_with_semaphore(file_path: str):
                 async with semaphore:
@@ -187,7 +187,7 @@ class TaskService:
             if upload_task.processed_files >= upload_task.total_files:
                 upload_task.status = TaskStatus.COMPLETED
                 upload_task.updated_at = time.time()
-                
+
                 # Send telemetry for task completion
                 asyncio.create_task(
                     TelemetryClient.send_event(
@@ -212,7 +212,7 @@ class TaskService:
                 failed_task = self.task_store[user_id][task_id]
                 failed_task.status = TaskStatus.FAILED
                 failed_task.updated_at = time.time()
-                
+
                 # Send telemetry for task failure
                 asyncio.create_task(
                     TelemetryClient.send_event(
@@ -239,8 +239,10 @@ class TaskService:
             processor = upload_task.processor
 
             # Process items with limited concurrency
-            max_workers = get_worker_count()
-            semaphore = asyncio.Semaphore(max_workers * 2)
+            # - Semaphore matches worker count
+            # - Potential bottlenecks related to downstream Langflow / Docling capacity rather than backend I/O
+            worker_count = get_worker_count()
+            semaphore = asyncio.Semaphore(worker_count)
 
             async def process_with_semaphore(item, item_key: str):
                 async with semaphore:
@@ -276,7 +278,7 @@ class TaskService:
             # Mark task as completed
             upload_task.status = TaskStatus.COMPLETED
             upload_task.updated_at = time.time()
-            
+
             # Send telemetry for task completion
             asyncio.create_task(
                 TelemetryClient.send_event(
@@ -307,7 +309,7 @@ class TaskService:
                 failed_task = self.task_store[user_id][task_id]
                 failed_task.status = TaskStatus.FAILED
                 failed_task.updated_at = time.time()
-                
+
                 # Send telemetry for task failure
                 asyncio.create_task(
                     TelemetryClient.send_event(
