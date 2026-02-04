@@ -24,8 +24,8 @@ def compute_acl_hash(acl: DocumentACL) -> str:
     """
     acl_data = {
         "owner": acl.owner,
-        "user_permissions": sorted(acl.user_permissions.items()),
-        "group_permissions": sorted(acl.group_permissions.items()),
+        "allowed_users": sorted(acl.allowed_users),
+        "allowed_groups": sorted(acl.allowed_groups),
     }
     return hashlib.sha256(
         json.dumps(acl_data, sort_keys=True).encode()
@@ -62,8 +62,6 @@ async def should_update_acl(
                     "owner",
                     "allowed_users",
                     "allowed_groups",
-                    "user_permissions",
-                    "group_permissions"
                 ]
             }
         )
@@ -77,8 +75,8 @@ async def should_update_acl(
         # Reconstruct existing ACL and compute hash
         existing_acl = DocumentACL(
             owner=existing_chunk.get("owner"),
-            user_permissions=existing_chunk.get("user_permissions", {}),
-            group_permissions=existing_chunk.get("group_permissions", {}),
+            allowed_users=existing_chunk.get("allowed_users", []),
+            allowed_groups=existing_chunk.get("allowed_groups", []),
         )
 
         existing_hash = compute_acl_hash(existing_acl)
@@ -126,15 +124,11 @@ async def update_document_acl(
                         ctx._source.owner = params.owner;
                         ctx._source.allowed_users = params.allowed_users;
                         ctx._source.allowed_groups = params.allowed_groups;
-                        ctx._source.user_permissions = params.user_permissions;
-                        ctx._source.group_permissions = params.group_permissions;
                     """,
                     "params": {
                         "owner": acl.owner,
                         "allowed_users": acl.allowed_users,
                         "allowed_groups": acl.allowed_groups,
-                        "user_permissions": acl.user_permissions,
-                        "group_permissions": acl.group_permissions,
                     }
                 }
             }
@@ -205,15 +199,11 @@ async def batch_update_acls(
                         ctx._source.owner = params.owner;
                         ctx._source.allowed_users = params.allowed_users;
                         ctx._source.allowed_groups = params.allowed_groups;
-                        ctx._source.user_permissions = params.user_permissions;
-                        ctx._source.group_permissions = params.group_permissions;
                     """,
                     "params": {
                         "owner": acl.owner,
                         "allowed_users": acl.allowed_users,
                         "allowed_groups": acl.allowed_groups,
-                        "user_permissions": acl.user_permissions,
-                        "group_permissions": acl.group_permissions,
                     }
                 }
             }

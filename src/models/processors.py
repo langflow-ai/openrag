@@ -259,16 +259,12 @@ class TaskProcessor:
                 chunk_doc["owner"] = acl.owner if acl.owner else owner_user_id
                 chunk_doc["allowed_users"] = acl.allowed_users
                 chunk_doc["allowed_groups"] = acl.allowed_groups
-                chunk_doc["user_permissions"] = acl.user_permissions
-                chunk_doc["group_permissions"] = acl.group_permissions
             else:
                 # Fallback to owner_user_id if no ACL (local uploads)
                 if owner_user_id is not None:
                     chunk_doc["owner"] = owner_user_id
                     chunk_doc["allowed_users"] = []
                     chunk_doc["allowed_groups"] = []
-                    chunk_doc["user_permissions"] = {}
-                    chunk_doc["group_permissions"] = {}
 
             # Set owner metadata fields (for display)
             if owner_name is not None:
