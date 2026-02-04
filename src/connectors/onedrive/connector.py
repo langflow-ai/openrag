@@ -394,6 +394,91 @@ class OneDriveConnector(BaseConnector):
             logger.error(f"Failed to list OneDrive files: {e}")
             return {"files": [], "next_page_token": None}
 
+    async def _extract_onedrive_acl(self, file_id: str, file_metadata: Dict) -> DocumentACL:
+        """
+        Extract ACL from OneDrive item.
+
+        Queries Microsoft Graph API permissions endpoint to get user and group permissions.
+
+        Args:
+            file_id: OneDrive item ID
+            file_metadata: File metadata dict
+
+        Returns:
+            DocumentACL instance with extracted permissions
+        """
+        try:
+            # Get access token
+            token_data = await self.oauth.get_access_token()
+            access_token = token_data.get("access_token")
+
+            if not access_token:
+                logger.warning(f"No access token available for ACL extraction: {file_id}")
+                return DocumentACL()
+
+            # OneDrive permissions API endpoint
+            permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
+
+            # Fetch permissions
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    permissions_url,
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+
+            if response.status_code != 200:
+                logger.warning(f"Failed to fetch permissions for {file_id}: {response.status_code}")
+                return DocumentACL()
+
+            permissions_data = response.json()
+
+            user_perms = {}
+            group_perms = {}
+            owner = None
+
+            for perm in permissions_data.get("value", []):
+                roles = perm.get("roles", [])  # ["read", "write", "owner"]
+                role = roles[0] if roles else "read"
+
+                # Granted to user
+                if "grantedTo" in perm:
+                    user_info = perm["grantedTo"].get("user", {})
+                    email = user_info.get("email")
+                    if email:
+                        user_perms[email] = role
+                        if "owner" in roles:
+                            owner = email
+
+                # Granted to identities (can include users and groups)
+                elif "grantedToIdentities" in perm:
+                    for identity in perm["grantedToIdentities"]:
+                        # User
+                        if "user" in identity:
+                            user_info = identity["user"]
+                            email = user_info.get("email")
+                            if email:
+                                user_perms[email] = role
+                                if "owner" in roles:
+                                    owner = email
+
+                        # Group
+                        elif "group" in identity:
+                            group_info = identity["group"]
+                            group_id = group_info.get("id")
+                            group_display_name = group_info.get("displayName", group_id)
+                            if group_id:
+                                group_perms[group_display_name] = role
+
+            return DocumentACL(
+                owner=owner,
+                user_permissions=user_perms,
+                group_permissions=group_perms,
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to extract ACL for OneDrive item {file_id}: {e}")
+            return DocumentACL()
+
     async def get_file_content(self, file_id: str) -> ConnectorDocument:
         """Get file content and metadata."""
         try:
@@ -458,11 +543,8 @@ class OneDriveConnector(BaseConnector):
             else:
                 content = await self._download_file_content(file_id)
 
-            acl = DocumentACL(
-                owner="",
-                user_permissions={},
-                group_permissions={},
-            )
+            # Extract ACL from OneDrive item
+            acl = await self._extract_onedrive_acl(file_id, file_metadata)
 
             modified_time = self._parse_graph_date(file_metadata.get("modified"))
             created_time = self._parse_graph_date(file_metadata.get("created"))
