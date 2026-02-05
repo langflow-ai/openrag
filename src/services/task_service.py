@@ -2,6 +2,7 @@ import asyncio
 import random
 import time
 import uuid
+from typing import Any, Coroutine, TypeVar
 
 from models.tasks import FileTask, TaskStatus, UploadTask
 from session_manager import AnonymousUser
@@ -9,21 +10,67 @@ from utils.gpu_detection import get_worker_count
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
 
+T = TypeVar("T")
 
 logger = get_logger(__name__)
 
 
+class IngestionTimeoutError(Exception):
+    """Raised when file processing exceeds the configured timeout"""
+    pass
+
+
 class TaskService:
-    def __init__(self, document_service=None, process_pool=None):
+    # Cleanup interval in seconds (2 hours)
+    CLEANUP_INTERVAL_SECONDS = 2 * 60 * 60
+
+    def __init__(self, document_service=None, process_pool=None, ingestion_timeout=3600):
         self.document_service = document_service
         self.process_pool = process_pool
         self.task_store: dict[
             str, dict[str, UploadTask]
         ] = {}  # user_id -> {task_id -> UploadTask}
         self.background_tasks = set()
+        self.ingestion_timeout = ingestion_timeout
+        self._cleanup_task: asyncio.Task | None = None
+        # Locks for task counter updates, keyed by task_id
+        # Kept separate from UploadTask to maintain serialization compatibility
+        self._task_locks: dict[str, asyncio.Lock] = {}
 
         if self.process_pool is None:
             raise ValueError("TaskService requires a process_pool parameter")
+
+    def _get_task_lock(self, task_id: str) -> asyncio.Lock:
+        """Get or create a lock for a specific task's counter updates"""
+        if task_id not in self._task_locks:
+            self._task_locks[task_id] = asyncio.Lock()
+        return self._task_locks[task_id]
+
+    def start_cleanup_scheduler(self) -> None:
+        """Start the periodic cleanup background task.
+
+        Should be called once after the event loop is running (e.g., during app startup).
+        """
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+            logger.info(
+                "Started periodic task cleanup scheduler",
+                interval_seconds=self.CLEANUP_INTERVAL_SECONDS,
+            )
+
+    async def _periodic_cleanup(self) -> None:
+        """Periodically clean up old completed/failed tasks."""
+        while True:
+            try:
+                await asyncio.sleep(self.CLEANUP_INTERVAL_SECONDS)
+                cleaned = await self.cleanup_old_tasks()
+                if cleaned > 0:
+                    logger.debug("Periodic cleanup completed", tasks_cleaned=cleaned)
+            except asyncio.CancelledError:
+                logger.debug("Periodic cleanup task cancelled")
+                raise
+            except Exception as e:
+                logger.warning("Error during periodic cleanup", error=str(e))
 
     async def exponential_backoff_delay(
         self, retry_count: int, base_delay: float = 1.0, max_delay: float = 60.0
@@ -31,6 +78,28 @@ class TaskService:
         """Apply exponential backoff with jitter"""
         delay = min(base_delay * (2**retry_count) + random.uniform(0, 1), max_delay)
         await asyncio.sleep(delay)
+
+    async def _process_with_timeout(
+        self, coro: Coroutine[Any, Any, T], timeout_seconds: int | None = None
+    ) -> T:
+        """Wrapper to add timeout protection to file processing
+
+        Args:
+            coro: Coroutine to execute with timeout
+            timeout_seconds: Timeout in seconds (uses self.ingestion_timeout if None)
+
+        Returns:
+            The result of the coroutine
+
+        Raises:
+            IngestionTimeoutError: If processing exceeds timeout
+        """
+        timeout = timeout_seconds or self.ingestion_timeout
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.error("File processing timed out", timeout_seconds=timeout)
+            raise IngestionTimeoutError(f"Processing timed out after {timeout}s") from None
 
     async def create_upload_task(
         self,
@@ -251,7 +320,33 @@ class TaskService:
                     file_task.updated_at = time.time()
 
                     try:
-                        await processor.process_item(upload_task, item, file_task)
+                        # Add timeout protection to prevent indefinite hangs
+                        await self._process_with_timeout(
+                            processor.process_item(upload_task, item, file_task),
+                            timeout_seconds=self.ingestion_timeout
+                        )
+                    except asyncio.CancelledError:
+                        # Handle cancellation explicitly
+                        logger.info("File processing cancelled", item=str(item))
+                        if file_task.status == TaskStatus.RUNNING:
+                            file_task.status = TaskStatus.FAILED
+                            file_task.error = "Task cancelled by user"
+                            async with self._get_task_lock(task_id):
+                                upload_task.failed_files += 1
+                        raise  # Re-raise to propagate cancellation
+                    except IngestionTimeoutError as e:
+                        # Handle timeout explicitly with specific error message
+                        logger.warning(
+                            "File processing timed out",
+                            item=str(item),
+                            timeout=self.ingestion_timeout
+                        )
+                        if file_task.status == TaskStatus.RUNNING:
+                            file_task.status = TaskStatus.FAILED
+                            file_task.error = f"Processing timed out after {self.ingestion_timeout}s"
+                            async with self._get_task_lock(task_id):
+                                upload_task.failed_files += 1
+                        # Don't re-raise - treat as normal failure, not cancellation
                     except Exception as e:
                         logger.error(
                             "Failed to process item", item=str(item), error=str(e)
@@ -268,7 +363,11 @@ class TaskService:
                             file_task.error = str(e)
                     finally:
                         file_task.updated_at = time.time()
-                        upload_task.processed_files += 1
+                        # Only increment processed_files if the file reached a terminal state
+                        # This prevents counter inconsistency on cancellation
+                        if file_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+                            async with self._get_task_lock(task_id):
+                                upload_task.processed_files += 1
                         upload_task.updated_at = time.time()
 
             tasks = [process_with_semaphore(item, str(item)) for item in items]
@@ -447,6 +546,47 @@ class TaskService:
         tasks.sort(key=lambda x: x["created_at"], reverse=True)
         return tasks
 
+    async def cleanup_old_tasks(self, max_age_seconds: int = 3600) -> int:
+        """Remove completed/failed tasks older than max_age_seconds
+
+        Args:
+            max_age_seconds: Maximum age in seconds for completed tasks (default: 1 hour)
+
+        Returns:
+            Number of tasks cleaned up
+        """
+        current_time = time.time()
+        cleaned_count = 0
+
+        # Complexity Analysis:
+        # O(n) where n = total tasks across all users
+
+        for user_id in list(self.task_store.keys()):
+            for task_id in list(self.task_store[user_id].keys()):
+                task = self.task_store[user_id][task_id]
+                # Only cleanup completed or failed tasks that are old enough
+                if (task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED] and
+                    current_time - task.updated_at > max_age_seconds):
+                    del self.task_store[user_id][task_id]
+                    # Clean up the associated lock
+                    self._task_locks.pop(task_id, None)
+                    cleaned_count += 1
+                    logger.debug(
+                        "Cleaned up old task",
+                        task_id=task_id,
+                        user_id=user_id,
+                        age_seconds=current_time - task.updated_at
+                    )
+
+            # Remove empty user entries
+            if not self.task_store[user_id]:
+                del self.task_store[user_id]
+
+        if cleaned_count > 0:
+            logger.info("Task cleanup completed", cleaned_count=cleaned_count)
+
+        return cleaned_count
+
     async def cancel_task(self, user_id: str, task_id: str) -> bool:
         """Cancel a task if it exists and is not already completed.
 
@@ -493,18 +633,51 @@ class TaskService:
 
         # Mark all pending and running file tasks as failed
         for file_task in upload_task.file_tasks.values():
-            if file_task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
-                # Increment failed_files counter for both pending and running
-                # (running files haven't been counted yet in either counter)
-                upload_task.failed_files += 1
-
-                file_task.status = TaskStatus.FAILED
-                file_task.error = "Task cancelled by user"
-                file_task.updated_at = time.time()
+            # Lock the entire check-and-modify to prevent race with background tasks
+            async with self._get_task_lock(task_id):
+                if file_task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+                    # Increment failed_files counter for both pending and running
+                    # (running files haven't been counted yet in either counter)
+                    upload_task.failed_files += 1
+                    file_task.status = TaskStatus.FAILED
+                    file_task.error = "Task cancelled by user"
+                    file_task.updated_at = time.time()
 
         return True
 
-    def shutdown(self):
-        """Cleanup process pool"""
+    async def shutdown(self):
+        """Cleanup process pool and cancel all background tasks
+
+        Ensures graceful shutdown by:
+        1. Cancelling the periodic cleanup task
+        2. Cancelling all running background tasks
+        3. Waiting for cancellation to complete
+        4. Shutting down the process pool
+        """
+        logger.info("Shutting down TaskService", background_tasks_count=len(self.background_tasks))
+
+        # Cancel the periodic cleanup task
+        if self._cleanup_task is not None and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+
+        # Cancel all background tasks
+        for task in self.background_tasks:
+            if not task.done():
+                task.cancel()
+
+        # Wait for all tasks to complete cancellation
+        if self.background_tasks:
+            results = await asyncio.gather(*self.background_tasks, return_exceptions=True)
+            # Log any unexpected errors (not CancelledError)
+            for i, result in enumerate(results):
+                if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+                    logger.warning("Background task raised exception during shutdown", error=str(result))
+
+        # Shutdown the process pool
         if hasattr(self, "process_pool"):
             self.process_pool.shutdown(wait=True)
+            logger.info("Process pool shutdown complete")

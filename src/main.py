@@ -68,6 +68,7 @@ from config.settings import (
     API_KEYS_INDEX_BODY,
     API_KEYS_INDEX_NAME,
     DISABLE_INGEST_WITH_LANGFLOW,
+    INGESTION_TIMEOUT,
     INDEX_BODY,
     INDEX_NAME,
     SESSION_SECRET,
@@ -625,7 +626,7 @@ async def initialize_services():
     # Initialize services
     document_service = DocumentService(session_manager=session_manager)
     search_service = SearchService(session_manager)
-    task_service = TaskService(document_service, process_pool)
+    task_service = TaskService(document_service, process_pool, ingestion_timeout=INGESTION_TIMEOUT)
     chat_service = ChatService()
     flows_service = FlowsService()
     knowledge_filter_service = KnowledgeFilterService(session_manager)
@@ -1559,6 +1560,9 @@ async def create_app():
         app.state.background_tasks.add(t1)
         t1.add_done_callback(app.state.background_tasks.discard)
 
+        # Start periodic task cleanup scheduler
+        services["task_service"].start_cleanup_scheduler()
+
         # Start periodic flow backup task (every 5 minutes)
         async def periodic_backup():
             """Periodic backup task that runs every 15 minutes"""
@@ -1603,6 +1607,8 @@ async def create_app():
     async def shutdown_event():
         await TelemetryClient.send_event(Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN)
         await cleanup_subscriptions_proper(services)
+        # Cleanup task service (cancels background tasks and process pool)
+        await services["task_service"].shutdown()
         # Cleanup async clients
         await clients.cleanup()
         # Cleanup telemetry client
