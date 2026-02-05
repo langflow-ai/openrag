@@ -610,7 +610,7 @@ class GoogleDriveConnector(BaseConnector):
         Extract ACL from Google Drive file metadata.
 
         Fetches permissions for the file and constructs a DocumentACL with
-        user and group permissions.
+        allowed users and groups.
 
         Args:
             file_meta: File metadata dict from Google Drive API
@@ -625,8 +625,8 @@ class GoogleDriveConnector(BaseConnector):
                 fields="permissions(emailAddress,role,type,deleted,displayName)"
             ).execute()
 
-            user_perms = {}
-            group_perms = {}
+            allowed_users = []
+            allowed_groups = []
             owner = None
 
             for perm in permissions_list.get("permissions", []):
@@ -641,13 +641,13 @@ class GoogleDriveConnector(BaseConnector):
                 if role == "owner" and email:
                     owner = email
 
-                # Add user permissions
+                # Add allowed users
                 if perm_type == "user" and email:
-                    user_perms[email] = role
+                    allowed_users.append(email)
 
-                # Add group permissions
+                # Add allowed groups
                 elif perm_type == "group" and email:
-                    group_perms[email] = role
+                    allowed_groups.append(email)
 
             # Fallback to file owners if no owner found in permissions
             if not owner and file_meta.get("owners"):
@@ -655,8 +655,8 @@ class GoogleDriveConnector(BaseConnector):
 
             return DocumentACL(
                 owner=owner,
-                user_permissions=user_perms,
-                group_permissions=group_perms,
+                allowed_users=allowed_users,
+                allowed_groups=allowed_groups,
             )
 
         except Exception as e:
@@ -667,8 +667,8 @@ class GoogleDriveConnector(BaseConnector):
                 owner = file_meta["owners"][0].get("emailAddress")
             return DocumentACL(
                 owner=owner,
-                user_permissions={owner: "owner"} if owner else {},
-                group_permissions={},
+                allowed_users=[owner] if owner else [],
+                allowed_groups=[],
             )
 
     async def get_file_content(self, file_id: str) -> ConnectorDocument:

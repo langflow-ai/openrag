@@ -456,7 +456,7 @@ class SharePointConnector(BaseConnector):
         """
         Extract ACL from SharePoint item.
 
-        Queries Microsoft Graph API permissions endpoint to get user and group permissions.
+        Queries Microsoft Graph API permissions endpoint to get allowed users and groups.
 
         Args:
             file_id: SharePoint item ID
@@ -501,20 +501,19 @@ class SharePointConnector(BaseConnector):
 
             permissions_data = response.json()
 
-            user_perms = {}
-            group_perms = {}
+            allowed_users = []
+            allowed_groups = []
             owner = None
 
             for perm in permissions_data.get("value", []):
                 roles = perm.get("roles", [])  # ["read", "write", "owner"]
-                role = roles[0] if roles else "read"
 
                 # Granted to user
                 if "grantedTo" in perm:
                     user_info = perm["grantedTo"].get("user", {})
                     email = user_info.get("email")
                     if email:
-                        user_perms[email] = role
+                        allowed_users.append(email)
                         if "owner" in roles:
                             owner = email
 
@@ -526,7 +525,7 @@ class SharePointConnector(BaseConnector):
                             user_info = identity["user"]
                             email = user_info.get("email")
                             if email:
-                                user_perms[email] = role
+                                allowed_users.append(email)
                                 if "owner" in roles:
                                     owner = email
 
@@ -536,12 +535,12 @@ class SharePointConnector(BaseConnector):
                             group_id = group_info.get("id")
                             group_display_name = group_info.get("displayName", group_id)
                             if group_id:
-                                group_perms[group_display_name] = role
+                                allowed_groups.append(group_display_name)
 
             return DocumentACL(
                 owner=owner,
-                user_permissions=user_perms,
-                group_permissions=group_perms,
+                allowed_users=allowed_users,
+                allowed_groups=allowed_groups,
             )
 
         except Exception as e:
