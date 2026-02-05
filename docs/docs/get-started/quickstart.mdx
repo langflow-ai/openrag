@@ -17,15 +17,14 @@ Use this quickstart to install OpenRAG, and then try some of OpenRAG's core feat
 <PartialPrereqPython />
 
 * Get an [OpenAI API key](https://platform.openai.com/api-keys).
-This quickstart uses OpenAI for simplicity.
+This quickstart uses OpenAI for demonstration purposes.
 For other providers, see the other [installation methods](/install-options).
 
 <PartialPrereqWindows />
 
 ## Install OpenRAG
 
-For this quickstart, install OpenRAG with the automatic installer script and basic setup.
-The script installs OpenRAG dependencies, including Docker or Podman, and then it installs and runs OpenRAG with [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools).
+This quickstart installs OpenRAG with [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) which automatically installs OpenRAG's dependencies as needed, including Docker or Podman.
 
 1. Create a directory for your OpenRAG installation, and then change to that directory:
 
@@ -34,33 +33,33 @@ The script installs OpenRAG dependencies, including Docker or Podman, and then i
    cd openrag-workspace
    ```
 
-2. Download and run the OpenRAG install script:
+2. Install OpenRAG and its dependencies with `uvx`.
+
 
    ```bash
-   curl -O https://docs.openr.ag/files/run_openrag_with_prereqs.sh
-   bash run_openrag_with_prereqs.sh
+   uvx openrag
    ```
 
-3. Wait while the installer script prepares your environment and installs OpenRAG.
    You might be prompted to install certain dependencies if they aren't already present in your environment.
-
    The entire process can take a few minutes.
    Once the environment is ready, the OpenRAG [Terminal User Interface (TUI)](/tui) starts.
 
    ![OpenRAG TUI Interface](@site/static/img/openrag_tui_dec_2025.png)
 
-4. In the TUI, click **Basic Setup**.
+   If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
 
-5. For **Langflow Admin Password**, click **Generate Password** to create a Langflow administrator password and username.
+3. In the TUI, click **Basic Setup**.
 
-6. Use the default values for all other fields.
+4. For **Langflow Admin Password**, click **Generate Password** to create a Langflow administrator password and username.
 
-7. Click **Save Configuration**.
+5. For all other fields, use the default values or leave them empty.
+
+6. Click **Save Configuration**.
 
    Your OpenRAG configuration and passwords are stored in an [OpenRAG `.env` file](/reference/configuration) file that is created automatically at `~/.openrag/tui`.
    OpenRAG container definitions are stored in the `docker-compose` files in the same directory.
 
-8. Click **Start OpenRAG** to start the OpenRAG services.
+7. Click **Start OpenRAG** to start the OpenRAG services.
 
    This process can take some time while OpenRAG pulls and runs the container images.
    If all services start successfully, the TUI prints a confirmation message:
@@ -70,11 +69,11 @@ The script installs OpenRAG dependencies, including Docker or Podman, and then i
    Command completed successfully
    ```
 
-9. Click **Close**, and then click **Launch OpenRAG** to access the OpenRAG application and start the application onboarding process.
+8. Click **Close**, and then click **Launch OpenRAG** to access the OpenRAG application and start the application onboarding process.
 
-10. For this quickstart, select the **OpenAI** model provider, enter your OpenAI API key, and then click **Complete**. Use the default settings for all other model options.
+9. For this quickstart, select the **OpenAI** model provider, enter your OpenAI API key, and then click **Complete**. Use the default settings for all other model options.
 
-11. Click through the overview slides for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
+10. Click through the onboarding chat for a brief introduction to OpenRAG, or click <Icon name="ArrowRight" aria-hidden="true"/> **Skip overview**.
 You can complete this quickstart without going through the overview.
 The overview demonstrates some basic functionality that is covered in the next section and in other parts of the OpenRAG documentation.
 
