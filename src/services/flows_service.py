@@ -952,12 +952,24 @@ class FlowsService:
             chunk_overlap,
             node_display_name="Split Text",
         )
-    async def update_ingest_flow_index_name(self, index_name: str):
-        """Helper function to update index name in the ingest flow"""
+    async def update_flows_index_name(self, index_name: str):
+        """Helper function to update index name in both ingest and chat flows"""
         if not LANGFLOW_INGEST_FLOW_ID:
             raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        if not LANGFLOW_CHAT_FLOW_ID:
+            raise ValueError("LANGFLOW_CHAT_FLOW_ID is not configured")
+        
+        # Update ingest flow
         await self._update_flow_field(
             LANGFLOW_INGEST_FLOW_ID,
+            "index_name",
+            index_name,
+            node_display_name="OpenSearch (Multi-Model Multi-Embedding)",
+        )
+        
+        # Update chat flow
+        await self._update_flow_field(
+            LANGFLOW_CHAT_FLOW_ID,
             "index_name",
             index_name,
             node_display_name="OpenSearch (Multi-Model Multi-Embedding)",

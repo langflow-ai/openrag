@@ -586,12 +586,12 @@ async def update_settings(request, session_manager):
             )
             logger.info(f"Index name changed from {old_index_name} to {new_index_name}")
 
-            # Also update the ingest flow with the new index name
+            # Also update both ingest and chat flows with the new index name
             try:
                 flows_service = _get_flows_service()
-                await flows_service.update_ingest_flow_index_name(new_index_name)
+                await flows_service.update_flows_index_name(new_index_name)
                 logger.info(
-                    f"Successfully updated ingest flow index name to {new_index_name}"
+                    f"Successfully updated ingest and chat flow index names to {new_index_name}"
                 )
             except Exception as e:
                 logger.error(f"Failed to update ingest flow index name: {str(e)}")
