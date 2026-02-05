@@ -147,9 +147,29 @@ You can submit an [OpenRAG GitHub issue](https://github.com/langflow-ai/openrag/
 
 <PartialOllamaModels />
 
-## Document ingestion or similarity search issues
+## Document ingestion or similarity search issues {#document-ingestion-or-similarity-search-issues}
 
-See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
+The following issues can occur during document ingestion or as a result of suboptimal ingestion.
+
+### Failed or slow ingestion
+
+If an ingestion task fails, try the following:
+
+* Make sure you ingest only supported file types.
+* Split very large files into smaller files.
+* Remove unusual or complex embedded content, such as videos or animations. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
+* Make sure your Podman/Docker VM has [sufficient memory](/support/troubleshoot#container-out-of-memory-errors) and temporary storage for the ingestion tasks.
+The minimum recommendation is 8 GB of RAM and at least 50 GB of free disk space, but the exact requirements depend on the size and complexity of your documents.
+If you regularly ingest large files, more RAM and space are recommended.
+* If OCR ingestion fails due to OCR missing, see [OCR ingestion fails (easyocr not installed)](/support/troubleshoot#ocr-ingestion-fails-easyocr-not-installed).
+
+### Ingesting very large PDFs (more than 300 pages)
+
+Ingesting very large PDFs can take 30 minutes or more.
+
+Make sure your container VM has [sufficient memory](/support/troubleshoot#container-out-of-memory-errors) for processing large PDFs.
+
+If Langflow processes time out while ingesting very large PDFs, increase the `LANGFLOW_TIMEOUT` and `LANGFLOW_CONNECT_TIMEOUT` environment variables in your [OpenRAG `.env` file](/reference/configuration).
 
 ### OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
 
@@ -189,13 +209,36 @@ This should automatically install `easyocr` because `easyocr` is included as a d
 
 If you don't need OCR, you can disable OCR-based processing in your [ingestion settings](/knowledge#knowledge-ingestion-settings) to avoid requiring `easyocr`.
 
+### Problems when referencing documents in chat
+
+If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](/knowledge#browse-knowledge) to confirm that the documents are uploaded in full, and the chunks are correct.
+
+If the documents are present and well-formed, check your [knowledge filters](/knowledge-filters).
+If you applied a filter to the chat, make sure the expected documents aren't excluded by the filter settings.
+You can test this by applying the filter when you [browse the knowledge base](/knowledge#browse-knowledge).
+If the filter excludes any documents, the agent cannot access those documents.
+Be aware that some settings create dynamic filters that don't always produce the same results, such as a **Search query** combined with a low **Response limit**.
+
+If the document chunks have missing, incorrect, or unexpected text, you must [delete the documents](/knowledge#delete-knowledge) from your knowledge base, modify the [ingestion parameters](/knowledge#knowledge-ingestion-settings) or the documents themselves, and then reingest the documents.
+For example:
+
+* Break combined documents into separate files for better metadata context.
+* Make sure scanned documents are legible enough for extraction, and enable the **OCR** option. Poorly scanned documents might require additional preparation or rescanning before ingestion.
+* Adjust the **Chunk size** and **Chunk overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
+
 ## Chat issues {#chat-issues}
 
 The following issues can occur when using the [OpenRAG **Chat**](/chat) feature.
 
 ### Documents seem to be missing or misinterpreted
 
-See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
+In the **Chat**, click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** to view the log of tool calls made by the agent.
+This can shows you how the agent used particular tools and the reasoning.
+
+Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to confirm that the documents are present in the OpenRAG OpenSearch database, and then click each document to see how the document was chunked.
+If a document was chunked improperly, you might need to tweak the [ingestion settings](/ingestion) or modify and reupload the document.
+
+See also [Document ingestion or similarity search issues](#document-ingestion-or-similarity-search-issues).
 
 ### Service is suddenly unavailable when it was working previously
 
