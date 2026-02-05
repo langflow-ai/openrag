@@ -31,6 +31,7 @@
     "@docusaurus/module-type-aliases": "3.9.2",
     "@docusaurus/tsconfig": "3.9.2",
     "@docusaurus/types": "3.9.2",
+    "baseline-browser-mapping": "^2.9.19",
     "typescript": "~5.9.3"
   },
   "browserslist": {
