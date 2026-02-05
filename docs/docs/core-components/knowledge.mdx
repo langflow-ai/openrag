@@ -71,7 +71,7 @@ Only one filter can be applied at a time.
 ### Default documents {#default-documents}
 
 By default, OpenRAG includes some initial documents about OpenRAG.
-These documents are ingested automatically during the [application onboarding process](/install#application-onboarding).
+These documents are ingested automatically during the [application onboarding process](/install-uvx#application-onboarding).
 
 You can use these documents to ask OpenRAG about itself, or to test the [**Chat**](/chat) feature before uploading your own documents.
 
@@ -128,7 +128,7 @@ If needed, you can use [filters](/knowledge-filters) to separate documents that 
 
 ### Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
 
-When you [install OpenRAG](/install-options), you select at least one embedding model during the [application onboarding process](/install#application-onboarding).
+When you [install OpenRAG](/install-options), you select at least one embedding model during the [application onboarding process](/install-uvx#application-onboarding).
 OpenRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
 
 In the OpenRAG repository, you can find the complete list of supported models in [`models_service.py`](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py) and the corresponding vector dimensions in [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
@@ -206,7 +206,7 @@ The default value is 200 characters, which represents an overlap of 20 percent w
 
 The default path for local uploads is `~/.openrag/documents`. This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container. Files added to the host or container directory are visible in both locations.
 
-To change this location, modify the **Documents Paths** variable in either the [**Basic/Advanced Setup** menu](/install#setup) or in your [OpenRAG `.env` file](/reference/configuration).
+To change this location, modify the **Documents Paths** variable in either the [**Basic/Advanced Setup** menu](/install-uvx#setup) or in your [OpenRAG `.env` file](/reference/configuration).
 
 ## Delete knowledge {#delete-knowledge}
 
