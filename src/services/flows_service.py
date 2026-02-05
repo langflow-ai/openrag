@@ -952,6 +952,17 @@ class FlowsService:
             chunk_overlap,
             node_display_name="Split Text",
         )
+    async def update_ingest_flow_index_name(self, index_name: str):
+        """Helper function to update index name in the ingest flow"""
+        if not LANGFLOW_INGEST_FLOW_ID:
+            raise ValueError("LANGFLOW_INGEST_FLOW_ID is not configured")
+        await self._update_flow_field(
+            LANGFLOW_INGEST_FLOW_ID,
+            "index_name",
+            index_name,
+            node_display_name="OpenSearch (Multi-Model Multi-Embedding)",
+        )
+
 
     async def update_ingest_flow_embedding_model(self, embedding_model: str, provider: str):
         """Helper function to update embedding model in the ingest flow"""

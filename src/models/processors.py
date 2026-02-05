@@ -20,7 +20,7 @@ class TaskProcessor:
         Check if a document with the given hash already exists in OpenSearch.
         Consolidated hash checking for all processors.
         """
-        from config.settings import INDEX_NAME
+        from config.settings import get_index_name
         import asyncio
 
         max_retries = 3
@@ -28,7 +28,7 @@ class TaskProcessor:
 
         for attempt in range(max_retries):
             try:
-                exists = await opensearch_client.exists(index=INDEX_NAME, id=file_hash)
+                exists = await opensearch_client.exists(index=get_index_name(), id=file_hash)
                 return exists
             except (asyncio.TimeoutError, Exception) as e:
                 if attempt == max_retries - 1:
@@ -64,7 +64,7 @@ class TaskProcessor:
         Check if a document with the given filename already exists in OpenSearch.
         Returns True if any chunks with this filename exist.
         """
-        from config.settings import INDEX_NAME
+        from config.settings import get_index_name
         from utils.opensearch_queries import build_filename_search_body
         import asyncio
 
@@ -77,7 +77,7 @@ class TaskProcessor:
                 search_body = build_filename_search_body(filename, size=1, source=False)
 
                 response = await opensearch_client.search(
-                    index=INDEX_NAME,
+                    index=get_index_name(),
                     body=search_body
                 )
 
@@ -118,7 +118,7 @@ class TaskProcessor:
         """
         Delete all chunks of a document with the given filename from OpenSearch.
         """
-        from config.settings import INDEX_NAME
+        from config.settings import get_index_name
         from utils.opensearch_queries import build_filename_delete_body
 
         try:
@@ -126,7 +126,7 @@ class TaskProcessor:
             delete_body = build_filename_delete_body(filename)
 
             response = await opensearch_client.delete_by_query(
-                index=INDEX_NAME,
+                index=get_index_name(),
                 body=delete_body
             )
 
@@ -168,7 +168,7 @@ class TaskProcessor:
                 embedding model from settings)
         """
         import datetime
-        from config.settings import INDEX_NAME, clients, get_embedding_model
+        from config.settings import clients, get_embedding_model, get_index_name
         from services.document_service import chunk_texts_for_embeddings
         from utils.document_processing import extract_relevant
         from utils.embedding_fields import get_embedding_field_name, ensure_embedding_field_exists
@@ -265,7 +265,7 @@ class TaskProcessor:
             chunk_id = f"{file_hash}_{i}"
             try:
                 await opensearch_client.index(
-                    index=INDEX_NAME, id=chunk_id, body=chunk_doc
+                    index=get_index_name(), id=chunk_id, body=chunk_doc
                 )
             except Exception as e:
                 logger.error(
@@ -601,7 +601,7 @@ class S3FileProcessor(TaskProcessor):
         import time
         import asyncio
         import datetime
-        from config.settings import INDEX_NAME, clients, get_embedding_model
+        from config.settings import clients, get_embedding_model, get_index_name
         from services.document_service import chunk_texts_for_embeddings
         from utils.document_processing import process_document_sync
 

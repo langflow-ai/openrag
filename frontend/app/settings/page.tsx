@@ -128,6 +128,7 @@ function KnowledgeSourcesPage() {
 	const [systemPrompt, setSystemPrompt] = useState<string>("");
 	const [chunkSize, setChunkSize] = useState<number>(1024);
 	const [chunkOverlap, setChunkOverlap] = useState<number>(50);
+	const [indexName, setIndexName] = useState<string>("documents");
 	const [tableStructure, setTableStructure] = useState<boolean>(true);
 	const [ocr, setOcr] = useState<boolean>(false);
 	const [pictureDescriptions, setPictureDescriptions] =
@@ -325,6 +326,12 @@ function KnowledgeSourcesPage() {
 	}, [settings.knowledge?.chunk_size]);
 
 	useEffect(() => {
+		if (settings.knowledge?.index_name) {
+			setIndexName(settings.knowledge.index_name);
+		}
+	}, [settings.knowledge?.index_name]);
+
+	useEffect(() => {
 		if (settings.knowledge?.chunk_overlap) {
 			setChunkOverlap(settings.knowledge.chunk_overlap);
 		}
@@ -414,6 +421,12 @@ function KnowledgeSourcesPage() {
 		const numValue = Math.max(0, parseInt(value) || 0);
 		setChunkOverlap(numValue);
 		debouncedUpdate({ chunk_overlap: numValue });
+	};
+
+	// Update index name setting with debounce
+	const handleIndexNameChange = (value: string) => {
+		setIndexName(value);
+		debouncedUpdate({ index_name: value });
 	};
 
 	// Update docling settings
@@ -1235,6 +1248,23 @@ function KnowledgeSourcesPage() {
 									}
 									value={settings.knowledge?.embedding_model || ""}
 									onValueChange={handleEmbeddingModelChange}
+								/>
+							</LabelWrapper>
+						</div>
+						<div className="space-y-2">
+							<LabelWrapper
+								helperText="OpenSearch index name for storing documents"
+								id="index-name"
+								label="Index name"
+								required={true}
+							>
+								<Input
+									id="index-name"
+									type="text"
+									value={indexName}
+									onChange={(e) => handleIndexNameChange(e.target.value)}
+									className="w-full"
+									placeholder="documents"
 								/>
 							</LabelWrapper>
 						</div>

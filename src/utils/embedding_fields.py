@@ -86,8 +86,9 @@ async def ensure_embedding_field_exists(
     Raises:
         Exception: If unable to add the field mapping
     """
-    from config.settings import INDEX_NAME
+    from config.settings import get_index_name
     from utils.embeddings import get_embedding_dimensions
+    from config.settings import get_index_name
 
     if index_name is None:
         index_name = INDEX_NAME

@@ -74,6 +74,7 @@ class KnowledgeConfig:
     table_structure: bool = True
     ocr: bool = False
     picture_descriptions: bool = False
+    index_name: str = "documents"  # OpenSearch index name
 
 
 @dataclass
