@@ -235,15 +235,6 @@ You could also pass the output from one flow as input to another flow.
 
 </details>
 
-## Troubleshoot chat {#troubleshoot-chat}
+## See also
 
-The following issues can occur when using the OpenRAG **Chat** feature:
-
-* **Documents seem to be missing or interpreted incorrectly**: See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
-* **Service is suddenly unavailable when it was working previously**: If there is no other obvious cause, such as the service or container VM being stopped or disconnected, there might be a problem with the flow configuration. Use the [**Restore flow** option](/agents#revert-a-built-in-flow-to-its-original-configuration) to revert the **OpenRAG OpenSearch Agent** flow to its original configuration.
-If you made customizations to the flow, make sure to [export your flow](https://docs.langflow.org/concepts-flows-import) before restoring the flow.
-* **JSON-formatted responses**: If a model returns JSON-formatted output instead of natural language responses, the model might not be designed for agentic reasoning and RAG tasks.
-Try a different model.
-* **Frequent hallucinations**: If the model seems to hallucinate frequently, the model might be too small or poorly suited to RAG tasks.
-Try a different model.
-* **Responses are good but could be better**: If your model is compatible with OpenRAG, and it isn't exhibiting any obvious issues, then you can use RAG best practices to refine the response quality, such as [knowledge filters](/knowledge-filters) and prompt engineering.
+* [Troubleshoot chat issues](/support/troubleshoot#chat-issues)
