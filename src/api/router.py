@@ -77,7 +77,7 @@ async def langflow_upload_ingest_task(
         settings_json = form.get("settings")
         tweaks_json = form.get("tweaks")
         delete_after_ingest = form.get("delete_after_ingest", "true").lower() == "true"
-        replace_duplicates = form.get("replace_duplicates", "false").lower() == "true"
+        replace_duplicates = form.get("replace_duplicates", "true").lower() == "true"
         create_filter = form.get("create_filter", "false").lower() == "true"
 
         # Parse JSON fields if provided
