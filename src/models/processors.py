@@ -187,7 +187,7 @@ class TaskProcessor:
 
         # Ensure the embedding field exists for this model
         embedding_field_name = await ensure_embedding_field_exists(
-            opensearch_client, embedding_model, INDEX_NAME
+            opensearch_client, embedding_model, get_index_name()
         )
 
         logger.info(

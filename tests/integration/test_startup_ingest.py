@@ -60,12 +60,12 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool):
         sys.modules.pop(mod, None)
 
     from src.main import create_app, startup_tasks
-    from src.config.settings import clients, INDEX_NAME
+    from src.config.settings import clients, get_index_name
 
     # Ensure a clean index before startup
     await clients.initialize()
     try:
-        await clients.opensearch.indices.delete(index=INDEX_NAME)
+        await clients.opensearch.indices.delete(index=get_index_name())
     except Exception:
         pass
 
