@@ -200,8 +200,20 @@ class ConnectorService:
         user_id: str,
         max_files: int = None,
         jwt_token: str = None,
+        filename_filter: set = None,
     ) -> str:
-        """Sync files from a connector connection using existing task tracking system"""
+        """
+        Sync files from a connector connection using existing task tracking system.
+        
+        Args:
+            connection_id: The connection ID
+            user_id: The user ID
+            max_files: Maximum number of files to sync
+            jwt_token: Optional JWT token
+            filename_filter: Optional set of filenames to filter - only files with names
+                           in this set will be synced. Used to prevent deleted files
+                           from being re-synced.
+        """
         if not self.task_service:
             raise ValueError(
                 "TaskService not available - connector sync requires task service dependency"
@@ -248,6 +260,15 @@ class ConnectorService:
             for file_info in files:
                 if max_files and len(files_to_process) >= max_files:
                     break
+                # Filter by filename if filter is provided
+                if filename_filter is not None:
+                    file_name = file_info.get("name", "")
+                    if file_name not in filename_filter:
+                        logger.debug(
+                            "Skipping file not in filter",
+                            filename=file_name,
+                        )
+                        continue
                 files_to_process.append(file_info)
 
             # Stop if we have enough files or no more pages

@@ -68,6 +68,8 @@ class LangflowFileService:
         owner_name: Optional[str] = None,
         owner_email: Optional[str] = None,
         connector_type: Optional[str] = None,
+        document_id: Optional[str] = None,
+        source_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
@@ -157,6 +159,8 @@ class LangflowFileService:
                 "X-Langflow-Global-Var-MIMETYPE": mimetype,
                 "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
                 "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
+                "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id) if document_id else "",
+                "X-Langflow-Global-Var-SOURCE_URL": str(source_url) if source_url else "",
             }
         
         # Add provider credentials as global variables for ingestion

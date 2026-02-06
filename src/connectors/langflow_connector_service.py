@@ -64,11 +64,25 @@ class LangflowConnectorService:
             # Step 1: Upload file to Langflow
             logger.debug("Uploading file to Langflow", filename=document.filename)
             content = document.content
+            processed_filename = document.filename.replace(" ", "_").replace("/", "_") + suffix
             file_tuple = (
-                document.filename.replace(" ", "_").replace("/", "_") + suffix,
+                processed_filename,
                 content,
                 document.mimetype or "application/octet-stream",
             )
+
+            # Step 0: Delete existing chunks for this file before re-ingesting
+            # This prevents duplicate chunks when syncing files
+            if self.session_manager:
+                try:
+                    from config.settings import INDEX_NAME
+                    opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
+                    delete_body = {"query": {"term": {"filename": processed_filename}}}
+                    delete_result = await opensearch_client.delete_by_query(index=INDEX_NAME, body=delete_body)
+                    deleted_count = delete_result.get("deleted", 0)
+                    logger.info("Deleted existing chunks before re-ingestion", filename=processed_filename, deleted_count=deleted_count)
+                except Exception as delete_err:
+                    logger.warning("Failed to delete existing chunks before re-ingestion", filename=processed_filename, error=str(delete_err))
 
             langflow_file_id = None  # Initialize to track if upload succeeded
             try:
@@ -101,6 +115,8 @@ class LangflowConnectorService:
                     owner_name=owner_name,
                     owner_email=owner_email,
                     connector_type=connector_type,
+                    document_id=document.id,
+                    source_url=document.source_url,
                 )
 
                 logger.debug("Ingestion flow completed", result=ingestion_result)

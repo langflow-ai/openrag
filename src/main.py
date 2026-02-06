@@ -1078,6 +1078,17 @@ async def create_app():
             methods=["POST"],
         ),
         Route(
+            "/connectors/sync-all",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.sync_all_connectors,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
             "/connectors/{connector_type}/status",
             require_auth(services["session_manager"])(
                 partial(

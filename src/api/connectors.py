@@ -2,8 +2,80 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
+from config.settings import INDEX_NAME
 
 logger = get_logger(__name__)
+
+
+async def get_synced_file_ids_for_connector(
+    connector_type: str,
+    user_id: str,
+    session_manager,
+    jwt_token: str = None,
+) -> tuple:
+    """
+    Query OpenSearch for unique document_id values where connector_type matches.
+    Returns tuple of (file_ids, filenames) - use file_ids if available, else filenames as fallback.
+    
+    Note: Langflow-ingested files may not have document_id stored. In that case,
+    filenames are returned for filename-based filtering during sync.
+    """
+    try:
+        opensearch_client = session_manager.get_user_opensearch_client(user_id, jwt_token)
+        
+        # Query for both document_id and filename aggregations
+        query_body = {
+            "size": 0,
+            "query": {
+                "term": {
+                    "connector_type": connector_type
+                }
+            },
+            "aggs": {
+                "unique_document_ids": {
+                    "terms": {
+                        "field": "document_id",
+                        "size": 10000
+                    }
+                },
+                "unique_filenames": {
+                    "terms": {
+                        "field": "filename",
+                        "size": 10000
+                    }
+                }
+            }
+        }
+        
+        result = await opensearch_client.search(
+            index=INDEX_NAME,
+            body=query_body
+        )
+        
+        # Get document_ids (preferred - these are the actual connector file IDs)
+        doc_id_buckets = result.get("aggregations", {}).get("unique_document_ids", {}).get("buckets", [])
+        file_ids = [bucket["key"] for bucket in doc_id_buckets if bucket["key"]]
+        
+        # Get filenames as fallback
+        filename_buckets = result.get("aggregations", {}).get("unique_filenames", {}).get("buckets", [])
+        filenames = [bucket["key"] for bucket in filename_buckets if bucket["key"]]
+        
+        logger.debug(
+            "Found synced files for connector",
+            connector_type=connector_type,
+            file_ids_count=len(file_ids),
+            filenames_count=len(filenames),
+        )
+        
+        return file_ids, filenames
+        
+    except Exception as e:
+        logger.error(
+            "Failed to get synced file IDs",
+            connector_type=connector_type,
+            error=str(e),
+        )
+        return [], []
 
 
 async def list_connectors(request: Request, connector_service, session_manager):
@@ -104,6 +176,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
         )
         
         if selected_files:
+            # Explicit files selected (e.g., from file picker) - sync those specific files
             task_id = await connector_service.sync_specific_files(
                 working_connection.connection_id,
                 user.user_id,
@@ -112,12 +185,52 @@ async def connector_sync(request: Request, connector_service, session_manager):
                 file_infos=file_infos,
             )
         else:
-            task_id = await connector_service.sync_connector_files(
-                working_connection.connection_id,
-                user.user_id,
-                max_files,
+            # No files specified - sync only files already in OpenSearch for this connector
+            # This ensures deleted files stay deleted
+            existing_file_ids, existing_filenames = await get_synced_file_ids_for_connector(
+                connector_type=connector_type,
+                user_id=user.user_id,
+                session_manager=session_manager,
                 jwt_token=jwt_token,
             )
+            
+            if not existing_file_ids and not existing_filenames:
+                return JSONResponse(
+                    {
+                        "status": "no_files",
+                        "message": f"No {connector_type} files to sync. Add files from the connector first.",
+                    },
+                    status_code=200,
+                )
+            
+            # If we have document_ids (connector file IDs), use sync_specific_files
+            # Otherwise, use filename filtering with sync_connector_files
+            if existing_file_ids:
+                logger.info(
+                    "Syncing specific files by document_id",
+                    connector_type=connector_type,
+                    file_count=len(existing_file_ids),
+                )
+                task_id = await connector_service.sync_specific_files(
+                    working_connection.connection_id,
+                    user.user_id,
+                    existing_file_ids,
+                    jwt_token=jwt_token,
+                )
+            else:
+                # Fallback: use filename filtering (for Langflow-ingested files without document_id)
+                logger.info(
+                    "Syncing files by filename filter (document_id not available)",
+                    connector_type=connector_type,
+                    filename_count=len(existing_filenames),
+                )
+                task_id = await connector_service.sync_connector_files(
+                    working_connection.connection_id,
+                    user.user_id,
+                    max_files=None,
+                    jwt_token=jwt_token,
+                    filename_filter=set(existing_filenames),
+                )
         task_ids = [task_id]
         await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_COMPLETE)
         return JSONResponse(
@@ -465,6 +578,159 @@ async def connector_disconnect(request: Request, connector_service, session_mana
             {"error": f"Disconnect failed: {str(e)}"},
             status_code=500,
         )
+
+
+async def sync_all_connectors(request: Request, connector_service, session_manager):
+    """
+    Sync files from all active cloud connector connections (Google Drive, OneDrive, SharePoint).
+    
+    Only syncs files that are already indexed in OpenSearch - this ensures deleted files
+    stay deleted and only previously selected files get re-synced (to update content and ACLs).
+    """
+    try:
+        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START)
+        user = request.state.user
+        jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
+
+        # Cloud connector types to sync
+        cloud_connector_types = ["google_drive", "onedrive", "sharepoint"]
+        
+        all_task_ids = []
+        synced_connectors = []
+        skipped_connectors = []
+        errors = []
+
+        for connector_type in cloud_connector_types:
+            try:
+                # First, get existing file IDs/filenames from OpenSearch for this connector type
+                existing_file_ids, existing_filenames = await get_synced_file_ids_for_connector(
+                    connector_type=connector_type,
+                    user_id=user.user_id,
+                    session_manager=session_manager,
+                    jwt_token=jwt_token,
+                )
+                
+                if not existing_file_ids and not existing_filenames:
+                    logger.debug(
+                        "No existing files in OpenSearch for connector type, skipping",
+                        connector_type=connector_type,
+                    )
+                    skipped_connectors.append(connector_type)
+                    continue
+
+                # Get all active connections for this connector type and user
+                connections = await connector_service.connection_manager.list_connections(
+                    user_id=user.user_id, connector_type=connector_type
+                )
+
+                active_connections = [conn for conn in connections if conn.is_active]
+                if not active_connections:
+                    logger.debug(
+                        "No active connections for connector type",
+                        connector_type=connector_type,
+                    )
+                    continue
+
+                # Find the first connection that actually works
+                working_connection = None
+                for connection in active_connections:
+                    try:
+                        connector = await connector_service.get_connector(connection.connection_id)
+                        if connector and await connector.authenticate():
+                            working_connection = connection
+                            break
+                    except Exception as e:
+                        logger.debug(
+                            "Connection validation failed",
+                            connection_id=connection.connection_id,
+                            error=str(e),
+                        )
+                        continue
+
+                if not working_connection:
+                    logger.debug(
+                        "No working connection for connector type",
+                        connector_type=connector_type,
+                    )
+                    continue
+
+                # Sync using document_ids if available, else use filename filter
+                if existing_file_ids:
+                    logger.info(
+                        "Syncing specific files by document_id",
+                        connector_type=connector_type,
+                        file_count=len(existing_file_ids),
+                    )
+                    task_id = await connector_service.sync_specific_files(
+                        working_connection.connection_id,
+                        user.user_id,
+                        existing_file_ids,
+                        jwt_token=jwt_token,
+                    )
+                else:
+                    # Fallback: use filename filtering
+                    logger.info(
+                        "Syncing files by filename filter",
+                        connector_type=connector_type,
+                        filename_count=len(existing_filenames),
+                    )
+                    task_id = await connector_service.sync_connector_files(
+                        working_connection.connection_id,
+                        user.user_id,
+                        max_files=None,
+                        jwt_token=jwt_token,
+                        filename_filter=set(existing_filenames),
+                    )
+                    
+                all_task_ids.append(task_id)
+                synced_connectors.append(connector_type)
+                logger.info(
+                    "Started sync for connector type",
+                    connector_type=connector_type,
+                    task_id=task_id,
+                    file_count=len(existing_file_ids) if existing_file_ids else len(existing_filenames),
+                )
+
+            except Exception as e:
+                logger.error(
+                    "Failed to sync connector type",
+                    connector_type=connector_type,
+                    error=str(e),
+                )
+                errors.append({"connector_type": connector_type, "error": str(e)})
+
+        if not all_task_ids and not errors:
+            if skipped_connectors:
+                return JSONResponse(
+                    {
+                        "status": "no_files",
+                        "message": "No files to sync. Add files from cloud connectors first.",
+                        "skipped_connectors": skipped_connectors,
+                    },
+                    status_code=200,
+                )
+            return JSONResponse(
+                {"error": "No active cloud connector connections found"},
+                status_code=404,
+            )
+
+        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_COMPLETE)
+        return JSONResponse(
+            {
+                "task_ids": all_task_ids,
+                "status": "sync_started",
+                "message": f"Started syncing files from {len(synced_connectors)} cloud connector(s)",
+                "synced_connectors": synced_connectors,
+                "skipped_connectors": skipped_connectors if skipped_connectors else None,
+                "errors": errors if errors else None,
+            },
+            status_code=201,
+        )
+
+    except Exception as e:
+        logger.error("Sync all connectors failed", error=str(e))
+        await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_FAILED)
+        return JSONResponse({"error": f"Sync failed: {str(e)}"}, status_code=500)
 
 
 async def connector_token(request: Request, connector_service, session_manager):
