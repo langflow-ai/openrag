@@ -78,7 +78,7 @@ WEBHOOK_BASE_URL = os.getenv(
 )  # No default - must be explicitly configured
 
 # OpenSearch configuration
-INDEX_NAME = "documents"
+INDEX_NAME = os.getenv("OPENSEARCH_INDEX_NAME", "documents")
 VECTOR_DIM = 1536
 EMBED_MODEL = "text-embedding-3-small"
 
