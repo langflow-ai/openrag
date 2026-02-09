@@ -767,10 +767,15 @@ def run_tui():
 
     if platform_detector.is_native_windows():
         print("\n" + "=" * 60)
-        print("⚠️  Native Windows Not Supported")
+        print("  Native Windows Not Supported")
         print("=" * 60)
         print(platform_detector.get_wsl_recommendation())
         print("=" * 60 + "\n")
+        sys.exit(1)
+
+    # Run startup prerequisites (install runtime, health checks, etc.)
+    from .utils.startup_checks import run_startup_checks
+    if not run_startup_checks():
         sys.exit(1)
 
     app = None
