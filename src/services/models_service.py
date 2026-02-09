@@ -30,6 +30,7 @@ class ModelsService:
         "o3-pro",
         "o4-mini",
         "o4-mini-high",
+        "claude-opus-4-5-20251101",
     ]
 
     ANTHROPIC_MODELS = [
