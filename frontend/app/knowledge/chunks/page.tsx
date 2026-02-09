@@ -247,7 +247,7 @@ function ChunksPageContent() {
                   <dt className="text-sm/6 text-muted-foreground">
                     Total chunks
                   </dt>
-                  <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
                     {chunks.length}
                   </dd>
                 </div>
@@ -255,19 +255,19 @@ function ChunksPageContent() {
                   <dt className="text-sm/6 text-muted-foreground">
                     Avg length
                   </dt>
-                  <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
                     {averageChunkLength.toFixed(0)} chars
                   </dd>
                 </div>
                 {/* TODO: Uncomment after data is available */}
                 {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Process time</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+              <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
               </dd>
             </div>
             <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Model</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+              <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
               </dd>
             </div> */}
               </dl>
@@ -279,19 +279,19 @@ function ChunksPageContent() {
               <dl>
                 {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Name</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+              <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
                 {fileData?.filename}
               </dd>
             </div> */}
                 <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
                   <dt className="text-sm/6 text-muted-foreground">Type</dt>
-                  <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
                     {fileData ? getFileTypeLabel(fileData.mimetype) : "Unknown"}
                   </dd>
                 </div>
                 <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
                   <dt className="text-sm/6 text-muted-foreground">Size</dt>
-                  <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+                  <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
                     {fileData?.size
                       ? `${Math.round(fileData.size / 1024)} KB`
                       : "Unknown"}
@@ -299,18 +299,18 @@ function ChunksPageContent() {
                 </div>
                 {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Uploaded</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+              <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
                 N/A
               </dd>
             </div> */}
                 {/* TODO: Uncomment after data is available */}
                 {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Source</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0"></dd>
+              <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0"></dd>
             </div> */}
                 {/* <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
               <dt className="text-sm/6 text-muted-foreground">Updated</dt>
-              <dd className="mt-1 text-sm/6 text-gray-100 sm:col-span-2 sm:mt-0">
+              <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
                 N/A
               </dd>
             </div> */}
