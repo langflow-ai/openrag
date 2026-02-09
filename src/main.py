@@ -1,7 +1,4 @@
-# Load environment variables from .env file BEFORE any other imports
-# This ensures environment variables are available for all modules
-from dotenv import load_dotenv
-load_dotenv(override=True)
+
 
 # Configure structured logging early
 from connectors.langflow_connector_service import LangflowConnectorService
