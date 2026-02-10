@@ -29,6 +29,7 @@ class EnvConfig:
     # Core settings
     openai_api_key: str = ""
     opensearch_password: str = ""
+    opensearch_index_name: str = "documents"
     langflow_secret_key: str = ""
     langflow_superuser: str = "admin"
     langflow_superuser_password: str = ""
@@ -169,6 +170,7 @@ class EnvManager:
             "WATSONX_ENDPOINT": "watsonx_endpoint",
             "WATSONX_PROJECT_ID": "watsonx_project_id",
             "OPENSEARCH_PASSWORD": "opensearch_password",  # pragma: allowlist secret
+            "OPENSEARCH_INDEX_NAME": "opensearch_index_name",
             "LANGFLOW_SECRET_KEY": "langflow_secret_key",  # pragma: allowlist secret
             "LANGFLOW_SUPERUSER": "langflow_superuser",
             "LANGFLOW_SUPERUSER_PASSWORD": "langflow_superuser_password",  # pragma: allowlist secret
@@ -386,6 +388,7 @@ class EnvManager:
                 f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
+                f.write(f"OPENSEARCH_INDEX_NAME={self._quote_env_value(self.config.opensearch_index_name)}\n")
 
                 # Expand $HOME in paths before writing to .env
                 # This ensures paths work with all compose implementations (docker, podman)
@@ -595,6 +598,12 @@ class EnvManager:
                 "disable_ingest_with_langflow",
                 "Disable Langflow Ingestion (optional)",
                 "False",
+                False,
+            ),
+            (
+                "opensearch_index_name",
+                "OpenSearch Index Name",
+                "documents",
                 False,
             ),
             (

@@ -82,7 +82,9 @@ The following variables are required or recommended:
 
 6. To enable [OAuth mode](/knowledge#auth) or [cloud storage connectors](/ingestion#oauth-ingestion), do the following:
 
-   1. In your `.env` file, set the [OAuth environment variables](/reference/configuration#oauth-and-cloud-storage-connector-settings) for the providers that you want to use:
+   1. Register OpenRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key. To enable multiple connectors, you must register an app and generate credentials for each provider.
+
+   2. In your `.env` file, set the [OAuth environment variables](/reference/configuration#oauth-and-cloud-storage-connector-settings) for the providers that you want to use:
 
       ```env
       GOOGLE_OAUTH_CLIENT_ID=
@@ -97,13 +99,22 @@ The following variables are required or recommended:
 
       <PartialOAuthCredentials />
 
-   2. Optional: Set the `WEBHOOK_BASE_URL` to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
+   3. For each connector, you must register the OpenRAG redirect URIs in your OAuth apps:
 
-   3. For each provider, you must register an OpenRAG OAuth redirect URI in your cloud service's OAuth configuration.
+      * Local deployments: `http://localhost:3000/auth/callback`
+      * Production deployments: `https://your-domain.com/auth/callback`
 
-      For Google, this URL is used to redirect users back to OpenRAG after they sign in, and for the cloud storage connector webhooks.
+      The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
 
-      For Microsoft and Amazon, this URL is used for the cloud storage connector webhooks.
+   4. Optional: Set the `WEBHOOK_BASE_URL` to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
+
+7. Optional: To enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse), set the following variables:
+
+   * **`LANGFUSE_SECRET_KEY`**: A secret key for your Langfuse project.
+   * **`LANGFUSE_PUBLIC_KEY`**: A public key for your Langfuse project.
+   * **`LANGFUSE_HOST`**: Required for self-hosted Langfuse deployments. Leave empty for Langfuse Cloud.
+
+8. Save your `.env` file.
 
 ## Start services
 

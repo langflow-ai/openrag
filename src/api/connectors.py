@@ -1,5 +1,6 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
+from connectors.sharepoint.utils import is_valid_sharepoint_url
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
 from config.settings import INDEX_NAME
@@ -816,8 +817,8 @@ async def connector_token(request: Request, connector_service, session_manager):
                 # Check if a specific resource is requested (for SharePoint File Picker v8)
                 # The File Picker requires a token with SharePoint as the audience, not Graph
                 resource = request.query_params.get("resource")
-                
-                if resource and ".sharepoint.com" in resource:
+
+                if resource and is_valid_sharepoint_url(resource):
                     # SharePoint File Picker v8 needs a SharePoint-scoped token
                     logger.info(f"Acquiring SharePoint-scoped token for resource: {resource}")
                     if hasattr(connector.oauth, "get_access_token_for_resource"):

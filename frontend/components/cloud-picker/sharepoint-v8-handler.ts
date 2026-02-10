@@ -82,6 +82,31 @@ interface CloseCommand {
 
 type PickerCommand = PickCommand | AuthenticateCommand | CloseCommand | { command: string };
 
+function tryParseUrl(value?: string | null): URL | null {
+  if (!value) return null;
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
+function isGraphHostname(hostname: string | null | undefined): boolean {
+  return hostname?.toLowerCase() === "graph.microsoft.com";
+}
+
+function isSharePointHostname(hostname: string | null | undefined): boolean {
+  if (!hostname) return false;
+  const h = hostname.toLowerCase();
+  return h === "sharepoint.com" || h.endsWith(".sharepoint.com");
+}
+
+function hostnamesMatch(a: URL | null, b: URL | null): boolean {
+  if (!a || !b) return false;
+  return a.hostname.toLowerCase() === b.hostname.toLowerCase();
+  // Optionally also check protocol: a.protocol === b.protocol
+}
+
 export class SharePointV8Handler {
   private win: Window | null = null;
   private port: MessagePort | null = null;
@@ -346,11 +371,14 @@ export class SharePointV8Handler {
     console.log("Auth request type:", command.type);
     console.log("Full auth command:", JSON.stringify(command, null, 2));
     
-    // Check if resource matches our base URL or is Microsoft Graph
-    const isGraphResource = command.resource?.includes("graph.microsoft.com");
-    const isSharePointResource = command.resource?.includes("sharepoint.com");
-    const resourceMatchesBase = command.resource?.includes(this.baseUrl) || this.baseUrl?.includes(command.resource);
-    
+    // Check if resource matches our base URL or is Microsoft Graph using URL parsing
+    const resourceUrl = tryParseUrl(command.resource);
+    const baseUrl = tryParseUrl(this.baseUrl);
+
+    const isGraphResource = resourceUrl ? isGraphHostname(resourceUrl.hostname) : false;
+    const isSharePointResource = resourceUrl ? isSharePointHostname(resourceUrl.hostname) : false;
+    const resourceMatchesBase = hostnamesMatch(resourceUrl, baseUrl);
+
     console.log("Resource analysis:");
     console.log("  - Is Microsoft Graph resource:", isGraphResource);
     console.log("  - Is SharePoint resource:", isSharePointResource);
