@@ -5,11 +5,11 @@ import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 1. In the TUI, click either **Basic Setup** or **Advanced Setup**.
 
    :::info
-   You must use **Advanced Setup** if you want to enable either of the following during initial set up:
+   You must use **Advanced Setup** if you want to enable either [OAuth mode or cloud storage connectors](/knowledge-connectors) during initial set up:
 
-   * [OAuth mode](/knowledge#auth): Controls document ownership and access in your OpenRAG OpenSearch knowledge base.
+   * **OAuth mode**: Controls document ownership and access in your OpenRAG [OpenSearch knowledge base](/knowledge).
    Without OAuth mode, there is no differentiation between users; all users that access your OpenRAG instance can access and manage all uploaded documents.
-   * [Cloud storage connectors](/ingestion#oauth-ingestion): Ingest documents from external storage services.
+   * **Cloud storage connectors**: Enables ingestion of documents from external storage services.
    :::
 
    If OpenRAG detects [OAuth or cloud storage connector credentials](/reference/configuration#oauth-and-cloud-storage-connector-settings) during setup, it recommends **Advanced Setup** in the TUI.
