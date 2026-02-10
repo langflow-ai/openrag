@@ -179,8 +179,8 @@ export const UnifiedCloudPicker = ({
   if (provider === "sharepoint" && !baseUrl && isAuthenticated) {
     return (
       <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
-        Configuration required: SharePoint site URL is not configured. 
-        Please ensure your SharePoint connector has a valid site URL (e.g., https://contoso.sharepoint.com/sites/yoursite).
+        Configuration required: A site URL has not been configured for this connector. 
+        Please update your connector settings with a valid site URL for your organization and try again.
       </div>
     );
   }
