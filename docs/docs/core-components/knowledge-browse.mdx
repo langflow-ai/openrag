@@ -4,10 +4,11 @@ slug: /knowledge-browse
 ---
 
 import Icon from "@site/src/components/icon/icon";
+import PartialAnonymousUserOwner from '@site/docs/_partial-anonymous-user-owner.mdx';
 
-The **Knowledge** page lists the documents OpenRAG has ingested into your [OpenSearch knowledge base](/knowledge), specifically in an [OpenSearch index](/knowledge#index) named `documents`.
+The **Knowledge** page lists the documents that have been [ingested](/ingestion) into your [OpenSearch knowledge base](/knowledge), specifically in an [OpenSearch index](/knowledge#index) named `documents`.
 
-To explore the raw contents of your knowledge base, click <Icon name="Library" aria-hidden="true"/> **Knowledge** to get a list of all ingested documents.
+To explore the contents of your knowledge base, click <Icon name="Library" aria-hidden="true"/> **Knowledge** to get a list of all ingested documents.
 
 ## Inspect knowledge
 
@@ -33,6 +34,7 @@ For each document, the **Knowledge** page provides the following information:
    If you [search the knowledge base](#search-knowledge), the **Avg score** column shows the similarity score for your search query or filter.
 
 * **Embedding model** and **Dimensions**: The embedding model and dimensions used to embed the chunks.
+The embedding model, dimensions, chunks, and other ingestion behaviors are determined by the [knowledge ingestion settings](/ingestion-configure) that you set before uploading a document.
 
 * **Status**: Status of document ingestion.
 If ingestion is complete and successful, then the status is **Active**.
@@ -56,13 +58,17 @@ Only one filter can be applied at a time.
 ## Default documents {#default-documents}
 
 By default, OpenRAG includes some initial documents about OpenRAG.
-These documents are ingested automatically during the [application onboarding process](/install#application-onboarding).
+These documents are ingested automatically during the [application onboarding process](/install#application-onboarding) if you use the [default local documents path](/ingestion-configure#set-the-local-documents-path).
 
 You can use these documents to ask OpenRAG about itself, or to test the [**Chat**](/chat) feature before uploading your own documents.
 
-If you [delete these documents](#delete-knowledge), then you won't be able to ask OpenRAG about itself and it's own functionality.
+If you [delete these documents](#delete-knowledge), then you won't be able to ask OpenRAG about itself and its own functionality unless you re-ingest those documents.
 It is recommended that you keep these documents, and use [filters](/knowledge-filters) to separate them from your other knowledge.
 An **OpenRAG Docs** filter is created automatically for these documents.
+
+## Add knowledge
+
+Add knowledge to your knowledge base by [ingesting documents](/ingestion).
 
 ## Delete knowledge {#delete-knowledge}
 

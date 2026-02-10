@@ -4,6 +4,7 @@ slug: /knowledge-filters
 ---
 
 import Icon from "@site/src/components/icon/icon";
+import PartialAnonymousUserOwner from '@site/docs/_partial-anonymous-user-owner.mdx';
 
 OpenRAG's knowledge filters help you organize and manage your [knowledge base](/knowledge) by creating pre-defined views of your documents.
 
@@ -54,7 +55,7 @@ This is purely cosmetic, but it can help you visually distinguish different sets
 
    * **Owners**: Filter by the user that uploaded the documents.
 
-      In no-auth mode, all documents are attributed to **Anonymous User** because there is no distinct document ownership or unique JWTs. For more control over document ownership and visibility, use OAuth mode. For more information, see [OpenSearch authentication and document access](/knowledge#auth).
+      <PartialAnonymousUserOwner />
 
    * **Connectors**: Filter by [upload source](/ingestion), such as the local file system or a cloud storage connector.
 

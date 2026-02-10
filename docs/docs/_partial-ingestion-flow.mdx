@@ -17,7 +17,7 @@ The **OpenSearch Ingestion** flow is comprised of several components that work t
 * [**Embedding Model** component](https://docs.langflow.org/components-embedding-models): Generates vector embeddings using your selected [embedding model](/ingestion-configure#set-the-embedding-model-and-dimensions).
 * [**OpenSearch** component](https://docs.langflow.org/bundles-elastic#opensearch): Stores the processed documents and their embeddings in your OpenRAG [OpenSearch knowledge base](/knowledge).
 
-   The default address for the OpenSearch knowledge base is `https://opensearch:9200`. To change this address, edit the `OPENSEARCH_PORT` [environment variable](/reference/configuration#opensearch-settings).
+   The default address for the OpenSearch knowledge base is `https://localhost:9200`. To change this address, edit the `OPENSEARCH_PORT` [environment variable](/reference/configuration#opensearch-settings).
 
    The default authentication method is JSON Web Token (JWT) authentication. If you [edit the flow](/agents#inspect-and-modify-flows), you can select `basic` auth mode, which uses the `OPENSEARCH_USERNAME` and `OPENSEARCH_PASSWORD` [environment variables](/reference/configuration#opensearch-settings) for authentication instead of JWT.
 
