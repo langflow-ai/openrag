@@ -242,8 +242,7 @@ class SharePointConnector(BaseConnector):
                     logger.info(f"_detect_sharepoint_url: webUrl from response: {web_url}")
                     
                     # Extract the SharePoint domain from the webUrl
-                    # e.g., "https://ibmciodev-my.sharepoint.com/personal/user/Documents"
-                    # -> "https://ibmciodev-my.sharepoint.com"
+
                     if web_url:
                         parsed = urlparse(web_url)
                         sharepoint_url = f"{parsed.scheme}://{parsed.netloc}"
