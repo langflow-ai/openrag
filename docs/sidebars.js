@@ -65,8 +65,8 @@ const sidebars = {
       label: "Knowledge",
       items: [
         "core-components/knowledge",
-        "core-components/ingestion-configure",
         "core-components/ingestion",
+        "core-components/ingestion-configure",
         "core-components/knowledge-browse",
         "core-components/knowledge-filters",
         "core-components/knowledge-connectors",
