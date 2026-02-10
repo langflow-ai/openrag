@@ -253,10 +253,19 @@ class LangflowConnectorService:
         user_id: str,
         file_ids: List[str],
         jwt_token: str = None,
+        file_infos: List[Dict[str, Any]] = None,
     ) -> str:
         """
         Sync specific files by their IDs using Langflow processing.
         Automatically expands folders to their contents.
+        
+        Args:
+            connection_id: The connection ID
+            user_id: The user ID
+            file_ids: List of file IDs to sync
+            jwt_token: Optional JWT token for authentication
+            file_infos: Optional list of file info dicts with {id, name, mimeType, downloadUrl, size}
+                       When provided, download URLs can be used directly without Graph API calls.
         """
         if not self.task_service:
             raise ValueError(
@@ -280,6 +289,12 @@ class LangflowConnectorService:
         owner_name = user.name if user else None
         owner_email = user.email if user else None
 
+        # If file_infos provided, cache them in the connector for later use
+        # This allows get_file_content to use download URLs directly
+        if file_infos and hasattr(connector, 'set_file_infos'):
+            connector.set_file_infos(file_infos)
+            logger.info(f"Cached {len(file_infos)} file infos with download URLs in connector")
+
         # Temporarily set file_ids in the connector's config so list_files() can use them
         # Store the original values to restore later
         cfg = getattr(connector, "cfg", None)
@@ -290,6 +305,8 @@ class LangflowConnectorService:
             original_file_ids = getattr(cfg, "file_ids", None)
             original_folder_ids = getattr(cfg, "folder_ids", None)
 
+        expanded_file_ids = file_ids  # Default to original IDs
+        
         try:
             # Set the file_ids we want to sync in the connector's config
             if cfg is not None:
@@ -307,8 +324,13 @@ class LangflowConnectorService:
                     f"Original IDs: {file_ids}. This may indicate all IDs were folders "
                     f"with no contents, or files that were filtered out."
                 )
-                # Return empty task rather than failing
-                raise ValueError("No files to sync after expanding folders")
+                # If we have file_infos with download URLs, use original file_ids
+                # (OneDrive sharing IDs can't be expanded but can be downloaded directly)
+                if file_infos:
+                    logger.info("Using original file IDs with cached download URLs")
+                    expanded_file_ids = file_ids
+                else:
+                    raise ValueError("No files to sync after expanding folders")
 
         except Exception as e:
             logger.error(f"Failed to expand file_ids via list_files(): {e}")

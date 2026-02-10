@@ -46,7 +46,9 @@ class SharePointConnector(BaseConnector):
         self.client_id = None
         self.client_secret = None
         self.tenant_id = config.get("tenant_id", "common")
-        self.sharepoint_url = config.get("sharepoint_url")
+        # base_url is the generic field name, sharepoint_url is kept for backward compatibility
+        self.sharepoint_url = config.get("base_url") or config.get("sharepoint_url")
+        logger.debug(f"SharePoint connector initialized with sharepoint_url from config: {self.sharepoint_url}")
         self.redirect_uri = config.get("redirect_uri", "http://localhost")
         
         # Try to get credentials, but don't fail if they're missing
@@ -105,11 +107,45 @@ class SharePointConnector(BaseConnector):
             'file_ids': config.get('file_ids') or config.get('selected_files') or config.get('selected_file_ids'),
             'folder_ids': config.get('folder_ids') or config.get('selected_folders') or config.get('selected_folder_ids'),
         })()
+        
+        # Cache for file metadata including download URLs
+        # This allows direct download without Graph API for sharing IDs
+        self._file_infos: Dict[str, Dict[str, Any]] = {}
     
     @property
     def _graph_base_url(self) -> str:
         """Base URL for Microsoft Graph API calls"""
         return f"https://graph.microsoft.com/{self._graph_api_version}"
+    
+    @property
+    def base_url(self) -> Optional[str]:
+        """Generic base URL property (returns sharepoint_url for SharePoint connector)"""
+        return self.sharepoint_url
+    
+    @base_url.setter
+    def base_url(self, value: str):
+        """Set base URL (updates sharepoint_url internally)"""
+        self.sharepoint_url = value
+
+    def set_file_infos(self, file_infos: List[Dict[str, Any]]) -> None:
+        """
+        Cache file metadata including download URLs for later use.
+        This allows direct download without Graph API calls for sharing IDs.
+        
+        Args:
+            file_infos: List of file info dicts with {id, name, mimeType, downloadUrl, size}
+        """
+        self._file_infos = {}
+        for info in file_infos:
+            file_id = info.get("id")
+            if file_id:
+                self._file_infos[file_id] = info
+                if info.get("downloadUrl"):
+                    logger.debug(f"Cached download URL for file {file_id}: {info.get('name')}")
+
+    def get_cached_file_info(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """Get cached file info by ID."""
+        return self._file_infos.get(file_id)
     
     def emit(self, doc: ConnectorDocument) -> None:
         """
@@ -158,12 +194,71 @@ class SharePointConnector(BaseConnector):
             success = await self.oauth.handle_authorization_callback(auth_code, self.redirect_uri)
             if success:
                 self._authenticated = True
-                return {"status": "success"}
+                
+                # Auto-detect base URL from user's drive
+                detected_url = await self._detect_base_url()
+                if detected_url:
+                    self.base_url = detected_url
+                    logger.info(f"Auto-detected base URL: {detected_url}")
+                
+                return {"status": "success", "base_url": self.base_url}
             else:
                 raise ValueError("OAuth callback failed")
         except Exception as e:
             logger.error(f"OAuth callback failed: {e}")
             raise
+    
+    async def _detect_base_url(self) -> Optional[str]:
+        """Override base class method to detect SharePoint URL"""
+        return await self._detect_sharepoint_url()
+    
+    async def _detect_sharepoint_url(self) -> Optional[str]:
+        """Auto-detect SharePoint URL from Microsoft Graph API"""
+        logger.info("_detect_sharepoint_url: Starting SharePoint URL detection")
+        try:
+            if not self.oauth:
+                logger.warning("_detect_sharepoint_url: OAuth not initialized")
+                return None
+                
+            access_token = self.oauth.get_access_token()
+            logger.debug(f"_detect_sharepoint_url: Got access token (length: {len(access_token) if access_token else 0})")
+            
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            }
+            
+            async with httpx.AsyncClient() as client:
+                # Get user's default drive to extract SharePoint URL
+                url = f"{self._graph_base_url}/me/drive"
+                logger.info(f"_detect_sharepoint_url: Calling Graph API: {url}")
+                
+                response = await client.get(url, headers=headers, timeout=30.0)
+                logger.info(f"_detect_sharepoint_url: Graph API response status: {response.status_code}")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    web_url = data.get("webUrl", "")
+                    logger.info(f"_detect_sharepoint_url: webUrl from response: {web_url}")
+                    
+                    # Extract the SharePoint domain from the webUrl
+
+                    if web_url:
+                        parsed = urlparse(web_url)
+                        sharepoint_url = f"{parsed.scheme}://{parsed.netloc}"
+                        logger.info(f"_detect_sharepoint_url: Detected SharePoint URL: {sharepoint_url}")
+                        return sharepoint_url
+                    else:
+                        logger.warning("_detect_sharepoint_url: webUrl is empty in response")
+                else:
+                    logger.warning(f"_detect_sharepoint_url: Failed to get drive info: {response.status_code}, response: {response.text[:500]}")
+                    
+        except Exception as e:
+            logger.error(f"_detect_sharepoint_url: Exception during detection: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return None
     
     def sync_once(self) -> None:
         """
@@ -363,7 +458,36 @@ class SharePointConnector(BaseConnector):
             if not await self.authenticate():
                 raise RuntimeError("SharePoint authentication failed during file content retrieval")
             
-            # First get file metadata using Graph API
+            # First, check for cached file info with download URL
+            # This is used for SharePoint sharing IDs that can't be resolved via Graph API
+            cached_info = self.get_cached_file_info(file_id)
+            if cached_info and cached_info.get("downloadUrl"):
+                logger.info(f"Using cached download URL for file {file_id}")
+                content = await self._download_file_from_url(cached_info["downloadUrl"])
+                
+                acl = DocumentACL(
+                    owner="",
+                    user_permissions={},
+                    group_permissions={},
+                )
+                
+                return ConnectorDocument(
+                    id=file_id,
+                    filename=cached_info.get("name", "Unknown"),
+                    mimetype=cached_info.get("mimeType", "application/octet-stream"),
+                    content=content,
+                    source_url=cached_info.get("webUrl", ""),
+                    acl=acl,
+                    modified_time=datetime.now(),
+                    created_time=datetime.now(),
+                    metadata={
+                        "sharepoint_path": "",
+                        "sharepoint_url": self.sharepoint_url,
+                        "size": cached_info.get("size", 0),
+                    },
+                )
+            
+            # Fall back to Graph API for regular file IDs
             file_metadata = await self._get_file_metadata_by_id(file_id)
             
             if not file_metadata:

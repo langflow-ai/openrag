@@ -1,3 +1,5 @@
+
+
 # Configure structured logging early
 from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
@@ -1093,6 +1095,17 @@ async def create_app():
                 )
             ),
             methods=["GET"],
+        ),
+        Route(
+            "/connectors/{connector_type}/disconnect",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.connector_disconnect,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
         ),
         Route(
             "/connectors/{connector_type}/webhook",
