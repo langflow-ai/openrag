@@ -316,6 +316,67 @@ function ChunksPageContent() {
             </div> */}
               </dl>
             </div>
+            {(fileData?.allowed_users?.length ?? 0) > 0 ||
+            (fileData?.allowed_groups?.length ?? 0) > 0 ? (
+              <div className="mb-4">
+                <h2 className="text-xl font-semibold mt-2 mb-3">
+                  Access Control
+                </h2>
+                <dl>
+                  {fileData?.allowed_users &&
+                    fileData.allowed_users.length > 0 && (
+                      <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                        <dt className="text-sm/6 text-muted-foreground">
+                          Allowed users
+                        </dt>
+                        <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
+                          <div className="space-y-1">
+                            {fileData.allowed_users.map((user, idx) => (
+                              <div
+                                key={user ?? idx}
+                                className="flex items-center gap-2"
+                              >
+                                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+                                  <span className="text-xs font-medium text-blue-800 dark:text-blue-200">
+                                    {user?.charAt(0).toUpperCase()}
+                                  </span>
+                                </span>
+                                <span className="text-sm break-all">{user}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </dd>
+                      </div>
+                    )}
+
+                  {fileData?.allowed_groups &&
+                    fileData.allowed_groups.length > 0 && (
+                      <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                        <dt className="text-sm/6 text-muted-foreground">
+                          Allowed groups
+                        </dt>
+                        <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
+                          <div className="space-y-1">
+                            {fileData.allowed_groups.map((group, idx) => (
+                              <div
+                                key={group ?? idx}
+                                className="flex items-center gap-2"
+                              >
+                                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
+                                  <span className="text-xs font-medium text-green-800 dark:text-green-200">
+                                    {group?.charAt(0).toUpperCase()}
+                                  </span>
+                                </span>
+                                <span className="text-sm break-all">{group}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </dd>
+                      </div>
+                    )}
+                </dl>
+              </div>
+            ) : null}
           </div>
         )}
       </div>

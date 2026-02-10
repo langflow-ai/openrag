@@ -1556,7 +1556,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 }
             },
             "aggs": {
-                "data_sources": {"terms": {"field": "filename", "size": 20}},
+                "data_sources": {"terms": {"field": "filename.keyword", "size": 20}},
                 "document_types": {"terms": {"field": "mimetype", "size": 10}},
                 "owners": {"terms": {"field": "owner", "size": 10}},
                 "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
