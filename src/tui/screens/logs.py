@@ -1,16 +1,19 @@
 """Logs viewing screen for OpenRAG TUI."""
 
 import asyncio
+import re
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Button, Select, TextArea
-from textual.timer import Timer
+from textual.widgets import Header, Footer, Static, Button, Log
 from rich.text import Text
 
 from ..managers.container_manager import ContainerManager
 from ..managers.docling_manager import DoclingManager
 from ..utils.clipboard import copy_text_to_clipboard
+
+# Regex to strip ANSI escape sequences
+ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
 class LogsScreen(Screen):
@@ -51,6 +54,9 @@ class LogsScreen(Screen):
         ("ctrl+c", "copy_logs", "Copy Logs"),
     ]
 
+    # Maximum lines to keep in the log widget
+    MAX_LOG_LINES = 1000
+
     def __init__(self, initial_service: str = "openrag-backend"):
         super().__init__()
         self.container_manager = ContainerManager()
@@ -69,11 +75,12 @@ class LogsScreen(Screen):
             initial_service = "openrag-backend"  # fallback
 
         self.current_service = initial_service
-        self.logs_area = None
+        self.logs_area: Log | None = None
         self.following = False
         self.follow_task = None
-        self.auto_scroll = True
         self._status_task = None
+        # Track log content for copy functionality
+        self._log_lines: list[str] = []
 
     def compose(self) -> ComposeResult:
         """Create the logs screen layout."""
@@ -86,42 +93,24 @@ class LogsScreen(Screen):
                     yield Static("", id="copy-status", classes="copy-indicator")
         yield Footer()
 
-    def _create_logs_area(self) -> TextArea:
-        """Create the logs text area."""
-        self.logs_area = TextArea(
-            text="Loading logs...",
-            read_only=True,
-            show_line_numbers=False,
+    def _create_logs_area(self) -> Log:
+        """Create the logs widget."""
+        self.logs_area = Log(
             id="logs-area",
+            max_lines=self.MAX_LOG_LINES,
+            auto_scroll=True,
         )
         return self.logs_area
 
     async def on_mount(self) -> None:
         """Initialize the screen when mounted."""
-        # Set the correct service in the select widget after a brief delay
-        try:
-            select = self.query_one("#service-select")
-            # Set a default first, then set the desired value
-            select.value = "openrag-backend"
-            if self.current_service in [
-                "openrag-backend",
-                "openrag-frontend",
-                "opensearch",
-                "langflow",
-                "dashboards",
-            ]:
-                select.value = self.current_service
-        except Exception as e:
-            # If setting the service fails, just use the default
-            pass
-
         await self._load_logs()
 
         # Start following logs by default
         if not self.following:
             self.action_follow()
 
-        # Focus the logs area since there are no buttons
+        # Focus the logs area
         try:
             self.logs_area.focus()
         except Exception:
@@ -136,21 +125,25 @@ class LogsScreen(Screen):
 
     async def _load_logs(self, lines: int = 200) -> None:
         """Load recent logs for the current service."""
+        self.logs_area.clear()
+        self._log_lines = []
+
         # Special handling for docling-serve
         if self.current_service == "docling-serve":
             success, logs = self.docling_manager.get_logs(lines)
             if success:
-                self.logs_area.text = logs
-                # Scroll to bottom if auto scroll is enabled
-                if self.auto_scroll:
-                    self.logs_area.scroll_end()
+                for line in logs.split("\n"):
+                    cleaned = self._clean_log_line(line)
+                    if cleaned:
+                        self.logs_area.write_line(cleaned)
+                        self._log_lines.append(cleaned)
             else:
-                self.logs_area.text = f"Failed to load logs: {logs}"
+                self.logs_area.write_line(f"Failed to load logs: {logs}")
             return
-            
+
         # Regular container services
         if not self.container_manager.is_available():
-            self.logs_area.text = "No container runtime available"
+            self.logs_area.write_line("No container runtime available")
             return
 
         success, logs = await self.container_manager.get_service_logs(
@@ -158,12 +151,13 @@ class LogsScreen(Screen):
         )
 
         if success:
-            self.logs_area.text = logs
-            # Scroll to bottom if auto scroll is enabled
-            if self.auto_scroll:
-                self.logs_area.scroll_end()
+            for line in logs.split("\n"):
+                cleaned = self._clean_log_line(line)
+                if cleaned:
+                    self.logs_area.write_line(cleaned)
+                    self._log_lines.append(cleaned)
         else:
-            self.logs_area.text = f"Failed to load logs: {logs}"
+            self.logs_area.write_line(f"Failed to load logs: {logs}")
 
     def _stop_following(self) -> None:
         """Stop following logs."""
@@ -171,7 +165,24 @@ class LogsScreen(Screen):
         if self.follow_task and not self.follow_task.is_finished:
             self.follow_task.cancel()
 
-        # No button to update since we removed it
+    def _clean_log_line(self, line: str) -> str:
+        """Strip ANSI codes and handle carriage returns."""
+        # Strip ANSI escape sequences
+        line = ANSI_ESCAPE_RE.sub("", line)
+        # Handle carriage returns - take only the last segment after \r
+        if "\r" in line:
+            line = line.split("\r")[-1]
+        return line.rstrip()
+
+    def _append_log_line(self, line: str) -> None:
+        """Append a log line efficiently."""
+        cleaned = self._clean_log_line(line)
+        if cleaned:  # Skip empty lines after cleaning
+            self.logs_area.write_line(cleaned)
+            self._log_lines.append(cleaned)
+            # Trim internal buffer to match max lines
+            if len(self._log_lines) > self.MAX_LOG_LINES:
+                self._log_lines = self._log_lines[-self.MAX_LOG_LINES:]
 
     async def _follow_logs(self) -> None:
         """Follow logs in real-time."""
@@ -181,30 +192,20 @@ class LogsScreen(Screen):
                 async for log_lines in self.docling_manager.follow_logs():
                     if not self.following:
                         break
-                    
-                    # Update logs area with new content
-                    current_text = self.logs_area.text
-                    new_text = current_text + "\n" + log_lines if current_text else log_lines
-                    
-                    # Keep only last 1000 lines to prevent memory issues
-                    lines = new_text.split("\n")
-                    if len(lines) > 1000:
-                        lines = lines[-1000:]
-                        new_text = "\n".join(lines)
-                    
-                    self.logs_area.text = new_text
-                    # Scroll to bottom if auto scroll is enabled
-                    if self.auto_scroll:
-                        self.logs_area.scroll_end()
+
+                    # Write each line directly - Log widget handles this efficiently
+                    for line in log_lines.split("\n"):
+                        if line:
+                            self._append_log_line(line)
             except asyncio.CancelledError:
                 pass
             except Exception as e:
-                if self.following:  # Only show error if we're still supposed to be following
+                if self.following:
                     self.notify(f"Error following docling logs: {e}", severity="error")
             finally:
                 self.following = False
             return
-            
+
         # Regular container services
         if not self.container_manager.is_available():
             return
@@ -216,27 +217,13 @@ class LogsScreen(Screen):
                 if not self.following:
                     break
 
-                # Append new line to logs area
-                current_text = self.logs_area.text
-                new_text = current_text + "\n" + log_line
-
-                # Keep only last 1000 lines to prevent memory issues
-                lines = new_text.split("\n")
-                if len(lines) > 1000:
-                    lines = lines[-1000:]
-                    new_text = "\n".join(lines)
-
-                self.logs_area.text = new_text
-                # Scroll to bottom if auto scroll is enabled
-                if self.auto_scroll:
-                    self.logs_area.scroll_end()
+                # Write directly - Log widget handles this efficiently
+                self._append_log_line(log_line)
 
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            if (
-                self.following
-            ):  # Only show error if we're still supposed to be following
+            if self.following:
                 self.notify(f"Error following logs: {e}", severity="error")
         finally:
             self.following = False
@@ -252,13 +239,12 @@ class LogsScreen(Screen):
             self._stop_following()
         else:
             self.following = True
-
-            # Start following
             self.follow_task = self.run_worker(self._follow_logs(), exclusive=False)
 
     def action_clear(self) -> None:
         """Clear the logs area."""
-        self.logs_area.text = ""
+        self.logs_area.clear()
+        self._log_lines = []
 
     def action_copy_logs(self) -> None:
         """Copy log content to the clipboard."""
@@ -266,12 +252,16 @@ class LogsScreen(Screen):
 
     def action_toggle_auto_scroll(self) -> None:
         """Toggle auto scroll on/off."""
-        self.auto_scroll = not self.auto_scroll
-        status = "enabled" if self.auto_scroll else "disabled"
+        self.logs_area.auto_scroll = not self.logs_area.auto_scroll
+        status = "enabled" if self.logs_area.auto_scroll else "disabled"
         self.notify(f"Auto scroll {status}", severity="information")
 
     def action_scroll_top(self) -> None:
         """Scroll to the top of logs."""
+        # Disable auto-scroll when manually going to top, otherwise it snaps back
+        if self.logs_area.auto_scroll:
+            self.logs_area.auto_scroll = False
+            self.notify("Auto scroll disabled", severity="information")
         self.logs_area.scroll_home()
 
     def action_scroll_bottom(self) -> None:
@@ -295,17 +285,16 @@ class LogsScreen(Screen):
         self.logs_area.scroll_page_down()
 
     def on_key(self, event) -> None:
-        """Handle key presses that might be intercepted by TextArea."""
+        """Handle key presses that might be intercepted."""
         key = event.key
 
-        # Handle keys that TextArea might intercept
         if key == "ctrl+u":
             self.action_scroll_page_up()
             event.prevent_default()
         elif key == "ctrl+f":
             self.action_scroll_page_down()
             event.prevent_default()
-        elif key.upper() == "G":
+        elif key == "G":  # Shift+G only
             self.action_scroll_bottom()
             event.prevent_default()
 
@@ -319,7 +308,7 @@ class LogsScreen(Screen):
         if not self.logs_area:
             return
 
-        content = self.logs_area.text or ""
+        content = "\n".join(self._log_lines)
         status_widget = self.query_one("#copy-status", Static)
 
         if not content.strip():

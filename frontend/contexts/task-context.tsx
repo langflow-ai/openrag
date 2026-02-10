@@ -78,7 +78,23 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   });
 
   const cancelTaskMutation = useCancelTaskMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      // Immediately remove from React Query cache
+      queryClient.setQueryData(["tasks"], (oldTasks: Task[] | undefined) => {
+        if (!oldTasks) return [];
+        return oldTasks.filter((task) => task.task_id !== variables.taskId);
+      });
+
+      // Update file to display as cancelled
+      setFiles((prevFiles) =>
+        prevFiles.map((file) => {
+          if (file.task_id === variables.taskId) {
+            return { ...file, status: "failed" };
+          }
+          return file;
+        }),
+      );
+
       toast.success("Task cancelled", {
         description: "Task has been cancelled successfully",
       });
@@ -92,7 +108,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   // Get settings to check if onboarding is active
   const { data: settings } = useGetSettingsQuery();
-  
+
   // Helper function to check if onboarding is active
   const isOnboardingActive = useCallback(() => {
     const TOTAL_ONBOARDING_STEPS = 4;
@@ -330,7 +346,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               currentTask.error || "Unknown error"
             }`,
           });
-          
+
           // Set chat error flag to trigger test_completion=true on health checks
           // Only for ingestion-related tasks (tasks with files are ingestion tasks)
           if (currentTask.files && Object.keys(currentTask.files).length > 0) {

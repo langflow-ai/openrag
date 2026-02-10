@@ -6,7 +6,6 @@ slug: /quickstart
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
-import PartialIntegrateChat from '@site/docs/_partial-integrate-chat.mdx';
 import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
 import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialEditAgentFlow from '@site/docs/_partial-edit-agent-flow.mdx';
@@ -100,20 +99,11 @@ You can click a document to view the chunks of the document as they are stored i
    **Folder** uploads an entire directory.
    The default directory is `~/.openrag/documents`.
 
-   For information about the cloud storage provider options, see [Ingest files with OAuth connectors](/ingestion#oauth-ingestion).
+   For other ingestion options, see [Ingest knowledge](/ingestion).
 
 5. Return to the **Chat** window, and then ask a question related to the documents that you just uploaded.
 
-   If the agent's response doesn't seem to reference your documents correctly, try the following:
-
-   * Click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** to view the log of tool calls made by the agent. This is helpful for troubleshooting because it shows you how the agent used particular tools.
-
-   * Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to confirm that the documents are present in the OpenRAG OpenSearch database, and then click each document to see how the document was chunked.
-   If a document was chunked improperly, you might need to tweak the ingestion or modify and reupload the document.
-
-   * Click <Icon name="Settings2" aria-hidden="true"/> **Settings** to modify the knowledge ingestion settings.
-
-   For more information, see [Configure knowledge](/knowledge) and [Ingest knowledge](/ingestion).
+   If the agent's response doesn't seem to reference your documents correctly, see [Troubleshoot chat issues](/support/troubleshoot#chat-issues).
 
 ## Change the language model and chat settings {#change-components}
 
@@ -129,19 +119,12 @@ Editing the flow in Langflow is optional.
 
 6. To undo your changes, go to **Settings**, and then click **Restore flow** to revert the flow to its original state when you first installed OpenRAG.
 
-## Integrate OpenRAG into an application
-
-Langflow in OpenRAG includes pre-built flows that you can integrate into your applications using the [Langflow API](https://docs.langflow.org/api-reference-api-examples).
-You can use these flows as-is or modify them to better suit your needs, as demonstrated in [Change the language model and chat settings](#change-components).
-
-You can send and receive requests with the Langflow API using Python, TypeScript, or curl.
-
-<PartialIntegrateChat />
-
 ## Next steps
 
 * **Reinstall OpenRAG with your preferred settings**: This quickstart used `uvx` and a minimal setup to demonstrate OpenRAG's core functionality.
 It is recommended that you [reinstall OpenRAG](/reinstall) with your preferred configuration and [installation method](/install-options).
+
+* **Use the OpenRAG SDKs**: To interact with OpenRAG programmatically, use the [OpenRAG SDKs](/reference/api-sdk-overview).
 
 * **Learn more about OpenRAG**: Explore OpenRAG and the OpenRAG documentation to learn more about its features and functionality.
 

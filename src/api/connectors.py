@@ -1,5 +1,6 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
+from connectors.sharepoint.utils import is_valid_sharepoint_url
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
 
@@ -23,7 +24,21 @@ async def connector_sync(request: Request, connector_service, session_manager):
     connector_type = request.path_params.get("connector_type", "google_drive")
     data = await request.json()
     max_files = data.get("max_files")
-    selected_files = data.get("selected_files")
+    selected_files_raw = data.get("selected_files")
+    
+    # Normalize selected_files to handle both formats:
+    # - Legacy: array of strings ["id1", "id2"]
+    # - New: array of objects [{id, name, downloadUrl, ...}]
+    selected_files = None
+    file_infos = None
+    if selected_files_raw:
+        if isinstance(selected_files_raw[0], str):
+            # Legacy format: just IDs
+            selected_files = selected_files_raw
+        else:
+            # New format: file objects with metadata
+            selected_files = [f.get("id") for f in selected_files_raw if f.get("id")]
+            file_infos = selected_files_raw
 
     try:
         await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_SYNC_START)
@@ -95,6 +110,7 @@ async def connector_sync(request: Request, connector_service, session_manager):
                 user.user_id,
                 selected_files,
                 jwt_token=jwt_token,
+                file_infos=file_infos,
             )
         else:
             task_id = await connector_service.sync_connector_files(
@@ -131,26 +147,55 @@ async def connector_status(request: Request, connector_service, session_manager)
         user_id=user.user_id, connector_type=connector_type
     )
 
-    # Get the connector for each connection
-    connection_client_ids = {}
+    # Get the connector for each connection and verify authentication
+    connection_details = {}
+    verified_active_connections = []
+    
     for connection in connections:
         try:
             connector = await connector_service._get_connector(connection.connection_id)
             if connector is not None:
-                connection_client_ids[connection.connection_id] = connector.get_client_id()
+                # Actually verify the connection by trying to authenticate
+                is_authenticated = await connector.authenticate()
+                
+                # Get base URL if available (for SharePoint/OneDrive connectors)
+                base_url = None
+                if hasattr(connector, 'base_url'):
+                    base_url = connector.base_url
+                    logger.debug(f"connector_status: Got base_url from connector.base_url: {base_url}")
+                elif hasattr(connector, 'sharepoint_url'):
+                    base_url = connector.sharepoint_url  # Backward compatibility
+                    logger.debug(f"connector_status: Got base_url from connector.sharepoint_url: {base_url}")
+                else:
+                    logger.debug(f"connector_status: Connector has no base_url or sharepoint_url attribute")
+                
+                connection_details[connection.connection_id] = {
+                    "client_id": connector.get_client_id(),
+                    "is_authenticated": is_authenticated,
+                    "base_url": base_url,
+                }
+                if is_authenticated and connection.is_active:
+                    verified_active_connections.append(connection)
             else:
-                connection_client_ids[connection.connection_id] = None
+                connection_details[connection.connection_id] = {
+                    "client_id": None,
+                    "is_authenticated": False,
+                    "base_url": None,
+                }
         except Exception as e:
             logger.warning(
-                "Could not get connector for connection",
+                "Could not verify connector authentication",
                 connection_id=connection.connection_id,
                 error=str(e),
             )
-            connection.connector = None
+            connection_details[connection.connection_id] = {
+                "client_id": None,
+                "is_authenticated": False,
+                "base_url": None,
+            }
 
-    # Check if there are any active connections
-    active_connections = [conn for conn in connections if conn.is_active]
-    has_authenticated_connection = len(active_connections) > 0
+    # Only count connections that are both active AND actually authenticated
+    has_authenticated_connection = len(verified_active_connections) > 0
 
     return JSONResponse(
         {
@@ -161,8 +206,10 @@ async def connector_status(request: Request, connector_service, session_manager)
                 {
                     "connection_id": conn.connection_id,
                     "name": conn.name,
-                    "client_id": connection_client_ids.get(conn.connection_id),
-                    "is_active": conn.is_active,
+                    "client_id": connection_details.get(conn.connection_id, {}).get("client_id"),
+                    "is_active": conn.is_active and connection_details.get(conn.connection_id, {}).get("is_authenticated", False),
+                    "is_authenticated": connection_details.get(conn.connection_id, {}).get("is_authenticated", False),
+                    "base_url": connection_details.get(conn.connection_id, {}).get("base_url"),
                     "created_at": conn.created_at.isoformat(),
                     "last_sync": conn.last_sync.isoformat() if conn.last_sync else None,
                 }
@@ -346,6 +393,81 @@ async def connector_webhook(request: Request, connector_service, session_manager
             {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
         )
 
+async def connector_disconnect(request: Request, connector_service, session_manager):
+    """Disconnect a connector by deleting its connection"""
+    connector_type = request.path_params.get("connector_type")
+    user = request.state.user
+
+    try:
+        # Get connections for this connector type and user
+        connections = await connector_service.connection_manager.list_connections(
+            user_id=user.user_id, connector_type=connector_type
+        )
+
+        if not connections:
+            return JSONResponse(
+                {"error": f"No {connector_type} connections found"},
+                status_code=404,
+            )
+
+        # Delete all connections for this connector type and user
+        deleted_count = 0
+        for connection in connections:
+            try:
+                # Get the connector to cleanup any subscriptions
+                connector = await connector_service._get_connector(connection.connection_id)
+                if connector and hasattr(connector, 'cleanup_subscription'):
+                    subscription_id = connection.config.get("webhook_channel_id")
+                    if subscription_id:
+                        try:
+                            await connector.cleanup_subscription(subscription_id)
+                        except Exception as e:
+                            logger.warning(
+                                "Failed to cleanup subscription",
+                                connection_id=connection.connection_id,
+                                error=str(e),
+                            )
+            except Exception as e:
+                logger.warning(
+                    "Could not get connector for cleanup",
+                    connection_id=connection.connection_id,
+                    error=str(e),
+                )
+
+            # Delete the connection
+            success = await connector_service.connection_manager.delete_connection(
+                connection.connection_id
+            )
+            if success:
+                deleted_count += 1
+
+        logger.info(
+            "Disconnected connector",
+            connector_type=connector_type,
+            user_id=user.user_id,
+            deleted_count=deleted_count,
+        )
+
+        return JSONResponse(
+            {
+                "status": "disconnected",
+                "connector_type": connector_type,
+                "deleted_connections": deleted_count,
+            }
+        )
+
+    except Exception as e:
+        logger.error(
+            "Failed to disconnect connector",
+            connector_type=connector_type,
+            error=str(e),
+        )
+        return JSONResponse(
+            {"error": f"Disconnect failed: {str(e)}"},
+            status_code=500,
+        )
+
+
 async def connector_token(request: Request, connector_service, session_manager):
     """Get access token for connector API calls (e.g., Pickers)."""
     url_connector_type = request.path_params.get("connector_type")
@@ -426,8 +548,21 @@ async def connector_token(request: Request, connector_service, session_manager):
                 if not ok:
                     return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
-                # Now safe to fetch access token
-                access_token = connector.oauth.get_access_token()
+                # Check if a specific resource is requested (for SharePoint File Picker v8)
+                # The File Picker requires a token with SharePoint as the audience, not Graph
+                resource = request.query_params.get("resource")
+
+                if resource and is_valid_sharepoint_url(resource):
+                    # SharePoint File Picker v8 needs a SharePoint-scoped token
+                    logger.info(f"Acquiring SharePoint-scoped token for resource: {resource}")
+                    if hasattr(connector.oauth, "get_access_token_for_resource"):
+                        access_token = connector.oauth.get_access_token_for_resource(resource)
+                    else:
+                        # Fallback for connectors without resource-specific token support
+                        access_token = connector.oauth.get_access_token()
+                else:
+                    # Default: Microsoft Graph token
+                    access_token = connector.oauth.get_access_token()
                 # MSAL result has expiry, but we’re returning a raw token; keep expires_in None for simplicity
                 return JSONResponse({"access_token": access_token, "expires_in": None})
             except ValueError as e:
