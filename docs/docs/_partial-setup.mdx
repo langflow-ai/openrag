@@ -56,7 +56,7 @@ import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 
 6. Optional: Under **Others**, you can edit the following settings if needed:
 
-   * **Documents Paths**: Use the default path, or provide a path to a directory where you want OpenRAG to look for documents to ingest into your [knowledge base](/knowledge).
+   * **Documents Paths**: Set the [local documents path](/ingestion-configure#set-the-local-documents-path). Use the default path, or provide a path to a directory where you want OpenRAG to look for documents to ingest into your [knowledge base](/knowledge).
    * **OpenSearch Data Path**: Use the default path, or specify the path where you want OpenRAG to create your OpenSearch index.
    * **Langflow Public URL (Advanced Setup only)** : Sets the base address to access the Langflow web interface where users interact with the Langflow editor in a browser. You must set this value to run Langflow on a non-default port (`7860`)
    * **Webhook Base URL (Advanced Setup only)**: If you entered OAuth credentials, you can set the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
