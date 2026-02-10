@@ -1,40 +1,10 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
-from urllib.parse import urlparse
+from connectors.sharepoint.utils import is_valid_sharepoint_url
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
 
 logger = get_logger(__name__)
-
-
-def is_valid_sharepoint_url(url: str) -> bool:
-    """
-    Validate that a URL belongs to a SharePoint domain.
-
-    Performs proper hostname validation to prevent URL substring
-    sanitization attacks. Only accepts URLs where the hostname
-    ends with .sharepoint.com.
-    """
-    try:
-        parsed = urlparse(url)
-        hostname = parsed.hostname
-
-        # Ensure we have a valid hostname
-        if not hostname:
-            return False
-
-        # Convert to lowercase for case-insensitive comparison
-        hostname = hostname.lower()
-
-        # Validate that hostname ends with .sharepoint.com
-        # This prevents attacks like: evil.sharepoint.com.attacker.com
-        # Also ensure it's not just ".sharepoint.com" (no bare suffix)
-        return hostname.endswith(".sharepoint.com") and len(hostname) > len(
-            ".sharepoint.com"
-        )
-    except (ValueError, AttributeError):
-        # Invalid URL or parsing error
-        return False
 
 
 async def list_connectors(request: Request, connector_service, session_manager):
