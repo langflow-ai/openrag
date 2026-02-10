@@ -1398,6 +1398,12 @@ class FlowsService:
             template["api_base"]["show"] = True
             template["api_base"]["advanced"] = False
             updated = True
+        if provider == "openai" and "openai_api_base" in template:
+            template["openai_api_base"]["value"] = "OPENAI_API_BASE"
+            template["openai_api_base"]["load_from_db"] = True
+            template["openai_api_base"]["show"] = True
+            template["openai_api_base"]["advanced"] = False
+            updated = True
 
         if provider == "anthropic" and "api_key" in template:
             template["api_key"]["value"] = "ANTHROPIC_API_KEY"
