@@ -48,7 +48,7 @@ def configure_logging(
         console_renderer = structlog.processors.JSONRenderer()
     else:
         # Custom clean format: timestamp path/file:loc logentry
-        LOC_WIDTH_SHORT = 35
+        LOC_WIDTH_SHORT = 30
         LOC_WIDTH_LONG = 60
 
         def custom_formatter(logger, log_method, event_dict):
@@ -80,7 +80,7 @@ def configure_logging(
             if event:
                 message_parts.append(event)
 
-            header = f"[{timestamp}] [{level:<8}] [{location:<{loc_width}}] "
+            header = f"[{timestamp}] [{level:<7}] [{location:<{loc_width}}] "
 
             # Add any remaining context as indented multi-line fields
             extra = {k: v for k, v in event_dict.items() if k not in ["service", "func_name"]}

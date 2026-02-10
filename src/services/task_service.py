@@ -37,6 +37,10 @@ class TaskService:
         # Locks for task counter updates, keyed by task_id
         # Kept separate from UploadTask to maintain serialization compatibility
         self._task_locks: dict[str, asyncio.Lock] = {}
+        # Global semaphore to limit concurrent file processing across all tasks.
+        # TaskService is a singleton, so this limits concurrency system-wide.
+        self._worker_count = get_worker_count()
+        self._processing_semaphore = asyncio.Semaphore(self._worker_count)
 
         if self.process_pool is None:
             raise ValueError("TaskService requires a process_pool parameter")
@@ -268,16 +272,14 @@ class TaskService:
                 filenames=self._get_display_filenames(upload_task),
                 processor_type=processor.__class__.__name__,
                 user_id=user_id,
+                worker_count=self._worker_count,
             )
 
-            # Process items with limited concurrency
-            # - Semaphore matches worker count
+            # Process items with limited concurrency using the global semaphore
+            # - Limits concurrency across all tasks, not just within this one
             # - Potential bottlenecks related to downstream Langflow / Docling capacity rather than backend I/O
-            worker_count = get_worker_count()
-            semaphore = asyncio.Semaphore(worker_count)
-
             async def process_with_semaphore(item, item_key: str):
-                async with semaphore:
+                async with self._processing_semaphore:
                     file_task = upload_task.file_tasks[item_key]
                     file_task.status = TaskStatus.RUNNING
                     file_task.updated_at = time.time()
@@ -286,7 +288,7 @@ class TaskService:
                         "File processing task running",
                         task_number=upload_task.sequence_number,
                         task_id=task_id,
-                        filename=file_task.filename,
+                        file_path=file_task.file_path,
                     )
 
                     try:
@@ -301,7 +303,7 @@ class TaskService:
                             status="PASSED",
                             task_number=upload_task.sequence_number,
                             task_id=task_id,
-                            filename=file_task.filename,
+                            file_path=file_task.file_path,
                         )
 
                     except asyncio.CancelledError:
@@ -318,7 +320,7 @@ class TaskService:
                             status="FAILED",
                             task_number=upload_task.sequence_number,
                             task_id=task_id,
-                            filename=file_task.filename,
+                            file_path=file_task.file_path,
                         )
 
                         raise  # Re-raise to propagate cancellation
@@ -336,7 +338,7 @@ class TaskService:
                             status="FAILED",
                             task_number=upload_task.sequence_number,
                             task_id=task_id,
-                            filename=file_task.filename,
+                            file_path=file_task.file_path,
                             exception=str(e),
                         )
 
@@ -354,7 +356,7 @@ class TaskService:
                             status="FAILED",
                             task_number=upload_task.sequence_number,
                             task_id=task_id,
-                            filename=file_task.filename,
+                            file_path=file_task.file_path,
                             exception=str(e),
                         )
 
@@ -395,6 +397,7 @@ class TaskService:
                 filenames=self._get_display_filenames(upload_task),
                 processor_type=processor.__class__.__name__,
                 user_id=user_id,
+                worker_count=self._worker_count,
             )
 
             # Send telemetry for task completion
@@ -428,6 +431,7 @@ class TaskService:
                     filenames=self._get_display_filenames(upload_task),
                     processor_type=upload_task.processor.__class__.__name__,
                     user_id=user_id,
+                    worker_count=self._worker_count,
                 )
             else:
                 logger.warning(
@@ -435,6 +439,7 @@ class TaskService:
                     status="FAILED",
                     task_id=task_id,
                     user_id=user_id,
+                    worker_count=self._worker_count,
                 )
 
             raise  # Re-raise to properly handle cancellation
@@ -457,6 +462,7 @@ class TaskService:
                     filenames=self._get_display_filenames(upload_task),
                     processor_type=upload_task.processor.__class__.__name__,
                     user_id=user_id,
+                    worker_count=self._worker_count,
                     exception=str(e),
                 )
 
@@ -479,6 +485,7 @@ class TaskService:
                     status="FAILED",
                     task_id=task_id,
                     user_id=user_id,
+                    worker_count=self._worker_count,
                     exception=str(e),
                 )
 
