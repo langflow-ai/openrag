@@ -1682,6 +1682,9 @@ if __name__ == "__main__":
     # Create app asynchronously
     app = asyncio.run(create_app())
 
+    # Enable or disable HTTP access logging events
+    access_log = os.getenv("ACCESS_LOG", "true").lower() == "true"
+
     # Run the server (startup tasks now handled by Starlette startup event)
     uvicorn.run(
         app,
@@ -1689,4 +1692,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=False,  # Disable reload since we're running from main
+        access_log=access_log,
     )

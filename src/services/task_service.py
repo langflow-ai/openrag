@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 import time
 import uuid
@@ -94,12 +95,11 @@ class TaskService:
         Raises:
             IngestionTimeoutError: If processing exceeds timeout
         """
-        timeout = timeout_seconds or self.ingestion_timeout
+        timeout: int = timeout_seconds or self.ingestion_timeout
         try:
             return await asyncio.wait_for(coro, timeout=timeout)
         except asyncio.TimeoutError:
-            logger.error("File processing timed out", timeout_seconds=timeout)
-            raise IngestionTimeoutError(f"Processing timed out after {timeout}s") from None
+            raise IngestionTimeoutError(f"File processing timed out after {timeout} seconds.") from None
 
     async def create_upload_task(
         self,
@@ -215,97 +215,60 @@ class TaskService:
 
         return task_id
 
-    async def background_upload_processor(self, user_id: str, task_id: str) -> None:
-        """Background task to process all files in an upload job with concurrency control"""
-        try:
-            upload_task = self.task_store[user_id][task_id]
-            upload_task.status = TaskStatus.RUNNING
-            upload_task.updated_at = time.time()
+    def _get_display_filenames(self, upload_task: UploadTask) -> list[str]:
+        filenames: list[str] = [
+            task.filename or os.path.basename(task.file_path)
+            for task in upload_task.file_tasks.values()
+        ]
 
-            # Process items with limited concurrency
-            # - Semaphore matches worker count
-            # - Potential bottlenecks related to downstream Langflow / Docling capacity rather than backend I/O
-            worker_count = get_worker_count()
-            semaphore = asyncio.Semaphore(worker_count)
+        if len(filenames) <= 3:
+            # e.g. ['book-1.xlsx']
+            # e.g. ['book-1.xlsx', 'book-2.xlsx', 'book-3.xlsx']
+            return filenames
+        # e.g. ['book-1.xlsx', 'book-2.xlsx', 'book-3.xlsx', '...']
+        return filenames[:3] + ["..."]
 
-            async def process_with_semaphore(file_path: str):
-                async with semaphore:
-                    from models.processors import DocumentFileProcessor
-                    file_task = upload_task.file_tasks[file_path]
+    def _format_duration(self, duration: float | int) -> str:
+        """
+        Convert specified duration (seconds) into a human-readable string:
+        - < 60 s     → "45s"
+        - < 60 min   → "3m 42s"
+        - ≥ 60 min   → "2h 14m 35s"
+        """
+        total_seconds: int = max(0, int(duration))
 
-                    # Create processor with user context (all None for background processing)
-                    processor = DocumentFileProcessor(
-                        document_service=self.document_service,
-                        owner_user_id=None,
-                        jwt_token=None,
-                        owner_name=None,
-                        owner_email=None,
-                    )
+        if total_seconds < 60:
+            return f"{total_seconds}s"
 
-                    # Process the file
-                    await processor.process_item(upload_task, file_path, file_task)
+        mins, secs = divmod(total_seconds, 60)
 
-            tasks = [
-                process_with_semaphore(file_path)
-                for file_path in upload_task.file_tasks.keys()
-            ]
+        if mins < 60:
+            return f"{mins}m {secs}s"
 
-            await asyncio.gather(*tasks, return_exceptions=True)
+        hours, mins = divmod(mins, 60)
 
-            # Check if task is complete
-            if upload_task.processed_files >= upload_task.total_files:
-                upload_task.status = TaskStatus.COMPLETED
-                upload_task.updated_at = time.time()
-
-                # Send telemetry for task completion
-                asyncio.create_task(
-                    TelemetryClient.send_event(
-                        Category.TASK_OPERATIONS,
-                        MessageId.ORB_TASK_COMPLETE,
-                        metadata={
-                            "total_files": upload_task.total_files,
-                            "successful_files": upload_task.successful_files,
-                            "failed_files": upload_task.failed_files,
-                        }
-                    )
-                )
-
-        except Exception as e:
-            logger.error(
-                "Background upload processor failed", task_id=task_id, error=str(e)
-            )
-            import traceback
-
-            traceback.print_exc()
-            if user_id in self.task_store and task_id in self.task_store[user_id]:
-                failed_task = self.task_store[user_id][task_id]
-                failed_task.status = TaskStatus.FAILED
-                failed_task.updated_at = time.time()
-
-                # Send telemetry for task failure
-                asyncio.create_task(
-                    TelemetryClient.send_event(
-                        Category.TASK_OPERATIONS,
-                        MessageId.ORB_TASK_FAILED,
-                        metadata={
-                            "total_files": failed_task.total_files,
-                            "processed_files": failed_task.processed_files,
-                            "successful_files": failed_task.successful_files,
-                            "failed_files": failed_task.failed_files,
-                        }
-                    )
-                )
+        return f"{hours}h {mins}m {secs}s"
 
     async def background_custom_processor(
         self, user_id: str, task_id: str, items: list
     ) -> None:
         """Background task to process items using custom processor"""
         try:
-            upload_task = self.task_store[user_id][task_id]
+            upload_task: UploadTask = self.task_store[user_id][task_id]
             upload_task.status = TaskStatus.RUNNING
             upload_task.updated_at = time.time()
 
             processor = upload_task.processor
+
+            logger.info(
+                "Upload / ingestion task started",
+                task_number=upload_task.sequence_number,
+                task_id=task_id,
+                total_files=upload_task.total_files,
+                filenames=self._get_display_filenames(upload_task),
+                processor_type=processor.__class__.__name__,
+                user_id=user_id,
+            )
 
             # Process items with limited concurrency
             # - Semaphore matches worker count
@@ -319,41 +282,65 @@ class TaskService:
                     file_task.status = TaskStatus.RUNNING
                     file_task.updated_at = time.time()
 
+                    logger.info(
+                        "File processing task running",
+                        task_number=upload_task.sequence_number,
+                        task_id=task_id,
+                        filename=file_task.filename,
+                    )
+
                     try:
                         # Add timeout protection to prevent indefinite hangs
                         await self._process_with_timeout(
                             processor.process_item(upload_task, item, file_task),
                             timeout_seconds=self.ingestion_timeout
                         )
+
+                        logger.info(
+                            "File processing task succeeded",
+                            status="PASSED",
+                            task_number=upload_task.sequence_number,
+                            task_id=task_id,
+                            filename=file_task.filename,
+                        )
+
                     except asyncio.CancelledError:
                         # Handle cancellation explicitly
-                        logger.info("File processing cancelled", item=str(item))
+
                         if file_task.status == TaskStatus.RUNNING:
                             file_task.status = TaskStatus.FAILED
-                            file_task.error = "Task cancelled by user"
+                            file_task.error = "File processing task cancelled."
                             async with self._get_task_lock(task_id):
                                 upload_task.failed_files += 1
+
+                        logger.warning(
+                            "File processing task cancelled",
+                            status="FAILED",
+                            task_number=upload_task.sequence_number,
+                            task_id=task_id,
+                            filename=file_task.filename,
+                        )
+
                         raise  # Re-raise to propagate cancellation
                     except IngestionTimeoutError as e:
-                        # Handle timeout explicitly with specific error message
-                        logger.warning(
-                            "File processing timed out",
-                            item=str(item),
-                            timeout=self.ingestion_timeout
-                        )
+                        # Handle timeout explicitly
                         if file_task.status == TaskStatus.RUNNING:
                             file_task.status = TaskStatus.FAILED
-                            file_task.error = f"Processing timed out after {self.ingestion_timeout}s"
+                            file_task.error = str(e)
                             async with self._get_task_lock(task_id):
                                 upload_task.failed_files += 1
                         # Don't re-raise - treat as normal failure, not cancellation
-                    except Exception as e:
-                        logger.error(
-                            "Failed to process item", item=str(item), error=str(e)
-                        )
-                        import traceback
 
-                        traceback.print_exc()
+                        logger.error(
+                            "File processing task timed out",
+                            status="FAILED",
+                            task_number=upload_task.sequence_number,
+                            task_id=task_id,
+                            filename=file_task.filename,
+                            exception=str(e),
+                        )
+
+                    except Exception as e:
                         # Note: Processors already handle incrementing failed_files and
                         # setting file_task status/error, so we don't duplicate that here.
                         # Only update timestamp if processor didn't already set it
@@ -361,6 +348,16 @@ class TaskService:
                             file_task.status = TaskStatus.FAILED
                         if not file_task.error:
                             file_task.error = str(e)
+
+                        logger.error(
+                            "File processing task exception encountered",
+                            status="FAILED",
+                            task_number=upload_task.sequence_number,
+                            task_id=task_id,
+                            filename=file_task.filename,
+                            exception=str(e),
+                        )
+
                     finally:
                         file_task.updated_at = time.time()
                         # Only increment processed_files if the file reached a terminal state
@@ -378,6 +375,28 @@ class TaskService:
             upload_task.status = TaskStatus.COMPLETED
             upload_task.updated_at = time.time()
 
+            status: str = "FAILED"
+
+            if upload_task.failed_files == 0:
+                status = "PASSED"
+            elif upload_task.successful_files > 0:
+                status = "FAILED (partial success)"
+
+            logger.info(
+                "Upload / ingestion task finished",
+                status=status,
+                task_number=upload_task.sequence_number,
+                task_id=task_id,
+                duration=self._format_duration(upload_task.duration_seconds),
+                total_files=upload_task.total_files,
+                processed_files=upload_task.processed_files,
+                successful_files=upload_task.successful_files,
+                failed_files=upload_task.failed_files,
+                filenames=self._get_display_filenames(upload_task),
+                processor_type=processor.__class__.__name__,
+                user_id=user_id,
+            )
+
             # Send telemetry for task completion
             asyncio.create_task(
                 TelemetryClient.send_event(
@@ -392,22 +411,54 @@ class TaskService:
             )
 
         except asyncio.CancelledError:
-            logger.info("Background processor cancelled", task_id=task_id)
             if user_id in self.task_store and task_id in self.task_store[user_id]:
                 # Task status and pending files already handled by cancel_task()
-                pass
+                upload_task = self.task_store[user_id][task_id]
+
+                logger.warning(
+                    "Upload / ingestion task cancelled",
+                    status="FAILED",
+                    task_number=upload_task.sequence_number,
+                    task_id=task_id,
+                    duration=self._format_duration(upload_task.duration_seconds),
+                    total_files=upload_task.total_files,
+                    processed_files=upload_task.processed_files,
+                    successful_files=upload_task.successful_files,
+                    failed_files=upload_task.failed_files,
+                    filenames=self._get_display_filenames(upload_task),
+                    processor_type=upload_task.processor.__class__.__name__,
+                    user_id=user_id,
+                )
+            else:
+                logger.warning(
+                    "Upload / ingestion task cancelled",
+                    status="FAILED",
+                    task_id=task_id,
+                    user_id=user_id,
+                )
+
             raise  # Re-raise to properly handle cancellation
         except Exception as e:
-            logger.error(
-                "Background custom processor failed", task_id=task_id, error=str(e)
-            )
-            import traceback
-
-            traceback.print_exc()
             if user_id in self.task_store and task_id in self.task_store[user_id]:
-                failed_task = self.task_store[user_id][task_id]
-                failed_task.status = TaskStatus.FAILED
-                failed_task.updated_at = time.time()
+                upload_task = self.task_store[user_id][task_id]
+                upload_task.status = TaskStatus.FAILED
+                upload_task.updated_at = time.time()
+
+                logger.error(
+                    "Upload / ingestion task exception encountered",
+                    status="FAILED",
+                    task_number=upload_task.sequence_number,
+                    task_id=task_id,
+                    duration=self._format_duration(upload_task.duration_seconds),
+                    total_files=upload_task.total_files,
+                    processed_files=upload_task.processed_files,
+                    successful_files=upload_task.successful_files,
+                    failed_files=upload_task.failed_files,
+                    filenames=self._get_display_filenames(upload_task),
+                    processor_type=upload_task.processor.__class__.__name__,
+                    user_id=user_id,
+                    exception=str(e),
+                )
 
                 # Send telemetry for task failure
                 asyncio.create_task(
@@ -415,12 +466,20 @@ class TaskService:
                         Category.TASK_OPERATIONS,
                         MessageId.ORB_TASK_FAILED,
                         metadata={
-                            "total_files": failed_task.total_files,
-                            "processed_files": failed_task.processed_files,
-                            "successful_files": failed_task.successful_files,
-                            "failed_files": failed_task.failed_files,
+                            "total_files": upload_task.total_files,
+                            "processed_files": upload_task.processed_files,
+                            "successful_files": upload_task.successful_files,
+                            "failed_files": upload_task.failed_files,
                         }
                     )
+                )
+            else:
+                logger.error(
+                    "Upload / ingestion exception encountered",
+                    status="FAILED",
+                    task_id=task_id,
+                    user_id=user_id,
+                    exception=str(e),
                 )
 
     def get_task_status(self, user_id: str, task_id: str) -> dict | None:
