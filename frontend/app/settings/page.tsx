@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Copy, Key, Loader2, Minus, PlugZap, Plus, Trash2 } from "lucide-react";
+import { ArrowUpRight, Copy, Key, Loader2, Minus, PlugZap, Plus, RefreshCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -515,7 +515,7 @@ function KnowledgeSourcesPage() {
 					const connections = data.connections || [];
 					// Find a connection that is both active AND authenticated
 					const activeConnection = connections.find(
-						(conn: Connection & { is_authenticated?: boolean }) => 
+						(conn: Connection & { is_authenticated?: boolean }) =>
 							conn.is_active && conn.is_authenticated,
 					);
 					const isConnected = activeConnection !== undefined;
@@ -524,10 +524,10 @@ function KnowledgeSourcesPage() {
 						prev.map((c) =>
 							c.type === connectorType
 								? {
-										...c,
-										status: isConnected ? "connected" : "not_connected",
-										connectionId: activeConnection?.connection_id,
-									}
+									...c,
+									status: isConnected ? "connected" : "not_connected",
+									connectionId: activeConnection?.connection_id,
+								}
 								: c,
 						),
 					);
@@ -604,10 +604,10 @@ function KnowledgeSourcesPage() {
 					prev.map((c) =>
 						c.type === connector.type
 							? {
-									...c,
-									status: "not_connected",
-									connectionId: undefined,
-								}
+								...c,
+								status: "not_connected",
+								connectionId: undefined,
+							}
 							: c,
 					),
 				);
@@ -951,34 +951,28 @@ function KnowledgeSourcesPage() {
 										<div className="space-y-3">
 											{connector?.status === "connected" && connector?.connectionId ? (
 												<>
-													<Button
-														variant="outline"
-														onClick={() => navigateToKnowledgePage(connector)}
-														disabled={isSyncing === connector.id || isDisconnecting === connector.id}
-														className="w-full cursor-pointer"
-														size="sm"
-													>
-														<Plus className="h-4 w-4" />
-														Add Knowledge
-													</Button>
-													<div className="flex gap-2">
+													<div className="flex gap-2 overflow-hidden w-full">
+														<Button
+															variant="outline"
+															onClick={() => navigateToKnowledgePage(connector)}
+															disabled={isSyncing === connector.id || isDisconnecting === connector.id}
+															className="cursor-pointer !text-sm truncate"
+															size="md"
+														>
+															<Plus className="h-4 w-4" />
+															<span className="text-mmd truncate">Add Knowledge</span>
+														</Button>
 														<Button
 															variant="outline"
 															onClick={() => handleConnect(connector)}
 															disabled={isConnecting === connector.id || isDisconnecting === connector.id}
-															className="flex-1 cursor-pointer"
-															size="sm"
+															className="cursor-pointer"
+															size="iconMd"
 														>
 															{isConnecting === connector.id ? (
-																<>
-																	<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-																	Reconnecting...
-																</>
+																<RefreshCcw className="h-4 w-4 animate-spin" />
 															) : (
-																<>
-																	<PlugZap className="mr-2 h-4 w-4" />
-																	Reconnect
-																</>
+																<RefreshCcw className="h-4 w-4" />
 															)}
 														</Button>
 														<Button
@@ -986,12 +980,12 @@ function KnowledgeSourcesPage() {
 															onClick={() => handleDisconnect(connector)}
 															disabled={isDisconnecting === connector.id || isConnecting === connector.id}
 															className="cursor-pointer text-destructive hover:text-destructive"
-															size="sm"
+															size="iconMd"
 														>
 															{isDisconnecting === connector.id ? (
 																<Loader2 className="h-4 w-4 animate-spin" />
 															) : (
-																<Minus className="h-4 w-4" />
+																<Trash2 className="h-4 w-4" />
 															)}
 														</Button>
 													</div>
@@ -1021,12 +1015,12 @@ function KnowledgeSourcesPage() {
 												>
 													{isConnecting === connector.id ? (
 														<>
-															<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+															<Loader2 className="h-4 w-4 animate-spin" />
 															Connecting...
 														</>
 													) : (
 														<>
-															<PlugZap className="mr-2 h-4 w-4" />
+															<PlugZap className="h-4 w-4" />
 															Connect
 														</>
 													)}
@@ -1172,19 +1166,17 @@ function KnowledgeSourcesPage() {
 									value={systemPrompt}
 									onChange={(e) => setSystemPrompt(e.target.value)}
 									rows={6}
-									className={`resize-none ${
-										systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-											? "!border-destructive focus:border-destructive"
-											: ""
-									}`}
+									className={`resize-none ${systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
+										? "!border-destructive focus:border-destructive"
+										: ""
+										}`}
 								/>
 							</LabelWrapper>
 							<span
-								className={`text-xs ${
-									systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
-										? "text-destructive"
-										: "text-muted-foreground"
-								}`}
+								className={`text-xs ${systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS
+									? "text-destructive"
+									: "text-muted-foreground"
+									}`}
 							>
 								{systemPrompt.length}/{MAX_SYSTEM_PROMPT_CHARS} characters
 							</span>
