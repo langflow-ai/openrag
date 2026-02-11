@@ -77,6 +77,19 @@ spec:
               value: {{ .Values.langflow.logLevel | quote }}
             - name: HIDE_GETTING_STARTED_PROGRESS
               value: "true"
+            # Langflow Tracking (Langfuse)
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openrag.fullname" . }}-langflow
+                  key: langfuse-secret-key
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openrag.fullname" . }}-langflow
+                  key: langfuse-public-key
+            - name: LANGFUSE_HOST
+              value: {{ .Values.langflow.langfuse.host | quote }}
             # Auth settings
             - name: LANGFLOW_AUTO_LOGIN
               value: {{ .Values.langflow.auth.autoLogin | quote }}
@@ -100,8 +113,16 @@ spec:
               value: "system"
             - name: CONNECTOR_TYPE_URL
               value: "url"
+            - name: DOCUMENT_ID
+              value: ""
+            - name: SOURCE_URL
+              value: ""
+            - name: ALLOWED_USERS
+              value: "[]"
+            - name: ALLOWED_GROUPS
+              value: "[]"
             - name: OPENRAG-QUERY-FILTER
-              value: "{}"
+              value: {{ .Values.langflow.openragQueryFilter | quote }}
             - name: FILENAME
               value: "None"
             - name: MIMETYPE
@@ -133,9 +154,11 @@ spec:
               value: {{ .Values.global.opensearch.port | quote }}
             - name: OPENSEARCH_URL
               value: {{ include "openrag.opensearch.url" . | quote }}
+            - name: OPENSEARCH_INDEX_NAME
+              value: {{ .Values.global.opensearch.indexName | quote }}
             # Docling service URL (for document processing in flows)
             - name: DOCLING_SERVE_URL
-              value: "http://host.docker.internal:5001"
+              value: {{ .Values.langflow.doclingServeUrl | quote }}
             {{- if .Values.global.opensearch.password }}
             - name: OPENSEARCH_PASSWORD
               valueFrom:

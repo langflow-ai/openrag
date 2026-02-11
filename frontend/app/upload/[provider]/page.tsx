@@ -25,6 +25,7 @@ interface CloudConnector {
   clientId: string;
   hasAccessToken: boolean;
   accessTokenError?: string;
+  baseUrl?: string;
 }
 
 export default function UploadProviderPage() {
@@ -83,8 +84,8 @@ export default function UploadProviderPage() {
         const statusData = await statusResponse.json();
         const connections = statusData.connections || [];
         const activeConnection = connections.find(
-          (conn: { is_active: boolean; connection_id: string }) =>
-            conn.is_active,
+          (conn: { is_active: boolean; is_authenticated?: boolean; connection_id: string }) =>
+            conn.is_active && conn.is_authenticated,
         );
         const isConnected = activeConnection !== undefined;
 
@@ -94,9 +95,14 @@ export default function UploadProviderPage() {
         // Try to get access token for connected connectors
         if (isConnected && activeConnection) {
           try {
-            const tokenResponse = await fetch(
-              `/api/connectors/${provider}/token?connection_id=${activeConnection.connection_id}`,
-            );
+            // For SharePoint File Picker v8, we need a token with SharePoint as the audience
+            // Pass the base_url as the resource parameter to get the correct token
+            let tokenUrl = `/api/connectors/${provider}/token?connection_id=${activeConnection.connection_id}`;
+            if (provider === "sharepoint" && activeConnection.base_url) {
+              tokenUrl += `&resource=${encodeURIComponent(activeConnection.base_url)}`;
+            }
+            
+            const tokenResponse = await fetch(tokenUrl);
             if (tokenResponse.ok) {
               const tokenData = await tokenResponse.json();
               if (tokenData.access_token) {
@@ -124,6 +130,7 @@ export default function UploadProviderPage() {
           clientId: activeConnection?.client_id,
           hasAccessToken,
           accessTokenError,
+          baseUrl: activeConnection?.base_url,
         });
       } catch (error) {
         console.error("Failed to load connector info:", error);
@@ -175,14 +182,28 @@ export default function UploadProviderPage() {
     setIsIngesting(true);
 
     try {
+      // Pass full file objects including download URLs for OneDrive/SharePoint
+      // This allows the backend to use direct download URLs instead of Graph API
       const syncBody: {
         connection_id: string;
         max_files?: number;
-        selected_files?: string[];
+        selected_files?: Array<{
+          id: string;
+          name: string;
+          mimeType: string;
+          downloadUrl?: string;
+          size?: number;
+        }>;
         settings?: IngestSettings;
       } = {
         connection_id: connector.connectionId,
-        selected_files: selectedFiles.map((file) => file.id),
+        selected_files: selectedFiles.map((file) => ({
+          id: file.id,
+          name: file.name,
+          mimeType: file.mimeType,
+          downloadUrl: file.downloadUrl,
+          size: file.size,
+        })),
         settings: ingestSettings,
       };
 
@@ -352,6 +373,7 @@ export default function UploadProviderPage() {
           isIngesting={isIngesting}
           accessToken={accessToken || undefined}
           clientId={connector.clientId}
+          baseUrl={connector.baseUrl}
           onSettingsChange={setIngestSettings}
         />
       </div>
