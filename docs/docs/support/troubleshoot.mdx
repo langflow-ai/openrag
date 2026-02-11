@@ -358,7 +358,7 @@ The following steps explain how to troubleshoot these issues with Fedora 43, Pod
    ```
 
 
-10. Test the GPU with Podman, and make sure `nvidia-smi` prints your GPU information instead of an error:
+10. Test the GPU with Podman:
 
    ```bash
    podman run --rm \
@@ -366,6 +366,10 @@ The following steps explain how to troubleshoot these issues with Fedora 43, Pod
    --device nvidia.com/gpu=all \
    nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
    ```
+
+   Make sure `nvidia-smi` prints your GPU information instead of an error.
+
+   The `--rm` argument automatically removes the container after the command exits.
 
 11. Run Ollama in a GPU-enabled container:
 
