@@ -64,11 +64,25 @@ class LangflowConnectorService:
             # Step 1: Upload file to Langflow
             logger.debug("Uploading file to Langflow", filename=document.filename)
             content = document.content
+            processed_filename = document.filename.replace(" ", "_").replace("/", "_") + suffix
             file_tuple = (
-                document.filename.replace(" ", "_").replace("/", "_") + suffix,
+                processed_filename,
                 content,
                 document.mimetype or "application/octet-stream",
             )
+
+            # Step 0: Delete existing chunks for this file before re-ingesting
+            # This prevents duplicate chunks when syncing files
+            if self.session_manager:
+                try:
+                    from config.settings import INDEX_NAME
+                    opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
+                    delete_body = {"query": {"term": {"filename": processed_filename}}}
+                    delete_result = await opensearch_client.delete_by_query(index=INDEX_NAME, body=delete_body)
+                    deleted_count = delete_result.get("deleted", 0)
+                    logger.info("Deleted existing chunks before re-ingestion", filename=processed_filename, deleted_count=deleted_count)
+                except Exception as delete_err:
+                    logger.warning("Failed to delete existing chunks before re-ingestion", filename=processed_filename, error=str(delete_err))
 
             langflow_file_id = None  # Initialize to track if upload succeeded
             try:
@@ -92,6 +106,18 @@ class LangflowConnectorService:
                 # Use the same tweaks pattern as LangflowFileService
                 tweaks = {}  # Let Langflow handle the ingestion with default settings
 
+                # Extract ACL information from the connector document, if available
+                allowed_users: list[str] = []
+                allowed_groups: list[str] = []
+                if getattr(document, "acl", None) is not None:
+                    try:
+                        allowed_users = document.acl.allowed_users or []
+                        allowed_groups = document.acl.allowed_groups or []
+                    except AttributeError:
+                        # If ACL shape is different or missing fields, fall back to empty lists
+                        allowed_users = []
+                        allowed_groups = []
+
                 ingestion_result = await self.langflow_service.run_ingestion_flow(
                     file_paths=[langflow_file_path],
                     file_tuples=[file_tuple],
@@ -101,6 +127,10 @@ class LangflowConnectorService:
                     owner_name=owner_name,
                     owner_email=owner_email,
                     connector_type=connector_type,
+                    document_id=document.id,
+                    source_url=document.source_url,
+                    allowed_users=allowed_users,
+                    allowed_groups=allowed_groups,
                 )
 
                 logger.debug("Ingestion flow completed", result=ingestion_result)

@@ -113,6 +113,14 @@ spec:
               value: "system"
             - name: CONNECTOR_TYPE_URL
               value: "url"
+            - name: DOCUMENT_ID
+              value: ""
+            - name: SOURCE_URL
+              value: ""
+            - name: ALLOWED_USERS
+              value: "[]"
+            - name: ALLOWED_GROUPS
+              value: "[]"
             - name: OPENRAG-QUERY-FILTER
               value: {{ .Values.langflow.openragQueryFilter | quote }}
             - name: FILENAME

@@ -451,6 +451,101 @@ class SharePointConnector(BaseConnector):
             logger.error(f"Failed to list SharePoint files: {e}")
             return {"files": [], "next_page_token": None}  # Return empty result instead of raising
     
+    async def _extract_sharepoint_acl(self, file_id: str, file_metadata: Dict) -> DocumentACL:
+        """
+        Extract ACL from SharePoint item.
+
+        Queries Microsoft Graph API permissions endpoint to get allowed users and groups.
+
+        Args:
+            file_id: SharePoint item ID
+            file_metadata: File metadata dict
+
+        Returns:
+            DocumentACL instance with extracted permissions
+        """
+        try:
+            # Get access token - use same approach as _make_graph_request
+            access_token = self.oauth.get_access_token()
+
+            if not access_token:
+                logger.warning(f"No access token available for ACL extraction: {file_id}")
+                return DocumentACL()
+
+            # Determine the correct path for permissions API call
+            # Use the same URL pattern as _get_file_metadata_by_id and list_files
+            site_info = self._parse_sharepoint_url()
+            if site_info:
+                permissions_url = f"{self._graph_base_url}/sites/{site_info['host_name']}:/sites/{site_info['site_name']}:/drive/items/{file_id}/permissions"
+            else:
+                # Fallback to user drive
+                permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
+
+            # Fetch permissions
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    permissions_url,
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+
+            if response.status_code != 200:
+                logger.warning(f"Failed to fetch permissions for {file_id}: {response.status_code}")
+                return DocumentACL()
+
+            permissions_data = response.json()
+
+            allowed_users = []
+            allowed_groups = []
+            owner = None
+
+            for perm in permissions_data.get("value", []):
+                roles = perm.get("roles", [])  # ["read", "write", "owner"]
+
+                # Granted to user (grantedTo or grantedToV2)
+                granted_to = perm.get("grantedToV2") or perm.get("grantedTo")
+                if granted_to:
+                    user_info = granted_to.get("user", {})
+                    email = user_info.get("email")
+                    display_name = user_info.get("displayName")
+                    user_identifier = email or display_name
+                    if user_identifier:
+                        allowed_users.append(user_identifier)
+                        if "owner" in roles:
+                            owner = user_identifier
+
+                # Granted to identities (can include users and groups)
+                if "grantedToIdentitiesV2" in perm or "grantedToIdentities" in perm:
+                    identities = perm.get("grantedToIdentitiesV2") or perm.get("grantedToIdentities") or []
+                    for identity in identities:
+                        # User
+                        if "user" in identity:
+                            user_info = identity["user"]
+                            email = user_info.get("email")
+                            display_name = user_info.get("displayName")
+                            user_identifier = email or display_name
+                            if user_identifier:
+                                allowed_users.append(user_identifier)
+                                if "owner" in roles:
+                                    owner = user_identifier
+
+                        # Group
+                        if "group" in identity:
+                            group_info = identity["group"]
+                            group_id = group_info.get("id")
+                            group_display_name = group_info.get("displayName", group_id)
+                            if group_id or group_display_name:
+                                allowed_groups.append(group_display_name or group_id)
+
+            return DocumentACL(
+                owner=owner,
+                allowed_users=allowed_users,
+                allowed_groups=allowed_groups,
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to extract ACL for SharePoint item {file_id}: {e}")
+            return DocumentACL()
+
     async def get_file_content(self, file_id: str) -> ConnectorDocument:
         """Get file content and metadata - BaseConnector interface"""
         try:
@@ -465,11 +560,8 @@ class SharePointConnector(BaseConnector):
                 logger.info(f"Using cached download URL for file {file_id}")
                 content = await self._download_file_from_url(cached_info["downloadUrl"])
                 
-                acl = DocumentACL(
-                    owner="",
-                    user_permissions={},
-                    group_permissions={},
-                )
+                # Extract ACL even for cached files
+                acl = await self._extract_sharepoint_acl(file_id, cached_info)
                 
                 return ConnectorDocument(
                     id=file_id,
@@ -500,12 +592,8 @@ class SharePointConnector(BaseConnector):
             else:
                 content = await self._download_file_content(file_id)
             
-            # Create ACL from metadata
-            acl = DocumentACL(
-                owner="",  # Graph API requires additional calls for detailed permissions
-                user_permissions={},
-                group_permissions={}
-            )
+            # Extract ACL from SharePoint item
+            acl = await self._extract_sharepoint_acl(file_id, file_metadata)
             
             # Parse dates
             modified_time = self._parse_graph_date(file_metadata.get("modified"))

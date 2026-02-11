@@ -80,6 +80,7 @@ class ConnectorService:
                 owner_email=owner_email,
                 file_size=len(document.content) if document.content else 0,
                 connector_type=connector_type,
+                acl=document.acl,
             )
 
             logger.debug("Document processing result", result=result)
@@ -105,83 +106,76 @@ class ConnectorService:
         jwt_token: str = None,
     ):
         """Update indexed chunks with connector-specific metadata"""
-        logger.debug("Looking for chunks", document_id=document.id)
+        from utils.acl_utils import update_document_acl
 
-        # Find all chunks for this document
-        query = {"query": {"term": {"document_id": document.id}}}
+        logger.debug("Looking for chunks", document_id=document.id)
 
         # Get user's OpenSearch client
         opensearch_client = self.session_manager.get_user_opensearch_client(
             owner_user_id, jwt_token
         )
 
+        # Update ACL if changed (hash-based skip optimization)
+        acl_result = await update_document_acl(
+            document_id=document.id,
+            acl=document.acl,
+            opensearch_client=opensearch_client,
+        )
+
+        # Log ACL update result
+        if acl_result["status"] == "unchanged":
+            logger.debug(f"ACL unchanged for {document.id}, skipped update")
+        elif acl_result["status"] == "updated":
+            logger.info(
+                f"Updated ACL for {document.id}, "
+                f"{acl_result['chunks_updated']} chunks updated"
+            )
+        elif acl_result["status"] == "error":
+            logger.error(f"ACL update error for {document.id}: {acl_result.get('error')}")
+
+        # Update other metadata fields (source_url, timestamps, etc.)
+        # Use update_by_query for efficiency
         try:
-            response = await opensearch_client.search(index=self.index_name, body=query)
+            await opensearch_client.update_by_query(
+                index=self.index_name,
+                body={
+                    "query": {"term": {"document_id": document.id}},
+                    "script": {
+                        "source": """
+                            ctx._source.source_url = params.source_url;
+                            ctx._source.connector_type = params.connector_type;
+                            if (params.created_time != null) {
+                                ctx._source.created_time = params.created_time;
+                            }
+                            if (params.modified_time != null) {
+                                ctx._source.modified_time = params.modified_time;
+                            }
+                            if (params.metadata != null) {
+                                ctx._source.metadata = params.metadata;
+                            }
+                        """,
+                        "params": {
+                            "source_url": document.source_url,
+                            "connector_type": connector_type,
+                            "created_time": document.created_time.isoformat()
+                            if document.created_time
+                            else None,
+                            "modified_time": document.modified_time.isoformat()
+                            if document.modified_time
+                            else None,
+                            "metadata": document.metadata,
+                        }
+                    }
+                }
+            )
+            logger.debug(f"Updated metadata for document {document.id}")
         except Exception as e:
             logger.error(
-                "OpenSearch search failed for connector metadata update",
+                "OpenSearch metadata update failed",
+                document_id=document.id,
                 error=str(e),
-                query=query,
             )
             raise
-
-        logger.debug(
-            "Search query executed",
-            query=query,
-            chunks_found=len(response["hits"]["hits"]),
-            document_id=document.id,
-        )
-
-        # Update each chunk with connector metadata
-        logger.debug(
-            "Updating chunks with connector_type",
-            chunk_count=len(response["hits"]["hits"]),
-            connector_type=connector_type,
-        )
-        for hit in response["hits"]["hits"]:
-            chunk_id = hit["_id"]
-            current_connector_type = hit["_source"].get("connector_type", "unknown")
-            logger.debug(
-                "Updating chunk connector metadata",
-                chunk_id=chunk_id,
-                current_connector_type=current_connector_type,
-                new_connector_type=connector_type,
-            )
-
-            update_body = {
-                "doc": {
-                    "source_url": document.source_url,
-                    "connector_type": connector_type,  # Override the "local" set by process_file_common
-                    # Additional ACL info beyond owner (already set by process_file_common)
-                    "allowed_users": document.acl.allowed_users,
-                    "allowed_groups": document.acl.allowed_groups,
-                    "user_permissions": document.acl.user_permissions,
-                    "group_permissions": document.acl.group_permissions,
-                    # Timestamps
-                    "created_time": document.created_time.isoformat()
-                    if document.created_time
-                    else None,
-                    "modified_time": document.modified_time.isoformat()
-                    if document.modified_time
-                    else None,
-                    # Additional metadata
-                    "metadata": document.metadata,
-                }
-            }
-
-            try:
-                await opensearch_client.update(
-                    index=self.index_name, id=chunk_id, body=update_body
-                )
-                logger.debug("Updated chunk with connector metadata", chunk_id=chunk_id)
-            except Exception as e:
-                logger.error(
-                    "OpenSearch update failed for chunk",
-                    chunk_id=chunk_id,
-                    error=str(e),
-                    update_body=update_body,
-                )
-                raise
 
     def _get_file_extension(self, mimetype: str) -> str:
         """Get file extension based on MIME type"""
@@ -206,8 +200,20 @@ class ConnectorService:
         user_id: str,
         max_files: int = None,
         jwt_token: str = None,
+        filename_filter: set = None,
     ) -> str:
-        """Sync files from a connector connection using existing task tracking system"""
+        """
+        Sync files from a connector connection using existing task tracking system.
+        
+        Args:
+            connection_id: The connection ID
+            user_id: The user ID
+            max_files: Maximum number of files to sync
+            jwt_token: Optional JWT token
+            filename_filter: Optional set of filenames to filter - only files with names
+                           in this set will be synced. Used to prevent deleted files
+                           from being re-synced.
+        """
         if not self.task_service:
             raise ValueError(
                 "TaskService not available - connector sync requires task service dependency"
@@ -254,6 +260,15 @@ class ConnectorService:
             for file_info in files:
                 if max_files and len(files_to_process) >= max_files:
                     break
+                # Filter by filename if filter is provided
+                if filename_filter is not None:
+                    file_name = file_info.get("name", "")
+                    if file_name not in filename_filter:
+                        logger.debug(
+                            "Skipping file not in filter",
+                            filename=file_name,
+                        )
+                        continue
                 files_to_process.append(file_info)
 
             # Stop if we have enough files or no more pages
