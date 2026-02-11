@@ -20,7 +20,6 @@ export interface UpdateSettingsRequest {
   picture_descriptions?: boolean;
   embedding_model?: string;
   embedding_provider?: string;
-  index_name?: string;
 
   // Provider-specific settings (for dialogs)
   model_provider?: string; // Deprecated, kept for backward compatibility

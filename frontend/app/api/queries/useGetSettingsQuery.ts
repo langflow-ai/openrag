@@ -15,7 +15,6 @@ export interface KnowledgeSettings {
   embedding_provider?: string;
   chunk_size?: number;
   chunk_overlap?: number;
-  index_name?: string;
   table_structure?: boolean;
   ocr?: boolean;
   picture_descriptions?: boolean;
