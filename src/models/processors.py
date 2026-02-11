@@ -158,6 +158,7 @@ class TaskProcessor:
         connector_type: str = "local",
         embedding_model: str = None,
         is_sample_data: bool = False,
+        acl: "DocumentACL" = None,
     ):
         """
         Standard processing pipeline for non-Langflow processors:
@@ -166,6 +167,7 @@ class TaskProcessor:
         Args:
             embedding_model: Embedding model to use (defaults to the current
                 embedding model from settings)
+            acl: DocumentACL instance with access control information
         """
         import datetime
         from config.settings import INDEX_NAME, clients, get_embedding_model
@@ -251,9 +253,20 @@ class TaskProcessor:
                 "indexed_time": datetime.datetime.now().isoformat(),
             }
 
-            # Only set owner fields if owner_user_id is provided (for no-auth mode support)
-            if owner_user_id is not None:
-                chunk_doc["owner"] = owner_user_id
+            # Set owner and ACL fields
+            if acl:
+                # Use ACL data if provided (from connector)
+                chunk_doc["owner"] = acl.owner if acl.owner else owner_user_id
+                chunk_doc["allowed_users"] = acl.allowed_users
+                chunk_doc["allowed_groups"] = acl.allowed_groups
+            else:
+                # Fallback to owner_user_id if no ACL (local uploads)
+                if owner_user_id is not None:
+                    chunk_doc["owner"] = owner_user_id
+                    chunk_doc["allowed_users"] = []
+                    chunk_doc["allowed_groups"] = []
+
+            # Set owner metadata fields (for display)
             if owner_name is not None:
                 chunk_doc["owner_name"] = owner_name
             if owner_email is not None:
@@ -445,6 +458,7 @@ class ConnectorFileProcessor(TaskProcessor):
                     owner_email=self.owner_email,
                     file_size=len(document.content),
                     connector_type=connection.connector_type,
+                    acl=document.acl,
                 )
 
                 # Add connector-specific metadata

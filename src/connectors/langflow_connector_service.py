@@ -64,11 +64,25 @@ class LangflowConnectorService:
             # Step 1: Upload file to Langflow
             logger.debug("Uploading file to Langflow", filename=document.filename)
             content = document.content
+            processed_filename = document.filename.replace(" ", "_").replace("/", "_") + suffix
             file_tuple = (
-                document.filename.replace(" ", "_").replace("/", "_") + suffix,
+                processed_filename,
                 content,
                 document.mimetype or "application/octet-stream",
             )
+
+            # Step 0: Delete existing chunks for this file before re-ingesting
+            # This prevents duplicate chunks when syncing files
+            if self.session_manager:
+                try:
+                    from config.settings import INDEX_NAME
+                    opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
+                    delete_body = {"query": {"term": {"filename": processed_filename}}}
+                    delete_result = await opensearch_client.delete_by_query(index=INDEX_NAME, body=delete_body)
+                    deleted_count = delete_result.get("deleted", 0)
+                    logger.info("Deleted existing chunks before re-ingestion", filename=processed_filename, deleted_count=deleted_count)
+                except Exception as delete_err:
+                    logger.warning("Failed to delete existing chunks before re-ingestion", filename=processed_filename, error=str(delete_err))
 
             langflow_file_id = None  # Initialize to track if upload succeeded
             try:
@@ -92,6 +106,18 @@ class LangflowConnectorService:
                 # Use the same tweaks pattern as LangflowFileService
                 tweaks = {}  # Let Langflow handle the ingestion with default settings
 
+                # Extract ACL information from the connector document, if available
+                allowed_users: list[str] = []
+                allowed_groups: list[str] = []
+                if getattr(document, "acl", None) is not None:
+                    try:
+                        allowed_users = document.acl.allowed_users or []
+                        allowed_groups = document.acl.allowed_groups or []
+                    except AttributeError:
+                        # If ACL shape is different or missing fields, fall back to empty lists
+                        allowed_users = []
+                        allowed_groups = []
+
                 ingestion_result = await self.langflow_service.run_ingestion_flow(
                     file_paths=[langflow_file_path],
                     file_tuples=[file_tuple],
@@ -101,6 +127,10 @@ class LangflowConnectorService:
                     owner_name=owner_name,
                     owner_email=owner_email,
                     connector_type=connector_type,
+                    document_id=document.id,
+                    source_url=document.source_url,
+                    allowed_users=allowed_users,
+                    allowed_groups=allowed_groups,
                 )
 
                 logger.debug("Ingestion flow completed", result=ingestion_result)
@@ -253,10 +283,19 @@ class LangflowConnectorService:
         user_id: str,
         file_ids: List[str],
         jwt_token: str = None,
+        file_infos: List[Dict[str, Any]] = None,
     ) -> str:
         """
         Sync specific files by their IDs using Langflow processing.
         Automatically expands folders to their contents.
+        
+        Args:
+            connection_id: The connection ID
+            user_id: The user ID
+            file_ids: List of file IDs to sync
+            jwt_token: Optional JWT token for authentication
+            file_infos: Optional list of file info dicts with {id, name, mimeType, downloadUrl, size}
+                       When provided, download URLs can be used directly without Graph API calls.
         """
         if not self.task_service:
             raise ValueError(
@@ -280,6 +319,12 @@ class LangflowConnectorService:
         owner_name = user.name if user else None
         owner_email = user.email if user else None
 
+        # If file_infos provided, cache them in the connector for later use
+        # This allows get_file_content to use download URLs directly
+        if file_infos and hasattr(connector, 'set_file_infos'):
+            connector.set_file_infos(file_infos)
+            logger.info(f"Cached {len(file_infos)} file infos with download URLs in connector")
+
         # Temporarily set file_ids in the connector's config so list_files() can use them
         # Store the original values to restore later
         cfg = getattr(connector, "cfg", None)
@@ -290,6 +335,8 @@ class LangflowConnectorService:
             original_file_ids = getattr(cfg, "file_ids", None)
             original_folder_ids = getattr(cfg, "folder_ids", None)
 
+        expanded_file_ids = file_ids  # Default to original IDs
+        
         try:
             # Set the file_ids we want to sync in the connector's config
             if cfg is not None:
@@ -307,8 +354,13 @@ class LangflowConnectorService:
                     f"Original IDs: {file_ids}. This may indicate all IDs were folders "
                     f"with no contents, or files that were filtered out."
                 )
-                # Return empty task rather than failing
-                raise ValueError("No files to sync after expanding folders")
+                # If we have file_infos with download URLs, use original file_ids
+                # (OneDrive sharing IDs can't be expanded but can be downloaded directly)
+                if file_infos:
+                    logger.info("Using original file IDs with cached download URLs")
+                    expanded_file_ids = file_ids
+                else:
+                    raise ValueError("No files to sync after expanding folders")
 
         except Exception as e:
             logger.error(f"Failed to expand file_ids via list_files(): {e}")

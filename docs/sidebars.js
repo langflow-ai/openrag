@@ -62,7 +62,10 @@ const sidebars = {
       items: [
         "core-components/knowledge",
         "core-components/ingestion",
+        "core-components/ingestion-configure",
+        "core-components/knowledge-browse",
         "core-components/knowledge-filters",
+        "core-components/knowledge-connectors",
       ],
     },
     {

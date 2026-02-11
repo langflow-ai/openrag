@@ -1,10 +1,11 @@
 "use client";
 
-import { EllipsisVertical } from "lucide-react";
+import { EllipsisVertical, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useDeleteDocument } from "@/app/api/mutations/useDeleteDocument";
+import { useSyncConnector } from "@/app/api/mutations/useSyncConnector";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,14 +17,23 @@ import { Button } from "./ui/button";
 
 interface KnowledgeActionsDropdownProps {
   filename: string;
+  connectorType?: string;
 }
+
+// Cloud connector types that support sync
+const CLOUD_CONNECTOR_TYPES = new Set(["google_drive", "onedrive", "sharepoint"]);
 
 export const KnowledgeActionsDropdown = ({
   filename,
+  connectorType,
 }: KnowledgeActionsDropdownProps) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const deleteDocumentMutation = useDeleteDocument();
+  const syncConnectorMutation = useSyncConnector();
   const router = useRouter();
+
+  // Check if this file is from a cloud connector (can be synced)
+  const isCloudFile = connectorType && CLOUD_CONNECTOR_TYPES.has(connectorType);
 
   const handleDelete = async () => {
     try {
@@ -33,6 +43,26 @@ export const KnowledgeActionsDropdown = ({
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to delete document",
+      );
+    }
+  };
+
+  const handleSync = async () => {
+    if (!connectorType) return;
+    
+    try {
+      toast.info(`Syncing ${connectorType}...`);
+      const result = await syncConnectorMutation.mutateAsync(connectorType);
+      if (result.status === "no_files") {
+        toast.info(result.message || `No ${connectorType} files to sync.`);
+      } else if (result.task_ids && result.task_ids.length > 0) {
+        toast.success(
+          `Sync started for ${connectorType}. Check task notifications for progress.`
+        );
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : `Failed to sync ${connectorType}`,
       );
     }
   };
@@ -56,19 +86,25 @@ export const KnowledgeActionsDropdown = ({
           >
             View chunks
           </DropdownMenuItem>
-          {/* //TODO: Implement rename and sync */}
-          {/* <DropdownMenuItem
-            className="text-primary focus:text-primary"
-            onClick={() => alert("Not implemented")}
-          >
-            Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-primary focus:text-primary"
-            onClick={() => alert("Not implemented")}
-          >
-            Sync
-          </DropdownMenuItem> */}
+          {isCloudFile && (
+            <DropdownMenuItem
+              className="text-primary focus:text-primary"
+              disabled={syncConnectorMutation.isPending}
+              onClick={handleSync}
+            >
+              {syncConnectorMutation.isPending ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Sync
+                </>
+              )}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={() => setShowDeleteDialog(true)}
