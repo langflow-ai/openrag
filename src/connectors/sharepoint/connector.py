@@ -481,33 +481,12 @@ class SharePointConnector(BaseConnector):
                 # Fallback to user drive
                 permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
 
-            # #region agent log
-            try:
-                import json as _json
-                _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
-                with open(_log_path, "a") as _f:
-                    _f.write(_json.dumps({"hypothesisId": "H6", "location": "connector.py:_extract_sharepoint_acl", "message": "ACL extraction attempt", "data": {"file_id": file_id, "permissions_url": permissions_url, "has_token": bool(access_token), "token_type": type(access_token).__name__}, "timestamp": __import__("time").time() * 1000}) + "\n")
-            except Exception:
-                pass
-            # #endregion
-
             # Fetch permissions
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     permissions_url,
                     headers={"Authorization": f"Bearer {access_token}"}
                 )
-
-            # #region agent log
-            try:
-                import json as _json
-                _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
-                _resp_preview = response.text[:500] if response.text else ""
-                with open(_log_path, "a") as _f:
-                    _f.write(_json.dumps({"hypothesisId": "H6", "location": "connector.py:_extract_sharepoint_acl:response", "message": "permissions API response", "data": {"file_id": file_id, "status_code": response.status_code, "response_preview": _resp_preview}, "timestamp": __import__("time").time() * 1000}) + "\n")
-            except Exception:
-                pass
-            # #endregion
 
             if response.status_code != 200:
                 logger.warning(f"Failed to fetch permissions for {file_id}: {response.status_code}")
@@ -557,16 +536,6 @@ class SharePointConnector(BaseConnector):
                             if group_id or group_display_name:
                                 allowed_groups.append(group_display_name or group_id)
 
-            # #region agent log
-            try:
-                import json as _json
-                _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
-                with open(_log_path, "a") as _f:
-                    _f.write(_json.dumps({"hypothesisId": "H6", "location": "connector.py:_extract_sharepoint_acl:result", "message": "ACL extraction result", "data": {"file_id": file_id, "owner": owner, "allowed_users": allowed_users, "allowed_groups": allowed_groups, "perm_count": len(permissions_data.get("value", []))}, "timestamp": __import__("time").time() * 1000}) + "\n")
-            except Exception:
-                pass
-            # #endregion
-
             return DocumentACL(
                 owner=owner,
                 allowed_users=allowed_users,
@@ -575,15 +544,6 @@ class SharePointConnector(BaseConnector):
 
         except Exception as e:
             logger.warning(f"Failed to extract ACL for SharePoint item {file_id}: {e}")
-            # #region agent log
-            try:
-                import json as _json, traceback as _tb
-                _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
-                with open(_log_path, "a") as _f:
-                    _f.write(_json.dumps({"hypothesisId": "H7", "location": "connector.py:_extract_sharepoint_acl:exception", "message": "ACL extraction failed", "data": {"file_id": file_id, "error": str(e), "traceback": _tb.format_exc()}, "timestamp": __import__("time").time() * 1000}) + "\n")
-            except Exception:
-                pass
-            # #endregion
             return DocumentACL()
 
     async def get_file_content(self, file_id: str) -> ConnectorDocument:

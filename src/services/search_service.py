@@ -458,20 +458,6 @@ class SearchService:
                 }
             )
 
-        # #region agent log
-        try:
-            _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
-            _samples = []
-            for c in chunks[:5]:
-                _au = c.get("allowed_users") or []
-                _ag = c.get("allowed_groups") or []
-                _samples.append({"filename": c.get("filename"), "owner": bool(c.get("owner")), "allowed_users_len": len(_au) if isinstance(_au, list) else 0, "allowed_groups_len": len(_ag) if isinstance(_ag, list) else 0})
-            with open(_log_path, "a") as _f:
-                _f.write(json.dumps({"hypothesisId": "H1", "location": "search_service.py:chunks", "message": "backend chunk ACL sample", "data": {"chunk_samples": _samples}, "timestamp": __import__("time").time() * 1000}) + "\n")
-        except Exception:
-            pass
-        # #endregion
-
         # Return both transformed results and aggregations
         return {
             "results": chunks,

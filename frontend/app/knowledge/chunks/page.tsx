@@ -317,31 +317,11 @@ function ChunksPageContent() {
               </dl>
             </div>
             {(() => {
-              // #region agent log
               const hasOwner = Boolean(fileData?.owner);
               const hasAllowedUsers = (fileData?.allowed_users?.length ?? 0) > 0;
               const hasAllowedGroups = (fileData?.allowed_groups?.length ?? 0) > 0;
-              const showAccessControl = hasOwner || hasAllowedUsers || hasAllowedGroups;
-              if (fileData && chunks.length > 0) {
-                fetch("http://127.0.0.1:7242/ingest/0459c69b-01d9-4ed6-bcff-99a7ce0d82ee", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    hypothesisId: "H3",
-                    location: "chunks/page.tsx:AccessControl",
-                    message: "chunks page fileData ACL",
-                    data: {
-                      filename: fileData.filename,
-                      owner: fileData.owner || null,
-                      allowed_users_len: (fileData.allowed_users || []).length,
-                      allowed_groups_len: (fileData.allowed_groups || []).length,
-                      showAccessControl,
-                    },
-                    timestamp: Date.now(),
-                  }),
-                }).catch(() => {});
-              }
-              // #endregion
+              const showAccessControl =
+                hasOwner || hasAllowedUsers || hasAllowedGroups;
               return showAccessControl;
             })() ? (
               <div className="mb-4">

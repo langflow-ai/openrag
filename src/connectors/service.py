@@ -85,17 +85,6 @@ class ConnectorService:
 
             logger.debug("Document processing result", result=result)
 
-            # #region agent log
-            try:
-                import json as _json
-                _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
-                _acl = document.acl
-                with open(_log_path, "a") as _f:
-                    _f.write(_json.dumps({"hypothesisId": "H9", "location": "service.py:process_connector_document", "message": "post process_document_standard", "data": {"document_id": document.id, "filename": document.filename, "result_status": result.get("status"), "has_acl": _acl is not None, "acl_owner": _acl.owner if _acl else None, "acl_allowed_users": _acl.allowed_users if _acl else None, "acl_allowed_groups": _acl.allowed_groups if _acl else None}, "timestamp": __import__("time").time() * 1000}) + "\n")
-            except Exception:
-                pass
-            # #endregion
-
             # If successfully indexed or already exists, update the indexed documents with connector metadata
             if result["status"] in ["indexed", "unchanged"]:
                 # Update all chunks with connector-specific metadata

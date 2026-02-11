@@ -138,29 +138,6 @@ export const useGetSearchQuery = (
       }
 
       const data = await response.json();
-      // #region agent log
-      const firstChunk = (data.results || [])[0] as ChunkResult | undefined;
-      if (firstChunk) {
-        const au = firstChunk.allowed_users;
-        const ag = firstChunk.allowed_groups;
-        fetch("http://127.0.0.1:7242/ingest/0459c69b-01d9-4ed6-bcff-99a7ce0d82ee", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            hypothesisId: "H5",
-            location: "useGetSearchQuery.ts:firstChunk",
-            message: "API first chunk ACL",
-            data: {
-              filename: firstChunk.filename,
-              hasOwner: Boolean(firstChunk.owner),
-              allowed_users_len: Array.isArray(au) ? au.length : 0,
-              allowed_groups_len: Array.isArray(ag) ? ag.length : 0,
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-      }
-      // #endregion
       // Group chunks by filename to create file results similar to page.tsx
       const fileMap = new Map<
         string,
@@ -233,28 +210,6 @@ export const useGetSearchQuery = (
         allowed_users: file.allowed_users || [],
         allowed_groups: file.allowed_groups || [],
       }));
-
-      // #region agent log
-      const firstFile = files[0];
-      if (firstFile) {
-        fetch("http://127.0.0.1:7242/ingest/0459c69b-01d9-4ed6-bcff-99a7ce0d82ee", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            hypothesisId: "H2",
-            location: "useGetSearchQuery.ts:firstFile",
-            message: "aggregated file ACL",
-            data: {
-              filename: firstFile.filename,
-              owner: firstFile.owner || null,
-              allowed_users_len: (firstFile.allowed_users || []).length,
-              allowed_groups_len: (firstFile.allowed_groups || []).length,
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-      }
-      // #endregion
 
       return files;
     } catch (error) {

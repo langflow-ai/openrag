@@ -109,28 +109,8 @@ async def update_document_acl(
     Returns:
         Dict with status ("unchanged" or "updated") and chunks_updated count
     """
-    # #region agent log
-    try:
-        import json as _json
-        _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
-        with open(_log_path, "a") as _f:
-            _f.write(_json.dumps({"hypothesisId": "H9", "location": "acl_utils.py:update_document_acl:entry", "message": "update_document_acl called", "data": {"document_id": document_id, "acl_owner": acl.owner if acl else None, "acl_allowed_users": acl.allowed_users if acl else None, "acl_allowed_groups": acl.allowed_groups if acl else None}, "timestamp": __import__("time").time() * 1000}) + "\n")
-    except Exception:
-        pass
-    # #endregion
-
     # Check if ACL changed (queries one chunk)
     should_update = await should_update_acl(document_id, acl, opensearch_client)
-
-    # #region agent log
-    try:
-        import json as _json
-        _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
-        with open(_log_path, "a") as _f:
-            _f.write(_json.dumps({"hypothesisId": "H10", "location": "acl_utils.py:update_document_acl:should_update", "message": "should_update_acl result", "data": {"document_id": document_id, "should_update": should_update}, "timestamp": __import__("time").time() * 1000}) + "\n")
-    except Exception:
-        pass
-    # #endregion
 
     if not should_update:
         return {"status": "unchanged", "chunks_updated": 0}
@@ -156,31 +136,12 @@ async def update_document_acl(
             }
         )
 
-        # #region agent log
-        try:
-            import json as _json
-            _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
-            with open(_log_path, "a") as _f:
-                _f.write(_json.dumps({"hypothesisId": "H11", "location": "acl_utils.py:update_document_acl:result", "message": "update_by_query result", "data": {"document_id": document_id, "updated": response.get("updated", 0), "total": response.get("total", 0), "response_keys": list(response.keys())}, "timestamp": __import__("time").time() * 1000}) + "\n")
-        except Exception:
-            pass
-        # #endregion
-
         return {
             "status": "updated",
             "chunks_updated": response.get("updated", 0)
         }
 
     except Exception as e:
-        # #region agent log
-        try:
-            import json as _json, traceback as _tb
-            _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
-            with open(_log_path, "a") as _f:
-                _f.write(_json.dumps({"hypothesisId": "H11", "location": "acl_utils.py:update_document_acl:error", "message": "update_by_query failed", "data": {"document_id": document_id, "error": str(e), "traceback": _tb.format_exc()}, "timestamp": __import__("time").time() * 1000}) + "\n")
-        except Exception:
-            pass
-        # #endregion
         print(f"Error updating ACL for {document_id}: {e}")
         return {"status": "error", "chunks_updated": 0, "error": str(e)}
 
