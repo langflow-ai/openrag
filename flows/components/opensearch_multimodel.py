@@ -4,7 +4,6 @@ import copy
 import json
 import time
 import uuid
-import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -12,6 +11,8 @@ from opensearchpy import OpenSearch, helpers
 from opensearchpy.exceptions import OpenSearchException, RequestError
 
 from lfx.base.vectorstores.model import LCVectorStoreComponent, check_cached_vector_store
+from lfx.base.vectorstores.vector_store_connection_decorator import vector_store_connection
+
 from lfx.io import (
     BoolInput,
     DropdownInput,
@@ -63,6 +64,7 @@ def get_embedding_field_name(model_name: str) -> str:
     return f"chunk_embedding_{normalize_model_name(model_name)}"
 
 
+# @vector_store_connection
 class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreComponent):
     """OpenSearch Vector Store Component with Multi-Model Hybrid Search Capabilities.
 
