@@ -5,17 +5,11 @@ slug: /ingestion-configure
 
 import Icon from "@site/src/components/icon/icon";
 
-<!--
-Configure ingestion (new page)
-Knowledge ingestion settings (reorg/cleanup)
-Don't recommend unsupported models. Enable models thru the settings page only.
-See also: Configure connectors
+The knowledge ingestion settings determine how documents are processed when you [upload documents](/ingestion) into your [knowledge base](/knowledge).
+This includes chunking strategies, embedding models, and image handling settings.
 
-check/update links
--->
-
-The knowledge ingestion settings determine how documents are processed when ingested into your [knowledge base](/knowledge).
-This includes configurations such as chunking strategies, embedding models, and image handling.
+OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion.
+Docling processes files, splits them into chunks, and stores them as separate, structured documents in your OpenSearch knowledge base.
 
 ## Existing documents aren't reprocessed after changing ingestion settings
 
@@ -31,63 +25,51 @@ For example, it is typical to upload some documents with OCR enabled and others 
 
 If needed, you can use [filters](/knowledge-filters) to separate documents that you uploaded with different settings, such as different embedding models.
 
-## Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
+## Select a Docling implementation {#select-a-docling-implementation}
 
-When you [install OpenRAG](/install-options), you select at least one embedding model during the [application onboarding process](/install#application-onboarding).
-OpenRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
-
-In the OpenRAG repository, you can find the complete list of supported models in [`models_service.py`](https://github.com/langflow-ai/openrag/blob/main/src/services/models_service.py) and the corresponding vector dimensions in [`settings.py`](https://github.com/langflow-ai/openrag/blob/main/src/config/settings.py).
-
-During the application onboarding process, you can select from the supported models.
-The default embedding dimension is `1536`, and the default model is the OpenAI `text-embedding-3-small`.
-
-If you want to use an unsupported model, you must manually set the model in your [OpenRAG `.env` file](/reference/configuration).
-If you use an unsupported embedding model that doesn't have defined dimensions in `settings.py`, then OpenRAG falls back to the default dimensions (1536) and logs a warning. OpenRAG's OpenSearch knowledge base and flows continue to work, but [similarity search](https://www.ibm.com/think/topics/vector-search) quality can be affected if the actual model dimensions aren't 1536.
-
-To change the embedding model after onboarding, modify the embedding model configuration on the OpenRAG **Settings** page or in your [OpenRAG `.env` file](/reference/configuration).
-This ensures that all relevant [OpenRAG flows](/agents) are updated to use the new embedding model configuration.
-
-If you edit these settings in the `.env` file, you must [stop and restart the OpenRAG containers](/manage-services#stop-and-start-containers) to apply the changes.
-
-## Set Docling parameters
-
-OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion because it supports many file formats, processes tables and images well, and performs efficiently.
-
-When you [upload documents](/ingestion), Docling processes the files, splits them into chunks, and stores them as separate, structured documents in your OpenSearch knowledge base.
-
-### Select a Docling implementation {#select-a-docling-implementation}
-
-You can use either Docling Serve or OpenRAG's built-in Docling ingestion pipeline to process documents.
+You can configure OpenRAG to use either a Docling Serve service or a Docling processor pipeline for document processing:
 
 * **Docling Serve ingestion**: By default, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve).
-It starts a local `docling serve` process, and then runs Docling ingestion through the Docling Serve API.
+When you start OpenRAG, a local `docling serve` process starts, and then OpenRAG runs Docling ingestion through the Docling Serve API.
 
-   To use a remote `docling serve` instance or your own local instance, set `DOCLING_SERVE_URL=http://**HOST_IP**:5001` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings).
+   To use a remote `docling serve` instance or your own local instance, set `DOCLING_SERVE_URL=http://HOST_IP:5001` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings).
    The service must run on port 5001.
 
-* **Built-in Docling ingestion**: If you want to use OpenRAG's built-in Docling ingestion pipeline instead of the separate Docling Serve service, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings).
-The built-in pipeline uses the Docling processor directly instead of through the Docling Serve API.
-For the underlying functionality, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
+   For TUI-managed deployments, The TUI warns you if `docling serve` isn't running or isn't detected by OpenRAG.
+   For information about starting and stopping OpenRAG services, see [Manage OpenRAG services](/manage-services).
 
-### Configure Docling ingestion settings
+* **Docling processor ingestion**: Instead of using a separate Docling Serve service and the Docling Serve API, you can use the Docling processor directly.
+To do this, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings), and then [restart the OpenRAG services](/manage-services).
+For the underlying functionality for this option, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
 
-To modify the Docling document processing and embedding parameters, click <Icon name="Settings2" aria-hidden="true"/> **Settings** in OpenRAG, and then find the **Knowledge Ingest** section.
+## Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
 
-:::tip
-The TUI warns you if `docling serve` isn't running.
-For information about starting and stopping OpenRAG native services, like Docling, see [Manage OpenRAG services](/manage-services).
-:::
+When you install OpenRAG, you select at least one embedding model during the [application onboarding process](/install#application-onboarding).
+OpenRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
 
-You can edit the following parameters:
+After onboarding, you can change the embedding model on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page.
+OpenRAG automatically updates all relevant [OpenRAG flows](/agents) to use the new embedding model and dimensions.
 
-* **Embedding model**: Select the model to use to generate vector embeddings for your documents.
+You can only select models that are available from your configured model providers, such as an Ollama instance or an OpenAI account.
+For more information, see [Troubleshoot model availability and performance issues](/support/troubleshoot#model-availability-and-performance-issues).
 
-   This is initially set during installation.
-   The recommended way to change this setting is in the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** or your [OpenRAG `.env` file](/reference/configuration).
-   This ensures that all relevant [OpenRAG flows](/agents) are updated to use the new embedding model configuration.
+Because the OpenRAG UI validates model availability and compatibility, setting models directly in the [OpenRAG `.env` file](/reference/configuration) isn't recommended.
 
-   If you uploaded documents prior to changing the embedding model, you can [create filters](/knowledge-filters) to separate documents embedded with different models, or you can reupload all documents to regenerate embeddings with the new model.
-   If you want to use multiple embeddings models, similarity search (in the **Chat**) can take longer as it searches each model's embeddings separately.
+### Best practices for multiple embedding models
+
+For ingestion, OpenRAG allows only one active embedding model at a time.
+
+OpenRAG _doesn't_ reprocess existing documents when you change the embedding model.
+If you want to generate new embeddings for existing documents, you must reupload the documents after enabling the new embedding model.
+To remove previously generated embeddings, you must delete the existing document from the knowledge base.
+
+If you use different embedding models for different documents, you can creating [filters](/knowledge-filters) to separate documents that were embedded with different models.
+
+If you use multiple embeddings models, be aware that similarity search (in **Chat**) can take longer as the agent searches each model's embeddings separately.
+
+## Set the chunking strategy
+
+You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
 
 * **Chunk size**: Set the number of characters for each text chunk when breaking down a file.
 Larger chunks yield more context per chunk, but can include irrelevant information. Smaller chunks yield more precise semantic search, but can lack context.
@@ -97,7 +79,15 @@ The default value is 1000 characters, which is usually a good balance between co
 Use larger overlap values for documents where context is most important. Use smaller overlap values for simpler documents or when optimization is most important.
 The default value is 200 characters, which represents an overlap of 20 percent with the default **Chunk size** of 1000. This is suitable for general use. For faster processing, decrease the overlap to approximately 10 percent. For more complex documents where you need to preserve context across chunks, increase it to approximately 40 percent.
 
+## Configure table parsing
+
+You can edit the following setting on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
+
 * **Table structure**: Enables Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/) tool for parsing tables. Instead of treating tables as plain text, tables are output as structured table data with preserved relationships and metadata. This option is enabled by default.
+
+## Configure OCR and image processing
+
+You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
 
 * **OCR**: Enables Optical Character Recognition (OCR) processing when extracting text from images and ingesting scanned documents. This setting is best suited for processing text-based documents faster with Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/). Images are ignored and not processed.
 
@@ -109,9 +99,16 @@ The default value is 200 characters, which represents an overlap of 20 percent w
 
 ## Set the local documents path {#set-the-local-documents-path}
 
-The default path for local uploads is `~/.openrag/documents`. This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container. Files added to the host or container directory are visible in both locations.
+The local documents paths is set when you install OpenRAG and start the OpenRAG services.
 
-To change this location, modify the **Documents Paths** variable in either the [**Basic/Advanced Setup** menu](/install#setup) or in your [OpenRAG `.env` file](/reference/configuration).
+The default path for local uploads is `~/.openrag/documents`.
+This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container.
+Files added to the host or container directory are visible in both locations.
+
+To change this location, modify either of the following, and then [restart the OpenRAG services](/manage-services):
+
+* The **Documents Paths** setting in the [**Basic/Advanced Setup** menu](/install#setup)
+* The `OPENRAG_DOCUMENTS_PATH` variable in the [OpenRAG `.env` file](/reference/configuration).
 
 ## See also
 
