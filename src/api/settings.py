@@ -586,15 +586,14 @@ async def update_settings(request, session_manager):
             )
             logger.info(f"Index name changed from {old_index_name} to {new_index_name}")
 
-            # Also update both ingest and chat flows with the new index name
+            # Also update global variable with new index name
             try:
-                flows_service = _get_flows_service()
-                await flows_service.update_flows_index_name(new_index_name)
+                await clients._create_langflow_global_variable("OPENSEARCH_INDEX_NAME", new_index_name)
                 logger.info(
-                    f"Successfully updated ingest and chat flow index names to {new_index_name}"
+                    f"Successfully updated global variable with new index name {new_index_name}"
                 )
             except Exception as e:
-                logger.error(f"Failed to update ingest flow index name: {str(e)}")
+                logger.error(f"Failed to update global variable with new index name: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
 
                 # The config will still be saved
