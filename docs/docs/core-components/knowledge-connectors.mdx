@@ -1,0 +1,125 @@
+---
+title: Configure connectors
+slug: /knowledge-connectors
+---
+
+import Icon from "@site/src/components/icon/icon";
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import PartialOpensearchAuthModes from '@site/docs/_partial-opensearch-auth-modes.mdx';
+import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
+import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
+import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
+
+OpenRAG uses OAuth credentials to authorize access to cloud storage services so you can ingest documents from cloud storage.
+
+If you provide Google OAuth credentials, these credentials are also used to enable OAuth mode for OpenRAG and your OpenSearch knowledge base.
+
+<!-- TBD: separation of pure OAuth from cloud storage connector OAuth apps -->
+<!-- TBD: Disconnect/reconnect connectors -->
+
+## OAuth credentials and OpenSearch authentication modes {#auth}
+
+<PartialOpensearchAuthModes />
+
+## Cloud storage connectors
+
+You can use OpenRAG's cloud storage connectors to [ingest files from cloud storage](/ingestion#oauth-ingestion).
+Specifically, you can connect to the following services:
+
+* AWS S3
+* Google Drive
+* Microsoft OneDrive
+* Microsoft Sharepoint
+
+To configure a cloud storage connector, you must register an OAuth app, get OAuth credentials, and then add the OAuth credentials to your OpenRAG configuration.
+
+### Register an OAuth app and generate credentials
+
+Register OpenRAG as an OAuth application in your cloud provider.
+Then, obtain OAuth credentials for the app, such as a client ID and secret key.
+
+To enable multiple connectors, you must register an app and generate credentials for each provider.
+
+### Add OAuth credentials to OpenRAG
+
+<Tabs>
+<TabItem value="TUI" label="TUI-managed services" default>
+
+If you use the [Terminal User Interface (TUI)](/tui) to manage your OpenRAG services, enter OAuth credentials on the **Advanced Setup** page.
+You can do this during [installation](/install-uvx#setup), or you can add the credentials afterwards:
+
+1. If OpenRAG is running, click **Stop All Services** in the TUI.
+
+2. Open the **Advanced Setup** page, and then add the OAuth credentials for the cloud storage providers that you want to use under **API Keys**:
+
+   <PartialOAuthCredentials />
+
+3. For each connector you configured, register the redirect URIs shown in the TUI in your OAuth apps.
+
+   The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
+
+4. Optional: Under **Others**, set the **Webhook Base URL** to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
+
+5. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
+
+6. Click **Start Services** to restart the OpenRAG containers with the new configuration.
+
+7. Launch the OpenRAG app.
+
+   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
+
+</TabItem>
+<TabItem value="env" label="Self-managed services">
+
+If you [installed OpenRAG with self-managed services](/docker), set OAuth credentials in your [OpenRAG `.env` file](/reference/configuration).
+
+You can do this during [initial set up](/docker#setup), or you can add the credentials afterwards:
+
+1. Stop all OpenRAG containers:
+
+   <PartialDockerStopAll />
+
+2. Edit your OpenRAG `.env` file, and then add the [OAuth and cloud storage environment variables](/reference/configuration#oauth-and-cloud-storage-connector-settings) for the providers that you want to use:
+
+   ```env
+   GOOGLE_OAUTH_CLIENT_ID=
+   GOOGLE_OAUTH_CLIENT_SECRET=
+
+   MICROSOFT_GRAPH_OAUTH_CLIENT_ID=
+   MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=
+
+   AWS_ACCESS_KEY_ID=
+   AWS_SECRET_ACCESS_KEY=
+   ```
+
+   <PartialOAuthCredentials />
+
+3. Optional: Set the `WEBHOOK_BASE_URL` to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
+
+4. Save the `.env` file.
+
+5. For each connector, you must register the OpenRAG redirect URIs in your OAuth apps:
+
+   * Local deployments: `http://localhost:3000/auth/callback`
+   * Production deployments: `https://your-domain.com/auth/callback`
+
+   The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
+
+6. Restart your OpenRAG containers:
+
+   <PartialDockerComposeUp />
+
+7. Access the OpenRAG frontend at `http://localhost:3000`.
+
+   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
+
+</TabItem>
+</Tabs>
+
+## See also
+
+* [About knowledge](/knowledge)
+* [Ingest knowledge](/ingestion)
+* [Configure ingestion](/ingestion-configure)
+* [Browse and manage knowledge](/knowledge-browse)

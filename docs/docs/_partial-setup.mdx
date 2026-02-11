@@ -5,11 +5,11 @@ import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 1. In the TUI, click either **Basic Setup** or **Advanced Setup**.
 
    :::info
-   You must use **Advanced Setup** if you want to enable either of the following during initial set up:
+   You must use **Advanced Setup** if you want to enable either [OAuth mode or cloud storage connectors](/knowledge-connectors) during initial set up:
 
-   * [OAuth mode](/knowledge#auth): Controls document ownership and access in your OpenRAG OpenSearch knowledge base.
+   * **OAuth mode**: Controls document ownership and access in your OpenRAG [OpenSearch knowledge base](/knowledge).
    Without OAuth mode, there is no differentiation between users; all users that access your OpenRAG instance can access and manage all uploaded documents.
-   * [Cloud storage connectors](/ingestion#oauth-ingestion): Ingest documents from external storage services.
+   * **Cloud storage connectors**: Enables ingestion of documents from external storage services.
    :::
 
    If OpenRAG detects [OAuth or cloud storage connector credentials](/reference/configuration#oauth-and-cloud-storage-connector-settings) during setup, it recommends **Advanced Setup** in the TUI.
@@ -56,7 +56,7 @@ import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 
 6. Optional: Under **Others**, you can edit the following settings if needed:
 
-   * **Documents Paths**: Use the default path, or provide a path to a directory where you want OpenRAG to look for documents to ingest into your [knowledge base](/knowledge).
+   * **Documents Paths**: Set the [local documents path](/ingestion-configure#set-the-local-documents-path). Use the default path, or provide a path to a directory where you want OpenRAG to look for documents to ingest into your [knowledge base](/knowledge).
    * **OpenSearch Data Path**: Use the default path, or specify the path where you want OpenRAG to create your OpenSearch index.
    * **Langflow Public URL (Advanced Setup only)** : Sets the base address to access the Langflow web interface where users interact with the Langflow editor in a browser. You must set this value to run Langflow on a non-default port (`7860`)
    * **Webhook Base URL (Advanced Setup only)**: If you entered OAuth credentials, you can set the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
