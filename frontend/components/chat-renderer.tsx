@@ -91,14 +91,14 @@ export function ChatRenderer({
     async (preferUserDoc: boolean, settingsToUse?: Settings) => {
       // Use provided settings or fall back to prop
       const currentSettings = settingsToUse || settings;
-      
+
       if (typeof window === "undefined") {
         return;
       }
 
       // Check if we already have a default filter set
       const existingDefault = localStorage.getItem("default_conversation_filter_id");
-      
+
       if (existingDefault) {
         // Try to apply it to context state (don't save to localStorage to avoid overwriting)
         try {
@@ -165,7 +165,7 @@ export function ChatRenderer({
       // IMPORTANT: Refetch settings to get the latest filter IDs that were saved during onboarding
       // The filter IDs are saved asynchronously by mutations, so we need fresh data
       await queryClient.refetchQueries({ queryKey: ["settings"] });
-      
+
       // Get the fresh settings after refetch
       const freshSettings = queryClient.getQueryData(["settings"]) as Settings | undefined;
 
@@ -215,7 +215,7 @@ export function ChatRenderer({
       openrag_docs_filter_id: null,
       user_doc_filter_id: null,
     });
-    
+
     // Mark onboarding as complete in context
     setOnboardingComplete(true);
     // Store the OpenRAG docs filter as default for new conversations
@@ -290,7 +290,7 @@ export function ChatRenderer({
           className={cn(
             "flex h-full w-full max-w-full max-h-full items-center justify-center overflow-y-auto",
             !showLayout &&
-              "absolute max-h-[calc(100vh-190px)] shadow-[0px_2px_4px_-2px_#0000001A,0px_4px_6px_-1px_#0000001A]",
+            "absolute max-h-[calc(100vh-190px)] shadow-[0px_2px_4px_-2px_#0000001A,0px_4px_6px_-1px_#0000001A]",
             showLayout && !isOnChatPage && "bg-background",
           )}
         >
@@ -298,7 +298,7 @@ export function ChatRenderer({
             className={cn(
               "h-full bg-background w-full",
               showLayout && !isOnChatPage && "p-6 container",
-              showLayout && isSmallWidthPath && "max-w-[850px] ml-0",
+              showLayout && isSmallWidthPath && "max-w-[920px] ml-0",
               !showLayout && "p-0 py-2",
             )}
           >

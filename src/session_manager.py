@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
 from dataclasses import dataclass, asdict
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519, ed448
+
 import os
 from utils.logging_config import get_logger
 
@@ -71,30 +73,45 @@ class SessionManager:
         signing_key = os.getenv("JWT_SIGNING_KEY")
 
         if signing_key:
-            if signing_key.startswith("-----BEGIN"):
-                # PEM format = asymmetric (RS256)
-                self.private_key = serialization.load_pem_private_key(
-                    signing_key.encode(), password=None
-                )
-                # Extract public key from private key
-                self.public_key = self.private_key.public_key()
+            if signing_key.lstrip().startswith("-----BEGIN"):
+                key = serialization.load_pem_private_key(signing_key.encode(), password=None)
+
+                self.private_key = key
+                self.public_key = key.public_key()
                 self.public_key_pem = self.public_key.public_bytes(
                     encoding=serialization.Encoding.PEM,
-                    format=serialization.PublicFormat.SubjectPublicKeyInfo
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
                 ).decode()
-                self.algorithm = "RS256"
-                logger.info("JWT signing configured with RSA key from environment")
+
+                if isinstance(key, rsa.RSAPrivateKey):
+                    self.algorithm = "RS256"
+                elif isinstance(key, ec.EllipticCurvePrivateKey):
+                    curve = key.curve
+                    if isinstance(curve, ec.SECP256R1):
+                        self.algorithm = "ES256"
+                    elif isinstance(curve, ec.SECP384R1):
+                        self.algorithm = "ES384"
+                    elif isinstance(curve, ec.SECP521R1):
+                        self.algorithm = "ES512"
+                    else:
+                        raise ValueError(f"Unsupported EC curve: {curve.name}")
+                elif isinstance(key, (ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey)):
+                    self.algorithm = "EdDSA"
+                else:
+                    raise ValueError(f"Unsupported private key type: {type(key)}")
+
             else:
                 # Plain string = symmetric (HS256)
                 self.private_key = signing_key
                 self.public_key = signing_key  # Same key for verification
                 self.public_key_pem = None  # No JWKS for symmetric
                 self.algorithm = "HS256"
-                logger.info("JWT signing configured with symmetric key from environment")
         else:
             # Fall back to file-based RSA keys
             self._load_rsa_keys()
             self.algorithm = "RS256"
+        logger.info(f"Initialized JWT signing with {self.algorithm}")
+
 
     def _load_rsa_keys(self):
         """Load RSA private and public keys from files"""

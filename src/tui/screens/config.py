@@ -614,6 +614,22 @@ class ConfigScreen(Screen):
         self.inputs["opensearch_data_path"] = input_widget
         yield Static(" ")
 
+        # OpenSearch Index Name
+        yield Label("OpenSearch Index Name")
+        yield Static(
+            "Name of the index to use in OpenSearch",
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "opensearch_index_name", "documents")
+        input_widget = Input(
+            placeholder="documents",
+            value=current_value,
+            id="input-opensearch_index_name",
+        )
+        yield input_widget
+        self.inputs["opensearch_index_name"] = input_widget
+        yield Static(" ")
+
         # Langflow Auth Settings - These are automatically configured based on password presence
         # Not shown in UI; set in env_manager.setup_secure_defaults()
 

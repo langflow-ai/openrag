@@ -74,6 +74,8 @@ spec:
                   name: {{ include "openrag.fullname" . }}-opensearch
                   key: password
             {{- end }}
+            - name: OPENSEARCH_INDEX_NAME
+              value: {{ .Values.global.opensearch.indexName | quote }}
             # Langflow connection
             - name: LANGFLOW_URL
               value: {{ include "openrag.langflow.url" . | quote }}

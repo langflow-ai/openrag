@@ -44,31 +44,26 @@ import {
 import { cn } from "@/lib/utils";
 
 // Supported file extensions - single source of truth
-const SUPPORTED_EXTENSIONS = [
-  ".pdf",
-  ".doc",
-  ".docx",
-  ".pptx",
-  ".ppt",
-  ".xlsx",
-  ".xls",
-  ".csv",
-  ".txt",
-  ".md",
-  ".html",
-  ".htm",
-  ".rtf",
-  ".odt",
-  ".asciidoc",
-  ".adoc",
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".bmp",
-  ".tiff",
-  ".webp",
-];
+// If modified, please also update the list in the documentation (openrag/docs/docs)
+export const SUPPORTED_FILE_TYPES = {
+  "image/*": [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp"],
+  "application/pdf": [".pdf"],
+  "application/msword": [".doc"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+  "application/vnd.ms-powerpoint": [".ppt"],
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
+  "application/vnd.ms-excel": [".xls"],
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+  "text/csv": [".csv"],
+  "text/plain": [".txt"],
+  "text/markdown": [".md"],
+  "text/html": [".html", ".htm"],
+  "application/rtf": [".rtf"],
+  "application/vnd.oasis.opendocument.text": [".odt"],
+  "text/asciidoc": [".adoc", ".asciidoc"]
+}
+
+export const SUPPORTED_EXTENSIONS = Object.values(SUPPORTED_FILE_TYPES).flat();
 
 export function KnowledgeDropdown() {
   const { addTask } = useTask();

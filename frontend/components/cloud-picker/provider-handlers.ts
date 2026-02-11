@@ -6,6 +6,7 @@ import {
   GooglePickerData,
   GooglePickerDocument,
 } from "./types";
+import { SharePointV8Handler } from "./sharepoint-v8-handler";
 
 export class GoogleDriveHandler {
   private accessToken: string;
@@ -186,15 +187,27 @@ export class OneDriveHandler {
       return;
     }
 
+    // For SharePoint, use the SharePoint site URL as endpoint hint
+    // For OneDrive, use the default OneDrive API endpoint
+    const endpointHint = this.provider === "sharepoint" && this.baseUrl
+      ? this.baseUrl
+      : "api.onedrive.com";
+
     window.OneDrive.open({
       clientId: this.clientId,
       action: "query",
       multiSelect: true,
       advanced: {
-        endpointHint: "api.onedrive.com",
+        endpointHint: endpointHint,
         accessToken: this.accessToken,
       },
       success: (response: any) => {
+        console.log("OneDrive picker success callback:", response);
+        if (!response || !response.value) {
+          console.warn("OneDrive picker returned no value");
+          return;
+        }
+        
         const newFiles: CloudFile[] =
           response.value?.map((item: any) => {
             // Extract mimeType from file object or infer from name
@@ -242,7 +255,7 @@ export class OneDriveHandler {
         console.log("Picker cancelled");
       },
       error: (error: any) => {
-        console.error("Picker error:", error);
+        console.error("Picker error callback:", error);
       },
     });
   }
@@ -259,13 +272,34 @@ export const createProviderHandler = (
   clientId?: string,
   baseUrl?: string,
 ) => {
+  // === DIAGNOSTIC LOGGING ===
+  console.log("=== Creating Provider Handler ===");
+  console.log("Provider:", provider);
+  console.log("Client ID:", clientId);
+  console.log("Base URL:", baseUrl);
+  console.log("Access Token (first 20 chars):", accessToken?.substring(0, 20) + "...");
+  console.log("Access Token length:", accessToken?.length);
+  
   switch (provider) {
     case "google_drive":
       return new GoogleDriveHandler(accessToken, onPickerStateChange);
-    case "onedrive":
     case "sharepoint":
+      // Use v8 File Picker for SharePoint - v7.2 has "Knockout deprecated" bug
+      // making Select/Cancel buttons unresponsive
       if (!clientId) {
-        throw new Error("Client ID required for OneDrive/SharePoint");
+        throw new Error("Client ID required for SharePoint");
+      }
+      if (!baseUrl) {
+        throw new Error("Base URL required for SharePoint v8 picker");
+      }
+      console.log("Creating SharePointV8Handler with baseUrl:", baseUrl);
+      return new SharePointV8Handler(baseUrl, accessToken, clientId, onPickerStateChange);
+
+    case "onedrive":
+      // Use v7.2 (OneDrive.js) for personal OneDrive - v8 doesn't work for consumer accounts
+      // Backend uses /shares API to handle the sharing IDs that v7.2 returns
+      if (!clientId) {
+        throw new Error("Client ID required for OneDrive");
       }
       return new OneDriveHandler(accessToken, clientId, provider, baseUrl);
     default:

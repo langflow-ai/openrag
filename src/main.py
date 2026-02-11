@@ -1,3 +1,5 @@
+
+
 # Configure structured logging early
 from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
@@ -448,7 +450,7 @@ async def _ingest_default_documents_langflow(services, file_paths):
         tweaks=default_tweaks,
         settings=None,  # Use default ingestion settings
         delete_after_ingest=True,  # Clean up after ingestion
-        replace_duplicates=False,
+        replace_duplicates=True,
     )
 
     logger.info(
@@ -1073,6 +1075,17 @@ async def create_app():
             methods=["POST"],
         ),
         Route(
+            "/connectors/sync-all",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.sync_all_connectors,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
             "/connectors/{connector_type}/status",
             require_auth(services["session_manager"])(
                 partial(
@@ -1093,6 +1106,17 @@ async def create_app():
                 )
             ),
             methods=["GET"],
+        ),
+        Route(
+            "/connectors/{connector_type}/disconnect",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.connector_disconnect,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
         ),
         Route(
             "/connectors/{connector_type}/webhook",
