@@ -8,9 +8,6 @@ import Icon from "@site/src/components/icon/icon";
 The knowledge ingestion settings determine how documents are processed when you [upload documents](/ingestion) into your [knowledge base](/knowledge).
 This includes chunking strategies, embedding models, and image handling settings.
 
-OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion.
-Docling processes files, splits them into chunks, and stores them as separate, structured documents in your OpenSearch knowledge base.
-
 ## Existing documents aren't reprocessed after changing ingestion settings
 
 :::warning
@@ -26,6 +23,9 @@ For example, it is typical to upload some documents with OCR enabled and others 
 If needed, you can use [filters](/knowledge-filters) to separate documents that you uploaded with different settings, such as different embedding models.
 
 ## Select a Docling implementation {#select-a-docling-implementation}
+
+OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion.
+Docling processes files, splits them into chunks, and stores them as separate, structured documents in your OpenSearch knowledge base.
 
 You can configure OpenRAG to use either a Docling Serve service or a Docling processor pipeline for document processing:
 
