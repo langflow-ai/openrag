@@ -110,7 +110,9 @@ async def update_document_acl(
         Dict with status ("unchanged" or "updated") and chunks_updated count
     """
     # Check if ACL changed (queries one chunk)
-    if not await should_update_acl(document_id, acl, opensearch_client):
+    should_update = await should_update_acl(document_id, acl, opensearch_client)
+
+    if not should_update:
         return {"status": "unchanged", "chunks_updated": 0}
 
     # Bulk update all chunks for this document

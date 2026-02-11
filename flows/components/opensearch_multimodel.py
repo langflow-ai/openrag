@@ -12,7 +12,7 @@ from opensearchpy.exceptions import OpenSearchException, RequestError
 
 from lfx.base.vectorstores.model import LCVectorStoreComponent, check_cached_vector_store
 from lfx.base.vectorstores.vector_store_connection_decorator import vector_store_connection
-from lfx.inputs.inputs import DictInput
+
 from lfx.io import (
     BoolInput,
     DropdownInput,
@@ -64,7 +64,7 @@ def get_embedding_field_name(model_name: str) -> str:
     return f"chunk_embedding_{normalize_model_name(model_name)}"
 
 
-@vector_store_connection
+# @vector_store_connection
 class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreComponent):
     """OpenSearch Vector Store Component with Multi-Model Hybrid Search Capabilities.
 
@@ -95,33 +95,10 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
     display_name: str = "OpenSearch (Multi-Model Multi-Embedding)"
     icon: str = "OpenSearch"
     description: str = (
-        "Store and search documents using OpenSearch with multi-model hybrid semantic and keyword search."
-        "To search use the tools search_documents and raw_search. Search documents takes a query for vector search, for example\n"
-        "  {search_query: \"components in openrag\"}"
-        "\n"
-        "you can also override the filter_expression to limit the hybrid query in search_documents by also passing filter_expression\n"
-        "for example:\n"
-        "  {search_query: \"components in openrag\",  filter_expression: {\"data_sources\":[\"my_doc.md\"],\"document_types\":[\"*\"],\"owners\":[\"*\"],\"connector_types\":[\"*\"]},\"limit\":10,\"scoreThreshold\":0}"
-        "\n"
-        "raw_search takes actual opensearch queries for example:"
-        "  {"
-        "    \"size\": 100,"
-        "    \"query\": {"
-        "        \"term\": {\"filename\": \"my_doc.md\"}"
-        "    }"
-        "    \"_source\": [\"filename\", \"text\", \"page\"]"
-        " }"
-        "\n"
-        "or:"
-        "\n"
-        "  {"
-        "     \"size\": 0,"
-        "     \"aggs\": {"
-        "         \"distinct_filenames\": {"
-        "             \"cardinality\": {\"field\": \"filename\"}"
-        "         }"
-        "     },"
-        "  }"
+        "Store and search documents using OpenSearch with multi-model hybrid semantic and keyword search. "
+        "To search use the tools search_documents and raw_search. "
+        "Search documents takes a query for vector search, for example\n"
+        '  {search_query: "components in openrag"}'
     )
 
     # Keys we consider baseline
@@ -370,7 +347,6 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             name="search_results",
             method="search_documents",
         ),
-        Output(display_name="DataFrame", name="dataframe", method="as_dataframe"),
         Output(display_name="Raw Search", name="raw_search", method="raw_search"),
     ]
 
@@ -386,22 +362,26 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         Raises:
             ValueError: If 'query' is not a valid OpenSearch query (must be a non-empty dict).
         """
-        query = self.search_query
-        if isinstance(query, str):
-            query = json.loads(query)
+        raw_query = query if query is not None else self.search_query
+        if isinstance(raw_query, str):
+            raw_query = json.loads(raw_query)
         client = self.build_client()
-        logger.info(f"query: {query}")
+        logger.info(f"query: {raw_query}")
         resp = client.search(
             index=self.index_name,
-            body=query,
+            body=raw_query,
             params={"terminate_after": 0},
         )
         # Remove any _source keys whose value is a list of floats (embedding vectors)
+        # Minimum length threshold to identify embedding vectors
+        min_vector_length = 100
+
         def is_vector(val):
-            # Accepts if it's a list of numbers (float or int) and has reasonable vector length (>3)
+            # Accepts if it's a list of numbers (float or int) and has reasonable vector length
             return (
-                isinstance(val, list) and len(val) > 100 and all(isinstance(x, (float, int)) for x in val)
+                isinstance(val, list) and len(val) > min_vector_length and all(isinstance(x, (float, int)) for x in val)
             )
+
         if "hits" in resp and "hits" in resp["hits"]:
             for hit in resp["hits"]["hits"]:
                 source = hit.get("_source")
@@ -540,6 +520,11 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         This allows adding new embedding models without recreating the entire index.
         Also ensures the embedding_model tracking field exists.
 
+        Note: Some OpenSearch versions/configurations have issues with dynamically adding
+        knn_vector mappings (NullPointerException). This method checks if the field
+        already exists before attempting to add it, and gracefully skips if the field
+        is already properly configured.
+
         Args:
             client: OpenSearch client instance
             index_name: Target index name
@@ -550,6 +535,24 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             ef_construction: Construction parameter
             m: HNSW parameter
         """
+        # First, check if the field already exists and is properly mapped
+        properties = self._get_index_properties(client)
+        if self._is_knn_vector_field(properties, field_name):
+            # Field already exists as knn_vector - verify dimensions match
+            existing_dim = self._get_field_dimension(properties, field_name)
+            if existing_dim is not None and existing_dim != dim:
+                logger.warning(
+                    f"Field '{field_name}' exists with dimension {existing_dim}, "
+                    f"but current embedding has dimension {dim}. Using existing mapping."
+                )
+            else:
+                logger.info(
+                    f"[OpenSearchMultimodal] Field '{field_name}' already exists"
+                    f"as knn_vector with matching dimensions - skipping mapping update"
+                )
+            return
+
+        # Field doesn't exist, try to add the mapping
         try:
             mapping = {
                 "properties": {
@@ -571,13 +574,26 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             client.indices.put_mapping(index=index_name, body=mapping)
             logger.info(f"Added/updated embedding field mapping: {field_name}")
         except Exception as e:
-            logger.warning(f"Could not add embedding field mapping for {field_name}: {e}")
+            # Check if this is the known OpenSearch k-NN NullPointerException issue
+            error_str = str(e).lower()
+            if "null" in error_str or "nullpointerexception" in error_str:
+                logger.warning(
+                    f"[OpenSearchMultimodal] Could not add embedding field mapping for {field_name}"
+                    f"due to OpenSearch k-NN plugin issue: {e}. "
+                    f"This is a known issue with some OpenSearch versions. "
+                    f"[OpenSearchMultimodal] Skipping mapping update. "
+                    f"Please ensure the index has the correct mapping for KNN search to work."
+                )
+                # Skip and continue - ingestion will proceed, but KNN search may fail if mapping doesn't exist
+                return
+            logger.warning(f"[OpenSearchMultimodal] Could not add embedding field mapping for {field_name}: {e}")
             raise
 
+        # Verify the field was added correctly
         properties = self._get_index_properties(client)
         if not self._is_knn_vector_field(properties, field_name):
             msg = f"Field '{field_name}' is not mapped as knn_vector. Current mapping: {properties.get(field_name)}"
-            logger.aerror(msg)
+            logger.error(msg)
             raise ValueError(msg)
 
     def _validate_aoss_with_engines(self, *, is_aoss: bool, engine: str) -> None:
@@ -647,6 +663,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         Returns:
             List of document IDs that were successfully ingested
         """
+        logger.debug(f"[OpenSearchMultimodal] Bulk ingesting embeddings for {index_name}")
         if not mapping:
             mapping = {}
 
@@ -658,6 +675,19 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             metadata = metadatas[i] if metadatas else {}
             if vector_dimensions is not None and "embedding_dimensions" not in metadata:
                 metadata = {**metadata, "embedding_dimensions": vector_dimensions}
+
+            # Normalize ACL fields that may arrive as JSON strings from flows
+            for key in ("allowed_users", "allowed_groups"):
+                value = metadata.get(key)
+                if isinstance(value, str):
+                    try:
+                        parsed = json.loads(value)
+                        if isinstance(parsed, list):
+                            metadata[key] = parsed
+                    except (json.JSONDecodeError, TypeError):
+                        # Leave value as-is if it isn't valid JSON
+                        pass
+
             _id = ids[i] if ids else str(uuid.uuid4())
             request = {
                 "_op_type": "index",
@@ -713,6 +743,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         Returns:
             Configured OpenSearch client ready for operations
         """
+        logger.debug("[OpenSearchMultimodal] Building OpenSearch client")
         auth_kwargs = self._build_auth_kwargs()
         return OpenSearch(
             hosts=[self.opensearch_url],
@@ -731,10 +762,10 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         # Check if we're in ingestion-only mode (no search query)
         has_search_query = bool((self.search_query or "").strip())
         if not has_search_query:
-            logger.debug("Ingestion-only mode activated: search operations will be skipped")
-            logger.debug("Starting ingestion mode...")
+            logger.debug("[OpenSearchMultimodal] Ingestion-only mode activated: search operations will be skipped")
+            logger.debug("[OpenSearchMultimodal] Starting ingestion mode...")
 
-        logger.warning(f"Embedding: {self.embedding}")
+        logger.debug(f"[OpenSearchMultimodal] Embedding: {self.embedding}")
         self._add_documents_to_vector_store(client=client)
         return client
 
@@ -751,16 +782,16 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
         Args:
             client: OpenSearch client for performing operations
         """
-        logger.debug("[INGESTION] _add_documents_to_vector_store called")
+        logger.debug("[OpenSearchMultimodal][INGESTION] _add_documents_to_vector_store called")
         # Convert DataFrame to Data if needed using parent's method
         self.ingest_data = self._prepare_ingest_data()
 
         logger.debug(
-            f"[INGESTION] ingest_data type: "
+            f"[OpenSearchMultimodal][INGESTION] ingest_data type: "
             f"{type(self.ingest_data)}, length: {len(self.ingest_data) if self.ingest_data else 0}"
         )
         logger.debug(
-            f"[INGESTION] ingest_data content: "
+            f"[OpenSearchMultimodal][INGESTION] ingest_data content: "
             f"{self.ingest_data[:2] if self.ingest_data and len(self.ingest_data) > 0 else 'empty'}"
         )
 
@@ -785,8 +816,8 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             self.log("Embedding returned None (fail-safe mode enabled). Skipping document ingestion.")
             return
 
-        logger.debug(f"[INGESTION] Valid embeddings after filtering: {len(embeddings_list)}")
-        self.log(f"Available embedding models: {len(embeddings_list)}")
+        logger.debug(f"[OpenSearchMultimodal][INGESTION] Valid embeddings after filtering: {len(embeddings_list)}")
+        self.log(f"[OpenSearchMultimodal][INGESTION] Available embedding models: {len(embeddings_list)}")
 
         # Select the embedding to use for ingestion
         selected_embedding = None
@@ -950,57 +981,96 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             metadatas.append(data_copy)
         self.log(metadatas)
 
-        # Generate embeddings (threaded for concurrency) with retries
-        def embed_chunk(chunk_text: str) -> list[float]:
-            return selected_embedding.embed_documents([chunk_text])[0]
+        # Generate embeddings with rate-limit-aware retry logic using tenacity
+        from tenacity import (
+            retry,
+            retry_if_exception,
+            stop_after_attempt,
+            wait_exponential,
+        )
 
-        vectors: list[list[float]] | None = None
-        last_exception: Exception | None = None
-        delay = 1.0
-        attempts = 0
-        max_attempts = 3
+        def is_rate_limit_error(exception: Exception) -> bool:
+            """Check if exception is a rate limit error (429)."""
+            error_str = str(exception).lower()
+            return "429" in error_str or "rate_limit" in error_str or "rate limit" in error_str
 
-        while attempts < max_attempts:
-            attempts += 1
+        def is_other_retryable_error(exception: Exception) -> bool:
+            """Check if exception is retryable but not a rate limit error."""
+            # Retry on most exceptions except for specific non-retryable ones
+            # Add other non-retryable exceptions here if needed
+            return not is_rate_limit_error(exception)
+
+        # Create retry decorator for rate limit errors (longer backoff)
+        retry_on_rate_limit = retry(
+            retry=retry_if_exception(is_rate_limit_error),
+            stop=stop_after_attempt(5),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
+            reraise=True,
+            before_sleep=lambda retry_state: logger.warning(
+                f"Rate limit hit for chunk (attempt {retry_state.attempt_number}/5), "
+                f"backing off for {retry_state.next_action.sleep:.1f}s"
+            ),
+        )
+
+        # Create retry decorator for other errors (shorter backoff)
+        retry_on_other_errors = retry(
+            retry=retry_if_exception(is_other_retryable_error),
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=8),
+            reraise=True,
+            before_sleep=lambda retry_state: logger.warning(
+                f"Error embedding chunk (attempt {retry_state.attempt_number}/3), "
+                f"retrying in {retry_state.next_action.sleep:.1f}s: {retry_state.outcome.exception()}"
+            ),
+        )
+
+        def embed_chunk_with_retry(chunk_text: str, chunk_idx: int) -> list[float]:
+            """Embed a single chunk with rate-limit-aware retry logic."""
+
+            @retry_on_rate_limit
+            @retry_on_other_errors
+            def _embed(text: str) -> list[float]:
+                return selected_embedding.embed_documents([text])[0]
+
             try:
-                # Restrict concurrency for IBM/Watsonx models to avoid rate limits
-                is_ibm = (embedding_model and "ibm" in str(embedding_model).lower()) or (
-                    selected_embedding and "watsonx" in type(selected_embedding).__name__.lower()
+                return _embed(chunk_text)
+            except Exception as e:
+                logger.error(
+                    f"Failed to embed chunk {chunk_idx} after all retries: {e}",
+                    error=str(e),
                 )
-                logger.debug(f"Is IBM: {is_ibm}")
-                max_workers = 1 if is_ibm else min(max(len(texts), 1), 8)
+                raise
 
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {executor.submit(embed_chunk, chunk): idx for idx, chunk in enumerate(texts)}
-                    vectors = [None] * len(texts)
-                    for future in as_completed(futures):
-                        idx = futures[future]
-                        vectors[idx] = future.result()
-                break
-            except Exception as exc:
-                last_exception = exc
-                if attempts >= max_attempts:
-                    logger.error(
-                        f"Embedding generation failed for model {embedding_model} after retries",
-                        error=str(exc),
-                    )
-                    raise
-                logger.warning(
-                    "Threaded embedding generation failed for model %s (attempt %s/%s), retrying in %.1fs",
-                    embedding_model,
-                    attempts,
-                    max_attempts,
-                    delay,
-                )
-                time.sleep(delay)
-                delay = min(delay * 2, 8.0)
+        # Restrict concurrency for IBM/Watsonx models to avoid rate limits
+        is_ibm = (embedding_model and "ibm" in str(embedding_model).lower()) or (
+            selected_embedding and "watsonx" in type(selected_embedding).__name__.lower()
+        )
+        logger.debug(f"Is IBM: {is_ibm}")
 
-        if vectors is None:
-            raise RuntimeError(
-                f"Embedding generation failed for {embedding_model}: {last_exception}"
-                if last_exception
-                else f"Embedding generation failed for {embedding_model}"
-            )
+        # For IBM models, use sequential processing with rate limiting
+        # For other models, use parallel processing
+        vectors: list[list[float]] = [None] * len(texts)
+
+        if is_ibm:
+            # Sequential processing with inter-request delay for IBM models
+            inter_request_delay = 0.6  # ~1.67 req/s, safely under 2 req/s limit
+            logger.info(f"Using sequential processing for IBM model with {inter_request_delay}s delay between requests")
+
+            for idx, chunk in enumerate(texts):
+                if idx > 0:
+                    # Add delay between requests (but not before the first one)
+                    time.sleep(inter_request_delay)
+                vectors[idx] = embed_chunk_with_retry(chunk, idx)
+        else:
+            # Parallel processing for non-IBM models
+            max_workers = min(max(len(texts), 1), 8)
+            logger.debug(f"Using parallel processing with {max_workers} workers")
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(embed_chunk_with_retry, chunk, idx): idx for idx, chunk in enumerate(texts)}
+                for future in as_completed(futures):
+                    idx = futures[future]
+                    vectors[idx] = future.result()
 
         if not vectors:
             self.log(f"No vectors generated from documents for model {embedding_model}.")
@@ -1600,7 +1670,7 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
                 }
             },
             "aggs": {
-                "data_sources": {"terms": {"field": "filename", "size": 20}},
+                "data_sources": {"terms": {"field": "filename.keyword", "size": 20}},
                 "document_types": {"terms": {"field": "mimetype", "size": 10}},
                 "owners": {"terms": {"field": "owner", "size": 10}},
                 "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
