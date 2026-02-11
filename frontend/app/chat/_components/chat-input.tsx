@@ -24,6 +24,7 @@ import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilterData } from "../_types/types";
 import { FilePreview } from "./file-preview";
 import { SelectedKnowledgeFilter } from "./selected-knowledge-filter";
+import { SUPPORTED_EXTENSIONS, SUPPORTED_FILE_TYPES } from "@/components/knowledge-dropdown";
 
 export interface ChatInputHandle {
 	focusInput: () => void;
@@ -104,13 +105,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 		}, [allFilters, filterSearchTerm]);
 
 		const { getRootProps, getInputProps } = useDropzone({
-			accept: {
-				"application/pdf": [".pdf"],
-				"application/msword": [".doc"],
-				"application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-					[".docx"],
-				"text/markdown": [".md"],
-			},
+			accept: SUPPORTED_FILE_TYPES,
 			maxFiles: 1,
 			disabled: !isDragging,
 			onDrop: (acceptedFiles, fileRejections) => {
@@ -501,7 +496,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 						type="file"
 						onChange={handleFilePickerChange}
 						className="hidden"
-						accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
+						accept={SUPPORTED_EXTENSIONS.join(",")}
 					/>
 
 					<Popover

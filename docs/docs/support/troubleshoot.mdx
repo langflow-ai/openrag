@@ -3,30 +3,13 @@ title: Troubleshoot OpenRAG
 slug: /support/troubleshoot
 ---
 
+import Icon from "@site/src/components/icon/icon";
 import PartialOllamaModels from '@site/docs/_partial-ollama-models.mdx';
 import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 
 This page provides troubleshooting advice for issues you might encounter when using OpenRAG or contributing to OpenRAG.
 
-## Installation and start up issues
-
-The following issues relate to OpenRAG installation and start up.
-
-### OpenSearch fails to start
-
-Check that the value of the `OPENSEARCH_PASSWORD` [environment variable](/reference/configuration) meets the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
-
-If you need to change the password, you must [reset the OpenRAG services](/manage-services).
-
-### OpenRAG fails to start from the TUI with operation not supported
-
-This error occurs when starting OpenRAG with the TUI in [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
-
-The error occurs because OpenRAG is running within a WSL environment, so `webbrowser.open()` can't launch a browser automatically.
-
-To access the OpenRAG application, open a web browser and enter `http://localhost:3000` in the address bar.
-
-### OpenRAG installation fails with unable to get local issuer certificate
+## OpenRAG installation fails with unable to get local issuer certificate
 
 If you are installing OpenRAG on macOS, and the installation fails with `unable to get local issuer certificate`, run the following command, and then retry the installation:
 
@@ -36,15 +19,6 @@ open "/Applications/Python VERSION/Install Certificates.command"
 
 Replace `VERSION` with your installed Python version, such as `3.13`.
 
-### Application onboarding gets stuck on Google Chrome
-
-If the OpenRAG onboarding process gets stuck when using Google Chrome, try clearing your browser's cache.
-
-## Langflow connection issues
-
-Verify that the value of the `LANGFLOW_SUPERUSER` environment variable is correct.
-For more information about this variable and how this variable controls Langflow access, see [Langflow settings](/reference/configuration#langflow-settings).
-
 ## No container runtime found
 
 When you start the TUI, a `No container runtime found` error indicates that OpenRAG cannot find a running Docker or Podman machine.
@@ -53,23 +27,53 @@ Make sure Docker or Podman is installed, available in the PATH, and a VM is runn
 
 ## Container out of memory errors {#container-out-of-memory-errors}
 
-Increase your container VM's allocated memory, or use a CPU-only deployment to reduce memory usage.
+If you encounter container memory errors, try the following:
 
-For TUI-managed deployments, you can enable **CPU mode** on the TUI's **Status** page.
+* Increase your Podman or Docker VM's allocated memory.
 
-For self-managed deployments, CPU-only deployments use the `docker-compose.yml` file that doesn't have GPU overrides.
+   If you're using Podman on macOS, you might need to increase VM memory on your Podman machine.
+   This example, the following commands stop Podman, increase the machine size to 8 GB of RAM (the minimum recommended RAM for OpenRAG), and then restart the VM:
 
-## Memory issue with Podman on macOS {#memory-issue-with-podman-on-macos}
+   ```bash
+   podman machine stop
+   podman machine rm
+   podman machine init --memory 8192   # 8 GB example
+   podman machine start
+   ```
 
-If you're using Podman on macOS, you might need to increase VM memory on your Podman machine.
-This example increases the machine size to 8 GB of RAM, which is the minimum recommended RAM for OpenRAG:
+   You must also restart your OpenRAG services after increasing the container VM's memory.
 
-```bash
-podman machine stop
-podman machine rm
-podman machine init --memory 8192   # 8 GB example
-podman machine start
-```
+* Use a CPU-only deployment to reduce memory usage.
+
+   For TUI-managed deployments, you can enable **CPU mode** on the TUI's **Status** page.
+
+   For self-managed deployments, CPU-only deployments use the `docker-compose.yml` file that doesn't have GPU overrides.
+
+## OpenSearch fails to start
+
+Check that the value of the `OPENSEARCH_PASSWORD` [environment variable](/reference/configuration) meets the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password).
+
+If you need to change the password, you must [reset the OpenRAG services](/manage-services).
+
+## OpenRAG fails to start from the TUI with operation not supported
+
+This error occurs when starting OpenRAG with the TUI in [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
+
+The error occurs because OpenRAG is running within a WSL environment, so `webbrowser.open()` can't launch a browser automatically.
+
+To access the OpenRAG application, open a web browser and enter `http://localhost:3000` in the address bar.
+
+## Application onboarding gets stuck or fails
+
+If the application onboarding process hangs for a long time or fails for an unspecified reason, try the following:
+
+* Make sure you have enough free space (more than 50 GB) available for the temporary storage required for document ingestion.
+* Clear your browser's cache.
+
+## Langflow connection issues
+
+Verify that the value of the `LANGFLOW_SUPERUSER` environment variable is correct.
+For more information about this variable and how this variable controls Langflow access, see [Langflow settings](/reference/configuration#langflow-settings).
 
 ## Port conflicts
 
@@ -85,44 +89,6 @@ By default, OpenRAG requires the following ports to be available on the host mac
 If the default ports for the OpenRAG frontend (`3000`) or Langflow (`7860`) are already in use on your host machine, you can set the `FRONTEND_PORT` or `LANGFLOW_PORT` [environment variables](/reference/configuration) to map these services to different host ports.
 If you set `LANGFLOW_PORT`, you must also set `LANGFLOW_PUBLIC_URL` to use the new port.
 To apply the port mapping, [restart the containers](/manage-services#stop-and-start-containers) after editing your OpenRAG `.env` file.
-
-## OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
-
-Docling ingestion can fail with an OCR-related error that mentions `easyocr` is missing.
-This is likely due to a stale `uv` cache when you [install OpenRAG with `uvx`](/install-uvx).
-
-When you invoke OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project.
-The location and path of this cache depends on your operating system.
-For example, on macOS, this is typically a user cache directory, such as `~/.cache/uv`.
-
-This cache can become stale, producing errors like missing dependencies.
-
-1. If the TUI is open, press <kbd>q</kbd> to exit the TUI.
-
-2. Clear the `uv` cache:
-
-   ```bash
-   uv cache clean
-   ```
-
-   To clear the OpenRAG cache only, run:
-
-   ```bash
-   uv cache clean openrag
-   ```
-
-3. Invoke OpenRAG to restart the TUI:
-
-   ```bash
-   uvx openrag
-   ```
-
-4. Click **Launch OpenRAG**, and then retry document ingestion.
-
-If you install OpenRAG with `uv`, dependencies are synced directly from your `pyproject.toml` file.
-This should automatically install `easyocr` because `easyocr` is included as a dependency in OpenRAG's `pyproject.toml`.
-
-If you don't need OCR, you can disable OCR-based processing in your [ingestion settings](/knowledge#knowledge-ingestion-settings) to avoid requiring `easyocr`.
 
 ## Upgrade fails due to Langflow container already exists {#langflow-container-already-exists-during-upgrade}
 
@@ -160,28 +126,146 @@ To resolve this issue, do the following:
 
    If no updates are available after reinstalling OpenRAG, then you reinstalled at the latest version, and your deployment is up to date.
 
-## Document ingestion or similarity search issues
+## Model availability and performance issues {#model-availability-and-performance-issues}
 
-See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
+The following issues relate to the models you can use with OpenRAG and potential performance issues, such as malformed responses and excessive hallucinations.
 
-## Ollama model issues {#ollama-model-issues}
+See also [Chat issues](#chat-issues).
 
-<PartialOllamaModels />
-
-## IBM watsonx.ai model issues {#ibm-watsonxai-model-issues}
-
-<PartialWatsonxModels />
-
-## Language model isn't listed in OpenRAG settings or onboarding
+### Language model isn't listed in OpenRAG settings or application onboarding
 
 If your language model isn't listed in the OpenRAG settings or application onboarding, then the model likely doesn't support tool calling, which is required for OpenRAG.
 You must select a different model.
 If no other models are listed, make sure your model provider API key or instance has access to models that support tool calling.
 
-See also [Ollama model issues](#ollama-model-issues), [IBM watsonx.ai model issues](#ibm-watsonxai-model-issues), and [Troubleshoot chat](/chat#troubleshoot-chat).
-
 You can submit an [OpenRAG GitHub issue](https://github.com/langflow-ai/openrag/issues) to request support for specific models.
 
-## Chat issues
+### IBM watsonx.ai model issues {#ibm-watsonxai-model-issues}
 
-See [Troubleshoot chat](/chat#troubleshoot-chat).
+<PartialWatsonxModels />
+
+### Ollama model issues {#ollama-model-issues}
+
+<PartialOllamaModels />
+
+## Document ingestion or similarity search issues {#document-ingestion-or-similarity-search-issues}
+
+The following issues can occur during document ingestion or as a result of suboptimal ingestion.
+
+### Failed or slow ingestion
+
+If an ingestion task fails, try the following:
+
+* Make sure you ingest only supported file types.
+* Split very large files into smaller files.
+* Remove unusual or complex embedded content, such as videos or animations. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
+* Make sure your Podman/Docker VM has [sufficient memory](/support/troubleshoot#container-out-of-memory-errors) and temporary storage for the ingestion tasks.
+The minimum recommendation is 8 GB of RAM and at least 50 GB of free disk space, but the exact requirements depend on the size and complexity of your documents.
+If you regularly ingest large files, more RAM and space are recommended.
+* If OCR ingestion fails due to OCR missing, see [OCR ingestion fails (easyocr not installed)](/support/troubleshoot#ocr-ingestion-fails-easyocr-not-installed).
+
+### Ingesting very large PDFs (more than 300 pages)
+
+Ingesting very large PDFs can take 30 minutes or more.
+
+Make sure your container VM has [sufficient memory](/support/troubleshoot#container-out-of-memory-errors) for processing large PDFs.
+
+If Langflow processes time out while ingesting very large PDFs, increase the `LANGFLOW_TIMEOUT` and `LANGFLOW_CONNECT_TIMEOUT` environment variables in your [OpenRAG `.env` file](/reference/configuration).
+
+### OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
+
+Docling ingestion can fail with an OCR-related error that mentions `easyocr` is missing.
+This is likely due to a stale `uv` cache when you [install OpenRAG with `uvx`](/install-uvx).
+
+When you invoke OpenRAG with `uvx openrag`, `uvx` creates a cached, ephemeral environment that doesn't modify your project.
+The location and path of this cache depends on your operating system.
+For example, on macOS, this is typically a user cache directory, such as `~/.cache/uv`.
+
+This cache can become stale, producing errors like missing dependencies.
+
+1. If the TUI is open, press <kbd>q</kbd> to exit the TUI.
+
+2. Clear the `uv` cache:
+
+   ```bash
+   uv cache clean
+   ```
+
+   To clear the OpenRAG cache only, run:
+
+   ```bash
+   uv cache clean openrag
+   ```
+
+3. Invoke OpenRAG to restart the TUI:
+
+   ```bash
+   uvx openrag
+   ```
+
+4. Click **Launch OpenRAG**, and then retry document ingestion.
+
+If you install OpenRAG with `uv`, dependencies are synced directly from your `pyproject.toml` file.
+This should automatically install `easyocr` because `easyocr` is included as a dependency in OpenRAG's `pyproject.toml`.
+
+If you don't need OCR, you can disable OCR-based processing in your [ingestion settings](/knowledge#knowledge-ingestion-settings) to avoid requiring `easyocr`.
+
+### Problems when referencing documents in chat
+
+If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](/knowledge#browse-knowledge) to confirm that the documents are uploaded in full, and the chunks are correct.
+
+If the documents are present and well-formed, check your [knowledge filters](/knowledge-filters).
+If you applied a filter to the chat, make sure the expected documents aren't excluded by the filter settings.
+You can test this by applying the filter when you [browse the knowledge base](/knowledge#browse-knowledge).
+If the filter excludes any documents, the agent cannot access those documents.
+Be aware that some settings create dynamic filters that don't always produce the same results, such as a **Search query** combined with a low **Response limit**.
+
+If the document chunks have missing, incorrect, or unexpected text, you must [delete the documents](/knowledge#delete-knowledge) from your knowledge base, modify the [ingestion parameters](/knowledge#knowledge-ingestion-settings) or the documents themselves, and then reingest the documents.
+For example:
+
+* Break combined documents into separate files for better metadata context.
+* Make sure scanned documents are legible enough for extraction, and enable the **OCR** option. Poorly scanned documents might require additional preparation or rescanning before ingestion.
+* Adjust the **Chunk size** and **Chunk overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
+
+## Chat issues {#chat-issues}
+
+The following issues can occur when using the [OpenRAG **Chat**](/chat) feature.
+
+### Documents seem to be missing or misinterpreted
+
+In the **Chat**, click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** to view the log of tool calls made by the agent.
+This can shows you how the agent used particular tools and the reasoning.
+
+Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to confirm that the documents are present in the OpenRAG OpenSearch database, and then click each document to see how the document was chunked.
+If a document was chunked improperly, you might need to tweak the [ingestion settings](/ingestion) or modify and reupload the document.
+
+See also [Document ingestion or similarity search issues](#document-ingestion-or-similarity-search-issues).
+
+### Service is suddenly unavailable when it was working previously
+
+First, verify that the container VM and the OpenRAG services are running and healthy.
+
+Second, make sure there are no issues with the flow configuration.
+If you edited the **OpenRAG OpenSearch Agent** flow, use the [**Restore flow** option](/agents#revert-a-built-in-flow-to-its-original-configuration) to revert the flow to its original configuration.
+
+If you want to preserve your customizations, you can [export the flow](https://docs.langflow.org/concepts-flows-import) before restoring the flow.
+
+### JSON-formatted responses
+
+If a model returns JSON-formatted output instead of natural language responses, the model might not be designed for agentic reasoning and RAG tasks.
+
+Try a different model.
+
+For more information, see [Model availability and performance issues](#model-availability-and-performance-issues).
+
+### Frequent hallucinations
+
+If the model seems to hallucinate frequently, the model might be too small or poorly suited to RAG tasks.
+
+Try a different model.
+
+For more information, see [Model availability and performance issues](#model-availability-and-performance-issues).
+
+### Responses are good but could be better
+
+If your model is compatible with OpenRAG, and it isn't exhibiting any obvious errors, then you can use RAG best practices to refine the response quality, such as [knowledge filters](/knowledge-filters) and prompt engineering.
