@@ -48,7 +48,7 @@ This is typically only required for critical configuration changes that affect t
 Configure which models and providers OpenRAG uses to generate text and embeddings.
 You only need to provide credentials for the providers you are using in OpenRAG.
 
-These variables are initially set during the [application onboarding process](/install#application-onboarding).
+These variables are initially set during the [application onboarding process](/install-uvx#application-onboarding).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -139,7 +139,7 @@ Configure OpenSearch database authentication.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENSEARCH_DATA_PATH` | `./opensearch-data` | The path where OpenRAG creates your OpenSearch index data. This persists through updates. |
-| `OPENSEARCH_PASSWORD` | Must be set during setup or in the Dockerfile. | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the TUI's [**Basic/Advanced Setup**](/install#setup). |
+| `OPENSEARCH_PASSWORD` | Must be set during setup or in the Dockerfile. | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the TUI's [**Basic/Advanced Setup**](/install-uvx#setup). |
 
 <!-- | `OPENSEARCH_HOST` | `localhost` | OpenSearch service host. | -->
 <!-- | `OPENSEARCH_PORT` | `9200` | OpenSearch service port. | [if not configurable, edit other instances of OPENSEARCH_PORT in the docs] -->
