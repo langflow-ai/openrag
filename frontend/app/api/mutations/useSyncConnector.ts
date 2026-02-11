@@ -54,10 +54,8 @@ export const useSyncAllConnectors = () => {
   return useMutation({
     mutationFn: syncAllConnectors,
     onSettled: () => {
-      // Invalidate and refetch search queries after a delay to allow sync to complete
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["search"] });
-      }, 2000);
+      // Immediately refetch tasks so new sync jobs appear in the task list
+      queryClient.invalidateQueries({ queryKey: ["tasks"], exact: false });
     },
   });
 };
@@ -68,10 +66,8 @@ export const useSyncConnector = () => {
   return useMutation({
     mutationFn: syncConnector,
     onSettled: () => {
-      // Invalidate and refetch search queries after a delay to allow sync to complete
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["search"] });
-      }, 2000);
+      // Immediately refetch tasks so new sync jobs appear in the task list
+      queryClient.invalidateQueries({ queryKey: ["tasks"], exact: false });
     },
   });
 };
