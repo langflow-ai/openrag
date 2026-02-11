@@ -269,3 +269,120 @@ For more information, see [Model availability and performance issues](#model-ava
 ### Responses are good but could be better
 
 If your model is compatible with OpenRAG, and it isn't exhibiting any obvious errors, then you can use RAG best practices to refine the response quality, such as [knowledge filters](/knowledge-filters) and prompt engineering.
+
+## Cannot detect GPU with Fedora or local Ollama
+
+If your machine has GPU support, but OpenRAG is having problems detecting or using the GPU, you might see errors like the following:
+
+```console
+Auto-detected mode as 'legacy'
+nvidia-container-cli: ldcache error
+error running createRuntime hook
+unrecognized runtime 'crun'
+OCI runtime error
+```
+
+To troubleshoot these issues, do the following:
+
+* Make sure your environment has a compatible version of the NVIDIA Container Toolkit.
+
+* If you are using a local Ollama deployment, Ollama must run in a container with GPU support.
+
+The following steps explain how to troubleshoot these issues with Fedora 43, Podman, local Ollama, and a machine that has an NVIDIA GPU:
+
+1. Make sure your NVIDIA driver is updated to the latest version.
+
+2. Remove old toolkit packages:
+
+   ```bash
+   sudo dnf5 remove -y nvidia-container-toolkit nvidia-container-toolkit-base libnvidia-container*
+   ```
+
+   This command doesn't remove the NVIDIA driver.
+
+
+3. Get the NVIDIA Container Toolkit package repository:
+
+   ```bash
+   sudo curl -s -o /etc/yum.repos.d/nvidia-container-toolkit.repo \
+   https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo
+   ```
+
+   Version 1.14 or later is required.
+
+4. Refresh the package cache to recognize the new repository:
+
+   ```bash
+   sudo dnf5 clean expire-cache
+   sudo dnf5 update
+   ```
+
+5. Install the new toolkit:
+
+   ```bash
+   sudo dnf5 install -y nvidia-container-toolkit
+   ```
+
+   This command installs the following:
+
+   * `libnvidia-container` version 1.14 or later
+   * `nvidia-container-toolkit-base` version 1.14 or later
+   * `nvidia-container-toolkit` version 1.14 or later
+
+   These versions support Fedora 43, Podman, and `crun`.
+
+6. Configure the runtime for Podman (`crun`):
+
+   ```bash
+   sudo nvidia-ctk runtime configure --runtime=crun
+   ```
+
+   If this command fails, the make sure you installed version 1.14 or later of the NVIDIA Container Toolkit, which supports `crun`.
+
+7. Fix the dynamic loader cache to prevent `ldconfig` errors:
+
+   ```bash
+   sudo ldconfig
+   ```
+
+8. Restart the Podman socket:
+
+   ```bash
+   systemctl --user enable --now podman.socket
+   ```
+
+9. Test the NVIDIA hook, and make sure the output doesn't include `Auto-detected mode as 'legacy'`. The output must be empty.
+
+   ```bash
+   /usr/bin/nvidia-container-runtime-hook prestart
+   ```
+
+
+10. Test the GPU with Podman:
+
+   ```bash
+   podman run --rm \
+   --hooks-dir=/usr/share/containers/oci/hooks.d \
+   --device nvidia.com/gpu=all \
+   nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
+   ```
+
+   Make sure `nvidia-smi` prints your GPU information instead of an error.
+
+   The `--rm` argument automatically removes the container after the command exits.
+
+11. Run Ollama in a GPU-enabled container:
+
+   ```bash
+   podman run -d \
+   --name ollama \
+   --security-opt=label=disable \
+   --hooks-dir=/usr/share/containers/oci/hooks.d \
+   --device nvidia.com/gpu=all \
+   -p 11434:11434 \
+   -v $HOME/ollama:/root/.ollama \
+   docker.io/ollama/ollama:latest
+   ```
+
+12. Start the TUI, and then start OpenRAG with GPU mode enabled.
+Or, for self-managed deployments, deploy OpenRAG with the `docker-compose-gpu.yml` file.
