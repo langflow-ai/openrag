@@ -106,6 +106,18 @@ class LangflowConnectorService:
                 # Use the same tweaks pattern as LangflowFileService
                 tweaks = {}  # Let Langflow handle the ingestion with default settings
 
+                # Extract ACL information from the connector document, if available
+                allowed_users: list[str] = []
+                allowed_groups: list[str] = []
+                if getattr(document, "acl", None) is not None:
+                    try:
+                        allowed_users = document.acl.allowed_users or []
+                        allowed_groups = document.acl.allowed_groups or []
+                    except AttributeError:
+                        # If ACL shape is different or missing fields, fall back to empty lists
+                        allowed_users = []
+                        allowed_groups = []
+
                 ingestion_result = await self.langflow_service.run_ingestion_flow(
                     file_paths=[langflow_file_path],
                     file_tuples=[file_tuple],
@@ -117,6 +129,8 @@ class LangflowConnectorService:
                     connector_type=connector_type,
                     document_id=document.id,
                     source_url=document.source_url,
+                    allowed_users=allowed_users,
+                    allowed_groups=allowed_groups,
                 )
 
                 logger.debug("Ingestion flow completed", result=ingestion_result)

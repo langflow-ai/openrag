@@ -316,13 +316,58 @@ function ChunksPageContent() {
             </div> */}
               </dl>
             </div>
-            {(fileData?.allowed_users?.length ?? 0) > 0 ||
-            (fileData?.allowed_groups?.length ?? 0) > 0 ? (
+            {(() => {
+              // #region agent log
+              const hasOwner = Boolean(fileData?.owner);
+              const hasAllowedUsers = (fileData?.allowed_users?.length ?? 0) > 0;
+              const hasAllowedGroups = (fileData?.allowed_groups?.length ?? 0) > 0;
+              const showAccessControl = hasOwner || hasAllowedUsers || hasAllowedGroups;
+              if (fileData && chunks.length > 0) {
+                fetch("http://127.0.0.1:7242/ingest/0459c69b-01d9-4ed6-bcff-99a7ce0d82ee", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    hypothesisId: "H3",
+                    location: "chunks/page.tsx:AccessControl",
+                    message: "chunks page fileData ACL",
+                    data: {
+                      filename: fileData.filename,
+                      owner: fileData.owner || null,
+                      allowed_users_len: (fileData.allowed_users || []).length,
+                      allowed_groups_len: (fileData.allowed_groups || []).length,
+                      showAccessControl,
+                    },
+                    timestamp: Date.now(),
+                  }),
+                }).catch(() => {});
+              }
+              // #endregion
+              return showAccessControl;
+            })() ? (
               <div className="mb-4">
                 <h2 className="text-xl font-semibold mt-2 mb-3">
                   Access Control
                 </h2>
                 <dl>
+                  {fileData?.owner && (
+                    <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">
+                      <dt className="text-sm/6 text-muted-foreground">
+                        Owner
+                      </dt>
+                      <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
+                            <span className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                              {String(fileData.owner).charAt(0).toUpperCase()}
+                            </span>
+                          </span>
+                          <span className="text-sm break-all">
+                            {fileData.owner_name || fileData.owner_email || fileData.owner}
+                          </span>
+                        </div>
+                      </dd>
+                    </div>
+                  )}
                   {fileData?.allowed_users &&
                     fileData.allowed_users.length > 0 && (
                       <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:px-0 mb-2.5">

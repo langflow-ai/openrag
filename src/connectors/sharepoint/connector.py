@@ -465,27 +465,31 @@ class SharePointConnector(BaseConnector):
             DocumentACL instance with extracted permissions
         """
         try:
-            # Get access token
-            token_data = await self.oauth.get_access_token()
-            access_token = token_data.get("access_token")
+            # Get access token - use same approach as _make_graph_request
+            access_token = self.oauth.get_access_token()
 
             if not access_token:
                 logger.warning(f"No access token available for ACL extraction: {file_id}")
                 return DocumentACL()
 
             # Determine the correct path for permissions API call
+            # Use the same URL pattern as _get_file_metadata_by_id and list_files
             site_info = self._parse_sharepoint_url()
             if site_info:
-                site_id = site_info.get("site_id")
-                drive_id = site_info.get("drive_id")
-                if site_id and drive_id:
-                    permissions_url = f"{self._graph_base_url}/sites/{site_id}/drives/{drive_id}/items/{file_id}/permissions"
-                else:
-                    # Fallback to user drive
-                    permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
+                permissions_url = f"{self._graph_base_url}/sites/{site_info['host_name']}:/sites/{site_info['site_name']}:/drive/items/{file_id}/permissions"
             else:
                 # Fallback to user drive
                 permissions_url = f"{self._graph_base_url}/me/drive/items/{file_id}/permissions"
+
+            # #region agent log
+            try:
+                import json as _json
+                _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
+                with open(_log_path, "a") as _f:
+                    _f.write(_json.dumps({"hypothesisId": "H6", "location": "connector.py:_extract_sharepoint_acl", "message": "ACL extraction attempt", "data": {"file_id": file_id, "permissions_url": permissions_url, "has_token": bool(access_token), "token_type": type(access_token).__name__}, "timestamp": __import__("time").time() * 1000}) + "\n")
+            except Exception:
+                pass
+            # #endregion
 
             # Fetch permissions
             async with httpx.AsyncClient() as client:
@@ -493,6 +497,17 @@ class SharePointConnector(BaseConnector):
                     permissions_url,
                     headers={"Authorization": f"Bearer {access_token}"}
                 )
+
+            # #region agent log
+            try:
+                import json as _json
+                _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
+                _resp_preview = response.text[:500] if response.text else ""
+                with open(_log_path, "a") as _f:
+                    _f.write(_json.dumps({"hypothesisId": "H6", "location": "connector.py:_extract_sharepoint_acl:response", "message": "permissions API response", "data": {"file_id": file_id, "status_code": response.status_code, "response_preview": _resp_preview}, "timestamp": __import__("time").time() * 1000}) + "\n")
+            except Exception:
+                pass
+            # #endregion
 
             if response.status_code != 200:
                 logger.warning(f"Failed to fetch permissions for {file_id}: {response.status_code}")
@@ -507,34 +522,50 @@ class SharePointConnector(BaseConnector):
             for perm in permissions_data.get("value", []):
                 roles = perm.get("roles", [])  # ["read", "write", "owner"]
 
-                # Granted to user
-                if "grantedTo" in perm:
-                    user_info = perm["grantedTo"].get("user", {})
+                # Granted to user (grantedTo or grantedToV2)
+                granted_to = perm.get("grantedToV2") or perm.get("grantedTo")
+                if granted_to:
+                    user_info = granted_to.get("user", {})
                     email = user_info.get("email")
-                    if email:
-                        allowed_users.append(email)
+                    display_name = user_info.get("displayName")
+                    user_identifier = email or display_name
+                    if user_identifier:
+                        allowed_users.append(user_identifier)
                         if "owner" in roles:
-                            owner = email
+                            owner = user_identifier
 
                 # Granted to identities (can include users and groups)
-                elif "grantedToIdentities" in perm:
-                    for identity in perm["grantedToIdentities"]:
+                if "grantedToIdentitiesV2" in perm or "grantedToIdentities" in perm:
+                    identities = perm.get("grantedToIdentitiesV2") or perm.get("grantedToIdentities") or []
+                    for identity in identities:
                         # User
                         if "user" in identity:
                             user_info = identity["user"]
                             email = user_info.get("email")
-                            if email:
-                                allowed_users.append(email)
+                            display_name = user_info.get("displayName")
+                            user_identifier = email or display_name
+                            if user_identifier:
+                                allowed_users.append(user_identifier)
                                 if "owner" in roles:
-                                    owner = email
+                                    owner = user_identifier
 
                         # Group
-                        elif "group" in identity:
+                        if "group" in identity:
                             group_info = identity["group"]
                             group_id = group_info.get("id")
                             group_display_name = group_info.get("displayName", group_id)
-                            if group_id:
-                                allowed_groups.append(group_display_name)
+                            if group_id or group_display_name:
+                                allowed_groups.append(group_display_name or group_id)
+
+            # #region agent log
+            try:
+                import json as _json
+                _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
+                with open(_log_path, "a") as _f:
+                    _f.write(_json.dumps({"hypothesisId": "H6", "location": "connector.py:_extract_sharepoint_acl:result", "message": "ACL extraction result", "data": {"file_id": file_id, "owner": owner, "allowed_users": allowed_users, "allowed_groups": allowed_groups, "perm_count": len(permissions_data.get("value", []))}, "timestamp": __import__("time").time() * 1000}) + "\n")
+            except Exception:
+                pass
+            # #endregion
 
             return DocumentACL(
                 owner=owner,
@@ -544,6 +575,15 @@ class SharePointConnector(BaseConnector):
 
         except Exception as e:
             logger.warning(f"Failed to extract ACL for SharePoint item {file_id}: {e}")
+            # #region agent log
+            try:
+                import json as _json, traceback as _tb
+                _log_path = "/Users/edwin.jose/Documents/openrag/.cursor/debug.log"
+                with open(_log_path, "a") as _f:
+                    _f.write(_json.dumps({"hypothesisId": "H7", "location": "connector.py:_extract_sharepoint_acl:exception", "message": "ACL extraction failed", "data": {"file_id": file_id, "error": str(e), "traceback": _tb.format_exc()}, "timestamp": __import__("time").time() * 1000}) + "\n")
+            except Exception:
+                pass
+            # #endregion
             return DocumentACL()
 
     async def get_file_content(self, file_id: str) -> ConnectorDocument:
@@ -560,11 +600,8 @@ class SharePointConnector(BaseConnector):
                 logger.info(f"Using cached download URL for file {file_id}")
                 content = await self._download_file_from_url(cached_info["downloadUrl"])
                 
-                acl = DocumentACL(
-                    owner="",
-                    user_permissions={},
-                    group_permissions={},
-                )
+                # Extract ACL even for cached files
+                acl = await self._extract_sharepoint_acl(file_id, cached_info)
                 
                 return ConnectorDocument(
                     id=file_id,

@@ -4,6 +4,7 @@ import copy
 import json
 import time
 import uuid
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -573,6 +574,19 @@ class OpenSearchVectorStoreComponentMultimodalMultiEmbedding(LCVectorStoreCompon
             metadata = metadatas[i] if metadatas else {}
             if vector_dimensions is not None and "embedding_dimensions" not in metadata:
                 metadata = {**metadata, "embedding_dimensions": vector_dimensions}
+
+            # Normalize ACL fields that may arrive as JSON strings from flows
+            for key in ("allowed_users", "allowed_groups"):
+                value = metadata.get(key)
+                if isinstance(value, str):
+                    try:
+                        parsed = json.loads(value)
+                        if isinstance(parsed, list):
+                            metadata[key] = parsed
+                    except (json.JSONDecodeError, TypeError):
+                        # Leave value as-is if it isn't valid JSON
+                        pass
+
             _id = ids[i] if ids else str(uuid.uuid4())
             request = {
                 "_op_type": "index",
