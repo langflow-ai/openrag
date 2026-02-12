@@ -1,0 +1,120 @@
+---
+title: Configure ingestion
+slug: /ingestion-configure
+---
+
+import Icon from "@site/src/components/icon/icon";
+
+The knowledge ingestion settings determine how documents are processed when you [upload documents](/ingestion) into your [knowledge base](/knowledge).
+This includes chunking strategies, embedding models, and image handling settings.
+
+## Existing documents aren't reprocessed after changing ingestion settings
+
+:::warning
+Changes to knowledge ingestion settings only apply to documents that you upload after making changes.
+Documents uploaded before changing these settings aren't reprocessed.
+:::
+
+After changing knowledge ingestion settings, you must determine if you need to reupload any documents to be consistent with the new settings.
+
+It isn't always necessary to reupload documents after changing knowledge ingestion settings.
+For example, it is typical to upload some documents with OCR enabled and others without OCR enabled.
+
+If needed, you can use [filters](/knowledge-filters) to separate documents that you uploaded with different settings, such as different embedding models.
+
+## Select a Docling implementation {#select-a-docling-implementation}
+
+OpenRAG uses [Docling](https://docling-project.github.io/docling/) for document ingestion.
+Docling processes files, splits them into chunks, and stores them as separate, structured documents in your OpenSearch knowledge base.
+
+You can configure OpenRAG to use either a Docling Serve service or a Docling processor pipeline for document processing:
+
+* **Docling Serve ingestion**: By default, OpenRAG uses [Docling Serve](https://github.com/docling-project/docling-serve).
+When you start OpenRAG, a local `docling serve` process starts, and then OpenRAG runs Docling ingestion through the Docling Serve API.
+
+   To use a remote `docling serve` instance or your own local instance, set `DOCLING_SERVE_URL=http://HOST_IP:5001` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings).
+   The service must run on port 5001.
+
+   For TUI-managed deployments, The TUI warns you if `docling serve` isn't running or isn't detected by OpenRAG.
+   For information about starting and stopping OpenRAG services, see [Manage OpenRAG services](/manage-services).
+
+* **Docling processor ingestion**: Instead of using a separate Docling Serve service and the Docling Serve API, you can use the Docling processor directly.
+To do this, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings), and then [restart the OpenRAG services](/manage-services).
+For the underlying functionality for this option, see [`processors.py`](https://github.com/langflow-ai/openrag/blob/main/src/models/processors.py#L58) in the OpenRAG repository.
+
+## Set the embedding model and dimensions {#set-the-embedding-model-and-dimensions}
+
+When you install OpenRAG, you select at least one embedding model during the [application onboarding process](/install-uvx#application-onboarding).
+OpenRAG automatically detects and configures the appropriate vector dimensions for your selected embedding model, ensuring optimal search performance and compatibility.
+
+After onboarding, you can change the embedding model on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page.
+OpenRAG automatically updates all relevant [OpenRAG flows](/agents) to use the new embedding model and dimensions.
+
+You can only select models that are available from your configured model providers, such as an Ollama instance or an OpenAI account.
+For more information, see [Troubleshoot model availability and performance issues](/support/troubleshoot#model-availability-and-performance-issues).
+
+Because the OpenRAG UI validates model availability and compatibility, setting models directly in the [OpenRAG `.env` file](/reference/configuration) isn't recommended.
+
+### Best practices for multiple embedding models
+
+For ingestion, OpenRAG allows only one active embedding model at a time.
+
+OpenRAG _doesn't_ reprocess existing documents when you change the embedding model.
+If you want to generate new embeddings for existing documents, you must reupload the documents after enabling the new embedding model.
+To remove previously generated embeddings, you must delete the existing document from the knowledge base.
+
+If you use different embedding models for different documents, you can create [filters](/knowledge-filters) to separate documents that were embedded with different models.
+
+If you use multiple embeddings models, be aware that similarity search (in **Chat**) can take longer as the agent searches each model's embeddings separately.
+
+## Set the chunking strategy
+
+You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
+
+* **Chunk size**: Set the number of characters for each text chunk when breaking down a file.
+Larger chunks yield more context per chunk, but can include irrelevant information. Smaller chunks yield more precise semantic search, but can lack context.
+The default value is 1000 characters, which is usually a good balance between context and precision.
+
+* **Chunk overlap**: Set the number of characters to overlap over chunk boundaries.
+Use larger overlap values for documents where context is most important. Use smaller overlap values for simpler documents or when optimization is most important.
+The default value is 200 characters, which represents an overlap of 20 percent with the default **Chunk size** of 1000. This is suitable for general use. For faster processing, decrease the overlap to approximately 10 percent. For more complex documents where you need to preserve context across chunks, increase it to approximately 40 percent.
+
+## Configure table parsing
+
+You can edit the following setting on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
+
+* **Table structure**: Enables Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/) tool for parsing tables. Instead of treating tables as plain text, tables are output as structured table data with preserved relationships and metadata. This option is enabled by default.
+
+## Configure OCR and image processing
+
+You can edit the following settings on the OpenRAG <Icon name="Settings2" aria-hidden="true"/> **Settings** page in the **Knowledge Ingest** section:
+
+* **OCR**: Enables Optical Character Recognition (OCR) processing when extracting text from images and ingesting scanned documents. This setting is best suited for processing text-based documents faster with Docling's [`DocumentConverter`](https://docling-project.github.io/docling/reference/document_converter/). Images are ignored and not processed.
+
+   This option is disabled by default. Enabling OCR can slow ingestion performance.
+
+   If OpenRAG detects that the local machine is running on macOS, OpenRAG uses the [ocrmac](https://www.piwheels.org/project/ocrmac/) OCR engine. Other platforms use [easyocr](https://www.jaided.ai/easyocr/).
+
+* **Picture descriptions**: Only applicable if **OCR** is enabled. Adds image descriptions generated by the [`SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-Instruct) model. Enabling picture descriptions can slow ingestion performance.
+
+## Set the local documents path {#set-the-local-documents-path}
+
+The local documents paths is set when you install OpenRAG and start the OpenRAG services.
+
+The default path for local uploads is `~/.openrag/documents`.
+This is mounted to the `/app/openrag-documents/` directory inside the OpenRAG container.
+Files added to the host or container directory are visible in both locations.
+
+To change this location, modify either of the following, and then [restart the OpenRAG services](/manage-services):
+
+* The **Documents Paths** setting in the [**Basic/Advanced Setup** menu](/install-uvx#setup)
+* The `OPENRAG_DOCUMENTS_PATH` variable in the [OpenRAG `.env` file](/reference/configuration).
+
+## See also
+
+* [About knowledge](/knowledge)
+* [Ingest knowledge](/ingestion)
+* [Browse and manage knowledge](/knowledge-browse)
+* [Configure connectors](/knowledge-connectors)
+* [Inspect and modify flows](/agents#inspect-and-modify-flows)
+* [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues)
