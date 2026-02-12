@@ -48,7 +48,7 @@ This is typically only required for critical configuration changes that affect t
 Configure which models and providers OpenRAG uses to generate text and embeddings.
 You only need to provide credentials for the providers you are using in OpenRAG.
 
-These variables are initially set during the [application onboarding process](/install#application-onboarding).
+These variables are initially set during the [application onboarding process](/install-uvx#application-onboarding).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -67,15 +67,15 @@ These variables are initially set during the [application onboarding process](/i
 
 Controls some aspects of how OpenRAG [processes and ingests documents](/ingestion) into your knowledge base.
 
-For the embedding model and Docling engine variables that you can set on the OpenRAG **Settings** page, see [Knowledge ingestion settings](/knowledge#knowledge-ingestion-settings).
+For the embedding model and Docling engine variables that you can set on the OpenRAG **Settings** page, see [Configure ingestion](/ingestion-configure).
 
 For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#langflow-settings).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DISABLE_INGEST_WITH_LANGFLOW` | `false` | Disable Langflow ingestion pipeline if you don't want to use the default [Docling Serve instance](/knowledge#select-a-docling-implementation). |
-| `DOCLING_SERVE_URL` | `http://HOST_IP:5001` | URL for the [Docling Serve instance](/knowledge#select-a-docling-implementation). By default, OpenRAG starts a local `docling serve` process and auto-detects the host. To use your own local or remote Docling Serve instance, set this variable to the full path to the target instance. The service must run on port 5001. |
-| `OPENRAG_DOCUMENTS_PATH` | `~/.openrag/documents` | The [local documents path](/knowledge#set-the-local-documents-path) for ingestion. |
+| `DISABLE_INGEST_WITH_LANGFLOW` | `false` | Disable Langflow ingestion pipeline if you don't want to use the default [Docling Serve instance](/ingestion-configure#select-a-docling-implementation). |
+| `DOCLING_SERVE_URL` | `http://HOST_IP:5001` | URL for the [Docling Serve instance](/ingestion-configure#select-a-docling-implementation). By default, OpenRAG starts a local `docling serve` process and auto-detects the host. To use your own local or remote Docling Serve instance, set this variable to the full path to the target instance. The service must run on port 5001. |
+| `OPENRAG_DOCUMENTS_PATH` | `~/.openrag/documents` | The [local documents path](/ingestion-configure#set-the-local-documents-path) for ingestion. |
 | `HOST_DOCKER_INTERNAL` | `host.docker.internal` | Host address for accessing services running on the host machine from within Docker containers. This is used to connect to the local Docling Serve instance started by OpenRAG. If your system uses a different hostname for this purpose, set this variable accordingly. |
 
 ## Langflow settings {#langflow-settings}
@@ -122,7 +122,7 @@ Use these variables to enable OAuth mode and configure cloud storage connectors.
 
 :::warning
 Additional configuration is required for these features.
-For more information, see [OpenSearch authentication](/knowledge#auth) and [Ingest files with cloud storage connectors](/ingestion#oauth-ingestion).
+For more information, see [Configure connectors](/knowledge-connectors).
 :::
 
 | Variable | Default | Description |
@@ -139,10 +139,10 @@ Configure OpenSearch database authentication.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENSEARCH_DATA_PATH` | `./opensearch-data` | The path where OpenRAG creates your OpenSearch index data. This persists through updates. |
-| `OPENSEARCH_PASSWORD` | Must be set during setup or in the Dockerfile. | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the TUI's [**Basic/Advanced Setup**](/install#setup). |
+| `OPENSEARCH_PASSWORD` | Must be set during setup or in the Dockerfile. | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the TUI's [**Basic/Advanced Setup**](/install-uvx#setup). |
 
 <!-- | `OPENSEARCH_HOST` | `localhost` | OpenSearch service host. | -->
-<!-- | `OPENSEARCH_PORT` | `9200` | OpenSearch service port. | -->
+<!-- | `OPENSEARCH_PORT` | `9200` | OpenSearch service port. | [if not configurable, edit other instances of OPENSEARCH_PORT in the docs] -->
 <!-- | `OPENSEARCH_USERNAME` | `admin` | OpenSearch administrator username. | -->
 
 ## System settings
