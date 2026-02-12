@@ -25,18 +25,56 @@ An MCP (Model Context Protocol) server that exposes OpenRAG capabilities to AI a
 2. An OpenRAG API key (create one in Settings → API Keys)
 3. Python 3.10+ with `uv` installed
 
+## Build and run locally
+
+To use the **latest MCP code** (including settings and models tools), run from source. Do **not** install the MCP package if you want local edits to apply.
+
+### What to build (in order)
+
+| Step | What | Command | Required for |
+|------|------|---------|--------------|
+| 1 | OpenRAG backend | Run your OpenRAG app (e.g. frontend + API) | All tools |
+| 2 | MCP from source | `cd sdks/mcp && uv sync` | All tools; no wheel needed |
+| 3 | (Optional) SDK from repo | `cd sdks/python && uv pip install -e .` | Only for latest chat/search/documents SDK |
+
+**Settings and models tools** (`openrag_get_settings`, `openrag_update_settings`, `openrag_list_models`) use direct HTTP and do **not** require the SDK. Chat, search, and document tools use the SDK (PyPI version is fine unless you need unreleased SDK changes).
+
+### Run the MCP from source
+
+```bash
+cd sdks/mcp
+uv sync
+export OPENRAG_URL="http://localhost:3000"
+export OPENRAG_API_KEY="orag_your_api_key"
+uv run openrag-mcp
+```
+
+### Cursor: use repo path so it runs your code
+
+In `~/.cursor/mcp.json`, set `--directory` to your **actual repo path** so Cursor runs the MCP from source, not an installed package:
+
+```json
+"args": ["run", "--directory", "/Users/edwin.jose/Documents/openrag/sdks/mcp", "openrag-mcp"]
+```
+
+If you previously installed the MCP (`pip install openrag-mcp` or installed a wheel), **uninstall it** so Cursor uses the repo:
+
+```bash
+uv pip uninstall openrag-mcp
+```
+
+Then restart Cursor.
+
 ## Installation
 
 ### Option 1: Run from Source (Recommended for Development)
 
 ```bash
-# Clone the OpenRAG repository (if you haven't already)
-git clone https://github.com/your-org/openrag.git
 cd openrag/sdks/mcp
-
-# Install dependencies
 uv sync
 ```
+
+Use `uv run openrag-mcp` from that directory, or point Cursor/Claude `--directory` to this path.
 
 ### Option 2: Install from GitHub
 

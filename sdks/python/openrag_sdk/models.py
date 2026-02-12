@@ -134,6 +134,7 @@ class AgentSettings(BaseModel):
 
     llm_provider: str | None = None
     llm_model: str | None = None
+    system_prompt: str | None = None
 
 
 class KnowledgeSettings(BaseModel):
@@ -143,6 +144,9 @@ class KnowledgeSettings(BaseModel):
     embedding_model: str | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
+    table_structure: bool | None = None
+    ocr: bool | None = None
+    picture_descriptions: bool | None = None
 
 
 class SettingsResponse(BaseModel):
@@ -180,6 +184,22 @@ class SettingsUpdateResponse(BaseModel):
     """Response from settings update."""
 
     message: str
+
+
+# Models (list available LLM/embedding models per provider)
+class ModelOption(BaseModel):
+    """A single model option returned by the models list endpoint."""
+
+    value: str
+    label: str
+    default: bool = False
+
+
+class ModelsResponse(BaseModel):
+    """Response from listing models for a provider."""
+
+    language_models: list[ModelOption] = Field(default_factory=list)
+    embedding_models: list[ModelOption] = Field(default_factory=list)
 
 
 # Knowledge filter models

@@ -58,7 +58,7 @@ from auth_middleware import optional_auth, require_auth
 from api_key_middleware import require_api_key
 from services.api_key_service import APIKeyService
 from api import keys as api_keys
-from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings, knowledge_filters as v1_knowledge_filters
+from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings, models as v1_models, knowledge_filters as v1_knowledge_filters
 
 # Configuration and setup
 from config.settings import (
@@ -1421,6 +1421,16 @@ async def create_app():
                 )
             ),
             methods=["POST"],
+        ),
+        Route(
+            "/v1/models/{provider}",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_models.list_models_endpoint,
+                    models_service=services["models_service"],
+                )
+            ),
+            methods=["GET"],
         ),
         # Knowledge filters endpoints
         Route(

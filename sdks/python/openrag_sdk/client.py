@@ -19,6 +19,31 @@ from .knowledge_filters import KnowledgeFiltersClient
 from .search import SearchClient
 
 
+class ModelsClient:
+    """Client for listing available models per provider."""
+
+    def __init__(self, client: "OpenRAGClient"):
+        self._client = client
+
+    async def list(self, provider: str):
+        """
+        List available language and embedding models for a provider.
+
+        Args:
+            provider: One of openai, anthropic, ollama, watsonx.
+
+        Returns:
+            ModelsResponse with language_models and embedding_models lists.
+        """
+        from .models import ModelsResponse
+
+        response = await self._client._request(
+            "GET", f"/api/v1/models/{provider}"
+        )
+        data = response.json()
+        return ModelsResponse(**data)
+
+
 class SettingsClient:
     """Client for settings operations."""
 
@@ -132,6 +157,7 @@ class OpenRAGClient:
         self.search = SearchClient(self)
         self.documents = DocumentsClient(self)
         self.settings = SettingsClient(self)
+        self.models = ModelsClient(self)
         self.knowledge_filters = KnowledgeFiltersClient(self)
 
     @property
