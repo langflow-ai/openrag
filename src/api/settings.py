@@ -13,6 +13,7 @@ from config.settings import (
     LANGFLOW_PUBLIC_URL,
     LOCALHOST_URL,
     clients,
+    get_index_name,
     get_openrag_config,
     config_manager,
     is_no_auth_mode,
@@ -588,7 +589,7 @@ async def update_settings(request, session_manager):
 
             # Also update global variable with new index name
             try:
-                await clients._create_langflow_global_variable("OPENSEARCH_INDEX_NAME", new_index_name)
+                await clients._create_langflow_global_variable("OPENSEARCH_INDEX_NAME", new_index_name, modify=True)
                 logger.info(
                     f"Successfully updated global variable with new index name {new_index_name}"
                 )

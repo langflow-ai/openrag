@@ -396,8 +396,10 @@ class SearchService:
         search_params = {"terminate_after": 0}
 
         try:
+            index_name = get_index_name()
+            logger.info(f"Sending query to index '{index_name}'..")
             results = await opensearch_client.search(
-                index=get_index_name(), body=search_body, params=search_params
+                index=index_name, body=search_body, params=search_params
             )
         except RequestError as e:
             error_message = str(e)

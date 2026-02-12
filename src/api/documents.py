@@ -27,7 +27,7 @@ async def check_filename_exists(request: Request, document_service, session_mana
 
         search_body = build_filename_search_body(filename, size=1, source=["filename"])
 
-        logger.debug(f"Checking filename existence: {filename}")
+        logger.debug(f"Checking filename existence", filename=filename, index_name=get_index_name())
 
         response = await opensearch_client.search(
             index=get_index_name(),
