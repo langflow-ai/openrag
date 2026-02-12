@@ -50,7 +50,9 @@ function AuthCallbackContent() {
         // Determine purpose - default to app_auth for login, data_source for connectors
         const detectedPurpose =
           authPurpose ||
-          (storedConnectorType?.includes("drive") ? "data_source" : "app_auth");
+          (storedConnectorType && storedConnectorType !== "app_auth"
+            ? "data_source"
+            : "app_auth");
         setPurpose(detectedPurpose);
 
         // Debug logging

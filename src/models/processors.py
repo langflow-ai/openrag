@@ -1,6 +1,7 @@
 from typing import Any
 from .tasks import UploadTask, FileTask
 from utils.logging_config import get_logger
+from utils.file_utils import get_file_extension, clean_connector_filename
 
 logger = get_logger(__name__)
 
@@ -431,6 +432,9 @@ class ConnectorFileProcessor(TaskProcessor):
 
             # Get file content from connector
             document = await connector.get_file_content(file_id)
+            
+            # Update filename in task once we have it from the connector
+            file_task.filename = clean_connector_filename(document.filename, document.mimetype)
 
             if not self.user_id:
                 raise ValueError("user_id not provided to ConnectorFileProcessor")
@@ -438,7 +442,7 @@ class ConnectorFileProcessor(TaskProcessor):
             # Create temporary file from document content
             from utils.file_utils import auto_cleanup_tempfile
 
-            suffix = self.connector_service._get_file_extension(document.mimetype)
+            suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Write content to temp file
                 with open(tmp_path, 'wb') as f:
@@ -533,13 +537,16 @@ class LangflowConnectorFileProcessor(TaskProcessor):
             # Get file content from connector
             document = await connector.get_file_content(file_id)
 
+            # Update filename in task once we have it from the connector
+            file_task.filename = clean_connector_filename(document.filename, document.mimetype)
+
             if not self.user_id:
                 raise ValueError("user_id not provided to LangflowConnectorFileProcessor")
 
             # Create temporary file and compute hash to check for duplicates
             from utils.file_utils import auto_cleanup_tempfile
 
-            suffix = self.langflow_connector_service._get_file_extension(document.mimetype)
+            suffix = get_file_extension(document.mimetype)
             with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
                 # Write content to temp file
                 with open(tmp_path, 'wb') as f:
