@@ -31,13 +31,30 @@ const syncAllConnectors = async (): Promise<SyncResponse> => {
 };
 
 // Sync a specific connector type
-const syncConnector = async (connectorType: string): Promise<SyncResponse> => {
+const syncConnector = async ({
+  connectorType,
+  body,
+}: {
+  connectorType: string;
+  body?: {
+    connection_id?: string;
+    max_files?: number;
+    selected_files?: Array<{
+      id: string;
+      name: string;
+      mimeType: string;
+      downloadUrl?: string;
+      size?: number;
+    }>;
+    settings?: any;
+  };
+}): Promise<SyncResponse> => {
   const response = await fetch(`/api/connectors/${connectorType}/sync`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({}),
+    body: JSON.stringify(body || {}),
   });
 
   if (!response.ok) {

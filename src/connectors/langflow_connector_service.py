@@ -7,6 +7,7 @@ from utils.logging_config import get_logger
 
 from .base import BaseConnector, ConnectorDocument
 from .connection_manager import ConnectionManager
+from utils.file_utils import get_file_extension, clean_connector_filename
 
 logger = get_logger(__name__)
 
@@ -53,7 +54,7 @@ class LangflowConnectorService:
 
         from utils.file_utils import auto_cleanup_tempfile
 
-        suffix = self._get_file_extension(document.mimetype)
+        suffix = get_file_extension(document.mimetype)
 
         # Create temporary file from document content
         with auto_cleanup_tempfile(suffix=suffix) as tmp_path:
@@ -64,7 +65,10 @@ class LangflowConnectorService:
             # Step 1: Upload file to Langflow
             logger.debug("Uploading file to Langflow", filename=document.filename)
             content = document.content
-            processed_filename = document.filename.replace(" ", "_").replace("/", "_") + suffix
+            
+            # Clean filename and ensure we don't add a double extension
+            processed_filename = clean_connector_filename(document.filename, document.mimetype)
+
             file_tuple = (
                 processed_filename,
                 content,
@@ -171,22 +175,6 @@ class LangflowConnectorService:
                         )
                 raise
 
-    def _get_file_extension(self, mimetype: str) -> str:
-        """Get file extension based on MIME type"""
-        mime_to_ext = {
-            "application/pdf": ".pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-            "application/msword": ".doc",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
-            "application/vnd.ms-powerpoint": ".ppt",
-            "text/plain": ".txt",
-            "text/html": ".html",
-            "application/rtf": ".rtf",
-            "application/vnd.google-apps.document": ".pdf",  # Exported as PDF
-            "application/vnd.google-apps.presentation": ".pdf",
-            "application/vnd.google-apps.spreadsheet": ".pdf",
-        }
-        return mime_to_ext.get(mimetype, ".bin")
 
     async def sync_connector_files(
         self,
@@ -269,10 +257,17 @@ class LangflowConnectorService:
 
         # Use file IDs as items
         file_ids = [file_info["id"] for file_info in files_to_process]
+        original_filenames = {
+            file_info["id"]: clean_connector_filename(
+                file_info["name"], file_info.get("mimeType") or file_info.get("mimetype")
+            )
+            for file_info in files_to_process
+            if "name" in file_info
+        }
 
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(
-            user_id, file_ids, processor
+            user_id, file_ids, processor, original_filenames=original_filenames
         )
 
         return task_id
@@ -383,8 +378,18 @@ class LangflowConnectorService:
         )
 
         # Create custom task using TaskService
+        original_filenames = {}
+        if file_infos:
+            original_filenames = {
+                f["id"]: clean_connector_filename(
+                    f["name"], f.get("mimeType") or f.get("mimetype")
+                )
+                for f in file_infos
+                if "id" in f and "name" in f
+            }
+
         task_id = await self.task_service.create_custom_task(
-            user_id, expanded_file_ids, processor
+            user_id, expanded_file_ids, processor, original_filenames=original_filenames
         )
 
         return task_id
