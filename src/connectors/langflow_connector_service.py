@@ -79,10 +79,10 @@ class LangflowConnectorService:
             # This prevents duplicate chunks when syncing files
             if self.session_manager:
                 try:
-                    from config.settings import INDEX_NAME
+                    from config.settings import get_index_name
                     opensearch_client = self.session_manager.get_user_opensearch_client(owner_user_id, jwt_token)
                     delete_body = {"query": {"term": {"filename": processed_filename}}}
-                    delete_result = await opensearch_client.delete_by_query(index=INDEX_NAME, body=delete_body)
+                    delete_result = await opensearch_client.delete_by_query(index=get_index_name(), body=delete_body)
                     deleted_count = delete_result.get("deleted", 0)
                     logger.info("Deleted existing chunks before re-ingestion", filename=processed_filename, deleted_count=deleted_count)
                 except Exception as delete_err:

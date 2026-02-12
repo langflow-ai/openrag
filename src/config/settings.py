@@ -86,7 +86,6 @@ WEBHOOK_BASE_URL = os.getenv(
 )  # No default - must be explicitly configured
 
 # OpenSearch configuration
-INDEX_NAME = os.getenv("OPENSEARCH_INDEX_NAME", "documents")
 VECTOR_DIM = 1536
 EMBED_MODEL = "text-embedding-3-small"
 
@@ -825,3 +824,8 @@ def get_agent_config():
 def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
     return get_openrag_config().knowledge.embedding_model or EMBED_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""
+
+
+def get_index_name() -> str:
+    """Return the currently configured index name."""
+    return get_openrag_config().knowledge.index_name

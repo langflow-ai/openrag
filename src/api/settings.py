@@ -13,6 +13,7 @@ from config.settings import (
     LANGFLOW_PUBLIC_URL,
     LOCALHOST_URL,
     clients,
+    get_index_name,
     get_openrag_config,
     config_manager,
     is_no_auth_mode,
@@ -105,6 +106,7 @@ async def get_settings(request, session_manager):
                 "table_structure": knowledge_config.table_structure,
                 "ocr": knowledge_config.ocr,
                 "picture_descriptions": knowledge_config.picture_descriptions,
+                "index_name": knowledge_config.index_name,
             },
             "agent": {
                 "llm_model": agent_config.llm_model,
@@ -219,6 +221,7 @@ async def update_settings(request, session_manager):
             "picture_descriptions",
             "embedding_model",
             "embedding_provider",
+            "index_name",
             # Provider-specific fields (structured as provider_name.field_name)
             "openai_api_key",
             "anthropic_api_key",
@@ -275,6 +278,16 @@ async def update_settings(request, session_manager):
             if not isinstance(body["chunk_overlap"], int) or body["chunk_overlap"] < 0:
                 return JSONResponse(
                     {"error": "chunk_overlap must be a non-negative integer"},
+                    status_code=400,
+                )
+
+        if "index_name" in body:
+            if (
+                not isinstance(body["index_name"], str)
+                or not body["index_name"].strip()
+            ):
+                return JSONResponse(
+                    {"error": "index_name must be a non-empty string"},
                     status_code=400,
                 )
 
@@ -563,6 +576,27 @@ async def update_settings(request, session_manager):
             except Exception as e:
                 logger.error(f"Failed to update ingest flow chunk overlap: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
+        if "index_name" in body:
+            old_index_name = current_config.knowledge.index_name
+            new_index_name = body["index_name"].strip()
+            current_config.knowledge.index_name = new_index_name
+            config_updated = True
+            await TelemetryClient.send_event(
+                Category.SETTINGS_OPERATIONS, 
+                MessageId.ORB_SETTINGS_INDEX_NAME_UPDATED
+            )
+            logger.info(f"Index name changed from {old_index_name} to {new_index_name}")
+
+            # Also update global variable with new index name
+            try:
+                await clients._create_langflow_global_variable("OPENSEARCH_INDEX_NAME", new_index_name, modify=True)
+                logger.info(
+                    f"Successfully updated global variable with new index name {new_index_name}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update global variable with new index name: {str(e)}")
+                # Don't fail the entire settings update if flow update fails
+
                 # The config will still be saved
 
         # Update provider-specific settings
@@ -1539,12 +1573,12 @@ async def rollback_onboarding(request, session_manager, task_service):
                                     
                                     # Delete documents by filename
                                     from utils.opensearch_queries import build_filename_delete_body
-                                    from config.settings import INDEX_NAME
+                                    from config.settings import get_index_name
                                     
                                     delete_query = build_filename_delete_body(filename)
                                     
                                     result = await opensearch_client.delete_by_query(
-                                        index=INDEX_NAME,
+                                        index=get_index_name(),
                                         body=delete_query,
                                         conflicts="proceed"
                                     )

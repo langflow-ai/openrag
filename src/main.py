@@ -70,10 +70,10 @@ from config.settings import (
     DISABLE_INGEST_WITH_LANGFLOW,
     INGESTION_TIMEOUT,
     INDEX_BODY,
-    INDEX_NAME,
     SESSION_SECRET,
     clients,
     get_embedding_model,
+    get_index_name,
     is_no_auth_mode,
     get_openrag_config,
 )
@@ -155,16 +155,17 @@ async def configure_alerting_security():
 async def _ensure_opensearch_index():
     """Ensure OpenSearch index exists when using traditional connector service."""
     try:
+        index_name = get_index_name()
         # Check if index already exists
-        if await clients.opensearch.indices.exists(index=INDEX_NAME):
-            logger.debug("OpenSearch index already exists", index_name=INDEX_NAME)
+        if await clients.opensearch.indices.exists(index=index_name):
+            logger.debug("OpenSearch index already exists", index_name=index_name)
             return
 
         # Create the index with hard-coded INDEX_BODY (uses OpenAI embedding dimensions)
-        await clients.opensearch.indices.create(index=INDEX_NAME, body=INDEX_BODY)
+        await clients.opensearch.indices.create(index=index_name, body=INDEX_BODY)
         logger.info(
             "Created OpenSearch index for traditional connector service",
-            index_name=INDEX_NAME,
+            index_name=index_name,
             vector_dimensions=INDEX_BODY["mappings"]["properties"]["chunk_embedding"][
                 "dimension"
             ],
@@ -175,7 +176,7 @@ async def _ensure_opensearch_index():
         logger.error(
             "Failed to initialize OpenSearch index for traditional connector service",
             error=str(e),
-            index_name=INDEX_NAME,
+            index_name=get_index_name(),
         )
         await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATE_FAIL)
         # Don't raise the exception to avoid breaking the initialization
@@ -201,20 +202,21 @@ async def init_index():
     )
 
     # Create documents index
-    if not await clients.opensearch.indices.exists(index=INDEX_NAME):
+    index_name = get_index_name()
+    if not await clients.opensearch.indices.exists(index=index_name):
         await clients.opensearch.indices.create(
-            index=INDEX_NAME, body=dynamic_index_body
+            index=index_name, body=dynamic_index_body
         )
         logger.info(
             "Created OpenSearch index",
-            index_name=INDEX_NAME,
+            index_name=index_name,
             embedding_model=embedding_model,
         )
         await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATED)
     else:
         logger.info(
             "Index already exists, skipping creation",
-            index_name=INDEX_NAME,
+            index_name=index_name,
             embedding_model=embedding_model,
         )
         await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS)
@@ -647,7 +649,7 @@ async def initialize_services():
         patched_async_client=clients,  # Pass the clients object itself
         process_pool=process_pool,
         embed_model=get_embedding_model(),
-        index_name=INDEX_NAME,
+        index_name=get_index_name(),
         task_service=task_service,
         session_manager=session_manager,
     )

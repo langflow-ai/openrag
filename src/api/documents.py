@@ -1,7 +1,7 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from utils.logging_config import get_logger
-from config.settings import INDEX_NAME
+from config.settings import get_index_name
 
 logger = get_logger(__name__)
 
@@ -27,10 +27,10 @@ async def check_filename_exists(request: Request, document_service, session_mana
 
         search_body = build_filename_search_body(filename, size=1, source=["filename"])
 
-        logger.debug(f"Checking filename existence: {filename}")
+        logger.debug(f"Checking filename existence", filename=filename, index_name=get_index_name())
 
         response = await opensearch_client.search(
-            index=INDEX_NAME,
+            index=get_index_name(),
             body=search_body
         )
 
@@ -79,7 +79,7 @@ async def delete_documents_by_filename(request: Request, document_service, sessi
         logger.debug(f"Deleting documents with filename: {filename}")
 
         result = await opensearch_client.delete_by_query(
-            index=INDEX_NAME,
+            index=get_index_name(),
             body=delete_query,
             conflicts="proceed"
         )
