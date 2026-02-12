@@ -375,11 +375,12 @@ export function KnowledgeDropdown() {
       }
 
       refetchTasks();
-      const uploadedCount = nonDuplicateFiles.length;
+
+      const processedCount = nonDuplicateFiles.length;
       const message =
         skippedCount > 0
-          ? `Uploaded ${uploadedCount} file(s), skipped ${skippedCount} duplicate(s)`
-          : `Successfully processed ${uploadedCount} file(s)`;
+          ? `Processed ${processedCount} file(s), skipped ${skippedCount} duplicate(s)`
+          : `Successfully processed ${processedCount} file(s)`;
       toast.success(message);
     } catch (error) {
       console.error("Folder upload error:", error);
