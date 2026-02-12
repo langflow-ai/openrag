@@ -953,7 +953,6 @@ class FlowsService:
             node_display_name="Split Text",
         )
 
-
     async def update_ingest_flow_embedding_model(self, embedding_model: str, provider: str):
         """Helper function to update embedding model in the ingest flow"""
         if not LANGFLOW_INGEST_FLOW_ID:
