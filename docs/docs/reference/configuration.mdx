@@ -77,6 +77,8 @@ For Langflow flow IDs and Langflow timeout settings, see [Langflow settings](#la
 | `DOCLING_SERVE_URL` | `http://HOST_IP:5001` | URL for the [Docling Serve instance](/ingestion-configure#select-a-docling-implementation). By default, OpenRAG starts a local `docling serve` process and auto-detects the host. To use your own local or remote Docling Serve instance, set this variable to the full path to the target instance. The service must run on port 5001. |
 | `OPENRAG_DOCUMENTS_PATH` | `~/.openrag/documents` | The [local documents path](/ingestion-configure#set-the-local-documents-path) for ingestion. |
 | `HOST_DOCKER_INTERNAL` | `host.docker.internal` | Host address for accessing services running on the host machine from within Docker containers. This is used to connect to the local Docling Serve instance started by OpenRAG. If your system uses a different hostname for this purpose, set this variable accordingly. |
+| `INGESTION_TIMEOUT` | `3600` | Document ingestion timeout limit in seconds for each file. Increase this value if you experience timeouts when ingesting very large documents. Must be greater than or equal to [`LANGFLOW_TIMEOUT`](#langflow-settings).  |
+| `UPLOAD_BATCH_SIZE` | `25` | When ingesting folders, set the maximum number of files to ingest per batch. Each batch is an [ingestion task](/ingestion#monitor-ingestion). Increase this value to ingest more files per batch. If this value is too high, performance issues can occur. |
 
 ## Langflow settings {#langflow-settings}
 
@@ -104,13 +106,12 @@ For better security, it is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so t
 | `LANGFUSE_SECRET_KEY` | Not set | Optional Langfuse secret key to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse). |
 | `LANGFUSE_PUBLIC_KEY` | Not set | Optional Langfuse public key to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse). |
 | `LANGFUSE_HOST` | Not set | Leave empty for Langfuse Cloud. Required for self-hosted Langfuse deployments if `LANGFUSE_SECRET_KEY` and `LANGFUSE_PUBLIC_KEY` are set. The address must be relative to the OpenRAG container deployment. For example, `http://localhost:3002` or `http://host.docker.internal:3000`. |
-| `LANGFLOW_TIMEOUT` | 2400 | Langflow HTTP timeout limit in seconds. Increase this value if you experience timeouts when ingesting very large PDFs. |
+| `LANGFLOW_TIMEOUT` | `2400` | Total Langflow HTTP timeout limit in seconds. Increase this value if you experience timeouts when ingesting very large PDFs. See also [`INGESTION_TIMEOUT`](#document-processing-settings).|
 | `LANGFLOW_CONNECT_TIMEOUT` | `30` | Langflow HTTP connection timeout limit in seconds. Increase this value if you experience timeouts when ingesting very large PDFs. |
 
 <!-- Author's Note: Don't delete the commented-out variables. I am in the process of determining which ones can be set in the .env and which cannot. See issue #568 -->
 
 <!-- | `LANGFLOW_KEY` | Automatically generated | A Langflow API key to run flows with Langflow API calls. Because Langflow API keys are server-specific, allow OpenRAG to generate this key initially. You can create additional Langflow API keys after deploying OpenRAG. | -->
-<!-- | `LANGFLOW_URL` | `http://localhost:7860` | URL for the Langflow instance. | -->
 <!-- | `LANGFLOW_KEY_RETRIES` | `15` | Number of retries for Langflow key generation. | -->
 <!-- | `LANGFLOW_KEY_RETRY_DELAY` | `2.0` | Delay between retries in seconds. | -->
 <!-- | `LANGFLOW_VERSION` | `OPENRAG_VERSION` | Langflow Docker image version. By default, OpenRAG uses the `OPENRAG_VERSION` for the Langflow Docker image version. | -->
