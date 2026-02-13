@@ -364,4 +364,4 @@ async def handle_delete_document(arguments: dict) -> list[TextContent]:
 # ============================================================================
 # Register all tools
 # ============================================================================
-# TODO: Add back the Document tools for OpenRAGMCP v2 with tests
+#NOTE: Ingest Tools are disabled in OpenRAGMCP currently.
