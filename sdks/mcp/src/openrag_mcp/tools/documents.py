@@ -364,9 +364,4 @@ async def handle_delete_document(arguments: dict) -> list[TextContent]:
 # ============================================================================
 # Register all tools
 # ============================================================================
-
-register_tool(INGEST_FILE_TOOL, handle_ingest_file)
-register_tool(INGEST_URL_TOOL, handle_ingest_url)
-register_tool(GET_TASK_STATUS_TOOL, handle_get_task_status)
-register_tool(WAIT_FOR_TASK_TOOL, handle_wait_for_task)
-register_tool(DELETE_DOCUMENT_TOOL, handle_delete_document)
+# TODO: Add back the Document tools for OpenRAGMCP v2 with tests
