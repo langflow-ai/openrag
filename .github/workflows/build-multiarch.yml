@@ -63,7 +63,7 @@ jobs:
             tag: langflowai/openrag-backend
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest-16-cores
+            runs-on: ubuntu-latest
           - image: backend
             file: ./Dockerfile.backend
             tag: langflowai/openrag-backend
@@ -77,7 +77,7 @@ jobs:
             tag: langflowai/openrag-frontend
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest-16-cores
+            runs-on: ubuntu-latest
           - image: frontend
             file: ./Dockerfile.frontend
             tag: langflowai/openrag-frontend
@@ -91,7 +91,7 @@ jobs:
             tag: langflowai/openrag-langflow
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest-16-cores
+            runs-on: ubuntu-latest
           - image: langflow
             file: ./Dockerfile.langflow
             tag: langflowai/openrag-langflow
@@ -105,7 +105,7 @@ jobs:
             tag: langflowai/openrag-opensearch
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest-16-cores
+            runs-on: ubuntu-latest
           - image: opensearch
             file: ./Dockerfile
             tag: langflowai/openrag-opensearch
@@ -206,7 +206,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
 

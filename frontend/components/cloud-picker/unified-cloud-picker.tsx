@@ -47,13 +47,10 @@ export const UnifiedCloudPicker = ({
   const effectiveBaseUrl = baseUrl || autoBaseUrl;
 
   // Auto-detect base URL for OneDrive personal accounts
+  // For SharePoint, we require the baseUrl to be provided from the connector config
   useEffect(() => {
-    if (
-      (provider === "onedrive" || provider === "sharepoint") &&
-      !baseUrl &&
-      accessToken &&
-      !autoBaseUrl
-    ) {
+    if (provider === "onedrive" && !baseUrl && accessToken && !autoBaseUrl) {
+      // Only auto-set for OneDrive, not SharePoint
       const getBaseUrl = async () => {
         setIsLoadingBaseUrl(true);
         try {
@@ -101,7 +98,18 @@ export const UnifiedCloudPicker = ({
   ]);
 
   const handleAddFiles = () => {
+    // === DIAGNOSTIC LOGGING ===
+    console.log("=== UnifiedCloudPicker handleAddFiles ===");
+    console.log("Provider:", provider);
+    console.log("Client ID:", clientId);
+    console.log("Base URL (from prop):", baseUrl);
+    console.log("Auto Base URL:", autoBaseUrl);
+    console.log("Effective Base URL:", effectiveBaseUrl);
+    console.log("Is Picker Loaded:", isPickerLoaded);
+    console.log("Has Access Token:", !!accessToken);
+    
     if (!isPickerLoaded || !accessToken) {
+      console.error("Cannot open picker: isPickerLoaded=", isPickerLoaded, "hasAccessToken=", !!accessToken);
       return;
     }
 
@@ -164,6 +172,15 @@ export const UnifiedCloudPicker = ({
       <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
         Configuration required: Client ID missing for{" "}
         {provider === "sharepoint" ? "SharePoint" : "OneDrive"}.
+      </div>
+    );
+  }
+
+  if (provider === "sharepoint" && !baseUrl && isAuthenticated) {
+    return (
+      <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
+        Configuration required: A site URL has not been configured for this connector. 
+        Please update your connector settings with a valid site URL for your organization and try again.
       </div>
     );
   }

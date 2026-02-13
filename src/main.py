@@ -1,3 +1,5 @@
+
+
 # Configure structured logging early
 from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
@@ -66,11 +68,12 @@ from config.settings import (
     API_KEYS_INDEX_BODY,
     API_KEYS_INDEX_NAME,
     DISABLE_INGEST_WITH_LANGFLOW,
+    INGESTION_TIMEOUT,
     INDEX_BODY,
-    INDEX_NAME,
     SESSION_SECRET,
     clients,
     get_embedding_model,
+    get_index_name,
     is_no_auth_mode,
     get_openrag_config,
 )
@@ -108,7 +111,7 @@ async def wait_for_opensearch():
 
     for attempt in range(max_retries):
         try:
-            await clients.opensearch.info()
+            await clients.opensearch.ping()
             logger.info("OpenSearch is ready")
             await TelemetryClient.send_event(Category.OPENSEARCH_SETUP, MessageId.ORB_OS_CONN_ESTABLISHED)
             return
@@ -152,16 +155,17 @@ async def configure_alerting_security():
 async def _ensure_opensearch_index():
     """Ensure OpenSearch index exists when using traditional connector service."""
     try:
+        index_name = get_index_name()
         # Check if index already exists
-        if await clients.opensearch.indices.exists(index=INDEX_NAME):
-            logger.debug("OpenSearch index already exists", index_name=INDEX_NAME)
+        if await clients.opensearch.indices.exists(index=index_name):
+            logger.debug("OpenSearch index already exists", index_name=index_name)
             return
 
         # Create the index with hard-coded INDEX_BODY (uses OpenAI embedding dimensions)
-        await clients.opensearch.indices.create(index=INDEX_NAME, body=INDEX_BODY)
+        await clients.opensearch.indices.create(index=index_name, body=INDEX_BODY)
         logger.info(
             "Created OpenSearch index for traditional connector service",
-            index_name=INDEX_NAME,
+            index_name=index_name,
             vector_dimensions=INDEX_BODY["mappings"]["properties"]["chunk_embedding"][
                 "dimension"
             ],
@@ -172,7 +176,7 @@ async def _ensure_opensearch_index():
         logger.error(
             "Failed to initialize OpenSearch index for traditional connector service",
             error=str(e),
-            index_name=INDEX_NAME,
+            index_name=get_index_name(),
         )
         await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATE_FAIL)
         # Don't raise the exception to avoid breaking the initialization
@@ -198,20 +202,21 @@ async def init_index():
     )
 
     # Create documents index
-    if not await clients.opensearch.indices.exists(index=INDEX_NAME):
+    index_name = get_index_name()
+    if not await clients.opensearch.indices.exists(index=index_name):
         await clients.opensearch.indices.create(
-            index=INDEX_NAME, body=dynamic_index_body
+            index=index_name, body=dynamic_index_body
         )
         logger.info(
             "Created OpenSearch index",
-            index_name=INDEX_NAME,
+            index_name=index_name,
             embedding_model=embedding_model,
         )
         await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATED)
     else:
         logger.info(
             "Index already exists, skipping creation",
-            index_name=INDEX_NAME,
+            index_name=index_name,
             embedding_model=embedding_model,
         )
         await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS)
@@ -384,7 +389,7 @@ async def ingest_default_documents_when_ready(services):
             await _ingest_default_documents_openrag(services, file_paths)
         else:
             await _ingest_default_documents_langflow(services, file_paths)
-        
+
         await TelemetryClient.send_event(Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_COMPLETE)
 
     except Exception as e:
@@ -448,7 +453,7 @@ async def _ingest_default_documents_langflow(services, file_paths):
         tweaks=default_tweaks,
         settings=None,  # Use default ingestion settings
         delete_after_ingest=True,  # Clean up after ingestion
-        replace_duplicates=False,
+        replace_duplicates=True,
     )
 
     logger.info(
@@ -456,6 +461,11 @@ async def _ingest_default_documents_langflow(services, file_paths):
         task_id=task_id,
         file_count=len(file_paths),
     )
+
+async def health_check(request):
+    """Simple liveness probe: Indicates that the OpenRAG Backend service is online and running."""
+    return JSONResponse({"status": "ok"}, status_code=200)
+
 
 async def opensearch_health_ready(request):
     """Readiness probe: verifies OpenSearch dependency is reachable."""
@@ -507,48 +517,48 @@ async def _ingest_default_documents_openrag(services, file_paths):
 
 async def _update_mcp_servers_with_provider_credentials(services):
     """Update MCP servers with provider credentials at startup.
-    
+
     This is especially important for no-auth mode where users don't go through
     the OAuth login flow that would normally set these credentials.
     """
     try:
         auth_service = services.get("auth_service")
         session_manager = services.get("session_manager")
-        
+
         if not auth_service or not auth_service.langflow_mcp_service:
             logger.debug("MCP service not available, skipping credential update")
             return
-        
+
         config = get_openrag_config()
-        
+
         # Build global vars with provider credentials using utility function
         from utils.langflow_headers import build_mcp_global_vars_from_config
-        
+
         global_vars = build_mcp_global_vars_from_config(config)
-        
+
         # In no-auth mode, add the anonymous JWT token and user details
         if is_no_auth_mode() and session_manager:
             from session_manager import AnonymousUser
-            
+
             # Create/get anonymous JWT for no-auth mode
             anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
             if anonymous_jwt:
                 global_vars["JWT"] = anonymous_jwt
-            
+
             # Add anonymous user details
             anonymous_user = AnonymousUser()
             global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
             global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted for spaces)
             global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
-            
+
             logger.info("Added anonymous JWT and user details to MCP servers for no-auth mode")
-        
+
         if global_vars:
             result = await auth_service.langflow_mcp_service.update_mcp_servers_with_global_vars(global_vars)
             logger.info("Updated MCP servers with provider credentials at startup", **result)
         else:
             logger.debug("No provider credentials configured, skipping MCP server update")
-            
+
     except Exception as e:
         logger.warning("Failed to update MCP servers with provider credentials at startup", error=str(e))
         # Don't fail startup if MCP update fails
@@ -567,7 +577,7 @@ async def startup_tasks(services):
 
     # Configure alerting security
     await configure_alerting_security()
-    
+
     # Update MCP servers with provider credentials (especially important for no-auth mode)
     await _update_mcp_servers_with_provider_credentials(services)
 
@@ -578,7 +588,7 @@ async def startup_tasks(services):
             logger.info("Checking if Langflow flows were reset")
             flows_service = services["flows_service"]
             reset_flows = await flows_service.check_flows_reset()
-            
+
             if reset_flows:
                 logger.info(
                     f"Detected reset flows: {', '.join(reset_flows)}. Reapplying all settings."
@@ -618,7 +628,7 @@ async def initialize_services():
     # Initialize services
     document_service = DocumentService(session_manager=session_manager)
     search_service = SearchService(session_manager)
-    task_service = TaskService(document_service, process_pool)
+    task_service = TaskService(document_service, process_pool, ingestion_timeout=INGESTION_TIMEOUT)
     chat_service = ChatService()
     flows_service = FlowsService()
     knowledge_filter_service = KnowledgeFilterService(session_manager)
@@ -639,7 +649,7 @@ async def initialize_services():
         patched_async_client=clients,  # Pass the clients object itself
         process_pool=process_pool,
         embed_model=get_embedding_model(),
-        index_name=INDEX_NAME,
+        index_name=get_index_name(),
         task_service=task_service,
         session_manager=session_manager,
     )
@@ -676,7 +686,7 @@ async def initialize_services():
             await TelemetryClient.send_event(Category.CONNECTOR_OPERATIONS, MessageId.ORB_CONN_LOAD_FAILED)
     else:
         logger.info("[CONNECTORS] Skipping connection loading in no-auth mode")
-    
+
     await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_SUCCESS)
 
     langflow_file_service = LangflowFileService()
@@ -1068,6 +1078,17 @@ async def create_app():
             methods=["POST"],
         ),
         Route(
+            "/connectors/sync-all",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.sync_all_connectors,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
             "/connectors/{connector_type}/status",
             require_auth(services["session_manager"])(
                 partial(
@@ -1088,6 +1109,17 @@ async def create_app():
                 )
             ),
             methods=["GET"],
+        ),
+        Route(
+            "/connectors/{connector_type}/disconnect",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.connector_disconnect,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
         ),
         Route(
             "/connectors/{connector_type}/webhook",
@@ -1159,12 +1191,25 @@ async def create_app():
             ),
             methods=["POST"],
         ),
+        Route(
+            "/onboarding/state",
+            require_auth(services["session_manager"])(
+                settings.update_onboarding_state
+            ),
+            methods=["POST"],
+        ),
         # Provider health check endpoint
         Route(
             "/provider/health",
             require_auth(services["session_manager"])(
                 provider_health.check_provider_health
             ),
+            methods=["GET"],
+        ),
+        # Health check endpoints
+        Route(
+            "/health",
+            health_check,
             methods=["GET"],
         ),
         Route(
@@ -1517,19 +1562,22 @@ async def create_app():
         app.state.background_tasks.add(t1)
         t1.add_done_callback(app.state.background_tasks.discard)
 
+        # Start periodic task cleanup scheduler
+        services["task_service"].start_cleanup_scheduler()
+
         # Start periodic flow backup task (every 5 minutes)
         async def periodic_backup():
             """Periodic backup task that runs every 15 minutes"""
             while True:
                 try:
                     await asyncio.sleep(5 * 60)  # Wait 5 minutes
-                    
+
                     # Check if onboarding has been completed
                     config = get_openrag_config()
                     if not config.edited:
                         logger.debug("Onboarding not completed yet, skipping periodic backup")
                         continue
-                    
+
                     flows_service = services.get("flows_service")
                     if flows_service:
                         logger.info("Running periodic flow backup")
@@ -1561,6 +1609,8 @@ async def create_app():
     async def shutdown_event():
         await TelemetryClient.send_event(Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN)
         await cleanup_subscriptions_proper(services)
+        # Cleanup task service (cancels background tasks and process pool)
+        await services["task_service"].shutdown()
         # Cleanup async clients
         await clients.cleanup()
         # Cleanup telemetry client
@@ -1634,6 +1684,9 @@ if __name__ == "__main__":
     # Create app asynchronously
     app = asyncio.run(create_app())
 
+    # Enable or disable HTTP access logging events
+    access_log = os.getenv("ACCESS_LOG", "true").lower() == "true"
+
     # Run the server (startup tasks now handled by Starlette startup event)
     uvicorn.run(
         app,
@@ -1641,4 +1694,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=False,  # Disable reload since we're running from main
+        access_log=access_log,
     )

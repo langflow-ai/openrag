@@ -10,7 +10,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { ONBOARDING_CARD_STEPS_KEY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export function AnimatedProviderSteps({
@@ -18,7 +17,6 @@ export function AnimatedProviderSteps({
   isCompleted,
   setCurrentStep,
   steps,
-  storageKey = ONBOARDING_CARD_STEPS_KEY,
   processingStartTime,
   hasError = false,
 }: {
@@ -26,25 +24,19 @@ export function AnimatedProviderSteps({
   isCompleted: boolean;
   setCurrentStep: (step: number) => void;
   steps: string[];
-  storageKey?: string;
   processingStartTime?: number | null;
   hasError?: boolean;
 }) {
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
 
-  // Initialize start time from prop or local storage
+  // Initialize start time from prop
   useEffect(() => {
-    const storedElapsedTime = localStorage.getItem(storageKey);
-
-    if (isCompleted && storedElapsedTime) {
-      // If completed, use stored elapsed time
-      setElapsedTime(parseFloat(storedElapsedTime));
-    } else if (processingStartTime) {
+    if (processingStartTime) {
       // Use the start time passed from parent (when user clicked Complete)
       setStartTime(processingStartTime);
     }
-  }, [storageKey, isCompleted, processingStartTime]);
+  }, [processingStartTime]);
 
   // Progress through steps
   useEffect(() => {
@@ -56,14 +48,13 @@ export function AnimatedProviderSteps({
     }
   }, [currentStep, setCurrentStep, steps, isCompleted]);
 
-  // Calculate and store elapsed time when completed
+  // Calculate elapsed time when completed
   useEffect(() => {
     if (isCompleted && startTime) {
       const elapsed = Date.now() - startTime;
       setElapsedTime(elapsed);
-      localStorage.setItem(storageKey, elapsed.toString());
     }
-  }, [isCompleted, startTime, storageKey]);
+  }, [isCompleted, startTime]);
 
   const isDone = currentStep >= steps.length && !isCompleted && !hasError;
 

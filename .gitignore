@@ -26,7 +26,7 @@ wheels/
 !frontend/*.json
 .DS_Store
 
-config/
+/config/
 
 .docling.pid
 
@@ -34,3 +34,11 @@ config/
 opensearch-data/
 
 node_modules
+
+# AI Tools
+/.claude
+/CLAUDE.md
+/.gemini
+/GEMINI.md
+/.bob
+/AGENTS.md

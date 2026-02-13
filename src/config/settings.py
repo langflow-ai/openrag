@@ -59,11 +59,19 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
     "DISABLE_INGEST_WITH_LANGFLOW", "false"
 ).lower() in ("true", "1", "yes")
 
+# Maximum number of files to upload / ingest (in batch) per task when adding knowledge via folder
+UPLOAD_BATCH_SIZE = int(os.getenv("UPLOAD_BATCH_SIZE", "25"))
+
 # Langflow HTTP timeout configuration (in seconds)
 # For large documents (300+ pages), ingestion can take 30+ minutes
 # Default: 40 minutes total, 40 minutes read timeout
 LANGFLOW_TIMEOUT = float(os.getenv("LANGFLOW_TIMEOUT", "2400"))  # 40 minutes
 LANGFLOW_CONNECT_TIMEOUT = float(os.getenv("LANGFLOW_CONNECT_TIMEOUT", "30"))  # 30 seconds
+
+# Per-file processing timeout for document ingestion tasks (in seconds)
+# Should be >= LANGFLOW_TIMEOUT to allow long-running ingestion to complete
+# Default: 3600 seconds (60 minutes)
+INGESTION_TIMEOUT = int(os.getenv("INGESTION_TIMEOUT", "3600"))
 
 
 def is_no_auth_mode():
@@ -78,7 +86,6 @@ WEBHOOK_BASE_URL = os.getenv(
 )  # No default - must be explicitly configured
 
 # OpenSearch configuration
-INDEX_NAME = "documents"
 VECTOR_DIM = 1536
 EMBED_MODEL = "text-embedding-3-small"
 
@@ -90,7 +97,7 @@ OPENAI_EMBEDDING_DIMENSIONS = {
 
 WATSONX_EMBEDDING_DIMENSIONS = {
 # IBM Models
-"ibm/granite-embedding-107m-multilingual": 384,  
+"ibm/granite-embedding-107m-multilingual": 384,
 "ibm/granite-embedding-278m-multilingual": 1024,
 "ibm/slate-125m-english-rtrvr": 768,
 "ibm/slate-125m-english-rtrvr-v2": 768,
@@ -410,17 +417,17 @@ class AppClients:
             # LiteLLM routes based on model name prefixes (openai/, ollama/, watsonx/, etc.)
             try:
                 config = get_openrag_config()
-                
+
                 # Set OpenAI credentials
                 if config.providers.openai.api_key:
                     os.environ["OPENAI_API_KEY"] = config.providers.openai.api_key
                     logger.debug("Loaded OpenAI API key from config")
-                
+
                 # Set Anthropic credentials
                 if config.providers.anthropic.api_key:
                     os.environ["ANTHROPIC_API_KEY"] = config.providers.anthropic.api_key
                     logger.debug("Loaded Anthropic API key from config")
-                
+
                 # Set WatsonX credentials
                 if config.providers.watsonx.api_key:
                     os.environ["WATSONX_API_KEY"] = config.providers.watsonx.api_key
@@ -431,13 +438,13 @@ class AppClients:
                     os.environ["WATSONX_PROJECT_ID"] = config.providers.watsonx.project_id
                 if config.providers.watsonx.api_key:
                     logger.debug("Loaded WatsonX credentials from config")
-                
+
                 # Set Ollama endpoint
                 if config.providers.ollama.endpoint:
                     os.environ["OLLAMA_BASE_URL"] = config.providers.ollama.endpoint
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
-                    
+
             except Exception as e:
                 logger.debug("Could not load provider credentials from config", error=str(e))
 
@@ -817,3 +824,8 @@ def get_agent_config():
 def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
     return get_openrag_config().knowledge.embedding_model or EMBED_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""
+
+
+def get_index_name() -> str:
+    """Return the currently configured index name."""
+    return get_openrag_config().knowledge.index_name

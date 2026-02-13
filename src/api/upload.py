@@ -135,7 +135,8 @@ async def upload_options(request: Request, session_manager):
     aws_enabled = bool(
         os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")
     )
-    return JSONResponse({"aws": aws_enabled})
+    from config.settings import UPLOAD_BATCH_SIZE
+    return JSONResponse({"aws": aws_enabled, "upload_batch_size": UPLOAD_BATCH_SIZE})
 
 
 async def upload_bucket(request: Request, task_service, session_manager):

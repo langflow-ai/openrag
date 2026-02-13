@@ -1,0 +1,15 @@
+blank_issues_enabled: false
+contact_links:
+  - name: OpenRAG Documentation
+    url: https://docs.openr.ag/
+    about: Learn more about OpenRAG's features, installation, and configuration.
+  - name: Troubleshooting Guide
+    url: https://docs.openr.ag/support/troubleshoot
+    about: Check the troubleshooting guide for common issues and solutions.
+  - name: GitHub Discussions
+    url: https://github.com/langflow-ai/openrag/discussions
+    about: Ask questions and discuss ideas with the community.
+  - name: Contributing Guide
+    url: https://github.com/langflow-ai/openrag/blob/main/CONTRIBUTING.md
+    about: Learn how to contribute to OpenRAG development.
+

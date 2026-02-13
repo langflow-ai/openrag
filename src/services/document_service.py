@@ -12,7 +12,7 @@ from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-from config.settings import clients, INDEX_NAME, get_embedding_model
+from config.settings import clients, get_embedding_model, get_index_name
 from utils.document_processing import extract_relevant, process_document_sync
 from utils.telemetry import TelemetryClient, Category, MessageId
 
@@ -153,7 +153,7 @@ class DocumentService:
             )
 
             try:
-                exists = await opensearch_client.exists(index=INDEX_NAME, id=file_hash)
+                exists = await opensearch_client.exists(index=get_index_name(), id=file_hash)
             except Exception as e:
                 logger.error(
                     "OpenSearch exists check failed", file_hash=file_hash, error=str(e)

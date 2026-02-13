@@ -101,9 +101,11 @@ class FlowBackupWarningModal(ModalScreen[tuple[bool, bool]]):
             yield Label("⚠ Flow Backups Detected", id="title")
             yield Static(
                 f"Flow backups found in your flows/backup directory.\n\n"
-                f"Proceeding with {self.operation} will reset custom flows to defaults.\n"
-                f"Your customizations are backed up in the flows/backup/ directory.\n\n"
-                f"Choose whether to keep or delete the backup files:",
+                f"Proceeding with {self.operation} will reset OpenRAG's built-in flows to their default configuration and discard user-created flows.\n"
+                f"Your customizations to the built-in flows are backed up in the flows/backup/ directory.\n"
+                f"Other user-created flows aren't backed up; you must export these flows to preserve them.\n"
+                f"Learn more: https://docs.langflow.org/concepts-flows-import\n\n"
+                f"Choose whether to keep or delete the backup files of the built-in flows:",
                 id="message"
             )
             with Vertical(id="checkbox-container"):
