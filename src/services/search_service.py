@@ -2,7 +2,7 @@ import copy
 import json
 from typing import Any, Dict
 from agentd.tool_decorator import tool
-from config.settings import EMBED_MODEL, clients, INDEX_NAME, get_embedding_model, WATSONX_EMBEDDING_DIMENSIONS
+from config.settings import EMBED_MODEL, clients, get_embedding_model, get_index_name, WATSONX_EMBEDDING_DIMENSIONS
 from auth_context import get_auth_context
 from utils.logging_config import get_logger
 
@@ -121,7 +121,7 @@ class SearchService:
                     }
 
                 agg_result = await opensearch_client.search(
-                    index=INDEX_NAME, body=agg_query, params={"terminate_after": 0}
+                    index=get_index_name(), body=agg_query, params={"terminate_after": 0}
                 )
                 buckets = agg_result.get("aggregations", {}).get("embedding_models", {}).get("buckets", [])
                 available_models = [b["key"] for b in buckets if b["key"]]
@@ -396,8 +396,10 @@ class SearchService:
         search_params = {"terminate_after": 0}
 
         try:
+            index_name = get_index_name()
+            logger.info(f"Sending query to index '{index_name}'..")
             results = await opensearch_client.search(
-                index=INDEX_NAME, body=search_body, params=search_params
+                index=index_name, body=search_body, params=search_params
             )
         except RequestError as e:
             error_message = str(e)
@@ -410,7 +412,7 @@ class SearchService:
                 )
                 try:
                     results = await opensearch_client.search(
-                        index=INDEX_NAME,
+                        index=get_index_name(),
                         body=fallback_search_body,
                         params=search_params,
                     )

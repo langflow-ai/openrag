@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from tui.managers.docling_manager import DoclingManager
 
 
-async def start_docling(port: int = 5001, host: str = None, enable_ui: bool = False):
+async def start_docling(port: int = 5001, host: str = None, enable_ui: bool = False, workers: int | None = None):
     """Start docling-serve."""
     manager = DoclingManager()
 
@@ -23,8 +23,9 @@ async def start_docling(port: int = 5001, host: str = None, enable_ui: bool = Fa
         return 0
 
     host_msg = f"{host}:{port}" if host else f"auto-detected host:{port}"
-    print(f"Starting docling-serve on {host_msg}...")
-    success, message = await manager.start(port=port, host=host, enable_ui=enable_ui)
+    workers_msg = f" with {workers} workers" if workers else ""
+    print(f"Starting docling-serve on {host_msg}{workers_msg}...")
+    success, message = await manager.start(port=port, host=host, enable_ui=enable_ui, workers=workers)
 
     if success:
         print(f"{message}")
@@ -75,12 +76,13 @@ async def main():
     parser.add_argument("command", choices=["start", "stop", "status"], help="Command to run")
     parser.add_argument("--port", type=int, default=5001, help="Port to run on (default: 5001)")
     parser.add_argument("--host", default=None, help="Host to bind to (default: auto-detect for containers)")
+    parser.add_argument("--workers", type=int, default=None, help="Number of worker processes (default: DOCLING_WORKERS env var value or 1)")
     parser.add_argument("--enable-ui", action="store_true", help="Enable UI")
 
     args = parser.parse_args()
 
     if args.command == "start":
-        return await start_docling(port=args.port, host=args.host if args.host else None, enable_ui=args.enable_ui)
+        return await start_docling(port=args.port, host=args.host if args.host else None, enable_ui=args.enable_ui, workers=args.workers)
     elif args.command == "stop":
         return await stop_docling()
     elif args.command == "status":

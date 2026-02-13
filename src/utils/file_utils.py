@@ -58,3 +58,30 @@ def safe_unlink(path: str) -> None:
     except Exception:
         # Silently ignore errors
         pass
+
+
+def get_file_extension(mimetype: str) -> str:
+    """Get file extension based on MIME type"""
+    mime_to_ext = {
+        "application/pdf": ".pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "application/msword": ".doc",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+        "application/vnd.ms-powerpoint": ".ppt",
+        "text/plain": ".txt",
+        "text/html": ".html",
+        "application/rtf": ".rtf",
+        "application/vnd.google-apps.document": ".pdf",  # Exported as PDF
+        "application/vnd.google-apps.presentation": ".pdf",
+        "application/vnd.google-apps.spreadsheet": ".pdf",
+    }
+    return mime_to_ext.get(mimetype, ".bin")
+
+
+def clean_connector_filename(filename: str, mimetype: str) -> str:
+    """Clean filename and ensure correct extension"""
+    suffix = get_file_extension(mimetype)
+    clean_name = filename.replace(" ", "_").replace("/", "_")
+    if not clean_name.lower().endswith(suffix.lower()):
+        return clean_name + suffix
+    return clean_name

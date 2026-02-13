@@ -74,6 +74,7 @@ class KnowledgeConfig:
     table_structure: bool = True
     ocr: bool = False
     picture_descriptions: bool = False
+    index_name: str = "documents"  # OpenSearch index name
 
 
 @dataclass
@@ -249,6 +250,8 @@ class ConfigManager:
             config_data["knowledge"]["chunk_size"] = int(os.getenv("CHUNK_SIZE"))
         if os.getenv("CHUNK_OVERLAP"):
             config_data["knowledge"]["chunk_overlap"] = int(os.getenv("CHUNK_OVERLAP"))
+        if os.getenv("OPENSEARCH_INDEX_NAME"):
+            config_data["knowledge"]["index_name"] = os.getenv("OPENSEARCH_INDEX_NAME")
         if os.getenv("OCR_ENABLED"):
             config_data["knowledge"]["ocr"] = os.getenv("OCR_ENABLED").lower() in (
                 "true",
