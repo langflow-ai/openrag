@@ -61,7 +61,6 @@ async def onboard_system():
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
             "llm_model": "gpt-4o-mini",
-            "sample_data": False,
         }
         resp = await client.post("/onboarding", json=onboarding_payload)
         if resp.status_code not in (200, 204):

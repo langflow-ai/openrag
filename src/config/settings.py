@@ -59,6 +59,11 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
     "DISABLE_INGEST_WITH_LANGFLOW", "false"
 ).lower() in ("true", "1", "yes")
 
+# Ingest sample data configuration
+INGEST_SAMPLE_DATA = os.getenv(
+    "INGEST_SAMPLE_DATA", "true"
+).lower() in ("true", "1", "yes")
+
 # Maximum number of files to upload / ingest (in batch) per task when adding knowledge via folder
 UPLOAD_BATCH_SIZE = int(os.getenv("UPLOAD_BATCH_SIZE", "25"))
 
