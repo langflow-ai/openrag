@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
 from dataclasses import dataclass, asdict
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519, ed448
+
 import os
 from utils.logging_config import get_logger
 
@@ -60,13 +62,59 @@ class SessionManager:
             str, Any
         ] = {}  # user_id -> OpenSearch client
 
-        # Load RSA keys
         self.private_key_path = private_key_path
         self.public_key_path = public_key_path
-        self._load_rsa_keys()
+
+        # Configure JWT signing (checks env var first, falls back to key files)
+        self._configure_jwt_signing()
+
+    def _configure_jwt_signing(self):
+        """Configure JWT signing - supports env var or file-based keys"""
+        signing_key = os.getenv("JWT_SIGNING_KEY")
+
+        if signing_key:
+            if signing_key.lstrip().startswith("-----BEGIN"):
+                key = serialization.load_pem_private_key(signing_key.encode(), password=None)
+
+                self.private_key = key
+                self.public_key = key.public_key()
+                self.public_key_pem = self.public_key.public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                ).decode()
+
+                if isinstance(key, rsa.RSAPrivateKey):
+                    self.algorithm = "RS256"
+                elif isinstance(key, ec.EllipticCurvePrivateKey):
+                    curve = key.curve
+                    if isinstance(curve, ec.SECP256R1):
+                        self.algorithm = "ES256"
+                    elif isinstance(curve, ec.SECP384R1):
+                        self.algorithm = "ES384"
+                    elif isinstance(curve, ec.SECP521R1):
+                        self.algorithm = "ES512"
+                    else:
+                        raise ValueError(f"Unsupported EC curve: {curve.name}")
+                elif isinstance(key, (ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey)):
+                    self.algorithm = "EdDSA"
+                else:
+                    raise ValueError(f"Unsupported private key type: {type(key)}")
+
+            else:
+                # Plain string = symmetric (HS256)
+                self.private_key = signing_key
+                self.public_key = signing_key  # Same key for verification
+                self.public_key_pem = None  # No JWKS for symmetric
+                self.algorithm = "HS256"
+        else:
+            # Fall back to file-based RSA keys
+            self._load_rsa_keys()
+            self.algorithm = "RS256"
+        logger.info(f"Initialized JWT signing with {self.algorithm}")
+
 
     def _load_rsa_keys(self):
-        """Load RSA private and public keys"""
+        """Load RSA private and public keys from files"""
         try:
             with open(self.private_key_path, "rb") as f:
                 self.private_key = serialization.load_pem_private_key(
@@ -76,7 +124,6 @@ class SessionManager:
             with open(self.public_key_path, "rb") as f:
                 self.public_key = serialization.load_pem_public_key(f.read())
 
-            # Also get public key in PEM format for JWKS
             self.public_key_pem = open(self.public_key_path, "r").read()
 
         except FileNotFoundError as e:
@@ -140,6 +187,9 @@ class SessionManager:
         """Create JWT token for an existing user"""
         # Use OpenSearch-compatible issuer for OIDC validation
         oidc_issuer = "http://openrag-backend:8000"
+        openrag_fqdn = os.getenv("OPENRAG_FQDN")
+        if openrag_fqdn:
+            oidc_issuer = f"http://{openrag_fqdn}:8000"
 
         # Create JWT token with OIDC-compliant claims
         now = datetime.utcnow()
@@ -158,9 +208,10 @@ class SessionManager:
             "preferred_username": user.email,
             "email_verified": True,
             "roles": ["openrag_user"],  # Backend role for OpenSearch
+            "user_roles": ["openrag_user"],  # compatible with OpenSearch's roles_key
         }
 
-        token = jwt.encode(token_payload, self.private_key, algorithm="RS256")
+        token = jwt.encode(token_payload, self.private_key, algorithm=self.algorithm)
         return token
 
     def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
@@ -169,7 +220,7 @@ class SessionManager:
             payload = jwt.decode(
                 token,
                 self.public_key,
-                algorithms=["RS256"],
+                algorithms=[self.algorithm],
                 audience=["opensearch", "openrag"],
             )
             return payload

@@ -4,6 +4,8 @@ API Key management endpoints.
 These endpoints use JWT cookie authentication (for the UI) and allow users
 to create, list, and revoke their API keys for use with the public API.
 """
+import json
+
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from utils.logging_config import get_logger
@@ -64,6 +66,17 @@ async def create_key_endpoint(request: Request, api_key_service):
 
     try:
         data = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(
+            {
+                "success": False,
+                "error": "Invalid or missing JSON body",
+                "example": {"name": "My API Key"},
+            },
+            status_code=400,
+        )
+
+    try:
         name = data.get("name", "").strip()
 
         if not name:

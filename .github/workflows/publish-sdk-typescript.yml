@@ -2,13 +2,19 @@ name: Publish TypeScript SDK
 
 on:
   push:
-    tags:
-      - 'sdk-ts-v*'
+    branches:
+      - main
+    paths:
+      - 'sdks/typescript/package.json'
+  workflow_dispatch:
 
 jobs:
   publish:
     name: Publish to npm
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: sdks/typescript
@@ -23,22 +29,36 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Update npm to latest
+        run: npm install -g npm@latest
+
+      - name: Extract version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if version already published
+        id: check
+        run: |
+          if npm view openrag-sdk@${{ steps.version.outputs.version }} version 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Install dependencies
+        if: steps.check.outputs.exists == 'false'
         run: npm ci
 
       - name: Build
+        if: steps.check.outputs.exists == 'false'
         run: npm run build
 
-      - name: Extract version from tag
-        id: version
-        run: |
-          VERSION=${GITHUB_REF_NAME#sdk-ts-v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Update package version
-        run: npm version ${{ steps.version.outputs.version }} --no-git-tag-version
-
       - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        if: steps.check.outputs.exists == 'false'
+        run: npm publish --access public --provenance
+
+      - name: Skip publish (version exists)
+        if: steps.check.outputs.exists == 'true'
+        run: echo "Version ${{ steps.version.outputs.version }} already exists on npm, skipping publish"

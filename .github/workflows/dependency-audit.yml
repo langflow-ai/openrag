@@ -1,0 +1,60 @@
+name: Dependency Audit
+
+on:
+  schedule:
+    # Run Monday, Thursday at 9am UTC
+    - cron: '0 9 * * 1,4'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  npm-audit:
+    name: NPM Audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory: ['frontend', 'docs', 'sdks/typescript']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run npm audit
+        working-directory: ${{ matrix.directory }}
+        run: |
+          echo "::group::NPM Audit for ${{ matrix.directory }}"
+          npm audit --audit-level=moderate || echo "::warning::NPM audit found vulnerabilities in ${{ matrix.directory }}"
+          echo "::endgroup::"
+
+      - name: Check for outdated packages
+        working-directory: ${{ matrix.directory }}
+        run: |
+          echo "::group::Outdated packages in ${{ matrix.directory }}"
+          npm outdated || true
+          echo "::endgroup::"
+
+  python-audit:
+    name: Python Audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory: ['.', 'sdks/python']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Run pip-audit
+        working-directory: ${{ matrix.directory }}
+        run: |
+          echo "::group::Python Audit for ${{ matrix.directory }}"
+          pip-audit --desc || echo "::warning::pip-audit found vulnerabilities in ${{ matrix.directory }}"
+          echo "::endgroup::"

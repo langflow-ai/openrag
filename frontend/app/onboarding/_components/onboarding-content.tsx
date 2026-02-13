@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { StickToBottom } from "use-stick-to-bottom";
 import { getFilterById } from "@/app/api/queries/useGetFilterByIdQuery";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
+import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import { AssistantMessage } from "@/app/chat/_components/assistant-message";
 import Nudges from "@/app/chat/_components/nudges";
 import { UserMessage } from "@/app/chat/_components/user-message";
@@ -10,11 +12,6 @@ import type { Message, SelectedFilters } from "@/app/chat/_types/types";
 import OnboardingCard from "@/app/onboarding/_components/onboarding-card";
 import { useChat } from "@/contexts/chat-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
-import {
-  ONBOARDING_ASSISTANT_MESSAGE_KEY,
-  ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY,
-  ONBOARDING_SELECTED_NUDGE_KEY,
-} from "@/lib/constants";
 
 import { OnboardingStep } from "./onboarding-step";
 import OnboardingUpload from "./onboarding-upload";
@@ -36,42 +33,45 @@ export function OnboardingContent({
   currentStep: number;
 }) {
   const { setConversationFilter, setCurrentConversationId } = useChat();
+  const { data: settings } = useGetSettingsQuery();
+  const updateOnboardingMutation = useUpdateOnboardingStateMutation();
   const parseFailedRef = useRef(false);
   const [responseId, setResponseId] = useState<string | null>(null);
+  
+  // Initialize from backend settings
   const [selectedNudge, setSelectedNudge] = useState<string>(() => {
-    // Retrieve selected nudge from localStorage on mount
-    if (typeof window === "undefined") return "";
-    return localStorage.getItem(ONBOARDING_SELECTED_NUDGE_KEY) || "";
+    return settings?.onboarding?.selected_nudge || "";
   });
+  
   const [assistantMessage, setAssistantMessage] = useState<Message | null>(
     () => {
-      // Retrieve assistant message from localStorage on mount
-      if (typeof window === "undefined") return null;
-      const savedMessage = localStorage.getItem(
-        ONBOARDING_ASSISTANT_MESSAGE_KEY,
-      );
-      if (savedMessage) {
-        try {
-          const parsed = JSON.parse(savedMessage);
-          // Convert timestamp string back to Date object
-          return {
-            ...parsed,
-            timestamp: new Date(parsed.timestamp),
-          };
-        } catch (error) {
-          console.error("Failed to parse saved assistant message:", error);
-          parseFailedRef.current = true;
-          // Clear corrupted data - will go back a step in useEffect
-          if (typeof window !== "undefined") {
-            localStorage.removeItem(ONBOARDING_ASSISTANT_MESSAGE_KEY);
-            localStorage.removeItem(ONBOARDING_SELECTED_NUDGE_KEY);
-          }
-          return null;
-        }
+      // Get from backend settings
+      if (settings?.onboarding?.assistant_message) {
+        const msg = settings.onboarding.assistant_message;
+        return {
+          role: msg.role as "user" | "assistant",
+          content: msg.content,
+          timestamp: new Date(msg.timestamp),
+        };
       }
       return null;
     },
   );
+
+  // Sync state when settings change
+  useEffect(() => {
+    if (settings?.onboarding?.selected_nudge) {
+      setSelectedNudge(settings.onboarding.selected_nudge);
+    }
+    if (settings?.onboarding?.assistant_message) {
+      const msg = settings.onboarding.assistant_message;
+      setAssistantMessage({
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+        timestamp: new Date(msg.timestamp),
+      });
+    }
+  }, [settings?.onboarding]);
 
   // Handle parse errors by going back a step
   useEffect(() => {
@@ -83,28 +83,23 @@ export function OnboardingContent({
   const { streamingMessage, isLoading, sendMessage } = useChatStreaming({
     onComplete: async (message, newResponseId) => {
       setAssistantMessage(message);
-      // Save assistant message to localStorage when complete
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem(
-            ONBOARDING_ASSISTANT_MESSAGE_KEY,
-            JSON.stringify(message),
-          );
-        } catch (error) {
-          console.error(
-            "Failed to save assistant message to localStorage:",
-            error,
-          );
-        }
-      }
+      // Save assistant message to backend
+      await updateOnboardingMutation.mutateAsync({
+        assistant_message: {
+          role: message.role,
+          content: message.content,
+          timestamp: message.timestamp.toISOString(),
+        },
+      });
+      
       if (newResponseId) {
         setResponseId(newResponseId);
 
         // Set the current conversation ID
         setCurrentConversationId(newResponseId);
 
-        // Save the filter association for this conversation
-        const openragDocsFilterId = localStorage.getItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY);
+        // Get filter ID from backend settings
+        const openragDocsFilterId = settings?.onboarding?.openrag_docs_filter_id;
         if (openragDocsFilterId) {
           try {
             // Load the filter and set it in the context with explicit responseId
@@ -136,21 +131,17 @@ export function OnboardingContent({
 
   const handleNudgeClick = async (nudge: string) => {
     setSelectedNudge(nudge);
-    // Save selected nudge to localStorage
-    if (typeof window !== "undefined") {
-      localStorage.setItem(ONBOARDING_SELECTED_NUDGE_KEY, nudge);
-    }
     setAssistantMessage(null);
-    // Clear saved assistant message when starting a new conversation
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(ONBOARDING_ASSISTANT_MESSAGE_KEY);
-    }
+    
+    // Save selected nudge to backend and clear assistant message
+    await updateOnboardingMutation.mutateAsync({
+      selected_nudge: nudge,
+      assistant_message: null,
+    });
+    
     setTimeout(async () => {
       // Check if we have the OpenRAG docs filter ID (sample data was ingested)
-      const openragDocsFilterId =
-        typeof window !== "undefined"
-          ? localStorage.getItem(ONBOARDING_OPENRAG_DOCS_FILTER_ID_KEY)
-          : null;
+      const openragDocsFilterId = settings?.onboarding?.openrag_docs_filter_id;
 
       // Load and set the OpenRAG docs filter if available
       let filterToUse = null;

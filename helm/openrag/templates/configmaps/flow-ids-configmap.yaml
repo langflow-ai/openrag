@@ -1,0 +1,14 @@
+{{- if .Values.langflow.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openrag.fullname" . }}-flow-ids
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.labels" . | nindent 4 }}
+data:
+  chat-flow-id: {{ .Values.langflow.flows.chatFlowId | quote }}
+  ingest-flow-id: {{ .Values.langflow.flows.ingestFlowId | quote }}
+  url-ingest-flow-id: {{ .Values.langflow.flows.urlIngestFlowId | quote }}
+  nudges-flow-id: {{ .Values.langflow.flows.nudgesFlowId | quote }}
+{{- end }}

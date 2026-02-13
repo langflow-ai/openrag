@@ -1,6 +1,6 @@
 {
   "name": "openrag-sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Official TypeScript/JavaScript SDK for OpenRAG API",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -56,3 +56,4 @@
     "node": ">=18.0.0"
   }
 }
+

@@ -63,14 +63,13 @@ jobs:
             tag: langflowai/openrag-backend
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest-16-cores
+            runs-on: ubuntu-latest
           - image: backend
             file: ./Dockerfile.backend
             tag: langflowai/openrag-backend
             platform: linux/arm64
             arch: arm64
-            #runs-on: [self-hosted, linux, ARM64, langflow-ai-arm64-2]
-            runs-on: RagRunner
+            runs-on: [self-hosted, Linux, ARM64, langflow-ai-arm64-40gb-ephemeral]
 
           # frontend
           - image: frontend
@@ -78,14 +77,13 @@ jobs:
             tag: langflowai/openrag-frontend
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest-16-cores
+            runs-on: ubuntu-latest
           - image: frontend
             file: ./Dockerfile.frontend
             tag: langflowai/openrag-frontend
             platform: linux/arm64
             arch: arm64
-            #runs-on: [self-hosted, linux, ARM64, langflow-ai-arm64-2]
-            runs-on: RagRunner
+            runs-on: [self-hosted, Linux, ARM64, langflow-ai-arm64-40gb-ephemeral]
 
           # langflow
           - image: langflow
@@ -93,14 +91,13 @@ jobs:
             tag: langflowai/openrag-langflow
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest-16-cores
+            runs-on: ubuntu-latest
           - image: langflow
             file: ./Dockerfile.langflow
             tag: langflowai/openrag-langflow
             platform: linux/arm64
             arch: arm64
-            #runs-on: self-hosted
-            runs-on: RagRunner
+            runs-on: [self-hosted, Linux, ARM64, langflow-ai-arm64-40gb-ephemeral]
 
           # opensearch
           - image: opensearch
@@ -108,15 +105,13 @@ jobs:
             tag: langflowai/openrag-opensearch
             platform: linux/amd64
             arch: amd64
-            runs-on: ubuntu-latest-16-cores
+            runs-on: ubuntu-latest
           - image: opensearch
             file: ./Dockerfile
             tag: langflowai/openrag-opensearch
             platform: linux/arm64
             arch: arm64
-            #runs-on: [self-hosted, linux, ARM64, langflow-ai-arm64-2]
-            #runs-on: self-hosted
-            runs-on: RagRunner
+            runs-on: [self-hosted, Linux, ARM64, langflow-ai-arm64-40gb-ephemeral]
 
     runs-on: ${{ matrix.runs-on }}
 
@@ -211,7 +206,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
 

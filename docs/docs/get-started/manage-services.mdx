@@ -47,7 +47,16 @@ For the Docling native service, see [Stop, start, and inspect native services](#
 
 On the TUI's **Status** page, you can stop, start, and restart OpenRAG's container-based services.
 
-When you click **Restart** or **Start Services**, the following processes are triggered:
+You can also use the **Start OpenRAG** option on the TUI's main menu to start all services at once.
+
+:::tip
+A Docker or Podman VM must be running before you start OpenRAG.
+:::
+
+<details>
+<summary>How does the TUI start the containers?</summary>
+
+When you click **Restart** or **Start Services** in the TUI, the following processes are triggered:
 
 1. OpenRAG automatically detects your container runtime, and then checks if your machine has compatible GPU support by checking for `CUDA`, `NVIDIA_SMI`, and Docker/Podman runtime support. This check determines which Docker Compose file OpenRAG uses because there are separate Docker Compose files for GPU and CPU deployments.
 
@@ -55,12 +64,25 @@ When you click **Restart** or **Start Services**, the following processes are tr
 
 3. OpenRAG deploys the containers with `docker compose up -d`.
 
+</details>
+
+Alternatively, you can manually run the Docker/Podman commands to stop and start containers.
+Typically, this is only necessary if there is an error preventing the TUI from managing the containers.
+
+* Stop all containers: [`docker compose down`](https://docs.docker.com/reference/cli/docker/compose/down/) or `podman compose down`
+* Start all containers: [`docker compose up -d`](https://docs.docker.com/reference/cli/docker/compose/up/) or `podman compose up -d`
+* Stop one container: `docker stop CONTAINER_ID` or `podman stop CONTAINER_ID`
+* Start one container: `docker start CONTAINER_ID` or `podman start CONTAINER_ID`
+
 </TabItem>
 <TabItem value="env" label="Self-managed services">
 
-Use [`docker compose down`](https://docs.docker.com/reference/cli/docker/compose/down/) and [`docker compose up -d`](https://docs.docker.com/reference/cli/docker/compose/up/).
+For self-managed deployments, run the Docker/Podman commands to stop and start containers:
 
-To stop or start individual containers, use targeted commands like `docker stop CONTAINER_ID` and `docker start CONTAINER_ID`.
+* Stop all containers: [`docker compose down`](https://docs.docker.com/reference/cli/docker/compose/down/) or `podman compose down`
+* Start all containers: [`docker compose up -d`](https://docs.docker.com/reference/cli/docker/compose/up/) or `podman compose up -d`
+* Stop one container: `docker stop CONTAINER_ID` or `podman stop CONTAINER_ID`
+* Start one container: `docker start CONTAINER_ID` or `podman start CONTAINER_ID`
 
 </TabItem>
 </Tabs>
@@ -138,6 +160,8 @@ To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall O
 2. To destroy and recreate your OpenRAG containers, click **Status** in the TUI, and then click **Factory Reset**.
 
 3. Repeat the [setup process](/install#setup) to restart the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
+
+4. If you exported customized flows, [import your flows](https://docs.langflow.org/concepts-flows-import) into Langflow after completing the onboarding process.
 
 </TabItem>
 <TabItem value="env" label="Self-managed services">

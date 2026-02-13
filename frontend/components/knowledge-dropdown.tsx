@@ -40,35 +40,31 @@ import { useTask } from "@/contexts/task-context";
 import {
   duplicateCheck,
   uploadFile as uploadFileUtil,
+  uploadFiles,
 } from "@/lib/upload-utils";
 import { cn } from "@/lib/utils";
 
 // Supported file extensions - single source of truth
-const SUPPORTED_EXTENSIONS = [
-  ".pdf",
-  ".doc",
-  ".docx",
-  ".pptx",
-  ".ppt",
-  ".xlsx",
-  ".xls",
-  ".csv",
-  ".txt",
-  ".md",
-  ".html",
-  ".htm",
-  ".rtf",
-  ".odt",
-  ".asciidoc",
-  ".adoc",
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".bmp",
-  ".tiff",
-  ".webp",
-];
+// If modified, please also update the list in the documentation (openrag/docs/docs)
+export const SUPPORTED_FILE_TYPES = {
+  "image/*": [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp"],
+  "application/pdf": [".pdf"],
+  "application/msword": [".doc"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+  "application/vnd.ms-powerpoint": [".ppt"],
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
+  "application/vnd.ms-excel": [".xls"],
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+  "text/csv": [".csv"],
+  "text/plain": [".txt"],
+  "text/markdown": [".md"],
+  "text/html": [".html", ".htm"],
+  "application/rtf": [".rtf"],
+  "application/vnd.oasis.opendocument.text": [".odt"],
+  "text/asciidoc": [".adoc", ".asciidoc"]
+}
+
+export const SUPPORTED_EXTENSIONS = Object.values(SUPPORTED_FILE_TYPES).flat();
 
 export function KnowledgeDropdown() {
   const { addTask } = useTask();
@@ -80,6 +76,7 @@ export function KnowledgeDropdown() {
   const [showS3Dialog, setShowS3Dialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [awsEnabled, setAwsEnabled] = useState(false);
+  const [uploadBatchSize, setUploadBatchSize] = useState(25);
   const [folderPath, setFolderPath] = useState("");
   const [bucketUrl, setBucketUrl] = useState("s3://");
   const [folderLoading, setFolderLoading] = useState(false);
@@ -103,11 +100,17 @@ export function KnowledgeDropdown() {
   useEffect(() => {
     const checkAvailability = async () => {
       try {
-        // Check AWS
+        // Check AWS and upload batch size
         const awsRes = await fetch("/api/upload_options");
         if (awsRes.ok) {
           const awsData = await awsRes.json();
           setAwsEnabled(Boolean(awsData.aws));
+          if (
+            typeof awsData.upload_batch_size === "number" &&
+            awsData.upload_batch_size > 0
+          ) {
+            setUploadBatchSize(awsData.upload_batch_size);
+          }
         }
 
         // Check cloud connectors
@@ -301,48 +304,84 @@ export function KnowledgeDropdown() {
 
       toast.info(`Processing ${filteredFiles.length} file(s)...`);
 
-      for (const originalFile of filteredFiles) {
-        try {
-          // Extract just the filename without the folder path
-          const fileName =
-            originalFile.name.split("/").pop() || originalFile.name;
-          console.log(
-            `[Folder Upload] Processing file: ${originalFile.name} -> ${fileName}`,
-          );
+      // Create clean File objects (strip folder path from names)
+      const cleanFiles = filteredFiles.map((originalFile) => {
+        const fileName =
+          originalFile.name.split("/").pop() || originalFile.name;
+        return new File([originalFile], fileName, {
+          type: originalFile.type,
+          lastModified: originalFile.lastModified,
+        });
+      });
 
-          // Create a new File object with just the basename (no folder path)
-          // This is necessary because the webkitRelativePath includes the folder name
-          const file = new File([originalFile], fileName, {
-            type: originalFile.type,
-            lastModified: originalFile.lastModified,
-          });
-          console.log(`[Folder Upload] Created new File object:`, {
-            name: file.name,
-            type: file.type,
-            size: file.size,
-          });
-
-          // Check for duplicates using the clean filename
-          const checkData = await duplicateCheck(file);
-          console.log(`[Folder Upload] Duplicate check result:`, checkData);
-
-          if (!checkData.exists) {
-            console.log(`[Folder Upload] Uploading file: ${fileName}`);
-            await uploadFileUtil(file, false);
-            console.log(`[Folder Upload] Successfully uploaded: ${fileName}`);
-          } else {
-            console.log(`[Folder Upload] Skipping duplicate: ${fileName}`);
+      // Check all files for duplicates in parallel
+      const duplicateResults = await Promise.all(
+        cleanFiles.map(async (file) => {
+          try {
+            const checkData = await duplicateCheck(file);
+            return { file, isDuplicate: checkData.exists };
+          } catch (error) {
+            console.error(
+              `[Folder Upload] Duplicate check failed for ${file.name}:`,
+              error,
+            );
+            // On error, include the file (let the server handle it)
+            return { file, isDuplicate: false };
           }
-        } catch (error) {
-          console.error(
-            `[Folder Upload] Failed to upload ${originalFile.name}:`,
-            error,
+        }),
+      );
+
+      const nonDuplicateFiles = duplicateResults
+        .filter((r) => !r.isDuplicate)
+        .map((r) => r.file);
+      const skippedCount = duplicateResults.filter((r) => r.isDuplicate).length;
+
+      if (skippedCount > 0) {
+        console.log(
+          `[Folder Upload] Skipping ${skippedCount} duplicate file(s)`,
+        );
+      }
+
+      if (nonDuplicateFiles.length === 0) {
+        toast.info("All files already exist, nothing to upload.");
+        return;
+      }
+
+      // Chunk non-duplicate files into batches
+      const batches: File[][] = [];
+      for (let i = 0; i < nonDuplicateFiles.length; i += uploadBatchSize) {
+        batches.push(nonDuplicateFiles.slice(i, i + uploadBatchSize));
+      }
+
+      console.log(
+        `[Folder Upload] Uploading ${nonDuplicateFiles.length} file(s) in ${batches.length} batch(es)`,
+      );
+
+      // Upload each batch as a single task
+      for (const batch of batches) {
+        try {
+          const result = await uploadFiles(batch, false);
+          addTask(result.taskId);
+          console.log(
+            `[Folder Upload] Batch uploaded: taskId=${result.taskId}, files=${result.fileCount}`,
           );
+        } catch (error) {
+          console.error("[Folder Upload] Batch upload failed:", error);
+          toast.error("Batch upload failed", {
+            description:
+              error instanceof Error ? error.message : "Unknown error",
+          });
         }
       }
 
       refetchTasks();
-      toast.success(`Successfully processed ${filteredFiles.length} file(s)`);
+
+      const processedCount = nonDuplicateFiles.length;
+      const message =
+        skippedCount > 0
+          ? `Processed ${processedCount} file(s), skipped ${skippedCount} duplicate(s)`
+          : `Successfully processed ${processedCount} file(s)`;
+      toast.success(message);
     } catch (error) {
       console.error("Folder upload error:", error);
       toast.error("Folder upload failed", {

@@ -4,6 +4,7 @@ slug: /agents
 ---
 
 import Icon from "@site/src/components/icon/icon";
+import PartialEditAgentFlow from '@site/docs/_partial-edit-agent-flow.mdx';
 
 OpenRAG includes a built-in [Langflow](https://docs.langflow.org/) instance for creating and managing functional application workflows called _flows_.
 In a flow, the individual workflow steps are represented by [_components_](https://docs.langflow.org/concepts-components) that are connected together to form a complete process.
@@ -20,34 +21,31 @@ You can customize these flows and create your own flows using OpenRAG's embedded
 
 All OpenRAG flows are designed to be modular, performant, and provider-agnostic.
 
-To modify a flow in OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
-From here, you can quickly edit commonly used parameters, such as the **Language model** and **Agent Instructions**.
-To further explore and edit the flow, click **Edit in Langflow** to launch the embedded [Langflow visual editor](https://docs.langflow.org/concepts-overview) where you can fully [customize the flow](https://docs.langflow.org/concepts-flows) to suit your use case.
+To view and modify a flow in OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+From here, you can manage cloud storage connectors, model providers, and common parameters for the **Agent** and **Knowledge Ingestion** flows.
 
-For example, to view and edit the built-in **Chat** flow (the **OpenRAG OpenSearch Agent** flow), do the following:
+To further explore and edit flows, click **Edit in Langflow** to launch the embedded [Langflow visual editor](https://docs.langflow.org/concepts-overview) where you can fully [customize the flow](https://docs.langflow.org/concepts-flows) to suit your use case.
 
-1. In OpenRAG, click <Icon name="MessageSquare" aria-hidden="true"/> **Chat**.
+:::tip
+After you click **Edit in Langflow**, you can access and edit all of OpenRAG's built-in flows from the Langflow editor's [**Projects** page](https://docs.langflow.org/concepts-flows#projects).
+You can also create your own flows.
 
-2. Click <Icon name="Settings2" aria-hidden="true"/> **Settings**, and then click **Edit in Langflow** to launch the Langflow visual editor in a new browser window.
+To edit any flow, you must first [unlock the flow](https://docs.langflow.org/concepts-flows#lock-a-flow).
 
-   If prompted to acknowledge that you are entering Langflow, click **Proceed**.
+If you edit any flows other than the **Agent** or **Knowledge Ingestion** flows, it is recommended that you [export the flows](https://docs.langflow.org/concepts-flows-import) before editing so you can revert them to their original state if needed.
+:::
 
-   If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from your [OpenRAG `.env` file](/reference/configuration).
+For example, the following steps explain how to edit the built-in **Agent** flow, which is the **OpenRAG OpenSearch Agent** flow used for the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat**:
 
-   ![OpenRAG OpenSearch Agent flow](/img/opensearch-agent-flow.png)
-
-3. Modify the flow as desired, and then press <kbd>Command</kbd>+<kbd>S</kbd> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to save your changes.
-
-   You can close the Langflow browser window, or leave it open if you want to continue experimenting with the flow editor.
-
-   :::tip
-   If you modify the built-in **Chat** flow, make sure you click <Icon name="Plus" aria-hidden="true"/> in the **Conversations** tab to start a new conversation. This ensures that the chat doesn't persist any context from the previous conversation with the original flow settings.
-   :::
+<PartialEditAgentFlow />
 
 ### Revert a built-in flow to its original configuration {#revert-a-built-in-flow-to-its-original-configuration}
 
-After you edit a built-in flow, you can click **Restore flow** on the **Settings** page to revert the flow to its original state when you first installed OpenRAG.
+After you edit the **Agent** or **Knowledge Ingestion** built-in flows, you can click **Restore flow** on the **Settings** page to revert either flow to its original state when you first installed OpenRAG.
 This is a destructive action that discards all customizations to the flow.
+
+This option isn't available for other built-in flows such as the **Nudges** flow.
+To restore these flows to their original state, you must reimport the flow from a backup (if you exported one before editing), or [reset](/manage-services#reset-containers) or [reinstall](/reinstall) OpenRAG.
 
 ## Build custom flows and use other Langflow functionality
 

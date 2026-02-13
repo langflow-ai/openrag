@@ -41,12 +41,27 @@ export interface ProviderSettings {
   };
 }
 
+export interface OnboardingState {
+  current_step?: number;
+  assistant_message?: {
+    role: string;
+    content: string;
+    timestamp: string;
+  } | null;
+  selected_nudge?: string | null;
+  card_steps?: Record<string, unknown> | null;
+  upload_steps?: Record<string, unknown> | null;
+  openrag_docs_filter_id?: string | null;
+  user_doc_filter_id?: string | null;
+}
+
 export interface Settings {
   langflow_url?: string;
   flow_id?: string;
   ingest_flow_id?: string;
   langflow_public_url?: string;
   edited?: boolean;
+  onboarding?: OnboardingState;
   providers?: ProviderSettings;
   knowledge?: KnowledgeSettings;
   agent?: AgentSettings;

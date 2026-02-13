@@ -3,6 +3,8 @@ title: Use the TUI
 slug: /tui
 ---
 
+import PartialGpuModeTip from '@site/docs/_partial-gpu-mode-tip.mdx';
+
 The OpenRAG Terminal User Interface (TUI) provides a simplified and guided experience for configuring, managing, and monitoring your OpenRAG deployment directly from the terminal.
 
 ![OpenRAG TUI Interface](@site/static/img/openrag_tui_dec_2025.png)
@@ -18,14 +20,21 @@ If you installed OpenRAG with `uv`, access the TUI with `uv run openrag`.
 
 If you installed OpenRAG with the automatic installer script or `uvx`, access the TUI with `uvx openrag`.
 
-## Navigate the TUI
-
 You can navigate the TUI with your mouse or keyboard.
 Keyboard shortcuts for additional menus are printed at the bottom of the TUI screen.
 
 ## Manage services with the TUI
 
+:::tip
+A Docker or Podman VM must be running before you start OpenRAG.
+
+For example, on macOS with Podman, open the Podman Desktop app before you start OpenRAG.
+:::
+
+In the TUI, click **Start OpenRAG** to start the OpenRAG services.
+
 Use the TUI's **Status** page to access controls and information for your OpenRAG services.
+
 For more information, see [Manage OpenRAG services](/manage-services).
 
 ## Toggle GPU/CPU mode
@@ -35,6 +44,10 @@ You can toggle between GPU and CPU mode from within the TUI if your system has c
 In the TUI, click **Status**, and then click **Switch to GPU Mode** or **Switch to CPU Mode**.
 
 This change requires restarting all OpenRAG services because each mode has its own `docker-compose` file.
+
+:::tip
+<PartialGpuModeTip />
+:::
 
 ## Exit the OpenRAG TUI
 
