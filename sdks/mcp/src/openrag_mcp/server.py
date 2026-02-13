@@ -1,5 +1,6 @@
 """OpenRAG MCP Server - Main server setup and entry point."""
-#TODO: utilize the SDK directly so that any changes in parameters in SDK directky reflects the MCP
+# Note: The MCP server is currently configured explicitly rather than being driven
+# directly by the OpenRAG SDK, so changes to SDK parameters must be reflected here manually.
 
 import asyncio
 import logging
