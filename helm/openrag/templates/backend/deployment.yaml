@@ -119,6 +119,8 @@ spec:
             # Feature flags
             - name: DISABLE_INGEST_WITH_LANGFLOW
               value: {{ .Values.backend.features.disableIngestWithLangflow | quote }}
+            - name: INGEST_SAMPLE_DATA
+              value: {{ .Values.backend.features.ingestSampleData | quote }}
             # LLM Provider keys
             {{- if .Values.llmProviders.openai.enabled }}
             - name: OPENAI_API_KEY

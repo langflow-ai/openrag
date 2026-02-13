@@ -168,6 +168,7 @@ backend:
   # Feature flags
   features:
     disableIngestWithLangflow: false      # Set true to use traditional processor instead of Langflow
+    ingestSampleData: true                # Set true to ingest sample data on startup
 
   # Langflow public URL (for UI links to Langflow)
   langflowPublicUrl: ""                   # e.g., "https://langflow.example.com"

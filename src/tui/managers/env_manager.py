@@ -69,6 +69,7 @@ class EnvConfig:
     # Ingestion settings
     disable_ingest_with_langflow: str = "False"
     nudges_flow_id: str = "ebc01d31-1976-46ce-a385-b0240327226c"
+    ingest_sample_data: str = "True"
 
     # Document paths (comma-separated) - use centralized location by default
     openrag_documents_paths: str = "$HOME/.openrag/documents"
@@ -197,6 +198,7 @@ class EnvManager:
             "LANGFLOW_NEW_USER_IS_ACTIVE": "langflow_new_user_is_active",
             "LANGFLOW_ENABLE_SUPERUSER_CLI": "langflow_enable_superuser_cli",
             "DISABLE_INGEST_WITH_LANGFLOW": "disable_ingest_with_langflow",
+            "INGEST_SAMPLE_DATA": "ingest_sample_data",
             "OPENRAG_VERSION": "openrag_version",
             "LANGFUSE_SECRET_KEY": "langfuse_secret_key",  # pragma: allowlist secret
             "LANGFUSE_PUBLIC_KEY": "langfuse_public_key",  # pragma: allowlist secret
@@ -456,6 +458,7 @@ class EnvManager:
                 # Ingestion settings
                 f.write("# Ingestion settings\n")
                 f.write(f"DISABLE_INGEST_WITH_LANGFLOW={self._quote_env_value(self.config.disable_ingest_with_langflow)}\n")
+                f.write(f"INGEST_SAMPLE_DATA={self._quote_env_value(self.config.ingest_sample_data)}\n")
                 f.write("\n")
 
                 # Langflow auth settings
@@ -598,6 +601,12 @@ class EnvManager:
                 "disable_ingest_with_langflow",
                 "Disable Langflow Ingestion (optional)",
                 "False",
+                False,
+            ),
+            (
+                "ingest_sample_data",
+                "Ingest Sample Data (optional)",
+                "True",
                 False,
             ),
             (
