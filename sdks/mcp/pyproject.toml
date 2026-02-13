@@ -1,7 +1,7 @@
 [project]
 name = "openrag-mcp"
-version = "0.2.1"
-description = "MCP server for OpenRAG - Chat, Search, and Ingest documents"
+version = "0.1.0"
+description = "MCP server for OpenRAG"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
