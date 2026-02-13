@@ -66,6 +66,16 @@ Document ingestion and management tools (`openrag_ingest_file`, `openrag_ingest_
 | `OPENRAG_API_KEY` | Your OpenRAG API key | Yes | — |
 | `OPENRAG_URL` | Base URL of your OpenRAG instance | No | `http://localhost:3000` |
 
+**MCP HTTP client (optional):**
+
+| Variable | Description | Required | Default |
+|:---------|:------------|:--------:|:--------|
+| `OPENRAG_MCP_TIMEOUT` | Request timeout in seconds | No | `60.0` |
+| `OPENRAG_MCP_MAX_CONNECTIONS` | Maximum concurrent connections | No | `100` |
+| `OPENRAG_MCP_MAX_KEEPALIVE_CONNECTIONS` | Maximum keepalive connections | No | `20` |
+| `OPENRAG_MCP_MAX_RETRIES` | Maximum retry attempts for failed requests | No | `3` |
+| `OPENRAG_MCP_FOLLOW_REDIRECTS` | Whether to follow HTTP redirects | No | `true` |
+
 These must be set in the environment when the MCP server runs (e.g. in the `env` block of your MCP client config).
 
 ---
