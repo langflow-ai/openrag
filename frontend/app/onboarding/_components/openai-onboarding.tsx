@@ -18,16 +18,12 @@ import { AdvancedOnboarding } from "./advanced";
 
 export function OpenAIOnboarding({
   setSettings,
-  sampleDataset,
-  setSampleDataset,
   setIsLoadingModels,
   isEmbedding = false,
   hasEnvApiKey = false,
   alreadyConfigured = false,
 }: {
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-  sampleDataset: boolean;
-  setSampleDataset: (dataset: boolean) => void;
   setIsLoadingModels?: (isLoading: boolean) => void;
   isEmbedding?: boolean;
   hasEnvApiKey?: boolean;
@@ -48,8 +44,8 @@ export function OpenAIOnboarding({
     getFromEnv
       ? { apiKey: "" }
       : debouncedApiKey
-      ? { apiKey: debouncedApiKey }
-      : undefined,
+        ? { apiKey: debouncedApiKey }
+        : undefined,
     {
       // Only validate when the user opts in (env) or provides a key.
       // If a key was previously configured, let the user decide to reuse or replace it
@@ -66,9 +62,6 @@ export function OpenAIOnboarding({
     languageModels,
     embeddingModels,
   } = useModelSelection(modelsData, isEmbedding);
-  const handleSampleDatasetChange = (dataset: boolean) => {
-    setSampleDataset(dataset);
-  };
 
   const handleGetFromEnvChange = (fromEnv: boolean) => {
     setGetFromEnv(fromEnv);
@@ -167,9 +160,7 @@ export function OpenAIOnboarding({
         embeddingModels={embeddingModels}
         languageModel={languageModel}
         embeddingModel={embeddingModel}
-        sampleDataset={sampleDataset}
         setLanguageModel={setLanguageModel}
-        setSampleDataset={handleSampleDatasetChange}
         setEmbeddingModel={setEmbeddingModel}
       />
     </>

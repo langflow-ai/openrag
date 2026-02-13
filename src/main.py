@@ -61,7 +61,7 @@ from auth_middleware import optional_auth, require_auth
 from api_key_middleware import require_api_key
 from services.api_key_service import APIKeyService
 from api import keys as api_keys
-from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings, knowledge_filters as v1_knowledge_filters
+from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings, models as v1_models, knowledge_filters as v1_knowledge_filters
 
 # Configuration and setup
 from config.settings import (
@@ -365,11 +365,7 @@ async def ingest_default_documents_when_ready(services):
         await TelemetryClient.send_event(Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_START)
         base_dir = _get_documents_dir()
         if not os.path.isdir(base_dir):
-            logger.info(
-                "Default documents directory not found; skipping ingestion",
-                base_dir=base_dir,
-            )
-            return
+            raise FileNotFoundError(f"Default documents directory not found: {base_dir}")
 
         # Collect files recursively, excluding warmup files
         file_paths = [
@@ -380,10 +376,7 @@ async def ingest_default_documents_when_ready(services):
         ]
 
         if not file_paths:
-            logger.info(
-                "No default documents found; nothing to ingest", base_dir=base_dir
-            )
-            return
+            raise FileNotFoundError(f"No default documents found in {base_dir}")
 
         if DISABLE_INGEST_WITH_LANGFLOW:
             await _ingest_default_documents_openrag(services, file_paths)
@@ -395,6 +388,7 @@ async def ingest_default_documents_when_ready(services):
     except Exception as e:
         logger.error("Default documents ingestion failed", error=str(e))
         await TelemetryClient.send_event(Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_FAILED)
+        raise
 
 
 async def _ingest_default_documents_langflow(services, file_paths):
@@ -1490,6 +1484,16 @@ async def create_app():
                 )
             ),
             methods=["POST"],
+        ),
+        Route(
+            "/v1/models/{provider}",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_models.list_models_endpoint,
+                    models_service=services["models_service"],
+                )
+            ),
+            methods=["GET"],
         ),
         # Knowledge filters endpoints
         Route(
