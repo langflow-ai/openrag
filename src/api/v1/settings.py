@@ -43,12 +43,16 @@ async def get_settings_endpoint(request: Request):
             "agent": {
                 "llm_provider": config.agent.llm_provider,
                 "llm_model": config.agent.llm_model,
+                "system_prompt": config.agent.system_prompt,
             },
             "knowledge": {
                 "embedding_provider": config.knowledge.embedding_provider,
                 "embedding_model": config.knowledge.embedding_model,
                 "chunk_size": config.knowledge.chunk_size,
                 "chunk_overlap": config.knowledge.chunk_overlap,
+                "table_structure": config.knowledge.table_structure,
+                "ocr": config.knowledge.ocr,
+                "picture_descriptions": config.knowledge.picture_descriptions,
             },
         }
 
