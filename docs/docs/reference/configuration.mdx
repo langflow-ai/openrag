@@ -111,7 +111,6 @@ For better security, it is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so t
 
 <!-- | `LANGFLOW_KEY` | Automatically generated | A Langflow API key to run flows with Langflow API calls. Because Langflow API keys are server-specific, allow OpenRAG to generate this key initially. You can create additional Langflow API keys after deploying OpenRAG. | -->
 <!-- | `LANGFLOW_URL` | `http://localhost:7860` | URL for the Langflow instance. | -->
-<!-- | `SYSTEM_PROMPT` | `You are a helpful AI assistant with access to a knowledge base. Answer questions based on the provided context.` | System prompt instructions for the agent driving the **Agent** flow (OpenRAG **Chat**). | -->
 <!-- | `LANGFLOW_KEY_RETRIES` | `15` | Number of retries for Langflow key generation. | -->
 <!-- | `LANGFLOW_KEY_RETRY_DELAY` | `2.0` | Delay between retries in seconds. | -->
 <!-- | `LANGFLOW_VERSION` | `OPENRAG_VERSION` | Langflow Docker image version. By default, OpenRAG uses the `OPENRAG_VERSION` for the Langflow Docker image version. | -->
@@ -139,7 +138,8 @@ Configure OpenSearch database authentication.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENSEARCH_DATA_PATH` | `./opensearch-data` | The path where OpenRAG creates your OpenSearch index data. This persists through updates. |
-| `OPENSEARCH_PASSWORD` | Must be set during setup or in the Dockerfile. | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the TUI's [**Basic/Advanced Setup**](/install-uvx#setup). |
+| `OPENSEARCH_PASSWORD` | Not set | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the TUI's [**Basic/Advanced Setup**](/install-uvx#setup). |
+| `OPENSEARCH_INDEX_NAME` | `documents` | The name of the [OpenSearch index](/knowledge#index). |
 
 <!-- | `OPENSEARCH_HOST` | `localhost` | OpenSearch service host. | -->
 <!-- | `OPENSEARCH_PORT` | `9200` | OpenSearch service port. | [if not configurable, edit other instances of OPENSEARCH_PORT in the docs] -->
