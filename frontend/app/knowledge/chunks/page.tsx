@@ -16,6 +16,7 @@ import {
 // import { Label } from "@/components/ui/label";
 // import { Checkbox } from "@/components/ui/checkbox";
 import { KnowledgeSearchInput } from "@/components/knowledge-search-input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const getFileTypeLabel = (mimetype: string) => {
   if (mimetype === "application/pdf") return "PDF";
@@ -42,7 +43,7 @@ function ChunksPageContent() {
   const averageChunkLength = useMemo(
     () =>
       chunks.reduce((acc, chunk) => acc + chunk.text.length, 0) /
-        chunks.length || 0,
+      chunks.length || 0,
     [chunks],
   );
 
@@ -355,18 +356,25 @@ function ChunksPageContent() {
                           Allowed users
                         </dt>
                         <dd className="mt-1 text-sm/6 text-gray-800 dark:text-gray-100 sm:col-span-2 sm:mt-0">
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             {fileData.allowed_users.map((user, idx) => (
                               <div
                                 key={user ?? idx}
-                                className="flex items-center gap-2"
+                                className="flex items-center gap-2 overflow-hidden w-full"
                               >
-                                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+                                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
                                   <span className="text-xs font-medium text-blue-800 dark:text-blue-200">
                                     {user?.charAt(0).toUpperCase()}
                                   </span>
                                 </span>
-                                <span className="text-sm break-all">{user}</span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="text-sm break-all truncate">{user}</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {user}
+                                  </TooltipContent>
+                                </Tooltip>
                               </div>
                             ))}
                           </div>

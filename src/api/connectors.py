@@ -1,9 +1,9 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from connectors.sharepoint.utils import is_valid_sharepoint_url
+from config.settings import get_index_name
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
-from config.settings import INDEX_NAME
 
 logger = get_logger(__name__)
 
@@ -49,7 +49,7 @@ async def get_synced_file_ids_for_connector(
         }
         
         result = await opensearch_client.search(
-            index=INDEX_NAME,
+            index=get_index_name(),
             body=query_body
         )
         

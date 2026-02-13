@@ -143,12 +143,12 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
         sys.modules.pop(mod, None)
     from src.main import create_app, startup_tasks
     import src.api.router as upload_router
-    from src.config.settings import clients, INDEX_NAME, DISABLE_INGEST_WITH_LANGFLOW
+    from src.config.settings import clients, get_index_name, DISABLE_INGEST_WITH_LANGFLOW
 
     # Ensure a clean index before startup
     await clients.initialize()
     try:
-        await clients.opensearch.indices.delete(index=INDEX_NAME)
+        await clients.opensearch.indices.delete(index=get_index_name())
         # Wait for deletion to complete
         await asyncio.sleep(1)
     except Exception:
@@ -164,7 +164,7 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
 
     # Verify index is truly empty after startup
     try:
-        count_response = await clients.opensearch.count(index=INDEX_NAME)
+        count_response = await clients.opensearch.count(index=get_index_name())
         doc_count = count_response.get('count', 0)
         assert doc_count == 0, f"Index should be empty after startup but contains {doc_count} documents"
     except Exception as e:
@@ -480,11 +480,11 @@ async def test_search_multi_embedding_models(
         sys.modules.pop(mod, None)
 
     from src.main import create_app, startup_tasks
-    from src.config.settings import clients, INDEX_NAME
+    from src.config.settings import clients, get_index_name
 
     await clients.initialize()
     try:
-        await clients.opensearch.indices.delete(index=INDEX_NAME)
+        await clients.opensearch.indices.delete(index=get_index_name())
         await asyncio.sleep(1)
     except Exception:
         pass
@@ -626,12 +626,12 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
         sys.modules.pop(mod, None)
     from src.main import create_app, startup_tasks
     import src.api.router as upload_router
-    from src.config.settings import clients, INDEX_NAME, DISABLE_INGEST_WITH_LANGFLOW
+    from src.config.settings import clients, get_index_name, DISABLE_INGEST_WITH_LANGFLOW
 
     # Ensure a clean index before startup
     await clients.initialize()
     try:
-        await clients.opensearch.indices.delete(index=INDEX_NAME)
+        await clients.opensearch.indices.delete(index=get_index_name())
         # Wait for deletion to complete
         await asyncio.sleep(1)
     except Exception:
@@ -646,7 +646,7 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
 
     # Verify index is truly empty after startup
     try:
-        count_response = await clients.opensearch.count(index=INDEX_NAME)
+        count_response = await clients.opensearch.count(index=get_index_name())
         doc_count = count_response.get('count', 0)
         assert doc_count == 0, f"Index should be empty after startup but contains {doc_count} documents"
     except Exception as e:

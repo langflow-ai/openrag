@@ -48,24 +48,31 @@ def configure_logging(
         console_renderer = structlog.processors.JSONRenderer()
     else:
         # Custom clean format: timestamp path/file:loc logentry
+        LOC_WIDTH_SHORT = 30
+        LOC_WIDTH_LONG = 60
+
         def custom_formatter(logger, log_method, event_dict):
             timestamp = event_dict.pop("timestamp", "")
             pathname = event_dict.pop("pathname", "")
             filename = event_dict.pop("filename", "")
             lineno = event_dict.pop("lineno", "")
-            level = event_dict.pop("level", "")
+            level = event_dict.pop("level", "").upper()
 
-            # Build file location - prefer pathname for full path, fallback to filename
-            if pathname and lineno:
-                location = f"{pathname}:{lineno}"
-            elif filename and lineno:
+            if filename and lineno:
                 location = f"{filename}:{lineno}"
-            elif pathname:
-                location = pathname
+                loc_width = LOC_WIDTH_SHORT
+            elif pathname and lineno:
+                location = f"{pathname}:{lineno}"
+                loc_width = LOC_WIDTH_LONG
             elif filename:
                 location = filename
+                loc_width = LOC_WIDTH_SHORT
+            elif pathname:
+                location = pathname
+                loc_width = LOC_WIDTH_LONG
             else:
                 location = "unknown"
+                loc_width = LOC_WIDTH_SHORT
 
             # Build the main message
             message_parts = []
@@ -73,14 +80,18 @@ def configure_logging(
             if event:
                 message_parts.append(event)
 
-            # Add any remaining context
-            for key, value in event_dict.items():
-                if key not in ["service", "func_name"]:  # Skip internal fields
-                    message_parts.append(f"{key}={value}")
+            header = f"[{timestamp}] [{level:<7}] [{location:<{loc_width}}] "
 
-            message = " ".join(message_parts)
+            # Add any remaining context as indented multi-line fields
+            extra = {k: v for k, v in event_dict.items() if k not in ["service", "func_name"]}
+            if extra:
+                padding = " " * len(header)
+                for key, value in extra.items():
+                    message_parts.append(f"\n{padding}- {key}: {value}")
 
-            return f"{timestamp} {location} {message}"
+            message = "".join(message_parts)
+
+            return f"{header}{message}"
 
         console_renderer = custom_formatter
 

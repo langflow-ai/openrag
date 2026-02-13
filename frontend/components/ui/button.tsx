@@ -12,7 +12,7 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
-          "border border-border hover:bg-muted hover:text-accent-foreground disabled:bg-muted disabled:!border-none",
+          "border border-border hover:bg-muted hover:text-accent-foreground disabled:bg-muted disabled:!border-muted",
         primary:
           "border bg-background text-secondary-foreground hover:bg-muted hover:shadow-sm",
         warning: "bg-warning text-warning-foreground hover:bg-warning/90",
@@ -53,7 +53,7 @@ function toTitleCase(text: string) {
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+  VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   loading?: boolean;
   ignoreTitleCase?: boolean;

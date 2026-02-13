@@ -154,10 +154,12 @@ Configure general system components, session management, and logging.
 | `FRONTEND_PORT` | `3000` | Host port for the OpenRAG frontend web interface. Change this if port 3000 is already in use on your system. |
 | `OPENRAG_VERSION` | `latest` | The version of the OpenRAG Docker images to run. For more information, see [Upgrade OpenRAG](/upgrade) |
 | `NEXT_ALLOWED_DEV_ORIGINS` | `http://localhost:3000` | Only used when [running OpenRAG in development mode](/support/contribute). Accepts a comma-separated list of hostnames to allow additional origins to make requests to the Next.js development server. |
+| `MAX_WORKERS` | `min(4, CPU_COUNT // 2)` | Number of Backend worker processes for concurrent request handling. |
+| `LANGFLOW_WORKERS` | `1` | Number of Langflow worker processes for concurrent request handling. |
+| `DOCLING_WORKERS` | `1` | Number of Docling worker processes for concurrent request handling. |
 
 <!-- | `LOG_FORMAT` | Not set | Set to `json` to enabled JSON-formatted log output. If this variable isn't set, then the default logging format is used. | -->
 <!-- | `LOG_LEVEL` | `INFO` | Logging level. Can be one of `DEBUG`, `INFO`, `WARNING`, or `ERROR`. `DEBUG` provides the most detailed logs but can impact performance. | -->
-<!-- | `MAX_WORKERS` | `1` | Maximum number of workers for document processing. | -->
 <!-- | `SERVICE_NAME` | `openrag` | Service name for logging. | -->
 <!-- | `SESSION_SECRET` | Automatically generated | Session management. | -->
 <!-- TBD: OPENRAG_VERSION -->
