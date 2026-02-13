@@ -18,15 +18,11 @@ import { AdvancedOnboarding } from "./advanced";
 
 export function AnthropicOnboarding({
   setSettings,
-  sampleDataset,
-  setSampleDataset,
   setIsLoadingModels,
   isEmbedding = false,
   hasEnvApiKey = false,
 }: {
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-  sampleDataset: boolean;
-  setSampleDataset: (dataset: boolean) => void;
   setIsLoadingModels?: (isLoading: boolean) => void;
   isEmbedding?: boolean;
   hasEnvApiKey?: boolean;
@@ -57,9 +53,6 @@ export function AnthropicOnboarding({
     languageModels,
     embeddingModels,
   } = useModelSelection(modelsData, isEmbedding);
-  const handleSampleDatasetChange = (dataset: boolean) => {
-    setSampleDataset(dataset);
-  };
 
   const handleGetFromEnvChange = (fromEnv: boolean) => {
     setGetFromEnv(fromEnv);
@@ -144,9 +137,7 @@ export function AnthropicOnboarding({
         embeddingModels={embeddingModels}
         languageModel={languageModel}
         embeddingModel={embeddingModel}
-        sampleDataset={sampleDataset}
         setLanguageModel={setLanguageModel}
-        setSampleDataset={handleSampleDatasetChange}
         setEmbeddingModel={setEmbeddingModel}
       />
     </>

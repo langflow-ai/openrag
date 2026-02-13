@@ -12,16 +12,12 @@ import { ModelSelector } from "./model-selector";
 
 export function OllamaOnboarding({
   setSettings,
-  sampleDataset,
-  setSampleDataset,
   setIsLoadingModels,
   isEmbedding = false,
   alreadyConfigured = false,
   existingEndpoint,
 }: {
   setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-  sampleDataset: boolean;
-  setSampleDataset: (dataset: boolean) => void;
   setIsLoadingModels?: (isLoading: boolean) => void;
   isEmbedding?: boolean;
   alreadyConfigured?: boolean;

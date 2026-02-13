@@ -15,8 +15,6 @@ export function AdvancedOnboarding({
   embeddingModel,
   setLanguageModel,
   setEmbeddingModel,
-  sampleDataset,
-  setSampleDataset,
 }: {
   icon?: React.ReactNode;
   languageModels?: { value: string; label: string }[];
@@ -25,8 +23,6 @@ export function AdvancedOnboarding({
   embeddingModel?: string;
   setLanguageModel?: (model: string) => void;
   setEmbeddingModel?: (model: string) => void;
-  sampleDataset: boolean;
-  setSampleDataset: (dataset: boolean) => void;
 }) {
   const hasEmbeddingModels =
     embeddingModels !== undefined &&
