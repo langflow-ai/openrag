@@ -211,7 +211,11 @@ class SessionManager:
             "user_roles": ["openrag_user"],  # compatible with OpenSearch's roles_key
         }
 
-        token = jwt.encode(token_payload, self.private_key, algorithm=self.algorithm)
+        # Check for token from environment variable first
+        token = os.getenv("OPENSEARCH_JWT_TOKEN")
+        if not token:
+            # If no env token, generate using JWT
+            token = jwt.encode(token_payload, self.private_key, algorithm=self.algorithm)
         return token
 
     def verify_token(self, token: str) -> Optional[Dict[str, Any]]:

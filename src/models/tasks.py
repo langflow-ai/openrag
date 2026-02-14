@@ -1,7 +1,8 @@
+import itertools
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Optional
+from typing import ClassVar, Dict, Optional
 
 
 class TaskStatus(Enum):
@@ -30,6 +31,8 @@ class FileTask:
 
 @dataclass
 class UploadTask:
+    _id_counter: ClassVar[itertools.count] = itertools.count(1)
+
     task_id: str
     total_files: int
     processed_files: int = 0
@@ -39,7 +42,15 @@ class UploadTask:
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
-    
+    _sequence_number: int = field(init=False, repr=False)
+
+    def __post_init__(self):
+        self._sequence_number = next(UploadTask._id_counter)
+
+    @property
+    def sequence_number(self) -> int:
+        return self._sequence_number
+
     @property
     def duration_seconds(self) -> float:
         """Duration in seconds from creation to last update"""

@@ -187,8 +187,6 @@ async def create_dynamic_index_body(
                 "owner": {"type": "keyword"},
                 "allowed_users": {"type": "keyword"},
                 "allowed_groups": {"type": "keyword"},
-                "user_permissions": {"type": "object"},
-                "group_permissions": {"type": "object"},
                 "created_time": {"type": "date"},
                 "modified_time": {"type": "date"},
                 "indexed_time": {"type": "date"},

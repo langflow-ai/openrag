@@ -6,22 +6,20 @@ slug: /ingestion
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
-import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 import PartialIngestionFlow from '@site/docs/_partial-ingestion-flow.mdx';
-import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
-import PartialDockerStopAll from '@site/docs/_partial-docker-stop-all.mdx';
-import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
+import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 
-Upload documents to your [OpenRAG OpenSearch instance](/knowledge) to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
-Documents are processed through OpenRAG's knowledge ingestion flows with Docling.
+Upload documents to your [OpenRAG OpenSearch knowledge base](/knowledge) to populate your knowledge base with unique content, such as your own company documents, research papers, or websites.
 
 OpenRAG can ingest knowledge from direct file uploads, URLs, and cloud storage connectors.
 
-Knowledge ingestion is powered by OpenRAG's built-in knowledge ingestion flows that use Docling to process documents before storing the documents in your OpenSearch database.
-During ingestion, documents are broken into smaller chunks of content that are then embedded using your selected [embedding model](/knowledge#set-the-embedding-model-and-dimensions).
-Then, the chunks, embeddings, and associated metadata (which connects chunks of the same document) are stored in your OpenSearch database.
+Knowledge ingestion is powered by OpenRAG's built-in knowledge ingestion flows that use Docling to process documents before storing the documents in your OpenSearch knowledge base.
 
-To modify chunking behavior and other ingestion settings, see [Knowledge ingestion settings](/knowledge#knowledge-ingestion-settings) and [Inspect and modify flows](/agents#inspect-and-modify-flows).
+During ingestion, documents are broken into smaller chunks of content.
+Embeddings are generated for each chunk so the documents can be retrieved through similarity search during [chat](/chat), which is a standard retrieval augmented generation (RAG) pattern.
+The chunks, embeddings, and associated metadata (which connect chunks of the same document) are stored in your OpenSearch knowledge base.
+
+To modify chunking behavior, embedding model, and other ingestion settings, see [Configure ingestion](/ingestion-configure).
 
 ## Ingest local files and folders
 
@@ -34,7 +32,7 @@ You can upload files and folders from your local machine to your knowledge base:
 3. To upload one file, click <Icon name="File" aria-hidden="true"/> **File**. To upload all documents in a folder, click <Icon name="Folder" aria-hidden="true"/> **Folder**.
 
    The default path is `~/.openrag/documents`.
-   To change this path, see [Set the local documents path](/knowledge#set-the-local-documents-path).
+   To change this path, see [Set the local documents path](/ingestion-configure#set-the-local-documents-path).
 
 The selected files are processed in the background through the **OpenSearch Ingestion** flow.
 
@@ -42,118 +40,53 @@ The selected files are processed in the background through the **OpenSearch Inge
 
 You can [monitor ingestion](#monitor-ingestion) to see the progress of the uploads and check for failed uploads.
 
-## Ingest local files temporarily
+### Supported file types {#supported-file-types}
+
+When ingesting from the local file system or cloud storage connectors, OpenRAG supports the following file types:
+
+* .adoc
+* .asciidoc
+* .bmp
+* .csv
+* .doc
+* .docx
+* .gif
+* .htm
+* .html
+* .jpeg
+* .jpg
+* .md
+* .odt
+* .pdf
+* .png
+* .ppt
+* .pptx
+* .rtf
+* .tiff
+* .txt
+* .webp
+* .xls
+* .xlsx
+
+<!-- TBD: .vtt, .mdx supported? -->
+
+### Ingest local files temporarily
 
 <PartialTempKnowledge />
 
-## Ingest files with cloud storage connectors {#oauth-ingestion}
+## Ingest files from cloud storage {#oauth-ingestion}
 
-OpenRAG can use cloud storage connectors to ingest documents from the following external services:
+To ingest knowledge from cloud storage using an OpenRAG cloud storage connector, do the following:
 
-* AWS S3
-* Google Drive
-* Microsoft OneDrive
-* Microsoft Sharepoint
+1. [Configure a cloud storage connector](/knowledge-connectors).
 
-These connectors enable seamless ingestion of files from cloud storage to your OpenRAG knowledge base.
+2. Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to view your OpenSearch knowledge base.
 
-OAuth credentials are used to authorize access to cloud storage services.
+3. Click **Add Knowledge**, and then select a storage provider.
 
-### Configure cloud storage connectors
+4. On the **Add Cloud Knowledge** page, click **Add Files**, and then select the files and folders to ingest from the connected storage.
 
-Before you can ingest documents from cloud storage, you must authorize OpenRAG's access to your cloud storage services.
-
-Typically, this requires that you register OpenRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key.
-To enable multiple connectors, you must register an app and generate credentials for each provider.
-
-Then, add the OAuth credentials to your OpenRAG configuration:
-
-<Tabs>
-<TabItem value="TUI" label="TUI-managed services" default>
-
-If you use the [Terminal User Interface (TUI)](/tui) to manage your OpenRAG services, enter OAuth credentials on the **Advanced Setup** page.
-You can do this during [installation](/install#setup), or you can add the credentials afterwards:
-
-1. If OpenRAG is running, click **Stop All Services** in the TUI.
-
-2. Open the **Advanced Setup** page, and then add the OAuth credentials for the cloud storage providers that you want to use under **API Keys**:
-
-   <PartialOAuthCredentials />
-
-3. For each connector you configured, register the redirect URI shown in the TUI in your cloud service's OAuth configuration.
-
-   For Google, this URL is used to redirect users back to OpenRAG after they sign in, and for the cloud storage connector webhooks.
-
-   For Microsoft and Amazon, this URL is used for the cloud storage connector webhooks.
-
-4. Optional: Under **Others**, set the **Webhook Base URL (`WEBHOOK_BASE_URL`)** to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
-
-5. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
-
-6. Click **Start Services** to restart the OpenRAG containers with the new configuration.
-
-7. Launch the OpenRAG app.
-
-   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
-
-</TabItem>
-<TabItem value="env" label="Self-managed services">
-
-If you [installed OpenRAG with self-managed services](/docker), set OAuth credentials in your [OpenRAG `.env` file](/reference/configuration).
-
-You can do this during [initial set up](/docker#setup), or you can add the credentials afterwards:
-
-1. Stop all OpenRAG containers:
-
-   <PartialDockerStopAll />
-
-2. Edit your OpenRAG `.env` file, and then add the [OAuth and cloud storage environment variables](/reference/configuration#oauth-and-cloud-storage-connector-settings) for the providers that you want to use:
-
-   ```env
-   GOOGLE_OAUTH_CLIENT_ID=
-   GOOGLE_OAUTH_CLIENT_SECRET=
-
-   MICROSOFT_GRAPH_OAUTH_CLIENT_ID=
-   MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET=
-
-   AWS_ACCESS_KEY_ID=
-   AWS_SECRET_ACCESS_KEY=
-   ```
-
-   <PartialOAuthCredentials />
-
-3. Optional: Set the `WEBHOOK_BASE_URL` to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
-
-4. For each connector, you must register an OpenRAG OAuth redirect URI in your cloud service's OAuth configuration.
-
-   For Google, this URL is used to redirect users back to OpenRAG after they sign in, and for the cloud storage connector webhooks.
-
-   For Microsoft and Amazon, this URL is used for the cloud storage connector webhooks.
-
-5. Save the `.env` file.
-
-6. Restart your OpenRAG containers:
-
-   <PartialDockerComposeUp />
-
-7. Access the OpenRAG frontend at `http://localhost:3000`.
-
-   If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
-
-</TabItem>
-</Tabs>
-
-### Ingest files from cloud storage
-
-To ingest knowledge with a cloud storage connector, do the following:
-
-1. Click <Icon name="Library" aria-hidden="true"/> **Knowledge** to view your OpenSearch knowledge base.
-
-2. Click **Add Knowledge**, and then select a storage provider.
-
-3. On the **Add Cloud Knowledge** page, click **Add Files**, and then select the files and folders to ingest from the connected storage.
-
-4. Click **Ingest Files**.
+5. Click **Ingest Files**.
 
 The selected files are processed in the background through the **OpenSearch Ingestion** flow.
 
@@ -165,17 +98,19 @@ You can [monitor ingestion](#monitor-ingestion) to see the progress of the uploa
 
 When using the OpenRAG chat, you can enter URLs into the chat to be ingested in real-time during your conversation.
 
-:::info
-The chat cannot ingest URLs that end in static document file extensions like `.pdf`.
-To upload these types of files, see [Ingest local files and folders](#ingest-local-files-and-folders) and [Ingest files with cloud storage connectors](#oauth-ingestion).
+OpenRAG runs the **OpenSearch URL Ingestion** flow to ingest web content from URLs.
+This flow isn't directly accessible from the OpenRAG user interface, and it doesn't use Docling.
+Instead, this flow is called by the [**OpenRAG OpenSearch Agent** flow](/chat#flow) as a [Model Context Protocol (MCP) tool in Langflow](https://docs.langflow.org/mcp-tutorial).
+The agent can call this component to fetch web content from a given URL, and then ingest that content into your OpenSearch knowledge base.
+
+:::tip
+Like all OpenRAG flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it.
+
+To ingest URLs recursively, edit the **Depth** parameter in the **OpenSearch URL Ingestion** flow.
 :::
 
-OpenRAG runs the **OpenSearch URL Ingestion** flow to ingest web content from URLs.
-This flow isn't directly accessible from the OpenRAG user interface.
-Instead, this flow is called by the [**OpenRAG OpenSearch Agent** flow](/chat#flow) as a Model Context Protocol (MCP) tool.
-The agent can call this component to fetch web content from a given URL, and then ingest that content into your OpenSearch knowledge base.
-Like all OpenRAG flows, you can [inspect the flow in Langflow](/agents#inspect-and-modify-flows), and you can customize it.
-For more information about MCP in Langflow, see the Langflow documentation on [MCP clients](https://docs.langflow.org/mcp-client) and [MCP servers](https://docs.langflow.org/mcp-tutorial).
+The OpenRAG chat cannot ingest URLs that end in static document file extensions like `.pdf`.
+To upload these types of files, see [Ingest local files and folders](#ingest-local-files-and-folders) and [Ingest files with cloud storage connectors](#oauth-ingestion).
 
 ## Monitor ingestion {#monitor-ingestion}
 
@@ -204,12 +139,19 @@ Tasks are separated into multiple sections:
 
    Check the **Success** and **Failed** counts for each completed task to determine the overall success rate.
 
-   **Failed** means [something went wrong during ingestion](#troubleshoot-ingestion), or the task was manually canceled.
-   Details about failed tasks are cleared when you refresh or leave the **Knowledge** page.
+   **Failed** means [something went wrong during ingestion](/support/troubleshoot#document-ingestion-or-similarity-search-issues), or the task was manually canceled.
 
 For each task, depending on its state, you can find the task ID, start time, duration, number of files processed successfully, number of files that failed, and the number of files enqueued for processing.
 
 ### Ingestion performance expectations
+
+Ingestion performance depends on many factors, such as the number and size of files ingested, file types, file contents, embedding model, chunk size, and hardware resources.
+
+Particularly when ingesting folders and very large files, such as PDFs with more than 300 pages, ingestion can take a long time or time out.
+For more information, see [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues)
+
+<details>
+<summary>Example: Ingestion performance test</summary>
 
 The following performance test was conducted with Docling Serve.
 
@@ -221,9 +163,6 @@ Throughput scales with CPU cores, memory, storage speed, and configuration choic
 
 This test returned 12 error, approximately 1.1 percent of the total files ingested.
 All errors were file-specific, and they didn't stop the pipeline.
-
-<details>
-<summary>Ingestion performance test details</summary>
 
 * Ingestion dataset:
 
@@ -256,43 +195,11 @@ All errors were file-specific, and they didn't stop the pipeline.
 
 </details>
 
-## Troubleshoot ingestion {#troubleshoot-ingestion}
-
-The following issues can occur during document ingestion.
-
-### Failed or slow ingestion
-
-If an ingestion task fails, do the following:
-
-* Make sure you uploaded only supported file types.
-* Split very large files into smaller files.
-* Remove unusual or complex embedded content, such as videos or animations. Although Docling can replace some non-text content with placeholders during ingestion, some embedded content might cause errors.
-* Make sure your Podman/Docker VM has sufficient memory for the ingestion tasks.
-The minimum recommendation is 8 GB of RAM.
-If you regularly upload large files, more RAM is recommended.
-For more information, see [Memory issue with Podman on macOS](/support/troubleshoot#memory-issue-with-podman-on-macos) and [Container out of memory errors](/support/troubleshoot#container-out-of-memory-errors).
-* If OCR ingestion fails due to OCR missing, see [OCR ingestion fails (easyocr not installed)](/support/troubleshoot#ocr-ingestion-fails-easyocr-not-installed).
-
-### Problems when referencing documents in chat
-
-If the OpenRAG **Chat** doesn't seem to use your documents correctly, [browse your knowledge base](/knowledge#browse-knowledge) to confirm that the documents are uploaded in full, and the chunks are correct.
-
-If the documents are present and well-formed, check your [knowledge filters](/knowledge-filters).
-If you applied a filter to the chat, make sure the expected documents aren't excluded by the filter settings.
-You can test this by applying the filter when you [browse the knowledge base](/knowledge#browse-knowledge).
-If the filter excludes any documents, the agent cannot access those documents.
-Be aware that some settings create dynamic filters that don't always produce the same results, such as a **Search query** combined with a low **Response limit**.
-
-If the document chunks have missing, incorrect, or unexpected text, you must [delete the documents](/knowledge#delete-knowledge) from your knowledge base, modify the [ingestion parameters](/knowledge#knowledge-ingestion-settings) or the documents themselves, and then reingest the documents.
-For example:
-
-* Break combined documents into separate files for better metadata context.
-* Make sure scanned documents are legible enough for extraction, and enable the **OCR** option. Poorly scanned documents might require additional preparation or rescanning before ingestion.
-* Adjust the **Chunk size** and **Chunk overlap** settings to better suit your documents. Larger chunks provide more context but can include irrelevant information, while smaller chunks yield more precise semantic search but can lack context.
-
 ## See also
 
-* [Configure knowledge](/knowledge)
-* [Filter knowledge](/knowledge-filters)
+* [About knowledge](/knowledge)
+* [Configure ingestion](/ingestion-configure)
+* [Configure connectors](/knowledge-connectors)
+* [Browse and manage knowledge](/knowledge-browse)
 * [Chat with knowledge](/chat)
-* [Inspect and modify flows](/agents#inspect-and-modify-flows)
+* [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues)

@@ -1,3 +1,5 @@
+
+
 # Configure structured logging early
 from connectors.langflow_connector_service import LangflowConnectorService
 from connectors.service import ConnectorService
@@ -59,18 +61,19 @@ from auth_middleware import optional_auth, require_auth
 from api_key_middleware import require_api_key
 from services.api_key_service import APIKeyService
 from api import keys as api_keys
-from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings, knowledge_filters as v1_knowledge_filters
+from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings, models as v1_models, knowledge_filters as v1_knowledge_filters
 
 # Configuration and setup
 from config.settings import (
     API_KEYS_INDEX_BODY,
     API_KEYS_INDEX_NAME,
     DISABLE_INGEST_WITH_LANGFLOW,
+    INGESTION_TIMEOUT,
     INDEX_BODY,
-    INDEX_NAME,
     SESSION_SECRET,
     clients,
     get_embedding_model,
+    get_index_name,
     is_no_auth_mode,
     get_openrag_config,
 )
@@ -152,16 +155,17 @@ async def configure_alerting_security():
 async def _ensure_opensearch_index():
     """Ensure OpenSearch index exists when using traditional connector service."""
     try:
+        index_name = get_index_name()
         # Check if index already exists
-        if await clients.opensearch.indices.exists(index=INDEX_NAME):
-            logger.debug("OpenSearch index already exists", index_name=INDEX_NAME)
+        if await clients.opensearch.indices.exists(index=index_name):
+            logger.debug("OpenSearch index already exists", index_name=index_name)
             return
 
         # Create the index with hard-coded INDEX_BODY (uses OpenAI embedding dimensions)
-        await clients.opensearch.indices.create(index=INDEX_NAME, body=INDEX_BODY)
+        await clients.opensearch.indices.create(index=index_name, body=INDEX_BODY)
         logger.info(
             "Created OpenSearch index for traditional connector service",
-            index_name=INDEX_NAME,
+            index_name=index_name,
             vector_dimensions=INDEX_BODY["mappings"]["properties"]["chunk_embedding"][
                 "dimension"
             ],
@@ -172,7 +176,7 @@ async def _ensure_opensearch_index():
         logger.error(
             "Failed to initialize OpenSearch index for traditional connector service",
             error=str(e),
-            index_name=INDEX_NAME,
+            index_name=get_index_name(),
         )
         await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATE_FAIL)
         # Don't raise the exception to avoid breaking the initialization
@@ -198,20 +202,21 @@ async def init_index():
     )
 
     # Create documents index
-    if not await clients.opensearch.indices.exists(index=INDEX_NAME):
+    index_name = get_index_name()
+    if not await clients.opensearch.indices.exists(index=index_name):
         await clients.opensearch.indices.create(
-            index=INDEX_NAME, body=dynamic_index_body
+            index=index_name, body=dynamic_index_body
         )
         logger.info(
             "Created OpenSearch index",
-            index_name=INDEX_NAME,
+            index_name=index_name,
             embedding_model=embedding_model,
         )
         await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATED)
     else:
         logger.info(
             "Index already exists, skipping creation",
-            index_name=INDEX_NAME,
+            index_name=index_name,
             embedding_model=embedding_model,
         )
         await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS)
@@ -360,11 +365,7 @@ async def ingest_default_documents_when_ready(services):
         await TelemetryClient.send_event(Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_START)
         base_dir = _get_documents_dir()
         if not os.path.isdir(base_dir):
-            logger.info(
-                "Default documents directory not found; skipping ingestion",
-                base_dir=base_dir,
-            )
-            return
+            raise FileNotFoundError(f"Default documents directory not found: {base_dir}")
 
         # Collect files recursively, excluding warmup files
         file_paths = [
@@ -375,10 +376,7 @@ async def ingest_default_documents_when_ready(services):
         ]
 
         if not file_paths:
-            logger.info(
-                "No default documents found; nothing to ingest", base_dir=base_dir
-            )
-            return
+            raise FileNotFoundError(f"No default documents found in {base_dir}")
 
         if DISABLE_INGEST_WITH_LANGFLOW:
             await _ingest_default_documents_openrag(services, file_paths)
@@ -390,6 +388,7 @@ async def ingest_default_documents_when_ready(services):
     except Exception as e:
         logger.error("Default documents ingestion failed", error=str(e))
         await TelemetryClient.send_event(Category.DOCUMENT_INGESTION, MessageId.ORB_DOC_DEFAULT_FAILED)
+        raise
 
 
 async def _ingest_default_documents_langflow(services, file_paths):
@@ -448,7 +447,7 @@ async def _ingest_default_documents_langflow(services, file_paths):
         tweaks=default_tweaks,
         settings=None,  # Use default ingestion settings
         delete_after_ingest=True,  # Clean up after ingestion
-        replace_duplicates=False,
+        replace_duplicates=True,
     )
 
     logger.info(
@@ -623,7 +622,7 @@ async def initialize_services():
     # Initialize services
     document_service = DocumentService(session_manager=session_manager)
     search_service = SearchService(session_manager)
-    task_service = TaskService(document_service, process_pool)
+    task_service = TaskService(document_service, process_pool, ingestion_timeout=INGESTION_TIMEOUT)
     chat_service = ChatService()
     flows_service = FlowsService()
     knowledge_filter_service = KnowledgeFilterService(session_manager)
@@ -644,7 +643,7 @@ async def initialize_services():
         patched_async_client=clients,  # Pass the clients object itself
         process_pool=process_pool,
         embed_model=get_embedding_model(),
-        index_name=INDEX_NAME,
+        index_name=get_index_name(),
         task_service=task_service,
         session_manager=session_manager,
     )
@@ -1073,6 +1072,17 @@ async def create_app():
             methods=["POST"],
         ),
         Route(
+            "/connectors/sync-all",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.sync_all_connectors,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["POST"],
+        ),
+        Route(
             "/connectors/{connector_type}/status",
             require_auth(services["session_manager"])(
                 partial(
@@ -1093,6 +1103,17 @@ async def create_app():
                 )
             ),
             methods=["GET"],
+        ),
+        Route(
+            "/connectors/{connector_type}/disconnect",
+            require_auth(services["session_manager"])(
+                partial(
+                    connectors.connector_disconnect,
+                    connector_service=services["connector_service"],
+                    session_manager=services["session_manager"],
+                )
+            ),
+            methods=["DELETE"],
         ),
         Route(
             "/connectors/{connector_type}/webhook",
@@ -1464,6 +1485,16 @@ async def create_app():
             ),
             methods=["POST"],
         ),
+        Route(
+            "/v1/models/{provider}",
+            require_api_key(services["api_key_service"])(
+                partial(
+                    v1_models.list_models_endpoint,
+                    models_service=services["models_service"],
+                )
+            ),
+            methods=["GET"],
+        ),
         # Knowledge filters endpoints
         Route(
             "/v1/knowledge-filters",
@@ -1535,6 +1566,9 @@ async def create_app():
         app.state.background_tasks.add(t1)
         t1.add_done_callback(app.state.background_tasks.discard)
 
+        # Start periodic task cleanup scheduler
+        services["task_service"].start_cleanup_scheduler()
+
         # Start periodic flow backup task (every 5 minutes)
         async def periodic_backup():
             """Periodic backup task that runs every 15 minutes"""
@@ -1579,6 +1613,8 @@ async def create_app():
     async def shutdown_event():
         await TelemetryClient.send_event(Category.APPLICATION_SHUTDOWN, MessageId.ORB_APP_SHUTDOWN)
         await cleanup_subscriptions_proper(services)
+        # Cleanup task service (cancels background tasks and process pool)
+        await services["task_service"].shutdown()
         # Cleanup async clients
         await clients.cleanup()
         # Cleanup telemetry client
@@ -1652,6 +1688,9 @@ if __name__ == "__main__":
     # Create app asynchronously
     app = asyncio.run(create_app())
 
+    # Enable or disable HTTP access logging events
+    access_log = os.getenv("ACCESS_LOG", "true").lower() == "true"
+
     # Run the server (startup tasks now handled by Starlette startup event)
     uvicorn.run(
         app,
@@ -1659,4 +1698,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=False,  # Disable reload since we're running from main
+        access_log=access_log,
     )

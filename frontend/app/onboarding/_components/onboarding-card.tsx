@@ -10,7 +10,6 @@ import {
   useOnboardingMutation,
 } from "@/app/api/mutations/useOnboardingMutation";
 import { useOnboardingRollbackMutation } from "@/app/api/mutations/useOnboardingRollbackMutation";
-import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import type { ProviderHealthResponse } from "@/app/api/queries/useProviderHealthQuery";
@@ -65,8 +64,6 @@ const OnboardingCard = ({
   const [modelProvider, setModelProvider] = useState<string>(
     isEmbedding ? "openai" : "anthropic",
   );
-
-  const [sampleDataset, setSampleDataset] = useState<boolean>(true);
 
   const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
 
@@ -176,7 +173,7 @@ const OnboardingCard = ({
 
   // Query tasks to track completion
   const { data: tasks } = useGetTasksQuery({
-    enabled: currentStep !== null, // Only poll when onboarding has started
+    enabled: currentStep !== null && !isCompleted, // Only poll when onboarding has started and stop once step is complete
     refetchInterval: currentStep !== null ? 1000 : false, // Poll every 1 second during onboarding
   });
 
@@ -211,20 +208,20 @@ const OnboardingCard = ({
         task.status === "processing",
     );
 
-    // Check if any file failed in completed tasks
-    const completedTasks = tasks.filter(
-      (task) => task.status === "completed"
+    // Check if any task failed at the top level
+    const failedTask = tasks.find(
+      (task) => task.status === "failed" || task.status === "error",
     );
 
     // Check if any completed task has at least one failed file
-    const taskWithFailedFile = completedTasks.find((task) => {
+    const completedTaskWithFailedFile = tasks.find((task) => {
       // Must have files object
       if (!task.files || typeof task.files !== "object") {
         return false;
       }
 
       const fileEntries = Object.values(task.files);
-      
+
       // Must have at least one file
       if (fileEntries.length === 0) {
         return false;
@@ -232,65 +229,69 @@ const OnboardingCard = ({
 
       // Check if any file has failed status
       const hasFailedFile = fileEntries.some(
-        (file) => file.status === "failed" || file.status === "error"
+        (file) => file.status === "failed" || file.status === "error",
       );
 
       return hasFailedFile;
     });
 
+    const taskWithFailure = failedTask || completedTaskWithFailedFile;
+
     // If any file failed, show error and jump back one step (like onboardingMutation.onError)
     // Only handle if we haven't already handled this task
     if (
-      taskWithFailedFile && 
-      !rollbackMutation.isPending && 
+      taskWithFailure &&
+      !rollbackMutation.isPending &&
       !isCompleted &&
-      !handledFailedTasksRef.current.has(taskWithFailedFile.task_id)
+      !handledFailedTasksRef.current.has(taskWithFailure.task_id)
     ) {
-      console.error("File failed in task, jumping back one step", taskWithFailedFile);
-      
+      console.error(
+        "Task failed, jumping back one step",
+        taskWithFailure,
+      );
+
       // Mark this task as handled to prevent infinite loops
-      handledFailedTasksRef.current.add(taskWithFailedFile.task_id);
-      
+      handledFailedTasksRef.current.add(taskWithFailure.task_id);
+
       // Extract error messages from failed files
       const errorMessages: string[] = [];
-      if (taskWithFailedFile.files) {
-        Object.values(taskWithFailedFile.files).forEach((file) => {
-          if ((file.status === "failed" || file.status === "error") && file.error) {
+      if (taskWithFailure.files) {
+        Object.values(taskWithFailure.files).forEach((file) => {
+          if (
+            (file.status === "failed" || file.status === "error") &&
+            file.error
+          ) {
             errorMessages.push(file.error);
           }
         });
       }
-      
+
       // Also check task-level error
-      if (taskWithFailedFile.error) {
-        errorMessages.push(taskWithFailedFile.error);
+      if (taskWithFailure.error) {
+        errorMessages.push(taskWithFailure.error);
       }
-      
+
       // Use the first error message, or a generic message if no errors found
-      const errorMessage = errorMessages.length > 0
-        ? errorMessages[0]
-        : "Sample data file failed to ingest. Please try again with a different configuration.";
-      
+      const errorMessage =
+        errorMessages.length > 0
+          ? errorMessages[0]
+          : "Sample data ingestion failed. Please try again.";
+
       // Set error message and jump back one step (exactly like onboardingMutation.onError)
       setError(errorMessage);
       setCurrentStep(totalSteps);
-      // Jump back one step after 1 second (go back to the step before ingestion)
-      // For embedding: totalSteps is 4, ingestion is step 3, so go back to step 2
-      // For LLM: totalSteps is 3, ingestion is step 2, so go back to step 1
-      setTimeout(() => {
-        // Go back to the step before the last step (which is ingestion)
-        const previousStep = totalSteps > 1 ? totalSteps - 2 : 0;
-        setCurrentStep(previousStep);
-      }, 1000);
+      rollbackMutation.mutate();
       return;
     }
 
-    // If no active tasks and we've started onboarding, complete it
+    // If at least one processed file, no failures, and we've started onboarding, complete it
     if (
-      (!activeTasks || (activeTasks.processed_files ?? 0) > 0) &&
-      tasks.length > 0 &&
+      (((!activeTasks || (activeTasks.successful_files ?? 0) > 0) &&
+        tasks.length > 0) ||
+        (tasks.length === 0 && currentStep === totalSteps - 1)) && // Complete because no files were ingested
       !isCompleted &&
-      !taskWithFailedFile
+      !taskWithFailure
+
     ) {
       // Set to final step to show "Done"
       setCurrentStep(totalSteps);
@@ -329,10 +330,7 @@ const OnboardingCard = ({
     onError: (error) => {
       setError(error.message);
       setCurrentStep(totalSteps);
-      // Reset to provider selection after 1 second
-      setTimeout(() => {
-        setCurrentStep(null);
-      }, 1000);
+      rollbackMutation.mutate();
     },
   });
 
@@ -357,7 +355,6 @@ const OnboardingCard = ({
 
     // Prepare onboarding data with provider-specific fields
     const onboardingData: OnboardingVariables = {
-      sample_data: sampleDataset,
     };
 
     // Set the provider field
@@ -447,8 +444,8 @@ const OnboardingCard = ({
                       value="anthropic"
                       className={cn(
                         error &&
-                          modelProvider === "anthropic" &&
-                          "data-[state=active]:border-destructive",
+                        modelProvider === "anthropic" &&
+                        "data-[state=active]:border-destructive",
                       )}
                     >
                       <TabTrigger
@@ -480,8 +477,8 @@ const OnboardingCard = ({
                     value="openai"
                     className={cn(
                       error &&
-                        modelProvider === "openai" &&
-                        "data-[state=active]:border-destructive",
+                      modelProvider === "openai" &&
+                      "data-[state=active]:border-destructive",
                     )}
                   >
                     <TabTrigger
@@ -510,8 +507,8 @@ const OnboardingCard = ({
                     value="watsonx"
                     className={cn(
                       error &&
-                        modelProvider === "watsonx" &&
-                        "data-[state=active]:border-destructive",
+                      modelProvider === "watsonx" &&
+                      "data-[state=active]:border-destructive",
                     )}
                   >
                     <TabTrigger
@@ -542,8 +539,8 @@ const OnboardingCard = ({
                     value="ollama"
                     className={cn(
                       error &&
-                        modelProvider === "ollama" &&
-                        "data-[state=active]:border-destructive",
+                      modelProvider === "ollama" &&
+                      "data-[state=active]:border-destructive",
                     )}
                   >
                     <TabTrigger
@@ -573,8 +570,6 @@ const OnboardingCard = ({
                   <TabsContent value="anthropic">
                     <AnthropicOnboarding
                       setSettings={setSettings}
-                      sampleDataset={sampleDataset}
-                      setSampleDataset={setSampleDataset}
                       setIsLoadingModels={setIsLoadingModels}
                       isEmbedding={isEmbedding}
                       hasEnvApiKey={
@@ -587,8 +582,6 @@ const OnboardingCard = ({
                 <TabsContent value="openai">
                   <OpenAIOnboarding
                     setSettings={setSettings}
-                    sampleDataset={sampleDataset}
-                    setSampleDataset={setSampleDataset}
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     hasEnvApiKey={
@@ -600,8 +593,6 @@ const OnboardingCard = ({
                 <TabsContent value="watsonx">
                   <IBMOnboarding
                     setSettings={setSettings}
-                    sampleDataset={sampleDataset}
-                    setSampleDataset={setSampleDataset}
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     alreadyConfigured={providerAlreadyConfigured && modelProvider === "watsonx"}
@@ -613,8 +604,6 @@ const OnboardingCard = ({
                 <TabsContent value="ollama">
                   <OllamaOnboarding
                     setSettings={setSettings}
-                    sampleDataset={sampleDataset}
-                    setSampleDataset={setSampleDataset}
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
                     alreadyConfigured={providerAlreadyConfigured && modelProvider === "ollama"}
@@ -641,8 +630,8 @@ const OnboardingCard = ({
                     {isLoadingModels
                       ? "Loading models..."
                       : !!settings.llm_model &&
-                          !!settings.embedding_model &&
-                          !isDoclingHealthy
+                        !!settings.embedding_model &&
+                        !isDoclingHealthy
                         ? "docling-serve must be running to continue"
                         : "Please fill in all required fields"}
                   </TooltipContent>

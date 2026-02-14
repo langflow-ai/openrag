@@ -78,7 +78,7 @@ async def ensure_embedding_field_exists(
     Args:
         opensearch_client: OpenSearch client instance
         model_name: The embedding model name
-        index_name: OpenSearch index name (defaults to INDEX_NAME from settings)
+        index_name: OpenSearch index name (defaults to get_index_name() from settings)
 
     Returns:
         The field name that was ensured to exist
@@ -86,11 +86,11 @@ async def ensure_embedding_field_exists(
     Raises:
         Exception: If unable to add the field mapping
     """
-    from config.settings import INDEX_NAME
+    from config.settings import get_index_name
     from utils.embeddings import get_embedding_dimensions
 
     if index_name is None:
-        index_name = INDEX_NAME
+        index_name = get_index_name()
 
     field_name = get_embedding_field_name(model_name)
     dimensions = await get_embedding_dimensions(model_name)

@@ -9,6 +9,7 @@ import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
 import { Button } from "@/components/ui/button";
 import { uploadFile } from "@/lib/upload-utils";
+import { SUPPORTED_EXTENSIONS } from "@/components/knowledge-dropdown";
 
 interface OnboardingUploadProps {
 	onComplete: () => void;
@@ -251,7 +252,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
             type="file"
             onChange={handleFileChange}
             className="hidden"
-            accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
+            accept={SUPPORTED_EXTENSIONS.join(",")}
           />
         </motion.div>
       ) : (

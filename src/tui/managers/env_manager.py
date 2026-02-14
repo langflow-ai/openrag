@@ -29,6 +29,7 @@ class EnvConfig:
     # Core settings
     openai_api_key: str = ""
     opensearch_password: str = ""
+    opensearch_index_name: str = "documents"
     langflow_secret_key: str = ""
     langflow_superuser: str = "admin"
     langflow_superuser_password: str = ""
@@ -68,6 +69,7 @@ class EnvConfig:
     # Ingestion settings
     disable_ingest_with_langflow: str = "False"
     nudges_flow_id: str = "ebc01d31-1976-46ce-a385-b0240327226c"
+    ingest_sample_data: str = "True"
 
     # Document paths (comma-separated) - use centralized location by default
     openrag_documents_paths: str = "$HOME/.openrag/documents"
@@ -169,6 +171,7 @@ class EnvManager:
             "WATSONX_ENDPOINT": "watsonx_endpoint",
             "WATSONX_PROJECT_ID": "watsonx_project_id",
             "OPENSEARCH_PASSWORD": "opensearch_password",  # pragma: allowlist secret
+            "OPENSEARCH_INDEX_NAME": "opensearch_index_name",
             "LANGFLOW_SECRET_KEY": "langflow_secret_key",  # pragma: allowlist secret
             "LANGFLOW_SUPERUSER": "langflow_superuser",
             "LANGFLOW_SUPERUSER_PASSWORD": "langflow_superuser_password",  # pragma: allowlist secret
@@ -195,6 +198,7 @@ class EnvManager:
             "LANGFLOW_NEW_USER_IS_ACTIVE": "langflow_new_user_is_active",
             "LANGFLOW_ENABLE_SUPERUSER_CLI": "langflow_enable_superuser_cli",
             "DISABLE_INGEST_WITH_LANGFLOW": "disable_ingest_with_langflow",
+            "INGEST_SAMPLE_DATA": "ingest_sample_data",
             "OPENRAG_VERSION": "openrag_version",
             "LANGFUSE_SECRET_KEY": "langfuse_secret_key",  # pragma: allowlist secret
             "LANGFUSE_PUBLIC_KEY": "langfuse_public_key",  # pragma: allowlist secret
@@ -386,6 +390,7 @@ class EnvManager:
                 f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
+                f.write(f"OPENSEARCH_INDEX_NAME={self._quote_env_value(self.config.opensearch_index_name)}\n")
 
                 # Expand $HOME in paths before writing to .env
                 # This ensures paths work with all compose implementations (docker, podman)
@@ -453,6 +458,7 @@ class EnvManager:
                 # Ingestion settings
                 f.write("# Ingestion settings\n")
                 f.write(f"DISABLE_INGEST_WITH_LANGFLOW={self._quote_env_value(self.config.disable_ingest_with_langflow)}\n")
+                f.write(f"INGEST_SAMPLE_DATA={self._quote_env_value(self.config.ingest_sample_data)}\n")
                 f.write("\n")
 
                 # Langflow auth settings
@@ -595,6 +601,18 @@ class EnvManager:
                 "disable_ingest_with_langflow",
                 "Disable Langflow Ingestion (optional)",
                 "False",
+                False,
+            ),
+            (
+                "ingest_sample_data",
+                "Ingest Sample Data (optional)",
+                "True",
+                False,
+            ),
+            (
+                "opensearch_index_name",
+                "OpenSearch Index Name",
+                "documents",
                 False,
             ),
             (

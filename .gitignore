@@ -26,7 +26,7 @@ wheels/
 !frontend/*.json
 .DS_Store
 
-config/
+/config/
 
 .docling.pid
 

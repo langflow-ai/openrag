@@ -10,26 +10,14 @@ class DocumentACL:
     """Access Control List information for a document"""
 
     owner: str = None
-    user_permissions: Dict[str, str] = (
-        None  # user email -> permission level (read, write, owner)
-    )
-    group_permissions: Dict[str, str] = None  # group identifier -> permission level
+    allowed_users: List[str] = None
+    allowed_groups: List[str] = None
 
     def __post_init__(self):
-        if self.user_permissions is None:
-            self.user_permissions = {}
-        if self.group_permissions is None:
-            self.group_permissions = {}
-
-    @property
-    def allowed_users(self) -> List[str]:
-        """Get list of users with any access"""
-        return list(self.user_permissions.keys())
-
-    @property
-    def allowed_groups(self) -> List[str]:
-        """Get list of groups with any access"""
-        return list(self.group_permissions.keys())
+        if self.allowed_users is None:
+            self.allowed_users = []
+        if self.allowed_groups is None:
+            self.allowed_groups = []
 
 
 @dataclass
@@ -147,3 +135,11 @@ class BaseConnector(ABC):
     @property
     def is_authenticated(self) -> bool:
         return self._authenticated
+
+    async def _detect_base_url(self) -> Optional[str]:
+        """Auto-detect base URL for the connector.
+        
+        Default implementation returns None.
+        Subclasses (OneDrive, SharePoint) should override this method.
+        """
+        return None
