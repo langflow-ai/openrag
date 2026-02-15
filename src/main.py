@@ -201,12 +201,13 @@ async def init_index(delete_existing: bool = False):
         endpoint=getattr(embedding_provider_config, "endpoint", None)
     )
 
-    index_exists = await clients.opensearch.indices.exists(index=INDEX_NAME)
+    index_name = get_index_name()
+    index_exists = await clients.opensearch.indices.exists(index=index_name)
     if index_exists and delete_existing:
         # Asked to delete the existing index ..
-        logger.info(f"Deleting index '{INDEX_NAME}'...")
-        resp = await clients.opensearch.indices.delete(index=INDEX_NAME)
-        logger.info(f"Deleted index '{INDEX_NAME}', response: {resp}")
+        logger.info(f"Deleting index '{index_name}'...")
+        resp = await clients.opensearch.indices.delete(index=index_name)
+        logger.info(f"Deleted index '{index_name}', response: {resp}")
         index_exists = False
 
     # Create documents index
