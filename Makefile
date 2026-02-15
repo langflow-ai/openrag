@@ -71,7 +71,7 @@ endef
        dev dev-cpu dev-local dev-local-cpu stop clean build logs \
        shell-backend shell-frontend install \
        test test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
-       backend frontend docling docling-stop install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
+       backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
        dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev
 
@@ -197,8 +197,10 @@ help_docker: ## Show Docker and container commands
 	@echo ''
 	@echo "$(PURPLE)Build Images:$(NC)"
 	@echo "  $(PURPLE)make build$(NC)           - Build all Docker images locally"
+	@echo "  $(PURPLE)make build-os$(NC)        - Build OpenSearch Docker image only"
 	@echo "  $(PURPLE)make build-be$(NC)        - Build backend Docker image only"
 	@echo "  $(PURPLE)make build-fe$(NC)        - Build frontend Docker image only"
+	@echo "  $(PURPLE)make build-lf$(NC)        - Build Langflow Docker image only"
 	@echo ''
 	@echo "$(PURPLE)Container Management:$(NC)"
 	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
@@ -534,17 +536,13 @@ install-fe: ## Install frontend dependencies
 # DOCKER BUILD
 ######################
 
-build: ## Build all Docker images locally
-	@echo "$(YELLOW)Building all Docker images locally...$(NC)"
-	@echo "$(CYAN)Building OpenSearch image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .
-	@echo "$(CYAN)Building Backend image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
-	@echo "$(CYAN)Building Frontend image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
-	@echo "$(CYAN)Building Langflow image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
+build: build-os build-be build-fe build-lf ## Build all Docker images locally
 	@echo "$(PURPLE)All images built successfully!$(NC)"
+
+build-os: ## Build OpenSearch Docker image
+	@echo "$(YELLOW)Building OpenSearch image...$(NC)"
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .
+	@echo "$(PURPLE)OpenSearch image built.$(NC)"
 
 build-be: ## Build backend Docker image
 	@echo "$(YELLOW)Building backend image...$(NC)"
@@ -555,6 +553,11 @@ build-fe: ## Build frontend Docker image
 	@echo "$(YELLOW)Building frontend image...$(NC)"
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
 	@echo "$(PURPLE)Frontend image built.$(NC)"
+
+build-lf: ## Build Langflow Docker image
+	@echo "$(YELLOW)Building Langflow image...$(NC)"
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
+	@echo "$(PURPLE)Langflow image built.$(NC)"
 
 ######################
 # LOGGING

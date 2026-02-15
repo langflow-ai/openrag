@@ -3,11 +3,14 @@ import uuid
 import json
 import httpx
 import aiofiles
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 import asyncio
 
 from config.settings import WEBHOOK_BASE_URL, is_no_auth_mode
+
+logger = logging.getLogger(__name__)
 from session_manager import SessionManager
 from services.langflow_mcp_service import LangflowMCPService
 from connectors.google_drive.oauth import GoogleDriveOAuth
@@ -376,12 +379,54 @@ class AuthService:
         self, connection_id: str, connection_config
     ) -> dict:
         """Handle data source connection - keep the connection for syncing"""
-        return {
+        result = {
             "status": "authenticated",
             "connection_id": connection_id,
             "purpose": "data_source",
             "connector_type": connection_config.connector_type,
         }
+        
+        # For SharePoint/OneDrive, auto-detect the base URL after authentication
+        if connection_config.connector_type in ("sharepoint", "onedrive"):
+            logger.info(f"_handle_data_source_auth: Starting base URL detection for {connection_config.connector_type}")
+            try:
+                # Get the connector to detect base URL
+                logger.info(f"_handle_data_source_auth: Getting connector for connection_id: {connection_id}")
+                connector = await self.connector_service.connection_manager.get_connector(
+                    connection_id
+                )
+                logger.info(f"_handle_data_source_auth: Got connector: {connector is not None}, has _detect_base_url: {hasattr(connector, '_detect_base_url') if connector else False}")
+                
+                if connector and hasattr(connector, '_detect_base_url'):
+                    logger.info("_handle_data_source_auth: Calling _detect_base_url()")
+                    detected_url = await connector._detect_base_url()
+                    logger.info(f"_handle_data_source_auth: _detect_base_url returned: {detected_url}")
+                    
+                    if detected_url:
+                        # Update connection config with detected URL (generic field name)
+                        connection_config.config["base_url"] = detected_url
+                        # Also update the connector instance's base_url property
+                        connector.base_url = detected_url
+                        logger.info(f"_handle_data_source_auth: Updated connector.base_url to: {connector.base_url}")
+                        await self.connector_service.connection_manager.save_connections()
+                        result["base_url"] = detected_url
+                        logger.info(f"_handle_data_source_auth: Auto-detected and saved base URL: {detected_url}")
+                    else:
+                        logger.warning("_handle_data_source_auth: _detect_base_url returned None")
+                else:
+                    logger.warning(f"_handle_data_source_auth: Connector not available or doesn't have _detect_base_url")
+                
+                # Clear the cached connector so next get_connector() creates a fresh instance
+                # with the updated config (including base_url)
+                if connection_id in self.connector_service.connection_manager.active_connectors:
+                    logger.info(f"_handle_data_source_auth: Clearing cached connector for {connection_id}")
+                    del self.connector_service.connection_manager.active_connectors[connection_id]
+            except Exception as e:
+                logger.error(f"_handle_data_source_auth: Failed to auto-detect base URL: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        return result
 
     async def get_user_info(self, request) -> Optional[dict]:
         """Get current user information from request"""

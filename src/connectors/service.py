@@ -4,6 +4,7 @@ from utils.logging_config import get_logger
 
 from .base import BaseConnector, ConnectorDocument
 from .connection_manager import ConnectionManager
+from utils.file_utils import get_file_extension, clean_connector_filename
 
 
 logger = get_logger(__name__)
@@ -52,7 +53,7 @@ class ConnectorService:
         from utils.file_utils import auto_cleanup_tempfile
 
         with auto_cleanup_tempfile(
-            suffix=self._get_file_extension(document.mimetype)
+            suffix=get_file_extension(document.mimetype)
         ) as tmp_path:
             # Write document content to temp file
             with open(tmp_path, "wb") as f:
@@ -80,6 +81,7 @@ class ConnectorService:
                 owner_email=owner_email,
                 file_size=len(document.content) if document.content else 0,
                 connector_type=connector_type,
+                acl=document.acl,
             )
 
             logger.debug("Document processing result", result=result)
@@ -105,100 +107,77 @@ class ConnectorService:
         jwt_token: str = None,
     ):
         """Update indexed chunks with connector-specific metadata"""
-        logger.debug("Looking for chunks", document_id=document.id)
+        from utils.acl_utils import update_document_acl
 
-        # Find all chunks for this document
-        query = {"query": {"term": {"document_id": document.id}}}
+        logger.debug("Looking for chunks", document_id=document.id)
 
         # Get user's OpenSearch client
         opensearch_client = self.session_manager.get_user_opensearch_client(
             owner_user_id, jwt_token
         )
 
+        # Update ACL if changed (hash-based skip optimization)
+        acl_result = await update_document_acl(
+            document_id=document.id,
+            acl=document.acl,
+            opensearch_client=opensearch_client,
+        )
+
+        # Log ACL update result
+        if acl_result["status"] == "unchanged":
+            logger.debug(f"ACL unchanged for {document.id}, skipped update")
+        elif acl_result["status"] == "updated":
+            logger.info(
+                f"Updated ACL for {document.id}, "
+                f"{acl_result['chunks_updated']} chunks updated"
+            )
+        elif acl_result["status"] == "error":
+            logger.error(f"ACL update error for {document.id}: {acl_result.get('error')}")
+
+        # Update other metadata fields (source_url, timestamps, etc.)
+        # Use update_by_query for efficiency
         try:
-            response = await opensearch_client.search(index=self.index_name, body=query)
+            await opensearch_client.update_by_query(
+                index=self.index_name,
+                body={
+                    "query": {"term": {"document_id": document.id}},
+                    "script": {
+                        "source": """
+                            ctx._source.source_url = params.source_url;
+                            ctx._source.connector_type = params.connector_type;
+                            if (params.created_time != null) {
+                                ctx._source.created_time = params.created_time;
+                            }
+                            if (params.modified_time != null) {
+                                ctx._source.modified_time = params.modified_time;
+                            }
+                            if (params.metadata != null) {
+                                ctx._source.metadata = params.metadata;
+                            }
+                        """,
+                        "params": {
+                            "source_url": document.source_url,
+                            "connector_type": connector_type,
+                            "created_time": document.created_time.isoformat()
+                            if document.created_time
+                            else None,
+                            "modified_time": document.modified_time.isoformat()
+                            if document.modified_time
+                            else None,
+                            "metadata": document.metadata,
+                        }
+                    }
+                }
+            )
+            logger.debug(f"Updated metadata for document {document.id}")
         except Exception as e:
             logger.error(
-                "OpenSearch search failed for connector metadata update",
+                "OpenSearch metadata update failed",
+                document_id=document.id,
                 error=str(e),
-                query=query,
             )
             raise
 
-        logger.debug(
-            "Search query executed",
-            query=query,
-            chunks_found=len(response["hits"]["hits"]),
-            document_id=document.id,
-        )
-
-        # Update each chunk with connector metadata
-        logger.debug(
-            "Updating chunks with connector_type",
-            chunk_count=len(response["hits"]["hits"]),
-            connector_type=connector_type,
-        )
-        for hit in response["hits"]["hits"]:
-            chunk_id = hit["_id"]
-            current_connector_type = hit["_source"].get("connector_type", "unknown")
-            logger.debug(
-                "Updating chunk connector metadata",
-                chunk_id=chunk_id,
-                current_connector_type=current_connector_type,
-                new_connector_type=connector_type,
-            )
-
-            update_body = {
-                "doc": {
-                    "source_url": document.source_url,
-                    "connector_type": connector_type,  # Override the "local" set by process_file_common
-                    # Additional ACL info beyond owner (already set by process_file_common)
-                    "allowed_users": document.acl.allowed_users,
-                    "allowed_groups": document.acl.allowed_groups,
-                    "user_permissions": document.acl.user_permissions,
-                    "group_permissions": document.acl.group_permissions,
-                    # Timestamps
-                    "created_time": document.created_time.isoformat()
-                    if document.created_time
-                    else None,
-                    "modified_time": document.modified_time.isoformat()
-                    if document.modified_time
-                    else None,
-                    # Additional metadata
-                    "metadata": document.metadata,
-                }
-            }
-
-            try:
-                await opensearch_client.update(
-                    index=self.index_name, id=chunk_id, body=update_body
-                )
-                logger.debug("Updated chunk with connector metadata", chunk_id=chunk_id)
-            except Exception as e:
-                logger.error(
-                    "OpenSearch update failed for chunk",
-                    chunk_id=chunk_id,
-                    error=str(e),
-                    update_body=update_body,
-                )
-                raise
-
-    def _get_file_extension(self, mimetype: str) -> str:
-        """Get file extension based on MIME type"""
-        mime_to_ext = {
-            "application/pdf": ".pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-            "application/msword": ".doc",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
-            "application/vnd.ms-powerpoint": ".ppt",
-            "text/plain": ".txt",
-            "text/html": ".html",
-            "application/rtf": ".rtf",
-            "application/vnd.google-apps.document": ".pdf",  # Exported as PDF
-            "application/vnd.google-apps.presentation": ".pdf",
-            "application/vnd.google-apps.spreadsheet": ".pdf",
-        }
-        return mime_to_ext.get(mimetype, ".bin")
 
     async def sync_connector_files(
         self,
@@ -206,8 +185,20 @@ class ConnectorService:
         user_id: str,
         max_files: int = None,
         jwt_token: str = None,
+        filename_filter: set = None,
     ) -> str:
-        """Sync files from a connector connection using existing task tracking system"""
+        """
+        Sync files from a connector connection using existing task tracking system.
+        
+        Args:
+            connection_id: The connection ID
+            user_id: The user ID
+            max_files: Maximum number of files to sync
+            jwt_token: Optional JWT token
+            filename_filter: Optional set of filenames to filter - only files with names
+                           in this set will be synced. Used to prevent deleted files
+                           from being re-synced.
+        """
         if not self.task_service:
             raise ValueError(
                 "TaskService not available - connector sync requires task service dependency"
@@ -254,6 +245,15 @@ class ConnectorService:
             for file_info in files:
                 if max_files and len(files_to_process) >= max_files:
                     break
+                # Filter by filename if filter is provided
+                if filename_filter is not None:
+                    file_name = file_info.get("name", "")
+                    if file_name not in filename_filter:
+                        logger.debug(
+                            "Skipping file not in filter",
+                            filename=file_name,
+                        )
+                        continue
                 files_to_process.append(file_info)
 
             # Stop if we have enough files or no more pages
@@ -290,10 +290,17 @@ class ConnectorService:
 
         # Use file IDs as items (no more fake file paths!)
         file_ids = [file_info["id"] for file_info in files_to_process]
+        original_filenames = {
+            file_info["id"]: clean_connector_filename(
+                file_info["name"], file_info.get("mimeType") or file_info.get("mimetype")
+            )
+            for file_info in files_to_process
+            if "name" in file_info
+        }
 
         # Create custom task using TaskService
         task_id = await self.task_service.create_custom_task(
-            user_id, file_ids, processor
+            user_id, file_ids, processor, original_filenames=original_filenames
         )
 
         return task_id
@@ -304,10 +311,19 @@ class ConnectorService:
         user_id: str,
         file_ids: List[str],
         jwt_token: str = None,
+        file_infos: List[Dict[str, Any]] = None,
     ) -> str:
         """
         Sync specific files by their IDs (used for webhook-triggered syncs or manual selection).
         Automatically expands folders to their contents.
+        
+        Args:
+            connection_id: The connection ID
+            user_id: The user ID
+            file_ids: List of file IDs to sync
+            jwt_token: Optional JWT token for authentication
+            file_infos: Optional list of file info dicts with {id, name, mimeType, downloadUrl, size}
+                       When provided, download URLs can be used directly without Graph API calls.
         """
         if not self.task_service:
             raise ValueError(
@@ -331,6 +347,12 @@ class ConnectorService:
         owner_name = user.name if user else None
         owner_email = user.email if user else None
 
+        # If file_infos provided, cache them in the connector for later use
+        # This allows get_file_content to use download URLs directly
+        if file_infos and hasattr(connector, 'set_file_infos'):
+            connector.set_file_infos(file_infos)
+            logger.info(f"Cached {len(file_infos)} file infos with download URLs in connector")
+
         # Temporarily set file_ids in the connector's config so list_files() can use them
         # Store the original values to restore later
         original_file_ids = None
@@ -339,6 +361,8 @@ class ConnectorService:
         if hasattr(connector, "cfg"):
             original_file_ids = getattr(connector.cfg, "file_ids", None)
             original_folder_ids = getattr(connector.cfg, "folder_ids", None)
+
+        expanded_file_ids = file_ids  # Default to original IDs
 
         try:
             # Set the file_ids we want to sync in the connector's config
@@ -357,8 +381,13 @@ class ConnectorService:
                     f"Original IDs: {file_ids}. This may indicate all IDs were folders "
                     f"with no contents, or files that were filtered out."
                 )
-                # Return empty task rather than failing
-                raise ValueError("No files to sync after expanding folders")
+                # If we have file_infos with download URLs, use original file_ids
+                # (OneDrive sharing IDs can't be expanded but can be downloaded directly)
+                if file_infos:
+                    logger.info("Using original file IDs with cached download URLs")
+                    expanded_file_ids = file_ids
+                else:
+                    raise ValueError("No files to sync after expanding folders")
 
         except Exception as e:
             logger.error(f"Failed to expand file_ids via list_files(): {e}")
@@ -391,8 +420,18 @@ class ConnectorService:
         )
 
         # Create custom task using TaskService
+        original_filenames = {}
+        if file_infos:
+            original_filenames = {
+                f["id"]: clean_connector_filename(
+                    f["name"], f.get("mimeType") or f.get("mimetype")
+                )
+                for f in file_infos
+                if "id" in f and "name" in f
+            }
+
         task_id = await self.task_service.create_custom_task(
-            user_id, expanded_file_ids, processor
+            user_id, expanded_file_ids, processor, original_filenames=original_filenames
         )
 
         return task_id

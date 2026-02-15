@@ -8,7 +8,7 @@ import {
   type ValueFormatterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { Cloud, FileIcon, Globe } from "lucide-react";
+import { Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
@@ -44,6 +44,7 @@ import GoogleDriveIcon from "../../components/icons/google-drive-logo";
 import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -78,6 +79,7 @@ function SearchPage() {
   const lastErrorRef = useRef<string | null>(null);
 
   const deleteDocumentMutation = useDeleteDocument();
+  const syncAllConnectorsMutation = useSyncAllConnectors();
 
   useEffect(() => {
     refreshTasks();
@@ -297,7 +299,12 @@ function SearchPage() {
         if (status !== "active") {
           return null;
         }
-        return <KnowledgeActionsDropdown filename={data?.filename || ""} />;
+        return (
+          <KnowledgeActionsDropdown
+            filename={data?.filename || ""}
+            connectorType={data?.connector_type}
+          />
+        );
       },
       cellStyle: {
         alignItems: "center",
@@ -380,15 +387,43 @@ function SearchPage() {
         {/* Search Input Area */}
         <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
           <KnowledgeSearchInput />
-          {/* //TODO: Implement sync button */}
-          {/* <Button
-              type="button"
-              variant="outline"
-              className="rounded-lg flex-shrink-0"
-              onClick={() => alert("Not implemented")}
-            >
-              Sync
-            </Button> */}
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-lg flex-shrink-0"
+            disabled={syncAllConnectorsMutation.isPending}
+            onClick={async () => {
+              try {
+                toast.info("Syncing all cloud connectors...");
+                const result = await syncAllConnectorsMutation.mutateAsync();
+                if (result.status === "no_files") {
+                  toast.info(result.message || "No cloud files to sync. Add files from cloud connectors first.");
+                } else if (result.synced_connectors && result.synced_connectors.length > 0) {
+                  toast.success(
+                    `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`
+                  );
+                } else if (result.errors && result.errors.length > 0) {
+                  toast.error("Some connectors failed to sync");
+                }
+              } catch (error) {
+                toast.error(
+                  error instanceof Error ? error.message : "Failed to sync connectors"
+                );
+              }
+            }}
+          >
+            {syncAllConnectorsMutation.isPending ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync
+              </>
+            )}
+          </Button>
           {selectedRows.length > 0 && (
             <Button
               type="button"

@@ -176,6 +176,8 @@ class MessageId:
     ORB_SETTINGS_CHUNK_UPDATED = "ORB_SETTINGS_CHUNK_UPDATED"
     # Message: Docling settings updated
     ORB_SETTINGS_DOCLING_UPDATED = "ORB_SETTINGS_DOCLING_UPDATED"
+    # Message: Index name updated
+    ORB_SETTINGS_INDEX_NAME_UPDATED = "ORB_SETTINGS_INDEX_NAME_UPDATED"
     # Message: Provider credentials updated
     ORB_SETTINGS_PROVIDER_CREDS = "ORB_SETTINGS_PROVIDER_CREDS"
     

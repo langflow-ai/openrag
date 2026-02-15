@@ -605,6 +605,72 @@ class GoogleDriveConnector(BaseConnector):
             )
             raise
 
+    def _extract_google_drive_acl(self, file_meta: Dict) -> DocumentACL:
+        """
+        Extract ACL from Google Drive file metadata.
+
+        Fetches permissions for the file and constructs a DocumentACL with
+        allowed users and groups.
+
+        Args:
+            file_meta: File metadata dict from Google Drive API
+
+        Returns:
+            DocumentACL instance with extracted permissions
+        """
+        try:
+            # Fetch permissions (requires additional API call)
+            permissions_list = self.service.permissions().list(
+                fileId=file_meta["id"],
+                fields="permissions(emailAddress,role,type,deleted,displayName)"
+            ).execute()
+
+            allowed_users = []
+            allowed_groups = []
+            owner = None
+
+            for perm in permissions_list.get("permissions", []):
+                if perm.get("deleted"):
+                    continue
+
+                role = perm.get("role")  # "owner", "writer", "reader", "commenter"
+                perm_type = perm.get("type")  # "user", "group", "domain", "anyone"
+                email = perm.get("emailAddress")
+
+                # Track owner
+                if role == "owner" and email:
+                    owner = email
+
+                # Add allowed users
+                if perm_type == "user" and email:
+                    allowed_users.append(email)
+
+                # Add allowed groups
+                elif perm_type == "group" and email:
+                    allowed_groups.append(email)
+
+            # Fallback to file owners if no owner found in permissions
+            if not owner and file_meta.get("owners"):
+                owner = file_meta["owners"][0].get("emailAddress")
+
+            return DocumentACL(
+                owner=owner,
+                allowed_users=allowed_users,
+                allowed_groups=allowed_groups,
+            )
+
+        except Exception as e:
+            # On error, return basic ACL with just owner
+            logger.warning(f"Failed to extract ACL for {file_meta.get('id')}: {e}")
+            owner = None
+            if file_meta.get("owners"):
+                owner = file_meta["owners"][0].get("emailAddress")
+            return DocumentACL(
+                owner=owner,
+                allowed_users=[owner] if owner else [],
+                allowed_groups=[],
+            )
+
     async def get_file_content(self, file_id: str) -> ConnectorDocument:
         """
         Fetch a file's metadata and content from Google Drive and wrap it in a ConnectorDocument.
@@ -645,6 +711,9 @@ class GoogleDriveConnector(BaseConnector):
                 except ValueError:
                     return None
 
+        # Extract ACL from file metadata
+        acl = self._extract_google_drive_acl(meta)
+
         doc = ConnectorDocument(
             id=meta["id"],
             filename=meta.get("name", ""),
@@ -652,7 +721,7 @@ class GoogleDriveConnector(BaseConnector):
             created_time=parse_datetime(meta.get("createdTime")),
             modified_time=parse_datetime(meta.get("modifiedTime")),
             mimetype=str(meta.get("mimeType", "")),
-            acl=DocumentACL(),  # TODO: map Google Drive permissions if you want ACLs
+            acl=acl,
             content=blob,
             metadata={
                 "parents": meta.get("parents"),
@@ -978,6 +1047,9 @@ class GoogleDriveConnector(BaseConnector):
                     except ValueError:
                         return None
 
+            # Extract ACL from file metadata
+            acl = self._extract_google_drive_acl(meta)
+
             doc = ConnectorDocument(
                 id=meta["id"],
                 filename=meta.get("name", ""),
@@ -985,7 +1057,7 @@ class GoogleDriveConnector(BaseConnector):
                 created_time=parse_datetime(meta.get("createdTime")),
                 modified_time=parse_datetime(meta.get("modifiedTime")),
                 mimetype=str(meta.get("mimeType", "")),
-                acl=DocumentACL(),  # TODO: set appropriate ACL instance or value
+                acl=acl,
                 metadata={
                     "name": meta.get("name"),
                     "webViewLink": meta.get("webViewLink"),
@@ -1075,6 +1147,9 @@ class GoogleDriveConnector(BaseConnector):
                         except ValueError:
                             return None
 
+                # Extract ACL from resolved metadata
+                acl = self._extract_google_drive_acl(resolved)
+
                 doc = ConnectorDocument(
                     id=resolved["id"],
                     filename=resolved.get("name", ""),
@@ -1082,7 +1157,7 @@ class GoogleDriveConnector(BaseConnector):
                     created_time=parse_datetime(resolved.get("createdTime")),
                     modified_time=parse_datetime(resolved.get("modifiedTime")),
                     mimetype=str(resolved.get("mimeType", "")),
-                    acl=DocumentACL(),  # Set appropriate ACL if needed
+                    acl=acl,
                     metadata={
                         "parents": resolved.get("parents"),
                         "driveId": resolved.get("driveId"),

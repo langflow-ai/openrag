@@ -20,8 +20,6 @@ import { ModelSelector } from "./model-selector";
 export function IBMOnboarding({
 	isEmbedding = false,
 	setSettings,
-	sampleDataset,
-	setSampleDataset,
 	setIsLoadingModels,
 	alreadyConfigured = false,
 	existingEndpoint,
@@ -30,8 +28,6 @@ export function IBMOnboarding({
 }: {
 	isEmbedding?: boolean;
 	setSettings: Dispatch<SetStateAction<OnboardingVariables>>;
-	sampleDataset: boolean;
-	setSampleDataset: (dataset: boolean) => void;
 	setIsLoadingModels?: (isLoading: boolean) => void;
 	alreadyConfigured?: boolean;
 	existingEndpoint?: string;
@@ -125,10 +121,6 @@ export function IBMOnboarding({
 		setLanguageModel?.("");
 	};
 
-	const handleSampleDatasetChange = (dataset: boolean) => {
-		setSampleDataset(dataset);
-	};
-
 	useEffect(() => {
 		setIsLoadingModels?.(isLoadingModels);
 	}, [isLoadingModels, setIsLoadingModels]);
@@ -161,7 +153,7 @@ export function IBMOnboarding({
 							options={alreadyConfigured ? [] : options}
 							value={endpoint}
 							custom
-							onValueChange={alreadyConfigured ? () => {} : setEndpoint}
+							onValueChange={alreadyConfigured ? () => { } : setEndpoint}
 							searchPlaceholder="Search endpoint..."
 							noOptionsPlaceholder={
 								alreadyConfigured
@@ -280,10 +272,8 @@ export function IBMOnboarding({
 				embeddingModels={embeddingModels}
 				languageModel={languageModel}
 				embeddingModel={embeddingModel}
-				sampleDataset={sampleDataset}
 				setLanguageModel={setLanguageModel}
 				setEmbeddingModel={setEmbeddingModel}
-				setSampleDataset={handleSampleDatasetChange}
 			/>
 		</>
 	);

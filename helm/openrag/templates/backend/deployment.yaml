@@ -74,6 +74,8 @@ spec:
                   name: {{ include "openrag.fullname" . }}-opensearch
                   key: password
             {{- end }}
+            - name: OPENSEARCH_INDEX_NAME
+              value: {{ .Values.global.opensearch.indexName | quote }}
             # Langflow connection
             - name: LANGFLOW_URL
               value: {{ include "openrag.langflow.url" . | quote }}
@@ -117,6 +119,8 @@ spec:
             # Feature flags
             - name: DISABLE_INGEST_WITH_LANGFLOW
               value: {{ .Values.backend.features.disableIngestWithLangflow | quote }}
+            - name: INGEST_SAMPLE_DATA
+              value: {{ .Values.backend.features.ingestSampleData | quote }}
             # LLM Provider keys
             {{- if .Values.llmProviders.openai.enabled }}
             - name: OPENAI_API_KEY

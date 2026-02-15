@@ -33,6 +33,8 @@ class DoclingManager:
         self._port = 5001
         # Bind to all interfaces by default (can be overridden with DOCLING_BIND_HOST env var)
         self._host = os.getenv('DOCLING_BIND_HOST', '0.0.0.0')
+        # Default workers for concurrent document processing (can be overridden with DOCLING_WORKERS env var)
+        self._workers = int(os.getenv('DOCLING_WORKERS', '1'))
         self._running = False
         self._starting = False
         self._external_process = False
@@ -57,7 +59,7 @@ class DoclingManager:
         # Just clean up our references
         self._add_log_entry("TUI exiting - docling-serve will continue running")
         # Note: We keep the PID file so we can reconnect in future sessions
-        
+
     def _save_pid(self, pid: int) -> None:
         """Save the process PID to a file for persistence across sessions."""
         try:
@@ -120,7 +122,7 @@ class DoclingManager:
             # Keep buffer size limited
             if len(self._log_buffer) > self._max_log_lines:
                 self._log_buffer = self._log_buffer[-self._max_log_lines:]
-        
+
     def is_running(self) -> bool:
         """Check if docling serve is running (by PID only)."""
         # Check if we have a direct process handle
@@ -142,7 +144,7 @@ class DoclingManager:
         self._running = False
         self._external_process = False
         return False
-    
+
     def check_port_available(self) -> tuple[bool, Optional[str]]:
         """Check if the native service port is available.
 
@@ -175,6 +177,7 @@ class DoclingManager:
                 "status": "starting",
                 "port": self._port,
                 "host": self._host,
+                "workers": self._workers,
                 "endpoint": None,
                 "docs_url": None,
                 "ui_url": None,
@@ -196,6 +199,7 @@ class DoclingManager:
                 "status": "running",
                 "port": self._port,
                 "host": self._host,
+                "workers": self._workers,
                 "endpoint": f"http://{display_host}:{self._port}",
                 "docs_url": f"http://{display_host}:{self._port}/docs",
                 "ui_url": f"http://{display_host}:{self._port}/ui",
@@ -207,14 +211,22 @@ class DoclingManager:
                 "status": "stopped",
                 "port": self._port,
                 "host": self._host,
+                "workers": self._workers,
                 "endpoint": None,
                 "docs_url": None,
                 "ui_url": None,
                 "pid": None
             }
-    
-    async def start(self, port: int = 5001, host: Optional[str] = None, enable_ui: bool = False) -> Tuple[bool, str]:
-        """Start docling serve as external process."""
+
+    async def start(self, port: int = 5001, host: str | None = None, enable_ui: bool = False, workers: int | None = None) -> Tuple[bool, str]:
+        """Start docling serve as external process.
+
+        Args:
+            port: Port to listen on (default: 5001)
+            host: Host to bind to (default: from env or 0.0.0.0)
+            enable_ui: Enable Gradio UI (default: False)
+            workers: Number of worker processes (default: from env or 1)
+        """
         if self.is_running():
             return False, "Docling serve is already running"
 
@@ -222,6 +234,9 @@ class DoclingManager:
         # Use provided host or keep default from __init__
         if host is not None:
             self._host = host
+        # Use provided workers or keep default from __init__
+        if workers is not None:
+            self._workers = workers
 
         # Check if port is already in use before trying to start
         import socket
@@ -251,12 +266,14 @@ class DoclingManager:
                     "uv", "run", "python", "-m", "docling_serve", "run",
                     "--host", self._host,
                     "--port", str(self._port),
+                    "--workers", str(self._workers),
                 ]
             else:
                 cmd = [
                     sys.executable, "-m", "docling_serve", "run",
                     "--host", self._host,
                     "--port", str(self._port),
+                    "--workers", str(self._workers),
                 ]
 
             if enable_ui:
@@ -467,7 +484,7 @@ class DoclingManager:
         except Exception as e:
             self._add_log_entry(f"Error stopping docling serve: {e}")
             return False, f"Error stopping docling serve: {str(e)}"
-    
+
     async def restart(self, port: Optional[int] = None, host: Optional[str] = None, enable_ui: bool = False) -> Tuple[bool, str]:
         """Restart docling serve."""
         # Use current settings if not specified
@@ -475,23 +492,23 @@ class DoclingManager:
             port = self._port
         if host is None:
             host = self._host
-            
+
         # Stop if running
         if self.is_running():
             success, msg = await self.stop()
             if not success:
                 return False, f"Failed to stop: {msg}"
-            
+
             # Wait a moment for cleanup
             await asyncio.sleep(1)
-        
+
         # Start with new settings
         return await self.start(port, host, enable_ui)
-    
+
     def add_manual_log_entry(self, message: str) -> None:
         """Add a manual log entry - useful for debugging."""
         self._add_log_entry(f"MANUAL: {message}")
-    
+
     def get_logs(self, lines: int = 50) -> Tuple[bool, str]:
         """Get logs from the docling-serve process."""
         if self.is_running():
@@ -506,7 +523,7 @@ class DoclingManager:
                 return True, logs
         else:
             return True, "Docling serve is not running."
-    
+
     async def follow_logs(self) -> AsyncIterator[str]:
         """Follow logs from the docling-serve process in real-time."""
         # First yield status message and any existing logs
