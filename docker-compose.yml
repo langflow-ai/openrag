@@ -101,6 +101,25 @@ services:
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
 
+  openrag-mcp:
+    image: langflowai/openrag-mcp:${OPENRAG_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    container_name: openrag-mcp
+    depends_on:
+      - openrag-frontend
+    environment:
+      - MCP_TRANSPORT=sse
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8080
+      - OPENRAG_URL=http://openrag-frontend:3000
+      - OPENRAG_API_KEY=${OPENRAG_API_KEY}
+      - OPENRAG_MCP_TIMEOUT=${OPENRAG_MCP_TIMEOUT:-60}
+      - OPENRAG_MCP_MAX_RETRIES=${OPENRAG_MCP_MAX_RETRIES:-3}
+    ports:
+      - "${MCP_PORT:-8080}:8080"
+
   langflow:
     volumes:
       - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z

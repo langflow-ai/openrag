@@ -4,6 +4,7 @@
 
 import asyncio
 import logging
+import os
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -49,7 +50,7 @@ def create_server() -> Server:
     return server
 
 
-async def run_server():
+async def run_stdio_server():
     """Run the MCP server with stdio transport."""
     server = create_server()
 
@@ -62,10 +63,50 @@ async def run_server():
         )
 
 
+def run_sse_server():
+    """Run the MCP server with SSE transport (for Docker / network access)."""
+    import uvicorn
+    from mcp.server.sse import SseServerTransport
+    from starlette.applications import Starlette
+    from starlette.responses import Response
+    from starlette.routing import Mount, Route
+
+    server = create_server()
+    sse = SseServerTransport("/messages/")
+
+    async def handle_sse(request):
+        async with sse.connect_sse(
+            request.scope, request.receive, request._send
+        ) as (read_stream, write_stream):
+            await server.run(
+                read_stream,
+                write_stream,
+                server.create_initialization_options(),
+            )
+        return Response()
+
+    app = Starlette(
+        routes=[
+            Route("/sse", endpoint=handle_sse, methods=["GET"]),
+            Mount("/messages/", app=sse.handle_post_message),
+        ],
+    )
+
+    host = os.environ.get("MCP_HOST", "0.0.0.0")
+    port = int(os.environ.get("MCP_PORT", "8080"))
+    logger.info(f"Starting OpenRAG MCP server with SSE transport on {host}:{port}")
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
 def main():
     """Entry point for the MCP server."""
+    transport = os.environ.get("MCP_TRANSPORT", "stdio").lower()
+
     try:
-        asyncio.run(run_server())
+        if transport == "sse":
+            run_sse_server()
+        else:
+            asyncio.run(run_stdio_server())
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
     except ValueError as e:
