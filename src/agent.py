@@ -284,8 +284,12 @@ async def async_response(
 
         response = await client.responses.create(**request_params)
 
-        # Check if response has output_text using getattr to avoid issues with special objects
-        output_text = getattr(response, "output_text", None)
+        # output_text is a property that iterates response.output — if output is None,
+        # it raises TypeError rather than AttributeError, so getattr won't catch it.
+        try:
+            output_text = response.output_text
+        except (TypeError, AttributeError):
+            output_text = None
         if output_text is not None:
             response_text = output_text
             logger.info("Response generated", log_prefix=log_prefix, response=response_text)

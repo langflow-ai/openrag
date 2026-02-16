@@ -733,7 +733,7 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
 
         # Minimal validation request - uses cheapest model with minimal tokens
         payload = {
-            "model": "claude-3-5-haiku-latest",  # Cheapest model
+            "model": "claude-haiku-4-5-20251001",  # Cheapest model
             "max_tokens": 1,  # Minimum tokens to validate key
             "messages": [{"role": "user", "content": "test"}],
         }
