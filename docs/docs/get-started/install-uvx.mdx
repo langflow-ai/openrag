@@ -8,8 +8,9 @@ import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
 import PartialSetup from '@site/docs/_partial-setup.mdx';
 import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
-import PartialPrereqCommon from '@site/docs/_partial-prereq-common.mdx';
-import PartialPrereqNoScript from '@site/docs/_partial-prereq-no-script.mdx';
+import PartialPrereqModels from '@site/docs/_partial-prereq-models.mdx';
+import PartialPrereqUv from '@site/docs/_partial-prereq-uv.mdx';
+import PartialPrereqGpu from '@site/docs/_partial-prereq-gpu.mdx';
 import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
 import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
@@ -18,14 +19,14 @@ import PartialWatsonxModels from '@site/docs/_partial-watsonx-models.mdx';
 
 Use [`uvx`](https://docs.astral.sh/uv/guides/tools/#running-tools) to invoke OpenRAG outside of a Python project or without modifying your project's dependencies.
 
-:::tip
-The [automatic installer script](/install) also uses `uvx` to install OpenRAG.
-:::
+This installation method is best for testing OpenRAG by running it outside of a Python project.
+For other installation methods, see [Select an installation method](/install-options).
 
 When you install OpenRAG with `uvx`, you will use the [Terminal User Interface (TUI)](/tui) to configure and manage your OpenRAG deployment.
 
-This installation method is best for testing OpenRAG by running it outside of a Python project.
-For other installation methods, see [Select an installation method](/install-options).
+:::info
+`uvx openrag` installs the latest version of OpenRAG and dependencies, like Docker or Podman, if they aren't already present in your environment.
+:::
 
 ## Prerequisites
 
@@ -33,13 +34,15 @@ For other installation methods, see [Select an installation method](/install-opt
 
 <PartialPrereqPython />
 
-<PartialPrereqNoScript />
+<PartialPrereqUv />
 
-<PartialPrereqCommon />
+<PartialPrereqModels />
+
+<PartialPrereqGpu />
 
 ## Install and run OpenRAG with uvx
 
-1. Create a directory to store your OpenRAG configuration files and data, and then change to that directory:
+1. Create a directory for your OpenRAG configuration files and data, and then change to that directory:
 
    ```bash
    mkdir openrag-workspace
@@ -48,22 +51,23 @@ For other installation methods, see [Select an installation method](/install-opt
 
 2. Optional: If you want to use a pre-populated [OpenRAG `.env` file](/reference/configuration), create one at `~/.openrag/tui` before invoking OpenRAG.
 
-3. Invoke OpenRAG:
+3. Invoke OpenRAG and install any missing dependencies:
 
    ```bash
    uvx openrag
    ```
 
-   You can invoke a specific version using any of the [`uvx` version specifiers](https://docs.astral.sh/uv/guides/tools/#requesting-specific-versions), such as `--from`:
+   You can invoke a specific version using any of the [`uvx` version specifiers](https://docs.astral.sh/uv/guides/tools/#requesting-specific-versions), such as `uvx --from openrag==0.1.30 openrag`.
 
-   ```bash
-   uvx --from openrag==0.1.30 openrag
-   ```
+4. If needed, respond to any prompts to install and configure dependencies like Docker or Podman.
 
-   Invoking OpenRAG with `uvx openrag` creates a cached, ephemeral environment for the TUI in your local `uv` cache.
-   By invoking OpenRAG in a specific directory, your OpenRAG configuration files and data are stored separately from the `uv` cache.
-   Clearing the `uv` cache doesn't remove your entire OpenRAG installation.
-   After clearing the cache, you can re-invoke OpenRAG (`uvx openrag`) to restart the TUI with your preserved configuration and data.
+The entire setup process can take a few minutes.
+Once the environment is ready, the OpenRAG [Terminal User Interface (TUI)](/tui) starts.
+
+Invoking OpenRAG with `uvx openrag` creates a cached, ephemeral environment for the TUI in your local `uv` cache.
+Your OpenRAG configuration files and data are stored in `~/.openrag`, which is separate from the `uv` cache.
+Clearing the `uv` cache doesn't remove your entire OpenRAG installation; it only clears `uv` dependencies.
+After clearing the cache, you can re-invoke OpenRAG (`uvx openrag`) to restart the TUI with your preserved configuration and data.
 
 If you encounter errors during installation, see [Troubleshoot OpenRAG](/support/troubleshoot).
 
