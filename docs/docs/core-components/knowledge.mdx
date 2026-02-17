@@ -27,13 +27,7 @@ An [OpenSearch index](https://docs.opensearch.org/latest/getting-started/intro/#
 
 By default, all documents you upload to your OpenRAG knowledge base are stored in an index named `documents`.
 
-<!-- TBD - better way to rename -->
-
-It is possible to change the index name by [editing the ingestion flow](/agents#inspect-and-modify-flows).
-However, this can impact dependent processes, such as the [filters](/knowledge-filters) and [**Chat**](/chat), that reference the `documents` index by default.
-Make sure you edit other flows as needed to ensure all processes use the same index name.
-
-If you encounter errors or unexpected behavior after changing the index name, you can [revert the flows to their original configuration](/agents#revert-a-built-in-flow-to-its-original-configuration), or [delete knowledge](/knowledge-browse#delete-knowledge) to clear the existing documents from your knowledge base.
+To change the OpenRAG index name, edit the `OPENSEARCH_INDEX_NAME` [environment variable](/reference/configuration#opensearch-settings).
 
 ## OpenSearch service port
 
