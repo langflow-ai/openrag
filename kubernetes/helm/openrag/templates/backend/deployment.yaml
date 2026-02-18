@@ -33,21 +33,28 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- if .Values.backend.persistence.documents.enabled }}
+        {{- if and .Values.backend.persistence.documents.enabled .Values.backend.persistence.documents.loadDefaults .Values.backend.persistence.documents.git.enabled }}
         - name: load-default-documents
           image: curlimages/curl:8.5.0
-          command:
-            - /bin/sh
-            - -c
+          command: ["/bin/sh", "-c"]
+          args:
             - |
+              set -eu
+
               DOCS_DIR="{{ .Values.backend.persistence.documents.mountPath }}"
-              GITHUB_RAW_URL="https://raw.githubusercontent.com/langflow-ai/openrag/main/openrag-documents"
-              DOCUMENTS="docling.pdf ibm_anthropic.pdf openrag-documentation.pdf warmup_ocr.pdf"
+
+              OWNER="{{ .Values.backend.persistence.documents.git.owner }}"
+              REPO="{{ .Values.backend.persistence.documents.git.repo }}"
+              BRANCH="{{ .Values.backend.persistence.documents.git.branch }}"
+              REPO_PATH="{{ .Values.backend.persistence.documents.git.path }}"
+
+              # Raw base URL: https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>
+              GITHUB_RAW_URL="https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${REPO_PATH}"
 
               mkdir -p "$DOCS_DIR"
 
               if [ -z "$(ls -A "$DOCS_DIR" 2>/dev/null)" ]; then
-                echo "Loading default documents from GitHub repository..."
+                echo "Loading default documents from ${OWNER}/${REPO}@${BRANCH}/${REPO_PATH} ..."
 
                 download_with_retry() {
                   file="$1"
@@ -59,38 +66,34 @@ spec:
 
                   while [ "$retry" -lt "$max_retries" ]; do
                     echo "Downloading ${file} (attempt $((retry + 1))/${max_retries})..."
-
                     if curl -f -L -m "$timeout" -o "$dest" "$url"; then
-                      echo "Successfully downloaded ${file}"
+                      echo "OK: ${file}"
                       return 0
-                    else
-                      retry=$((retry + 1))
-                      if [ "$retry" -lt "$max_retries" ]; then
-                        echo "Failed to download ${file}, retrying..."
-                        sleep 2
-                      else
-                        echo "ERROR: Failed to download ${file} after ${max_retries} attempts"
-                        return 1
-                      fi
+                    fi
+                    retry=$((retry + 1))
+                    if [ "$retry" -lt "$max_retries" ]; then
+                      echo "Retrying ${file}..."
+                      sleep 2
                     fi
                   done
+
+                  echo "ERROR: Failed to download ${file} from ${url}"
+                  return 1
                 }
 
                 failed=0
-                for doc in $DOCUMENTS; do
-                  if ! download_with_retry "$doc"; then
-                    failed=1
-                  fi
-                done
+{{- range .Values.backend.persistence.documents.git.files }}
+                if ! download_with_retry "{{ . }}"; then failed=1; fi
+{{- end }}
 
                 if [ "$failed" -eq 1 ]; then
-                  echo "ERROR: Some documents failed to download"
+                  echo "ERROR: One or more documents failed to download"
                   exit 1
                 fi
 
-                echo "All documents loaded successfully: $(ls "$DOCS_DIR")"
+                echo "Documents loaded: $(ls "$DOCS_DIR")"
               else
-                echo "Documents already exist, skipping download."
+                echo "Documents already exist in $DOCS_DIR, skipping download."
               fi
           volumeMounts:
             - name: documents

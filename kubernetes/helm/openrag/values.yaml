@@ -168,6 +168,18 @@ backend:
       accessMode: ReadWriteOnce
       size: 50Gi
       mountPath: /app/openrag-documents
+      loadDefaults: true                        # Load default documents on first deployment
+      git:
+        enabled: true
+        owner: langflow-ai
+        repo: openrag
+        branch: main
+        path: openrag-documents
+        files:
+          - docling.pdf
+          - ibm_anthropic.pdf
+          - openrag-documentation.pdf
+          - warmup_ocr.pdf
     keys:
       enabled: true
       storageClass: ""
