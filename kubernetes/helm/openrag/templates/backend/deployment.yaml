@@ -46,15 +46,20 @@ spec:
               OWNER="{{ .Values.backend.persistence.documents.git.owner }}"
               REPO="{{ .Values.backend.persistence.documents.git.repo }}"
               BRANCH="{{ .Values.backend.persistence.documents.git.branch }}"
+              {{- if .Values.backend.persistence.documents.git.hash }}
+              GIT_REF="{{ .Values.backend.persistence.documents.git.hash }}"
+              {{- else }}
+              GIT_REF="${BRANCH}"
+              {{- end }}
               REPO_PATH="{{ .Values.backend.persistence.documents.git.path }}"
 
-              # Raw base URL: https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>
-              GITHUB_RAW_URL="https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${REPO_PATH}"
+              # Raw base URL: https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
+              GITHUB_RAW_URL="https://raw.githubusercontent.com/${OWNER}/${REPO}/${GIT_REF}/${REPO_PATH}"
 
               mkdir -p "$DOCS_DIR"
 
               if [ -z "$(ls -A "$DOCS_DIR" 2>/dev/null)" ]; then
-                echo "Loading default documents from ${OWNER}/${REPO}@${BRANCH}/${REPO_PATH} ..."
+                echo "Loading default documents from ${OWNER}/${REPO}@${GIT_REF}/${REPO_PATH} ..."
 
                 download_with_retry() {
                   file="$1"

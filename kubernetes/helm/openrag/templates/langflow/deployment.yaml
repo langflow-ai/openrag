@@ -47,15 +47,20 @@ spec:
               OWNER="{{ .Values.langflow.flows.git.owner }}"
               REPO="{{ .Values.langflow.flows.git.repo }}"
               BRANCH="{{ .Values.langflow.flows.git.branch }}"
+              {{- if .Values.langflow.flows.git.hash }}
+              GIT_REF="{{ .Values.langflow.flows.git.hash }}"
+              {{- else }}
+              GIT_REF="${BRANCH}"
+              {{- end }}
               REPO_PATH="{{ .Values.langflow.flows.git.path }}"
 
-              # Raw base URL: https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>
-              GITHUB_RAW_URL="https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${REPO_PATH}"
+              # Raw base URL: https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
+              GITHUB_RAW_URL="https://raw.githubusercontent.com/${OWNER}/${REPO}/${GIT_REF}/${REPO_PATH}"
 
               mkdir -p "$FLOWS_DIR"
 
               if [ -z "$(ls -A "$FLOWS_DIR" 2>/dev/null)" ]; then
-                echo "Loading default flows from ${OWNER}/${REPO}@${BRANCH}/${REPO_PATH} ..."
+                echo "Loading default flows from ${OWNER}/${REPO}@${GIT_REF}/${REPO_PATH} ..."
 
                 download_with_retry() {
                   file="$1"

@@ -83,6 +83,8 @@ langflow:
       owner: langflow-ai
       repo: openrag
       branch: main
+      # Optional: specific git commit hash (overrides branch if set)
+      hash: f5635c9906df581384c62b570afb55ace65ad1eb
       path: flows
       files:
         - ingestion_flow.json
@@ -174,6 +176,8 @@ backend:
         owner: langflow-ai
         repo: openrag
         branch: main
+        # Optional: specific git commit hash (overrides branch if set)
+        hash: f5635c9906df581384c62b570afb55ace65ad1eb
         path: openrag-documents
         files:
           - docling.pdf
