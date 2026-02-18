@@ -1,0 +1,81 @@
+{{- if .Values.dashboards.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openrag.fullname" . }}-dashboards
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.dashboards.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.dashboards.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "openrag.dashboards.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openrag.dashboards.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets/opensearch-secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "openrag.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: dashboards
+          image: "{{ .Values.dashboards.image.repository }}:{{ .Values.dashboards.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 5601
+              protocol: TCP
+          env:
+            # OpenSearch connection (external SaaS)
+            - name: OPENSEARCH_HOSTS
+              value: '["{{ include "openrag.opensearch.url" . }}"]'
+            - name: OPENSEARCH_USERNAME
+              value: {{ .Values.global.opensearch.username | quote }}
+            {{- if .Values.global.opensearch.password }}
+            - name: OPENSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openrag.fullname" . }}-opensearch
+                  key: password
+            {{- end }}
+          resources:
+            {{- toYaml .Values.dashboards.resources | nindent 12 }}
+          {{- if .Values.dashboards.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: {{ .Values.dashboards.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.dashboards.livenessProbe.periodSeconds }}
+          {{- end }}
+          {{- if .Values.dashboards.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: {{ .Values.dashboards.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.dashboards.readinessProbe.periodSeconds }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

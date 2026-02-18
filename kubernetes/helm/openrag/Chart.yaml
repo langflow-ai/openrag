@@ -1,0 +1,18 @@
+apiVersion: v2
+name: openrag
+description: A Helm chart for deploying OpenRAG - an open-source agentic RAG platform
+type: application
+version: 0.1.0
+appVersion: "0.1.52"
+keywords:
+  - openrag
+  - rag
+  - langflow
+  - opensearch
+  - ai
+  - llm
+home: https://github.com/langflow-ai/openrag
+sources:
+  - https://github.com/langflow-ai/openrag
+maintainers:
+  - name: OpenRAG Team

@@ -1,0 +1,104 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "openrag.fullname" . }}
+  namespace: {{ include "openrag.namespace" . }}
+  labels:
+    {{- include "openrag.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if .Values.ingress.tls.certManager.enabled }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.certManager.issuerRef.name }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    {{- if .Values.ingress.hosts.frontend.host }}
+    - hosts:
+        - {{ .Values.ingress.hosts.frontend.host }}
+      secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-frontend-tls" (include "openrag.fullname" .)) }}
+    {{- end }}
+    {{- if .Values.ingress.hosts.backend.host }}
+    - hosts:
+        - {{ .Values.ingress.hosts.backend.host }}
+      secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-backend-tls" (include "openrag.fullname" .)) }}
+    {{- end }}
+    {{- if and .Values.ingress.hosts.langflow.enabled .Values.ingress.hosts.langflow.host }}
+    - hosts:
+        - {{ .Values.ingress.hosts.langflow.host }}
+      secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-langflow-tls" (include "openrag.fullname" .)) }}
+    {{- end }}
+    {{- if and .Values.dashboards.enabled .Values.ingress.hosts.dashboards.enabled .Values.ingress.hosts.dashboards.host }}
+    - hosts:
+        - {{ .Values.ingress.hosts.dashboards.host }}
+      secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-dashboards-tls" (include "openrag.fullname" .)) }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- if .Values.ingress.hosts.frontend.host }}
+    # Frontend ingress rule
+    - host: {{ .Values.ingress.hosts.frontend.host }}
+      http:
+        paths:
+          {{- range .Values.ingress.hosts.frontend.paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "openrag.fullname" $ }}-frontend
+                port:
+                  number: {{ $.Values.frontend.service.port }}
+          {{- end }}
+    {{- end }}
+    {{- if .Values.ingress.hosts.backend.host }}
+    # Backend API ingress rule
+    - host: {{ .Values.ingress.hosts.backend.host }}
+      http:
+        paths:
+          {{- range .Values.ingress.hosts.backend.paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "openrag.fullname" $ }}-backend
+                port:
+                  number: {{ $.Values.backend.service.port }}
+          {{- end }}
+    {{- end }}
+    {{- if and .Values.ingress.hosts.langflow.enabled .Values.ingress.hosts.langflow.host }}
+    # Optional Langflow direct access
+    - host: {{ .Values.ingress.hosts.langflow.host }}
+      http:
+        paths:
+          {{- range .Values.ingress.hosts.langflow.paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "openrag.fullname" $ }}-langflow
+                port:
+                  number: {{ $.Values.langflow.service.port }}
+          {{- end }}
+    {{- end }}
+    {{- if and .Values.dashboards.enabled .Values.ingress.hosts.dashboards.enabled .Values.ingress.hosts.dashboards.host }}
+    # Optional Dashboards access
+    - host: {{ .Values.ingress.hosts.dashboards.host }}
+      http:
+        paths:
+          {{- range .Values.ingress.hosts.dashboards.paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "openrag.fullname" $ }}-dashboards
+                port:
+                  number: {{ $.Values.dashboards.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}

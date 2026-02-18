@@ -1,0 +1,80 @@
+OpenRAG has been deployed successfully!
+
+{{- if .Values.global.tenant.name }}
+Tenant: {{ .Values.global.tenant.name }}
+Namespace: {{ include "openrag.namespace" . }}
+{{- end }}
+
+=== Services Deployed ===
+
+{{- if .Values.langflow.enabled }}
+Langflow:
+  - Internal URL: http://{{ include "openrag.fullname" . }}-langflow:{{ .Values.langflow.service.port }}
+  {{- if and .Values.ingress.enabled .Values.ingress.hosts.langflow.enabled .Values.ingress.hosts.langflow.host }}
+  - External URL: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.hosts.langflow.host }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.backend.enabled }}
+Backend API:
+  - Internal URL: http://{{ include "openrag.fullname" . }}-backend:{{ .Values.backend.service.port }}
+  {{- if and .Values.ingress.enabled .Values.ingress.hosts.backend.host }}
+  - External URL: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.hosts.backend.host }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.frontend.enabled }}
+Frontend UI:
+  - Internal URL: http://{{ include "openrag.fullname" . }}-frontend:{{ .Values.frontend.service.port }}
+  {{- if and .Values.ingress.enabled .Values.ingress.hosts.frontend.host }}
+  - External URL: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.hosts.frontend.host }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.dashboards.enabled }}
+OpenSearch Dashboards:
+  - Internal URL: http://{{ include "openrag.fullname" . }}-dashboards:{{ .Values.dashboards.service.port }}
+  {{- if and .Values.ingress.enabled .Values.ingress.hosts.dashboards.enabled .Values.ingress.hosts.dashboards.host }}
+  - External URL: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.hosts.dashboards.host }}
+  {{- end }}
+{{- end }}
+
+=== External Dependencies ===
+
+OpenSearch (External SaaS):
+  - Host: {{ .Values.global.opensearch.host }}
+  - Port: {{ .Values.global.opensearch.port }}
+  - Scheme: {{ .Values.global.opensearch.scheme }}
+
+=== Credentials ===
+
+To retrieve the Langflow superuser credentials:
+
+  kubectl get secret {{ include "openrag.fullname" . }}-langflow -n {{ include "openrag.namespace" . }} -o jsonpath='{.data.superuser}' | base64 -d
+  kubectl get secret {{ include "openrag.fullname" . }}-langflow -n {{ include "openrag.namespace" . }} -o jsonpath='{.data.superuser-password}' | base64 -d
+
+=== Quick Start ===
+
+{{- if and .Values.ingress.enabled .Values.ingress.hosts.frontend.host }}
+1. Access the OpenRAG UI at: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.hosts.frontend.host }}
+{{- else }}
+1. Port-forward the frontend service:
+   kubectl port-forward svc/{{ include "openrag.fullname" . }}-frontend {{ .Values.frontend.service.port }}:{{ .Values.frontend.service.port }} -n {{ include "openrag.namespace" . }}
+   Then access: http://localhost:{{ .Values.frontend.service.port }}
+{{- end }}
+
+2. Upload documents to your knowledge base
+
+3. Start chatting with your documents using the AI-powered chat interface
+
+=== Troubleshooting ===
+
+Check pod status:
+  kubectl get pods -n {{ include "openrag.namespace" . }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Check pod logs:
+  kubectl logs -n {{ include "openrag.namespace" . }} -l app.kubernetes.io/component=langflow
+  kubectl logs -n {{ include "openrag.namespace" . }} -l app.kubernetes.io/component=backend
+  kubectl logs -n {{ include "openrag.namespace" . }} -l app.kubernetes.io/component=frontend
+
+For more information, visit: https://github.com/langflow-ai/openrag
