@@ -1036,11 +1036,28 @@ class ContainerManager:
             if not pull_success["value"]:
                 yield False, "Some images failed to pull; attempting to start services anyway...", False
 
-        yield False, "Creating and starting containers...", False
+        # Check if containers already exist (stopped or otherwise)
+        # Use compose ps -q to check for any existing containers in the project
+        success, stdout, stderr = await self._run_compose_command(["ps", "-q"])
+        containers_exist = success and stdout.strip() != ""
+
+        if containers_exist:
+            yield False, "Starting existing containers...", False
+            if self.runtime_info.runtime_type == RuntimeType.PODMAN:
+                # Podman doesn't support --no-recreate; force-recreate to avoid
+                # "name already in use" and dependency graph errors
+                compose_cmd = ["up", "-d", "--force-recreate"]
+            else:
+                # Use --no-recreate to start existing containers without recreating
+                compose_cmd = ["up", "-d", "--no-recreate"]
+        else:
+            yield False, "Creating and starting containers...", False
+            compose_cmd = ["up", "-d", "--no-build"]
+
         up_success = {"value": True}
         error_messages = []
-        
-        async for message, replace_last in self._stream_compose_command(["up", "-d", "--no-build"], up_success, cpu_mode):
+
+        async for message, replace_last in self._stream_compose_command(compose_cmd, up_success, cpu_mode):
             # Detect error patterns in the output
             lower_msg = message.lower()
             

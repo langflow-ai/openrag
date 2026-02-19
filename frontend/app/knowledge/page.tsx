@@ -28,9 +28,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { StatusBadge, type Status } from "@/components/ui/status-badge";
 import {
   Tooltip,
   TooltipContent,
@@ -70,6 +69,12 @@ function getSourceIcon(connectorType?: string) {
   }
 }
 
+interface IngestionStatus {
+  status: Status;
+  error?: string;
+  data?: File;
+}
+
 function SearchPage() {
   const router = useRouter();
   const { files: taskFiles, refreshTasks } = useTask();
@@ -77,6 +82,7 @@ function SearchPage() {
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
+  const [ingestionStatus, setIngestionStatus] = useState<IngestionStatus | null>(null);
 
   const deleteDocumentMutation = useDeleteDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
@@ -263,31 +269,17 @@ function SearchPage() {
             : undefined;
         if (status === "failed" && error) {
           return (
-            <Dialog>
-              <DialogTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
-                  aria-label="View ingestion error"
-                >
-                  <StatusBadge
-                    status={status}
-                    className="pointer-events-none"
-                  />
-                </button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Ingestion failed</DialogTitle>
-                  <DialogDescription className="text-sm text-muted-foreground">
-                    {data?.filename || "Unknown file"}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
-                  {error}
-                </div>
-              </DialogContent>
-            </Dialog>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
+              aria-label="View ingestion error"
+              onClick={() => {setIngestionStatus({ status, error, data })}}
+            >
+              <StatusBadge
+                status={status}
+                className="pointer-events-none"
+              />
+            </button>
           );
         }
         return <StatusBadge status={status} />;
@@ -467,6 +459,24 @@ function SearchPage() {
           )}
         />
       </div>
+
+      {/* Status dialog */}
+      {ingestionStatus && (
+      <Dialog
+        open={!!ingestionStatus}
+        onOpenChange={(open) => !open && setIngestionStatus(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ingestion failed</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              {ingestionStatus.data?.filename || "Unknown file"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+            {ingestionStatus.error}
+          </div>
+        </DialogContent>
+      </Dialog>)}
 
       {/* Bulk Delete Confirmation Dialog */}
       <DeleteConfirmationDialog

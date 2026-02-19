@@ -20,6 +20,7 @@ from config.settings import (
     is_no_auth_mode,
 )
 from api.provider_validation import validate_provider_setup
+from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
 
 logger = get_logger(__name__)
 
@@ -438,7 +439,7 @@ async def update_settings(request, session_manager):
             current_config.agent.llm_model = body["llm_model"]
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_LLM_MODEL
             )
             logger.info(f"LLM model changed from {old_model} to {body['llm_model']}")
@@ -448,7 +449,7 @@ async def update_settings(request, session_manager):
             current_config.agent.llm_provider = body["llm_provider"]
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_LLM_PROVIDER
             )
             logger.info(f"LLM provider changed from {old_provider} to {body['llm_provider']}")
@@ -457,7 +458,7 @@ async def update_settings(request, session_manager):
             current_config.agent.system_prompt = body["system_prompt"]
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_SYSTEM_PROMPT
             )
 
@@ -477,7 +478,7 @@ async def update_settings(request, session_manager):
             current_config.knowledge.embedding_model = new_embedding_model
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_EMBED_MODEL
             )
             logger.info(f"Embedding model changed from {old_model} to {new_embedding_model}")
@@ -487,7 +488,7 @@ async def update_settings(request, session_manager):
             current_config.knowledge.embedding_provider = body["embedding_provider"]
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_EMBED_PROVIDER
             )
             logger.info(f"Embedding provider changed from {old_provider} to {body['embedding_provider']}")
@@ -496,7 +497,7 @@ async def update_settings(request, session_manager):
             current_config.knowledge.table_structure = body["table_structure"]
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_DOCLING_UPDATED
             )
 
@@ -511,7 +512,7 @@ async def update_settings(request, session_manager):
             current_config.knowledge.ocr = body["ocr"]
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_DOCLING_UPDATED
             )
 
@@ -526,7 +527,7 @@ async def update_settings(request, session_manager):
             current_config.knowledge.picture_descriptions = body["picture_descriptions"]
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_DOCLING_UPDATED
             )
 
@@ -541,7 +542,7 @@ async def update_settings(request, session_manager):
             current_config.knowledge.chunk_size = body["chunk_size"]
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_CHUNK_UPDATED
             )
 
@@ -561,7 +562,7 @@ async def update_settings(request, session_manager):
             current_config.knowledge.chunk_overlap = body["chunk_overlap"]
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_CHUNK_UPDATED
             )
 
@@ -583,7 +584,7 @@ async def update_settings(request, session_manager):
             current_config.knowledge.index_name = new_index_name
             config_updated = True
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_INDEX_NAME_UPDATED
             )
             logger.info(f"Index name changed from {old_index_name} to {new_index_name}")
@@ -637,10 +638,10 @@ async def update_settings(request, session_manager):
             current_config.providers.ollama.configured = True
             config_updated = True
             provider_updated = True
-        
+
         if provider_updated:
             await TelemetryClient.send_event(
-                Category.SETTINGS_OPERATIONS, 
+                Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_PROVIDER_CREDS
             )
 
@@ -668,7 +669,7 @@ async def update_settings(request, session_manager):
         if any(key in body for key in provider_fields_to_check):
             try:
                 flows_service = _get_flows_service()
-                
+
                 # Update global variables
                 await _update_langflow_global_variables(current_config)
 
@@ -677,7 +678,7 @@ async def update_settings(request, session_manager):
                     await _update_mcp_servers_with_provider_credentials(
                         current_config, session_manager
                     )
-                
+
                 # Update model values if provider or model changed
                 if "llm_provider" in body or "llm_model" in body or "embedding_provider" in body or "embedding_model" in body:
                     await _update_langflow_model_values(current_config, flows_service)
@@ -692,7 +693,7 @@ async def update_settings(request, session_manager):
             "Configuration updated successfully", updated_fields=list(body.keys())
         )
         await TelemetryClient.send_event(
-            Category.SETTINGS_OPERATIONS, 
+            Category.SETTINGS_OPERATIONS,
             MessageId.ORB_SETTINGS_UPDATED
         )
         return JSONResponse({"message": "Configuration updated successfully"})
@@ -700,7 +701,7 @@ async def update_settings(request, session_manager):
     except Exception as e:
         logger.error("Failed to update settings", error=str(e))
         await TelemetryClient.send_event(
-            Category.SETTINGS_OPERATIONS, 
+            Category.SETTINGS_OPERATIONS,
             MessageId.ORB_SETTINGS_UPDATE_FAILED
         )
         return JSONResponse(
@@ -712,7 +713,7 @@ async def onboarding(request, flows_service, session_manager=None):
     """Handle onboarding configuration setup"""
     try:
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
-        
+
         # Get current configuration
         current_config = get_openrag_config()
 
@@ -756,7 +757,7 @@ async def onboarding(request, flows_service, session_manager=None):
         # Update agent settings (LLM)
         llm_model_selected = None
         llm_provider_selected = None
-        
+
         if "llm_model" in body:
             if not isinstance(body["llm_model"], str) or not body["llm_model"].strip():
                 return JSONResponse(
@@ -766,7 +767,7 @@ async def onboarding(request, flows_service, session_manager=None):
             current_config.agent.llm_model = llm_model_selected
             config_updated = True
             await TelemetryClient.send_event(
-                Category.ONBOARDING, 
+                Category.ONBOARDING,
                 MessageId.ORB_ONBOARD_LLM_MODEL,
                 metadata={"llm_model": llm_model_selected}
             )
@@ -790,7 +791,7 @@ async def onboarding(request, flows_service, session_manager=None):
             current_config.agent.llm_provider = llm_provider_selected
             config_updated = True
             await TelemetryClient.send_event(
-                Category.ONBOARDING, 
+                Category.ONBOARDING,
                 MessageId.ORB_ONBOARD_LLM_PROVIDER,
                 metadata={"llm_provider": llm_provider_selected}
             )
@@ -799,7 +800,7 @@ async def onboarding(request, flows_service, session_manager=None):
         # Update knowledge settings (embedding)
         embedding_model_selected = None
         embedding_provider_selected = None
-        
+
         if "embedding_model" in body and not DISABLE_INGEST_WITH_LANGFLOW:
             if (
                 not isinstance(body["embedding_model"], str)
@@ -813,7 +814,7 @@ async def onboarding(request, flows_service, session_manager=None):
             current_config.knowledge.embedding_model = embedding_model_selected
             config_updated = True
             await TelemetryClient.send_event(
-                Category.ONBOARDING, 
+                Category.ONBOARDING,
                 MessageId.ORB_ONBOARD_EMBED_MODEL,
                 metadata={"embedding_model": embedding_model_selected}
             )
@@ -838,7 +839,7 @@ async def onboarding(request, flows_service, session_manager=None):
             current_config.knowledge.embedding_provider = embedding_provider_selected
             config_updated = True
             await TelemetryClient.send_event(
-                Category.ONBOARDING, 
+                Category.ONBOARDING,
                 MessageId.ORB_ONBOARD_EMBED_PROVIDER,
                 metadata={"embedding_provider": embedding_provider_selected}
             )
@@ -923,7 +924,7 @@ async def onboarding(request, flows_service, session_manager=None):
         should_ingest_sample_data = INGEST_SAMPLE_DATA
         if should_ingest_sample_data:
             await TelemetryClient.send_event(
-                Category.ONBOARDING, 
+                Category.ONBOARDING,
                 MessageId.ORB_ONBOARD_SAMPLE_DATA
             )
             logger.info("Sample data ingestion enabled via environment variable")
@@ -976,6 +977,20 @@ async def onboarding(request, flows_service, session_manager=None):
                 status_code=400,
             )
 
+        # Ensure the Langflow service is ready before attempting to configure it
+        try:
+            await wait_for_langflow()
+        except LangflowNotReadyError as e:
+            message: str = "Aborted the Langflow service configuration process. The Langflow service is not ready."
+            logger.error(message, error=str(e))
+
+            return JSONResponse(
+                {
+                    "error": message
+                },
+                status_code=503,
+            )
+
         # Set Langflow global variables and model values based on provider configuration
         try:
             # Check if any provider-related fields were provided
@@ -984,14 +999,14 @@ async def onboarding(request, flows_service, session_manager=None):
                 "watsonx_api_key", "watsonx_endpoint", "watsonx_project_id",
                 "ollama_endpoint"
             ])
-            
+
             # Update global variables if any provider fields were provided
             # or if existing config has values (for OpenAI/Anthropic that might already be set)
-            if (provider_fields_provided or 
-                current_config.providers.openai.api_key != "" or 
+            if (provider_fields_provided or
+                current_config.providers.openai.api_key != "" or
                 current_config.providers.anthropic.api_key != ""):
                 await _update_langflow_global_variables(current_config)
-            
+
             if "embedding_provider" in body or "embedding_model" in body:
                 await _update_mcp_servers_with_provider_credentials(current_config, session_manager)
 
@@ -1010,12 +1025,12 @@ async def onboarding(request, flows_service, session_manager=None):
         if "embedding_model" in body or "embedding_provider" in body:
             try:
                 # Import here to avoid circular imports
-                from main import init_index
+                from main import init_index_when_ready
 
                 logger.info(
                     "Initializing OpenSearch index after onboarding configuration"
                 )
-                await init_index()
+                await init_index_when_ready()
                 logger.info("OpenSearch index initialization completed successfully")
             except Exception as e:
                 logger.error(
@@ -1054,9 +1069,9 @@ async def onboarding(request, flows_service, session_manager=None):
                     logger.error(
                         "Failed to complete sample data ingestion", error=str(e)
                     )
-                    
+
                     return JSONResponse(
-                        {"error": f"Failed to ingest sample documents: {str(e)}"}, 
+                        {"error": f"Failed to ingest sample documents: {str(e)}"},
                         status_code=500
                     )
 
@@ -1066,10 +1081,10 @@ async def onboarding(request, flows_service, session_manager=None):
                 "Onboarding configuration updated successfully",
                 updated_fields=updated_fields,
             )
-            
+
             # Mark config as edited and send telemetry with model information
             current_config.edited = True
-            
+
             # Build metadata with selected models
             onboarding_metadata = {}
             if llm_provider_selected:
@@ -1080,14 +1095,14 @@ async def onboarding(request, flows_service, session_manager=None):
                 onboarding_metadata["embedding_provider"] = embedding_provider_selected
             if embedding_model_selected:
                 onboarding_metadata["embedding_model"] = embedding_model_selected
-            
+
             await TelemetryClient.send_event(
-                Category.ONBOARDING, 
+                Category.ONBOARDING,
                 MessageId.ORB_ONBOARD_CONFIG_EDITED,
                 metadata=onboarding_metadata
             )
             await TelemetryClient.send_event(
-                Category.ONBOARDING, 
+                Category.ONBOARDING,
                 MessageId.ORB_ONBOARD_COMPLETE,
                 metadata=onboarding_metadata
             )
@@ -1095,7 +1110,7 @@ async def onboarding(request, flows_service, session_manager=None):
 
         else:
             await TelemetryClient.send_event(
-                Category.ONBOARDING, 
+                Category.ONBOARDING,
                 MessageId.ORB_ONBOARD_FAILED
             )
             return JSONResponse(
@@ -1140,7 +1155,7 @@ async def onboarding(request, flows_service, session_manager=None):
     except Exception as e:
         logger.error("Failed to update onboarding settings", error=str(e))
         await TelemetryClient.send_event(
-            Category.ONBOARDING, 
+            Category.ONBOARDING,
             MessageId.ORB_ONBOARD_FAILED
         )
         return JSONResponse(
@@ -1279,33 +1294,33 @@ async def _update_mcp_servers_with_provider_credentials(config, session_manager 
     try:
         from services.langflow_mcp_service import LangflowMCPService
         from utils.langflow_headers import build_mcp_global_vars_from_config
-        
+
         mcp_service = LangflowMCPService()
-        
+
         # Build global vars using utility function
         mcp_global_vars = build_mcp_global_vars_from_config(config)
-        
+
         # In no-auth mode, add the anonymous JWT token and user details
         if is_no_auth_mode() and session_manager:
             from session_manager import AnonymousUser
-            
+
             # Create/get anonymous JWT for no-auth mode
             anonymous_jwt = session_manager.get_effective_jwt_token(None, None)
             if anonymous_jwt:
                 mcp_global_vars["JWT"] = anonymous_jwt
-            
+
             # Add anonymous user details
             anonymous_user = AnonymousUser()
             mcp_global_vars["OWNER"] = anonymous_user.user_id  # "anonymous"
             mcp_global_vars["OWNER_NAME"] = f'"{anonymous_user.name}"'  # "Anonymous User" (quoted)
             mcp_global_vars["OWNER_EMAIL"] = anonymous_user.email  # "anonymous@localhost"
-            
+
             logger.debug("Added anonymous JWT and user details to MCP servers for no-auth mode")
-        
+
         if mcp_global_vars:
             result = await mcp_service.update_mcp_servers_with_global_vars(mcp_global_vars)
             logger.info("Updated MCP servers with provider credentials after settings change", **result)
-        
+
     except Exception as mcp_error:
         logger.warning(f"Failed to update MCP servers after settings change: {str(mcp_error)}")
         # Don't fail the entire settings update if MCP update fails
@@ -1392,10 +1407,10 @@ async def update_onboarding_state(request):
     """Update onboarding state in configuration"""
     try:
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
-        
+
         # Parse request body
         body = await request.json()
-        
+
         # Validate allowed fields
         allowed_fields = {
             "current_step",
@@ -1406,7 +1421,7 @@ async def update_onboarding_state(request):
             "openrag_docs_filter_id",
             "user_doc_filter_id",
         }
-        
+
         # Check for invalid fields
         invalid_fields = set(body.keys()) - allowed_fields
         if invalid_fields:
@@ -1416,25 +1431,25 @@ async def update_onboarding_state(request):
                 },
                 status_code=400,
             )
-        
+
         # Update onboarding state using config manager
         success = config_manager.update_onboarding_state(**body)
-        
+
         if not success:
             return JSONResponse(
                 {"error": "Failed to update onboarding state"},
                 status_code=500,
             )
-        
+
         logger.info(f"Onboarding state updated: {body}")
-        
+
         return JSONResponse(
             {
                 "message": "Onboarding state updated successfully",
                 "updated_fields": list(body.keys()),
             }
         )
-    
+
     except json.JSONDecodeError:
         return JSONResponse(
             {"error": "Invalid JSON in request body"}, status_code=400
@@ -1499,7 +1514,7 @@ async def reapply_all_settings(session_manager = None):
 
 async def rollback_onboarding(request, session_manager, task_service):
     """Rollback onboarding configuration when sample data files fail.
-    
+
     This will:
     1. Cancel all active tasks
     2. Delete successfully ingested knowledge documents
@@ -1522,15 +1537,15 @@ async def rollback_onboarding(request, session_manager, task_service):
 
         # Get all tasks for the user
         all_tasks = task_service.get_all_tasks(user.user_id)
-        
+
         cancelled_tasks = []
         deleted_files = []
-        
+
         # Cancel all active tasks and collect successfully ingested files
         for task_data in all_tasks:
             task_id = task_data.get("task_id")
             task_status = task_data.get("status")
-            
+
             # Cancel active tasks (pending, running, processing)
             if task_status in ["pending", "running", "processing"]:
                 try:
@@ -1540,7 +1555,7 @@ async def rollback_onboarding(request, session_manager, task_service):
                         logger.info(f"Cancelled task {task_id}")
                 except Exception as e:
                     logger.error(f"Failed to cancel task {task_id}: {str(e)}")
-            
+
             # For completed tasks, find successfully ingested files and delete them
             elif task_status == "completed":
                 files = task_data.get("files", {})
@@ -1550,26 +1565,26 @@ async def rollback_onboarding(request, session_manager, task_service):
                         if isinstance(file_info, dict):
                             file_status = file_info.get("status")
                             filename = file_info.get("filename") or file_path.split("/")[-1]
-                            
+
                             if file_status == "completed" and filename:
                                 try:
                                     # Get user's OpenSearch client
                                     opensearch_client = session_manager.get_user_opensearch_client(
                                         user.user_id, jwt_token
                                     )
-                                    
+
                                     # Delete documents by filename
                                     from utils.opensearch_queries import build_filename_delete_body
                                     from config.settings import get_index_name
-                                    
+
                                     delete_query = build_filename_delete_body(filename)
-                                    
+
                                     result = await opensearch_client.delete_by_query(
                                         index=get_index_name(),
                                         body=delete_query,
                                         conflicts="proceed"
                                     )
-                                    
+
                                     deleted_count = result.get("deleted", 0)
                                     if deleted_count > 0:
                                         deleted_files.append(filename)
@@ -1580,7 +1595,7 @@ async def rollback_onboarding(request, session_manager, task_service):
         # Clear embedding provider and model settings
         current_config.knowledge.embedding_provider = "openai"  # Reset to default
         current_config.knowledge.embedding_model = ""
-        
+
         # Mark config as not edited so user can go through onboarding again
         current_config.edited = False
 
@@ -1588,17 +1603,17 @@ async def rollback_onboarding(request, session_manager, task_service):
         try:
             import yaml
             config_file = config_manager.config_file
-            
+
             # Ensure directory exists
             config_file.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Save config with edited=False
             with open(config_file, "w") as f:
                 yaml.dump(current_config.to_dict(), f, default_flow_style=False, indent=2)
-            
+
             # Update cached config
             config_manager._config = current_config
-            
+
             logger.info("Successfully saved rolled back configuration with edited=False")
         except Exception as e:
             logger.error(f"Failed to save rolled back configuration: {e}")
@@ -1611,10 +1626,10 @@ async def rollback_onboarding(request, session_manager, task_service):
             f"Cancelled {len(cancelled_tasks)} tasks, deleted {len(deleted_files)} files"
         )
         await TelemetryClient.send_event(
-            Category.ONBOARDING, 
+            Category.ONBOARDING,
             MessageId.ORB_ONBOARD_ROLLBACK
         )
-        
+
         return JSONResponse(
             {
                 "message": "Onboarding configuration rolled back successfully",

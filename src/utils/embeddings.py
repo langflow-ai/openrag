@@ -1,5 +1,5 @@
 import httpx
-from config.settings import OPENAI_EMBEDDING_DIMENSIONS, VECTOR_DIM, WATSONX_EMBEDDING_DIMENSIONS
+from config.settings import KNN_EF_CONSTRUCTION, KNN_M, OPENAI_EMBEDDING_DIMENSIONS, VECTOR_DIM, WATSONX_EMBEDDING_DIMENSIONS
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
@@ -176,7 +176,7 @@ async def create_dynamic_index_body(
                         "name": "disk_ann",
                         "engine": "jvector",
                         "space_type": "l2",
-                        "parameters": {"ef_construction": 100, "m": 16},
+                        "parameters": {"ef_construction": KNN_EF_CONSTRUCTION, "m": KNN_M},
                     },
                 },
                 # Track which embedding model was used for this chunk
