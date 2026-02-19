@@ -185,91 +185,108 @@ async def _ensure_opensearch_index():
 
 async def init_index():
     """Initialize OpenSearch index and security roles"""
-    await wait_for_opensearch()
+    try:
+        await wait_for_opensearch()
 
-    # Get the configured embedding model from user configuration
-    config = get_openrag_config()
-    embedding_model = config.knowledge.embedding_model
-    embedding_provider = config.knowledge.embedding_provider
-    embedding_provider_config = config.get_embedding_provider_config()
+        # Get the configured embedding model from user configuration
+        config = get_openrag_config()
+        embedding_model = config.knowledge.embedding_model
+        embedding_provider = config.knowledge.embedding_provider
+        embedding_provider_config = config.get_embedding_provider_config()
 
-    # Create dynamic index body based on the configured embedding model
-    # Pass provider and endpoint for dynamic dimension resolution (Ollama probing)
-    dynamic_index_body = await create_dynamic_index_body(
-        embedding_model,
-        provider=embedding_provider,
-        endpoint=getattr(embedding_provider_config, "endpoint", None)
-    )
-
-    # Create documents index
-    index_name = get_index_name()
-    if not await clients.opensearch.indices.exists(index=index_name):
-        await clients.opensearch.indices.create(
-            index=index_name, body=dynamic_index_body
+        # Create dynamic index body based on the configured embedding model
+        # Pass provider and endpoint for dynamic dimension resolution (Ollama probing)
+        dynamic_index_body = await create_dynamic_index_body(
+            embedding_model,
+            provider=embedding_provider,
+            endpoint=getattr(embedding_provider_config, "endpoint", None)
         )
-        logger.info(
-            "Created OpenSearch index",
-            index_name=index_name,
-            embedding_model=embedding_model,
-        )
-        await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATED)
-    else:
-        logger.info(
-            "Index already exists, skipping creation",
-            index_name=index_name,
-            embedding_model=embedding_model,
-        )
-        await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS)
 
-    # Create knowledge filters index
-    knowledge_filter_index_name = "knowledge_filters"
-    knowledge_filter_index_body = {
-        "mappings": {
-            "properties": {
-                "id": {"type": "keyword"},
-                "name": {"type": "text", "analyzer": "standard"},
-                "description": {"type": "text", "analyzer": "standard"},
-                "query_data": {"type": "text"},  # Store as text for searching
-                "owner": {"type": "keyword"},
-                "allowed_users": {"type": "keyword"},
-                "allowed_groups": {"type": "keyword"},
-                "subscriptions": {"type": "object"},  # Store subscription data
-                "created_at": {"type": "date"},
-                "updated_at": {"type": "date"},
+        # Create documents index
+        index_name = get_index_name()
+        if not await clients.opensearch.indices.exists(index=index_name):
+            await clients.opensearch.indices.create(
+                index=index_name, body=dynamic_index_body
+            )
+            logger.info(
+                "Created OpenSearch index",
+                index_name=index_name,
+                embedding_model=embedding_model,
+            )
+            await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_CREATED)
+        else:
+            logger.info(
+                "Index already exists, skipping creation",
+                index_name=index_name,
+                embedding_model=embedding_model,
+            )
+            await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_EXISTS)
+
+        # Create knowledge filters index
+        knowledge_filter_index_name = "knowledge_filters"
+        knowledge_filter_index_body = {
+            "mappings": {
+                "properties": {
+                    "id": {"type": "keyword"},
+                    "name": {"type": "text", "analyzer": "standard"},
+                    "description": {"type": "text", "analyzer": "standard"},
+                    "query_data": {"type": "text"},  # Store as text for searching
+                    "owner": {"type": "keyword"},
+                    "allowed_users": {"type": "keyword"},
+                    "allowed_groups": {"type": "keyword"},
+                    "subscriptions": {"type": "object"},  # Store subscription data
+                    "created_at": {"type": "date"},
+                    "updated_at": {"type": "date"},
+                }
             }
         }
-    }
 
-    if not await clients.opensearch.indices.exists(index=knowledge_filter_index_name):
-        await clients.opensearch.indices.create(
-            index=knowledge_filter_index_name, body=knowledge_filter_index_body
-        )
-        logger.info(
-            "Created knowledge filters index", index_name=knowledge_filter_index_name
-        )
-        await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_KF_INDEX_CREATED)
-    else:
-        logger.info(
-            "Knowledge filters index already exists, skipping creation",
-            index_name=knowledge_filter_index_name,
-        )
+        if not await clients.opensearch.indices.exists(index=knowledge_filter_index_name):
+            await clients.opensearch.indices.create(
+                index=knowledge_filter_index_name, body=knowledge_filter_index_body
+            )
+            logger.info(
+                "Created knowledge filters index", index_name=knowledge_filter_index_name
+            )
+            await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_KF_INDEX_CREATED)
+        else:
+            logger.info(
+                "Knowledge filters index already exists, skipping creation",
+                index_name=knowledge_filter_index_name,
+            )
 
-    # Create API keys index for public API authentication
-    if not await clients.opensearch.indices.exists(index=API_KEYS_INDEX_NAME):
-        await clients.opensearch.indices.create(
-            index=API_KEYS_INDEX_NAME, body=API_KEYS_INDEX_BODY
-        )
-        logger.info(
-            "Created API keys index", index_name=API_KEYS_INDEX_NAME
-        )
-    else:
-        logger.info(
-            "API keys index already exists, skipping creation",
-            index_name=API_KEYS_INDEX_NAME,
-        )
+        # Create API keys index for public API authentication
+        if not await clients.opensearch.indices.exists(index=API_KEYS_INDEX_NAME):
+            await clients.opensearch.indices.create(
+                index=API_KEYS_INDEX_NAME, body=API_KEYS_INDEX_BODY
+            )
+            logger.info(
+                "Created API keys index", index_name=API_KEYS_INDEX_NAME
+            )
+        else:
+            logger.info(
+                "API keys index already exists, skipping creation",
+                index_name=API_KEYS_INDEX_NAME,
+            )
 
-    # Configure alerting plugin security settings
-    await configure_alerting_security()
+        # Configure alerting plugin security settings
+        await configure_alerting_security()
+
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "disk usage exceeded" in error_msg or "flood-stage watermark" in error_msg:
+             logger.error("OpenSearch disk usage exceeded flood-stage watermark. Index creation failed.")
+             raise Exception(
+                 "OpenSearch disk space is full (flood-stage watermark exceeded). "
+                 "Please free up disk space on your Docker volume or host machine to continue."
+             ) from e
+        raise e
+
+
+async def init_index_when_ready():
+    """Wait for the OpenSearch service to be ready and then initialize the OpenSearch index."""
+    await wait_for_opensearch()
+    await init_index()
 
 
 def generate_jwt_keys():
@@ -325,19 +342,6 @@ def generate_jwt_keys():
             logger.info("RSA keys already exist, ensured correct permissions")
         except OSError as e:
             logger.warning("Failed to set permissions on existing keys", error=str(e))
-
-
-async def init_index_when_ready():
-    """Initialize OpenSearch index when it becomes available"""
-    try:
-        await init_index()
-        logger.info("OpenSearch index initialization completed successfully")
-    except Exception as e:
-        logger.error("OpenSearch index initialization failed", error=str(e))
-        await TelemetryClient.send_event(Category.OPENSEARCH_INDEX, MessageId.ORB_OS_INDEX_INIT_FAIL)
-        logger.warning(
-            "OIDC endpoints will still work, but document operations may fail until OpenSearch is ready"
-        )
 
 
 def _get_documents_dir():
@@ -568,6 +572,33 @@ async def startup_tasks(services):
 
     if DISABLE_INGEST_WITH_LANGFLOW:
         await _ensure_opensearch_index()
+
+    # Ensure that the OpenSearch index exists if onboarding was already completed
+    # - Handles the case where OpenSearch is reset (e.g., volume deleted) after onboarding
+    embedding_model = None
+    try:
+        config = get_openrag_config()
+        embedding_model = config.knowledge.embedding_model
+
+        if config.edited and embedding_model:
+            logger.info(
+                "Ensuring that the OpenSearch index exists (after onboarding)...",
+                embedding_model=embedding_model,
+            )
+
+            await init_index()
+
+            logger.info(
+                "Successfully ensured that the OpenSearch index exists (after onboarding).",
+                embedding_model=embedding_model,
+            )
+    except Exception as e:
+        logger.error(
+            "Failed to ensure that the OpenSearch index exists (after onboarding).",
+            embedding_model=embedding_model,
+            error=str(e),
+        )
+        raise
 
     # Configure alerting security
     await configure_alerting_security()

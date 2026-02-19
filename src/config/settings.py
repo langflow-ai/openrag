@@ -92,6 +92,8 @@ WEBHOOK_BASE_URL = os.getenv(
 
 # OpenSearch configuration
 VECTOR_DIM = 1536
+KNN_EF_CONSTRUCTION = 100
+KNN_M = 16
 EMBED_MODEL = "text-embedding-3-small"
 
 OPENAI_EMBEDDING_DIMENSIONS = {
@@ -135,7 +137,7 @@ INDEX_BODY = {
                     "name": "disk_ann",
                     "engine": "jvector",
                     "space_type": "l2",
-                    "parameters": {"ef_construction": 100, "m": 16},
+                    "parameters": {"ef_construction": KNN_EF_CONSTRUCTION, "m": KNN_M},
                 },
             },
             # Track which embedding model was used for this chunk
@@ -309,9 +311,6 @@ class AppClients:
         self.converter = None
 
     async def initialize(self):
-        # Generate Langflow API key first
-        await get_langflow_api_key()
-
         # Initialize OpenSearch client
         self.opensearch = AsyncOpenSearch(
             hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
@@ -323,6 +322,45 @@ class AppClients:
             http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),
             http_compress=True,
         )
+
+        # Initialize patched OpenAI client if API key is available
+        # This allows the app to start even if OPENAI_API_KEY is not set yet
+        # (e.g., when it will be provided during onboarding)
+        # The property will handle lazy initialization with probe when first accessed
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            logger.info("OpenAI API key found in environment - will be initialized lazily on first use with HTTP/2 probe")
+        else:
+            logger.info("OpenAI API key not found in environment - will be initialized on first use if needed")
+
+        # Initialize document converter
+        self.converter = create_document_converter(ocr_engine=DOCLING_OCR_ENGINE)
+
+        # Initialize Langflow HTTP client with extended timeouts for large documents
+        # Must be created before wait_for_langflow / get_langflow_api_key
+        # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
+        self.langflow_http_client = httpx.AsyncClient(
+            base_url=LANGFLOW_URL,
+            timeout=httpx.Timeout(
+                timeout=LANGFLOW_TIMEOUT,  # Total timeout
+                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
+                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
+                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
+                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
+            )
+        )
+        logger.info(
+            "Initialized Langflow HTTP client with extended timeouts",
+            timeout_seconds=LANGFLOW_TIMEOUT,
+            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
+        )
+
+        # Wait for Langflow to be healthy before generating API key
+        from utils.langflow_utils import wait_for_langflow
+        await wait_for_langflow(langflow_http_client=self.langflow_http_client)
+
+        # Generate Langflow API key now that Langflow is confirmed ready
+        await get_langflow_api_key()
 
         # Initialize Langflow client with generated/provided API key
         if LANGFLOW_KEY and self.langflow_client is None:
@@ -343,37 +381,6 @@ class AppClients:
             logger.warning(
                 "No Langflow client initialized yet, will attempt later on first use"
             )
-
-        # Initialize patched OpenAI client if API key is available
-        # This allows the app to start even if OPENAI_API_KEY is not set yet
-        # (e.g., when it will be provided during onboarding)
-        # The property will handle lazy initialization with probe when first accessed
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key:
-            logger.info("OpenAI API key found in environment - will be initialized lazily on first use with HTTP/2 probe")
-        else:
-            logger.info("OpenAI API key not found in environment - will be initialized on first use if needed")
-
-        # Initialize document converter
-        self.converter = create_document_converter(ocr_engine=DOCLING_OCR_ENGINE)
-
-        # Initialize Langflow HTTP client with extended timeouts for large documents
-        # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
-        self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL,
-            timeout=httpx.Timeout(
-                timeout=LANGFLOW_TIMEOUT,  # Total timeout
-                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
-                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
-                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
-                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
-            )
-        )
-        logger.info(
-            "Initialized Langflow HTTP client with extended timeouts",
-            timeout_seconds=LANGFLOW_TIMEOUT,
-            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
-        )
 
         return self
 

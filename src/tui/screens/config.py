@@ -195,12 +195,12 @@ class ConfigScreen(Screen):
     def _create_all_fields(self) -> ComposeResult:
         """Create all configuration fields in a single scrollable layout."""
 
-        # Admin Credentials Section
-        yield Static("Admin Credentials", classes="tab-header")
+        # ===== OpenSearch Section =====
+        yield Static("OpenSearch", classes="tab-header")
         yield Static(" ")
 
         # OpenSearch Admin Password
-        yield Label("OpenSearch Admin Password *")
+        yield Label("Admin Password *")
         yield Static(
             "Validate your password here: https://lowe.github.io/tryzxcvbn/",
             classes="helper-text",
@@ -219,9 +219,99 @@ class ConfigScreen(Screen):
             yield Button("👁", id="toggle-opensearch-password", variant="default")
         yield Static(" ")
 
+        # OpenSearch Username (optional)
+        yield Label("Admin Username (optional)")
+        yield Static(
+            "OpenSearch admin username (default: admin)",
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "opensearch_username", "")
+        input_widget = Input(
+            placeholder="admin",
+            value=current_value,
+            id="input-opensearch_username",
+        )
+        yield input_widget
+        self.inputs["opensearch_username"] = input_widget
+        yield Static(" ")
+
+        # OpenSearch Host (optional - for remote instances)
+        yield Label("Host (optional)")
+        yield Static(
+            "Override for remote OpenSearch instances (default: opensearch)",
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "opensearch_host", "")
+        input_widget = Input(
+            placeholder="opensearch",
+            value=current_value,
+            id="input-opensearch_host",
+        )
+        yield input_widget
+        self.inputs["opensearch_host"] = input_widget
+        yield Static(" ")
+
+        # OpenSearch Port (optional)
+        yield Label("Port (optional)")
+        yield Static(
+            "Override for remote OpenSearch instances (default: 9200)",
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "opensearch_port", "")
+        input_widget = Input(
+            placeholder="9200",
+            value=current_value,
+            id="input-opensearch_port",
+        )
+        yield input_widget
+        self.inputs["opensearch_port"] = input_widget
+        yield Static(" ")
+
+        # OpenSearch Data Path
+        yield Label("Data Path")
+        yield Static(
+            "Directory to persist OpenSearch indices across upgrades",
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "opensearch_data_path", "$HOME/.openrag/data/opensearch-data")
+        input_widget = Input(
+            placeholder="~/.openrag/data/opensearch-data",
+            value=current_value,
+            id="input-opensearch_data_path",
+        )
+        yield input_widget
+        # Actions row with pick button
+        yield Horizontal(
+            Button("Pick…", id="pick-opensearch-data-btn"),
+            id="opensearch-data-path-actions",
+            classes="controls-row",
+        )
+        self.inputs["opensearch_data_path"] = input_widget
+        yield Static(" ")
+
+        # OpenSearch Index Name
+        yield Label("Index Name")
+        yield Static(
+            "Name of the index to use in OpenSearch",
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, "opensearch_index_name", "documents")
+        input_widget = Input(
+            placeholder="documents",
+            value=current_value,
+            id="input-opensearch_index_name",
+        )
+        yield input_widget
+        self.inputs["opensearch_index_name"] = input_widget
+        yield Static(" ")
+
+        # ===== Langflow Section =====
+        yield Static("Langflow", classes="tab-header")
+        yield Static(" ")
+
         # Langflow Admin Password
         with Horizontal():
-            yield Label("Langflow Admin Password (optional)")
+            yield Label("Admin Password (optional)")
             yield Checkbox("Generate password", id="generate-langflow-password")
         current_value = getattr(
             self.env_manager.config, "langflow_superuser_password", ""
@@ -240,7 +330,7 @@ class ConfigScreen(Screen):
 
         # Langflow Admin Username - conditionally displayed based on password
         current_password = getattr(self.env_manager.config, "langflow_superuser_password", "")
-        yield Label("Langflow Admin Username *", id="langflow-username-label")
+        yield Label("Admin Username *", id="langflow-username-label")
         current_value = getattr(self.env_manager.config, "langflow_superuser", "")
         input_widget = Input(
             placeholder="admin", value=current_value, id="input-langflow_superuser"
@@ -249,20 +339,31 @@ class ConfigScreen(Screen):
         self.inputs["langflow_superuser"] = input_widget
         yield Static(" ", id="langflow-username-spacer")
 
-        yield Static(" ")
+        # Langflow Public URL (full mode only, but grouped here)
+        if self.mode == "full":
+            yield Label("Public URL (optional)")
+            yield Static(
+                "External URL for Langflow access",
+                classes="helper-text",
+            )
+            current_value = getattr(self.env_manager.config, "langflow_public_url", "")
+            input_widget = Input(
+                placeholder="http://localhost:7860",
+                value=current_value,
+                id="input-langflow_public_url",
+            )
+            yield input_widget
+            self.inputs["langflow_public_url"] = input_widget
+            yield Static(" ")
 
-        # API Keys Section
-        yield Static("API Keys", classes="tab-header")
+        # ===== AI Providers Section =====
+        yield Static("AI Providers", classes="tab-header")
         yield Static(" ")
 
         # OpenAI API Key
         yield Label("OpenAI API Key (optional)")
         yield Static(
             Text("Get a key: https://platform.openai.com/api-keys", style="dim"),
-            classes="helper-text",
-        )
-        yield Static(
-            Text("Can be configured later in the UI", style="dim italic"),
             classes="helper-text",
         )
         current_value = getattr(self.env_manager.config, "openai_api_key", "")
@@ -285,10 +386,6 @@ class ConfigScreen(Screen):
             Text("Get a key: https://console.anthropic.com/settings/keys", style="dim"),
             classes="helper-text",
         )
-        yield Static(
-            Text("Can be configured later in the UI", style="dim italic"),
-            classes="helper-text",
-        )
         current_value = getattr(self.env_manager.config, "anthropic_api_key", "")
         with Horizontal(id="anthropic-key-row"):
             input_widget = Input(
@@ -309,10 +406,6 @@ class ConfigScreen(Screen):
             Text("Endpoint of your Ollama server", style="dim"),
             classes="helper-text",
         )
-        yield Static(
-            Text("Can be configured later in the UI", style="dim italic"),
-            classes="helper-text",
-        )
         current_value = getattr(self.env_manager.config, "ollama_endpoint", "")
         input_widget = Input(
             placeholder="http://localhost:11434",
@@ -330,10 +423,6 @@ class ConfigScreen(Screen):
             Text("Get a key: https://cloud.ibm.com/iam/apikeys", style="dim"),
             classes="helper-text",
         )
-        yield Static(
-            Text("Can be configured later in the UI", style="dim italic"),
-            classes="helper-text",
-        )
         current_value = getattr(self.env_manager.config, "watsonx_api_key", "")
         with Horizontal(id="watsonx-key-row"):
             input_widget = Input(
@@ -348,7 +437,7 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
         # IBM watsonx.ai Endpoint
-        yield Label("IBM watsonx.ai Endpoint")
+        yield Label("IBM watsonx.ai Endpoint (optional)")
         yield Static(
             Text("Example: https://us-south.ml.cloud.ibm.com", style="dim"),
             classes="helper-text",
@@ -365,7 +454,7 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
         # IBM watsonx.ai Project ID
-        yield Label("IBM watsonx.ai Project ID")
+        yield Label("IBM watsonx.ai Project ID (optional)")
         yield Static(
             Text("Find in your IBM Cloud project settings", style="dim"),
             classes="helper-text",
@@ -380,11 +469,13 @@ class ConfigScreen(Screen):
         self.inputs["watsonx_project_id"] = input_widget
         yield Static(" ")
 
-        # Add OAuth fields only in full mode
+        # ===== Cloud Connectors Section (full mode only) =====
         if self.mode == "full":
+            yield Static("Cloud Connectors", classes="tab-header")
+            yield Static(" ")
+
             # Google OAuth Client ID
             yield Label("Google OAuth Client ID")
-            # Where to create Google OAuth credentials (helper above the box)
             yield Static(
                 Text(
                     "Create credentials: https://console.cloud.google.com/apis/credentials",
@@ -392,13 +483,9 @@ class ConfigScreen(Screen):
                 ),
                 classes="helper-text",
             )
-            # Callback URL guidance for Google OAuth
             yield Static(
                 Text(
-                    "Important: add an Authorized redirect URI to your Google OAuth app(s):\n"
-                    "  - Local: http://localhost:3000/auth/callback\n"
-                    "  - Prod:  https://your-domain.com/auth/callback\n"
-                    "If you use separate apps for login and connectors, add this URL to BOTH.",
+                    "Redirect URI: http://localhost:3000/auth/callback (or your domain)",
                     style="dim",
                 ),
                 classes="helper-text",
@@ -434,7 +521,6 @@ class ConfigScreen(Screen):
 
             # Microsoft Graph Client ID
             yield Label("Microsoft Graph Client ID")
-            # Where to create Microsoft app registrations (helper above the box)
             yield Static(
                 Text(
                     "Create app: https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade",
@@ -442,13 +528,9 @@ class ConfigScreen(Screen):
                 ),
                 classes="helper-text",
             )
-            # Callback URL guidance for Microsoft OAuth
             yield Static(
                 Text(
-                    "Important: configure a Web redirect URI for your Microsoft app(s):\n"
-                    "  - Local: http://localhost:3000/auth/callback\n"
-                    "  - Prod:  https://your-domain.com/auth/callback\n"
-                    "If you use separate apps for login and connectors, add this URI to BOTH.",
+                    "Redirect URI: http://localhost:3000/auth/callback (or your domain)",
                     style="dim",
                 ),
                 classes="helper-text",
@@ -484,7 +566,6 @@ class ConfigScreen(Screen):
 
             # AWS Access Key ID
             yield Label("AWS Access Key ID")
-            # Where to create AWS keys (helper above the box)
             yield Static(
                 Text(
                     "Create keys: https://console.aws.amazon.com/iam/home#/security_credentials",
@@ -515,12 +596,12 @@ class ConfigScreen(Screen):
             self.inputs["aws_secret_access_key"] = input_widget
             yield Static(" ")
 
-        # Langfuse Section (available in both basic and full mode)
+        # ===== Langfuse Section =====
         yield Static("Langfuse (Tracing)", classes="tab-header")
         yield Static(" ")
 
         # Langfuse Secret Key
-        yield Label("Langfuse Secret Key (optional)")
+        yield Label("Secret Key (optional)")
         yield Static(
             Text("Get keys from your Langfuse project settings", style="dim"),
             classes="helper-text",
@@ -539,7 +620,7 @@ class ConfigScreen(Screen):
         yield Static(" ")
 
         # Langfuse Public Key
-        yield Label("Langfuse Public Key (optional)")
+        yield Label("Public Key (optional)")
         current_value = getattr(self.env_manager.config, "langfuse_public_key", "")
         with Horizontal(id="langfuse-public-key-row"):
             input_widget = Input(
@@ -553,8 +634,8 @@ class ConfigScreen(Screen):
             yield Button("Show", id="toggle-langfuse-public-key", variant="default")
         yield Static(" ")
 
-        # Langfuse Base URL
-        yield Label("Langfuse Host (optional)")
+        # Langfuse Host
+        yield Label("Host (optional)")
         yield Static(
             Text("Leave empty for Langfuse Cloud, or set for self-hosted", style="dim"),
             classes="helper-text",
@@ -569,12 +650,16 @@ class ConfigScreen(Screen):
         self.inputs["langfuse_host"] = input_widget
         yield Static(" ")
 
-        # Other Settings Section
-        yield Static("Others", classes="tab-header")
+        # ===== Storage Section =====
+        yield Static("Storage", classes="tab-header")
         yield Static(" ")
 
-        # Documents Paths (optional) + picker action button on next line
+        # Documents Paths
         yield Label("Documents Paths")
+        yield Static(
+            "Directories containing documents to ingest (comma-separated)",
+            classes="helper-text",
+        )
         current_value = getattr(self.env_manager.config, "openrag_documents_paths", "")
         input_widget = Input(
             placeholder="~/.openrag/documents",
@@ -583,7 +668,6 @@ class ConfigScreen(Screen):
             id="input-openrag_documents_paths",
         )
         yield input_widget
-        # Actions row with pick button
         yield Horizontal(
             Button("Pick…", id="pick-docs-btn"),
             id="docs-path-actions",
@@ -592,51 +676,17 @@ class ConfigScreen(Screen):
         self.inputs["openrag_documents_paths"] = input_widget
         yield Static(" ")
 
-        # OpenSearch Data Path
-        yield Label("OpenSearch Data Path")
-        yield Static(
-            "Directory to persist OpenSearch indices across upgrades",
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "opensearch_data_path", "$HOME/.openrag/data/opensearch-data")
-        input_widget = Input(
-            placeholder="~/.openrag/data/opensearch-data",
-            value=current_value,
-            id="input-opensearch_data_path",
-        )
-        yield input_widget
-        # Actions row with pick button
-        yield Horizontal(
-            Button("Pick…", id="pick-opensearch-data-btn"),
-            id="opensearch-data-path-actions",
-            classes="controls-row",
-        )
-        self.inputs["opensearch_data_path"] = input_widget
-        yield Static(" ")
-
-        # OpenSearch Index Name
-        yield Label("OpenSearch Index Name")
-        yield Static(
-            "Name of the index to use in OpenSearch",
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "opensearch_index_name", "documents")
-        input_widget = Input(
-            placeholder="documents",
-            value=current_value,
-            id="input-opensearch_index_name",
-        )
-        yield input_widget
-        self.inputs["opensearch_index_name"] = input_widget
-        yield Static(" ")
-
-        # Langflow Auth Settings - These are automatically configured based on password presence
-        # Not shown in UI; set in env_manager.setup_secure_defaults()
-
-        # Add optional fields only in full mode
+        # ===== Advanced Section (full mode only) =====
         if self.mode == "full":
+            yield Static("Advanced", classes="tab-header")
+            yield Static(" ")
+
             # Webhook Base URL
             yield Label("Webhook Base URL")
+            yield Static(
+                "External URL for continuous ingestion webhooks",
+                classes="helper-text",
+            )
             current_value = getattr(self.env_manager.config, "webhook_base_url", "")
             input_widget = Input(
                 placeholder="https://your-domain.com",
@@ -645,18 +695,6 @@ class ConfigScreen(Screen):
             )
             yield input_widget
             self.inputs["webhook_base_url"] = input_widget
-            yield Static(" ")
-
-            # Langflow Public URL
-            yield Label("Langflow Public URL")
-            current_value = getattr(self.env_manager.config, "langflow_public_url", "")
-            input_widget = Input(
-                placeholder="http://localhost:7860",
-                value=current_value,
-                id="input-langflow_public_url",
-            )
-            yield input_widget
-            self.inputs["langflow_public_url"] = input_widget
             yield Static(" ")
 
     def _create_field(

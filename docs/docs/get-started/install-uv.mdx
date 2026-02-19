@@ -8,8 +8,10 @@ import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
 import PartialSetup from '@site/docs/_partial-setup.mdx';
 import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
-import PartialPrereqCommon from '@site/docs/_partial-prereq-common.mdx';
-import PartialPrereqNoScript from '@site/docs/_partial-prereq-no-script.mdx';
+import PartialPrereqModels from '@site/docs/_partial-prereq-models.mdx';
+import PartialPrereqUv from '@site/docs/_partial-prereq-uv.mdx';
+import PartialPrereqGpu from '@site/docs/_partial-prereq-gpu.mdx';
+import PartialPrereqDocker from '@site/docs/_partial-prereq-docker.mdx';
 import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
 import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
@@ -28,9 +30,13 @@ For other installation methods, see [Select an installation method](/install-opt
 
 <PartialPrereqPython />
 
-<PartialPrereqNoScript />
+<PartialPrereqUv />
 
-<PartialPrereqCommon />
+<PartialPrereqDocker />
+
+<PartialPrereqModels />
+
+<PartialPrereqGpu />
 
 ## Install and start OpenRAG with uv
 
@@ -48,12 +54,12 @@ If you encounter errors during installation, see [Troubleshoot OpenRAG](/support
 1. Create a new `uv`-managed Python project:
 
    ```bash
-   uv init PROJECT_NAME --python 3.13
+   uv init PROJECT_NAME --python 3.12
    ```
 
    The `--python` flag ensures that your project uses the minimum required Python version for OpenRAG.
    You can use a later Python version, if you prefer.
-   Or, you can omit this flag if your system's default Python version is 3.13 or later.
+   Or, you can omit this flag if your system's default Python version is 3.12 or later.
 
 2. Change into your new project directory:
 

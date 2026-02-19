@@ -548,6 +548,7 @@ class WelcomeScreen(Screen):
                 "Starting Container Services",
                 command_generator,
                 on_complete=self._on_containers_started_start_native,
+                show_launch_button=True,
             )
             self.app.push_screen(modal)
         elif self.services_running:

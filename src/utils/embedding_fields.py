@@ -86,7 +86,7 @@ async def ensure_embedding_field_exists(
     Raises:
         Exception: If unable to add the field mapping
     """
-    from config.settings import get_index_name
+    from config.settings import KNN_EF_CONSTRUCTION, KNN_M, get_index_name
     from utils.embeddings import get_embedding_dimensions
 
     if index_name is None:
@@ -134,7 +134,7 @@ async def ensure_embedding_field_exists(
                     "name": "disk_ann",
                     "engine": "jvector",
                     "space_type": "l2",
-                    "parameters": {"ef_construction": 100, "m": 16},
+                    "parameters": {"ef_construction": KNN_EF_CONSTRUCTION, "m": KNN_M},
                 },
             },
             # Also ensure the embedding_model tracking field exists as keyword

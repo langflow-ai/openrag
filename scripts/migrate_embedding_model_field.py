@@ -55,6 +55,8 @@ from opensearchpy._async.http_aiohttp import AIOHttpConnection
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from config.settings import (
+    KNN_EF_CONSTRUCTION,
+    KNN_M,
     OPENSEARCH_HOST,
     OPENSEARCH_PORT,
     OPENSEARCH_USERNAME,
@@ -83,7 +85,7 @@ async def ensure_new_field_exists(
                     "name": "disk_ann",
                     "engine": "jvector",
                     "space_type": "l2",
-                    "parameters": {"ef_construction": 100, "m": 16},
+                    "parameters": {"ef_construction": KNN_EF_CONSTRUCTION, "m": KNN_M},
                 },
             },
             "embedding_model": {
