@@ -121,6 +121,29 @@ spec:
               value: {{ .Values.backend.features.disableIngestWithLangflow | quote }}
             - name: INGEST_SAMPLE_DATA
               value: {{ .Values.backend.features.ingestSampleData | quote }}
+            # Logging
+            - name: LOG_LEVEL
+              value: {{ .Values.backend.logLevel | quote }}
+            - name: ACCESS_LOG
+              value: {{ .Values.backend.accessLog | quote }}
+            {{- if .Values.backend.noColor }}
+            - name: NO_COLOR
+              value: "1"
+            {{- end }}
+            # Timeouts
+            - name: LANGFLOW_TIMEOUT
+              value: {{ .Values.backend.langflowTimeout | quote }}
+            - name: LANGFLOW_CONNECT_TIMEOUT
+              value: {{ .Values.backend.langflowConnectTimeout | quote }}
+            - name: INGESTION_TIMEOUT
+              value: {{ .Values.backend.ingestionTimeout | quote }}
+            # Concurrency
+            - name: UPLOAD_BATCH_SIZE
+              value: {{ .Values.backend.uploadBatchSize | quote }}
+            {{- if .Values.backend.maxWorkers }}
+            - name: MAX_WORKERS
+              value: {{ .Values.backend.maxWorkers | quote }}
+            {{- end }}
             # LLM Provider keys
             {{- if .Values.llmProviders.openai.enabled }}
             - name: OPENAI_API_KEY

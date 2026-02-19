@@ -15,7 +15,7 @@ Service management is an essential part of maintaining your OpenRAG deployment.
 Most OpenRAG services run in containers.
 However, some services, like Docling, run directly on the local machine.
 
-If you [installed OpenRAG](/install-options) with the automated installer script, `uv`, or `uvx`, you can use the [Terminal User Interface (TUI)](/tui) to manage your OpenRAG configuration and services.
+If you [installed OpenRAG](/install-options) with `uv` or `uvx`, then you can use the [Terminal User Interface (TUI)](/tui) to manage your OpenRAG configuration and services.
 
 For [self-managed deployments](/docker), run Docker or Podman commands to manage your OpenRAG services.
 
@@ -159,7 +159,7 @@ To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall O
 
 2. To destroy and recreate your OpenRAG containers, click **Status** in the TUI, and then click **Factory Reset**.
 
-3. Repeat the [setup process](/install#setup) to restart the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
+3. Repeat the [setup process](/install-uvx#setup) to restart the services and launch the OpenRAG app. Your OpenRAG passwords, OAuth credentials (if previously set), and onboarding configuration are restored from the `.env` file.
 
 4. If you exported customized flows, [import your flows](https://docs.langflow.org/concepts-flows-import) into Langflow after completing the onboarding process.
 
