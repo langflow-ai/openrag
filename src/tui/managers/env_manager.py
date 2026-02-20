@@ -29,6 +29,9 @@ class EnvConfig:
     # Core settings
     openai_api_key: str = ""
     opensearch_password: str = ""
+    opensearch_username: str = "admin"
+    opensearch_host: str = "opensearch"
+    opensearch_port: str = "9200"
     opensearch_index_name: str = "documents"
     langflow_secret_key: str = ""
     langflow_superuser: str = "admin"
@@ -171,6 +174,9 @@ class EnvManager:
             "WATSONX_ENDPOINT": "watsonx_endpoint",
             "WATSONX_PROJECT_ID": "watsonx_project_id",
             "OPENSEARCH_PASSWORD": "opensearch_password",  # pragma: allowlist secret
+            "OPENSEARCH_USERNAME": "opensearch_username",
+            "OPENSEARCH_HOST": "opensearch_host",
+            "OPENSEARCH_PORT": "opensearch_port",
             "OPENSEARCH_INDEX_NAME": "opensearch_index_name",
             "LANGFLOW_SECRET_KEY": "langflow_secret_key",  # pragma: allowlist secret
             "LANGFLOW_SUPERUSER": "langflow_superuser",
@@ -390,6 +396,12 @@ class EnvManager:
                 f.write(f"LANGFLOW_URL_INGEST_FLOW_ID={self._quote_env_value(self.config.langflow_url_ingest_flow_id)}\n")
                 f.write(f"NUDGES_FLOW_ID={self._quote_env_value(self.config.nudges_flow_id)}\n")
                 f.write(f"OPENSEARCH_PASSWORD={self._quote_env_value(self.config.opensearch_password)}\n")
+                if self.config.opensearch_username and self.config.opensearch_username != "admin":
+                    f.write(f"OPENSEARCH_USERNAME={self._quote_env_value(self.config.opensearch_username)}\n")
+                if self.config.opensearch_host and self.config.opensearch_host != "opensearch":
+                    f.write(f"OPENSEARCH_HOST={self._quote_env_value(self.config.opensearch_host)}\n")
+                if self.config.opensearch_port and self.config.opensearch_port != "9200":
+                    f.write(f"OPENSEARCH_PORT={self._quote_env_value(self.config.opensearch_port)}\n")
                 f.write(f"OPENSEARCH_INDEX_NAME={self._quote_env_value(self.config.opensearch_index_name)}\n")
 
                 # Expand $HOME in paths before writing to .env

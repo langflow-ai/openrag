@@ -18,6 +18,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useChat } from "@/contexts/chat-context";
 import { useKnowledgeFilter } from "@/contexts/knowledge-filter-context";
 import { useTask } from "@/contexts/task-context";
+import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { AnimatedConditional } from "./animated-conditional";
 import { ChatRenderer } from "./chat-renderer";
@@ -25,8 +26,16 @@ import { ChatRenderer } from "./chat-renderer";
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isMenuOpen } = useTask();
-  const { isPanelOpen } = useKnowledgeFilter();
+  const { isMenuOpen, closeMenu } = useTask();
+  const { isPanelOpen, closePanelOnly } = useKnowledgeFilter();
+
+  // Only one panel can be open at a time
+  useEffect(() => {
+    if (isMenuOpen) closePanelOnly();
+  }, [isMenuOpen, closePanelOnly]);
+  useEffect(() => {
+    if (isPanelOpen) closeMenu();
+  }, [isPanelOpen, closeMenu]);
   const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
   const { isOnboardingComplete } = useChat();
 
@@ -108,14 +117,34 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
         <ChatRenderer settings={settings}>{children}</ChatRenderer>
 
-        {/* Task Notifications Panel */}
-        <aside className="overflow-y-auto overflow-x-hidden [grid-area:notifications]">
-          {isMenuOpen && <TaskNotificationMenu />}
-        </aside>
-
-        {/* Knowledge Filter Panel */}
-        <aside className="overflow-y-auto overflow-x-hidden [grid-area:filters]">
-          {isPanelOpen && <KnowledgeFilterPanel />}
+        {/* Right Panel — task notifications or knowledge filter, one at a time */}
+        <aside className="overflow-y-auto overflow-x-hidden [grid-area:right-panel]">
+          <AnimatePresence>
+            {isMenuOpen && (
+              <motion.div
+                key="notifications"
+                className="h-full"
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%", transition: { duration: 0 } }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+              >
+                <TaskNotificationMenu />
+              </motion.div>
+            )}
+            {isPanelOpen && !isMenuOpen && (
+              <motion.div
+                key="filters"
+                className="h-full"
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%", transition: { duration: 0 } }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+              >
+                <KnowledgeFilterPanel />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </aside>
       </div>
     </div>

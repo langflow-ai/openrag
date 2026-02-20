@@ -111,16 +111,13 @@
 
 @layer components {
   .app-grid-arrangement {
-    --notifications-width: 0px;
-    --filters-width: 0px;
+    --right-panel-width: 0px;
     --header-height: 54px;
     --sidebar-width: 280px;
 
-    &.notifications-open {
-      --notifications-width: 320px;
-    }
+    &.notifications-open,
     &.filters-open {
-      --filters-width: 320px;
+      --right-panel-width: 320px;
     }
     display: grid;
     height: 100%;
@@ -132,12 +129,11 @@
     grid-template-columns:
       var(--sidebar-width)
       1fr
-      var(--notifications-width)
-      var(--filters-width);
+      var(--right-panel-width);
     grid-template-areas:
-      "banner banner banner banner"
-      "header header header header"
-      "nav main notifications filters";
+      "banner banner banner"
+      "header header header"
+      "nav main right-panel";
     transition:
       grid-template-columns 0.25s ease-in-out,
       grid-template-rows 0.25s ease-in-out;

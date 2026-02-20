@@ -2,6 +2,7 @@
 
 import asyncio
 import inspect
+import os
 import webbrowser
 from typing import Callable, Optional, AsyncIterator
 
@@ -239,7 +240,7 @@ class CommandOutputModal(ModalScreen):
     def _launch_openrag(self) -> None:
         """Open the OpenRAG app in the default browser."""
         try:
-            webbrowser.open("http://localhost:3000")
+            webbrowser.open(f"http://localhost:{os.getenv('FRONTEND_PORT', '3000')}")
             self.notify("Opening OpenRAG app in browser...", severity="information")
         except Exception as e:
             self.notify(f"Error opening app: {e}", severity="error")
