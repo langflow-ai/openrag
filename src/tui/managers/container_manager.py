@@ -51,6 +51,26 @@ class ServiceInfo:
             self.ports = []
 
 
+def format_port_conflict_message(conflicts: List[tuple[str, int, str]], max_shown: int = 3) -> str:
+    """Format port conflicts into a user-facing error message."""
+    shown = [f"{name} (port {port})" for name, port, _ in conflicts[:max_shown]]
+    conflict_str = ", ".join(shown)
+    if len(conflicts) > max_shown:
+        conflict_str += f" and {len(conflicts) - max_shown} more"
+
+    msg = f"Cannot start services: Port conflicts detected for {conflict_str}."
+
+    configurable = any(
+        "frontend" in name.lower() or "langflow" in name.lower()
+        for name, _, _ in conflicts
+    )
+    if configurable:
+        msg += " You can set FRONTEND_PORT or LANGFLOW_PORT in your .env file to use different ports."
+    else:
+        msg += " Please stop the conflicting services first."
+    return msg
+
+
 class ContainerManager:
     """Manages Docker/Podman container lifecycle for OpenRAG."""
 
@@ -233,12 +253,19 @@ class ContainerManager:
                     
                     # Extract port mappings
                     if in_ports_section and current_service:
-                        # Match patterns like: - "3000:3000", - "9200:9200", - 7860:7860
-                        port_match = re.search(r'["\']?(\d+):\d+["\']?', line)
-                        if port_match:
-                            host_port = int(port_match.group(1))
-                            if host_port not in service_ports[current_service]:
-                                service_ports[current_service].append(host_port)
+                        host_port = None
+                        # Match env var patterns like: - "${FRONTEND_PORT:-3000}:3000"
+                        env_match = re.search(r'\$\{(\w+):-(\d+)\}:\d+', line)
+                        if env_match:
+                            var_name, default_port = env_match.group(1), env_match.group(2)
+                            host_port = int(os.getenv(var_name, default_port))
+                        else:
+                            # Match literal patterns like: - "3000:3000", - 9200:9200
+                            port_match = re.search(r'["\']?(\d+):\d+["\']?', line)
+                            if port_match:
+                                host_port = int(port_match.group(1))
+                        if host_port is not None and host_port not in service_ports[current_service]:
+                            service_ports[current_service].append(host_port)
                                 
             except Exception as e:
                 logger.debug(f"Error parsing {compose_file} for ports: {e}")
@@ -1012,8 +1039,8 @@ class ContainerManager:
             yield False, "ERROR: Port conflicts detected:", False
             for service_name, port, error_msg in conflicts:
                 yield False, f"  - {service_name}: {error_msg}", False
-            yield False, "Please stop the conflicting services and try again.", False
-            yield False, "Services not started due to port conflicts.", False
+            yield False, "", False
+            yield False, format_port_conflict_message(conflicts), False
             return
 
         yield False, "Starting OpenRAG services...", False
