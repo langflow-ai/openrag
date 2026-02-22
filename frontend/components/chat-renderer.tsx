@@ -14,7 +14,6 @@ import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateO
 import { OnboardingContent } from "@/app/onboarding/_components/onboarding-content";
 import { ProgressBar } from "@/app/onboarding/_components/progress-bar";
 import { AnimatedConditional } from "@/components/animated-conditional";
-import { Header } from "@/components/header";
 import { Navigation } from "@/components/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useChat } from "@/contexts/chat-context";
@@ -237,33 +236,25 @@ export function ChatRenderer({
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
     <>
-      <AnimatedConditional
-        className="[grid-area:header] bg-background border-b"
-        vertical
-        slide
-        isOpen={showLayout}
-        delay={ANIMATION_DURATION / 2}
-      >
-        <Header />
-      </AnimatedConditional>
-
       {/* Sidebar Navigation */}
-      <AnimatedConditional
-        isOpen={showLayout}
-        slide
-        className={`border-r bg-background overflow-hidden [grid-area:nav] w-[${SIDEBAR_WIDTH}px]`}
-      >
-        {showLayout && (
-          <Navigation
-            conversations={conversations}
-            isConversationsLoading={isConversationsLoading}
-            onNewConversation={handleNewConversation}
-          />
-        )}
-      </AnimatedConditional>
+      <div className="shrink-0 overflow-hidden" style={{ width: SIDEBAR_WIDTH }}>
+        <AnimatedConditional
+          isOpen={showLayout}
+          slide
+          className="border-r bg-background overflow-hidden h-full w-full"
+        >
+          {showLayout && (
+            <Navigation
+              conversations={conversations}
+              isConversationsLoading={isConversationsLoading}
+              onNewConversation={handleNewConversation}
+            />
+          )}
+        </AnimatedConditional>
+      </div>
 
       {/* Main Content */}
-      <main className="overflow-hidden w-full flex items-center justify-center [grid-area:main]">
+      <main className="overflow-hidden flex-1 flex items-center justify-center">
         <motion.div
           initial={{
             width: showLayout ? "100%" : "100vw",
