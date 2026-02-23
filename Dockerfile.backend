@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM python:3.13-slim
 
 # uv インストール用の curl と RSA キー生成用の openssl をインストールする
@@ -25,16 +24,12 @@ RUN uv sync
 COPY openrag-documents/warmup_ocr.pdf ./
 COPY warm_up_docling.py ./
 RUN uv run docling-tools models download
-RUN uv run python - <<’PY’
-import pathlib, easyocr
-cache = pathlib.Path("/root/.EasyOCR/model")
-cache.mkdir(parents=True, exist_ok=True)
-# Docling のデフォルト言語の検出器と認識器を事前ウォームアップする
-easyocr.Reader([‘fr’,’de’,’es’,’en’],
-               download_enabled=True,
-               model_storage_directory=str(cache))
-print("EasyOCR cache ready at", cache)
-PY
+RUN uv run python -c "\
+import pathlib, easyocr; \
+cache = pathlib.Path(‘/root/.EasyOCR/model’); \
+cache.mkdir(parents=True, exist_ok=True); \
+easyocr.Reader([‘fr’,’de’,’es’,’en’], download_enabled=True, model_storage_directory=str(cache)); \
+print(‘EasyOCR cache ready at’, cache)"
 
 # RUN uv run python warm_up_docling.py && rm warm_up_docling.py warmup_ocr.pdf
 
