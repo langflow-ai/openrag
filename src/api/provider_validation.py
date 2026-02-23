@@ -141,6 +141,11 @@ async def validate_provider_setup(
 
         if provider == "openai" and not endpoint:
             endpoint = os.environ.get("OPENAI_API_BASE", "https://api.openai.com")
+        
+        # Strip /v1 suffix from OpenAI endpoint if present to avoid double /v1 paths
+        if provider == "openai" and endpoint and endpoint.endswith("/v1"):
+            endpoint = endpoint.rstrip("/v1")
+            logger.info(f"Stripped /v1 suffix from OpenAI endpoint: {endpoint}")
 
         if test_completion:
             # Full validation with completion/embedding tests (consumes credits)
