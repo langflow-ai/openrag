@@ -22,6 +22,7 @@ spec:
         checksum/secret-langflow: {{ include (print $.Template.BasePath "/secrets/langflow-secret.yaml") . | sha256sum }}
         checksum/config-flows: {{ include (print $.Template.BasePath "/configmaps/flow-ids-configmap.yaml") . | sha256sum }}
         checksum/config-app: {{ include (print $.Template.BasePath "/configmaps/app-config-configmap.yaml") . | sha256sum }}
+        checksum/secret-backend: {{ include (print $.Template.BasePath "/secrets/backend-secret.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "openrag.serviceAccountName" . }}
       {{- with .Values.podSecurityContext }}
@@ -163,9 +164,27 @@ spec:
                   key: superuser
             - name: LANGFLOW_SUPERUSER_PASSWORD
               valueFrom:
-                secretKeyRef:
                   name: {{ include "openrag.fullname" . }}-langflow
                   key: superuser-password
+            - name: LANGFLOW_KEY
+              value: {{ .Values.langflow.auth.apiKey | default "" | quote }}
+            - name: LANGFLOW_KEY_RETRIES
+              value: {{ .Values.langflow.auth.keyRetries | default "15" | quote }}
+            - name: LANGFLOW_KEY_RETRY_DELAY
+              value: {{ .Values.langflow.auth.keyRetryDelay | default "2.0" | quote }}
+            - name: LANGFLOW_VERSION
+              value: {{ .Values.langflow.image.tag | default .Values.global.imageTag | quote }}
+            - name: LOG_FORMAT
+              value: {{ .Values.backend.logFormat | default "json" | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.backend.logLevel | default "INFO" | quote }}
+            - name: SERVICE_NAME
+              value: {{ .Values.backend.serviceName | default "openrag" | quote }}
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openrag.fullname" . }}-backend
+                  key: session-secret
             # Flow IDs from ConfigMap
             - name: LANGFLOW_CHAT_FLOW_ID
               valueFrom:
@@ -192,6 +211,29 @@ spec:
               value: {{ .Values.backend.features.disableIngestWithLangflow | quote }}
             - name: INGEST_SAMPLE_DATA
               value: {{ .Values.backend.features.ingestSampleData | quote }}
+            # Logging
+            - name: LOG_LEVEL
+              value: {{ .Values.backend.logLevel | quote }}
+            - name: ACCESS_LOG
+              value: {{ .Values.backend.accessLog | quote }}
+            {{- if .Values.backend.noColor }}
+            - name: NO_COLOR
+              value: "1"
+            {{- end }}
+            # Timeouts
+            - name: LANGFLOW_TIMEOUT
+              value: {{ .Values.backend.langflowTimeout | quote }}
+            - name: LANGFLOW_CONNECT_TIMEOUT
+              value: {{ .Values.backend.langflowConnectTimeout | quote }}
+            - name: INGESTION_TIMEOUT
+              value: {{ .Values.backend.ingestionTimeout | quote }}
+            # Concurrency
+            - name: UPLOAD_BATCH_SIZE
+              value: {{ .Values.backend.uploadBatchSize | quote }}
+            {{- if .Values.backend.maxWorkers }}
+            - name: MAX_WORKERS
+              value: {{ .Values.backend.maxWorkers | quote }}
+            {{- end }}
             # LLM Provider keys
             {{- if .Values.llmProviders.openai.enabled }}
             - name: OPENAI_API_KEY

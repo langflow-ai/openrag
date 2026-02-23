@@ -102,6 +102,10 @@ langflow:
     autoLogin: false
     superuser: "admin"                    # Langflow superuser username
     superuserPassword: ""                 # Langflow superuser password (stored in secret)
+    superuserPassword: ""                 # Langflow superuser password (stored in secret)
+    apiKey: ""                            # Optional: pre-generated API key
+    keyRetries: 15                        # Number of retries for key generation
+    keyRetryDelay: 2.0                    # Delay between retries
     secretKey: ""                         # Langflow secret key for JWT (stored in secret)
     newUserIsActive: false
     enableSuperuserCli: false
@@ -162,6 +166,15 @@ backend:
       cpu: "4"
       memory: "16Gi"
 
+  # Logging and Service
+  logFormat: "json"                       # json or text
+  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
+  serviceName: "openrag"
+
+  # Authentication
+  auth:
+    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
+
   # Persistence for documents, keys, and config
   persistence:
     documents:
@@ -196,6 +209,20 @@ backend:
       accessMode: ReadWriteOnce
       size: 1Gi
       mountPath: /app/config
+
+  # Logging
+  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  noColor: false                          # Set true to disable ANSI color codes in log output
+  accessLog: true                         # Set false to disable HTTP access log events
+
+  # Timeouts
+  langflowTimeout: 2400                   # seconds; total timeout for Langflow HTTP calls (default: 40 min)
+  langflowConnectTimeout: 30              # seconds; connection timeout for Langflow HTTP calls
+  ingestionTimeout: 3600                  # seconds; per-file processing timeout for ingestion tasks
+
+  # Concurrency
+  uploadBatchSize: 25                     # Max files per batch when ingesting from a folder
+  maxWorkers: ""                          # Backend worker processes; empty = auto (min(4, CPU_COUNT // 2))
 
   # Feature flags
   features:
