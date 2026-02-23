@@ -84,6 +84,10 @@ langflow:
     autoLogin: false
     superuser: "admin"                    # Langflow superuser username
     superuserPassword: ""                 # Langflow superuser password (stored in secret)
+    superuserPassword: ""                 # Langflow superuser password (stored in secret)
+    apiKey: ""                            # Optional: pre-generated API key
+    keyRetries: 15                        # Number of retries for key generation
+    keyRetryDelay: 2.0                    # Delay between retries
     secretKey: ""                         # Langflow secret key for JWT (stored in secret)
     newUserIsActive: false
     enableSuperuserCli: false
@@ -143,6 +147,15 @@ backend:
     limits:
       cpu: "4"
       memory: "16Gi"
+
+  # Logging and Service
+  logFormat: "json"                       # json or text
+  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
+  serviceName: "openrag"
+
+  # Authentication
+  auth:
+    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
 
   # Persistence for documents, keys, and config
   persistence:
