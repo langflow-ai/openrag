@@ -84,7 +84,7 @@ langflow:
       repo: openrag
       branch: main
       # Optional: specific git commit hash (overrides branch if set)
-      hash: f5635c9906df581384c62b570afb55ace65ad1eb
+      #hash: ""
       path: flows
       files:
         - ingestion_flow.json
@@ -190,7 +190,7 @@ backend:
         repo: openrag
         branch: main
         # Optional: specific git commit hash (overrides branch if set)
-        hash: f5635c9906df581384c62b570afb55ace65ad1eb
+        #hash: ""
         path: openrag-documents
         files:
           - docling.pdf
