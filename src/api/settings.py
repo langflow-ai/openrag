@@ -1,7 +1,8 @@
 import json
 import platform
-import time
-from starlette.responses import JSONResponse
+from fastapi import Depends, Request, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
@@ -14,15 +15,184 @@ from config.settings import (
     LANGFLOW_PUBLIC_URL,
     LOCALHOST_URL,
     clients,
-    get_index_name,
     get_openrag_config,
     config_manager,
     is_no_auth_mode,
 )
+from typing import List, Optional, Any, Dict
+
 from api.provider_validation import validate_provider_setup
 from utils.langflow_utils import LangflowNotReadyError, wait_for_langflow
+from dependencies import (
+    get_session_manager,
+    get_flows_service,
+    get_task_service,
+    get_current_user,
+    get_document_service,
+    get_langflow_file_service,
+    get_knowledge_filter_service,
+)
+from session_manager import User
 
 logger = get_logger(__name__)
+
+
+class SettingsUpdateBody(BaseModel):
+    llm_model: Optional[str] = Field(None, min_length=1)
+    llm_provider: Optional[str] = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
+    system_prompt: Optional[str] = None
+    chunk_size: Optional[int] = Field(None, gt=0)
+    chunk_overlap: Optional[int] = Field(None, ge=0)
+    table_structure: Optional[bool] = None
+    ocr: Optional[bool] = None
+    picture_descriptions: Optional[bool] = None
+    embedding_model: Optional[str] = Field(None, min_length=1)
+    embedding_provider: Optional[str] = Field(None, pattern="^(openai|watsonx|ollama)$")
+    index_name: Optional[str] = Field(None, min_length=1)
+    openai_api_key: Optional[str] = Field(None, min_length=1)
+    anthropic_api_key: Optional[str] = Field(None, min_length=1)
+    watsonx_api_key: Optional[str] = Field(None, min_length=1)
+    watsonx_endpoint: Optional[str] = Field(None, min_length=1)
+    watsonx_project_id: Optional[str] = Field(None, min_length=1)
+    ollama_endpoint: Optional[str] = Field(None, min_length=1)
+
+
+class OnboardingBody(BaseModel):
+    llm_provider: Optional[str] = Field(None, pattern="^(openai|anthropic|watsonx|ollama)$")
+    llm_model: Optional[str] = Field(None, min_length=1)
+    embedding_provider: Optional[str] = Field(None, pattern="^(openai|watsonx|ollama)$")
+    embedding_model: Optional[str] = Field(None, min_length=1)
+    openai_api_key: Optional[str] = Field(None, min_length=1)
+    anthropic_api_key: Optional[str] = Field(None, min_length=1)
+    watsonx_api_key: Optional[str] = Field(None, min_length=1)
+    watsonx_endpoint: Optional[str] = Field(None, min_length=1)
+    watsonx_project_id: Optional[str] = Field(None, min_length=1)
+    ollama_endpoint: Optional[str] = Field(None, min_length=1)
+
+
+class AssistantMessage(BaseModel):
+    role: str
+    content: str
+    timestamp: str
+
+
+class OnboardingStateBody(BaseModel):
+    current_step: Optional[int] = None
+    assistant_message: Optional[AssistantMessage] = None
+    selected_nudge: Optional[str] = None
+    card_steps: Optional[Dict[str, Any]] = None
+    upload_steps: Optional[Dict[str, Any]] = None
+    openrag_docs_filter_id: Optional[str] = None
+    user_doc_filter_id: Optional[str] = None
+
+
+class DoclingPresetBody(BaseModel):
+    preset: Optional[str] = None
+    table_structure: Optional[bool] = None
+    ocr: Optional[bool] = None
+    picture_descriptions: Optional[bool] = None
+
+
+class OnboardingStateConfig(BaseModel):
+    current_step: Optional[int]
+    assistant_message: Optional[AssistantMessage]
+    selected_nudge: Optional[str]
+    card_steps: Optional[Dict[str, Any]]
+    upload_steps: Optional[Dict[str, Any]]
+    openrag_docs_filter_id: Optional[str]
+    user_doc_filter_id: Optional[str]
+
+class OpenAIProviderConfig(BaseModel):
+    has_api_key: bool
+    configured: bool
+
+class AnthropicProviderConfig(BaseModel):
+    has_api_key: bool
+    configured: bool
+
+class WatsonXProviderConfig(BaseModel):
+    has_api_key: bool
+    endpoint: Optional[str]
+    project_id: Optional[str]
+    configured: bool
+
+class OllamaProviderConfig(BaseModel):
+    endpoint: Optional[str]
+    configured: bool
+
+class ProvidersConfig(BaseModel):
+    openai: OpenAIProviderConfig
+    anthropic: AnthropicProviderConfig
+    watsonx: WatsonXProviderConfig
+    ollama: OllamaProviderConfig
+
+class KnowledgeConfig(BaseModel):
+    embedding_model: Optional[str]
+    embedding_provider: Optional[str]
+    chunk_size: Optional[int]
+    chunk_overlap: Optional[int]
+    table_structure: Optional[bool]
+    ocr: Optional[bool]
+    picture_descriptions: Optional[bool]
+    index_name: Optional[str]
+
+class AgentConfig(BaseModel):
+    llm_model: Optional[str]
+    llm_provider: Optional[str]
+    system_prompt: Optional[str]
+
+class IngestionDefaultsConfig(BaseModel):
+    chunkSize: Optional[int]
+    chunkOverlap: Optional[int]
+    separator: Optional[str]
+    embeddingModel: Optional[str]
+
+class SettingsResponse(BaseModel):
+    langflow_url: str
+    flow_id: Optional[str]
+    ingest_flow_id: Optional[str]
+    langflow_public_url: Optional[str]
+    edited: bool
+    onboarding: OnboardingStateConfig
+    providers: ProvidersConfig
+    knowledge: KnowledgeConfig
+    agent: AgentConfig
+    localhost_url: str
+    langflow_edit_url: Optional[str] = None
+    langflow_ingest_edit_url: Optional[str] = None
+    ingestion_defaults: Optional[IngestionDefaultsConfig] = None
+
+
+class OnboardingResponse(BaseModel):
+    message: str
+    edited: bool
+    sample_data_ingested: bool
+    openrag_docs_filter_id: Optional[str] = None
+
+class DoclingConfig(BaseModel):
+    do_ocr: bool
+    ocr_engine: str
+    do_table_structure: bool
+    do_picture_classification: bool
+    do_picture_description: bool
+    picture_description_local: Optional[dict] = None
+
+class DoclingPresetResponse(BaseModel):
+    message: str
+    settings: dict
+    preset_config: DoclingConfig
+
+class OnboardingStateResponse(BaseModel):
+    message: str
+    updated_fields: List[str]
+
+class SettingsUpdateResponse(BaseModel):
+    message: str
+
+class RollbackResponse(BaseModel):
+    message: str
+    cancelled_tasks: int
+    deleted_files: int
 
 
 # Docling preset configurations
@@ -53,7 +223,11 @@ def get_docling_preset_configs(
     return config
 
 
-async def get_settings(request, session_manager):
+async def get_settings(
+    request: Request,
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> SettingsResponse:
     """Get application settings"""
     try:
         openrag_config = get_openrag_config()
@@ -61,74 +235,16 @@ async def get_settings(request, session_manager):
         knowledge_config = openrag_config.knowledge
         agent_config = openrag_config.agent
 
-        # Return public settings that are safe to expose to frontend
-        settings = {
-            "langflow_url": LANGFLOW_URL,
-            "flow_id": LANGFLOW_CHAT_FLOW_ID,
-            "ingest_flow_id": LANGFLOW_INGEST_FLOW_ID,
-            "langflow_public_url": LANGFLOW_PUBLIC_URL,
-            "edited": openrag_config.edited,
-            # Onboarding state
-            "onboarding": {
-                "current_step": openrag_config.onboarding.current_step,
-                "assistant_message": openrag_config.onboarding.assistant_message,
-                "selected_nudge": openrag_config.onboarding.selected_nudge,
-                "card_steps": openrag_config.onboarding.card_steps,
-                "upload_steps": openrag_config.onboarding.upload_steps,
-                "openrag_docs_filter_id": openrag_config.onboarding.openrag_docs_filter_id,
-                "user_doc_filter_id": openrag_config.onboarding.user_doc_filter_id,
-            },
-            # OpenRAG configuration
-            "providers": {
-                "openai": {
-                    "has_api_key": bool(openrag_config.providers.openai.api_key),
-                    "configured": openrag_config.providers.openai.configured,
-                    # Note: API key is not exposed for security
-                },
-                "anthropic": {
-                    "has_api_key": bool(openrag_config.providers.anthropic.api_key),
-                    "configured": openrag_config.providers.anthropic.configured,
-                },
-                "watsonx": {
-                    "has_api_key": bool(openrag_config.providers.watsonx.api_key),
-                    "endpoint": openrag_config.providers.watsonx.endpoint or None,
-                    "project_id": openrag_config.providers.watsonx.project_id or None,
-                    "configured": openrag_config.providers.watsonx.configured,
-                },
-                "ollama": {
-                    "endpoint": openrag_config.providers.ollama.endpoint or None,
-                    "configured": openrag_config.providers.ollama.configured,
-                },
-            },
-            "knowledge": {
-                "embedding_model": knowledge_config.embedding_model,
-                "embedding_provider": knowledge_config.embedding_provider,
-                "chunk_size": knowledge_config.chunk_size,
-                "chunk_overlap": knowledge_config.chunk_overlap,
-                "table_structure": knowledge_config.table_structure,
-                "ocr": knowledge_config.ocr,
-                "picture_descriptions": knowledge_config.picture_descriptions,
-                "index_name": knowledge_config.index_name,
-            },
-            "agent": {
-                "llm_model": agent_config.llm_model,
-                "llm_provider": agent_config.llm_provider,
-                "system_prompt": agent_config.system_prompt,
-            },
-            "localhost_url": LOCALHOST_URL,
-        }
-
         # Only expose edit URLs when a public URL is configured
+        langflow_edit_url = None
         if LANGFLOW_PUBLIC_URL and LANGFLOW_CHAT_FLOW_ID:
-            settings["langflow_edit_url"] = (
-                f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{LANGFLOW_CHAT_FLOW_ID}"
-            )
+            langflow_edit_url = f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{LANGFLOW_CHAT_FLOW_ID}"
 
+        langflow_ingest_edit_url = None
         if LANGFLOW_PUBLIC_URL and LANGFLOW_INGEST_FLOW_ID:
-            settings["langflow_ingest_edit_url"] = (
-                f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{LANGFLOW_INGEST_FLOW_ID}"
-            )
+            langflow_ingest_edit_url = f"{LANGFLOW_PUBLIC_URL.rstrip('/')}/flow/{LANGFLOW_INGEST_FLOW_ID}"
 
+        ingestion_defaults_obj = None
         # Fetch ingestion flow configuration to get actual component defaults
         if LANGFLOW_INGEST_FLOW_ID and openrag_config.edited:
             try:
@@ -175,26 +291,81 @@ async def get_settings(request, session_manager):
                                         node_template["model"]["value"]
                                     )
 
-                            # Note: OpenSearch component settings are not exposed for ingestion
-                            # (search-related parameters like number_of_results, score_threshold
-                            # are for retrieval, not ingestion)
-
-                    settings["ingestion_defaults"] = ingestion_defaults
+                    ingestion_defaults_obj = IngestionDefaultsConfig(**ingestion_defaults)
 
             except Exception as e:
                 logger.warning(f"Failed to fetch ingestion flow defaults: {e}")
                 # Continue without ingestion defaults
 
-        return JSONResponse(settings)
+        return SettingsResponse(
+            langflow_url=LANGFLOW_URL,
+            flow_id=LANGFLOW_CHAT_FLOW_ID,
+            ingest_flow_id=LANGFLOW_INGEST_FLOW_ID,
+            langflow_public_url=LANGFLOW_PUBLIC_URL,
+            edited=openrag_config.edited,
+            onboarding=OnboardingStateConfig(
+                current_step=openrag_config.onboarding.current_step,
+                assistant_message=openrag_config.onboarding.assistant_message,
+                selected_nudge=openrag_config.onboarding.selected_nudge,
+                card_steps=openrag_config.onboarding.card_steps,
+                upload_steps=openrag_config.onboarding.upload_steps,
+                openrag_docs_filter_id=openrag_config.onboarding.openrag_docs_filter_id,
+                user_doc_filter_id=openrag_config.onboarding.user_doc_filter_id,
+            ),
+            providers=ProvidersConfig(
+                openai=OpenAIProviderConfig(
+                    has_api_key=bool(openrag_config.providers.openai.api_key),
+                    configured=openrag_config.providers.openai.configured,
+                ),
+                anthropic=AnthropicProviderConfig(
+                    has_api_key=bool(openrag_config.providers.anthropic.api_key),
+                    configured=openrag_config.providers.anthropic.configured,
+                ),
+                watsonx=WatsonXProviderConfig(
+                    has_api_key=bool(openrag_config.providers.watsonx.api_key),
+                    endpoint=openrag_config.providers.watsonx.endpoint or None,
+                    project_id=openrag_config.providers.watsonx.project_id or None,
+                    configured=openrag_config.providers.watsonx.configured,
+                ),
+                ollama=OllamaProviderConfig(
+                    endpoint=openrag_config.providers.ollama.endpoint or None,
+                    configured=openrag_config.providers.ollama.configured,
+                ),
+            ),
+            knowledge=KnowledgeConfig(
+                embedding_model=knowledge_config.embedding_model,
+                embedding_provider=knowledge_config.embedding_provider,
+                chunk_size=knowledge_config.chunk_size,
+                chunk_overlap=knowledge_config.chunk_overlap,
+                table_structure=knowledge_config.table_structure,
+                ocr=knowledge_config.ocr,
+                picture_descriptions=knowledge_config.picture_descriptions,
+                index_name=knowledge_config.index_name,
+            ),
+            agent=AgentConfig(
+                llm_model=agent_config.llm_model,
+                llm_provider=agent_config.llm_provider,
+                system_prompt=agent_config.system_prompt,
+            ),
+            localhost_url=LOCALHOST_URL,
+            langflow_edit_url=langflow_edit_url,
+            langflow_ingest_edit_url=langflow_ingest_edit_url,
+            ingestion_defaults=ingestion_defaults_obj,
+        )
 
     except Exception as e:
+        logger.error(f"Failed to retrieve settings: {str(e)}")
         return JSONResponse(
             {"error": f"Failed to retrieve settings: {str(e)}"}, status_code=500
         )
 
 
-async def update_settings(request, session_manager):
-    """Update application settings"""
+async def update_settings(
+    body: SettingsUpdateBody,
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> SettingsUpdateResponse:
+    """Update settings in configuration"""
     try:
         # Get current configuration
         current_config = get_openrag_config()
@@ -207,145 +378,6 @@ async def update_settings(request, session_manager):
                 },
                 status_code=403,
             )
-
-        # Parse request body
-        body = await request.json()
-
-        # Validate allowed fields
-        allowed_fields = {
-            "llm_model",
-            "llm_provider",
-            "system_prompt",
-            "chunk_size",
-            "chunk_overlap",
-            "table_structure",
-            "ocr",
-            "picture_descriptions",
-            "embedding_model",
-            "embedding_provider",
-            "index_name",
-            # Provider-specific fields (structured as provider_name.field_name)
-            "openai_api_key",
-            "anthropic_api_key",
-            "watsonx_api_key",
-            "watsonx_endpoint",
-            "watsonx_project_id",
-            "ollama_endpoint",
-        }
-
-        # Check for invalid fields
-        invalid_fields = set(body.keys()) - allowed_fields
-        if invalid_fields:
-            return JSONResponse(
-                {
-                    "error": f"Invalid fields: {', '.join(invalid_fields)}. Allowed fields: {', '.join(allowed_fields)}"
-                },
-                status_code=400,
-            )
-
-        # Validate types early before modifying config
-        if "embedding_model" in body:
-            if (
-                not isinstance(body["embedding_model"], str)
-                or not body["embedding_model"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "embedding_model must be a non-empty string"},
-                    status_code=400,
-                )
-
-        if "table_structure" in body:
-            if not isinstance(body["table_structure"], bool):
-                return JSONResponse(
-                    {"error": "table_structure must be a boolean"}, status_code=400
-                )
-
-        if "ocr" in body:
-            if not isinstance(body["ocr"], bool):
-                return JSONResponse({"error": "ocr must be a boolean"}, status_code=400)
-
-        if "picture_descriptions" in body:
-            if not isinstance(body["picture_descriptions"], bool):
-                return JSONResponse(
-                    {"error": "picture_descriptions must be a boolean"}, status_code=400
-                )
-
-        if "chunk_size" in body:
-            if not isinstance(body["chunk_size"], int) or body["chunk_size"] <= 0:
-                return JSONResponse(
-                    {"error": "chunk_size must be a positive integer"}, status_code=400
-                )
-
-        if "chunk_overlap" in body:
-            if not isinstance(body["chunk_overlap"], int) or body["chunk_overlap"] < 0:
-                return JSONResponse(
-                    {"error": "chunk_overlap must be a non-negative integer"},
-                    status_code=400,
-                )
-
-        if "index_name" in body:
-            if (
-                not isinstance(body["index_name"], str)
-                or not body["index_name"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "index_name must be a non-empty string"},
-                    status_code=400,
-                )
-
-        if "llm_provider" in body:
-            if (
-                not isinstance(body["llm_provider"], str)
-                or not body["llm_provider"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "llm_provider must be a non-empty string"},
-                    status_code=400,
-                )
-            if body["llm_provider"] not in ["openai", "anthropic", "watsonx", "ollama"]:
-                return JSONResponse(
-                    {"error": "llm_provider must be one of: openai, anthropic, watsonx, ollama"},
-                    status_code=400,
-                )
-
-        if "embedding_provider" in body:
-            if (
-                not isinstance(body["embedding_provider"], str)
-                or not body["embedding_provider"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "embedding_provider must be a non-empty string"},
-                    status_code=400,
-                )
-            # Anthropic doesn't have embeddings
-            if body["embedding_provider"] not in ["openai", "watsonx", "ollama"]:
-                return JSONResponse(
-                    {"error": "embedding_provider must be one of: openai, watsonx, ollama"},
-                    status_code=400,
-                )
-
-        # Validate provider-specific fields
-        for key in ["openai_api_key", "anthropic_api_key", "watsonx_api_key"]:
-            if key in body and not isinstance(body[key], str):
-                return JSONResponse(
-                    {"error": f"{key} must be a string"}, status_code=400
-                )
-
-        for key in ["watsonx_endpoint", "ollama_endpoint"]:
-            if key in body:
-                if not isinstance(body[key], str) or not body[key].strip():
-                    return JSONResponse(
-                        {"error": f"{key} must be a non-empty string"}, status_code=400
-                    )
-
-        if "watsonx_project_id" in body:
-            if (
-                not isinstance(body["watsonx_project_id"], str)
-                or not body["watsonx_project_id"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "watsonx_project_id must be a non-empty string"}, status_code=400
-                )
 
         # Validate provider setup if provider-related fields are being updated
         # Do this BEFORE modifying any config
@@ -361,16 +393,17 @@ async def update_settings(request, session_manager):
             "watsonx_project_id",
             "ollama_endpoint",
         ]
-        should_validate = any(field in body for field in provider_fields)
+        
+        should_validate = any(getattr(body, field) is not None for field in provider_fields)
 
         if should_validate:
             try:
                 logger.info("Running provider validation before modifying config")
 
                 # Validate LLM provider if being changed
-                if "llm_provider" in body or "llm_model" in body:
-                    llm_provider = body.get("llm_provider", current_config.agent.llm_provider)
-                    llm_model = body.get("llm_model", current_config.agent.llm_model)
+                if body.llm_provider is not None or body.llm_model is not None:
+                    llm_provider = body.llm_provider if body.llm_provider is not None else current_config.agent.llm_provider
+                    llm_model = body.llm_model if body.llm_model is not None else current_config.agent.llm_model
 
                     # Get the provider config (with any updates from the request)
                     llm_provider_config = current_config.providers.get_provider_config(llm_provider)
@@ -380,12 +413,12 @@ async def update_settings(request, session_manager):
                     endpoint = getattr(llm_provider_config, "endpoint", None)
                     project_id = getattr(llm_provider_config, "project_id", None)
 
-                    if f"{llm_provider}_api_key" in body and body[f"{llm_provider}_api_key"].strip():
-                        api_key = body[f"{llm_provider}_api_key"]
-                    if f"{llm_provider}_endpoint" in body:
-                        endpoint = body[f"{llm_provider}_endpoint"]
-                    if f"{llm_provider}_project_id" in body:
-                        project_id = body[f"{llm_provider}_project_id"]
+                    if getattr(body, f"{llm_provider}_api_key") is not None and getattr(body, f"{llm_provider}_api_key").strip():
+                        api_key = getattr(body, f"{llm_provider}_api_key")
+                    if getattr(body, f"{llm_provider}_endpoint") is not None:
+                        endpoint = getattr(body, f"{llm_provider}_endpoint")
+                    if getattr(body, f"{llm_provider}_project_id") is not None:
+                        project_id = getattr(body, f"{llm_provider}_project_id")
 
                     await validate_provider_setup(
                         provider=llm_provider,
@@ -397,9 +430,9 @@ async def update_settings(request, session_manager):
                     logger.info(f"LLM provider validation successful for {llm_provider}")
 
                 # Validate embedding provider if being changed
-                if "embedding_provider" in body or "embedding_model" in body:
-                    embedding_provider = body.get("embedding_provider", current_config.knowledge.embedding_provider)
-                    embedding_model = body.get("embedding_model", current_config.knowledge.embedding_model)
+                if body.embedding_provider is not None or body.embedding_model is not None:
+                    embedding_provider = body.embedding_provider if body.embedding_provider is not None else current_config.knowledge.embedding_provider
+                    embedding_model = body.embedding_model if body.embedding_model is not None else current_config.knowledge.embedding_model
 
                     # Get the provider config (with any updates from the request)
                     embedding_provider_config = current_config.providers.get_provider_config(embedding_provider)
@@ -409,12 +442,12 @@ async def update_settings(request, session_manager):
                     endpoint = getattr(embedding_provider_config, "endpoint", None)
                     project_id = getattr(embedding_provider_config, "project_id", None)
 
-                    if f"{embedding_provider}_api_key" in body and body[f"{embedding_provider}_api_key"].strip():
-                        api_key = body[f"{embedding_provider}_api_key"]
-                    if f"{embedding_provider}_endpoint" in body:
-                        endpoint = body[f"{embedding_provider}_endpoint"]
-                    if f"{embedding_provider}_project_id" in body:
-                        project_id = body[f"{embedding_provider}_project_id"]
+                    if getattr(body, f"{embedding_provider}_api_key") is not None and getattr(body, f"{embedding_provider}_api_key").strip():
+                        api_key = getattr(body, f"{embedding_provider}_api_key")
+                    if getattr(body, f"{embedding_provider}_endpoint") is not None:
+                        endpoint = getattr(body, f"{embedding_provider}_endpoint")
+                    if getattr(body, f"{embedding_provider}_project_id") is not None:
+                        project_id = getattr(body, f"{embedding_provider}_project_id")
 
                     await validate_provider_setup(
                         provider=embedding_provider,
@@ -434,28 +467,28 @@ async def update_settings(request, session_manager):
         config_updated = False
 
         # Update agent settings
-        if "llm_model" in body:
+        if body.llm_model is not None:
             old_model = current_config.agent.llm_model
-            current_config.agent.llm_model = body["llm_model"]
+            current_config.agent.llm_model = body.llm_model
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_LLM_MODEL
             )
-            logger.info(f"LLM model changed from {old_model} to {body['llm_model']}")
+            logger.info(f"LLM model changed from {old_model} to {body.llm_model}")
 
-        if "llm_provider" in body:
+        if body.llm_provider is not None:
             old_provider = current_config.agent.llm_provider
-            current_config.agent.llm_provider = body["llm_provider"]
+            current_config.agent.llm_provider = body.llm_provider
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_LLM_PROVIDER
             )
-            logger.info(f"LLM provider changed from {old_provider} to {body['llm_provider']}")
+            logger.info(f"LLM provider changed from {old_provider} to {body.llm_provider}")
 
-        if "system_prompt" in body:
-            current_config.agent.system_prompt = body["system_prompt"]
+        if body.system_prompt is not None:
+            current_config.agent.system_prompt = body.system_prompt
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
@@ -472,9 +505,9 @@ async def update_settings(request, session_manager):
                 # The config will still be saved
 
         # Update knowledge settings
-        if "embedding_model" in body:
+        if body.embedding_model is not None:
             old_model = current_config.knowledge.embedding_model
-            new_embedding_model = body["embedding_model"].strip()
+            new_embedding_model = body.embedding_model.strip()
             current_config.knowledge.embedding_model = new_embedding_model
             config_updated = True
             await TelemetryClient.send_event(
@@ -483,18 +516,18 @@ async def update_settings(request, session_manager):
             )
             logger.info(f"Embedding model changed from {old_model} to {new_embedding_model}")
 
-        if "embedding_provider" in body:
+        if body.embedding_provider is not None:
             old_provider = current_config.knowledge.embedding_provider
-            current_config.knowledge.embedding_provider = body["embedding_provider"]
+            current_config.knowledge.embedding_provider = body.embedding_provider
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
                 MessageId.ORB_SETTINGS_EMBED_PROVIDER
             )
-            logger.info(f"Embedding provider changed from {old_provider} to {body['embedding_provider']}")
+            logger.info(f"Embedding provider changed from {old_provider} to {body.embedding_provider}")
 
-        if "table_structure" in body:
-            current_config.knowledge.table_structure = body["table_structure"]
+        if body.table_structure is not None:
+            current_config.knowledge.table_structure = body.table_structure
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
@@ -508,8 +541,8 @@ async def update_settings(request, session_manager):
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
-        if "ocr" in body:
-            current_config.knowledge.ocr = body["ocr"]
+        if body.ocr is not None:
+            current_config.knowledge.ocr = body.ocr
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
@@ -523,8 +556,8 @@ async def update_settings(request, session_manager):
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
-        if "picture_descriptions" in body:
-            current_config.knowledge.picture_descriptions = body["picture_descriptions"]
+        if body.picture_descriptions is not None:
+            current_config.knowledge.picture_descriptions = body.picture_descriptions
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
@@ -538,8 +571,8 @@ async def update_settings(request, session_manager):
             except Exception as e:
                 logger.error(f"Failed to update docling settings in flow: {str(e)}")
 
-        if "chunk_size" in body:
-            current_config.knowledge.chunk_size = body["chunk_size"]
+        if body.chunk_size is not None:
+            current_config.knowledge.chunk_size = body.chunk_size
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
@@ -549,17 +582,17 @@ async def update_settings(request, session_manager):
             # Also update the ingest flow with the new chunk size
             try:
                 flows_service = _get_flows_service()
-                await flows_service.update_ingest_flow_chunk_size(body["chunk_size"])
+                await flows_service.update_ingest_flow_chunk_size(body.chunk_size)
                 logger.info(
-                    f"Successfully updated ingest flow chunk size to {body['chunk_size']}"
+                    f"Successfully updated ingest flow chunk size to {body.chunk_size}"
                 )
             except Exception as e:
                 logger.error(f"Failed to update ingest flow chunk size: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
                 # The config will still be saved
 
-        if "chunk_overlap" in body:
-            current_config.knowledge.chunk_overlap = body["chunk_overlap"]
+        if body.chunk_overlap is not None:
+            current_config.knowledge.chunk_overlap = body.chunk_overlap
             config_updated = True
             await TelemetryClient.send_event(
                 Category.SETTINGS_OPERATIONS,
@@ -570,17 +603,17 @@ async def update_settings(request, session_manager):
             try:
                 flows_service = _get_flows_service()
                 await flows_service.update_ingest_flow_chunk_overlap(
-                    body["chunk_overlap"]
+                    body.chunk_overlap
                 )
                 logger.info(
-                    f"Successfully updated ingest flow chunk overlap to {body['chunk_overlap']}"
+                    f"Successfully updated ingest flow chunk overlap to {body.chunk_overlap}"
                 )
             except Exception as e:
                 logger.error(f"Failed to update ingest flow chunk overlap: {str(e)}")
                 # Don't fail the entire settings update if flow update fails
-        if "index_name" in body:
+        if body.index_name is not None:
             old_index_name = current_config.knowledge.index_name
-            new_index_name = body["index_name"].strip()
+            new_index_name = body.index_name.strip()
             current_config.knowledge.index_name = new_index_name
             config_updated = True
             await TelemetryClient.send_event(
@@ -603,38 +636,38 @@ async def update_settings(request, session_manager):
 
         # Update provider-specific settings
         provider_updated = False
-        if "openai_api_key" in body and body["openai_api_key"].strip():
-            current_config.providers.openai.api_key = body["openai_api_key"].strip()
+        if body.openai_api_key is not None and body.openai_api_key.strip():
+            current_config.providers.openai.api_key = body.openai_api_key.strip()
             current_config.providers.openai.configured = True
             config_updated = True
             provider_updated = True
 
-        if "anthropic_api_key" in body and body["anthropic_api_key"].strip():
-            current_config.providers.anthropic.api_key = body["anthropic_api_key"]
+        if body.anthropic_api_key is not None and body.anthropic_api_key.strip():
+            current_config.providers.anthropic.api_key = body.anthropic_api_key
             current_config.providers.anthropic.configured = True
             config_updated = True
             provider_updated = True
 
-        if "watsonx_api_key" in body and body["watsonx_api_key"].strip():
-            current_config.providers.watsonx.api_key = body["watsonx_api_key"]
+        if body.watsonx_api_key is not None and body.watsonx_api_key.strip():
+            current_config.providers.watsonx.api_key = body.watsonx_api_key
             current_config.providers.watsonx.configured = True
             config_updated = True
             provider_updated = True
 
-        if "watsonx_endpoint" in body:
-            current_config.providers.watsonx.endpoint = body["watsonx_endpoint"].strip()
+        if body.watsonx_endpoint is not None:
+            current_config.providers.watsonx.endpoint = body.watsonx_endpoint.strip()
             current_config.providers.watsonx.configured = True
             config_updated = True
             provider_updated = True
 
-        if "watsonx_project_id" in body:
-            current_config.providers.watsonx.project_id = body["watsonx_project_id"].strip()
+        if body.watsonx_project_id is not None:
+            current_config.providers.watsonx.project_id = body.watsonx_project_id.strip()
             current_config.providers.watsonx.configured = True
             config_updated = True
             provider_updated = True
 
-        if "ollama_endpoint" in body:
-            current_config.providers.ollama.endpoint = body["ollama_endpoint"].strip()
+        if body.ollama_endpoint is not None:
+            current_config.providers.ollama.endpoint = body.ollama_endpoint.strip()
             current_config.providers.ollama.configured = True
             config_updated = True
             provider_updated = True
@@ -657,16 +690,9 @@ async def update_settings(request, session_manager):
             )
 
         # Update Langflow global variables and model values if provider settings changed
-        provider_fields_to_check = [
-            "llm_provider", "embedding_provider",
-            "openai_api_key", "anthropic_api_key",
-            "watsonx_api_key", "watsonx_endpoint", "watsonx_project_id",
-            "ollama_endpoint"
-        ]
-
         await clients.refresh_patched_client()
 
-        if any(key in body for key in provider_fields_to_check):
+        if should_validate:
             try:
                 flows_service = _get_flows_service()
 
@@ -674,13 +700,13 @@ async def update_settings(request, session_manager):
                 await _update_langflow_global_variables(current_config)
 
                 # Update LLM client credentials when embedding selection changes
-                if "embedding_provider" in body or "embedding_model" in body:
+                if body.embedding_provider is not None or body.embedding_model is not None:
                     await _update_mcp_servers_with_provider_credentials(
                         current_config, session_manager
                     )
 
                 # Update model values if provider or model changed
-                if "llm_provider" in body or "llm_model" in body or "embedding_provider" in body or "embedding_model" in body:
+                if body.llm_provider is not None or body.llm_model is not None or body.embedding_provider is not None or body.embedding_model is not None:
                     await _update_langflow_model_values(current_config, flows_service)
 
             except Exception as e:
@@ -689,14 +715,15 @@ async def update_settings(request, session_manager):
                 # The config was still saved
 
 
+        set_fields = [k for k, v in body.model_dump().items() if v is not None]
         logger.info(
-            "Configuration updated successfully", updated_fields=list(body.keys())
+            "Configuration updated successfully", updated_fields=set_fields
         )
         await TelemetryClient.send_event(
             Category.SETTINGS_OPERATIONS,
             MessageId.ORB_SETTINGS_UPDATED
         )
-        return JSONResponse({"message": "Configuration updated successfully"})
+        return SettingsUpdateResponse(message="Configuration updated successfully")
 
     except Exception as e:
         logger.error("Failed to update settings", error=str(e))
@@ -709,7 +736,16 @@ async def update_settings(request, session_manager):
         )
 
 
-async def onboarding(request, flows_service, session_manager=None):
+async def onboarding(
+    body: OnboardingBody,
+    flows_service=Depends(get_flows_service),
+    session_manager=Depends(get_session_manager),
+    document_service=Depends(get_document_service),
+    task_service=Depends(get_task_service),
+    langflow_file_service=Depends(get_langflow_file_service),
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
+    user: User = Depends(get_current_user),
+) -> OnboardingResponse:
     """Handle onboarding configuration setup"""
     try:
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
@@ -723,34 +759,6 @@ async def onboarding(request, flows_service, session_manager=None):
                 "Onboarding is being run although configuration was already edited before"
             )
 
-        # Parse request body
-        body = await request.json()
-
-        # Validate allowed fields
-        allowed_fields = {
-            "llm_provider",
-            "llm_model",
-            "embedding_provider",
-            "embedding_model",
-            # Provider-specific fields
-            "openai_api_key",
-            "anthropic_api_key",
-            "watsonx_api_key",
-            "watsonx_endpoint",
-            "watsonx_project_id",
-            "ollama_endpoint",
-        }
-
-        # Check for invalid fields
-        invalid_fields = set(body.keys()) - allowed_fields
-        if invalid_fields:
-            return JSONResponse(
-                {
-                    "error": f"Invalid fields: {', '.join(invalid_fields)}. Allowed fields: {', '.join(allowed_fields)}"
-                },
-                status_code=400,
-            )
-
         # Update configuration
         config_updated = False
 
@@ -758,12 +766,8 @@ async def onboarding(request, flows_service, session_manager=None):
         llm_model_selected = None
         llm_provider_selected = None
 
-        if "llm_model" in body:
-            if not isinstance(body["llm_model"], str) or not body["llm_model"].strip():
-                return JSONResponse(
-                    {"error": "llm_model must be a non-empty string"}, status_code=400
-                )
-            llm_model_selected = body["llm_model"].strip()
+        if body.llm_model:
+            llm_model_selected = body.llm_model.strip()
             current_config.agent.llm_model = llm_model_selected
             config_updated = True
             await TelemetryClient.send_event(
@@ -773,21 +777,8 @@ async def onboarding(request, flows_service, session_manager=None):
             )
             logger.info(f"LLM model selected during onboarding: {llm_model_selected}")
 
-        if "llm_provider" in body:
-            if (
-                not isinstance(body["llm_provider"], str)
-                or not body["llm_provider"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "llm_provider must be a non-empty string"},
-                    status_code=400,
-                )
-            if body["llm_provider"] not in ["openai", "anthropic", "watsonx", "ollama"]:
-                return JSONResponse(
-                    {"error": "llm_provider must be one of: openai, anthropic, watsonx, ollama"},
-                    status_code=400,
-                )
-            llm_provider_selected = body["llm_provider"].strip()
+        if body.llm_provider:
+            llm_provider_selected = body.llm_provider.strip()
             current_config.agent.llm_provider = llm_provider_selected
             config_updated = True
             await TelemetryClient.send_event(
@@ -801,16 +792,8 @@ async def onboarding(request, flows_service, session_manager=None):
         embedding_model_selected = None
         embedding_provider_selected = None
 
-        if "embedding_model" in body and not DISABLE_INGEST_WITH_LANGFLOW:
-            if (
-                not isinstance(body["embedding_model"], str)
-                or not body["embedding_model"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "embedding_model must be a non-empty string"},
-                    status_code=400,
-                )
-            embedding_model_selected = body["embedding_model"].strip()
+        if body.embedding_model and not DISABLE_INGEST_WITH_LANGFLOW:
+            embedding_model_selected = body.embedding_model.strip()
             current_config.knowledge.embedding_model = embedding_model_selected
             config_updated = True
             await TelemetryClient.send_event(
@@ -820,22 +803,8 @@ async def onboarding(request, flows_service, session_manager=None):
             )
             logger.info(f"Embedding model selected during onboarding: {embedding_model_selected}")
 
-        if "embedding_provider" in body:
-            if (
-                not isinstance(body["embedding_provider"], str)
-                or not body["embedding_provider"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "embedding_provider must be a non-empty string"},
-                    status_code=400,
-                )
-            # Anthropic doesn't have embeddings
-            if body["embedding_provider"] not in ["openai", "watsonx", "ollama"]:
-                return JSONResponse(
-                    {"error": "embedding_provider must be one of: openai, watsonx, ollama"},
-                    status_code=400,
-                )
-            embedding_provider_selected = body["embedding_provider"].strip()
+        if body.embedding_provider:
+            embedding_provider_selected = body.embedding_provider.strip()
             current_config.knowledge.embedding_provider = embedding_provider_selected
             config_updated = True
             await TelemetryClient.send_event(
@@ -846,55 +815,40 @@ async def onboarding(request, flows_service, session_manager=None):
             logger.info(f"Embedding provider selected during onboarding: {embedding_provider_selected}")
 
         # Update provider-specific credentials
-        if "openai_api_key" in body and body["openai_api_key"].strip():
-            current_config.providers.openai.api_key = body["openai_api_key"].strip()
+        if body.openai_api_key:
+            current_config.providers.openai.api_key = body.openai_api_key.strip()
             current_config.providers.openai.configured = True
             config_updated = True
 
-        if "anthropic_api_key" in body and body["anthropic_api_key"].strip():
-            current_config.providers.anthropic.api_key = body["anthropic_api_key"]
+        if body.anthropic_api_key:
+            current_config.providers.anthropic.api_key = body.anthropic_api_key.strip()
             current_config.providers.anthropic.configured = True
             config_updated = True
 
-        if "watsonx_api_key" in body and body["watsonx_api_key"].strip():
-            current_config.providers.watsonx.api_key = body["watsonx_api_key"]
+        if body.watsonx_api_key:
+            current_config.providers.watsonx.api_key = body.watsonx_api_key.strip()
             current_config.providers.watsonx.configured = True
             config_updated = True
 
-        if "watsonx_endpoint" in body:
-            if not isinstance(body["watsonx_endpoint"], str) or not body["watsonx_endpoint"].strip():
-                return JSONResponse(
-                    {"error": "watsonx_endpoint must be a non-empty string"}, status_code=400
-                )
-            current_config.providers.watsonx.endpoint = body["watsonx_endpoint"].strip()
+        if body.watsonx_endpoint:
+            current_config.providers.watsonx.endpoint = body.watsonx_endpoint.strip()
             current_config.providers.watsonx.configured = True
             config_updated = True
 
-        if "watsonx_project_id" in body:
-            if (
-                not isinstance(body["watsonx_project_id"], str)
-                or not body["watsonx_project_id"].strip()
-            ):
-                return JSONResponse(
-                    {"error": "watsonx_project_id must be a non-empty string"}, status_code=400
-                )
-            current_config.providers.watsonx.project_id = body["watsonx_project_id"].strip()
+        if body.watsonx_project_id:
+            current_config.providers.watsonx.project_id = body.watsonx_project_id.strip()
             current_config.providers.watsonx.configured = True
             config_updated = True
 
-        if "ollama_endpoint" in body:
-            if not isinstance(body["ollama_endpoint"], str) or not body["ollama_endpoint"].strip():
-                return JSONResponse(
-                    {"error": "ollama_endpoint must be a non-empty string"}, status_code=400
-                )
-            current_config.providers.ollama.endpoint = body["ollama_endpoint"].strip()
+        if body.ollama_endpoint:
+            current_config.providers.ollama.endpoint = body.ollama_endpoint.strip()
             current_config.providers.ollama.configured = True
             config_updated = True
 
         # Mark providers as configured if they were chosen during onboarding
         # Check LLM provider
-        if "llm_provider" in body:
-            llm_provider = body["llm_provider"].strip().lower()
+        if body.llm_provider:
+            llm_provider = body.llm_provider.strip().lower()
             if llm_provider == "openai" and current_config.providers.openai.api_key:
                 current_config.providers.openai.configured = True
                 logger.info("Marked OpenAI as configured (chosen as LLM provider)")
@@ -909,8 +863,8 @@ async def onboarding(request, flows_service, session_manager=None):
                 logger.info("Marked Ollama as configured (chosen as LLM provider)")
 
         # Check embedding provider
-        if "embedding_provider" in body:
-            embedding_provider = body["embedding_provider"].strip().lower()
+        if body.embedding_provider:
+            embedding_provider = body.embedding_provider.strip().lower()
             if embedding_provider == "openai" and current_config.providers.openai.api_key:
                 current_config.providers.openai.configured = True
                 logger.info("Marked OpenAI as configured (chosen as embedding provider)")
@@ -940,7 +894,7 @@ async def onboarding(request, flows_service, session_manager=None):
             from api.provider_validation import validate_provider_setup
 
             # Validate LLM provider if set
-            if "llm_provider" in body or "llm_model" in body:
+            if body.llm_provider or body.llm_model:
                 llm_provider = current_config.agent.llm_provider.lower()
                 llm_provider_config = current_config.get_llm_provider_config()
 
@@ -956,7 +910,7 @@ async def onboarding(request, flows_service, session_manager=None):
                 logger.info(f"LLM provider setup validation completed successfully for {llm_provider}")
 
             # Validate embedding provider if set
-            if "embedding_provider" in body or "embedding_model" in body:
+            if body.embedding_provider or body.embedding_model:
                 embedding_provider = current_config.knowledge.embedding_provider.lower()
                 embedding_provider_config = current_config.get_embedding_provider_config()
 
@@ -994,10 +948,10 @@ async def onboarding(request, flows_service, session_manager=None):
         # Set Langflow global variables and model values based on provider configuration
         try:
             # Check if any provider-related fields were provided
-            provider_fields_provided = any(key in body for key in [
-                "openai_api_key", "anthropic_api_key",
-                "watsonx_api_key", "watsonx_endpoint", "watsonx_project_id",
-                "ollama_endpoint"
+            provider_fields_provided = any([
+                body.openai_api_key, body.anthropic_api_key,
+                body.watsonx_api_key, body.watsonx_endpoint, body.watsonx_project_id,
+                body.ollama_endpoint
             ])
 
             # Update global variables if any provider fields were provided
@@ -1007,11 +961,11 @@ async def onboarding(request, flows_service, session_manager=None):
                 current_config.providers.anthropic.api_key != ""):
                 await _update_langflow_global_variables(current_config)
 
-            if "embedding_provider" in body or "embedding_model" in body:
+            if body.embedding_provider or body.embedding_model:
                 await _update_mcp_servers_with_provider_credentials(current_config, session_manager)
 
             # Update model values if provider or model fields were provided
-            if "llm_provider" in body or "llm_model" in body or "embedding_provider" in body or "embedding_model" in body:
+            if body.llm_provider or body.llm_model or body.embedding_provider or body.embedding_model:
                 await _update_langflow_model_values(current_config, flows_service)
 
         except Exception as e:
@@ -1022,7 +976,7 @@ async def onboarding(request, flows_service, session_manager=None):
             raise
 
         # Initialize the OpenSearch index if embedding model is configured
-        if "embedding_model" in body or "embedding_provider" in body:
+        if body.embedding_model or body.embedding_provider:
             try:
                 # Import here to avoid circular imports
                 from main import init_index_when_ready
@@ -1050,36 +1004,28 @@ async def onboarding(request, flows_service, session_manager=None):
                     # Import the function here to avoid circular imports
                     from main import ingest_default_documents_when_ready
 
-                    # Get services from the current app state
-                    # We need to access the app instance to get services
-                    app = request.scope.get("app")
-                    if app and hasattr(app.state, "services"):
-                        services = app.state.services
-                        logger.info(
-                            "Starting sample data ingestion as requested in onboarding"
-                        )
-                        await ingest_default_documents_when_ready(services)
-                        logger.info("Sample data ingestion completed successfully")
-                    else:
-                        logger.error(
-                            "Could not access services for sample data ingestion"
-                        )
+                    await ingest_default_documents_when_ready(
+                        document_service,
+                        task_service,
+                        langflow_file_service,
+                        session_manager,
+                    )
+                    logger.info("Sample data ingestion completed successfully")
 
                 except Exception as e:
                     logger.error(
                         "Failed to complete sample data ingestion", error=str(e)
                     )
-
                     return JSONResponse(
                         {"error": f"Failed to ingest sample documents: {str(e)}"},
                         status_code=500
                     )
 
         if config_manager.save_config_file(current_config):
-            updated_fields = list(body.keys())
+            set_fields = [k for k, v in body.model_dump(exclude_unset=True).items()]
             logger.info(
                 "Onboarding configuration updated successfully",
-                updated_fields=updated_fields,
+                updated_fields=set_fields,
             )
 
             # Mark config as edited and send telemetry with model information
@@ -1123,10 +1069,10 @@ async def onboarding(request, flows_service, session_manager=None):
         # Create OpenRAG Docs knowledge filter if sample data was ingested
         # Only create on embedding step to avoid duplicates (both LLM and embedding cards submit with sample_data)
         openrag_docs_filter_id = None
-        if should_ingest_sample_data and ("embedding_provider" in body or "embedding_model" in body):
+        if should_ingest_sample_data and (body.embedding_provider or body.embedding_model):
             try:
                 openrag_docs_filter_id = await _create_openrag_docs_filter(
-                    request, session_manager
+                    knowledge_filter_service, session_manager, user
                 )
                 if openrag_docs_filter_id:
                     logger.info(
@@ -1143,13 +1089,11 @@ async def onboarding(request, flows_service, session_manager=None):
                 )
                 # Don't fail onboarding if filter creation fails
 
-        return JSONResponse(
-            {
-                "message": "Onboarding configuration updated successfully",
-                "edited": True,  # Confirm that config is now marked as edited
-                "sample_data_ingested": should_ingest_sample_data,
-                "openrag_docs_filter_id": openrag_docs_filter_id,
-            }
+        return OnboardingResponse(
+            message="Onboarding configuration updated successfully",
+            edited=True,  # Confirm that config is now marked as edited
+            sample_data_ingested=should_ingest_sample_data,
+            openrag_docs_filter_id=openrag_docs_filter_id,
         )
 
     except Exception as e:
@@ -1164,26 +1108,20 @@ async def onboarding(request, flows_service, session_manager=None):
         )
 
 
-async def _create_openrag_docs_filter(request, session_manager):
+async def _create_openrag_docs_filter(
+    knowledge_filter_service, session_manager, user
+):
     """Create the OpenRAG Docs knowledge filter for onboarding"""
     import uuid
     import json
     from datetime import datetime
 
-    # Get knowledge filter service from app state
-    app = request.scope.get("app")
-    if not app or not hasattr(app.state, "services"):
-        logger.error("Could not access services for knowledge filter creation")
-        return None
-
-    knowledge_filter_service = app.state.services.get("knowledge_filter_service")
     if not knowledge_filter_service:
         logger.error("Knowledge filter service not available")
         return None
 
-    # Get user and JWT token from request
-    user = request.state.user
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
+    # Get JWT token
+        jwt_token = user.jwt_token
 
     # In no-auth mode, set owner to None so filter is visible to all users
     # In auth mode, use the actual user as owner
@@ -1403,51 +1341,28 @@ async def _update_langflow_chunk_settings(config, flows_service):
         raise
 
 
-async def update_onboarding_state(request):
+async def update_onboarding_state(
+    body: OnboardingStateBody,
+    user: User = Depends(get_current_user),
+) -> OnboardingStateResponse:
     """Update onboarding state in configuration"""
     try:
         await TelemetryClient.send_event(Category.ONBOARDING, MessageId.ORB_ONBOARD_START)
 
-        # Parse request body
-        body = await request.json()
-
-        # Validate allowed fields
-        allowed_fields = {
-            "current_step",
-            "assistant_message",
-            "selected_nudge",
-            "card_steps",
-            "upload_steps",
-            "openrag_docs_filter_id",
-            "user_doc_filter_id",
-        }
-
-        # Check for invalid fields
-        invalid_fields = set(body.keys()) - allowed_fields
-        if invalid_fields:
-            return JSONResponse(
-                {
-                    "error": f"Invalid fields: {', '.join(invalid_fields)}. Allowed fields: {', '.join(allowed_fields)}"
-                },
-                status_code=400,
-            )
+        # Convert body to dict excluding None values
+        body_dict = body.model_dump(exclude_unset=True)
 
         # Update onboarding state using config manager
-        success = config_manager.update_onboarding_state(**body)
+        success = config_manager.update_onboarding_state(**body_dict)
 
         if not success:
-            return JSONResponse(
-                {"error": "Failed to update onboarding state"},
-                status_code=500,
-            )
+            raise HTTPException(status_code=500, detail="Failed to update onboarding state")
 
         logger.info(f"Onboarding state updated: {body}")
 
-        return JSONResponse(
-            {
-                "message": "Onboarding state updated successfully",
-                "updated_fields": list(body.keys()),
-            }
+        return OnboardingStateResponse(
+            message="Onboarding state updated successfully",
+            updated_fields=list(body_dict.keys()),
         )
 
     except json.JSONDecodeError:
@@ -1512,7 +1427,12 @@ async def reapply_all_settings(session_manager = None):
         raise
 
 
-async def rollback_onboarding(request, session_manager, task_service):
+async def rollback_onboarding(
+    request: Request,
+    session_manager=Depends(get_session_manager),
+    task_service=Depends(get_task_service),
+    user: User = Depends(get_current_user),
+) -> RollbackResponse:
     """Rollback onboarding configuration when sample data files fail.
 
     This will:
@@ -1530,8 +1450,7 @@ async def rollback_onboarding(request, session_manager, task_service):
                 {"error": "No onboarding configuration to rollback"}, status_code=400
             )
 
-        user = request.state.user
-        jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
+            jwt_token = user.jwt_token
 
         logger.info("Rolling back onboarding configuration due to file failures")
 
@@ -1630,12 +1549,10 @@ async def rollback_onboarding(request, session_manager, task_service):
             MessageId.ORB_ONBOARD_ROLLBACK
         )
 
-        return JSONResponse(
-            {
-                "message": "Onboarding configuration rolled back successfully",
-                "cancelled_tasks": len(cancelled_tasks),
-                "deleted_files": len(deleted_files),
-            }
+        return RollbackResponse(
+            message="Onboarding configuration rolled back successfully",
+            cancelled_tasks=len(cancelled_tasks),
+            deleted_files=len(deleted_files),
         )
 
     except Exception as e:
@@ -1645,14 +1562,15 @@ async def rollback_onboarding(request, session_manager, task_service):
         )
 
 
-async def update_docling_preset(request, session_manager):
+async def update_docling_preset(
+    body: DoclingPresetBody,
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> DoclingPresetResponse:
     """Update docling settings in the ingest flow - deprecated endpoint, use /settings instead"""
     try:
-        # Parse request body
-        body = await request.json()
-
         # Support old preset-based API for backwards compatibility
-        if "preset" in body:
+        if body.preset:
             # Map old presets to new toggle settings
             preset_map = {
                 "standard": {
@@ -1677,43 +1595,38 @@ async def update_docling_preset(request, session_manager):
                 },
             }
 
-            preset = body["preset"]
+            preset = body.preset
             if preset not in preset_map:
-                return JSONResponse(
-                    {
-                        "error": f"Invalid preset '{preset}'. Valid presets: {', '.join(preset_map.keys())}"
-                    },
+                raise HTTPException(
                     status_code=400,
+                    detail=f"Invalid preset '{preset}'. Valid presets: {', '.join(preset_map.keys())}"
                 )
 
-            settings = preset_map[preset]
+            settings_toggles = preset_map[preset]
         else:
             # Support new toggle-based API
-            settings = {
-                "table_structure": body.get("table_structure", False),
-                "ocr": body.get("ocr", False),
-                "picture_descriptions": body.get("picture_descriptions", False),
+            settings_toggles = {
+                "table_structure": body.table_structure if body.table_structure is not None else False,
+                "ocr": body.ocr if body.ocr is not None else False,
+                "picture_descriptions": body.picture_descriptions if body.picture_descriptions is not None else False,
             }
 
         # Get the preset configuration
-        preset_config = get_docling_preset_configs(**settings)
+        preset_config_dict = get_docling_preset_configs(**settings_toggles)
+        preset_config = DoclingConfig(**preset_config_dict)
 
         # Use the helper function to update the flow
         flows_service = _get_flows_service()
-        await flows_service.update_flow_docling_preset("custom", preset_config)
+        await flows_service.update_flow_docling_preset("custom", preset_config_dict)
 
         logger.info("Successfully updated docling settings in ingest flow")
 
-        return JSONResponse(
-            {
-                "message": "Successfully updated docling settings",
-                "settings": settings,
-                "preset_config": preset_config,
-            }
+        return DoclingPresetResponse(
+            message="Successfully updated docling settings",
+            settings=settings_toggles,
+            preset_config=preset_config,
         )
 
     except Exception as e:
         logger.error("Failed to update docling settings", error=str(e))
-        return JSONResponse(
-            {"error": f"Failed to update docling settings: {str(e)}"}, status_code=500
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to update docling settings: {str(e)}")

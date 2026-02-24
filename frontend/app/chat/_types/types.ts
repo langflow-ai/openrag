@@ -1,3 +1,15 @@
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  input_tokens_details?: {
+    cached_tokens?: number;
+  };
+  output_tokens_details?: {
+    reasoning_tokens?: number;
+  };
+}
+
 export interface Message {
   role: "user" | "assistant";
   content: string;
@@ -5,6 +17,7 @@ export interface Message {
   functionCalls?: FunctionCall[];
   isStreaming?: boolean;
   source?: "langflow" | "chat";
+  usage?: TokenUsage;
 }
 
 export interface FunctionCall {

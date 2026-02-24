@@ -1,17 +1,13 @@
-import json
 import jwt
 import httpx
 from datetime import datetime, timedelta
-from typing import Dict, Optional, Any
-from dataclasses import dataclass, asdict
+from typing import Dict, Optional, Any, Union
+from dataclasses import dataclass
+
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519, ed448
 
 import os
-from utils.logging_config import get_logger
-
-logger = get_logger(__name__)
-
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -26,6 +22,7 @@ class User:
     provider: str = "google"
     created_at: datetime = None
     last_login: datetime = None
+    jwt_token: Optional[str] = None
 
     def __post_init__(self):
         if self.created_at is None:
@@ -33,17 +30,15 @@ class User:
         if self.last_login is None:
             self.last_login = datetime.now()
 
+@dataclass
 class AnonymousUser(User):
     """Anonymous user"""
 
-    def __init__(self):
-        super().__init__(
-            user_id="anonymous",
-            email="anonymous@localhost",
-            name="Anonymous User",
-            picture=None,
-            provider="none",
-        )
+    user_id: str = "anonymous"
+    email: str = "anonymous@localhost"
+    name: str = "Anonymous User"
+    picture: str = None
+    provider: str = "none"
 
 
 
@@ -244,8 +239,14 @@ class SessionManager:
             return self.get_user(payload["user_id"])
         return None
 
-    def get_user_opensearch_client(self, user_id: str, jwt_token: str):
+    def get_user_opensearch_client(self, user_or_id: Union[User, str], jwt_token: str = None):
         """Get or create OpenSearch client for user with their JWT"""
+        if isinstance(user_or_id, User):
+            user_id = user_or_id.user_id
+            jwt_token = user_or_id.jwt_token
+        else:
+            user_id = user_or_id
+
         # Get the effective JWT token (handles anonymous JWT creation)
         jwt_token = self.get_effective_jwt_token(user_id, jwt_token)
 

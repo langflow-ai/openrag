@@ -12,8 +12,6 @@ dependencies = [
     "agentd>=0.2.2",
     "aiofiles>=24.1.0",
     "cryptography>=45.0.6",
-    "docling[vlm]==2.41.0; sys_platform != 'darwin'",
-    "docling[ocrmac,vlm]==2.41.0; sys_platform == 'darwin'",
     "google-api-python-client>=2.143.0",
     "google-auth-httplib2>=0.2.0",
     "google-auth-oauthlib>=1.2.0",
@@ -22,8 +20,7 @@ dependencies = [
     "opensearch-py[async]>=3.0.0",
     "pyjwt>=2.8.0",
     "python-multipart>=0.0.20",
-    "starlette>=0.47.1",
-    "torch>=2.7.1",
+    "fastapi>=0.115.0",
     "uvicorn>=0.35.0",
     "boto3>=1.35.0",
     "psutil>=7.0.0",
@@ -32,8 +29,6 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "textual-fspicker>=0.6.0",
     "structlog>=25.4.0",
-    "docling-core==2.48.1",
-    "easyocr>=1.7.1; sys_platform != 'darwin'",
     "zxcvbn>=4.5.0"
 ]
 
@@ -47,15 +42,3 @@ openrag = "tui.main:run_tui"
 package = true
 
 
-[tool.uv.sources]
-torch = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
-]
-torchvision = [
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
-]
-
-[[tool.uv.index]]
-name     = "pytorch-cu128"
-url      = "https://download.pytorch.org/whl/cu128"
-explicit = true

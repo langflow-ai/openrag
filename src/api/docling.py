@@ -6,8 +6,8 @@ import struct
 from pathlib import Path
 
 import httpx
-from starlette.requests import Request
-from starlette.responses import JSONResponse
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 from utils.container_utils import (
     detect_container_environment,
@@ -39,38 +39,41 @@ def _get_gateway_ip_from_route() -> str | None:
 
 
 def determine_docling_host() -> str:
-    """Determine the host address used for docling health checks."""
+    """Determine the host address used for docling health checks.
+
+    Works for containers, Docker Desktop hosts, and plain Linux hosts / CI runners.
+    """
     container_type = detect_container_environment()
+
+    # Container-specific env var (e.g. HOST_DOCKER_INTERNAL set explicitly)
     if container_type:
-        # Try HOST_DOCKER_INTERNAL env var first
         container_host = get_container_host()
         if container_host:
             logger.info("Using container-aware host '%s'", container_host)
             return container_host
 
-        # Try special hostnames (Docker Desktop and rootless podman)
-        import socket
-        for hostname in ["host.docker.internal", "host.containers.internal"]:
-            try:
-                socket.getaddrinfo(hostname, None)
-                logger.info("Using %s for container-to-host communication", hostname)
-                return hostname
-            except socket.gaierror:
-                logger.debug("%s not available", hostname)
+    # Try well-known hostnames (resolves on Docker Desktop even outside a
+    # container, and inside Docker/Podman containers with host networking)
+    for hostname in ["host.docker.internal", "host.containers.internal"]:
+        try:
+            socket.getaddrinfo(hostname, None)
+            logger.info("Using %s for docling-serve", hostname)
+            return hostname
+        except socket.gaierror:
+            logger.debug("%s not available", hostname)
 
-        # Try gateway IP detection (Docker on Linux)
+    # Container-only fallbacks: gateway IP or bridge IP
+    if container_type:
         gateway_ip = _get_gateway_ip_from_route()
         if gateway_ip:
             logger.info("Detected host gateway IP: %s", gateway_ip)
             return gateway_ip
 
-        # Fallback to bridge IP
         fallback_ip = guess_host_ip_for_containers(logger=logger)
         logger.info("Falling back to container bridge host %s", fallback_ip)
         return fallback_ip
 
-    # Running outside a container
-    logger.info("Running outside a container; using localhost")
+    logger.info("Using localhost for docling-serve")
     return "localhost"
 
 

@@ -115,15 +115,12 @@ The commands to upgrade the package depend on how you installed OpenRAG.
 
 6. In the OpenRAG TUI, click **Start Services**, and then wait while the services start.
 
-   When you start services after upgrading the Python package, OpenRAG runs `docker compose pull` to get the appropriate container images matching the version specified in your OpenRAG `.env` file. Then, it recreates the containers with the new images using `docker compose up -d --force-recreate`.
-
-   :::tip Pin container versions
-   In the OpenRAG `.env` file, the `OPENRAG_VERSION` [environment variable](/reference/configuration#system-settings) is set to `latest` by default, which pulls the `latest` available container images.
-   To pin a specific container image version, you can set `OPENRAG_VERSION` to the desired container image version, such as `OPENRAG_VERSION=0.1.33`.
-
-   However, when you upgrade the Python package, OpenRAG automatically attempts to keep the `OPENRAG_VERSION` synchronized with the Python package version.
-   You might need to edit the `.env` file after upgrading the Python package to enforce a different container version.
-   The TUI warns you if it detects a version mismatch.
+   When you start services, the TUI dictates the container version at runtime. It overrides the `OPENRAG_VERSION` variable in your `.env` file to match the currently installed OpenRAG Python package version.
+   
+   This ensures that your TUI and containers are always synchronized when using the TUI to manage services.
+   
+   :::tip
+   If you want to use a specific container version different from your TUI version, you must use manual `docker compose` or `make` commands instead of the TUI, or you can downgrade your Python package version.
    :::
 
    If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
@@ -147,6 +144,10 @@ The commands to upgrade the package depend on how you installed OpenRAG.
    ```
 
    By default, OpenRAG's `docker-compose` files pull the latest container images.
+   However, you can pin the `OPENRAG_VERSION` in your `.env` file to a specific version tag.
+      
+   If you run OpenRAG using `make` commands or manual `docker compose` commands, the `OPENRAG_VERSION` variable is used exactly as defined in the `.env` file.
+   This allows you to pin the deployment to a specific version when managing the services manually.
 
 3. After the containers start, access the OpenRAG application at `http://localhost:3000`.
 

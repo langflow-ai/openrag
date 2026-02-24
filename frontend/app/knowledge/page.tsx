@@ -482,19 +482,16 @@ function SearchPage() {
       <DeleteConfirmationDialog
         open={showBulkDeleteDialog}
         onOpenChange={setShowBulkDeleteDialog}
-        title={selectedRows.length > 1 ? "Delete Documents" : "Delete Document"}
-        description={`Are you sure you want to delete ${
-          selectedRows.length
-        } document${
-          selectedRows.length > 1 ? "s" : ""
-        }? This will remove all chunks and data associated with these documents. This action cannot be undone.
-
-Documents to be deleted:
-${formatFilesToDelete(selectedRows)}`}
-        confirmText={selectedRows.length > 1 ? "Delete All" : "Delete"}
+        title={selectedRows.length > 1 ? "Delete documents" : "Delete document"}
+        description={`Are you sure you want to delete ${selectedRows.length} document${selectedRows.length > 1 ? "s" : ""}?`}
+        confirmText={selectedRows.length > 1 ? "Delete all" : "Delete"}
         onConfirm={handleBulkDelete}
         isLoading={deleteDocumentMutation.isPending}
-      />
+      >
+        <p className="my-2">This will remove all chunks and data associated with these documents. This action cannot be undone.</p>
+        <p className="my-2">Documents to be deleted:</p>
+        {formatFilesToDelete(selectedRows)}
+      </DeleteConfirmationDialog>
     </>
   );
 }

@@ -1,0 +1,19 @@
+name: PR Labeler
+
+on:
+  pull_request_target:
+    # NOTE: pull_request_target is required to have write permissions to add labels on PRs from forks.
+    # This workflow must not be modified to check out or execute untrusted PR code, as it runs with base repo permissions.
+    types: [opened, synchronize]
+
+jobs:
+  labeler:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@634933edcd8ababfe52f92936142cc22ac488b1b # v6.0.1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
