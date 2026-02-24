@@ -200,11 +200,11 @@ class TaskProcessor:
             file_hash=file_hash,
         )
 
-        # Check if this is a .txt file - use simple processing instead of docling
+        # Check if this is a .txt or .md file - use simple processing instead of docling
         import os
         file_ext = os.path.splitext(file_path)[1].lower()
         
-        if file_ext == '.txt':
+        if file_ext in ('.txt', '.md'):
             # Simple text file processing without docling
             from utils.document_processing import process_text_file
             logger.info(
@@ -217,9 +217,9 @@ class TaskProcessor:
             if original_filename:
                 slim_doc["filename"] = original_filename
         else:
-            # Convert and extract using docling for other file types
-            result = clients.converter.convert(file_path)
-            full_doc = result.document.export_to_dict()
+            from utils.docling_client import convert_file
+
+            full_doc = await convert_file(file_path, httpx_client=clients.docling_http_client)
             slim_doc = extract_relevant(full_doc)
 
         texts = [c["text"] for c in slim_doc["chunks"]]
@@ -624,8 +624,6 @@ class S3FileProcessor(TaskProcessor):
         import datetime
         from config.settings import clients, get_embedding_model, get_index_name
         from services.document_service import chunk_texts_for_embeddings
-        from utils.document_processing import process_document_sync
-
         file_task.status = TaskStatus.RUNNING
         file_task.updated_at = time.time()
 

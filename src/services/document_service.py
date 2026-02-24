@@ -4,7 +4,6 @@ import tempfile
 import os
 import aiofiles
 from io import BytesIO
-from docling_core.types.io import DocumentStream
 from typing import List
 import openai
 import tiktoken
@@ -13,7 +12,7 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 from config.settings import clients, get_embedding_model, get_index_name
-from utils.document_processing import extract_relevant, process_document_sync
+from utils.document_processing import extract_relevant
 from utils.telemetry import TelemetryClient, Category, MessageId
 
 
@@ -89,33 +88,9 @@ def chunk_texts_for_embeddings(
 
 
 class DocumentService:
-    def __init__(self, process_pool=None, session_manager=None):
-        self.process_pool = process_pool
+    def __init__(self, session_manager=None):
         self.session_manager = session_manager
         self._mapping_ensured = False
-        self._process_pool_broken = False
-
-    def _recreate_process_pool(self):
-        """Recreate the process pool if it's broken"""
-        if self._process_pool_broken and self.process_pool:
-            logger.warning("Attempting to recreate broken process pool")
-            TelemetryClient.send_event_sync(Category.DOCUMENT_PROCESSING, MessageId.ORB_DOC_POOL_RECREATE)
-            try:
-                # Shutdown the old pool
-                self.process_pool.shutdown(wait=False)
-
-                # Import and create a new pool
-                from utils.process_pool import MAX_WORKERS
-                from concurrent.futures import ProcessPoolExecutor
-
-                self.process_pool = ProcessPoolExecutor(max_workers=MAX_WORKERS)
-                self._process_pool_broken = False
-                logger.info("Process pool recreated", worker_count=MAX_WORKERS)
-                return True
-            except Exception as e:
-                logger.error("Failed to recreate process pool", error=str(e))
-                return False
-        return False
 
 
     async def process_upload_file(
@@ -195,10 +170,10 @@ class DocumentService:
             content.write(chunk)
         content.seek(0)  # Reset to beginning for reading
 
-        # Check if this is a .txt file - use simple processing
+        # Check if this is a .txt or .md file - use simple processing
         file_ext = os.path.splitext(filename)[1].lower()
         
-        if file_ext == '.txt':
+        if file_ext in ('.txt', '.md'):
             # Simple text file processing for chat context
             text_content = content.read().decode('utf-8', errors='replace')
             
@@ -210,10 +185,9 @@ class DocumentService:
                 "content_length": len(text_content),
             }
         else:
-            # Create DocumentStream and process with docling
-            doc_stream = DocumentStream(name=filename, stream=content)
-            result = clients.converter.convert(doc_stream)
-            full_doc = result.document.export_to_dict()
+            from utils.docling_client import convert_bytes
+
+            full_doc = await convert_bytes(content.read(), filename, httpx_client=clients.docling_http_client)
             slim_doc = extract_relevant(full_doc)
 
             # Extract all text content

@@ -75,14 +75,14 @@ ARG OPENSEARCH_VERSION=3.2.0
 ARG TARGETARCH
 
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
-      export ASYNC_PROFILER_URL=https://github.com/async-profiler/async-profiler/releases/download/v4.0/async-profiler-4.0-linux-x64.tar.gz; \
+      export ASYNC_PROFILER_URL=https://github.com/async-profiler/async-profiler/releases/download/v4.2/async-profiler-4.2-linux-x64.tar.gz; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
-      export ASYNC_PROFILER_URL=https://github.com/async-profiler/async-profiler/releases/download/v4.0/async-profiler-4.0-linux-arm64.tar.gz; \
+      export ASYNC_PROFILER_URL=https://github.com/async-profiler/async-profiler/releases/download/v4.2/async-profiler-4.2-linux-arm64.tar.gz; \
     else \
       echo "Unsupported architecture: $TARGETARCH" && exit 1; \
     fi && \
     mkdir /opt/async-profiler && \
-    curl -s -L $ASYNC_PROFILER_URL | tar zxvf - --strip-components=1 -C /opt/async-profiler && \
+    curl -s -L -f $ASYNC_PROFILER_URL | tar zxvf - --strip-components=1 -C /opt/async-profiler && \
     chown -R opensearch:opensearch /opt/async-profiler
 
 # Create profiling script (as in your original Dockerfile)

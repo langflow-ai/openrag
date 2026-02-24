@@ -3,6 +3,7 @@ import type {
   FunctionCall,
   Message,
   SelectedFilters,
+  TokenUsage,
 } from "@/app/chat/_types/types";
 import { useChat } from "@/contexts/chat-context";
 
@@ -130,6 +131,7 @@ export function useChatStreaming({
       let currentContent = "";
       const currentFunctionCalls: FunctionCall[] = [];
       let newResponseId: string | null = null;
+      let usageData: TokenUsage | undefined;
 
       // Initialize streaming message
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {
@@ -448,6 +450,10 @@ export function useChatStreaming({
                 else if (chunk.type === "response.output_text.delta") {
                   currentContent += chunk.delta || "";
                 }
+                // Handle response.completed event - capture usage
+                else if (chunk.type === "response.completed" && chunk.response?.usage) {
+                  usageData = chunk.response.usage;
+                }
                 // Handle OpenRAG backend format
                 else if (chunk.output_text) {
                   currentContent += chunk.output_text;
@@ -567,6 +573,7 @@ export function useChatStreaming({
           currentFunctionCalls.length > 0 ? currentFunctionCalls : undefined,
         timestamp: new Date(),
         isStreaming: false,
+        usage: usageData,
       };
 
       if (!controller.signal.aborted && thisStreamId === streamIdRef.current) {

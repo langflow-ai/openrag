@@ -16,14 +16,12 @@ class ConnectorService:
     def __init__(
         self,
         patched_async_client,
-        process_pool,
         embed_model: str,
         index_name: str,
         task_service=None,
         session_manager=None,
     ):
-        self.clients = patched_async_client  # Store the clients object to access the property
-        self.process_pool = process_pool
+        self.clients = patched_async_client
         self.embed_model = embed_model
         self.index_name = index_name
         self.task_service = task_service

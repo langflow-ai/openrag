@@ -3,9 +3,10 @@ import { motion } from "motion/react";
 import DogIcon from "@/components/icons/dog-icon";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { cn } from "@/lib/utils";
-import type { FunctionCall } from "../_types/types";
+import type { FunctionCall, TokenUsage as TokenUsageType } from "../_types/types";
 import { FunctionCalls } from "./function-calls";
 import { Message } from "./message";
+import { TokenUsage } from "./token-usage";
 
 interface AssistantMessageProps {
   content: string;
@@ -21,6 +22,7 @@ interface AssistantMessageProps {
   animate?: boolean;
   delay?: number;
   isInitialGreeting?: boolean;
+  usage?: TokenUsageType;
 }
 
 export function AssistantMessage({
@@ -37,6 +39,7 @@ export function AssistantMessage({
   animate = true,
   delay = 0.2,
   isInitialGreeting = false,
+  usage,
 }: AssistantMessageProps) {
   return (
     <motion.div
@@ -135,6 +138,7 @@ export function AssistantMessage({
                   : content
               }
             />
+            {usage && !isStreaming && <TokenUsage usage={usage} />}
           </motion.div>
         </div>
       </Message>

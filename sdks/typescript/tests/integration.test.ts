@@ -25,7 +25,6 @@ async function ensureOnboarding(): Promise<void> {
     embedding_provider: "openai",
     embedding_model: "text-embedding-3-small",
     llm_model: "gpt-4o-mini",
-    sample_data: false,
   };
 
   try {

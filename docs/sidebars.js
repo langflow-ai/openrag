@@ -28,10 +28,6 @@ const sidebars = {
       items: [
         "get-started/install-options",
         { type: "doc",
-          id:  "get-started/install",
-          label: "Run the installer script",
-        },
-        { type: "doc",
           id: "get-started/install-uv",
           label: "Install OpenRAG with uv",
         },

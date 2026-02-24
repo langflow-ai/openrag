@@ -5,6 +5,20 @@ import structlog
 from structlog import processors
 
 
+LOC_WIDTH_SHORT = 30
+LOC_WIDTH_LONG = 60
+
+LEVEL_COLORS = {
+    "DEBUG": "\033[36m",       # Cyan
+    "INFO": "\033[32m",        # Green
+    "WARNING": "\033[33m",     # Yellow
+    "ERROR": "\033[31m",       # Red
+    "CRITICAL": "\033[1;31m",  # Bold red
+}
+DIM = "\033[38;5;244m"  # Medium grey
+RESET = "\033[0m"
+
+
 def configure_logging(
     log_level: str = "INFO",
     json_logs: bool = False,
@@ -48,8 +62,7 @@ def configure_logging(
         console_renderer = structlog.processors.JSONRenderer()
     else:
         # Custom clean format: timestamp path/file:loc logentry
-        LOC_WIDTH_SHORT = 30
-        LOC_WIDTH_LONG = 60
+        use_colors = "NO_COLOR" not in os.environ and hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
 
         def custom_formatter(logger, log_method, event_dict):
             timestamp = event_dict.pop("timestamp", "")
@@ -80,12 +93,22 @@ def configure_logging(
             if event:
                 message_parts.append(event)
 
-            header = f"[{timestamp}] [{level:<7}] [{location:<{loc_width}}] "
+            if use_colors:
+                colored_timestamp = f"{DIM}{timestamp}{RESET}"
+                color = LEVEL_COLORS.get(level, "")
+                colored_level = f"{color}{level:<7}{RESET}"
+            else:
+                colored_timestamp = timestamp
+                colored_level = f"{level:<7}"
+
+            header = f"[{colored_timestamp}] [{colored_level}] [{location:<{loc_width}}] "
+            # Visible width excludes ANSI escape codes for correct padding
+            visible_header = f"[{timestamp}] [{level:<7}] [{location:<{loc_width}}] "
 
             # Add any remaining context as indented multi-line fields
             extra = {k: v for k, v in event_dict.items() if k not in ["service", "func_name"]}
             if extra:
-                padding = " " * len(header)
+                padding = " " * len(visible_header)
                 for key, value in extra.items():
                     message_parts.append(f"\n{padding}- {key}: {value}")
 

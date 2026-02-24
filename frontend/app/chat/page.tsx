@@ -502,6 +502,17 @@ function ChatPage() {
 						} else {
 							console.log("No function calls found in message");
 						}
+
+						// Extract usage data from response_data
+						if (msg.response_data && typeof msg.response_data === "object") {
+							const responseData =
+								typeof msg.response_data === "string"
+									? JSON.parse(msg.response_data)
+									: msg.response_data;
+							if (responseData.usage) {
+								message.usage = responseData.usage;
+							}
+						}
 					}
 
 					return message;
@@ -837,6 +848,7 @@ function ChatPage() {
 						role: "assistant",
 						content: result.response,
 						timestamp: new Date(),
+						usage: result.usage,
 					};
 					setMessages((prev) => [...prev, assistantMessage]);
 					if (result.response_id) {
@@ -1152,6 +1164,7 @@ function ChatPage() {
 														messages.length === 1 &&
 														message.content === "How can I assist?"
 													}
+													usage={message.usage}
 												/>
 											</div>
 										),
