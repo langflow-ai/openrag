@@ -70,7 +70,7 @@ endef
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils \
        dev dev-cpu dev-local dev-local-cpu stop clean build logs \
        shell-backend shell-frontend install \
-       test test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
+       test test-unit test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
        dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev
@@ -226,6 +226,7 @@ help_test: ## Show testing commands
 	@echo ''
 	@echo "$(PURPLE)Unit & Integration Tests:$(NC)"
 	@echo "  $(PURPLE)make test$(NC)            - Run all backend tests"
+	@echo "  $(PURPLE)make test-unit$(NC)       - Run unit tests only (tests/unit/)"
 	@echo "  $(PURPLE)make test-integration$(NC) - Run integration tests (requires infra)"
 	@echo ''
 	@echo "$(PURPLE)CI Tests:$(NC)"
@@ -607,6 +608,11 @@ test: ## Run all backend tests
 	@echo "$(YELLOW)Running all backend tests...$(NC)"
 	uv run pytest tests/ -v
 	@echo "$(PURPLE)Tests complete.$(NC)"
+
+test-unit: ## Run unit tests only
+	@echo "$(YELLOW)Running unit tests...$(NC)"
+	uv run pytest tests/unit/ -v
+	@echo "$(PURPLE)Unit tests complete.$(NC)"
 
 test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(YELLOW)Running integration tests (requires infrastructure)...$(NC)"

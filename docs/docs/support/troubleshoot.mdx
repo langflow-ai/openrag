@@ -17,7 +17,7 @@ If you are installing OpenRAG on macOS, and the installation fails with `unable 
 open "/Applications/Python VERSION/Install Certificates.command"
 ```
 
-Replace `VERSION` with your installed Python version, such as `3.13`.
+Replace `VERSION` with your installed Python version, such as `3.12`.
 
 ## No container runtime found
 
@@ -164,13 +164,21 @@ The minimum recommendation is 8 GB of RAM and at least 50 GB of free disk space,
 If you regularly ingest large files, more RAM and space are recommended.
 * If OCR ingestion fails due to OCR missing, see [OCR ingestion fails (easyocr not installed)](/support/troubleshoot#ocr-ingestion-fails-easyocr-not-installed).
 
-### Ingesting very large PDFs (more than 300 pages)
+### Timeouts when ingesting many files or very large files
 
-Ingesting very large PDFs can take 30 minutes or more.
+Ingesting very large PDFs (more than 300 pages) and folders with many documents can take 30 minutes or more.
 
-Make sure your container VM has [sufficient memory](/support/troubleshoot#container-out-of-memory-errors) for processing large PDFs.
+Make sure your container VM has [sufficient memory](/support/troubleshoot#container-out-of-memory-errors) for processing large files and folders.
 
-If Langflow processes time out while ingesting very large PDFs, increase the `LANGFLOW_TIMEOUT` and `LANGFLOW_CONNECT_TIMEOUT` environment variables in your [OpenRAG `.env` file](/reference/configuration).
+If you experience timeouts during ingestion, edit the following environment variables in your [OpenRAG `.env` file](/reference/configuration):
+
+* `LANGFLOW_TIMEOUT`
+* `LANGFLOW_CONNECT_TIMEOUT`
+* `INGESTION_TIMEOUT`
+* `UPLOAD_BATCH_SIZE`
+* `MAX_WORKERS`
+* `LANGFLOW_WORKERS`
+* `DOCLING_WORKERS`
 
 ### OCR ingestion fails (easyocr not installed) {#ocr-ingestion-fails-easyocr-not-installed}
 
@@ -191,7 +199,7 @@ This cache can become stale, producing errors like missing dependencies.
    uv cache clean
    ```
 
-   To clear the OpenRAG cache only, run:
+   Or clear only the OpenRAG cache:
 
    ```bash
    uv cache clean openrag

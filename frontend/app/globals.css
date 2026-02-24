@@ -53,6 +53,22 @@
     --flow-icon: #2f67d0;
 
     --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   .dark {
@@ -94,6 +110,14 @@
     --destructive-foreground: 0 0% 100%;
     --warning: 46 97% 65%; /* amber-300 #fcd34d */
     --warning-foreground: 0 0% 0%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   * {
@@ -111,16 +135,13 @@
 
 @layer components {
   .app-grid-arrangement {
-    --notifications-width: 0px;
-    --filters-width: 0px;
+    --nav-width: 280px;
+    --right-panel-width: 0px;
     --header-height: 54px;
-    --sidebar-width: 280px;
 
-    &.notifications-open {
-      --notifications-width: 320px;
-    }
+    &.notifications-open,
     &.filters-open {
-      --filters-width: 320px;
+      --right-panel-width: 320px;
     }
     display: grid;
     height: 100%;
@@ -130,17 +151,15 @@
       var(--header-height)
       1fr;
     grid-template-columns:
-      var(--sidebar-width)
+      var(--nav-width)
       1fr
-      var(--notifications-width)
-      var(--filters-width);
+      var(--right-panel-width);
     grid-template-areas:
-      "banner banner banner banner"
-      "header header header header"
-      "nav main notifications filters";
+      "banner banner banner"
+      "header header header"
+      "nav main right-panel";
     transition:
-      grid-template-columns 0.25s ease-in-out,
-      grid-template-rows 0.25s ease-in-out;
+      grid-template-columns 0.25s ease-in-out;
   }
 
   .header-start-display {

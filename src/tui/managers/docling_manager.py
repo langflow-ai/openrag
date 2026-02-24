@@ -258,12 +258,18 @@ class DoclingManager:
         self._add_log_entry("Starting docling serve as external process...")
 
         try:
-            # Build command to run docling-serve
-            # Check if we should use uv run (look for uv in environment or check if we're in a uv project)
+            # Build command to run docling-serve via uvx (avoids bundling the massive dependency)
             import shutil
-            if shutil.which("uv") and (os.path.exists("pyproject.toml") or os.getenv("VIRTUAL_ENV")):
+            if shutil.which("uvx"):
                 cmd = [
-                    "uv", "run", "python", "-m", "docling_serve", "run",
+                    "uvx", "docling-serve==1.5.0", "run",
+                    "--host", self._host,
+                    "--port", str(self._port),
+                    "--workers", str(self._workers),
+                ]
+            elif shutil.which("uv"):
+                cmd = [
+                    "uv", "tool", "run", "docling-serve==1.5.0", "run",
                     "--host", self._host,
                     "--port", str(self._port),
                     "--workers", str(self._workers),
@@ -368,7 +374,7 @@ class DoclingManager:
 
         except FileNotFoundError:
             self._starting = False
-            return False, "docling-serve not available. Please install: uv add docling-serve"
+            return False, "docling-serve not available. Please install uv: https://docs.astral.sh/uv/"
         except Exception as e:
             self._running = False
             self._process = None

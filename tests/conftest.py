@@ -15,9 +15,9 @@ load_dotenv()
 os.environ['GOOGLE_OAUTH_CLIENT_ID'] = ''
 os.environ['GOOGLE_OAUTH_CLIENT_SECRET'] = ''
 
-from src.config.settings import clients
-from src.session_manager import SessionManager
-from src.main import generate_jwt_keys
+from config.settings import clients
+from session_manager import SessionManager
+from main import generate_jwt_keys
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
@@ -48,7 +48,7 @@ async def onboard_system():
     await clients.initialize()
 
     # Create app and perform onboarding via API
-    from src.main import create_app, startup_tasks
+    from main import create_app, startup_tasks
     import httpx
 
     app = await create_app()

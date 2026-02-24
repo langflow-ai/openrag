@@ -161,3 +161,10 @@ Generate the OpenSearch URL
 {{- define "openrag.opensearch.url" -}}
 {{ .Values.global.opensearch.scheme }}://{{ .Values.global.opensearch.host }}:{{ .Values.global.opensearch.port }}
 {{- end }}
+
+{{/*
+Generate the Docling URL
+*/}}
+{{- define "openrag.docling.url" -}}
+{{ .Values.global.docling.scheme }}://{{ .Values.global.docling.host }}:{{ .Values.global.docling.port }}
+{{- end }}

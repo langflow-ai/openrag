@@ -20,12 +20,17 @@ global:
 
   # External OpenSearch SaaS connection (OpenSearch is NOT deployed by this chart)
   opensearch:
-    host: ""                              # Required: OpenSearch SaaS endpoint (e.g., "my-cluster.us-east-1.es.amazonaws.com")
-    port: 443                             # Default HTTPS port for managed OpenSearch
+    host: "opensearch-coordinating.opensearch.svc.cluster.local"                              # Required: OpenSearch SaaS endpoint (e.g., "my-cluster.us-east-1.es.amazonaws.com")
+    port: 9200                             # Default HTTPS port for managed OpenSearch
     scheme: "https"                       # https for production SaaS
     username: "admin"                     # OpenSearch username
     password: ""                          # OpenSearch password (stored in secret)
     indexName: "documents"                # OpenSearch index name
+
+  docling:
+    host: docling-serve.docling.svc.cluster.local
+    port: 5001
+    scheme: "http"
 
   # Shared OAuth credentials (same across all tenants)
   oauth:
@@ -73,6 +78,19 @@ langflow:
   # Flow configuration (UUIDs for Langflow workflows)
   flows:
     loadDefaults: true                        # Load default OpenRAG flows on first deployment
+    git:
+      enabled: true
+      owner: langflow-ai
+      repo: openrag
+      branch: main
+      # Optional: specific git commit hash (overrides branch if set)
+      #hash: ""
+      path: flows
+      files:
+        - ingestion_flow.json
+        - openrag_agent.json
+        - openrag_nudges.json
+        - openrag_url_mcp.json
     chatFlowId: "1098eea1-6649-4e1d-aed1-b77249fb8dd0"
     ingestFlowId: "5488df7c-b93f-4f87-a446-b67028bc0813"
     urlIngestFlowId: "72c3d17c-2dac-4a73-b48a-6518473d7830"
@@ -84,6 +102,10 @@ langflow:
     autoLogin: false
     superuser: "admin"                    # Langflow superuser username
     superuserPassword: ""                 # Langflow superuser password (stored in secret)
+    superuserPassword: ""                 # Langflow superuser password (stored in secret)
+    apiKey: ""                            # Optional: pre-generated API key
+    keyRetries: 15                        # Number of retries for key generation
+    keyRetryDelay: 2.0                    # Delay between retries
     secretKey: ""                         # Langflow secret key for JWT (stored in secret)
     newUserIsActive: false
     enableSuperuserCli: false
@@ -144,6 +166,15 @@ backend:
       cpu: "4"
       memory: "16Gi"
 
+  # Logging and Service
+  logFormat: "json"                       # json or text
+  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
+  serviceName: "openrag"
+
+  # Authentication
+  auth:
+    sessionSecret: ""                     # Session secret (stored in secret, auto-generated if empty)
+
   # Persistence for documents, keys, and config
   persistence:
     documents:
@@ -152,6 +183,20 @@ backend:
       accessMode: ReadWriteOnce
       size: 50Gi
       mountPath: /app/openrag-documents
+      loadDefaults: true                        # Load default documents on first deployment
+      git:
+        enabled: true
+        owner: langflow-ai
+        repo: openrag
+        branch: main
+        # Optional: specific git commit hash (overrides branch if set)
+        #hash: ""
+        path: openrag-documents
+        files:
+          - docling.pdf
+          - ibm_anthropic.pdf
+          - openrag-documentation.pdf
+          - warmup_ocr.pdf
     keys:
       enabled: true
       storageClass: ""
@@ -164,6 +209,20 @@ backend:
       accessMode: ReadWriteOnce
       size: 1Gi
       mountPath: /app/config
+
+  # Logging
+  logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  noColor: false                          # Set true to disable ANSI color codes in log output
+  accessLog: true                         # Set false to disable HTTP access log events
+
+  # Timeouts
+  langflowTimeout: 2400                   # seconds; total timeout for Langflow HTTP calls (default: 40 min)
+  langflowConnectTimeout: 30              # seconds; connection timeout for Langflow HTTP calls
+  ingestionTimeout: 3600                  # seconds; per-file processing timeout for ingestion tasks
+
+  # Concurrency
+  uploadBatchSize: 25                     # Max files per batch when ingesting from a folder
+  maxWorkers: ""                          # Backend worker processes; empty = auto (min(4, CPU_COUNT // 2))
 
   # Feature flags
   features:

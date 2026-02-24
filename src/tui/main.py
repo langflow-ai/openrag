@@ -759,25 +759,8 @@ def setup_host_directories():
     generate_jwt_keys(base_dir / "keys")
 
 
-def run_tui():
-    """Run the OpenRAG TUI application."""
-    # Check for native Windows before launching TUI
-    from .utils.platform import PlatformDetector
-    platform_detector = PlatformDetector()
-
-    if platform_detector.is_native_windows():
-        print("\n" + "=" * 60)
-        print("  Native Windows Not Supported")
-        print("=" * 60)
-        print(platform_detector.get_wsl_recommendation())
-        print("=" * 60 + "\n")
-        sys.exit(1)
-
-    # Run startup prerequisites (install runtime, health checks, etc.)
-    from .utils.startup_checks import run_startup_checks
-    if not run_startup_checks():
-        sys.exit(1)
-
+def _run_tui_app():
+    """Run the existing Textual TUI application."""
     app = None
     try:
         # Migrate legacy data directories from CWD to ~/.openrag/
@@ -785,7 +768,7 @@ def run_tui():
 
         # Initialize host directory structure
         setup_host_directories()
-        
+
         # Keep bundled assets aligned with the packaged versions
         copy_sample_documents(force=True)
         copy_sample_flows(force=True)
@@ -802,6 +785,45 @@ def run_tui():
         if app and hasattr(app, 'docling_manager'):
             app.docling_manager.cleanup()
         sys.exit(0)
+
+
+def run_tui():
+    """Run the OpenRAG application (CLI walkthrough by default, TUI with --tui)."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="openrag",
+        description="OpenRAG — AI-powered document management",
+    )
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="Launch the full terminal UI instead of the CLI walkthrough",
+    )
+    args = parser.parse_args()
+
+    # Check for native Windows before launching anything
+    from .utils.platform import PlatformDetector
+    platform_detector = PlatformDetector()
+
+    if platform_detector.is_native_windows():
+        print("\n" + "=" * 60)
+        print("  Native Windows Not Supported")
+        print("=" * 60)
+        print(platform_detector.get_wsl_recommendation())
+        print("=" * 60 + "\n")
+        sys.exit(1)
+
+    # Run startup prerequisites (install runtime, health checks, etc.)
+    from .utils.startup_checks import run_startup_checks
+    if not run_startup_checks():
+        sys.exit(1)
+
+    if args.tui:
+        _run_tui_app()
+    else:
+        from .cli import run_cli
+        run_cli()
 
 
 if __name__ == "__main__":

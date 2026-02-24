@@ -178,6 +178,8 @@ async def connector_sync(request: Request, connector_service, session_manager):
         
         if selected_files:
             # Explicit files selected (e.g., from file picker) - sync those specific files
+            from .documents import _ensure_index_exists
+            await _ensure_index_exists()
             task_id = await connector_service.sync_specific_files(
                 working_connection.connection_id,
                 user.user_id,
