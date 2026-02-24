@@ -9,7 +9,7 @@ import { useGetTasksQuery } from "@/app/api/queries/useGetTasksQuery";
 import { AnimatedProviderSteps } from "@/app/onboarding/_components/animated-provider-steps";
 import { Button } from "@/components/ui/button";
 import { uploadFile } from "@/lib/upload-utils";
-import { SUPPORTED_EXTENSIONS } from "@/components/knowledge-dropdown";
+import { SUPPORTED_ACCEPT_STRING } from "@/components/knowledge-dropdown";
 
 interface OnboardingUploadProps {
 	onComplete: () => void;
@@ -168,21 +168,27 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
       const result = await uploadFile(file, true, true); // Pass createFilter=true
       console.log("Document upload task started successfully");
 
-      // Store task ID to track the specific upload task
       if (result.taskId) {
+        // Async task-based upload — track via task polling
         setUploadedTaskId(result.taskId);
-      }
 
-      // Store filename and createFilter flag in state to create filter after ingestion succeeds
-      if (result.createFilter && result.filename) {
-        setUploadedFilename(result.filename);
-        setShouldCreateFilter(true);
-      }
+        // Store filename and createFilter flag in state to create filter after ingestion succeeds
+        if (result.createFilter && result.filename) {
+          setUploadedFilename(result.filename);
+          setShouldCreateFilter(true);
+        }
 
-      // Move to processing step - task monitoring will handle completion
-      setTimeout(() => {
-        setCurrentStep(1);
-      }, 1500);
+        // Move to processing step - task monitoring will handle completion
+        setTimeout(() => {
+          setCurrentStep(1);
+        }, 1500);
+      } else {
+        // Synchronous upload (e.g. media files) — already done
+        setCurrentStep(STEP_LIST.length);
+        setTimeout(() => {
+          onComplete();
+        }, 1000);
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Upload failed";
       console.error("Upload failed", errorMessage);
@@ -252,7 +258,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
             type="file"
             onChange={handleFileChange}
             className="hidden"
-            accept={SUPPORTED_EXTENSIONS.join(",")}
+            accept={SUPPORTED_ACCEPT_STRING}
           />
         </motion.div>
       ) : (

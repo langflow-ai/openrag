@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM node:20.20.0-slim
 
 # Set working directory
@@ -10,8 +11,13 @@ RUN npm install
 # Copy frontend source
 COPY frontend/ ./
 
-# Build frontend
-RUN npm run build 
+# Build frontend — mount a persistent cache for Next.js incremental builds
+RUN --mount=type=cache,target=/app/.next/cache \
+    npm run build && \
+    cp -r .next/cache .next/cache-copy || true
+
+# Restore the cache copy into .next so the image has it baked in
+RUN if [ -d .next/cache-copy ]; then cp -r .next/cache-copy .next/cache && rm -rf .next/cache-copy; fi
 
 # Expose frontend port
 EXPOSE 3000

@@ -1,4 +1,9 @@
-from typing import Any, Dict, Optional
+import json
+from typing import Any, Dict, List, Optional
+
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 KNOWLEDGE_FILTERS_INDEX_NAME = "knowledge_filters"
 
@@ -320,6 +325,89 @@ class KnowledgeFilterService:
                 return {"success": False, "error": "Failed to remove subscription"}
 
         except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def remove_data_source_from_filters(
+        self, filename: str, user_id: str = None, jwt_token: str = None
+    ) -> Dict[str, Any]:
+        """Remove a deleted filename from all knowledge filters that reference it.
+
+        When a document is deleted, any filter whose query_data.filters.data_sources
+        contains that filename should be updated: the filename is removed, and if
+        data_sources becomes empty, it is reset to ["*"] (match all).
+        """
+        try:
+            opensearch_client = self.session_manager.get_user_opensearch_client(
+                user_id, jwt_token
+            )
+
+            # Fetch all filters (we need to inspect query_data JSON)
+            search_body = {
+                "query": {"match_all": {}},
+                "_source": ["id", "query_data"],
+                "size": 1000,
+            }
+            result = await opensearch_client.search(
+                index=KNOWLEDGE_FILTERS_INDEX_NAME, body=search_body
+            )
+
+            updated_count = 0
+            for hit in result["hits"]["hits"]:
+                source = hit["_source"]
+                filter_id = source.get("id") or hit["_id"]
+                raw_query_data = source.get("query_data")
+                if not raw_query_data:
+                    continue
+
+                try:
+                    query_data = json.loads(raw_query_data) if isinstance(raw_query_data, str) else raw_query_data
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+                filters = query_data.get("filters", {})
+                data_sources = filters.get("data_sources", [])
+
+                if filename not in data_sources:
+                    continue
+
+                # Remove the deleted filename
+                data_sources = [ds for ds in data_sources if ds != filename]
+                if not data_sources:
+                    data_sources = ["*"]
+
+                filters["data_sources"] = data_sources
+                query_data["filters"] = filters
+
+                new_query_data = json.dumps(query_data) if isinstance(raw_query_data, str) else query_data
+
+                from datetime import datetime
+
+                await opensearch_client.update(
+                    index=KNOWLEDGE_FILTERS_INDEX_NAME,
+                    id=filter_id,
+                    body={
+                        "doc": {
+                            "query_data": new_query_data,
+                            "updated_at": datetime.utcnow().isoformat(),
+                        }
+                    },
+                    refresh="wait_for",
+                )
+                updated_count += 1
+
+            logger.info(
+                "Scrubbed deleted filename from filters",
+                filename=filename,
+                updated_filters=updated_count,
+            )
+            return {"success": True, "updated_filters": updated_count}
+
+        except Exception as e:
+            logger.error(
+                "Failed to scrub filename from filters",
+                filename=filename,
+                error=str(e),
+            )
             return {"success": False, "error": str(e)}
 
     async def get_filter_subscriptions(

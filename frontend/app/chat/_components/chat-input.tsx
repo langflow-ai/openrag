@@ -24,7 +24,7 @@ import { useGetAllFiltersQuery } from "../../api/queries/useGetAllFiltersQuery";
 import type { KnowledgeFilterData } from "../_types/types";
 import { FilePreview } from "./file-preview";
 import { SelectedKnowledgeFilter } from "./selected-knowledge-filter";
-import { SUPPORTED_EXTENSIONS, SUPPORTED_FILE_TYPES } from "@/components/knowledge-dropdown";
+import { SUPPORTED_ACCEPT_STRING, SUPPORTED_EXTENSIONS, SUPPORTED_FILE_TYPES } from "@/components/knowledge-dropdown";
 
 export interface ChatInputHandle {
 	focusInput: () => void;
@@ -496,7 +496,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 						type="file"
 						onChange={handleFilePickerChange}
 						className="hidden"
-						accept={SUPPORTED_EXTENSIONS.join(",")}
+						accept={SUPPORTED_ACCEPT_STRING}
 					/>
 
 					<Popover

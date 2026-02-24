@@ -846,8 +846,13 @@ def get_agent_config():
 
 
 def get_embedding_model() -> str:
-    """Return the currently configured embedding model."""
-    return get_openrag_config().knowledge.embedding_model or EMBED_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""
+    """Return the currently configured embedding model.
+
+    Always returns a usable model when one is configured or when traditional
+    processing is needed (e.g. media file transcription bypasses Langflow).
+    """
+    configured = get_openrag_config().knowledge.embedding_model
+    return configured or EMBED_MODEL
 
 
 def get_index_name() -> str:

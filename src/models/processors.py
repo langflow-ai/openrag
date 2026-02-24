@@ -200,10 +200,10 @@ class TaskProcessor:
             file_hash=file_hash,
         )
 
-        # Check if this is a .txt file - use simple processing instead of docling
+        # Check file type to determine processing path
         import os
         file_ext = os.path.splitext(file_path)[1].lower()
-        
+
         if file_ext == '.txt':
             # Simple text file processing without docling
             from utils.document_processing import process_text_file

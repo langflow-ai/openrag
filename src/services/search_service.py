@@ -77,7 +77,7 @@ class SearchService:
                 field_mapping = {
                     "data_sources": "filename",
                     "document_types": "mimetype",
-                    "owners": "owner_name.keyword",
+                    "owners": "owner",
                     "connector_types": "connector_type",
                 }
 
@@ -236,7 +236,7 @@ class SearchService:
                 field_mapping = {
                     "data_sources": "filename",
                     "document_types": "mimetype",
-                    "owners": "owner_name.keyword",
+                    "owners": "owner",
                     "connector_types": "connector_type",
                 }
 
@@ -330,9 +330,9 @@ class SearchService:
         search_body = {
             "query": query_block,
             "aggs": {
-                "data_sources": {"terms": {"field": "filename.keyword", "size": 20}},
+                "data_sources": {"terms": {"field": "filename", "size": 20}},
                 "document_types": {"terms": {"field": "mimetype", "size": 10}},
-                "owners": {"terms": {"field": "owner_name.keyword", "size": 10}},
+                "owners": {"terms": {"field": "owner", "size": 10}},
                 "connector_types": {"terms": {"field": "connector_type", "size": 10}},
                 "embedding_models": {"terms": {"field": "embedding_model", "size": 10}},
             },

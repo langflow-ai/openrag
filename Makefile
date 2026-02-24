@@ -313,6 +313,7 @@ help_utils: ## Show utility commands
 
 dev: ## Start full stack with GPU support
 	@echo "$(YELLOW)Starting OpenRAG with GPU support...$(NC)"
+	DOCKER_BUILDKIT=1 $(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d --build openrag-frontend
 	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
@@ -323,6 +324,7 @@ dev: ## Start full stack with GPU support
 
 dev-cpu: ## Start full stack with CPU only
 	@echo "$(YELLOW)Starting OpenRAG with CPU only...$(NC)"
+	DOCKER_BUILDKIT=1 $(COMPOSE_CMD) up -d --build openrag-frontend
 	$(COMPOSE_CMD) up -d
 	@echo "$(PURPLE)Services started!$(NC)"
 	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"

@@ -195,13 +195,13 @@ class DocumentService:
             content.write(chunk)
         content.seek(0)  # Reset to beginning for reading
 
-        # Check if this is a .txt file - use simple processing
+        # Check if this is a text file; all other types (including audio/video) go through Docling
         file_ext = os.path.splitext(filename)[1].lower()
-        
+
         if file_ext == '.txt':
             # Simple text file processing for chat context
             text_content = content.read().decode('utf-8', errors='replace')
-            
+
             # For context, we don't need to chunk - just return the full content
             return {
                 "filename": filename,

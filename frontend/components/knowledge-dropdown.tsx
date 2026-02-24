@@ -61,10 +61,18 @@ export const SUPPORTED_FILE_TYPES = {
   "text/html": [".html", ".htm"],
   "application/rtf": [".rtf"],
   "application/vnd.oasis.opendocument.text": [".odt"],
-  "text/asciidoc": [".adoc", ".asciidoc"]
+  "text/asciidoc": [".adoc", ".asciidoc"],
+  "audio/*": [".mp3", ".m4a", ".wav", ".weba"],
+  "video/*": [".mp4", ".webm"],
 }
 
 export const SUPPORTED_EXTENSIONS = Object.values(SUPPORTED_FILE_TYPES).flat();
+
+// Combined accept string with both MIME types and extensions for broad browser compatibility
+export const SUPPORTED_ACCEPT_STRING = [
+  ...Object.keys(SUPPORTED_FILE_TYPES),
+  ...SUPPORTED_EXTENSIONS,
+].join(",");
 
 export function KnowledgeDropdown() {
   const { addTask } = useTask();
@@ -238,8 +246,11 @@ export function KnowledgeDropdown() {
     setFileUploading(true);
 
     try {
-      await uploadFileUtil(file, replace);
+      const result = await uploadFileUtil(file, replace);
       refetchTasks();
+      // Always invalidate search queries to refresh the table
+      // This ensures new files appear immediately even if a task was created
+      queryClient.invalidateQueries({ queryKey: ["search"] });
     } catch (error) {
       // Dispatch event that chat context can listen to
       // This avoids circular dependency issues
@@ -375,6 +386,8 @@ export function KnowledgeDropdown() {
       }
 
       refetchTasks();
+      // Invalidate search queries to refresh the table
+      queryClient.invalidateQueries({ queryKey: ["search"] });
 
       const processedCount = nonDuplicateFiles.length;
       const message =
@@ -423,10 +436,14 @@ export function KnowledgeDropdown() {
         setFolderPath("");
         // Refetch tasks to show the new task
         refetchTasks();
+        // Invalidate search queries to refresh the table
+        queryClient.invalidateQueries({ queryKey: ["search"] });
       } else if (response.ok) {
         setFolderPath("");
         // Refetch tasks even for direct uploads in case tasks were created
         refetchTasks();
+        // Invalidate search queries to refresh the table
+        queryClient.invalidateQueries({ queryKey: ["search"] });
       } else {
         console.error("Folder upload failed:", result.error);
         if (response.status === 400) {
@@ -470,6 +487,8 @@ export function KnowledgeDropdown() {
         setBucketUrl("s3://");
         // Refetch tasks to show the new task
         refetchTasks();
+        // Invalidate search queries to refresh the table
+        queryClient.invalidateQueries({ queryKey: ["search"] });
       } else {
         console.error("S3 upload failed:", result.error);
         if (response.status === 400) {
@@ -593,7 +612,7 @@ export function KnowledgeDropdown() {
         type="file"
         onChange={handleFileChange}
         className="hidden"
-        accept={SUPPORTED_EXTENSIONS.join(",")}
+        accept={SUPPORTED_ACCEPT_STRING}
       />
 
       <input
