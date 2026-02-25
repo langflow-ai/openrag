@@ -51,6 +51,13 @@ Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Lang
 - **Modular enterprise add-ons** - Extend functionality when you need it
 - **Enterprise search at any scale** - Powered by OpenSearch for production-grade performance
 
+## 🚀 Install OpenRAG
+
+To get started with OpenRAG, see the installation guides in the OpenRAG documentation:
+
+* [Quickstart](https://docs.openr.ag/quickstart)
+* [Install the OpenRAG Python package](https://docs.openr.ag/install-options)
+* [Deploy self-managed services with Docker or Podman](https://docs.openr.ag/docker)
 
 ## ✨ Quick Start Workflow
 
@@ -74,14 +81,69 @@ Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Lang
 
 </div>
 
-## 🚀 Install OpenRAG
+## 📦 SDKs
 
-To get started with OpenRAG, see the installation guides in the OpenRAG documentation:
+Integrate OpenRAG into your applications with our official SDKs:
 
-* [Quickstart](https://docs.openr.ag/quickstart)
-* [Install the OpenRAG Python package](https://docs.openr.ag/install-options)
-* [Deploy self-managed services with Docker or Podman](https://docs.openr.ag/docker)
+### Python SDK
+```bash
+pip install openrag-sdk
+```
 
+**Quick Example:**
+```python
+from openrag_sdk import OpenRAGClient
+
+async with OpenRAGClient() as client:
+    response = await client.chat.create(message="What is RAG?")
+    print(response.response)
+```
+
+📖 [Full Python SDK Documentation](https://pypi.org/project/openrag-sdk/)
+
+### TypeScript/JavaScript SDK
+```bash
+npm install openrag-sdk
+```
+
+**Quick Example:**
+```typescript
+import { OpenRAGClient } from "openrag-sdk";
+
+const client = new OpenRAGClient();
+const response = await client.chat.create({ message: "What is RAG?" });
+console.log(response.response);
+```
+
+📖 [Full TypeScript/JavaScript SDK Documentation](https://www.npmjs.com/package/openrag-sdk)
+
+## 🔌 Model Context Protocol (MCP)
+
+Connect AI assistants like Cursor and Claude Desktop to your OpenRAG knowledge base:
+
+```bash
+pip install openrag-mcp
+```
+
+**Quick Example (Cursor/Claude Desktop config):**
+```json
+{
+  "mcpServers": {
+    "openrag": {
+      "command": "uvx",
+      "args": ["openrag-mcp"],
+      "env": {
+        "OPENRAG_URL": "http://localhost:3000",
+        "OPENRAG_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+The MCP server provides tools for RAG-enhanced chat, semantic search, and settings management.
+
+📖 [Full MCP Documentation](https://pypi.org/project/openrag-mcp/)
 
 ## 🔄 How OpenRAG Works
 
@@ -91,37 +153,6 @@ OpenRAG follows a streamlined workflow to transform your documents into intellig
   <img src="./docs/static/img/workflow-diagram.svg" alt="OpenRAG Workflow Diagram" width="800"/>
 </div>
 
-<br/>
-
-## 💬 Chat Interface
-
-Experience intelligent conversations powered by your documents.
-
-<div align="center">
-  <img src="./docs/static/img/chat-interface.svg" alt="OpenRAG Chat Interface" width="700"/>
-</div>
-
-<br/>
-
-## 📚 Document Management
-
-Upload, process, and manage your knowledge base with ease.
-
-<div align="center">
-  <img src="./docs/static/img/document-management.svg" alt="Document Management Interface" width="700"/>
-</div>
-
-<br/>
-
-## 🔍 Semantic Search
-
-Powerful search capabilities to find exactly what you need.
-
-<div align="center">
-  <img src="./docs/static/img/search-demo.svg" alt="Semantic Search Demo" width="700"/>
-</div>
-
-<br/>
 
 ## 🛠️ Development
 
