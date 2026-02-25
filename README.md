@@ -33,10 +33,6 @@
 
 </div>
 
-<div align="center">
-  <img src="./docs/static/img/openrag_readme_downsized.gif" alt="OpenRAG Demo" width="100%"/>
-</div>
-
 ---
 
 OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations.
@@ -47,6 +43,10 @@ Built with [Starlette](https://github.com/Kludex/starlette) and [Next.js](https:
 Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Langflow](https://github.com/langflow-ai/langflow), and [Docling](https://github.com/docling-project/docling).
 
 ---
+
+<div align="center">
+  <img src="./docs/static/img/openrag_readme_downsized.gif" alt="OpenRAG Demo" width="100%"/>
+</div>
 
 ## ✨ Highlight Features
 
