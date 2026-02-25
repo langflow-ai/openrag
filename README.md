@@ -56,13 +56,13 @@ Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Lang
 
 <div align="center">
 
-<img src="./docs/static/img/uv_run_openrag.png" alt="Launch OpenRAG" width="600"/>
+<img src="./docs/static/img/uv_run_openrag.png" alt="Launch OpenRAG" width="300"/>
 
 **1. Launch OpenRAG**
 
 ↓
 
-<img src="./docs/static/img/add_knowledge_openrag.png" alt="Add Knowledge" width="600"/>
+<img src="./docs/static/img/add_knowledge_openrag.png" alt="Add Knowledge" width="300"/>
 
 **2. Add Knowledge**
 
