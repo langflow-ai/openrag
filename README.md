@@ -34,7 +34,7 @@
 </div>
 
 <div align="center">
-  <img src="./docs/static/img/openrag_readme_downsized.gif" alt="OpenRAG Demo" width="800"/>
+  <img src="./docs/static/img/openrag_readme_downsized.gif" alt="OpenRAG Demo" width="100%"/>
 </div>
 
 ---
