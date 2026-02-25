@@ -71,19 +71,19 @@ To get started with OpenRAG, see the installation guides in the OpenRAG document
 
 <div align="center">
 
-<img src="./docs/static/img/uv_run_openrag.png" alt="Launch OpenRAG" width="300"/>
+<img src="./docs/static/img/uv_run_openrag.png" alt="Use uv run openrag to start" width="300"/>
 
 **1. Launch OpenRAG**
 
 ↓
 
-<img src="./docs/static/img/add_knowledge_openrag.png" alt="Add Knowledge" width="300"/>
+<img src="./docs/static/img/add_knowledge_openrag.png" alt="Add files or folders as knowledge" width="300"/>
 
 **2. Add Knowledge**
 
 ↓
 
-<img src="./docs/static/img/chat_openrag.png" alt="Start Chatting" width="700"/>
+<img src="./docs/static/img/chat_openrag.png" alt="Start Chatting with your knowledge" width="700"/>
 
 **3. Start Chatting**
 
