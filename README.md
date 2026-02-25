@@ -51,6 +51,14 @@ Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Lang
 - **Modular enterprise add-ons** - Extend functionality when you need it
 - **Enterprise search at any scale** - Powered by OpenSearch for production-grade performance
 
+## 🔄 How OpenRAG Works
+
+OpenRAG follows a streamlined workflow to transform your documents into intelligent, searchable knowledge:
+
+<div align="center">
+  <img src="./docs/static/img/workflow-diagram.svg" alt="OpenRAG Workflow Diagram" width="800"/>
+</div>
+
 ## 🚀 Install OpenRAG
 
 To get started with OpenRAG, see the installation guides in the OpenRAG documentation:
@@ -144,15 +152,6 @@ pip install openrag-mcp
 The MCP server provides tools for RAG-enhanced chat, semantic search, and settings management.
 
 📖 [Full MCP Documentation](https://pypi.org/project/openrag-mcp/)
-
-## 🔄 How OpenRAG Works
-
-OpenRAG follows a streamlined workflow to transform your documents into intelligent, searchable knowledge:
-
-<div align="center">
-  <img src="./docs/static/img/workflow-diagram.svg" alt="OpenRAG Workflow Diagram" width="800"/>
-</div>
-
 
 ## 🛠️ Development
 
