@@ -193,7 +193,22 @@ const config = {
     ],
   ],
 
-  plugins: [require.resolve('docusaurus-plugin-image-zoom')],
+  plugins: [
+    'docusaurus-plugin-image-zoom',
+    [
+      "@docusaurus/plugin-client-redirects",
+      {
+        redirects: [
+          {
+            to: "/install-uvx",
+            from: [
+              "/install",
+            ],
+          },
+        ],
+      },
+    ],
+  ],
 
   themes: ['@docusaurus/theme-mermaid'],
 

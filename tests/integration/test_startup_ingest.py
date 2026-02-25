@@ -51,16 +51,16 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool):
     import sys
 
     for mod in [
-        "src.api.router",
-        "src.api.connector_router",
-        "src.config.settings",
-        "src.auth_middleware",
-        "src.main",
+        "api.router",
+        "api.connector_router",
+        "config.settings",
+        "auth_middleware",
+        "main",
     ]:
         sys.modules.pop(mod, None)
 
-    from src.main import create_app, startup_tasks
-    from src.config.settings import clients, get_index_name
+    from main import create_app, startup_tasks
+    from config.settings import clients, get_index_name
 
     # Ensure a clean index before startup
     await clients.initialize()
@@ -74,7 +74,7 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool):
     await startup_tasks(app.state.services)
 
     # Ensure index exists for tests (startup_tasks only creates it if DISABLE_INGEST_WITH_LANGFLOW=True)
-    from src.main import _ensure_opensearch_index
+    from main import _ensure_opensearch_index
     await _ensure_opensearch_index()
 
     transport = httpx.ASGITransport(app=app)
@@ -114,7 +114,7 @@ async def test_startup_ingest_creates_task(disable_langflow_ingest: bool):
             assert newest.get("total_files") == expected_files
     finally:
         # Explicitly close global clients to avoid aiohttp warnings
-        from src.config.settings import clients
+        from config.settings import clients
         try:
             await clients.close()
         except Exception:

@@ -1,49 +1,55 @@
-from starlette.requests import Request
-from starlette.responses import JSONResponse, StreamingResponse
+from typing import Optional, Any, Dict
+
+from fastapi import Depends
+from pydantic import BaseModel
+from fastapi.responses import JSONResponse, StreamingResponse
 from utils.logging_config import get_logger
+
+from dependencies import get_chat_service, get_session_manager, get_current_user
+from session_manager import User
 
 logger = get_logger(__name__)
 
 
-async def chat_endpoint(request: Request, chat_service, session_manager):
+class ChatBody(BaseModel):
+    prompt: str
+    previous_response_id: Optional[str] = None
+    stream: bool = False
+    filters: Optional[Dict[str, Any]] = None
+    limit: int = 10
+    scoreThreshold: float = 0
+    filter_id: Optional[str] = None
+
+
+async def chat_endpoint(
+    body: ChatBody,
+    chat_service=Depends(get_chat_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+):
     """Handle chat requests"""
-    data = await request.json()
-    prompt = data.get("prompt", "")
-    previous_response_id = data.get("previous_response_id")
-    stream = data.get("stream", False)
-    filters = data.get("filters")
-    limit = data.get("limit", 10)
-    score_threshold = data.get("scoreThreshold", 0)
-    filter_id = data.get("filter_id")
-
-    user = request.state.user
-    user_id = user.user_id
-
-    jwt_token = session_manager.get_effective_jwt_token(user_id, request.state.jwt_token)
-
-    if not prompt:
+    if not body.prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
-    # Set context variables for search tool (similar to search endpoint)
-    if filters:
-        from auth_context import set_search_filters
+    jwt_token = user.jwt_token
 
-        set_search_filters(filters)
+    if body.filters:
+        from auth_context import set_search_filters
+        set_search_filters(body.filters)
 
     from auth_context import set_search_limit, set_score_threshold
+    set_search_limit(body.limit)
+    set_score_threshold(body.scoreThreshold)
 
-    set_search_limit(limit)
-    set_score_threshold(score_threshold)
-
-    if stream:
+    if body.stream:
         return StreamingResponse(
             await chat_service.chat(
-                prompt,
-                user_id,
+                body.prompt,
+                user.user_id,
                 jwt_token,
-                previous_response_id=previous_response_id,
+                previous_response_id=body.previous_response_id,
                 stream=True,
-                filter_id=filter_id,
+                filter_id=body.filter_id,
             ),
             media_type="text/event-stream",
             headers={
@@ -55,56 +61,46 @@ async def chat_endpoint(request: Request, chat_service, session_manager):
         )
     else:
         result = await chat_service.chat(
-            prompt,
-            user_id,
+            body.prompt,
+            user.user_id,
             jwt_token,
-            previous_response_id=previous_response_id,
+            previous_response_id=body.previous_response_id,
             stream=False,
-            filter_id=filter_id,
+            filter_id=body.filter_id,
         )
         return JSONResponse(result)
 
 
-async def langflow_endpoint(request: Request, chat_service, session_manager):
+async def langflow_endpoint(
+    body: ChatBody,
+    chat_service=Depends(get_chat_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+):
     """Handle Langflow chat requests"""
-    data = await request.json()
-    prompt = data.get("prompt", "")
-    previous_response_id = data.get("previous_response_id")
-    stream = data.get("stream", False)
-    filters = data.get("filters")
-    limit = data.get("limit", 10)
-    score_threshold = data.get("scoreThreshold", 0)
-    filter_id = data.get("filter_id")
-
-    user = request.state.user
-    user_id = user.user_id
-
-    jwt_token = session_manager.get_effective_jwt_token(user_id, request.state.jwt_token)
-
-    if not prompt:
+    if not body.prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
-    # Set context variables for search tool (similar to chat endpoint)
-    if filters:
-        from auth_context import set_search_filters
+    jwt_token = user.jwt_token
 
-        set_search_filters(filters)
+    if body.filters:
+        from auth_context import set_search_filters
+        set_search_filters(body.filters)
 
     from auth_context import set_search_limit, set_score_threshold
-
-    set_search_limit(limit)
-    set_score_threshold(score_threshold)
+    set_search_limit(body.limit)
+    set_score_threshold(body.scoreThreshold)
 
     try:
-        if stream:
+        if body.stream:
             return StreamingResponse(
                 await chat_service.langflow_chat(
-                    prompt,
-                    user_id,
+                    body.prompt,
+                    user.user_id,
                     jwt_token,
-                    previous_response_id=previous_response_id,
+                    previous_response_id=body.previous_response_id,
                     stream=True,
-                    filter_id=filter_id,
+                    filter_id=body.filter_id,
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -116,18 +112,17 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
             )
         else:
             result = await chat_service.langflow_chat(
-                prompt,
-                user_id,
+                body.prompt,
+                user.user_id,
                 jwt_token,
-                previous_response_id=previous_response_id,
+                previous_response_id=body.previous_response_id,
                 stream=False,
-                filter_id=filter_id,
+                filter_id=body.filter_id,
             )
             return JSONResponse(result)
 
     except Exception as e:
         import traceback
-
         traceback.print_exc()
         logger.error("Langflow request failed", error=str(e))
         return JSONResponse(
@@ -135,13 +130,13 @@ async def langflow_endpoint(request: Request, chat_service, session_manager):
         )
 
 
-async def chat_history_endpoint(request: Request, chat_service, session_manager):
+async def chat_history_endpoint(
+    chat_service=Depends(get_chat_service),
+    user: User = Depends(get_current_user),
+):
     """Get chat history for a user"""
-    user = request.state.user
-    user_id = user.user_id
-
     try:
-        history = await chat_service.get_chat_history(user_id)
+        history = await chat_service.get_chat_history(user.user_id)
         return JSONResponse(history)
     except Exception as e:
         return JSONResponse(
@@ -149,13 +144,13 @@ async def chat_history_endpoint(request: Request, chat_service, session_manager)
         )
 
 
-async def langflow_history_endpoint(request: Request, chat_service, session_manager):
+async def langflow_history_endpoint(
+    chat_service=Depends(get_chat_service),
+    user: User = Depends(get_current_user),
+):
     """Get langflow chat history for a user"""
-    user = request.state.user
-    user_id = user.user_id
-
     try:
-        history = await chat_service.get_langflow_history(user_id)
+        history = await chat_service.get_langflow_history(user.user_id)
         return JSONResponse(history)
     except Exception as e:
         return JSONResponse(
@@ -163,15 +158,14 @@ async def langflow_history_endpoint(request: Request, chat_service, session_mana
         )
 
 
-async def delete_session_endpoint(request: Request, chat_service, session_manager):
+async def delete_session_endpoint(
+    session_id: str,
+    chat_service=Depends(get_chat_service),
+    user: User = Depends(get_current_user),
+):
     """Delete a chat session"""
-    user = request.state.user
-    user_id = user.user_id
-    session_id = request.path_params["session_id"]
-
     try:
-        # Delete from both local storage and Langflow
-        result = await chat_service.delete_session(user_id, session_id)
+        result = await chat_service.delete_session(user.user_id, session_id)
 
         if result.get("success"):
             return JSONResponse({"message": "Session deleted successfully"})

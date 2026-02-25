@@ -1,0 +1,15 @@
+* Gather the credentials and connection details for one or more supported model providers:
+
+   * **OpenAI**: Create an [OpenAI API key](https://platform.openai.com/api-keys).
+   * **Anthropic**: Create an [Anthropic API key](https://www.anthropic.com/docs/api/reference).
+   Anthropic provides language models only; you must select an additional provider for embeddings.
+   * **IBM watsonx.ai**: Get your watsonx.ai API endpoint, IBM project ID, and IBM API key from your watsonx deployment.
+   * **Ollama**: Deploy an [Ollama instance and models](https://docs.ollama.com/) locally, in the cloud, or on a remote server. Then, get your Ollama server's base URL and the names of the models that you want to use.
+
+   OpenRAG requires at least one language model and one embedding model.
+   If a provider offers both types of models, then you can use the same provider for both models.
+   If a provider offers only one type, then you must configure two providers.
+
+   Language models must support tool calling to be compatible with OpenRAG.
+
+   For more information, see [Complete the application onboarding process](#application-onboarding).

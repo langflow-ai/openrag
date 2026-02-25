@@ -25,9 +25,8 @@ class TaskService:
     # Cleanup interval in seconds (2 hours)
     CLEANUP_INTERVAL_SECONDS = 2 * 60 * 60
 
-    def __init__(self, document_service=None, process_pool=None, ingestion_timeout=3600):
+    def __init__(self, document_service=None, ingestion_timeout=3600):
         self.document_service = document_service
-        self.process_pool = process_pool
         self.task_store: dict[
             str, dict[str, UploadTask]
         ] = {}  # user_id -> {task_id -> UploadTask}
@@ -41,9 +40,6 @@ class TaskService:
         # TaskService is a singleton, so this limits concurrency system-wide.
         self._worker_count = get_worker_count()
         self._processing_semaphore = asyncio.Semaphore(self._worker_count)
-
-        if self.process_pool is None:
-            raise ValueError("TaskService requires a process_pool parameter")
 
     def _get_task_lock(self, task_id: str) -> asyncio.Lock:
         """Get or create a lock for a specific task's counter updates"""
@@ -743,7 +739,3 @@ class TaskService:
                 if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
                     logger.warning("Background task raised exception during shutdown", error=str(result))
 
-        # Shutdown the process pool
-        if hasattr(self, "process_pool"):
-            self.process_pool.shutdown(wait=True)
-            logger.info("Process pool shutdown complete")

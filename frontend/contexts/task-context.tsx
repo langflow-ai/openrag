@@ -48,6 +48,7 @@ interface TaskContextType {
   isFetching: boolean;
   isMenuOpen: boolean;
   toggleMenu: () => void;
+  closeMenu: () => void;
   isRecentTasksExpanded: boolean;
   setRecentTasksExpanded: (expanded: boolean) => void;
   // React Query states
@@ -399,6 +400,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     setIsMenuOpen((prev) => !prev);
   }, []);
 
+  const closeMenu = useCallback(() => {
+    setIsMenuOpen(false);
+  }, []);
+
   // Determine if we're polling based on React Query's refetch interval
   const isPolling =
     isFetching &&
@@ -420,6 +425,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     isFetching,
     isMenuOpen,
     toggleMenu,
+    closeMenu,
     isRecentTasksExpanded,
     setRecentTasksExpanded: setIsRecentTasksExpanded,
     isLoading,

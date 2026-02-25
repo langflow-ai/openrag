@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
+import { formatFilesToDelete } from "@/lib/format-files-to-delete";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -151,12 +152,16 @@ export const KnowledgeActionsDropdown = ({
       <DeleteConfirmationDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
-        title="Delete Document"
-        description={`Are you sure you want to delete "${filename}"? This will remove all chunks and data associated with this document. This action cannot be undone.`}
+        title="Delete document"
+        description="Are you sure you want to delete this document?"
         confirmText="Delete"
         onConfirm={handleDelete}
         isLoading={deleteDocumentMutation.isPending}
-      />
+      >
+        <p className="my-2">This will remove all chunks and data associated with this document. This action cannot be undone.</p>
+        <p className="my-2">Document to be deleted:</p>
+        {formatFilesToDelete([{ filename }])}
+      </DeleteConfirmationDialog>
     </>
   );
 };

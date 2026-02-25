@@ -1,25 +1,24 @@
 """Configuration screen for OpenRAG TUI."""
 
+import os
 import re
 from zxcvbn import zxcvbn
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.screen import Screen
 from textual.widgets import (
-    Header,
     Footer,
     Static,
     Button,
     Input,
     Label,
-    TabbedContent,
-    TabPane,
     Checkbox,
 )
 from textual.validation import ValidationResult, Validator
 from rich.text import Text
 from pathlib import Path
 
+from ..config_fields import CONFIG_SECTIONS, ConfigField
 from ..managers.env_manager import EnvManager
 from ..utils.validation import (
     validate_openai_api_key,
@@ -28,7 +27,6 @@ from ..utils.validation import (
     validate_watsonx_endpoint,
     validate_documents_paths,
 )
-from pathlib import Path
 
 
 class OpenAIKeyValidator(Validator):
@@ -192,525 +190,225 @@ class ConfigScreen(Screen):
 
         return header_text
 
-    def _create_all_fields(self) -> ComposeResult:
-        """Create all configuration fields in a single scrollable layout."""
+    # Map validator functions to Textual Validator classes
+    VALIDATOR_MAP: dict = {
+        validate_openai_api_key: OpenAIKeyValidator,
+        validate_anthropic_api_key: AnthropicKeyValidator,
+        validate_ollama_endpoint: OllamaEndpointValidator,
+        validate_watsonx_endpoint: WatsonxEndpointValidator,
+    }
 
-        # Admin Credentials Section
-        yield Static("Admin Credentials", classes="tab-header")
+    # Fields that need custom rendering beyond the standard pattern
+    SPECIAL_FIELDS = {
+        "opensearch_password",
+        "opensearch_data_path",
+        "langflow_superuser_password",
+        "langflow_superuser",
+        "google_oauth_client_id",
+        "microsoft_graph_oauth_client_id",
+        "openrag_documents_paths",
+    }
+
+    def _create_all_fields(self) -> ComposeResult:
+        """Create all configuration fields from shared CONFIG_SECTIONS."""
+        for section in CONFIG_SECTIONS:
+            if section.advanced and self.mode != "full":
+                continue
+
+            yield Static(section.name, classes="tab-header")
+            yield Static(" ")
+
+            for field in section.fields:
+                if field.advanced and self.mode != "full":
+                    continue
+
+                if field.name in self.SPECIAL_FIELDS:
+                    renderer = getattr(self, f"_render_{field.name}")
+                    yield from renderer(field)
+                else:
+                    yield from self._render_standard_field(field)
+
+    def _render_standard_field(self, field: ConfigField) -> ComposeResult:
+        """Render a standard field: label + helper + input + optional toggle."""
+        label_text = field.label
+        if field.required:
+            label_text += " *"
+        elif not field.secret:
+            label_text += " (optional)"
+        else:
+            label_text += " (optional)"
+        yield Label(label_text)
+
+        if field.helper_text:
+            yield Static(
+                Text(field.helper_text, style="dim"),
+                classes="helper-text",
+            )
+
+        current_value = getattr(self.env_manager.config, field.name, field.default) or ""
+        validators = []
+        if field.validator and field.validator in self.VALIDATOR_MAP:
+            validators = [self.VALIDATOR_MAP[field.validator]()]
+
+        input_widget = Input(
+            placeholder=field.placeholder,
+            value=current_value,
+            password=field.secret,
+            validators=validators,
+            id=f"input-{field.name}",
+        )
+
+        if field.secret:
+            with Horizontal(id=f"{field.name}-row"):
+                yield input_widget
+                yield Button("Show", id=f"toggle-{field.name}", variant="default")
+        else:
+            yield input_widget
+
+        self.inputs[field.name] = input_widget
         yield Static(" ")
 
-        # OpenSearch Admin Password
-        yield Label("OpenSearch Admin Password *")
-        yield Static(
-            "Validate your password here: https://lowe.github.io/tryzxcvbn/",
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "opensearch_password", "")
+    # ── Special field renderers ──────────────────────────────────
+
+    def _render_opensearch_password(self, field: ConfigField) -> ComposeResult:
+        """OpenSearch password with strength validator and eye toggle."""
+        yield Label("Admin Password *")
+        yield Static(field.helper_text, classes="helper-text")
+        current_value = getattr(self.env_manager.config, field.name, "")
         with Horizontal(id="opensearch-password-row"):
             input_widget = Input(
-                placeholder="Auto-generated secure password",
+                placeholder=field.placeholder,
                 value=current_value,
                 password=True,
-                id="input-opensearch_password",
+                id=f"input-{field.name}",
                 validators=[PasswordValidator()],
             )
             yield input_widget
-            self.inputs["opensearch_password"] = input_widget
-            yield Button("👁", id="toggle-opensearch-password", variant="default")
+            self.inputs[field.name] = input_widget
+            yield Button("👁", id=f"toggle-{field.name}", variant="default")
         yield Static(" ")
 
-        # Langflow Admin Password
-        with Horizontal():
-            yield Label("Langflow Admin Password (optional)")
-            yield Checkbox("Generate password", id="generate-langflow-password")
-        current_value = getattr(
-            self.env_manager.config, "langflow_superuser_password", ""
-        )
-        with Horizontal(id="langflow-password-row"):
-            input_widget = Input(
-                placeholder="Langflow password",
-                value=current_value,
-                password=True,
-                id="input-langflow_superuser_password",
-            )
-            yield input_widget
-            self.inputs["langflow_superuser_password"] = input_widget
-            yield Button("👁", id="toggle-langflow-password", variant="default")
-        yield Static(" ")
-
-        # Langflow Admin Username - conditionally displayed based on password
-        current_password = getattr(self.env_manager.config, "langflow_superuser_password", "")
-        yield Label("Langflow Admin Username *", id="langflow-username-label")
-        current_value = getattr(self.env_manager.config, "langflow_superuser", "")
+    def _render_opensearch_data_path(self, field: ConfigField) -> ComposeResult:
+        """OpenSearch data path with file picker."""
+        yield Label(field.label)
+        yield Static(field.helper_text, classes="helper-text")
+        current_value = getattr(self.env_manager.config, field.name, field.default)
         input_widget = Input(
-            placeholder="admin", value=current_value, id="input-langflow_superuser"
-        )
-        yield input_widget
-        self.inputs["langflow_superuser"] = input_widget
-        yield Static(" ", id="langflow-username-spacer")
-
-        yield Static(" ")
-
-        # API Keys Section
-        yield Static("API Keys", classes="tab-header")
-        yield Static(" ")
-
-        # OpenAI API Key
-        yield Label("OpenAI API Key (optional)")
-        yield Static(
-            Text("Get a key: https://platform.openai.com/api-keys", style="dim"),
-            classes="helper-text",
-        )
-        yield Static(
-            Text("Can be configured later in the UI", style="dim italic"),
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "openai_api_key", "")
-        with Horizontal(id="openai-key-row"):
-            input_widget = Input(
-                placeholder="sk-...",
-                value=current_value,
-                password=True,
-                validators=[OpenAIKeyValidator()],
-                id="input-openai_api_key",
-            )
-            yield input_widget
-            self.inputs["openai_api_key"] = input_widget
-            yield Button("Show", id="toggle-openai-key", variant="default")
-        yield Static(" ")
-
-        # Anthropic API Key
-        yield Label("Anthropic API Key (optional)")
-        yield Static(
-            Text("Get a key: https://console.anthropic.com/settings/keys", style="dim"),
-            classes="helper-text",
-        )
-        yield Static(
-            Text("Can be configured later in the UI", style="dim italic"),
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "anthropic_api_key", "")
-        with Horizontal(id="anthropic-key-row"):
-            input_widget = Input(
-                placeholder="sk-ant-...",
-                value=current_value,
-                password=True,
-                validators=[AnthropicKeyValidator()],
-                id="input-anthropic_api_key",
-            )
-            yield input_widget
-            self.inputs["anthropic_api_key"] = input_widget
-            yield Button("Show", id="toggle-anthropic-key", variant="default")
-        yield Static(" ")
-
-        # Ollama Endpoint
-        yield Label("Ollama Base URL (optional)")
-        yield Static(
-            Text("Endpoint of your Ollama server", style="dim"),
-            classes="helper-text",
-        )
-        yield Static(
-            Text("Can be configured later in the UI", style="dim italic"),
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "ollama_endpoint", "")
-        input_widget = Input(
-            placeholder="http://localhost:11434",
+            placeholder=field.placeholder,
             value=current_value,
-            validators=[OllamaEndpointValidator()],
-            id="input-ollama_endpoint",
+            id=f"input-{field.name}",
         )
         yield input_widget
-        self.inputs["ollama_endpoint"] = input_widget
-        yield Static(" ")
-
-        # IBM watsonx.ai API Key
-        yield Label("IBM watsonx.ai API Key (optional)")
-        yield Static(
-            Text("Get a key: https://cloud.ibm.com/iam/apikeys", style="dim"),
-            classes="helper-text",
-        )
-        yield Static(
-            Text("Can be configured later in the UI", style="dim italic"),
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "watsonx_api_key", "")
-        with Horizontal(id="watsonx-key-row"):
-            input_widget = Input(
-                placeholder="",
-                value=current_value,
-                password=True,
-                id="input-watsonx_api_key",
-            )
-            yield input_widget
-            self.inputs["watsonx_api_key"] = input_widget
-            yield Button("Show", id="toggle-watsonx-key", variant="default")
-        yield Static(" ")
-
-        # IBM watsonx.ai Endpoint
-        yield Label("IBM watsonx.ai Endpoint")
-        yield Static(
-            Text("Example: https://us-south.ml.cloud.ibm.com", style="dim"),
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "watsonx_endpoint", "")
-        input_widget = Input(
-            placeholder="https://us-south.ml.cloud.ibm.com",
-            value=current_value,
-            validators=[WatsonxEndpointValidator()],
-            id="input-watsonx_endpoint",
-        )
-        yield input_widget
-        self.inputs["watsonx_endpoint"] = input_widget
-        yield Static(" ")
-
-        # IBM watsonx.ai Project ID
-        yield Label("IBM watsonx.ai Project ID")
-        yield Static(
-            Text("Find in your IBM Cloud project settings", style="dim"),
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "watsonx_project_id", "")
-        input_widget = Input(
-            placeholder="",
-            value=current_value,
-            id="input-watsonx_project_id",
-        )
-        yield input_widget
-        self.inputs["watsonx_project_id"] = input_widget
-        yield Static(" ")
-
-        # Add OAuth fields only in full mode
-        if self.mode == "full":
-            # Google OAuth Client ID
-            yield Label("Google OAuth Client ID")
-            # Where to create Google OAuth credentials (helper above the box)
-            yield Static(
-                Text(
-                    "Create credentials: https://console.cloud.google.com/apis/credentials",
-                    style="dim",
-                ),
-                classes="helper-text",
-            )
-            # Callback URL guidance for Google OAuth
-            yield Static(
-                Text(
-                    "Important: add an Authorized redirect URI to your Google OAuth app(s):\n"
-                    "  - Local: http://localhost:3000/auth/callback\n"
-                    "  - Prod:  https://your-domain.com/auth/callback\n"
-                    "If you use separate apps for login and connectors, add this URL to BOTH.",
-                    style="dim",
-                ),
-                classes="helper-text",
-            )
-            current_value = getattr(
-                self.env_manager.config, "google_oauth_client_id", ""
-            )
-            input_widget = Input(
-                placeholder="xxx.apps.googleusercontent.com",
-                value=current_value,
-                id="input-google_oauth_client_id",
-            )
-            yield input_widget
-            self.inputs["google_oauth_client_id"] = input_widget
-            yield Static(" ")
-
-            # Google OAuth Client Secret
-            yield Label("Google OAuth Client Secret")
-            current_value = getattr(
-                self.env_manager.config, "google_oauth_client_secret", ""
-            )
-            with Horizontal(id="google-secret-row"):
-                input_widget = Input(
-                    placeholder="",
-                    value=current_value,
-                    password=True,
-                    id="input-google_oauth_client_secret",
-                )
-                yield input_widget
-                self.inputs["google_oauth_client_secret"] = input_widget
-                yield Button("Show", id="toggle-google-secret", variant="default")
-            yield Static(" ")
-
-            # Microsoft Graph Client ID
-            yield Label("Microsoft Graph Client ID")
-            # Where to create Microsoft app registrations (helper above the box)
-            yield Static(
-                Text(
-                    "Create app: https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade",
-                    style="dim",
-                ),
-                classes="helper-text",
-            )
-            # Callback URL guidance for Microsoft OAuth
-            yield Static(
-                Text(
-                    "Important: configure a Web redirect URI for your Microsoft app(s):\n"
-                    "  - Local: http://localhost:3000/auth/callback\n"
-                    "  - Prod:  https://your-domain.com/auth/callback\n"
-                    "If you use separate apps for login and connectors, add this URI to BOTH.",
-                    style="dim",
-                ),
-                classes="helper-text",
-            )
-            current_value = getattr(
-                self.env_manager.config, "microsoft_graph_oauth_client_id", ""
-            )
-            input_widget = Input(
-                placeholder="",
-                value=current_value,
-                id="input-microsoft_graph_oauth_client_id",
-            )
-            yield input_widget
-            self.inputs["microsoft_graph_oauth_client_id"] = input_widget
-            yield Static(" ")
-
-            # Microsoft Graph Client Secret
-            yield Label("Microsoft Graph Client Secret")
-            current_value = getattr(
-                self.env_manager.config, "microsoft_graph_oauth_client_secret", ""
-            )
-            with Horizontal(id="microsoft-secret-row"):
-                input_widget = Input(
-                    placeholder="",
-                    value=current_value,
-                    password=True,
-                    id="input-microsoft_graph_oauth_client_secret",
-                )
-                yield input_widget
-                self.inputs["microsoft_graph_oauth_client_secret"] = input_widget
-                yield Button("Show", id="toggle-microsoft-secret", variant="default")
-            yield Static(" ")
-
-            # AWS Access Key ID
-            yield Label("AWS Access Key ID")
-            # Where to create AWS keys (helper above the box)
-            yield Static(
-                Text(
-                    "Create keys: https://console.aws.amazon.com/iam/home#/security_credentials",
-                    style="dim",
-                ),
-                classes="helper-text",
-            )
-            current_value = getattr(self.env_manager.config, "aws_access_key_id", "")
-            input_widget = Input(
-                placeholder="", value=current_value, id="input-aws_access_key_id"
-            )
-            yield input_widget
-            self.inputs["aws_access_key_id"] = input_widget
-            yield Static(" ")
-
-            # AWS Secret Access Key
-            yield Label("AWS Secret Access Key")
-            current_value = getattr(
-                self.env_manager.config, "aws_secret_access_key", ""
-            )
-            input_widget = Input(
-                placeholder="",
-                value=current_value,
-                password=True,
-                id="input-aws_secret_access_key",
-            )
-            yield input_widget
-            self.inputs["aws_secret_access_key"] = input_widget
-            yield Static(" ")
-
-        # Langfuse Section (available in both basic and full mode)
-        yield Static("Langfuse (Tracing)", classes="tab-header")
-        yield Static(" ")
-
-        # Langfuse Secret Key
-        yield Label("Langfuse Secret Key (optional)")
-        yield Static(
-            Text("Get keys from your Langfuse project settings", style="dim"),
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "langfuse_secret_key", "")
-        with Horizontal(id="langfuse-secret-key-row"):
-            input_widget = Input(
-                placeholder="sk-lf-...",
-                value=current_value,
-                password=True,
-                id="input-langfuse_secret_key",
-            )
-            yield input_widget
-            self.inputs["langfuse_secret_key"] = input_widget
-            yield Button("Show", id="toggle-langfuse-secret-key", variant="default")
-        yield Static(" ")
-
-        # Langfuse Public Key
-        yield Label("Langfuse Public Key (optional)")
-        current_value = getattr(self.env_manager.config, "langfuse_public_key", "")
-        with Horizontal(id="langfuse-public-key-row"):
-            input_widget = Input(
-                placeholder="pk-lf-...",
-                value=current_value,
-                password=True,
-                id="input-langfuse_public_key",
-            )
-            yield input_widget
-            self.inputs["langfuse_public_key"] = input_widget
-            yield Button("Show", id="toggle-langfuse-public-key", variant="default")
-        yield Static(" ")
-
-        # Langfuse Base URL
-        yield Label("Langfuse Host (optional)")
-        yield Static(
-            Text("Leave empty for Langfuse Cloud, or set for self-hosted", style="dim"),
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "langfuse_host", "")
-        input_widget = Input(
-            placeholder="https://cloud.langfuse.com",
-            value=current_value,
-            id="input-langfuse_host",
-        )
-        yield input_widget
-        self.inputs["langfuse_host"] = input_widget
-        yield Static(" ")
-
-        # Other Settings Section
-        yield Static("Others", classes="tab-header")
-        yield Static(" ")
-
-        # Documents Paths (optional) + picker action button on next line
-        yield Label("Documents Paths")
-        current_value = getattr(self.env_manager.config, "openrag_documents_paths", "")
-        input_widget = Input(
-            placeholder="~/.openrag/documents",
-            value=current_value,
-            validators=[DocumentsPathValidator()],
-            id="input-openrag_documents_paths",
-        )
-        yield input_widget
-        # Actions row with pick button
-        yield Horizontal(
-            Button("Pick…", id="pick-docs-btn"),
-            id="docs-path-actions",
-            classes="controls-row",
-        )
-        self.inputs["openrag_documents_paths"] = input_widget
-        yield Static(" ")
-
-        # OpenSearch Data Path
-        yield Label("OpenSearch Data Path")
-        yield Static(
-            "Directory to persist OpenSearch indices across upgrades",
-            classes="helper-text",
-        )
-        current_value = getattr(self.env_manager.config, "opensearch_data_path", "$HOME/.openrag/data/opensearch-data")
-        input_widget = Input(
-            placeholder="~/.openrag/data/opensearch-data",
-            value=current_value,
-            id="input-opensearch_data_path",
-        )
-        yield input_widget
-        # Actions row with pick button
         yield Horizontal(
             Button("Pick…", id="pick-opensearch-data-btn"),
             id="opensearch-data-path-actions",
             classes="controls-row",
         )
-        self.inputs["opensearch_data_path"] = input_widget
+        self.inputs[field.name] = input_widget
         yield Static(" ")
 
-        # OpenSearch Index Name
-        yield Label("OpenSearch Index Name")
+    def _render_langflow_superuser_password(self, field: ConfigField) -> ComposeResult:
+        """Langflow password with generate checkbox and eye toggle."""
+        with Horizontal():
+            yield Label("Admin Password (optional)")
+            yield Checkbox("Generate password", id="generate-langflow-password")
+        current_value = getattr(self.env_manager.config, field.name, "")
+        with Horizontal(id="langflow-password-row"):
+            input_widget = Input(
+                placeholder=field.placeholder,
+                value=current_value,
+                password=True,
+                id=f"input-{field.name}",
+            )
+            yield input_widget
+            self.inputs[field.name] = input_widget
+            yield Button("👁", id=f"toggle-{field.name}", variant="default")
+        yield Static(" ")
+
+    def _render_langflow_superuser(self, field: ConfigField) -> ComposeResult:
+        """Langflow username with conditional visibility."""
+        yield Label("Admin Username *", id="langflow-username-label")
+        current_value = getattr(self.env_manager.config, field.name, field.default)
+        input_widget = Input(
+            placeholder=field.placeholder,
+            value=current_value,
+            id=f"input-{field.name}",
+        )
+        yield input_widget
+        self.inputs[field.name] = input_widget
+        yield Static(" ", id="langflow-username-spacer")
+
+    def _render_google_oauth_client_id(self, field: ConfigField) -> ComposeResult:
+        """Google OAuth client ID with redirect URI helper."""
+        yield Label(field.label)
         yield Static(
-            "Name of the index to use in OpenSearch",
+            Text(field.helper_text, style="dim"),
             classes="helper-text",
         )
-        current_value = getattr(self.env_manager.config, "opensearch_index_name", "documents")
+        frontend_port = os.getenv("FRONTEND_PORT", "3000")
+        yield Static(
+            Text(
+                f"Redirect URI: http://localhost:{frontend_port}/auth/callback (or your domain)",
+                style="dim",
+            ),
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, field.name, "")
         input_widget = Input(
-            placeholder="documents",
+            placeholder=field.placeholder,
             value=current_value,
-            id="input-opensearch_index_name",
+            id=f"input-{field.name}",
         )
         yield input_widget
-        self.inputs["opensearch_index_name"] = input_widget
+        self.inputs[field.name] = input_widget
         yield Static(" ")
 
-        # Langflow Auth Settings - These are automatically configured based on password presence
-        # Not shown in UI; set in env_manager.setup_secure_defaults()
-
-        # Add optional fields only in full mode
-        if self.mode == "full":
-            # Webhook Base URL
-            yield Label("Webhook Base URL")
-            current_value = getattr(self.env_manager.config, "webhook_base_url", "")
-            input_widget = Input(
-                placeholder="https://your-domain.com",
-                value=current_value,
-                id="input-webhook_base_url",
-            )
-            yield input_widget
-            self.inputs["webhook_base_url"] = input_widget
-            yield Static(" ")
-
-            # Langflow Public URL
-            yield Label("Langflow Public URL")
-            current_value = getattr(self.env_manager.config, "langflow_public_url", "")
-            input_widget = Input(
-                placeholder="http://localhost:7860",
-                value=current_value,
-                id="input-langflow_public_url",
-            )
-            yield input_widget
-            self.inputs["langflow_public_url"] = input_widget
-            yield Static(" ")
-
-    def _create_field(
-        self,
-        field_name: str,
-        display_name: str,
-        placeholder: str,
-        can_generate: bool,
-        required: bool = False,
-    ) -> ComposeResult:
-        """Create a single form field."""
-        # Create label
-        label_text = f"{display_name}"
-        if required:
-            label_text += " *"
-
-        yield Label(label_text)
-
-        # Get current value
-        current_value = getattr(self.env_manager.config, field_name, "")
-
-        # Create input with appropriate validator
-        if field_name == "openai_api_key":
-            input_widget = Input(
-                placeholder=placeholder,
-                value=current_value,
-                password=True,
-                validators=[OpenAIKeyValidator()],
-                id=f"input-{field_name}",
-            )
-        elif field_name == "openrag_documents_paths":
-            input_widget = Input(
-                placeholder=placeholder,
-                value=current_value,
-                validators=[DocumentsPathValidator()],
-                id=f"input-{field_name}",
-            )
-        elif "password" in field_name or "secret" in field_name:
-            input_widget = Input(
-                placeholder=placeholder,
-                value=current_value,
-                password=True,
-                id=f"input-{field_name}",
-            )
-        else:
-            input_widget = Input(
-                placeholder=placeholder, value=current_value, id=f"input-{field_name}"
-            )
-
+    def _render_microsoft_graph_oauth_client_id(self, field: ConfigField) -> ComposeResult:
+        """Microsoft OAuth client ID with redirect URI helper."""
+        yield Label(field.label)
+        yield Static(
+            Text(field.helper_text, style="dim"),
+            classes="helper-text",
+        )
+        frontend_port = os.getenv("FRONTEND_PORT", "3000")
+        yield Static(
+            Text(
+                f"Redirect URI: http://localhost:{frontend_port}/auth/callback (or your domain)",
+                style="dim",
+            ),
+            classes="helper-text",
+        )
+        current_value = getattr(self.env_manager.config, field.name, "")
+        input_widget = Input(
+            placeholder=field.placeholder,
+            value=current_value,
+            id=f"input-{field.name}",
+        )
         yield input_widget
-        self.inputs[field_name] = input_widget
-
-        # Add spacing
+        self.inputs[field.name] = input_widget
         yield Static(" ")
+
+    def _render_openrag_documents_paths(self, field: ConfigField) -> ComposeResult:
+        """Documents paths with validator and file picker."""
+        yield Label(field.label)
+        yield Static(field.helper_text, classes="helper-text")
+        current_value = getattr(self.env_manager.config, field.name, "")
+        input_widget = Input(
+            placeholder=field.placeholder,
+            value=current_value,
+            validators=[DocumentsPathValidator()],
+            validate_on=["submitted"],
+            id=f"input-{field.name}",
+        )
+        yield input_widget
+        yield Horizontal(
+            Button("Pick…", id="pick-docs-btn"),
+            id="docs-path-actions",
+            classes="controls-row",
+        )
+        self.inputs[field.name] = input_widget
+        yield Static(" ")
+
 
     def on_mount(self) -> None:
         """Initialize the screen when mounted."""
@@ -759,42 +457,17 @@ class ConfigScreen(Screen):
             self.action_pick_documents_path()
         elif event.button.id == "pick-opensearch-data-btn":
             self.action_pick_opensearch_data_path()
-        elif event.button.id == "toggle-opensearch-password":
-            # Toggle OpenSearch password visibility
-            input_widget = self.inputs.get("opensearch_password")
+        elif event.button.id and event.button.id.startswith("toggle-"):
+            # Generic toggle for password/secret field visibility
+            field_name = event.button.id.removeprefix("toggle-")
+            input_widget = self.inputs.get(field_name)
             if input_widget:
                 input_widget.password = not input_widget.password
-                event.button.label = "🙈" if not input_widget.password else "👁"
-        elif event.button.id == "toggle-langflow-password":
-            # Toggle Langflow password visibility
-            input_widget = self.inputs.get("langflow_superuser_password")
-            if input_widget:
-                input_widget.password = not input_widget.password
-                event.button.label = "🙈" if not input_widget.password else "👁"
-        elif event.button.id == "toggle-anthropic-key":
-            # Toggle Anthropic API key visibility
-            input_widget = self.inputs.get("anthropic_api_key")
-            if input_widget:
-                input_widget.password = not input_widget.password
-                event.button.label = "Hide" if not input_widget.password else "Show"
-        elif event.button.id == "toggle-watsonx-key":
-            # Toggle watsonx API key visibility
-            input_widget = self.inputs.get("watsonx_api_key")
-            if input_widget:
-                input_widget.password = not input_widget.password
-                event.button.label = "Hide" if not input_widget.password else "Show"
-        elif event.button.id == "toggle-langfuse-secret-key":
-            # Toggle Langfuse secret key visibility
-            input_widget = self.inputs.get("langfuse_secret_key")
-            if input_widget:
-                input_widget.password = not input_widget.password
-                event.button.label = "Hide" if not input_widget.password else "Show"
-        elif event.button.id == "toggle-langfuse-public-key":
-            # Toggle Langfuse public key visibility
-            input_widget = self.inputs.get("langfuse_public_key")
-            if input_widget:
-                input_widget.password = not input_widget.password
-                event.button.label = "Hide" if not input_widget.password else "Show"
+                # Eye emoji for main password fields, Show/Hide for others
+                if field_name in ("opensearch_password", "langflow_superuser_password"):
+                    event.button.label = "🙈" if not input_widget.password else "👁"
+                else:
+                    event.button.label = "Hide" if not input_widget.password else "Show"
 
     def action_generate(self) -> None:
         """Generate secure passwords for admin accounts."""
@@ -836,7 +509,7 @@ class ConfigScreen(Screen):
 
         if validation_errors:
             self.notify(
-                f"Validation failed:\n" + "\n".join(validation_errors[:3]),
+                "Validation failed:\n" + "\n".join(validation_errors[:3]),
                 severity="error",
             )
             return
@@ -855,7 +528,7 @@ class ConfigScreen(Screen):
                 error_messages.append(f"{field}: {error}")
 
             self.notify(
-                f"Validation failed:\n" + "\n".join(error_messages[:3]),
+                "Validation failed:\n" + "\n".join(error_messages[:3]),
                 severity="error",
             )
             return

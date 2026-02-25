@@ -21,9 +21,6 @@ export interface OnboardingVariables {
   watsonx_endpoint?: string;
   watsonx_project_id?: string;
   ollama_endpoint?: string;
-
-  // Sample data
-  sample_data?: boolean;
 }
 
 interface OnboardingResponse {

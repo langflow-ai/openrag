@@ -48,6 +48,8 @@ interface ChatInputProps {
 	onFileSelected: (file: File | null) => void;
 }
 
+const SAFE_SINGLE_LINE_CHARS = 80; // Number of chars that can safely fit in one line without wrapping, used to determine when to switch to multi-line mode
+
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 	(
 		{
@@ -70,7 +72,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 	) => {
 		const inputRef = useRef<HTMLTextAreaElement>(null);
 		const fileInputRef = useRef<HTMLInputElement>(null);
-		const [textareaHeight, setTextareaHeight] = useState(0);
+		const [isWrapped, setIsWrapped] = useState(false);
+		const isMultiline = input.includes("\n") || isWrapped;
 		const isDragging = useFileDrag();
 
 		// Internal state for filter dropdown
@@ -180,6 +183,19 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 		const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
 			const newValue = e.target.value;
 			onChange(newValue); // Call parent's onChange with the string value
+
+			// Detect visual wrapping - only collapse when text is clearly short enough
+			// to prevent flickering at the boundary (flex-row has less width than flex-col)
+			if (!newValue.includes("\n") && newValue.length < SAFE_SINGLE_LINE_CHARS) {
+				setIsWrapped(false);
+			} else {
+				const textarea = e.target;
+				const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 20;
+				const wrapping = textarea.scrollHeight > lineHeight * 1.5;
+				if (wrapping) {
+					setIsWrapped(true);
+				}
+			}
 
 			// Find if there's an @ at the start of the last word
 			const words = newValue.split(" ");
@@ -381,14 +397,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 						{/* Main Input Container - flex-row or flex-col based on textarea height */}
 						<div
 							className={`relative flex w-full gap-2 ${
-								textareaHeight > 40 ? "flex-col" : "flex-row items-center"
+								isMultiline ? "flex-col" : "flex-row items-center"
 							}`}
 						>
 							{/* Filter + Textarea Section */}
 							<div
-								className={`flex items-center gap-2 ${textareaHeight > 40 ? "w-full" : "flex-1"}`}
+								className={`flex items-center gap-2 ${isMultiline ? "w-full" : "flex-1"}`}
 							>
-								{textareaHeight <= 40 &&
+								{!isMultiline &&
 									(selectedFilter ? (
 										<SelectedKnowledgeFilter
 											selectedFilter={selectedFilter}
@@ -414,15 +430,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 										</Button>
 									))}
 								<div
-									className="relative flex-1"
-									style={{ height: `${textareaHeight}px` }}
+									className="relative flex-1 flex items-center"
 								>
 									<TextareaAutosize
 										ref={inputRef}
 										value={input}
 										onChange={handleChange}
 										onKeyDown={handleKeyDown}
-										onHeightChange={(height) => setTextareaHeight(height)}
 										maxRows={7}
 										autoComplete="off"
 										minRows={1}
@@ -436,9 +450,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
 							{/* Action Buttons Section */}
 							<div
-								className={`flex items-center gap-2 ${textareaHeight > 40 ? "justify-between w-full" : ""}`}
+								className={`flex items-center gap-2 ${isMultiline ? "justify-between w-full" : ""}`}
 							>
-								{textareaHeight > 40 &&
+								{isMultiline &&
 									(selectedFilter ? (
 										<SelectedKnowledgeFilter
 											selectedFilter={selectedFilter}

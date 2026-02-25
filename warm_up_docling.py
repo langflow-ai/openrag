@@ -1,26 +1,30 @@
+"""Wait for docling-serve to be healthy before proceeding."""
+
 import logging
 import os
 import sys
+import time
 
-repo_root = os.path.dirname(__file__)
-src_path = os.path.join(repo_root, "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
-
-from utils.document_processing import create_document_converter
+import httpx
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-logger.info("Warming up docling models")
+url = os.getenv("DOCLING_SERVE_URL", "http://localhost:5001")
+timeout = int(os.getenv("DOCLING_WARMUP_TIMEOUT", "120"))
 
-try:
-    # Use the sample document to warm up docling
-    test_file = "/app/warmup_ocr.pdf"
-    logger.info(f"Using test file to warm up docling: {test_file}")
-    converter = create_document_converter()
-    converter.convert(test_file)
-    logger.info("Docling models warmed up successfully")
-except Exception as e:
-    logger.info(f"Docling warm-up completed with exception: {str(e)}")
-    # This is expected - we just want to trigger the model downloads
+logger.info("Waiting for docling-serve at %s (timeout: %ds)", url, timeout)
+
+start = time.time()
+while time.time() - start < timeout:
+    try:
+        resp = httpx.get(f"{url}/health", timeout=2.0)
+        if resp.status_code == 200:
+            logger.info("docling-serve is healthy (%.1fs)", time.time() - start)
+            sys.exit(0)
+    except Exception:
+        pass
+    time.sleep(2)
+
+logger.error("docling-serve did not become healthy within %ds", timeout)
+sys.exit(1)
