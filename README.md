@@ -10,30 +10,25 @@
 
 <!-- Badges -->
 <p align="center">
-  <a href="https://github.com/langflow-ai/langflow">
-    <img src="https://img.shields.io/badge/Langflow-1C1C1E?style=for-the-badge&logo=langflow" alt="Langflow">
-  </a>
-  <a href="https://github.com/opensearch-project/OpenSearch">
-    <img src="https://img.shields.io/badge/OpenSearch-005EB8?style=for-the-badge&logo=opensearch&logoColor=white" alt="OpenSearch">
-  </a>
-  <a href="https://github.com/docling-project/docling">
-    <img src="https://img.shields.io/badge/Docling-000000?style=for-the-badge" alt="Docling">
-  </a>
+  
+[![Langflow](https://img.shields.io/badge/Langflow-1C1C1E?style=for-the-badge&logo=langflow)](https://github.com/langflow-ai/langflow)
+[![OpenSearch](https://img.shields.io/badge/OpenSearch-005EB8?style=for-the-badge&logo=opensearch&logoColor=white)](https://github.com/opensearch-project/OpenSearch)
+[![Docling](https://img.shields.io/badge/Docling-000000?style=for-the-badge)](https://github.com/docling-project/docling)
+
 </p>
 
 <p align="center">
-  <a href="https://github.com/langflow-ai/openrag/stargazers">
-    <img src="https://img.shields.io/github/stars/langflow-ai/openrag?style=social" alt="GitHub stars">
-  </a>
-  <a href="https://github.com/langflow-ai/openrag/network/members">
-    <img src="https://img.shields.io/github/forks/langflow-ai/openrag?style=social" alt="GitHub forks">
-  </a>
+  
+[![YouTube Channel](https://img.shields.io/youtube/channel/subscribers/UCn2bInQrjdDYKEEmbpwblLQ?label=Subscribe&style=social)](https://www.youtube.com/@OpenRAG/)
+[![GitHub stars](https://img.shields.io/github/stars/langflow-ai/openrag?style=social)](https://github.com/langflow-ai/openrag/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/langflow-ai/openrag?style=social)](https://github.com/langflow-ai/openrag/network/members)
+
 </p>
 
 <p align="center">
-  <a href="https://deepwiki.com/langflow-ai/openrag">
-    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki">
-  </a>
+  
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langflow-ai/openrag)
+
 </p>
 
 </div>
