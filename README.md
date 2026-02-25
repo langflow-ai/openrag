@@ -33,7 +33,13 @@
 
 </div>
 
-OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. 
+<div align="center">
+  <img src="./docs/static/img/openrag_readme_downsized.gif" alt="OpenRAG Demo" width="800"/>
+</div>
+
+---
+
+OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations.
 
 Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. 
 
