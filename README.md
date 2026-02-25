@@ -42,6 +42,15 @@ Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Lang
 
 ---
 
+## ✨ Highlight Features
+
+- **Pre-packaged & ready to run** - All core tools are hooked up and ready to go, just install and run
+- **Agentic RAG workflows** - Advanced orchestration with re-ranking and multi-agent coordination
+- **Document ingestion** - Handles messy, real-world data with intelligent parsing
+- **Drag-and-drop workflow builder** - Visual interface powered by Langflow for rapid iteration
+- **Modular enterprise add-ons** - Extend functionality when you need it
+- **Enterprise search at any scale** - Powered by OpenSearch for production-grade performance
+
 
 ## ✨ Quick Start Workflow
 
@@ -64,7 +73,6 @@ Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Lang
       <td colspan="3" align="center" style="border: none;">
         <br/>
         <span style="font-size: 32px;"><strong>↓</strong></span>
-        <br/><br/>
       </td>
     </tr>
     <tr style="border: none;">
@@ -77,7 +85,14 @@ Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Lang
   </table>
 </div>
 
-<br/>
+## 🚀 Install OpenRAG
+
+To get started with OpenRAG, see the installation guides in the OpenRAG documentation:
+
+* [Quickstart](https://docs.openr.ag/quickstart)
+* [Install the OpenRAG Python package](https://docs.openr.ag/install-options)
+* [Deploy self-managed services with Docker or Podman](https://docs.openr.ag/docker)
+
 
 ## 🔄 How OpenRAG Works
 
@@ -92,20 +107,6 @@ graph LR
     style B fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     style C fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
 ```
-
-<br/>
-
-## 🚀 Install OpenRAG
-
-To get started with OpenRAG, see the installation guides in the OpenRAG documentation:
-
-* [Quickstart](https://docs.openr.ag/quickstart)
-* [Install the OpenRAG Python package](https://docs.openr.ag/install-options)
-* [Deploy self-managed services with Docker or Podman](https://docs.openr.ag/docker)
-
-<div align="center">
-  <img src="./docs/static/img/installation-demo.svg" alt="OpenRAG Installation Demo" width="700"/>
-</div>
 
 <br/>
 
@@ -142,12 +143,6 @@ Powerful search capabilities to find exactly what you need.
 ## 🛠️ Development
 
 For developers who want to [contribute to OpenRAG](https://docs.openr.ag/support/contribute) or set up a development environment, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-<div align="center">
-  <img src="./docs/static/img/architecture-diagram.svg" alt="OpenRAG Architecture" width="700"/>
-</div>
-
-<br/>
 
 ## 🆘 Troubleshooting
 
