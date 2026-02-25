@@ -203,7 +203,7 @@ class SessionManager:
             "preferred_username": user.email,
             "email_verified": True,
             "roles": ["openrag_user"],  # Backend role for OpenSearch
-            "user_roles": ["openrag_user"],  # compatible with OpenSearch's roles_key
+            "user_roles": ["openrag_user", "all_access"],  # compatible with OpenSearch's roles_key
         }
 
         # Check for token from environment variable first
