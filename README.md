@@ -13,28 +13,28 @@
 <!-- Badges -->
 <p align="center">
   <a href="https://github.com/langflow-ai/openrag/stargazers">
-    <img src="https://img.shields.io/github/stars/langflow-ai/openrag?style=social" alt="GitHub stars">
+    <img src="https://img.shields.io/github/stars/langflow-ai/openrag?style=for-the-badge" alt="GitHub stars" height="32">
   </a>
   <a href="https://github.com/langflow-ai/openrag/network/members">
-    <img src="https://img.shields.io/github/forks/langflow-ai/openrag?style=social" alt="GitHub forks">
+    <img src="https://img.shields.io/github/forks/langflow-ai/openrag?style=for-the-badge" alt="GitHub forks" height="32">
   </a>
 </p>
 
 <p align="center">
   <a href="https://github.com/langflow-ai/langflow">
-    <img src="https://img.shields.io/badge/Langflow-1C1C1E?style=flat&logo=langflow" alt="Langflow">
+    <img src="https://img.shields.io/badge/Langflow-1C1C1E?style=for-the-badge&logo=langflow" alt="Langflow" height="32">
   </a>
   <a href="https://github.com/opensearch-project/OpenSearch">
-    <img src="https://img.shields.io/badge/OpenSearch-005EB8?style=flat&logo=opensearch&logoColor=white" alt="OpenSearch">
+    <img src="https://img.shields.io/badge/OpenSearch-005EB8?style=for-the-badge&logo=opensearch&logoColor=white" alt="OpenSearch" height="32">
   </a>
   <a href="https://github.com/docling-project/docling">
-    <img src="https://img.shields.io/badge/Docling-000000?style=flat" alt="Docling">
+    <img src="https://img.shields.io/badge/Docling-000000?style=for-the-badge" alt="Docling" height="32">
   </a>
 </p>
 
 <p align="center">
   <a href="https://deepwiki.com/langflow-ai/openrag">
-    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki">
+    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" height="32">
   </a>
 </p>
 
