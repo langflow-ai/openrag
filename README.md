@@ -55,34 +55,27 @@ Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Lang
 ## ✨ Quick Start Workflow
 
 <div align="center">
-  <table style="border: none; border-collapse: collapse;">
-    <tr style="border: none;">
-      <td align="center" width="45%" style="border: none; vertical-align: bottom;">
-        <img src="./docs/static/img/uv_run_openrag.png" alt="Launch OpenRAG" width="350"/><br/>
-        <strong>1. Launch OpenRAG</strong>
-      </td>
-      <td align="center" width="10%" style="border: none; vertical-align: middle;">
-        <span style="font-size: 32px;"><strong>→</strong></span>
-      </td>
-      <td align="center" width="45%" style="border: none; vertical-align: bottom;">
-        <img src="./docs/static/img/add_knowledge_openrag.png" alt="Add Knowledge" width="350"/><br/>
-        <strong>2. Add Knowledge</strong>
-      </td>
-    </tr>
-    <tr style="border: none;">
-      <td colspan="3" align="center" style="border: none;">
-        <br/>
-        <span style="font-size: 32px;"><strong>↓</strong></span>
-      </td>
-    </tr>
-    <tr style="border: none;">
-      <td colspan="3" align="center" style="border: none;">
-        <img src="./docs/static/img/chat_openrag.png" alt="Start Chatting" width="700"/>
-        <br/>
-        <strong>3. Start Chatting</strong>
-      </td>
-    </tr>
-  </table>
+  <div style="display: flex; justify-content: center; align-items: flex-end; gap: 20px; margin-bottom: 20px;">
+    <div style="text-align: center;">
+      <img src="./docs/static/img/uv_run_openrag.png" alt="Launch OpenRAG" width="350"/><br/>
+      <strong>1. Launch OpenRAG</strong>
+    </div>
+    <div style="text-align: center; font-size: 32px; padding-bottom: 20px;">
+      <strong>→</strong>
+    </div>
+    <div style="text-align: center;">
+      <img src="./docs/static/img/add_knowledge_openrag.png" alt="Add Knowledge" width="350"/><br/>
+      <strong>2. Add Knowledge</strong>
+    </div>
+  </div>
+  <div style="text-align: center; font-size: 32px; margin: 20px 0;">
+    <strong>↓</strong>
+  </div>
+  <div style="text-align: center;">
+    <img src="./docs/static/img/chat_openrag.png" alt="Start Chatting" width="700"/>
+    <br/>
+    <strong>3. Start Chatting</strong>
+  </div>
 </div>
 
 ## 🚀 Install OpenRAG
