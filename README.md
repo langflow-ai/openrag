@@ -11,28 +11,28 @@
 <!-- Badges -->
 <p align="center">
   <a href="https://github.com/langflow-ai/langflow">
-    <img src="https://img.shields.io/badge/Langflow-1C1C1E?style=flat&logo=langflow" alt="Langflow" height="28">
+    <img src="https://img.shields.io/badge/Langflow-1C1C1E?style=flat-square&logo=langflow&logoSize=auto" alt="Langflow" width="150">
   </a>
   <a href="https://github.com/opensearch-project/OpenSearch">
-    <img src="https://img.shields.io/badge/OpenSearch-005EB8?style=flat&logo=opensearch&logoColor=white" alt="OpenSearch" height="28">
+    <img src="https://img.shields.io/badge/OpenSearch-005EB8?style=flat-square&logo=opensearch&logoColor=white&logoSize=auto" alt="OpenSearch" width="160">
   </a>
   <a href="https://github.com/docling-project/docling">
-    <img src="https://img.shields.io/badge/Docling-000000?style=flat" alt="Docling" height="28">
+    <img src="https://img.shields.io/badge/Docling-000000?style=flat-square" alt="Docling" width="90">
   </a>
 </p>
 
 <p align="center">
   <a href="https://github.com/langflow-ai/openrag/stargazers">
-    <img src="https://img.shields.io/github/stars/langflow-ai/openrag?style=social" alt="GitHub stars" height="28">
+    <img src="https://img.shields.io/github/stars/langflow-ai/openrag?style=flat-square" alt="GitHub stars" width="125">
   </a>
   <a href="https://github.com/langflow-ai/openrag/network/members">
-    <img src="https://img.shields.io/github/forks/langflow-ai/openrag?style=social" alt="GitHub forks" height="28">
+    <img src="https://img.shields.io/github/forks/langflow-ai/openrag?style=flat-square" alt="GitHub forks" width="110">
   </a>
 </p>
 
 <p align="center">
   <a href="https://deepwiki.com/langflow-ai/openrag">
-    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" height="28">
+    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" width="160">
   </a>
 </p>
 
@@ -40,7 +40,10 @@
 
 OpenRAG is a comprehensive Retrieval-Augmented Generation platform that enables intelligent document search and AI-powered conversations. 
 
-Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. Built with [Starlette](https://github.com/Kludex/starlette) and [Next.js](https://github.com/vercel/next.js). Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Langflow](https://github.com/langflow-ai/langflow), and [Docling](https://github.com/docling-project/docling).
+Users can upload, process, and query documents through a chat interface backed by large language models and semantic search capabilities. The system utilizes Langflow for document ingestion, retrieval workflows, and intelligent nudges, providing a seamless RAG experience. 
+
+Built with [Starlette](https://github.com/Kludex/starlette) and [Next.js](https://github.com/vercel/next.js). 
+Powered by [OpenSearch](https://github.com/opensearch-project/OpenSearch), [Langflow](https://github.com/langflow-ai/langflow), and [Docling](https://github.com/docling-project/docling).
 
 ---
 
