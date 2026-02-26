@@ -6,8 +6,6 @@ from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
 def _parse_json_error_message(error_text: str) -> str:
     """Parse JSON error message and extract just the message field."""
     try:
@@ -722,7 +720,7 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
     """Test Anthropic API key validity with lightweight check.
     
     Only checks if the API key is valid without consuming credits.
-    Uses a minimal messages request with max_tokens=1 to validate the key.
+    Uses the /v1/models endpoint which doesn't consume credits.
     """
     try:
         headers = {
@@ -731,18 +729,10 @@ async def _test_anthropic_lightweight_health(api_key: str) -> None:
             "Content-Type": "application/json",
         }
 
-        # Minimal validation request - uses cheapest model with minimal tokens
-        payload = {
-            "model": "claude-3-5-haiku-latest",  # Cheapest model
-            "max_tokens": 1,  # Minimum tokens to validate key
-            "messages": [{"role": "user", "content": "test"}],
-        }
-
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
+            response = await client.get(
+                "https://api.anthropic.com/v1/models",
                 headers=headers,
-                json=payload,
                 timeout=10.0,  # Short timeout for lightweight check
             )
 

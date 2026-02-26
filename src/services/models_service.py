@@ -1,44 +1,20 @@
 import httpx
 from typing import Dict, List
+from config.model_constants import (
+    ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+    ANTHROPIC_VALIDATION_MODELS,
+    OLLAMA_DEFAULT_LANGUAGE_MODEL_PATTERN,
+    OPENAI_DEFAULT_EMBEDDING_MODEL,
+    OPENAI_DEFAULT_LANGUAGE_MODEL,
+    OPENAI_EMBEDDING_MODEL_PREFIX,
+    OPENAI_VALIDATION_MODELS,
+)
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
 class ModelsService:
     """Service for fetching available models from different AI providers"""
-
-    OPENAI_TOOL_CALLING_MODELS = [
-        "gpt-5",
-        "gpt-5-mini",
-        "gpt-5-nano",
-        "gpt-4o-mini",
-        "gpt-4o",
-        "gpt-4.1",
-        "gpt-4.1-mini",
-        "gpt-4.1-nano",
-        "gpt-4-turbo",
-        "gpt-4-turbo-preview",
-        "gpt-4",
-        "gpt-3.5-turbo",
-        "o1",
-        "o3-mini",
-        "o3",
-        "o3-pro",
-        "o4-mini",
-        "o4-mini-high",
-    ]
-
-    ANTHROPIC_MODELS = [
-        "claude-sonnet-4-5-20250929",
-        "claude-opus-4-1-20250805",
-        "claude-opus-4-20250514",
-        "claude-sonnet-4-20250514",
-        "claude-3-5-haiku-latest",
-        "claude-3-5-haiku-20241022",
-        "claude-3-haiku-20240307",
-    ]
 
     def __init__(self):
         self.session_manager = None
@@ -70,22 +46,22 @@ class ModelsService:
                     model_id = model.get("id", "")
 
                     # Language models (GPT models)
-                    if model_id in self.OPENAI_TOOL_CALLING_MODELS:
+                    if model_id in OPENAI_VALIDATION_MODELS:
                         language_models.append(
                             {
                                 "value": model_id,
                                 "label": model_id,
-                                "default": model_id == "gpt-4o",
+                                "default": model_id == OPENAI_DEFAULT_LANGUAGE_MODEL,
                             }
                         )
 
                     # Embedding models
-                    elif "text-embedding" in model_id:
+                    elif OPENAI_EMBEDDING_MODEL_PREFIX in model_id:
                         embedding_models.append(
                             {
                                 "value": model_id,
                                 "label": model_id,
-                                "default": model_id == "text-embedding-3-small",
+                                "default": model_id == OPENAI_DEFAULT_EMBEDDING_MODEL,
                             }
                         )
 
@@ -96,6 +72,19 @@ class ModelsService:
                 embedding_models.sort(
                     key=lambda x: (not x.get("default", False), x["value"])
                 )
+
+                if not language_models:
+                    logger.warning(
+                        "OpenAI API key is valid but no language models matched the validation list. "
+                        "The API returned %d models, none matched OPENAI_VALIDATION_MODELS. "
+                        "This may indicate a model naming scheme change.",
+                        len(models),
+                    )
+                if not embedding_models:
+                    logger.warning(
+                        "OpenAI API key is valid but no embedding models were found matching prefix '%s'.",
+                        OPENAI_EMBEDDING_MODEL_PREFIX,
+                    )
 
                 logger.info("OpenAI API key validated successfully without consuming credits")
                 return {
@@ -121,40 +110,45 @@ class ModelsService:
                 "Content-Type": "application/json",
             }
 
-            # Anthropic doesn't have a models list endpoint, so we'll validate the key
-            # and return our curated list of models
+            # Validate API key with lightweight models endpoint and return curated models
             async with httpx.AsyncClient() as client:
-                # Validate the API key with a minimal messages request
-                validation_payload = {
-                    "model": "claude-3-5-haiku-latest",
-                    "max_tokens": 1,
-                    "messages": [{"role": "user", "content": "test"}],
-                }
-
-                response = await client.post(
-                    "https://api.anthropic.com/v1/messages",
+                response = await client.get(
+                    "https://api.anthropic.com/v1/models",
                     headers=headers,
-                    json=validation_payload,
                     timeout=10.0,
                 )
 
             if response.status_code == 200:
-                # API key is valid, return our curated list
+                data = response.json()
+                models = data.get("data", [])
+
+                # Filter for curated Anthropic models (same pattern as OpenAI validation list)
                 language_models = []
 
-                for model_id in self.ANTHROPIC_MODELS:
-                    language_models.append(
-                        {
-                            "value": model_id,
-                            "label": model_id,
-                            "default": model_id == "claude-sonnet-4-5-20250929",
-                        }
-                    )
+                for model in models:
+                    model_id = model.get("id", "")
+
+                    if model_id in ANTHROPIC_VALIDATION_MODELS:
+                        language_models.append(
+                            {
+                                "value": model_id,
+                                "label": model_id,
+                                "default": model_id == ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
+                            }
+                        )
 
                 # Sort by default first, then by name
                 language_models.sort(
                     key=lambda x: (not x.get("default", False), x["value"])
                 )
+
+                if not language_models:
+                    logger.warning(
+                        "Anthropic API key is valid but no models matched the validation list. "
+                        "The API returned %d models, none matched ANTHROPIC_VALIDATION_MODELS. "
+                        "This may indicate a model naming scheme change.",
+                        len(models),
+                    )
 
                 return {
                     "language_models": language_models,
@@ -163,7 +157,7 @@ class ModelsService:
             else:
                 logger.error(f"Failed to validate Anthropic API key: {response.status_code}")
                 raise Exception(
-                    f"Anthropic API returned status code {response.status_code}"
+                    f"Anthropic API returned status code {response.status_code}, {response.text}"
                 )
 
         except Exception as e:
@@ -246,7 +240,8 @@ class ModelsService:
                                 {
                                     "value": model_name,
                                     "label": model_name,
-                                    "default": "gpt-oss" in model_name.lower(),
+                                    "default": OLLAMA_DEFAULT_LANGUAGE_MODEL_PATTERN
+                                    in model_name.lower(),
                                 }
                             )
                     except Exception as e:

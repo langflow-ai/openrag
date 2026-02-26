@@ -14,14 +14,12 @@ This page provides troubleshooting advice for issues you might encounter when us
 If you are installing OpenRAG on macOS, and the installation fails with `unable to get local issuer certificate`, run the following command, and then retry the installation:
 
 ```bash
-open "/Applications/Python VERSION/Install Certificates.command"
+open "/Applications/Python 3.13/Install Certificates.command"
 ```
-
-Replace `VERSION` with your installed Python version, such as `3.12`.
 
 ## No container runtime found
 
-When you start the TUI, a `No container runtime found` error indicates that OpenRAG cannot find a running Docker or Podman machine.
+When you start OpenRAG, a `No container runtime found` error indicates that OpenRAG cannot find a running Docker or Podman machine to run the OpenRAG containers.
 
 Make sure Docker or Podman is installed, available in the PATH, and a VM is running.
 
@@ -45,7 +43,7 @@ If you encounter container memory errors, try the following:
 
 * Use a CPU-only deployment to reduce memory usage.
 
-   For TUI-managed deployments, you can enable **CPU mode** on the TUI's **Status** page.
+   For terminal-managed deployments, you can enable **CPU mode** through the terminal's **Show Status** option.
 
    For self-managed deployments, CPU-only deployments use the `docker-compose.yml` file that doesn't have GPU overrides.
 
@@ -55,13 +53,13 @@ Check that the value of the `OPENSEARCH_PASSWORD` [environment variable](/refere
 
 If you need to change the password, you must [reset the OpenRAG services](/manage-services).
 
-## OpenRAG fails to start from the TUI with operation not supported
+## OpenRAG fails to start from the terminal with operation not supported
 
-This error occurs when starting OpenRAG with the TUI in [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
+This error occurs when starting OpenRAG with the terminal's **Start services** option while in the [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install).
 
 The error occurs because OpenRAG is running within a WSL environment, so `webbrowser.open()` can't launch a browser automatically.
 
-To access the OpenRAG application, open a web browser and enter `http://localhost:3000` in the address bar.
+To access the OpenRAG application, open a web browser, and then enter `http://localhost:3000` in the address bar.
 
 ## Application onboarding gets stuck or fails
 
@@ -191,7 +189,7 @@ For example, on macOS, this is typically a user cache directory, such as `~/.cac
 
 This cache can become stale, producing errors like missing dependencies.
 
-1. If the TUI is open, press <kbd>q</kbd> to exit the TUI.
+1. If an active OpenRAG terminal is running, select the **Exit** option to end the session.
 
 2. Clear the `uv` cache:
 
@@ -205,15 +203,17 @@ This cache can become stale, producing errors like missing dependencies.
    uv cache clean openrag
    ```
 
-3. Invoke OpenRAG to restart the TUI:
+3. Invoke OpenRAG to restart the terminal session and regenerate the cache:
 
    ```bash
    uvx openrag
    ```
 
-4. Click **Launch OpenRAG**, and then retry document ingestion.
+4. Select the **Start services** option to restart the OpenRAG containers.
 
-If you install OpenRAG with `uv`, dependencies are synced directly from your `pyproject.toml` file.
+5. Select the **Open OpenRAG in a browser** option, and then retry document ingestion.
+
+In contrast to `uvx`, if you install OpenRAG with `uv`, dependencies are synced directly from your `pyproject.toml` file.
 This should automatically install `easyocr` because `easyocr` is included as a dependency in OpenRAG's `pyproject.toml`.
 
 If you don't need OCR, you can disable OCR-based processing in your [ingestion settings](/ingestion-configure) to avoid requiring `easyocr`.
@@ -392,5 +392,5 @@ The following steps explain how to troubleshoot these issues with Fedora 43, Pod
    docker.io/ollama/ollama:latest
    ```
 
-12. Start the TUI, and then start OpenRAG with GPU mode enabled.
+12. In a terminal, run OpenRAG, and then start the OpenRAG services with GPU mode enabled.
 Or, for self-managed deployments, deploy OpenRAG with the `docker-compose-gpu.yml` file.

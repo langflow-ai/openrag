@@ -35,8 +35,8 @@ When you start OpenRAG, a local `docling serve` process starts, and then OpenRAG
    To use a remote `docling serve` instance or your own local instance, set `DOCLING_SERVE_URL=http://HOST_IP:5001` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings).
    The service must run on port 5001.
 
-   For TUI-managed deployments, The TUI warns you if `docling serve` isn't running or isn't detected by OpenRAG.
-   For information about starting and stopping OpenRAG services, see [Manage OpenRAG services](/manage-services).
+   For terminal-managed deployments, the OpenRAG terminal session can alert you if `docling serve` isn't running or isn't detected by OpenRAG.
+   You can also use the terminal's **Show status** option to [inspect and manage the OpenRAG services](/manage-services).
 
 * **Docling processor ingestion**: Instead of using a separate Docling Serve service and the Docling Serve API, you can use the Docling processor directly.
 To do this, set `DISABLE_INGEST_WITH_LANGFLOW=true` in your [OpenRAG `.env` file](/reference/configuration#document-processing-settings), and then [restart the OpenRAG services](/manage-services).
@@ -107,7 +107,7 @@ Files added to the host or container directory are visible in both locations.
 
 To change this location, modify either of the following, and then [restart the OpenRAG services](/manage-services):
 
-* The **Documents Paths** setting in the [**Basic/Advanced Setup** menu](/install-uvx#setup)
+* The **Documents Paths** setting in the [**Reconfigure** terminal option](/install-uvx#setup)
 * The `OPENRAG_DOCUMENTS_PATH` variable in the [OpenRAG `.env` file](/reference/configuration).
 
 ## See also

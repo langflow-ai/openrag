@@ -44,28 +44,37 @@ To enable multiple connectors, you must register an app and generate credentials
 ### Add OAuth credentials to OpenRAG
 
 <Tabs>
-<TabItem value="TUI" label="TUI-managed services" default>
+<TabItem value="TUI" label="Terminal-managed services" default>
 
-If you use the [Terminal User Interface (TUI)](/tui) to manage your OpenRAG services, enter OAuth credentials on the **Advanced Setup** page.
+If you use an [OpenRAG terminal session](/tui) to manage your OpenRAG services, enter OAuth credentials at the **Cloud connectors and advanced settings** prompt.
 You can do this during [installation](/install-uvx#setup), or you can add the credentials afterwards:
 
-1. If OpenRAG is running, click **Stop All Services** in the TUI.
+1. If OpenRAG is running, select the **Stop services** option in the terminal.
 
-2. Open the **Advanced Setup** page, and then add the OAuth credentials for the cloud storage providers that you want to use under **API Keys**:
+2. After the services stop, select the **Reconfigure** option.
+
+3. Accept the existing configuration for the admin passwords and AI provider prompts.
+
+4. At the **Cloud connectors and advanced settings** prompt, enter <kbd>Y</kbd>.
+
+5. At the relevant prompts, enter the OAuth credentials for the cloud storage providers that you want to use:
 
    <PartialOAuthCredentials />
 
-3. For each connector you configured, register the redirect URIs shown in the TUI in your OAuth apps.
+6. For each connector you configured, register the redirect URIs shown in the terminal in your OAuth apps.
 
    The redirect URIs are used for the cloud storage connector webhooks. For Google, the redirect URIs are also used to redirect users back to OpenRAG after they sign in.
 
-4. Optional: Under **Others**, set the **Webhook Base URL** to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
+7. Optional: Set the **Webhook Base URL** to the base address for your OAuth connector endpoints. If set, the OAuth connector webhook URLs are constructed as `WEBHOOK_BASE_URL/connectors/${provider}/webhook`. This option is required to enable automatic ingestion from cloud storage.
+Alternatively, you can use the default base URL.
 
-5. Click **Save Configuration** to add the OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
+8. Accept the existing configuration for the rest of the advanced settings until you see a `Configuration saved` message.
+OpenRAG saves your OAuth credentials to your [OpenRAG `.env` file](/reference/configuration).
 
-6. Click **Start Services** to restart the OpenRAG containers with the new configuration.
+9. At the `Start services now?` prompt, press <kbd>Y</kbd> to start the OpenRAG services with the new configuration.
 
-7. Launch the OpenRAG app.
+10. When you see the `Services are running` message, select the **Open OpenRAG in browser** option to launch the OpenRAG app.
+You can also manually navigate to `localhost:3000` in a browser
 
    If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
 

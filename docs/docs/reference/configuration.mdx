@@ -8,7 +8,7 @@ import PartialDockerComposeUp from '@site/docs/_partial-docker-compose-up.mdx';
 OpenRAG's `.env` file is the primary configuration file for OpenRAG.
 Environment variables in `.env` always take precedence over other sources.
 
-For deployments managed with the Terminal User Interface (TUI), this file is located at `~/.openrag/tui`, and it can be created automatically during [installation](/install-options).
+For deployments managed with an OpenRAG terminal session, this file is located at `~/.openrag/tui`, and it can be created automatically during [installation](/install-options).
 
 For [self-managed deployments](/docker), this file can be located at the root of your OpenRAG project directory or referenced from another location.
 
@@ -29,13 +29,13 @@ The only exceptions are flow-level Langflow settings, such as the language model
 ## Edit the `.env` file and apply configuration changes {#set-environment-variables}
 
 During [installation](/install-options), you prepare an initial `.env` file.
-For TUI-managed deployments, this file is created automatically.
+For terminal-managed deployments, this file is created automatically.
 For self-managed deployments, you create this file manually.
 
 After installation, you can edit the `.env` file to change your OpenRAG configuration.
 
 :::tip
-For TUI-managed deployments, many environment variables can be set in the TUI's  When you save the changes and restart the OpenRAG services, the `.env` is updated automatically.
+For terminal-managed deployments, many environment variables can be set through the **Reconfigure** option in the terminal session. The terminal session updates the `.env` file automatically.
 :::
 
 Most OpenRAG environment variables are mutable, and you can apply changes to these settings by [stopping and restarting the OpenRAG services](/manage-services) after editing the `.env` file.
@@ -98,7 +98,7 @@ For better security, it is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so t
 | `LANGFLOW_ENABLE_SUPERUSER_CLI` | Determined by `LANGFLOW_SUPERUSER_PASSWORD` | Whether to enable the [Langflow CLI `langflow superuser` command](https://docs.langflow.org/api-keys-and-authentication#langflow-enable-superuser-cli). If `LANGFLOW_SUPERUSER_PASSWORD` isn't set, then `LANGFLOW_ENABLE_SUPERUSER_CLI` is `True` and superuser accounts can be created with the Langflow CLI. If `LANGFLOW_SUPERUSER_PASSWORD` is set, then `LANGFLOW_ENABLE_SUPERUSER_CLI` is `False` and the `langflow superuser` command is disabled. |
 | `LANGFLOW_NEW_USER_IS_ACTIVE` | Determined by `LANGFLOW_SUPERUSER_PASSWORD` | Whether new [Langflow user accounts are active by default](https://docs.langflow.org/api-keys-and-authentication#langflow-new-user-is-active). If `LANGFLOW_SUPERUSER_PASSWORD` isn't set, then `LANGFLOW_NEW_USER_IS_ACTIVE` is `True` and new user accounts are active by default. If `LANGFLOW_SUPERUSER_PASSWORD` is set, then `LANGFLOW_NEW_USER_IS_ACTIVE` is `False` and new user accounts are inactive by default. |
 | `LANGFLOW_PORT` | `7860` | Host port for the Langflow service. Change this if port 7860 is already in use on your system. If you change this, you must also set `LANGFLOW_PUBLIC_URL` to the new port. |
-| `LANGFLOW_PUBLIC_URL` | `http://localhost:7860` | Public URL for the Langflow instance. Forms the base URL for Langflow API calls and other interfaces with your OpenRAG Langflow instance. Can also be set in the TUI's **Advanced Setup**. |
+| `LANGFLOW_PUBLIC_URL` | `http://localhost:7860` | Public URL for the Langflow instance. Forms the base URL for Langflow API calls and other interfaces with your OpenRAG Langflow instance. Can also be set in the terminal's **Reconfigure** option at the **Cloud connector and advanced settings** prompt. |
 | `LANGFLOW_SECRET_KEY` | Automatically generated | Secret encryption key for Langflow internal operations. It is recommended to [generate your own Langflow secret key](https://docs.langflow.org/api-keys-and-authentication#langflow-secret-key) for this variable. If this variable isn't set, then Langflow generates a secret key automatically.  |
 | `LANGFLOW_SUPERUSER` | `admin` | Username for the Langflow administrator user. |
 | `LANGFLOW_SUPERUSER_PASSWORD` | Not set | Langflow administrator password. If this variable isn't set, then the Langflow server starts _without_ authentication enabled. It is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so the [Langflow server starts with authentication enabled](https://docs.langflow.org/api-keys-and-authentication#start-a-langflow-server-with-authentication-enabled). |
@@ -116,6 +116,7 @@ For better security, it is recommended to set `LANGFLOW_SUPERUSER_PASSWORD` so t
 ## OAuth and cloud storage connector settings {#oauth-and-cloud-storage-connector-settings}
 
 Use these variables to enable OAuth mode and configure cloud storage connectors.
+You can also set these options through the terminal's **Reconfigure** option at the **Cloud connector and advanced settings** prompt.
 
 :::warning
 Additional configuration is required for these features.
@@ -127,7 +128,7 @@ For more information, see [Configure connectors](/knowledge-connectors).
 | `AWS_ACCESS_KEY_ID`<br/>`AWS_SECRET_ACCESS_KEY` | Not set | Authorize OpenRAG to ingest documents from AWS S3 with an [AWS OAuth app](https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-applications.html) integration. |
 | `GOOGLE_OAUTH_CLIENT_ID`<br/>`GOOGLE_OAUTH_CLIENT_SECRET` | Not set | Enable OAuth mode _and_ the Google Drive cloud storage connector with the [Google OAuth client](https://developers.google.com/identity/protocols/oauth2) integration. You can generate these values in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). |
 | `MICROSOFT_GRAPH_OAUTH_CLIENT_ID`<br/>`MICROSOFT_GRAPH_OAUTH_CLIENT_SECRET` | Not set | Enable the [Microsoft Graph OAuth client](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/graph-oauth) integration by providing [Azure application registration credentials for SharePoint and OneDrive](https://learn.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online). |
-| `WEBHOOK_BASE_URL` | Not set | Optional base URL for OAuth connector webhook endpoints. If not set, a default base URL is used. This variable is required to enable automatic cloud storage ingestion. Can also be set in the TUI's **Advanced Setup**. |
+| `WEBHOOK_BASE_URL` | Not set | Optional base URL for OAuth connector webhook endpoints. If not set, a default base URL is used. This variable is required to enable automatic cloud storage ingestion. |
 
 ## OpenSearch settings
 
@@ -136,7 +137,7 @@ Configure OpenSearch database authentication.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENSEARCH_DATA_PATH` | `./opensearch-data` | The path where OpenRAG creates your OpenSearch index data. This persists through updates. |
-| `OPENSEARCH_PASSWORD` | Not set | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the TUI's [**Basic/Advanced Setup**](/install-uvx#setup). |
+| `OPENSEARCH_PASSWORD` | Not set | Required. OpenSearch administrator password. Must adhere to the [OpenSearch password complexity requirements](https://docs.opensearch.org/latest/security/configuration/demo-configuration/#setting-up-a-custom-admin-password). You must set this directly in the `.env` or in the terminal's [**Configure/Reconfigure**](/install-uvx#setup) option. |
 | `OPENSEARCH_INDEX_NAME` | `documents` | The name of the [OpenSearch index](/knowledge#index). |
 | `OPENSEARCH_HOST` | `localhost` | OpenSearch service host. |
 | `OPENSEARCH_PORT` | `9200` | OpenSearch service port. |

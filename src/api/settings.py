@@ -413,12 +413,12 @@ async def update_settings(
                     endpoint = getattr(llm_provider_config, "endpoint", None)
                     project_id = getattr(llm_provider_config, "project_id", None)
 
-                    if getattr(body, f"{llm_provider}_api_key") is not None and getattr(body, f"{llm_provider}_api_key").strip():
-                        api_key = getattr(body, f"{llm_provider}_api_key")
-                    if getattr(body, f"{llm_provider}_endpoint") is not None:
-                        endpoint = getattr(body, f"{llm_provider}_endpoint")
-                    if getattr(body, f"{llm_provider}_project_id") is not None:
-                        project_id = getattr(body, f"{llm_provider}_project_id")
+                    if getattr(body, f"{llm_provider}_api_key", None) is not None and getattr(body, f"{llm_provider}_api_key", None).strip():
+                        api_key = getattr(body, f"{llm_provider}_api_key", None)
+                    if getattr(body, f"{llm_provider}_endpoint", None) is not None:
+                        endpoint = getattr(body, f"{llm_provider}_endpoint", None)
+                    if getattr(body, f"{llm_provider}_project_id", None) is not None:
+                        project_id = getattr(body, f"{llm_provider}_project_id", None)
 
                     await validate_provider_setup(
                         provider=llm_provider,
@@ -442,12 +442,12 @@ async def update_settings(
                     endpoint = getattr(embedding_provider_config, "endpoint", None)
                     project_id = getattr(embedding_provider_config, "project_id", None)
 
-                    if getattr(body, f"{embedding_provider}_api_key") is not None and getattr(body, f"{embedding_provider}_api_key").strip():
-                        api_key = getattr(body, f"{embedding_provider}_api_key")
-                    if getattr(body, f"{embedding_provider}_endpoint") is not None:
-                        endpoint = getattr(body, f"{embedding_provider}_endpoint")
-                    if getattr(body, f"{embedding_provider}_project_id") is not None:
-                        project_id = getattr(body, f"{embedding_provider}_project_id")
+                    if getattr(body, f"{embedding_provider}_api_key", None) is not None and getattr(body, f"{embedding_provider}_api_key", None).strip():
+                        api_key = getattr(body, f"{embedding_provider}_api_key", None)
+                    if getattr(body, f"{embedding_provider}_endpoint", None) is not None:
+                        endpoint = getattr(body, f"{embedding_provider}_endpoint", None)
+                    if getattr(body, f"{embedding_provider}_project_id", None) is not None:
+                        project_id = getattr(body, f"{embedding_provider}_project_id", None)
 
                     await validate_provider_setup(
                         provider=embedding_provider,
