@@ -20,6 +20,10 @@ If you installed OpenRAG with `uvx`, start a terminal session with `uvx openrag`
 
 ### Start a GUI terminal session
 
+:::important
+The GUI terminal (TUI) is required to access certain controls like **Factory Reset**, **GPU/CPU mode**, and **Upgrade**.
+:::
+
 For a GUI terminal experience, start OpenRAG with the `--tui` flag.
 
 The GUI terminal, also known as the Terminal User Interface (TUI), provides the same options as the CLI terminal session with added support for mouse navigation and button-like controls for a more visual and interactive experience.
@@ -34,17 +38,19 @@ A Docker or Podman VM must be running before you start OpenRAG.
 For example, on macOS with Podman, open the Podman Desktop app before you start OpenRAG.
 :::
 
-Use the terminal's **Start services** option to start the OpenRAG services.
+Use the terminal's **Start services** and **Stop services** options to start and stop the OpenRAG services.
 
-Use the terminal's **Show status** option to access controls and information for the OpenRAG services.
-
-For more information, see [Manage OpenRAG services](/manage-services).
+For more information and fine-grained controls, see [Manage OpenRAG services](/manage-services).
 
 ## Toggle GPU/CPU mode
 
-You can toggle between GPU and CPU mode from within the terminal session if your system has compatible GPU hardware and drivers installed.
+You can toggle between GPU and CPU mode if your system has compatible GPU hardware and drivers installed:
 
-In the terminal session, select the **Show status** option, and then select the **Switch to GPU Mode** or **Switch to CPU Mode** option.
+1. [Start the terminal session with `--tui`](#access-the-tui), such as `uv run openrag --tui`.
+
+2. Click **Status** in the TUI.
+
+3. Click **Switch to GPU Mode** or **Switch to CPU Mode**.
 
 This change requires restarting all OpenRAG services because each mode has its own `docker-compose` file.
 
@@ -55,6 +61,8 @@ This change requires restarting all OpenRAG services because each mode has its o
 ## Exit the OpenRAG terminal
 
 To exit the OpenRAG terminal session, select the **Exit** option from the terminal menu, or quit the process (<kbd>Cmd</kbd>+<kbd>C</kbd> on macOS).
+
+If you are using the TUI (`--tui`), you can press <kbd>q</kbd> to quit the TUI.
 
 Exiting the terminal session doesn't stop your OpenRAG services.
 Your OpenRAG services continue to run until they are stopped from within the terminal session or by another process that inadvertently stops them.

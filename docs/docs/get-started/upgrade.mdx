@@ -12,7 +12,7 @@ Use these steps to upgrade your OpenRAG deployment to the latest version or a sp
 ## Export customized flows before upgrading
 
 If you modified the built-in flows or created custom flows in your OpenRAG Langflow instance, [export your flows](https://docs.langflow.org/concepts-flows-import) before upgrading.
-This ensure that you won't lose your flows after upgrading, and you can reference the exported flows if there are any breaking changes in the new version.
+This ensures that you won't lose your flows after upgrading, and you can reference the exported flows if there are any breaking changes in the new version.
 
 ## Upgrade terminal-managed deployments
 
@@ -24,14 +24,15 @@ This is a two-part process because upgrading the OpenRAG Python package updates 
 
 <PartialExportFlows />
 
-2. To check for updates in the terminal session, select the **Show status** option, and then select the **Upgrade** option.
+2. To check for updates, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
 
-3. If there is an update available, select the **Stop services** option.
-You might need to exit the **Show status** submenu to access the **Stop services** option in the main menu.
+3. Click **Status** in the [TUI](/tui), and then click **Upgrade**.
 
-4. Exit the terminal session.
+4. If there is an update available, press <kbd>Esc</kbd> to close the **Status** page, then then click **Stop All Services**.
 
-5. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
+5. Press <kbd>q</kbd> to exit the TUI.
+
+6. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
 The commands to upgrade the package depend on how you installed OpenRAG.
 
    <Tabs>
@@ -114,7 +115,7 @@ The commands to upgrade the package depend on how you installed OpenRAG.
    </TabItem>
    </Tabs>
 
-6. In the OpenRAG terminal session, select the **Start services** option, and then wait while the services start.
+7. In the OpenRAG terminal session, select the **Start services** option, and then wait while the services start.
 
    When you start services, OpenRAG dictates the container version at runtime. It automatically sets the `OPENRAG_VERSION` variable in your `.env` file to match the currently installed OpenRAG Python package version.
    This ensures that your terminal and containers are always synchronized when using an OpenRAG terminal session to manage services.
@@ -122,7 +123,7 @@ The commands to upgrade the package depend on how you installed OpenRAG.
 
    If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
 
-7. After the containers start, select the **Open OpenRAG in browser** option.
+8. After the containers start, select the **Open OpenRAG in browser** option if the app doesn't launch automatically.
 
 ## Upgrade self-managed deployments
 

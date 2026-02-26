@@ -43,7 +43,7 @@ If you encounter container memory errors, try the following:
 
 * Use a CPU-only deployment to reduce memory usage.
 
-   For terminal-managed deployments, you can enable **CPU mode** through the terminal's **Show Status** option.
+   For terminal-managed deployments, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`. Then, click **Status** in the [TUI](/tui), and then click **Switch to CPU mode**.
 
    For self-managed deployments, CPU-only deployments use the `docker-compose.yml` file that doesn't have GPU overrides.
 
@@ -211,7 +211,7 @@ This cache can become stale, producing errors like missing dependencies.
 
 4. Select the **Start services** option to restart the OpenRAG containers.
 
-5. Select the **Open OpenRAG in a browser** option, and then retry document ingestion.
+5. Select the **Open OpenRAG in browser** option, and then retry document ingestion.
 
 In contrast to `uvx`, if you install OpenRAG with `uv`, dependencies are synced directly from your `pyproject.toml` file.
 This should automatically install `easyocr` because `easyocr` is included as a dependency in OpenRAG's `pyproject.toml`.

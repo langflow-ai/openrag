@@ -21,22 +21,26 @@ Destroyed containers and deleted data are lost and cannot be recovered after run
 
 <PartialExportFlows />
 
-2. In your OpenRAG terminal session, select the **Status** option, and then select the **Factory Reset** option to [reset your OpenRAG containers](/manage-services#reset-containers).
+2. [Start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui` or `uvx openrag --tui`.
+
+3. Click **Status** in the [TUI](/tui).
+
+4. Click **Factory Reset** to [reset your OpenRAG containers](/manage-services#reset-containers).
 
    <PartialFactorResetWarning />
 
-3. Exit the terminal session.
+5. Press <kbd>q</kbd> to quit the TUI.
 
-4. Optional: Delete or edit [OpenRAG's `.env` file](/reference/configuration), which is stored at `~/.openrag/tui`.
+6. Optional: Delete or edit [OpenRAG's `.env` file](/reference/configuration), which is stored at `~/.openrag/tui`.
 
    This file contains your OpenRAG configuration, including OpenRAG passwords, API keys, OAuth credentials, and other environment variables. If you delete this file, OpenRAG automatically generates a new one after you repeat the setup and onboarding process. If you preserve this file, OpenRAG can read values from the existing `.env` file during setup and onboarding.
 
-5. Optional: Remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
+7. Optional: Remove any files from the `~/.openrag/documents` subdirectory that you don't want to reingest after redeploying the containers.
 It is recommended that you preserve OpenRAG's [default documents](https://github.com/langflow-ai/openrag/tree/main/openrag-documents).
 
-6. Run OpenRAG with `uv run openrag` or `uvx openrag`.
+8. Run OpenRAG with `uv run openrag` or `uvx openrag`.
 
-7. Repeat the [setup process](/install-uvx#setup) to configure OpenRAG and restart all services.
+9. Repeat the [setup process](/install-uvx#setup) to configure OpenRAG and restart all services.
 Then, open OpenRAG in your browser and repeat the [application onboarding process](/install-uvx#application-onboarding).
 
 ## Reinstall self-managed containers with `docker compose` or `podman compose`

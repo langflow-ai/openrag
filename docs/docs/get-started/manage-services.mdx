@@ -24,7 +24,11 @@ For [self-managed deployments](/docker), run Docker or Podman commands to manage
 <Tabs>
 <TabItem value="TUI" label="Terminal-managed services" default>
 
-In the terminal session, select the **Show status** option to access diagnostics and controls for all OpenRAG services, including container health, ports, image versions, and streaming logs.
+In the terminal session, select the **Show status** option to access information about all OpenRAG services, including container health, ports, and image versions.
+
+For more information and options, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+Then, click **Status** to access controls to stop, start, or restart individual services.
+To view streaming logs, click the name of a service, and then press <kbd>l</kbd>.
 
 For the Docling native service, see [Stop, start, and inspect native services](#start-native-services).
 
@@ -43,9 +47,10 @@ For the Docling native service, see [Stop, start, and inspect native services](#
 <Tabs>
 <TabItem value="TUI" label="Terminal-managed services" default>
 
-In the terminal session, select the **Show status** option to stop, start, and restart OpenRAG's container-based services.
+In the terminal session, use the **Start services** and **Stop services** options to start or stop all OpenRAG services.
 
-You can also use the terminal's **Start services** option to start all services at once.
+For fine-grained controls, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+Then, click **Status** to access controls to stop, start, or restart individual services.
 
 :::tip
 A Docker or Podman VM must be running before you start OpenRAG.
@@ -65,7 +70,7 @@ When you restart or start services in the terminal session, the following proces
 </details>
 
 Alternatively, you can manually run the Docker/Podman commands to stop and start containers.
-Typically, this is only necessary if there is an error preventing the terminal session from managing the containers.
+Typically, this is only necessary if you don't want to use `--tui` or there is an error preventing the terminal session from managing the containers.
 
 * Stop all containers: [`docker compose down`](https://docs.docker.com/reference/cli/docker/compose/down/) or `podman compose down`
 * Start all containers: [`docker compose up -d`](https://docs.docker.com/reference/cli/docker/compose/up/) or `podman compose up -d`
@@ -92,12 +97,12 @@ A _native service_ in OpenRAG is a service that runs locally on your machine, no
 <Tabs>
 <TabItem value="TUI" label="Terminal-managed services" default>
 
-In the terminal session, select the **Show status** option to stop, start, restart, and inspect OpenRAG's native services.
+In the terminal session, select the **Show status** option to view the status, port, and process ID (PID) for OpenRAG's native services.
+Native services are started and stopped when you use the **Start services** and **Stop services** options.
 
-The **Native Services** section lists the status, port, and process ID (PID) for each native service.
-
-To manage a native service, select the option to **Stop**, **Start** or **Restart** that service.
-You can also view logs for native services.
+For more information and options, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+Then, click **Status** to access controls to stop, start, or restart individual services.
+To view streaming logs, click the name of a service, and then press <kbd>l</kbd>.
 
 </TabItem>
 <TabItem value="env" label="Self-managed services">
@@ -154,11 +159,13 @@ To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall O
 
 <PartialExportFlows />
 
-2. To destroy and recreate your OpenRAG containers, select the **Show status** option in the terminal session, and then select the **Factory Reset** option.
+2. To destroy and recreate your OpenRAG containers, [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
 
-3. Repeat the [setup process](/install-uvx#setup) to restart the services and launch the OpenRAG app. Your previous configuration, including credentials, are restored from the `.env` file.
+3. Click **Status** in the [TUI](/tui), and then click **Factory Reset**.
 
-4. If you exported customized flows, [import your flows](https://docs.langflow.org/concepts-flows-import) into Langflow after completing the onboarding process.
+4. Repeat the [setup process](/install-uvx#setup) to restart the services and launch the OpenRAG app. Your previous configuration, including credentials, are restored from the `.env` file.
+
+5. If you exported customized flows, [import your flows](https://docs.langflow.org/concepts-flows-import) into Langflow after completing the onboarding process.
 
 </TabItem>
 <TabItem value="env" label="Self-managed services">
@@ -186,7 +193,8 @@ To reset your OpenRAG deployment _and_ delete all OpenRAG data, see [Reinstall O
 
 Use image pruning to free up disk space by removing unused OpenRAG container images.
 
-For terminal-managed services, use the terminal's **Prune Images** option to clean up your OpenRAG container images.
+For terminal-managed services, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
+Then, use the **Prune Images** option to clean up your OpenRAG container images.
 You can choose to prune unused images only or all images.
 If you prune all images, the OpenRAG services are stopped, all images are pruned, and then the required images are pulled the next time you start the OpenRAG services.
 

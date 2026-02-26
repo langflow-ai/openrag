@@ -2,18 +2,20 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 
-1. In your OpenRAG terminal session, select the **Configure** option.
+The first time you install OpenRAG, the terminal session issues a series of prompts to guide you through the initial configuration.
 
-2. Enter an administrator password for the OpenSearch service.
+If OpenRAG detects an existing OpenRAG `.env` file, you might need to select the **Reconfigure** option in the terminal to access the configuration settings.
+
+1. Enter an administrator password for the OpenSearch service.
 
    This password is required, and a secure password is automatically generated if you don't provide one manually.
 
-3. Enter an administrator password for the Langflow service.
+2. Enter an administrator password for the Langflow service.
 
    This password is recommended but optional.
    If the Langflow password is empty, the Langflow server starts without authentication enabled. For more information, see [Langflow settings](/reference/configuration#langflow-settings).
 
-4. At the **AI providers** prompt, you can either enter your model provider credentials now, or press <kbd>Enter</kbd> to configure these options later during application onboarding.
+3. At the **AI providers** prompt, you can either enter your model provider credentials now, or press <kbd>Enter</kbd> to configure these options later during application onboarding.
 
    There is no material difference between providing these values now or during the [application onboarding process](#application-onboarding).
    If you provide a credential now, it can be populated automatically during the application onboarding process if you enable the **Use environment API key** option.
@@ -22,16 +24,16 @@ import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
    By default, OpenRAG uses OpenAI models.
    If you aren't sure which models or providers to use, you must provide an OpenAI API key to use OpenRAG's default model configuration.
 
-5. At the **Langfuse tracing** prompt, enter <kbd>Y</kbd> to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse); otherwise, enter <kbd>N</kbd>.
+4. At the **Langfuse tracing** prompt, enter <kbd>Y</kbd> to enable the [Langflow integration with Langfuse](https://docs.langflow.org/integrations-langfuse); otherwise, enter <kbd>N</kbd>.
 If you enter <kbd>Y</kbd>, provide the following Langfuse credentials:
 
    * **Langfuse Secret Key**: A secret key for your Langfuse project.
    * **Langfuse Public Key**: A public key for your Langfuse project.
    * **Langfuse Host**: Required for self-hosted Langfuse deployments. Leave empty for Langfuse Cloud.
 
-6. At the **Documents path** prompt, accept the default [local documents path](/ingestion-configure#set-the-local-documents-path), or provide a path to a directory where you want OpenRAG to look for documents to ingest into your [knowledge base](/knowledge).
+5. At the **Documents path** prompt, accept the default [local documents path](/ingestion-configure#set-the-local-documents-path), or provide a path to a directory where you want OpenRAG to look for documents to ingest into your [knowledge base](/knowledge).
 
-7. At the **Cloud connectors and advanced settings** prompt, enter <kbd>Y</kbd> if you want to configure any of the following additional settings; otherwise, enter <kbd>N</kbd>.
+6. At the **Cloud connectors and advanced settings** prompt, enter <kbd>Y</kbd> if you want to configure any of the following additional settings; otherwise, enter <kbd>N</kbd>.
 
    :::info
    You must configure advanced settings if you want to enable either OAuth mode or cloud storage connectors during initial set up:
@@ -63,7 +65,7 @@ If you enter <kbd>Y</kbd>, provide the following Langfuse credentials:
 
    * **Langflow Public URL** : Sets the base address to access the Langflow web interface where users interact with the Langflow editor in a browser. You must set this value if you want to run Langflow on a non-default port (`7860`)
 
-8. At the `Start services now?` prompt, press <kbd>Y</kbd> to start the OpenRAG services.
+7. At the `Start services now?` prompt, press <kbd>Y</kbd> to start the OpenRAG services.
 
    This process can take some time while OpenRAG pulls and runs the container images.
    If all services start successfully, the terminal prints a confirmation message:
@@ -77,7 +79,7 @@ If you enter <kbd>Y</kbd>, provide the following Langfuse credentials:
    If you modified any credentials that were pulled from an existing `.env` file, those values are updated in the `.env` file.
    :::
 
-9. Select the **Open OpenRAG in browser** option to launch the OpenRAG application and start the [application onboarding process](#application-onboarding).
+8. If the OpenRAG app doesn't launch automatically, select the **Open OpenRAG in browser** option to launch the OpenRAG app and start the [application onboarding process](#application-onboarding).
 You can also manually navigate to `localhost:3000` in a browser.
 
    If you provided Google OAuth credentials, you must sign in with Google before you are redirected to your OpenRAG instance.
