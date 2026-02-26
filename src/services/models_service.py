@@ -30,15 +30,26 @@ class ModelsService:
         "o4-mini-high",
     ]
 
+    # Current / Flagship (Claude 4.5 & 4.6 family)
     ANTHROPIC_MODELS = [
+        "claude-opus-4-6-20260205",
+        "claude-opus-4-5-20251101",
         "claude-sonnet-4-5-20250929",
+        "claude-haiku-4-5-20251001",
+        # Claude 4.0 / 4.1 family
         "claude-opus-4-1-20250805",
         "claude-opus-4-20250514",
         "claude-sonnet-4-20250514",
-        "claude-3-5-haiku-latest",
+        # Legacy (Claude 3.x)
+        "claude-3-7-sonnet-20250219",
+        "claude-3-5-sonnet-20241022",
         "claude-3-5-haiku-20241022",
+        "claude-3-5-sonnet-20240620",
         "claude-3-haiku-20240307",
     ]
+
+    # Cheapest model used only for API key validation (not exposed to users)
+    ANTHROPIC_VALIDATION_MODEL = "claude-haiku-4-5-20251001"
 
     def __init__(self):
         self.session_manager = None
@@ -126,7 +137,7 @@ class ModelsService:
             async with httpx.AsyncClient() as client:
                 # Validate the API key with a minimal messages request
                 validation_payload = {
-                    "model": "claude-3-5-haiku-latest",
+                    "model": self.ANTHROPIC_VALIDATION_MODEL,
                     "max_tokens": 1,
                     "messages": [{"role": "user", "content": "test"}],
                 }
@@ -147,7 +158,7 @@ class ModelsService:
                         {
                             "value": model_id,
                             "label": model_id,
-                            "default": model_id == "claude-sonnet-4-5-20250929",
+                            "default": model_id == "claude-opus-4-6-20260205",
                         }
                     )
 
