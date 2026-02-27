@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'pyproject.toml'
+      - 'sdks/python/pyproject.toml'
+      - 'sdks/mcp/pyproject.toml'
   workflow_dispatch:
 
 jobs:
@@ -30,15 +32,23 @@ jobs:
       - name: Update uv.lock
         run: uv sync
 
+      - name: Update sdks/python/uv.lock
+        working-directory: sdks/python
+        run: uv sync
+
+      - name: Update sdks/mcp/uv.lock
+        working-directory: sdks/mcp
+        run: uv sync
+
       - name: Check for changes
         id: changes
         run: |
-          if git diff --quiet uv.lock; then
+          if git diff --quiet uv.lock sdks/python/uv.lock sdks/mcp/uv.lock; then
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "No changes to uv.lock"
+            echo "No changes to uv.lock files"
           else
             echo "changed=true" >> $GITHUB_OUTPUT
-            echo "uv.lock has been updated"
+            echo "uv.lock files have been updated"
           fi
 
       - name: Commit and push uv.lock
@@ -46,7 +56,7 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add uv.lock
-          git commit -m "chore: update uv.lock after version bump [skip ci]"
+          git add uv.lock sdks/python/uv.lock sdks/mcp/uv.lock
+          git commit -m "chore: update uv.lock files after version bump [skip ci]"
           git push
 

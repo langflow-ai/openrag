@@ -12,25 +12,27 @@ Use these steps to upgrade your OpenRAG deployment to the latest version or a sp
 ## Export customized flows before upgrading
 
 If you modified the built-in flows or created custom flows in your OpenRAG Langflow instance, [export your flows](https://docs.langflow.org/concepts-flows-import) before upgrading.
-This ensure that you won't lose your flows after upgrading, and you can reference the exported flows if there are any breaking changes in the new version.
+This ensures that you won't lose your flows after upgrading, and you can reference the exported flows if there are any breaking changes in the new version.
 
-## Upgrade TUI-managed deployments
+## Upgrade terminal-managed deployments
 
 To upgrade OpenRAG, you need to upgrade the OpenRAG Python package, and then upgrade the OpenRAG containers.
 
 Upgrading the Python package also upgrades Docling by bumping the dependency in `pyproject.toml`.
 
-This is a two-part process because upgrading the OpenRAG Python package updates the Terminal User Interface (TUI) and Python code, but the container versions are controlled by environment variables in your [OpenRAG `.env` file](/reference/configuration).
+This is a two-part process because upgrading the OpenRAG Python package updates the OpenRAG terminal and Python code, but the container versions are controlled by environment variables in your [OpenRAG `.env` file](/reference/configuration).
 
 <PartialExportFlows />
 
-2. To check for updates, click **Status** in the TUI, and then click **Upgrade**.
+2. To check for updates, you must [start the terminal session with `--tui`](/tui#access-the-tui), such as `uv run openrag --tui`.
 
-3. If there is an update available, press <kbd>Esc</kbd> to close the **Status** page, then then click **Stop All Services**.
+3. Click **Status** in the [TUI](/tui), and then click **Upgrade**.
 
-4. Press <kbd>q</kbd> to exit the TUI.
+4. If there is an update available, press <kbd>Esc</kbd> to close the **Status** page, then then click **Stop All Services**.
 
-5. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
+5. Press <kbd>q</kbd> to exit the TUI.
+
+6. Upgrade the OpenRAG Python package to the latest version from [PyPI](https://pypi.org/project/openrag/).
 The commands to upgrade the package depend on how you installed OpenRAG.
 
    <Tabs>
@@ -79,7 +81,7 @@ The commands to upgrade the package depend on how you installed OpenRAG.
       uv add --upgrade openrag==0.1.33
       ```
 
-   3. Start the OpenRAG TUI:
+   3. Start the OpenRAG terminal session:
 
       ```bash
       uv run openrag
@@ -104,7 +106,7 @@ The commands to upgrade the package depend on how you installed OpenRAG.
       uv pip install --upgrade openrag==0.1.33
       ```
 
-   3. Start the OpenRAG TUI:
+   3. Start the OpenRAG terminal session:
 
       ```bash
       uv run openrag
@@ -113,19 +115,15 @@ The commands to upgrade the package depend on how you installed OpenRAG.
    </TabItem>
    </Tabs>
 
-6. In the OpenRAG TUI, click **Start Services**, and then wait while the services start.
+7. In the OpenRAG terminal session, select the **Start services** option, and then wait while the services start.
 
-   When you start services, the TUI dictates the container version at runtime. It overrides the `OPENRAG_VERSION` variable in your `.env` file to match the currently installed OpenRAG Python package version.
-   
-   This ensures that your TUI and containers are always synchronized when using the TUI to manage services.
-   
-   :::tip
-   If you want to use a specific container version different from your TUI version, you must use manual `docker compose` or `make` commands instead of the TUI, or you can downgrade your Python package version.
-   :::
+   When you start services, OpenRAG dictates the container version at runtime. It automatically sets the `OPENRAG_VERSION` variable in your `.env` file to match the currently installed OpenRAG Python package version.
+   This ensures that your terminal and containers are always synchronized when using an OpenRAG terminal session to manage services.
+   If you want to use a specific container version that is different from your terminal version, you must use the self-managed deployment commands.
 
    If you get an error that `langflow container already exists` error during upgrade, see [Langflow container already exists during upgrade](/support/troubleshoot#langflow-container-already-exists-during-upgrade).
 
-7. After the containers start, click **Close**, and then click **Launch OpenRAG**.
+8. After the containers start, select the **Open OpenRAG in browser** option if the app doesn't launch automatically.
 
 ## Upgrade self-managed deployments
 
@@ -144,10 +142,9 @@ The commands to upgrade the package depend on how you installed OpenRAG.
    ```
 
    By default, OpenRAG's `docker-compose` files pull the latest container images.
-   However, you can pin the `OPENRAG_VERSION` in your `.env` file to a specific version tag.
-      
-   If you run OpenRAG using `make` commands or manual `docker compose` commands, the `OPENRAG_VERSION` variable is used exactly as defined in the `.env` file.
-   This allows you to pin the deployment to a specific version when managing the services manually.
+   To use a specific earlier version, you set `OPENRAG_VERSION` in your `.env` file to the desired image tag, and then run OpenRAG with `docker compose`, `podman compose`, or [`make`](/support/contribute) commands.
+   Overriding the `OPENRAG_VERSION` is only possible with self-managed deployments.
+   This allows you to pin your OpenRAG containers to a specific version rather than deploying the latest version.
 
 3. After the containers start, access the OpenRAG application at `http://localhost:3000`.
 

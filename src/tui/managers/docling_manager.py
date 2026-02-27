@@ -287,17 +287,20 @@ class DoclingManager:
                 f.write('opencv-python ; python_version < "0"\n')
 
         try:
-            ocr_pkg = "ocrmac" if sys.platform == "darwin" else "easyocr"
+            docling_extras = "ocrmac,easyocr,rapidocr,vlm" if sys.platform == "darwin" else "easyocr,rapidocr,vlm"
 
             cmd = [
                 "uvx",
-                "--with",
-                ocr_pkg,
+                "--from", "docling-serve[ui]==1.5.0",
+                "--with", "onnxruntime",
+                "--with", "easyocr",
+                "--with", f"docling[{docling_extras}]",
+                "--with", "docling-core==2.48.1",
             ]
             if override_path:
                 cmd += ["--override", override_path, "--with", "opencv-python-headless"]
             cmd += [
-                "docling-serve==1.5.0",
+                "docling-serve",
                 "run",
                 "--host",
                 self._host,

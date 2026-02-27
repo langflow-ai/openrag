@@ -1,29 +1,36 @@
 ---
-title: Use the TUI
+title: Use the OpenRAG terminal
 slug: /tui
 ---
 
 import PartialGpuModeTip from '@site/docs/_partial-gpu-mode-tip.mdx';
 
-The OpenRAG Terminal User Interface (TUI) provides a simplified and guided experience for configuring, managing, and monitoring your OpenRAG deployment directly from the terminal.
+The OpenRAG terminal session provides a simplified and guided experience for configuring, managing, and monitoring your OpenRAG deployment directly from the terminal.
 
-![OpenRAG TUI Interface](@site/static/img/openrag_tui_dec_2025.png)
-
-If you install OpenRAG with [`uv`](/install-uv) or [`uvx`](/install-uvx), you use the TUI to manage your OpenRAG deployment.
-The TUI guides you through the initial setup, automatically manages your OpenRAG `.env` and `docker-compose` files, and provides convenient access to [service management](/manage-services) controls.
+If you install OpenRAG with [`uv`](/install-uv) or [`uvx`](/install-uvx), you use an OpenRAG terminal session to manage your OpenRAG deployment.
+The terminal session guides you through the initial setup, automatically manages your OpenRAG `.env` and `docker-compose` files, and provides convenient access to [service management](/manage-services) controls.
 
 In contrast, when you [deploy OpenRAG with self-managed services](/docker), you must manually configure OpenRAG by preparing a `.env` file, and then use Docker or Podman commands to deploy and manage your OpenRAG services.
 
-## Access the TUI {#access-the-tui}
+## Start a terminal session {#access-the-tui}
 
-If you installed OpenRAG with `uv`, access the TUI with `uv run openrag`.
+If you installed OpenRAG with `uv`, start a terminal session with `uv run openrag`.
 
-If you installed OpenRAG with `uvx`, access the TUI with `uvx openrag`.
+If you installed OpenRAG with `uvx`, start a terminal session with `uvx openrag`.
 
-You can navigate the TUI with your mouse or keyboard.
-Keyboard shortcuts for additional menus are printed at the bottom of the TUI screen.
+### Start a GUI terminal session
 
-## Manage services with the TUI
+:::important
+The GUI terminal (TUI) is required to access certain controls like **Factory Reset**, **GPU/CPU mode**, and **Upgrade**.
+:::
+
+For a GUI terminal experience, start OpenRAG with the `--tui` flag.
+
+The GUI terminal, also known as the Terminal User Interface (TUI), provides the same options as the CLI terminal session with added support for mouse navigation and button-like controls for a more visual and interactive experience.
+
+![OpenRAG TUI Interface](@site/static/img/openrag_tui_dec_2025.png)
+
+## Manage services with the terminal
 
 :::tip
 A Docker or Podman VM must be running before you start OpenRAG.
@@ -31,17 +38,19 @@ A Docker or Podman VM must be running before you start OpenRAG.
 For example, on macOS with Podman, open the Podman Desktop app before you start OpenRAG.
 :::
 
-In the TUI, click **Start OpenRAG** to start the OpenRAG services.
+Use the terminal's **Start services** and **Stop services** options to start and stop the OpenRAG services.
 
-Use the TUI's **Status** page to access controls and information for your OpenRAG services.
-
-For more information, see [Manage OpenRAG services](/manage-services).
+For more information and fine-grained controls, see [Manage OpenRAG services](/manage-services).
 
 ## Toggle GPU/CPU mode
 
-You can toggle between GPU and CPU mode from within the TUI if your system has compatible GPU hardware and drivers installed.
+You can toggle between GPU and CPU mode if your system has compatible GPU hardware and drivers installed:
 
-In the TUI, click **Status**, and then click **Switch to GPU Mode** or **Switch to CPU Mode**.
+1. [Start the terminal session with `--tui`](#access-the-tui), such as `uv run openrag --tui`.
+
+2. Click **Status** in the TUI.
+
+3. Click **Switch to GPU Mode** or **Switch to CPU Mode**.
 
 This change requires restarting all OpenRAG services because each mode has its own `docker-compose` file.
 
@@ -49,11 +58,13 @@ This change requires restarting all OpenRAG services because each mode has its o
 <PartialGpuModeTip />
 :::
 
-## Exit the OpenRAG TUI
+## Exit the OpenRAG terminal
 
-To exit the OpenRAG TUI, press <kbd>q</kbd> on the TUI main page.
+To exit the OpenRAG terminal session, select the **Exit** option from the terminal menu, or quit the process (<kbd>Cmd</kbd>+<kbd>C</kbd> on macOS).
 
-Exiting the TUI doesn't stop your OpenRAG services.
-Your OpenRAG services continue to run until they are stopped from within the TUI or by another process that inadvertently stops them.
+If you are using the TUI (`--tui`), you can press <kbd>q</kbd> to quit the TUI.
 
-To restart the TUI, see [Access the TUI](#access-the-tui).
+Exiting the terminal session doesn't stop your OpenRAG services.
+Your OpenRAG services continue to run until they are stopped from within the terminal session or by another process that inadvertently stops them.
+
+To restart the terminal session, see [Start a terminal session](#access-the-tui).

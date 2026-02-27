@@ -1,13 +1,13 @@
-# OpenRAG Development Makefile
-# Provides easy commands for development workflow
+# Environment file location (can be overridden via command line)
+ENV_FILE ?= .env
 
-# Load variables from .env if present so `make` commands pick them up
+# Load variables from $(ENV_FILE) if present so `make` commands pick them up
 # Strip quotes from values to avoid issues with tools that don't handle them like python-dotenv does
-ifneq (,$(wildcard .env))
-  include .env
-  export $(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env)
+ifneq (,$(wildcard $(ENV_FILE)))
+  include $(ENV_FILE)
+  export $(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' $(ENV_FILE))
   # Strip single quotes from all exported variables
-  $(foreach var,$(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env),$(eval $(var):=$(shell echo $($(var)) | sed "s/^'//;s/'$$//")))
+  $(foreach var,$(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' $(ENV_FILE)),$(eval $(var):=$(shell echo $($(var)) | sed "s/^'//;s/'$$//")))
 endif
 
 hostname ?= 0.0.0.0
@@ -19,7 +19,12 @@ REPO ?= https://github.com/langflow-ai/langflow.git
 
 # Auto-detect container runtime: prefer docker, fall back to podman
 CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
-COMPOSE_CMD := $(CONTAINER_RUNTIME) compose
+# Only pass --env-file if the file actually exists
+ifneq (,$(wildcard $(ENV_FILE)))
+  COMPOSE_CMD := $(CONTAINER_RUNTIME) compose --env-file $(ENV_FILE)
+else
+  COMPOSE_CMD := $(CONTAINER_RUNTIME) compose
+endif
 
 ######################
 # COLOR DEFINITIONS
@@ -458,10 +463,13 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
 	echo "  - Remove local OpenRAG images"; \
 	echo ""; \
-	read -p "Are you sure? Type 'yes' to continue: " confirm; \
-	if [ "$$confirm" != "yes" ]; then \
-		echo "$(CYAN)Factory reset cancelled.$(NC)"; \
-		exit 0; \
+	echo ""; \
+	if [ "$(FORCE)" != "true" ]; then \
+		read -p "Are you sure? Type 'yes' to continue: " confirm; \
+		if [ "$$confirm" != "yes" ]; then \
+			echo "$(CYAN)Factory reset cancelled.$(NC)"; \
+			exit 0; \
+		fi; \
 	fi; \
 	echo ""; \
 	echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
@@ -472,7 +480,6 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 		uv run python scripts/clear_opensearch_data.py 2>/dev/null || \
 		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/opensearch-data:/data" alpine sh -c "rm -rf /data/*" 2>/dev/null || \
 		rm -rf opensearch-data/* 2>/dev/null || true; \
-		rm -rf opensearch-data 2>/dev/null || true; \
 		echo "$(PURPLE)opensearch-data removed$(NC)"; \
 	fi; \
 	if [ -d "config" ]; then \
@@ -497,7 +504,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 
 backend: ## Run backend locally
 	@echo "$(YELLOW)Starting backend locally...$(NC)"
-	@if [ ! -f .env ]; then echo "$(RED).env file not found. Copy .env.example to .env first$(NC)"; exit 1; fi
+	@if [ ! -f $(ENV_FILE) ]; then echo "$(RED)$(ENV_FILE) file not found. Copy .env.example to it first$(NC)"; exit 1; fi
 	uv run python src/main.py
 
 frontend: ## Run frontend locally
@@ -671,16 +678,20 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 		sleep 2; \
 	done; \
 	echo "$(YELLOW)Verifying OIDC authenticator is active in OpenSearch...$(NC)"; \
-	AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null); \
-	if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
-		echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
-		echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
-	else \
-		echo "$(RED)OIDC authenticator NOT found in security config!$(NC)"; \
-		echo "Security config:"; \
-		echo "$$AUTHC_CONFIG" | head -50; \
-		exit 1; \
-	fi; \
+	for i in $$(seq 1 30); do \
+		AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null || true); \
+		if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
+			echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
+			echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then \
+			echo "$(RED)OIDC authenticator NOT found or unreachable in time!$(NC)"; \
+			echo "Security config output: $$AUTHC_CONFIG"; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done; \
 	echo "$(YELLOW)Waiting for Langflow...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
@@ -783,16 +794,20 @@ test-ci-local: ## Same as test-ci but builds all images locally
 		sleep 2; \
 	done; \
 	echo "$(YELLOW)Verifying OIDC authenticator is active in OpenSearch...$(NC)"; \
-	AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null); \
-	if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
-		echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
-		echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
-	else \
-		echo "$(RED)OIDC authenticator NOT found in security config!$(NC)"; \
-		echo "Security config:"; \
-		echo "$$AUTHC_CONFIG" | head -50; \
-		exit 1; \
-	fi; \
+	for i in $$(seq 1 30); do \
+		AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null || true); \
+		if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
+			echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
+			echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then \
+			echo "$(RED)OIDC authenticator NOT found or unreachable in time!$(NC)"; \
+			echo "Security config output: $$AUTHC_CONFIG"; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done; \
 	echo "$(YELLOW)Waiting for Langflow...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
