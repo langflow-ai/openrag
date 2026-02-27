@@ -1,4 +1,4 @@
-from utils import OPENRAG_VERSION
+from utils.version_utils import OPENRAG_VERSION
 import asyncio
 import atexit
 import os
