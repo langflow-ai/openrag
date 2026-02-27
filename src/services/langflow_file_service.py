@@ -93,16 +93,6 @@ class LangflowFileService:
         # Pass files via tweaks to File component (File-PSU37 from the flow)
         if file_paths:
             tweaks["DoclingRemote-Dp3PX"] = {"path": file_paths}
-            
-
-
-        # Pass JWT token via tweaks using the x-langflow-global-var- pattern
-        if jwt_token:
-            # Using the global variable pattern that Langflow expects for OpenSearch components
-            tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"] = {"jwt_token": jwt_token}
-            logger.debug("[LF] Added JWT token to tweaks for OpenSearch components")
-        else:
-            logger.warning("[LF] No JWT token provided")
 
         # Pass metadata via tweaks to OpenSearch component
         metadata_tweaks = []
@@ -115,14 +105,7 @@ class LangflowFileService:
         if connector_type:
             metadata_tweaks.append({"key": "connector_type", "value": connector_type})
         logger.info(f"[LF] Metadata tweaks {metadata_tweaks}")
-        # if metadata_tweaks:
-        #     # Initialize the OpenSearch component tweaks if not already present
-        #     if "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4" not in tweaks:
-        #         tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"] = {}
-        #     tweaks["OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4"]["docs_metadata"] = metadata_tweaks
-        #     logger.debug(
-        #         "[LF] Added metadata to tweaks", metadata_count=len(metadata_tweaks)
-        #     )
+
         if tweaks:
             payload["tweaks"] = tweaks
             logger.debug(f"[LF] Tweaks {tweaks}")

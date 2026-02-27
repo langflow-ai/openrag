@@ -1192,6 +1192,12 @@ async def _update_langflow_global_variables(config):
             )
             logger.info("Set WATSONX_PROJECT_ID global variable in Langflow")
 
+        if config.providers.watsonx.endpoint:
+            await clients._create_langflow_global_variable(
+                "WATSONX_URL", config.providers.watsonx.endpoint, modify=True
+            )
+            logger.info("Set WATSONX_URL global variable in Langflow")
+
         # OpenAI global variables
         if config.providers.openai.api_key:
             await clients._create_langflow_global_variable(
@@ -1269,13 +1275,10 @@ async def _update_langflow_model_values(config, flows_service):
     try:
         # Update LLM model values
         llm_provider = config.agent.llm_provider.lower()
-        llm_provider_config = config.get_llm_provider_config()
-        llm_endpoint = getattr(llm_provider_config, "endpoint", None)
 
         await flows_service.change_langflow_model_value(
             llm_provider,
             llm_model=config.agent.llm_model,
-            endpoint=llm_endpoint,
         )
         logger.info(
             f"Successfully updated Langflow flows for LLM provider {llm_provider}"
@@ -1283,13 +1286,10 @@ async def _update_langflow_model_values(config, flows_service):
 
         # Update embedding model values
         embedding_provider = config.knowledge.embedding_provider.lower()
-        embedding_provider_config = config.get_embedding_provider_config()
-        embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
 
         await flows_service.change_langflow_model_value(
             embedding_provider,
             embedding_model=config.knowledge.embedding_model,
-            endpoint=embedding_endpoint,
         )
         logger.info(
             f"Successfully updated Langflow flows for embedding provider {embedding_provider}"

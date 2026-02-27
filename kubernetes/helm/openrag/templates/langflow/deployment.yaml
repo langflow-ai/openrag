@@ -256,7 +256,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "openrag.fullname" . }}-llm-providers
                   key: watsonx-api-key
-            - name: WATSONX_ENDPOINT
+            - name: WATSONX_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "openrag.fullname" . }}-llm-providers
@@ -269,7 +269,7 @@ spec:
             {{- else }}
             - name: WATSONX_API_KEY
               value: "None"
-            - name: WATSONX_ENDPOINT
+            - name: WATSONX_URL
               value: "None"
             - name: WATSONX_PROJECT_ID
               value: "None"
