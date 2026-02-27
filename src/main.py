@@ -1,3 +1,4 @@
+from tui import get_current_version
 import asyncio
 import atexit
 import os
@@ -702,7 +703,7 @@ async def create_app():
     """Create and configure the FastAPI application"""
     services = await initialize_services()
 
-    app = FastAPI(title="OpenRAG API", version="0.2.4", debug=True)
+    app = FastAPI(title="OpenRAG API", version=get_current_version(), debug=True)
     app.state.services = services  # Store services for cleanup
     app.state.background_tasks = set()
 
