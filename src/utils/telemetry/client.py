@@ -1,6 +1,6 @@
 """Telemetry client for OpenRAG backend using Scarf."""
 
-from main import OPENRAG_VERSION
+from utils import OPENRAG_VERSION
 import asyncio
 import os
 import platform
