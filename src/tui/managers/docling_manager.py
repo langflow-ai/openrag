@@ -295,6 +295,7 @@ class DoclingManager:
                 "--with", "onnxruntime",
                 "--with", "easyocr",
                 "--with", f"docling[{docling_extras}]",
+                "--with", "docling-core==2.48.1",
             ]
             if override_path:
                 cmd += ["--override", override_path, "--with", "opencv-python-headless"]
