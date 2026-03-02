@@ -1,3 +1,4 @@
+from utils.version_utils import OPENRAG_VERSION
 import asyncio
 import atexit
 import os
@@ -77,7 +78,6 @@ logger = get_logger(__name__)
 
 # Files to exclude from startup ingestion
 EXCLUDED_INGESTION_FILES = {"warmup_ocr.pdf"}
-
 
 async def wait_for_opensearch():
     """Wait for OpenSearch to be ready, delegating to the shared utility."""
@@ -689,7 +689,7 @@ async def create_app():
     """Create and configure the FastAPI application"""
     services = await initialize_services()
 
-    app = FastAPI(title="OpenRAG API", version="0.2.4", debug=True)
+    app = FastAPI(title="OpenRAG API", version=OPENRAG_VERSION, debug=True)
     app.state.services = services  # Store services for cleanup
     app.state.background_tasks = set()
 

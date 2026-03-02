@@ -17,11 +17,18 @@ If you are installing OpenRAG on macOS, and the installation fails with `unable 
 open "/Applications/Python 3.13/Install Certificates.command"
 ```
 
-## No container runtime found
+## No container runtime found, or Docker/Podman not ready
 
-When you start OpenRAG, a `No container runtime found` error indicates that OpenRAG cannot find a running Docker or Podman machine to run the OpenRAG containers.
+When you start OpenRAG, `No container runtime found` and `Docker/Podman not ready` errors indicate that OpenRAG cannot find or start a running Docker or Podman machine to run the OpenRAG containers.
 
-Make sure Docker or Podman is installed, available in the PATH, and a VM is running.
+Before starting OpenRAG, do the following:
+
+1. Install Docker or Podman as well as docker-compose or podman-compose.
+2. Make sure Docker or Podman is available in the PATH.
+3. Unless you are running OpenRAG with a Linux-based VM, such as a Linux-based [WSL](/install-windows) image, start the container VM.
+Either run `podman machine start` or a similar command, or start the Docker/Podman Desktop app.
+
+For Linux environments, you can find more troubleshooting advice in the [Podman installation documentation](https://podman.io/docs/installation#installing-on-linux) and the [Docker installation documentation](https://docs.docker.com/engine/install/).
 
 ## Container out of memory errors {#container-out-of-memory-errors}
 
