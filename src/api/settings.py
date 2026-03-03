@@ -1121,7 +1121,7 @@ async def _create_openrag_docs_filter(
         return None
 
     # Get JWT token
-        jwt_token = user.jwt_token
+    jwt_token = user.jwt_token
 
     # In no-auth mode, set owner to None so filter is visible to all users
     # In auth mode, use the actual user as owner
@@ -1517,6 +1517,7 @@ async def rollback_onboarding(
 
         # Mark config as not edited so user can go through onboarding again
         current_config.edited = False
+        current_config.onboarding.current_step = 0
 
         # Save the rolled back configuration manually to avoid save_config_file setting edited=True
         try:
