@@ -3,7 +3,10 @@ import { motion } from "motion/react";
 import DogIcon from "@/components/icons/dog-icon";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { cn } from "@/lib/utils";
-import type { FunctionCall, TokenUsage as TokenUsageType } from "../_types/types";
+import type {
+  FunctionCall,
+  TokenUsage as TokenUsageType,
+} from "../_types/types";
 import { FunctionCalls } from "./function-calls";
 import { Message } from "./message";
 import { TokenUsage } from "./token-usage";

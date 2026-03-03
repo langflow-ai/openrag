@@ -1,6 +1,8 @@
 "use client";
 
+import { AlertTriangle } from "lucide-react";
 import React, { ReactNode } from "react";
+import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,8 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
-import { Button } from "./ui/button";
-import { AlertTriangle } from "lucide-react";
 
 /**
  * Formats a list of files to be deleted, truncating if necessary.
@@ -26,10 +26,19 @@ export function formatFilesToDelete(
   const remainingCount = files.length - maxVisible;
   return (
     <ul className="list-disc list-inside max-w-[29rem] sm:max-w-[calc(425px-3rem)]">
-      {visibleFiles.map((file) => <li className="my-2 truncate">{file.filename}</li>)}
-      {remainingCount > 0 ? <li>&hellip; and {remainingCount} more document{
-        remainingCount > 1 ? "s" : ""
-      }</li> : "" }
+      {visibleFiles.map((file) => (
+        <li key={file.filename} className="my-2 truncate">
+          {file.filename}
+        </li>
+      ))}
+      {remainingCount > 0 ? (
+        <li>
+          &hellip; and {remainingCount} more document
+          {remainingCount > 1 ? "s" : ""}
+        </li>
+      ) : (
+        ""
+      )}
     </ul>
   );
 }
@@ -84,9 +93,7 @@ export const DeleteConfirmationDialog: React.FC<
           </div>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <div className="text-sm text-muted-foreground">
-          {children}
-        </div>
+        <div className="text-sm text-muted-foreground">{children}</div>
         <DialogFooter>
           <Button
             type="button"

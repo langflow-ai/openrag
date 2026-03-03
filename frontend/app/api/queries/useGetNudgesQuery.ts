@@ -30,12 +30,14 @@ export const useGetNudgesQuery = (
   const { chatId, filters, limit, scoreThreshold } = params ?? {};
   const queryClient = useQueryClient();
   const { isOnboardingComplete } = useChat();
-  
+
   // Check if LLM provider is healthy
   // If health data is not available yet, assume healthy (optimistic)
   // Only disable if health data exists and shows LLM error
   const { data: health } = useProviderHealthQuery();
-  const isLLMHealthy = health === undefined || (health?.status === "healthy" && !health?.llm_error);
+  const isLLMHealthy =
+    health === undefined ||
+    (health?.status === "healthy" && !health?.llm_error);
 
   function cancel() {
     queryClient.removeQueries({
@@ -43,7 +45,9 @@ export const useGetNudgesQuery = (
     });
   }
 
-  async function getNudges(context: { signal?: AbortSignal }): Promise<Nudge[]> {
+  async function getNudges(context: {
+    signal?: AbortSignal;
+  }): Promise<Nudge[]> {
     try {
       const requestBody: {
         filters?: NudgeFilters;
@@ -78,7 +82,7 @@ export const useGetNudgesQuery = (
       return DEFAULT_NUDGES;
     } catch (error) {
       // Ignore abort errors - these are expected when requests are cancelled
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (error instanceof Error && error.name === "AbortError") {
         return DEFAULT_NUDGES;
       }
       console.error("Error getting nudges", error);
@@ -96,7 +100,7 @@ export const useGetNudgesQuery = (
       queryKey: ["nudges", chatId, filters, limit, scoreThreshold],
       queryFn: getNudges,
       staleTime: 10000, // Consider data fresh for 10 seconds to prevent rapid refetching
-      networkMode: 'always', // Ensure requests can be cancelled
+      networkMode: "always", // Ensure requests can be cancelled
       refetchOnMount: false, // Don't refetch on every mount
       refetchOnWindowFocus: false, // Don't refetch when window regains focus
       refetchInterval: (query) => {

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 test("has onboarding content", async ({ page }) => {
   // Go to the base URL (frontend)
@@ -8,5 +8,7 @@ test("has onboarding content", async ({ page }) => {
   await expect(page).toHaveTitle(/OpenRAG/);
 
   // Expect the onboarding content to be visible using the test id.
-  await expect(page.getByTestId("onboarding-content")).toBeVisible({ timeout: 30000 });
+  await expect(page.getByTestId("onboarding-content")).toBeVisible({
+    timeout: 30000,
+  });
 });

@@ -4,13 +4,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import {
   type ChatConversation,
   useGetConversationsQuery,
 } from "@/app/api/queries/useGetConversationsQuery";
 import { getFilterById } from "@/app/api/queries/useGetFilterByIdQuery";
 import type { Settings } from "@/app/api/queries/useGetSettingsQuery";
-import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import { OnboardingContent } from "@/app/onboarding/_components/onboarding-content";
 import { ProgressBar } from "@/app/onboarding/_components/progress-bar";
 import { AnimatedConditional } from "@/components/animated-conditional";
@@ -96,7 +96,9 @@ export function ChatRenderer({
       }
 
       // Check if we already have a default filter set
-      const existingDefault = localStorage.getItem("default_conversation_filter_id");
+      const existingDefault = localStorage.getItem(
+        "default_conversation_filter_id",
+      );
 
       if (existingDefault) {
         // Try to apply it to context state (don't save to localStorage to avoid overwriting)
@@ -108,7 +110,10 @@ export function ChatRenderer({
             return; // Successfully loaded and set, we're done
           }
         } catch (error) {
-          console.error("Failed to load existing default filter, will set new one:", error);
+          console.error(
+            "Failed to load existing default filter, will set new one:",
+            error,
+          );
           // Filter doesn't exist anymore, clear it and continue to set a new one
           localStorage.removeItem("default_conversation_filter_id");
         }
@@ -127,7 +132,6 @@ export function ChatRenderer({
         filterId = currentSettings?.onboarding?.openrag_docs_filter_id || null;
       }
 
-
       if (filterId) {
         // Store this as the default filter for new conversations
         localStorage.setItem("default_conversation_filter_id", filterId);
@@ -145,7 +149,11 @@ export function ChatRenderer({
         }
       }
     },
-    [setConversationFilter, settings?.onboarding?.user_doc_filter_id, settings?.onboarding?.openrag_docs_filter_id]
+    [
+      setConversationFilter,
+      settings?.onboarding?.user_doc_filter_id,
+      settings?.onboarding?.openrag_docs_filter_id,
+    ],
   );
 
   // Note: Current step is now saved to backend via handleStepComplete
@@ -160,13 +168,14 @@ export function ChatRenderer({
       // Save step to backend
       await updateOnboardingMutation.mutateAsync({ current_step: nextStep });
     } else {
-
       // IMPORTANT: Refetch settings to get the latest filter IDs that were saved during onboarding
       // The filter IDs are saved asynchronously by mutations, so we need fresh data
       await queryClient.refetchQueries({ queryKey: ["settings"] });
 
       // Get the fresh settings after refetch
-      const freshSettings = queryClient.getQueryData(["settings"]) as Settings | undefined;
+      const freshSettings = queryClient.getQueryData(["settings"]) as
+        | Settings
+        | undefined;
 
       // Store the user document filter as default for new conversations
       // Pass fresh settings to ensure we have the latest filter IDs
@@ -237,7 +246,10 @@ export function ChatRenderer({
   return (
     <>
       {/* Sidebar Navigation */}
-      <div className="shrink-0 overflow-hidden" style={{ width: SIDEBAR_WIDTH }}>
+      <div
+        className="shrink-0 overflow-hidden"
+        style={{ width: SIDEBAR_WIDTH }}
+      >
         <AnimatedConditional
           isOpen={showLayout}
           slide
@@ -281,7 +293,7 @@ export function ChatRenderer({
           className={cn(
             "flex h-full w-full max-w-full max-h-full items-center justify-center overflow-y-auto",
             !showLayout &&
-            "absolute max-h-[calc(100vh-190px)] shadow-[0px_2px_4px_-2px_#0000001A,0px_4px_6px_-1px_#0000001A]",
+              "absolute max-h-[calc(100vh-190px)] shadow-[0px_2px_4px_-2px_#0000001A,0px_4px_6px_-1px_#0000001A]",
             showLayout && !isOnChatPage && "bg-background",
           )}
         >

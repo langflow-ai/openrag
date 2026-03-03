@@ -158,8 +158,7 @@
       "banner banner banner"
       "header header header"
       "nav main right-panel";
-    transition:
-      grid-template-columns 0.25s ease-in-out;
+    transition: grid-template-columns 0.25s ease-in-out;
   }
 
   .header-start-display {

@@ -1,6 +1,5 @@
 "use client";
 
-import { FilterColor, IconKey } from "@/components/filter-icon-popover";
 import React, {
   createContext,
   type ReactNode,
@@ -9,6 +8,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { FilterColor, IconKey } from "@/components/filter-icon-popover";
 
 interface KnowledgeFilter {
   id: string;

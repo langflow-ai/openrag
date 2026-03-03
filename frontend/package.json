@@ -9,10 +9,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "check-format": "npx @biomejs/biome check",
-    "format": "npx @biomejs/biome format --write",
-    "knip": "knip"
+    "lint": "biome lint && next lint",
+    "lint:fix": "biome check --write",
+    "format": "biome format --write",
+    "knip": "knip",
+    "prepare": "cd .. && npx husky frontend/.husky || true"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",
@@ -62,6 +63,10 @@
   "devDependencies": {
     "@biomejs/biome": "2.3.5",
     "@eslint/eslintrc": "^3",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
     "@playwright/test": "^1.57.0",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -72,5 +77,8 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
+  },
+  "lint-staged": {
+    "**/*.{js,ts,jsx,tsx,css}": "biome check --write --files-ignore-unknown=true"
   }
 }

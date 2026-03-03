@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import {
-  UnifiedCloudPickerProps,
-  CloudFile,
-  IngestSettings as IngestSettingsType,
-} from "./types";
-import { PickerHeader } from "./picker-header";
+import { useEffect, useState } from "react";
 import { FileList } from "./file-list";
 import { IngestSettings } from "./ingest-settings";
+import { PickerHeader } from "./picker-header";
 import { createProviderHandler } from "./provider-handlers";
+import {
+  CloudFile,
+  IngestSettings as IngestSettingsType,
+  UnifiedCloudPickerProps,
+} from "./types";
 
 export const UnifiedCloudPicker = ({
   provider,
@@ -107,9 +107,14 @@ export const UnifiedCloudPicker = ({
     console.log("Effective Base URL:", effectiveBaseUrl);
     console.log("Is Picker Loaded:", isPickerLoaded);
     console.log("Has Access Token:", !!accessToken);
-    
+
     if (!isPickerLoaded || !accessToken) {
-      console.error("Cannot open picker: isPickerLoaded=", isPickerLoaded, "hasAccessToken=", !!accessToken);
+      console.error(
+        "Cannot open picker: isPickerLoaded=",
+        isPickerLoaded,
+        "hasAccessToken=",
+        !!accessToken,
+      );
       return;
     }
 
@@ -179,8 +184,9 @@ export const UnifiedCloudPicker = ({
   if (provider === "sharepoint" && !baseUrl && isAuthenticated) {
     return (
       <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded-md">
-        Configuration required: A site URL has not been configured for this connector. 
-        Please update your connector settings with a valid site URL for your organization and try again.
+        Configuration required: A site URL has not been configured for this
+        connector. Please update your connector settings with a valid site URL
+        for your organization and try again.
       </div>
     );
   }

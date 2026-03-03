@@ -1,17 +1,17 @@
 import {
-  ModuleRegistry,
-  ValidationModule,
-  ColumnAutoSizeModule,
-  ColumnApiModule,
-  PaginationModule,
   CellStyleModule,
-  QuickFilterModule,
   ClientSideRowModelModule,
-  TextFilterModule,
+  ColumnApiModule,
+  ColumnAutoSizeModule,
   DateFilterModule,
   EventApiModule,
   GridStateModule,
+  ModuleRegistry,
+  PaginationModule,
+  QuickFilterModule,
   RowSelectionModule,
+  TextFilterModule,
+  ValidationModule,
 } from "ag-grid-community";
 
 // Importing necessary modules from ag-grid-community

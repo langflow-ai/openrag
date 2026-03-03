@@ -12,12 +12,12 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import {
   type Task,
   type TaskFileEntry,
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
 
 // Task interface is now imported from useGetTasksQuery

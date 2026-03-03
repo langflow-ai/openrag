@@ -89,7 +89,10 @@ const OnboardingCard = ({
       ) {
         setModelProvider("anthropic");
         return;
-      } else if (provider === "openai" && currentSettings.providers.openai?.has_api_key) {
+      } else if (
+        provider === "openai" &&
+        currentSettings.providers.openai?.has_api_key
+      ) {
         setModelProvider("openai");
         return;
       } else if (
@@ -188,7 +191,9 @@ const OnboardingCard = ({
     onError: (error) => {
       console.error("Failed to rollback onboarding", error);
       // Preserve existing error message if set, otherwise show rollback error
-      setError((prevError) => prevError || `Failed to rollback: ${error.message}`);
+      setError(
+        (prevError) => prevError || `Failed to rollback: ${error.message}`,
+      );
       // Still reset to provider selection even if rollback fails
       setCurrentStep(null);
     },
@@ -245,10 +250,7 @@ const OnboardingCard = ({
       !isCompleted &&
       !handledFailedTasksRef.current.has(taskWithFailure.task_id)
     ) {
-      console.error(
-        "Task failed, jumping back one step",
-        taskWithFailure,
-      );
+      console.error("Task failed, jumping back one step", taskWithFailure);
 
       // Mark this task as handled to prevent infinite loops
       handledFailedTasksRef.current.add(taskWithFailure.task_id);
@@ -291,7 +293,6 @@ const OnboardingCard = ({
         (tasks.length === 0 && currentStep === totalSteps - 1)) && // Complete because no files were ingested
       !isCompleted &&
       !taskWithFailure
-
     ) {
       // Set to final step to show "Done"
       setCurrentStep(totalSteps);
@@ -300,7 +301,15 @@ const OnboardingCard = ({
         onComplete();
       }, 1000);
     }
-  }, [tasks, currentStep, onComplete, isCompleted, isEmbedding, totalSteps, rollbackMutation]);
+  }, [
+    tasks,
+    currentStep,
+    onComplete,
+    isCompleted,
+    isEmbedding,
+    totalSteps,
+    rollbackMutation,
+  ]);
 
   // Mutations
   const onboardingMutation = useOnboardingMutation({
@@ -354,8 +363,7 @@ const OnboardingCard = ({
     setError(null);
 
     // Prepare onboarding data with provider-specific fields
-    const onboardingData: OnboardingVariables = {
-    };
+    const onboardingData: OnboardingVariables = {};
 
     // Set the provider field
     if (isEmbedding) {
@@ -444,8 +452,8 @@ const OnboardingCard = ({
                       value="anthropic"
                       className={cn(
                         error &&
-                        modelProvider === "anthropic" &&
-                        "data-[state=active]:border-destructive",
+                          modelProvider === "anthropic" &&
+                          "data-[state=active]:border-destructive",
                       )}
                     >
                       <TabTrigger
@@ -477,8 +485,8 @@ const OnboardingCard = ({
                     value="openai"
                     className={cn(
                       error &&
-                      modelProvider === "openai" &&
-                      "data-[state=active]:border-destructive",
+                        modelProvider === "openai" &&
+                        "data-[state=active]:border-destructive",
                     )}
                   >
                     <TabTrigger
@@ -507,8 +515,8 @@ const OnboardingCard = ({
                     value="watsonx"
                     className={cn(
                       error &&
-                      modelProvider === "watsonx" &&
-                      "data-[state=active]:border-destructive",
+                        modelProvider === "watsonx" &&
+                        "data-[state=active]:border-destructive",
                     )}
                   >
                     <TabTrigger
@@ -539,8 +547,8 @@ const OnboardingCard = ({
                     value="ollama"
                     className={cn(
                       error &&
-                      modelProvider === "ollama" &&
-                      "data-[state=active]:border-destructive",
+                        modelProvider === "ollama" &&
+                        "data-[state=active]:border-destructive",
                     )}
                   >
                     <TabTrigger
@@ -587,7 +595,9 @@ const OnboardingCard = ({
                     hasEnvApiKey={
                       currentSettings?.providers?.openai?.has_api_key === true
                     }
-                    alreadyConfigured={providerAlreadyConfigured && modelProvider === "openai"}
+                    alreadyConfigured={
+                      providerAlreadyConfigured && modelProvider === "openai"
+                    }
                   />
                 </TabsContent>
                 <TabsContent value="watsonx">
@@ -595,10 +605,18 @@ const OnboardingCard = ({
                     setSettings={setSettings}
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
-                    alreadyConfigured={providerAlreadyConfigured && modelProvider === "watsonx"}
-                    existingEndpoint={currentSettings?.providers?.watsonx?.endpoint}
-                    existingProjectId={currentSettings?.providers?.watsonx?.project_id}
-                    hasEnvApiKey={currentSettings?.providers?.watsonx?.has_api_key === true}
+                    alreadyConfigured={
+                      providerAlreadyConfigured && modelProvider === "watsonx"
+                    }
+                    existingEndpoint={
+                      currentSettings?.providers?.watsonx?.endpoint
+                    }
+                    existingProjectId={
+                      currentSettings?.providers?.watsonx?.project_id
+                    }
+                    hasEnvApiKey={
+                      currentSettings?.providers?.watsonx?.has_api_key === true
+                    }
                   />
                 </TabsContent>
                 <TabsContent value="ollama">
@@ -606,8 +624,12 @@ const OnboardingCard = ({
                     setSettings={setSettings}
                     setIsLoadingModels={setIsLoadingModels}
                     isEmbedding={isEmbedding}
-                    alreadyConfigured={providerAlreadyConfigured && modelProvider === "ollama"}
-                    existingEndpoint={currentSettings?.providers?.ollama?.endpoint}
+                    alreadyConfigured={
+                      providerAlreadyConfigured && modelProvider === "ollama"
+                    }
+                    existingEndpoint={
+                      currentSettings?.providers?.ollama?.endpoint
+                    }
                   />
                 </TabsContent>
               </Tabs>
@@ -630,8 +652,8 @@ const OnboardingCard = ({
                     {isLoadingModels
                       ? "Loading models..."
                       : !!settings.llm_model &&
-                        !!settings.embedding_model &&
-                        !isDoclingHealthy
+                          !!settings.embedding_model &&
+                          !isDoclingHealthy
                         ? "docling-serve must be running to continue"
                         : "Please fill in all required fields"}
                   </TooltipContent>

@@ -4,10 +4,10 @@ import { CloudFile } from "./types";
 
 /**
  * OneDrive File Picker v8 Handler for Personal OneDrive
- * 
+ *
  * Uses Microsoft's File Picker v8 which communicates via postMessage.
  * This is for personal Microsoft accounts (consumer OneDrive).
- * 
+ *
  * Reference: https://learn.microsoft.com/en-us/onedrive/developer/controls/file-pickers/
  */
 
@@ -72,7 +72,11 @@ interface CloseCommand {
   command: "close";
 }
 
-type PickerCommand = PickCommand | AuthenticateCommand | CloseCommand | { command: string };
+type PickerCommand =
+  | PickCommand
+  | AuthenticateCommand
+  | CloseCommand
+  | { command: string };
 
 export class OneDriveV8Handler {
   private win: Window | null = null;
@@ -85,12 +89,13 @@ export class OneDriveV8Handler {
   private messageListener: ((event: MessageEvent) => void) | null = null;
 
   // OneDrive personal picker URL
-  private static readonly ONEDRIVE_PICKER_URL = "https://onedrive.live.com/picker";
+  private static readonly ONEDRIVE_PICKER_URL =
+    "https://onedrive.live.com/picker";
 
   constructor(
     accessToken: string,
     clientId: string,
-    onPickerStateChange?: (isOpen: boolean) => void
+    onPickerStateChange?: (isOpen: boolean) => void,
   ) {
     this.accessToken = accessToken;
     this.clientId = clientId;
@@ -125,7 +130,9 @@ export class OneDriveV8Handler {
       this.win = window.open("", "OneDrivePicker", "width=1080,height=680");
 
       if (!this.win) {
-        console.error("Failed to open OneDrive picker popup - popup may be blocked");
+        console.error(
+          "Failed to open OneDrive picker popup - popup may be blocked",
+        );
         this.onPickerStateChange?.(false);
         return;
       }
@@ -222,7 +229,10 @@ export class OneDriveV8Handler {
 
       if (this.port) {
         // Setup port message handler
-        this.port.addEventListener("message", this.handlePortMessage.bind(this));
+        this.port.addEventListener(
+          "message",
+          this.handlePortMessage.bind(this),
+        );
         this.port.start();
 
         // Activate the picker
@@ -294,7 +304,10 @@ export class OneDriveV8Handler {
   }
 
   private handleAuthenticate(id: string, command: AuthenticateCommand): void {
-    console.log("OneDrive v8 picker: Auth request for resource:", command.resource);
+    console.log(
+      "OneDrive v8 picker: Auth request for resource:",
+      command.resource,
+    );
 
     // For now, we use the same token for all requests
     // The token should be a Microsoft Graph token with Files.Read scope
@@ -317,7 +330,8 @@ export class OneDriveV8Handler {
           result: "error",
           error: {
             code: "unableToObtainToken",
-            message: error instanceof Error ? error.message : "Failed to obtain token",
+            message:
+              error instanceof Error ? error.message : "Failed to obtain token",
           },
         },
       });
@@ -338,7 +352,9 @@ export class OneDriveV8Handler {
 
         // Log the download URL for debugging
         const downloadUrl = item["@microsoft.graph.downloadUrl"] || "";
-        console.log(`OneDrive v8 picker: File "${item.name}" downloadUrl: ${downloadUrl ? "present" : "MISSING"}`);
+        console.log(
+          `OneDrive v8 picker: File "${item.name}" downloadUrl: ${downloadUrl ? "present" : "MISSING"}`,
+        );
 
         return {
           id: item.id,
@@ -378,7 +394,10 @@ export class OneDriveV8Handler {
           result: "error",
           error: {
             code: "unusableItem",
-            message: error instanceof Error ? error.message : "Failed to process picked items",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Failed to process picked items",
           },
         },
       });

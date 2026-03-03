@@ -1,8 +1,8 @@
 "use client";
 
+import { AnimatePresence, motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import {
   DoclingHealthBanner,

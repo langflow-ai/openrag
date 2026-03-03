@@ -1,8 +1,7 @@
 "use client";
 
+import { Check, ChevronDown } from "lucide-react";
 import * as React from "react";
-import { ChevronDown, Check } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -17,6 +16,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 interface Option {
   value: string;

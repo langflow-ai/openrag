@@ -1,7 +1,7 @@
-import { useFormContext, Controller } from "react-hook-form";
+import { Controller, useFormContext } from "react-hook-form";
+import { ModelSelector } from "@/app/onboarding/_components/model-selector";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Input } from "@/components/ui/input";
-import { ModelSelector } from "@/app/onboarding/_components/model-selector";
 
 export interface WatsonxSettingsFormData {
   endpoint: string;

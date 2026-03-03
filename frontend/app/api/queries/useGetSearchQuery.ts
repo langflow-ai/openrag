@@ -77,10 +77,11 @@ export const useGetSearchQuery = (
     try {
       // For wildcard queries, use a high limit to get all files
       // Otherwise use the limit from queryData or default to 100
-      const isWildcardQuery = effectiveQuery.trim() === "*" || effectiveQuery.trim() === "";
+      const isWildcardQuery =
+        effectiveQuery.trim() === "*" || effectiveQuery.trim() === "";
       const searchLimit = isWildcardQuery
         ? SEARCH_CONSTANTS.WILDCARD_QUERY_LIMIT
-        : (queryData?.limit || 100);
+        : queryData?.limit || 100;
 
       const searchPayload: SearchPayload = {
         query: effectiveQuery,
@@ -133,8 +134,12 @@ export const useGetSearchQuery = (
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorData.error || `Search failed with status ${response.status}`);
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(
+          errorData.error || `Search failed with status ${response.status}`,
+        );
       }
 
       const data = await response.json();

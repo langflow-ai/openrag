@@ -1,8 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { CloudFile } from "./types";
 import { FileItem } from "./file-item";
+import { CloudFile } from "./types";
 
 interface FileListProps {
   provider: string;

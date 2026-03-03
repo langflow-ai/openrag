@@ -15,7 +15,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: "html",
   timeout: 5 * 60 * 1000,
-  
+
   // Setup hook to run before all tests
 
   use: {
@@ -37,7 +37,7 @@ export default defineConfig({
     {
       command: "make backend ENV_FILE=frontend/.env.test",
       cwd: path.resolve(__dirname, ".."),
-      url: "http://127.0.0.1:8000/health", 
+      url: "http://127.0.0.1:8000/health",
       reuseExistingServer: !process.env.CI,
       stdout: "pipe",
       stderr: "pipe",
@@ -58,7 +58,8 @@ export default defineConfig({
         LANGFLOW_URL: process.env.LANGFLOW_URL || "http://localhost:7860",
         LANGFLOW_AUTO_LOGIN: process.env.LANGFLOW_AUTO_LOGIN || "True",
         LANGFLOW_SUPERUSER: process.env.LANGFLOW_SUPERUSER || "",
-        LANGFLOW_SUPERUSER_PASSWORD: process.env.LANGFLOW_SUPERUSER_PASSWORD || "",
+        LANGFLOW_SUPERUSER_PASSWORD:
+          process.env.LANGFLOW_SUPERUSER_PASSWORD || "",
         LANGFLOW_CHAT_FLOW_ID: process.env.LANGFLOW_CHAT_FLOW_ID || "",
         LANGFLOW_INGEST_FLOW_ID: process.env.LANGFLOW_INGEST_FLOW_ID || "",
 
@@ -75,9 +76,10 @@ export default defineConfig({
         OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL || "",
 
         // Ingestion
-        DISABLE_INGEST_WITH_LANGFLOW: process.env.DISABLE_INGEST_WITH_LANGFLOW || "false",
+        DISABLE_INGEST_WITH_LANGFLOW:
+          process.env.DISABLE_INGEST_WITH_LANGFLOW || "false",
         INGEST_SAMPLE_DATA: process.env.INGEST_SAMPLE_DATA || "true",
-      }
+      },
     },
     {
       command: "npm run dev",
@@ -85,9 +87,9 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       env: {
         PORT: String(PORT),
-        VITE_PROXY_TARGET: process.env.VITE_PROXY_TARGET || "http://127.0.0.1:8000",
-      }
-    }
+        VITE_PROXY_TARGET:
+          process.env.VITE_PROXY_TARGET || "http://127.0.0.1:8000",
+      },
+    },
   ],
 });
-
