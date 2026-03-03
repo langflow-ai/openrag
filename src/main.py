@@ -604,6 +604,7 @@ async def startup_tasks(services):
 async def initialize_services():
     """Initialize all services and their dependencies"""
     await TelemetryClient.send_event(Category.SERVICE_INITIALIZATION, MessageId.ORB_SVC_INIT_START)
+    
     # Generate JWT keys if they don't exist
     generate_jwt_keys()
 

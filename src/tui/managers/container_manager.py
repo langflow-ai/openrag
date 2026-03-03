@@ -1043,6 +1043,24 @@ class ContainerManager:
             yield False, format_port_conflict_message(conflicts), False
             return
 
+        # Validate environment variables from .env file
+        yield False, "Validating startup configuration...", False
+        from config.startup_validation import check_required_env_vars, check_container_runtime_memory
+        env_vars = self._get_env_from_file()
+        missing_vars = check_required_env_vars(env_vars)
+        if missing_vars:
+            yield False, "ERROR: Missing required environment variables:", False
+            for var in missing_vars:
+                yield False, f"  - {var}", False
+            yield False, "Please set these in your .env file and try again.", False
+            return
+
+        # Validate container runtime memory (let it auto-detect runtime for colima support)
+        memory_ok, memory_error = check_container_runtime_memory()
+        if not memory_ok:
+            yield False, f"WARNING: {memory_error}", False
+            yield False, "Services may fail to start with insufficient memory.", False
+
         yield False, "Starting OpenRAG services...", False
 
         missing_images: List[str] = []
