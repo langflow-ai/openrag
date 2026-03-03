@@ -8,9 +8,9 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import { Loader2, Plus, RefreshCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
+import CardIcon from "./card-icon";
 
 export interface Connector {
     id: string;
@@ -48,16 +48,12 @@ export default function ConnectorCard({
                 <div className="flex flex-col items-start justify-between">
                     <div className="flex flex-col gap-4 mb-2 w-full">
                         <div className="flex items-center justify-between mb-1">
-                            <div
-                                className={cn(
-                                    "w-8 h-8 rounded flex items-center justify-center border",
-                                    connector?.available
-                                        ? "bg-white"
-                                        : "bg-muted grayscale",
-                                )}
+                            <CardIcon
+                                isActive={!!(connector?.available && isConnected)}
+                                activeBgColor="bg-white"
                             >
                                 {connector.icon}
-                            </div>
+                            </CardIcon>
                             {isConnected ? (
                                 <div className="flex items-center gap-1.5 rounded-full bg-foreground px-2.5 py-1 text-xs font-medium text-muted">
                                     <span className="h-2 w-2 rounded-full bg-green-500" />
