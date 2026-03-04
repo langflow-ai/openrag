@@ -73,7 +73,7 @@ endef
 # PHONY TARGETS
 ######################
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils \
-       dev dev-cpu dev-local dev-local-cpu stop clean build logs \
+       dev dev-cpu dev-local dev-local-cpu dev-local-build-lf dev-local-build-lf-cpu stop clean build logs \
        shell-backend shell-frontend install \
        test test-unit test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
        backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
@@ -177,6 +177,8 @@ help_dev: ## Show development environment commands
 	@echo "$(PURPLE)Infrastructure Only:$(NC)"
 	@echo "  $(PURPLE)make dev-local$(NC)       - Start infrastructure only (for local backend/frontend)"
 	@echo "  $(PURPLE)make dev-local-cpu$(NC)   - Start infrastructure for local backend/frontend with CPU only"
+	@echo "  $(PURPLE)make dev-local-build-lf$(NC) - Start infrastructure, building only Langflow image"
+	@echo "  $(PURPLE)make dev-local-build-lf-cpu$(NC) - Same as above, with CPU only"
 	@echo ''
 	@echo "$(PURPLE)Branch Development (build Langflow from source):$(NC)"
 	@echo "  $(PURPLE)make dev-branch$(NC)      - Build & run with custom Langflow branch"
@@ -348,6 +350,32 @@ dev-local: ## Start infrastructure for local development
 	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
 
 dev-local-cpu: ## Start infrastructure for local development, with CPU only
+	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
+	$(COMPOSE_CMD) up -d opensearch openrag-backend dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
+
+dev-local-build-lf: ## Start infrastructure for local development, building only Langflow image
+	@echo "$(YELLOW)Building Langflow image...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml build langflow
+	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
+	$(COMPOSE_CMD) -f docker-compose.yml -f docker-compose.gpu.yml up -d opensearch openrag-backend dashboards langflow
+	@echo "$(PURPLE)Infrastructure started!$(NC)"
+	@echo "   $(CYAN)Backend:$(NC)    http://openrag-backend"
+	@echo "   $(CYAN)Langflow:$(NC)   http://localhost:7860"
+	@echo "   $(CYAN)OpenSearch:$(NC) http://localhost:9200"
+	@echo "   $(CYAN)Dashboards:$(NC) http://localhost:5601"
+	@echo ""
+	@echo "$(YELLOW)Now run 'make backend' and 'make frontend' in separate terminals$(NC)"
+
+dev-local-build-lf-cpu: ## Start infrastructure for local development, building only Langflow image with CPU only
+	@echo "$(YELLOW)Building Langflow image (CPU)...$(NC)"
+	$(COMPOSE_CMD) build langflow
 	@echo "$(YELLOW)Starting infrastructure only (for local development)...$(NC)"
 	$(COMPOSE_CMD) up -d opensearch openrag-backend dashboards langflow
 	@echo "$(PURPLE)Infrastructure started!$(NC)"
