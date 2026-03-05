@@ -102,7 +102,6 @@ langflow:
     autoLogin: false
     superuser: "admin"                    # Langflow superuser username
     superuserPassword: ""                 # Langflow superuser password (stored in secret)
-    superuserPassword: ""                 # Langflow superuser password (stored in secret)
     apiKey: ""                            # Optional: pre-generated API key
     keyRetries: 15                        # Number of retries for key generation
     keyRetryDelay: 2.0                    # Delay between retries
@@ -115,6 +114,23 @@ langflow:
   logLevel: "INFO"                        # DEBUG, INFO, WARNING, ERROR
   doclingServeUrl: "http://host.docker.internal:5001"
   openragQueryFilter: "{}"
+
+  # Flow context default variables (injected into every flow execution)
+  flowDefaults:
+    jwt: "None"
+    owner: "None"
+    ownerName: "None"
+    ownerEmail: "None"
+    connectorType: "system"
+    connectorTypeUrl: "url"
+    documentId: ""
+    sourceUrl: ""
+    allowedUsers: "[]"
+    allowedGroups: "[]"
+    filename: "None"
+    mimetype: "None"
+    filesize: "0"
+    selectedEmbeddingModel: ""
 
   # Langfuse Tracking
   langfuse:
