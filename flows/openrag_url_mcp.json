@@ -401,98 +401,10 @@
       },
       {
         "animated": false,
-        "className": "",
         "data": {
           "sourceHandle": {
-            "dataType": "SecretInput",
-            "id": "SecretInput-2YFzv",
-            "name": "text",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "dynamic_connector_type",
-            "id": "AdvancedDynamicFormBuilder-ziCu4",
-            "inputTypes": [
-              "Text",
-              "Message"
-            ],
-            "type": "str"
-          }
-        },
-        "id": "xy-edge__SecretInput-2YFzv{œdataTypeœ:œSecretInputœ,œidœ:œSecretInput-2YFzvœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_connector_typeœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
-        "selected": false,
-        "source": "SecretInput-2YFzv",
-        "sourceHandle": "{œdataTypeœ:œSecretInputœ,œidœ:œSecretInput-2YFzvœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "AdvancedDynamicFormBuilder-ziCu4",
-        "targetHandle": "{œfieldNameœ:œdynamic_connector_typeœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "SecretInput",
-            "id": "SecretInput-HVt8y",
-            "name": "text",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "dynamic_owner",
-            "id": "AdvancedDynamicFormBuilder-ziCu4",
-            "inputTypes": [
-              "Text",
-              "Message"
-            ],
-            "type": "str"
-          }
-        },
-        "id": "xy-edge__SecretInput-HVt8y{œdataTypeœ:œSecretInputœ,œidœ:œSecretInput-HVt8yœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_ownerœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
-        "selected": false,
-        "source": "SecretInput-HVt8y",
-        "sourceHandle": "{œdataTypeœ:œSecretInputœ,œidœ:œSecretInput-HVt8yœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "AdvancedDynamicFormBuilder-ziCu4",
-        "targetHandle": "{œfieldNameœ:œdynamic_ownerœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "SecretInput",
-            "id": "SecretInput-azjHU",
-            "name": "text",
-            "output_types": [
-              "Message"
-            ]
-          },
-          "targetHandle": {
-            "fieldName": "dynamic_owner_email",
-            "id": "AdvancedDynamicFormBuilder-ziCu4",
-            "inputTypes": [
-              "Text",
-              "Message"
-            ],
-            "type": "str"
-          }
-        },
-        "id": "xy-edge__SecretInput-azjHU{œdataTypeœ:œSecretInputœ,œidœ:œSecretInput-azjHUœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_owner_emailœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
-        "selected": false,
-        "source": "SecretInput-azjHU",
-        "sourceHandle": "{œdataTypeœ:œSecretInputœ,œidœ:œSecretInput-azjHUœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "AdvancedDynamicFormBuilder-ziCu4",
-        "targetHandle": "{œfieldNameœ:œdynamic_owner_emailœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
-      },
-      {
-        "animated": false,
-        "className": "",
-        "data": {
-          "sourceHandle": {
-            "dataType": "SecretInput",
-            "id": "SecretInput-JfHat",
+            "dataType": "TextInput",
+            "id": "TextInput-tahMb",
             "name": "text",
             "output_types": [
               "Message"
@@ -508,12 +420,96 @@
             "type": "str"
           }
         },
-        "id": "xy-edge__SecretInput-JfHat{œdataTypeœ:œSecretInputœ,œidœ:œSecretInput-JfHatœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_owner_nameœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
+        "id": "xy-edge__TextInput-tahMb{œdataTypeœ:œTextInputœ,œidœ:œTextInput-tahMbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_owner_nameœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
         "selected": false,
-        "source": "SecretInput-JfHat",
-        "sourceHandle": "{œdataTypeœ:œSecretInputœ,œidœ:œSecretInput-JfHatœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
+        "source": "TextInput-tahMb",
+        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-tahMbœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
         "target": "AdvancedDynamicFormBuilder-ziCu4",
         "targetHandle": "{œfieldNameœ:œdynamic_owner_nameœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
+      },
+      {
+        "animated": false,
+        "data": {
+          "sourceHandle": {
+            "dataType": "TextInput",
+            "id": "TextInput-Rm9YX",
+            "name": "text",
+            "output_types": [
+              "Message"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "dynamic_owner_email",
+            "id": "AdvancedDynamicFormBuilder-ziCu4",
+            "inputTypes": [
+              "Text",
+              "Message"
+            ],
+            "type": "str"
+          }
+        },
+        "id": "xy-edge__TextInput-Rm9YX{œdataTypeœ:œTextInputœ,œidœ:œTextInput-Rm9YXœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_owner_emailœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
+        "source": "TextInput-Rm9YX",
+        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-Rm9YXœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "AdvancedDynamicFormBuilder-ziCu4",
+        "targetHandle": "{œfieldNameœ:œdynamic_owner_emailœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
+      },
+      {
+        "animated": false,
+        "data": {
+          "sourceHandle": {
+            "dataType": "TextInput",
+            "id": "TextInput-G5CiZ",
+            "name": "text",
+            "output_types": [
+              "Message"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "dynamic_owner",
+            "id": "AdvancedDynamicFormBuilder-ziCu4",
+            "inputTypes": [
+              "Text",
+              "Message"
+            ],
+            "type": "str"
+          }
+        },
+        "id": "xy-edge__TextInput-G5CiZ{œdataTypeœ:œTextInputœ,œidœ:œTextInput-G5CiZœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_ownerœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
+        "source": "TextInput-G5CiZ",
+        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-G5CiZœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "AdvancedDynamicFormBuilder-ziCu4",
+        "targetHandle": "{œfieldNameœ:œdynamic_ownerœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
+      },
+      {
+        "animated": false,
+        "data": {
+          "sourceHandle": {
+            "dataType": "TextInput",
+            "id": "TextInput-OPyEf",
+            "name": "text",
+            "output_types": [
+              "Message"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "dynamic_connector_type",
+            "id": "AdvancedDynamicFormBuilder-ziCu4",
+            "inputTypes": [
+              "Text",
+              "Message"
+            ],
+            "type": "str"
+          }
+        },
+        "id": "xy-edge__TextInput-OPyEf{œdataTypeœ:œTextInputœ,œidœ:œTextInput-OPyEfœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}-AdvancedDynamicFormBuilder-ziCu4{œfieldNameœ:œdynamic_connector_typeœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
+        "source": "TextInput-OPyEf",
+        "sourceHandle": "{œdataTypeœ:œTextInputœ,œidœ:œTextInput-OPyEfœ,œnameœ:œtextœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "AdvancedDynamicFormBuilder-ziCu4",
+        "targetHandle": "{œfieldNameœ:œdynamic_connector_typeœ,œidœ:œAdvancedDynamicFormBuilder-ziCu4œ,œinputTypesœ:[œTextœ,œMessageœ],œtypeœ:œstrœ}"
       }
     ],
     "nodes": [
@@ -3213,7 +3209,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "4d16e0fb-c946-4c27-b14c-5bef88720812"
+                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
               },
               "_type": "Component",
               "api_base": {
@@ -4454,7 +4450,7 @@
             ],
             "frozen": false,
             "icon": "braces",
-            "last_updated": "2026-03-03T18:49:32.702Z",
+            "last_updated": "2026-03-05T16:40:19.995Z",
             "legacy": false,
             "lf_version": "1.8.0",
             "metadata": {},
@@ -4504,7 +4500,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "4d16e0fb-c946-4c27-b14c-5bef88720812"
+                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
               },
               "_type": "Component",
               "code": {
@@ -4771,8 +4767,8 @@
           "width": 320
         },
         "position": {
-          "x": 2298.1591267935455,
-          "y": 742.6355172314192
+          "x": 2344.490839041331,
+          "y": 830.665770502212
         },
         "selected": false,
         "type": "genericNode"
@@ -4858,7 +4854,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "4d16e0fb-c946-4c27-b14c-5bef88720812"
+                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
               },
               "_type": "Component",
               "api_base": {
@@ -5387,7 +5383,7 @@
                 "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
               },
               "_frontend_node_folder_id": {
-                "value": "4d16e0fb-c946-4c27-b14c-5bef88720812"
+                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
               },
               "_type": "Component",
               "api_base": {
@@ -6484,7 +6480,7 @@
       },
       {
         "data": {
-          "id": "SecretInput-2YFzv",
+          "id": "TextInput-OPyEf",
           "node": {
             "base_classes": [
               "Message"
@@ -6492,18 +6488,31 @@
             "beta": false,
             "conditional_paths": [],
             "custom_fields": {},
-            "description": "Allows the selection of a secret to be generated as output..",
-            "display_name": "Secret Input",
-            "documentation": "https://docs.langflow.org/components-io#text-input",
-            "edited": true,
+            "description": "Get user text inputs.",
+            "display_name": "Text Input",
+            "documentation": "https://docs.langflow.org/text-input-and-output",
+            "edited": false,
             "field_order": [
-              "input_value"
+              "input_value",
+              "use_global_variable"
             ],
             "frozen": false,
             "icon": "type",
+            "last_updated": "2026-03-05T16:40:36.785Z",
             "legacy": false,
-            "lf_version": "1.7.0.dev21",
-            "metadata": {},
+            "metadata": {
+              "code_hash": "518f16485886",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "module": "lfx.components.input_output.text.TextInputComponent"
+            },
             "minimized": false,
             "output_types": [],
             "outputs": [
@@ -6512,7 +6521,7 @@
                 "cache": true,
                 "display_name": "Output Text",
                 "group_outputs": false,
-                "hidden": null,
+                "loop_types": null,
                 "method": "text_response",
                 "name": "text",
                 "options": null,
@@ -6527,6 +6536,12 @@
             ],
             "pinned": false,
             "template": {
+              "_frontend_node_flow_id": {
+                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
+              },
+              "_frontend_node_folder_id": {
+                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
+              },
               "_type": "Component",
               "code": {
                 "advanced": true,
@@ -6544,47 +6559,81 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from langflow.base.io.text import TextComponent\r\nfrom langflow.io import MultilineInput, Output, SecretStrInput\r\nfrom langflow.schema.message import Message\r\n\r\n\r\nclass SecretInputComponent(TextComponent):\r\n    display_name = \"Secret Input\"\r\n    description = \"Allows the selection of a secret to be generated as output..\"\r\n    documentation: str = \"https://docs.langflow.org/components-io#text-input\"\r\n    icon = \"type\"\r\n    name = \"SecretInput\"\r\n\r\n    inputs = [\r\n        SecretStrInput(\r\n            name=\"input_value\",\r\n            display_name=\"Secret\",\r\n            info=\"Secret to be passed as input.\",\r\n        ),\r\n    ]\r\n    outputs = [\r\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\r\n    ]\r\n\r\n    def text_response(self) -> Message:\r\n        return Message(\r\n            text=self.input_value,\r\n        )\r\n"
+                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
               },
               "input_value": {
-                "_input_type": "SecretStrInput",
+                "_input_type": "MultilineInput",
                 "advanced": false,
-                "display_name": "Secret",
+                "ai_enabled": false,
+                "copy_field": false,
+                "display_name": "Text",
                 "dynamic": false,
-                "info": "Secret to be passed as input.",
-                "input_types": [],
+                "info": "Text to be passed as input.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
                 "load_from_db": true,
+                "multiline": false,
                 "name": "input_value",
+                "override_skip": false,
                 "password": true,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
                 "type": "str",
                 "value": "CONNECTOR_TYPE"
+              },
+              "is_refresh": false,
+              "use_global_variable": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Use Global Variable",
+                "dynamic": false,
+                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "use_global_variable",
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
               }
             },
             "tool_mode": false
           },
           "showNode": false,
-          "type": "SecretInput"
+          "type": "TextInput"
         },
         "dragging": false,
-        "id": "SecretInput-2YFzv",
+        "id": "TextInput-OPyEf",
         "measured": {
           "height": 52,
           "width": 192
         },
         "position": {
-          "x": 1983.7729712581365,
-          "y": 937.5567898338941
+          "x": 2046.1686011821303,
+          "y": 1025.3287669019733
         },
         "selected": false,
         "type": "genericNode"
       },
       {
         "data": {
-          "id": "SecretInput-HVt8y",
+          "id": "TextInput-G5CiZ",
           "node": {
             "base_classes": [
               "Message"
@@ -6592,18 +6641,31 @@
             "beta": false,
             "conditional_paths": [],
             "custom_fields": {},
-            "description": "Allows the selection of a secret to be generated as output..",
-            "display_name": "Secret Input",
-            "documentation": "https://docs.langflow.org/components-io#text-input",
-            "edited": true,
+            "description": "Get user text inputs.",
+            "display_name": "Text Input",
+            "documentation": "https://docs.langflow.org/text-input-and-output",
+            "edited": false,
             "field_order": [
-              "input_value"
+              "input_value",
+              "use_global_variable"
             ],
             "frozen": false,
             "icon": "type",
+            "last_updated": "2026-03-05T16:40:36.785Z",
             "legacy": false,
-            "lf_version": "1.7.0.dev21",
-            "metadata": {},
+            "metadata": {
+              "code_hash": "518f16485886",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "module": "lfx.components.input_output.text.TextInputComponent"
+            },
             "minimized": false,
             "output_types": [],
             "outputs": [
@@ -6612,7 +6674,7 @@
                 "cache": true,
                 "display_name": "Output Text",
                 "group_outputs": false,
-                "hidden": null,
+                "loop_types": null,
                 "method": "text_response",
                 "name": "text",
                 "options": null,
@@ -6627,6 +6689,12 @@
             ],
             "pinned": false,
             "template": {
+              "_frontend_node_flow_id": {
+                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
+              },
+              "_frontend_node_folder_id": {
+                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
+              },
               "_type": "Component",
               "code": {
                 "advanced": true,
@@ -6644,47 +6712,81 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from langflow.base.io.text import TextComponent\r\nfrom langflow.io import MultilineInput, Output, SecretStrInput\r\nfrom langflow.schema.message import Message\r\n\r\n\r\nclass SecretInputComponent(TextComponent):\r\n    display_name = \"Secret Input\"\r\n    description = \"Allows the selection of a secret to be generated as output..\"\r\n    documentation: str = \"https://docs.langflow.org/components-io#text-input\"\r\n    icon = \"type\"\r\n    name = \"SecretInput\"\r\n\r\n    inputs = [\r\n        SecretStrInput(\r\n            name=\"input_value\",\r\n            display_name=\"Secret\",\r\n            info=\"Secret to be passed as input.\",\r\n        ),\r\n    ]\r\n    outputs = [\r\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\r\n    ]\r\n\r\n    def text_response(self) -> Message:\r\n        return Message(\r\n            text=self.input_value,\r\n        )\r\n"
+                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
               },
               "input_value": {
-                "_input_type": "SecretStrInput",
+                "_input_type": "MultilineInput",
                 "advanced": false,
-                "display_name": "Secret",
+                "ai_enabled": false,
+                "copy_field": false,
+                "display_name": "Text",
                 "dynamic": false,
-                "info": "Secret to be passed as input.",
-                "input_types": [],
+                "info": "Text to be passed as input.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
                 "load_from_db": true,
+                "multiline": false,
                 "name": "input_value",
+                "override_skip": false,
                 "password": true,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
                 "type": "str",
                 "value": "OWNER"
+              },
+              "is_refresh": false,
+              "use_global_variable": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Use Global Variable",
+                "dynamic": false,
+                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "use_global_variable",
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
               }
             },
             "tool_mode": false
           },
           "showNode": false,
-          "type": "SecretInput"
+          "type": "TextInput"
         },
         "dragging": false,
-        "id": "SecretInput-HVt8y",
+        "id": "TextInput-G5CiZ",
         "measured": {
           "height": 52,
           "width": 192
         },
         "position": {
-          "x": 1986.882383726214,
-          "y": 1021.8390027458854
+          "x": 2047.7721855431944,
+          "y": 1107.9760140854928
         },
         "selected": false,
         "type": "genericNode"
       },
       {
         "data": {
-          "id": "SecretInput-azjHU",
+          "id": "TextInput-Rm9YX",
           "node": {
             "base_classes": [
               "Message"
@@ -6692,18 +6794,31 @@
             "beta": false,
             "conditional_paths": [],
             "custom_fields": {},
-            "description": "Allows the selection of a secret to be generated as output..",
-            "display_name": "Secret Input",
-            "documentation": "https://docs.langflow.org/components-io#text-input",
-            "edited": true,
+            "description": "Get user text inputs.",
+            "display_name": "Text Input",
+            "documentation": "https://docs.langflow.org/text-input-and-output",
+            "edited": false,
             "field_order": [
-              "input_value"
+              "input_value",
+              "use_global_variable"
             ],
             "frozen": false,
             "icon": "type",
+            "last_updated": "2026-03-05T16:40:36.785Z",
             "legacy": false,
-            "lf_version": "1.7.0.dev21",
-            "metadata": {},
+            "metadata": {
+              "code_hash": "518f16485886",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "module": "lfx.components.input_output.text.TextInputComponent"
+            },
             "minimized": false,
             "output_types": [],
             "outputs": [
@@ -6712,7 +6827,7 @@
                 "cache": true,
                 "display_name": "Output Text",
                 "group_outputs": false,
-                "hidden": null,
+                "loop_types": null,
                 "method": "text_response",
                 "name": "text",
                 "options": null,
@@ -6727,6 +6842,12 @@
             ],
             "pinned": false,
             "template": {
+              "_frontend_node_flow_id": {
+                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
+              },
+              "_frontend_node_folder_id": {
+                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
+              },
               "_type": "Component",
               "code": {
                 "advanced": true,
@@ -6744,47 +6865,81 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from langflow.base.io.text import TextComponent\r\nfrom langflow.io import MultilineInput, Output, SecretStrInput\r\nfrom langflow.schema.message import Message\r\n\r\n\r\nclass SecretInputComponent(TextComponent):\r\n    display_name = \"Secret Input\"\r\n    description = \"Allows the selection of a secret to be generated as output..\"\r\n    documentation: str = \"https://docs.langflow.org/components-io#text-input\"\r\n    icon = \"type\"\r\n    name = \"SecretInput\"\r\n\r\n    inputs = [\r\n        SecretStrInput(\r\n            name=\"input_value\",\r\n            display_name=\"Secret\",\r\n            info=\"Secret to be passed as input.\",\r\n        ),\r\n    ]\r\n    outputs = [\r\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\r\n    ]\r\n\r\n    def text_response(self) -> Message:\r\n        return Message(\r\n            text=self.input_value,\r\n        )\r\n"
+                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
               },
               "input_value": {
-                "_input_type": "SecretStrInput",
+                "_input_type": "MultilineInput",
                 "advanced": false,
-                "display_name": "Secret",
+                "ai_enabled": false,
+                "copy_field": false,
+                "display_name": "Text",
                 "dynamic": false,
-                "info": "Secret to be passed as input.",
-                "input_types": [],
+                "info": "Text to be passed as input.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
                 "load_from_db": true,
+                "multiline": false,
                 "name": "input_value",
+                "override_skip": false,
                 "password": true,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
                 "type": "str",
                 "value": "OWNER_EMAIL"
+              },
+              "is_refresh": false,
+              "use_global_variable": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Use Global Variable",
+                "dynamic": false,
+                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "use_global_variable",
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
               }
             },
             "tool_mode": false
           },
           "showNode": false,
-          "type": "SecretInput"
+          "type": "TextInput"
         },
         "dragging": false,
-        "id": "SecretInput-azjHU",
+        "id": "TextInput-Rm9YX",
         "measured": {
           "height": 52,
           "width": 192
         },
         "position": {
-          "x": 1990.2380151812824,
-          "y": 1100.886905438515
+          "x": 2046.9016349798983,
+          "y": 1190.6783175986243
         },
         "selected": false,
         "type": "genericNode"
       },
       {
         "data": {
-          "id": "SecretInput-JfHat",
+          "id": "TextInput-tahMb",
           "node": {
             "base_classes": [
               "Message"
@@ -6792,18 +6947,31 @@
             "beta": false,
             "conditional_paths": [],
             "custom_fields": {},
-            "description": "Allows the selection of a secret to be generated as output..",
-            "display_name": "Secret Input",
-            "documentation": "https://docs.langflow.org/components-io#text-input",
-            "edited": true,
+            "description": "Get user text inputs.",
+            "display_name": "Text Input",
+            "documentation": "https://docs.langflow.org/text-input-and-output",
+            "edited": false,
             "field_order": [
-              "input_value"
+              "input_value",
+              "use_global_variable"
             ],
             "frozen": false,
             "icon": "type",
+            "last_updated": "2026-03-05T16:40:36.785Z",
             "legacy": false,
-            "lf_version": "1.7.0.dev21",
-            "metadata": {},
+            "metadata": {
+              "code_hash": "518f16485886",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "module": "lfx.components.input_output.text.TextInputComponent"
+            },
             "minimized": false,
             "output_types": [],
             "outputs": [
@@ -6812,7 +6980,7 @@
                 "cache": true,
                 "display_name": "Output Text",
                 "group_outputs": false,
-                "hidden": null,
+                "loop_types": null,
                 "method": "text_response",
                 "name": "text",
                 "options": null,
@@ -6827,6 +6995,12 @@
             ],
             "pinned": false,
             "template": {
+              "_frontend_node_flow_id": {
+                "value": "72c3d17c-2dac-4a73-b48a-6518473d7830"
+              },
+              "_frontend_node_folder_id": {
+                "value": "7a54b33c-ad03-4c78-b61b-f95adbb74e17"
+              },
               "_type": "Component",
               "code": {
                 "advanced": true,
@@ -6844,49 +7018,83 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from langflow.base.io.text import TextComponent\r\nfrom langflow.io import MultilineInput, Output, SecretStrInput\r\nfrom langflow.schema.message import Message\r\n\r\n\r\nclass SecretInputComponent(TextComponent):\r\n    display_name = \"Secret Input\"\r\n    description = \"Allows the selection of a secret to be generated as output..\"\r\n    documentation: str = \"https://docs.langflow.org/components-io#text-input\"\r\n    icon = \"type\"\r\n    name = \"SecretInput\"\r\n\r\n    inputs = [\r\n        SecretStrInput(\r\n            name=\"input_value\",\r\n            display_name=\"Secret\",\r\n            info=\"Secret to be passed as input.\",\r\n        ),\r\n    ]\r\n    outputs = [\r\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\r\n    ]\r\n\r\n    def text_response(self) -> Message:\r\n        return Message(\r\n            text=self.input_value,\r\n        )\r\n"
+                "value": "from typing import Any\n\nfrom lfx.base.io.text import TextComponent\nfrom lfx.io import BoolInput, MultilineInput, Output\nfrom lfx.schema.message import Message\n\n\nclass TextInputComponent(TextComponent):\n    display_name = \"Text Input\"\n    description = \"Get user text inputs.\"\n    documentation: str = \"https://docs.langflow.org/text-input-and-output\"\n    icon = \"type\"\n    name = \"TextInput\"\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Text\",\n            info=\"Text to be passed as input.\",\n        ),\n        BoolInput(\n            name=\"use_global_variable\",\n            display_name=\"Use Global Variable\",\n            info=\"Enable to select from global variables (shows globe icon). Disables multiline editing.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Output Text\", name=\"text\", method=\"text_response\"),\n    ]\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"use_global_variable\":\n            if field_value:\n                # Enable global variable mode: single-line with password masking and globe dropdown\n                build_config[\"input_value\"][\"multiline\"] = False\n                build_config[\"input_value\"][\"password\"] = True\n            else:\n                # Default mode: multiline text editing\n                build_config[\"input_value\"][\"multiline\"] = True\n                build_config[\"input_value\"][\"password\"] = False\n        return build_config\n\n    def text_response(self) -> Message:\n        return Message(\n            text=self.input_value,\n        )\n"
               },
               "input_value": {
-                "_input_type": "SecretStrInput",
+                "_input_type": "MultilineInput",
                 "advanced": false,
-                "display_name": "Secret",
+                "ai_enabled": false,
+                "copy_field": false,
+                "display_name": "Text",
                 "dynamic": false,
-                "info": "Secret to be passed as input.",
-                "input_types": [],
+                "info": "Text to be passed as input.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
                 "load_from_db": true,
+                "multiline": false,
                 "name": "input_value",
+                "override_skip": false,
                 "password": true,
                 "placeholder": "",
                 "required": false,
                 "show": true,
                 "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
                 "type": "str",
                 "value": "OWNER_NAME"
+              },
+              "is_refresh": false,
+              "use_global_variable": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Use Global Variable",
+                "dynamic": false,
+                "info": "Enable to select from global variables (shows globe icon). Disables multiline editing.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "use_global_variable",
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
               }
             },
             "tool_mode": false
           },
           "showNode": false,
-          "type": "SecretInput"
+          "type": "TextInput"
         },
         "dragging": false,
-        "id": "SecretInput-JfHat",
+        "id": "TextInput-tahMb",
         "measured": {
           "height": 52,
           "width": 192
         },
         "position": {
-          "x": 1991.8831706979765,
-          "y": 1181.9745850611844
+          "x": 2046.9016349798978,
+          "y": 1271.6395199851643
         },
         "selected": false,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": 64.9552082060377,
-      "y": -68.22416358183375,
-      "zoom": 0.34893413159301545
+      "x": 98.81388650392034,
+      "y": 36.94035557328948,
+      "zoom": 0.2750946523415342
     }
   },
   "description": "This flow is to ingest the URL to open search.",
