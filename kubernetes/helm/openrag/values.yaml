@@ -132,6 +132,25 @@ langflow:
     filesize: "0"
     selectedEmbeddingModel: ""
 
+  backend:
+    externalDatabase:
+      enabled: true
+      driver:
+        value: "postgresql"
+      port:
+        value: "5432"
+      user:
+        value: "langflow"
+      password:
+        valueFrom:
+          secretKeyRef:
+            key: "password"
+            name: "openrag-langflow-dbpassword"
+      database:
+        value: "langflow-db"
+    sqlite:
+      enabled: false
+      
   # Langfuse Tracking
   langfuse:
     secretKey: ""
@@ -362,6 +381,60 @@ dashboards:
   service:
     type: ClusterIP
     port: 5601
+
+# ============================================================================
+# PostgreSQL Configuration
+# ============================================================================
+postgres:
+  enabled: false                          # Enable to deploy PostgreSQL for Langflow
+
+  image:
+    repository: postgres
+    tag: "16-alpine"
+
+  # Single pod for PostgreSQL
+  replicaCount: 1
+
+  # Database configuration
+  database: "langflow"
+  username: "langflow"
+  # Note: Password is auto-generated and stored securely in Kubernetes secret
+
+  # Resource requests/limits
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+  # Persistence for PostgreSQL data
+  persistence:
+    enabled: true
+    storageClass: ""                      # Empty uses cluster default
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    mountPath: /var/lib/postgresql/data
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 5432
 
 # ============================================================================
 # Ingress Configuration

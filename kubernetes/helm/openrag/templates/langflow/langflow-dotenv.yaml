@@ -7,6 +7,20 @@ Notes:
 - Includes booleans / numbers from values.yaml because those are explicitly set.
 */ -}}
 {{- if .Values.backend.enabled }}
+{{- $postgresPassword := "" }}
+{{- if .Values.postgres.enabled }}
+{{- $secretName := printf "%s-postgres" (include "openrag.fullname" .) }}
+{{- $secretNamespace := include "openrag.namespace" . }}
+{{- $existingSecret := lookup "v1" "Secret" $secretNamespace $secretName }}
+{{- if $existingSecret }}
+{{- $postgresPassword = index $existingSecret.data "postgres-password" | b64dec }}
+{{- else }}
+{{- /* If postgres secret doesn't exist yet, it will be created by postgres-secret.yaml with a generated password.
+     During helm install, both secrets are created in the same transaction, so we generate the same password here.
+     This ensures consistency between postgres-secret and langflow-dotenv on first install. */ -}}
+{{- $postgresPassword = include "openrag.postgres.password" . }}
+{{- end }}
+{{- end }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -14,6 +28,8 @@ metadata:
   namespace: {{ include "openrag.namespace" . }}
   labels:
     {{- include "openrag.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
 type: Opaque
 stringData:
   .env: |
@@ -22,7 +38,11 @@ stringData:
 
     # Langflow core settings
     LANGFLOW_LOAD_FLOWS_PATH={{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.flowsSubPath }}
+    {{- if .Values.postgres.enabled }}
+    LANGFLOW_DATABASE_URL="postgresql://{{ .Values.postgres.username }}:{{ $postgresPassword }}@{{ include "openrag.fullname" . }}-postgres:{{ .Values.postgres.service.port }}/{{ .Values.postgres.database }}"
+    {{- else }}
     LANGFLOW_DATABASE_URL="sqlite:///{{ .Values.langflow.persistence.mountPath }}/{{ .Values.langflow.persistence.dbSubPath }}"
+    {{- end }}
     LANGFLOW_DEACTIVATE_TRACING={{ .Values.langflow.deactivateTracing | quote }}
     LANGFLOW_LOG_LEVEL={{ .Values.langflow.logLevel | quote }}
     HIDE_GETTING_STARTED_PROGRESS="true"
