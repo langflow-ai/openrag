@@ -1247,6 +1247,41 @@ class FlowsService:
             "flow_id": flow_id,
         }
 
+    async def _update_component_langflow(self, template, model: str):
+        # Call custom_component/update endpoint to get updated template
+        # Only call if code field exists (custom components should have code)
+        if "code" in template and "value" in template["code"]:
+            code_value = template["code"]["value"]
+                            
+            try:
+                update_payload = {
+                    "code": code_value,
+                    "template": template,
+                    "field": "model",
+                    "field_value": model,
+                    "tool_mode": False,
+                }
+                
+                response = await clients.langflow_request(
+                    "POST", "/api/v1/custom_component/update", json=update_payload
+                )
+                
+                if response.status_code == 200:
+                    response_data = response.json()
+                    # Update template with the new template from response.data
+                    if "template" in response_data:
+                        # Update the template in component_node
+                        return response_data["template"]
+                    else:
+                        logger.warning("Response from custom_component/update missing 'data' field")
+                else:
+                    logger.warning(
+                        f"Failed to call custom_component/update: HTTP {response.status_code} - {response.text}"
+                    )
+            except Exception as e:
+                logger.error(f"Error calling custom_component/update: {str(e)}")
+                # Continue with manual updates even if API call fails
+
     async def _update_component_fields(
         self,
         component_node,
@@ -1262,74 +1297,52 @@ class FlowsService:
         updated = False
 
         provider_name = "IBM WatsonX" if provider == "watsonx" else "Ollama" if provider == "ollama" else "Anthropic" if provider == "anthropic" else "OpenAI"
+
+        try:
+            enable_payload = [{
+                "provider": provider_name,
+                "model_id": model_value,
+                "enabled": True
+            }]
+            
+            enable_response = await clients.langflow_request(
+                "POST", "/api/v1/models/enabled_models", json=enable_payload
+            )
+            
+            if enable_response.status_code == 200:
+                logger.info(f"Successfully enabled model {model_value} for provider {provider_name}")
+            else:
+                logger.warning(
+                    f"Failed to enable model: HTTP {enable_response.status_code} - {enable_response.text}"
+                )
+        except Exception as e:
+            logger.error(f"Error enabling model {model_value}: {str(e)}")
         
         # Update provider field and call custom_component/update endpoint
         if "model" in template:
             if "options" not in template["model"]:
                 return False
 
+            model = [template["model"]["options"][0]]
+
+            template = await self._update_component_langflow(template, model_value)
+
+            component_node["data"]["node"]["template"] = template
+            
             model = [item for item in template["model"]["options"] if item["provider"] == provider_name and item["name"] == model_value]
 
-            try:
-                enable_payload = [{
-                    "provider": provider_name,
-                    "model_id": model_value,
-                    "enabled": True
-                }]
-                
-                enable_response = await clients.langflow_request(
-                    "POST", "/api/v1/models/enabled_models", json=enable_payload
-                )
-                
-                if enable_response.status_code == 200:
-                    logger.info(f"Successfully enabled model {model_value} for provider {provider_name}")
-                else:
-                    logger.warning(
-                        f"Failed to enable model: HTTP {enable_response.status_code} - {enable_response.text}"
-                    )
-            except Exception as e:
-                logger.error(f"Error enabling model {model_value}: {str(e)}")
+            template = await self._update_component_langflow(template, model_value)
 
-
-            # First, update the provider value
             template["model"]["value"] = model
-            
-            # Call custom_component/update endpoint to get updated template
-            # Only call if code field exists (custom components should have code)
-            if "code" in template and "value" in template["code"]:
-                code_value = template["code"]["value"]
-                                
-                try:
-                    update_payload = {
-                        "code": code_value,
-                        "template": template,
-                        "field": "model",
-                        "field_value": model,
-                        "tool_mode": False,
-                    }
-                    
-                    response = await clients.langflow_request(
-                        "POST", "/api/v1/custom_component/update", json=update_payload
-                    )
-                    
-                    if response.status_code == 200:
-                        response_data = response.json()
-                        # Update template with the new template from response.data
-                        if "template" in response_data:
-                            # Update the template in component_node
-                            component_node["data"]["node"]["template"] = response_data["template"]
-                            # Update local template reference
-                            template = response_data["template"]
-                            logger.info(f"Successfully updated template via custom_component/update for provider: {provider_name}")
-                        else:
-                            logger.warning("Response from custom_component/update missing 'data' field")
-                    else:
-                        logger.warning(
-                            f"Failed to call custom_component/update: HTTP {response.status_code} - {response.text}"
-                        )
-                except Exception as e:
-                    logger.error(f"Error calling custom_component/update: {str(e)}")
-                    # Continue with manual updates even if API call fails
+
+            component_node["data"]["node"]["template"] = template
+
+            if len(model) == 0:
+                logger.warning(f"Model {model_value} not found for provider {provider_name}")
+                return False
+
+            updated = True
+                
 
         if "api_base" in template:
             if provider == "ollama":
