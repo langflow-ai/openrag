@@ -415,6 +415,10 @@ class AppClients:
                 if config.providers.openai.api_key:
                     os.environ["OPENAI_API_KEY"] = config.providers.openai.api_key
                     logger.debug("Loaded OpenAI API key from config")
+
+                if config.providers.openai.endpoint:
+                    os.environ["OPENAI_API_BASE"] = config.providers.openai.endpoint
+                    logger.debug(f"Loaded OpenAI endpoint from config: '{config.providers.openai.endpoint}'")
                 
                 # Set Anthropic credentials
                 if config.providers.anthropic.api_key:
