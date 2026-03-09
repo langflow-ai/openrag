@@ -19,6 +19,7 @@ REPO ?= https://github.com/langflow-ai/langflow.git
 
 # Auto-detect container runtime: prefer docker, fall back to podman
 CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
+OPENRAG_IMAGE_REPOS := langflowai/openrag-backend langflowai/openrag-frontend langflowai/openrag-langflow langflowai/openrag-opensearch langflowai/openrag-dashboards langflow/langflow opensearchproject/opensearch opensearchproject/opensearch-dashboards
 # Only pass --env-file if the file actually exists
 ifneq (,$(wildcard $(ENV_FILE)))
   COMPOSE_CMD := $(CONTAINER_RUNTIME) compose --env-file $(ENV_FILE)
@@ -475,10 +476,24 @@ stop: ## Stop and remove all OpenRAG containers
 
 restart: stop dev ## Restart all containers
 
+remove-openrag-images: ## Remove OpenRAG-related images and dependencies (may affect other projects using shared images)
+	@echo "$(YELLOW)Removing OpenRAG-related images and dependencies...$(NC)"
+	@removed=0; total=0; \
+	for repo in $(OPENRAG_IMAGE_REPOS); do \
+		ids=$$($(CONTAINER_RUNTIME) images "$$repo" -q 2>/dev/null | sort -u); \
+		for id in $$ids; do \
+			total=$$((total+1)); \
+			if $(CONTAINER_RUNTIME) rmi -f "$$id" >/dev/null 2>&1; then \
+				removed=$$((removed+1)); \
+			fi; \
+		done; \
+	done; \
+	echo "$(PURPLE)Removed $$removed/$$total OpenRAG image(s).$(NC)"
+
 clean: stop ## Stop containers and remove volumes
 	@echo "$(YELLOW)Cleaning up containers and volumes...$(NC)"
 	$(COMPOSE_CMD) down -v --remove-orphans
-	$(CONTAINER_RUNTIME) system prune -f
+	@$(MAKE) remove-openrag-images
 	@echo "$(PURPLE)Cleanup complete!$(NC)"
 
 factory-reset: ## Complete reset (stop, remove volumes, clear data, remove images)
@@ -489,7 +504,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	echo "  - Delete opensearch-data directory"; \
 	echo "  - Delete config directory"; \
 	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
-	echo "  - Remove local OpenRAG images"; \
+	echo "  - Remove OpenRAG images"; \
 	echo ""; \
 	echo ""; \
 	if [ "$(FORCE)" != "true" ]; then \
@@ -520,8 +535,8 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 		rm -f keys/private_key.pem keys/public_key.pem; \
 		echo "$(PURPLE)JWT keys removed$(NC)"; \
 	fi; \
-	echo "$(YELLOW)Cleaning up system...$(NC)"; \
-	$(CONTAINER_RUNTIME) system prune -f; \
+	echo "$(YELLOW)Removing OpenRAG images...$(NC)"; \
+	$(MAKE) remove-openrag-images; \
 	echo ""; \
 	echo "$(PURPLE)Factory reset complete!$(NC)"; \
 	echo "$(CYAN)Run 'make dev' or 'make dev-cpu' to start fresh.$(NC)";

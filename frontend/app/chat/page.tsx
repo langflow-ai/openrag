@@ -1088,7 +1088,7 @@ function ChatPage() {
       )}
 
       <StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden p-6">
-        <div className="flex flex-col place-self-center space-y-6 max-w-[960px] w-full mx-auto">
+        <div className="flex flex-col place-self-center space-y-6 max-w-content w-full mx-auto">
           {messages.length === 0 && !streamingMessage ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <div className="text-center">
@@ -1209,7 +1209,7 @@ function ChatPage() {
           )}
         </div>
       </StickToBottom.Content>
-      <div className="p-6 pt-0 max-w-[960px] mx-auto w-full">
+      <div className="p-6 pt-0 max-w-content mx-auto w-full">
         {/* Input Area - Fixed at bottom */}
         <ChatInput
           ref={chatInputRef}

@@ -301,7 +301,7 @@ export function ChatRenderer({
             className={cn(
               "h-full bg-background w-full",
               showLayout && !isOnChatPage && "p-6 container",
-              showLayout && isSmallWidthPath && "max-w-[920px] ml-0",
+              showLayout && isSmallWidthPath && "max-w-content mx-auto",
               !showLayout && "p-0 py-2",
             )}
           >

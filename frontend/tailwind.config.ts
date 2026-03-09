@@ -21,6 +21,9 @@ const config = {
       },
     },
     extend: {
+      maxWidth: {
+        content: "960px",
+      },
       screens: {
         xl: "1200px",
         "2xl": "1400px",

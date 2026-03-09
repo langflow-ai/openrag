@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { formatFilesToDelete } from "@/lib/format-files-to-delete";
+import { useTask } from "@/contexts/task-context";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 import { Button } from "./ui/button";
 
@@ -39,6 +40,7 @@ export const KnowledgeActionsDropdown = ({
   filename,
   connectorType,
 }: KnowledgeActionsDropdownProps) => {
+  const { refreshTasks } = useTask();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const deleteDocumentMutation = useDeleteDocument();
   const syncConnectorMutation = useSyncConnector();
@@ -58,7 +60,10 @@ export const KnowledgeActionsDropdown = ({
   const handleDelete = async () => {
     try {
       await deleteDocumentMutation.mutateAsync({ filename });
-      toast.success(`Successfully deleted "${filename}"`);
+      await refreshTasks();
+      toast.success("Successfully deleted document", {
+        description: formatFilesToDelete([{ filename }], 1),
+      });
       setShowDeleteDialog(false);
     } catch (error) {
       toast.error(
