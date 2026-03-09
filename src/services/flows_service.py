@@ -1332,10 +1332,10 @@ class FlowsService:
                     # Continue with manual updates even if API call fails
 
         if "api_base" in template:
-            if provider_name == "ollama":
+            if provider == "ollama":
                 template["api_base"]["value"] = "OLLAMA_BASE_URL"
                 template["api_base"]["load_from_db"] = True
-            elif provider_name == "watsonx":
+            elif provider == "watsonx":
                 # Watson uses "url" field
                 template["api_base"]["value"] = "WATSONX_URL"
                 template["api_base"]["load_from_db"] = True
@@ -1345,7 +1345,7 @@ class FlowsService:
             updated = True
 
         if "project_id" in template:
-            if provider_name == "watsonx":
+            if provider == "watsonx":
                 template["project_id"]["value"] = "WATSONX_PROJECT_ID"
                 template["project_id"]["load_from_db"] = True
             else:

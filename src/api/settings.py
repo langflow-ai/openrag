@@ -168,6 +168,7 @@ class OnboardingResponse(BaseModel):
     edited: bool
     sample_data_ingested: bool
     openrag_docs_filter_id: Optional[str] = None
+    task_id: Optional[str] = None
 
 class DoclingConfig(BaseModel):
     do_ocr: bool
@@ -975,6 +976,8 @@ async def onboarding(
             )
             raise
 
+        task_id = None
+
         # Initialize the OpenSearch index if embedding model is configured
         if body.embedding_model or body.embedding_provider:
             try:
@@ -1004,7 +1007,7 @@ async def onboarding(
                     # Import the function here to avoid circular imports
                     from main import ingest_default_documents_when_ready
 
-                    await ingest_default_documents_when_ready(
+                    task_id = await ingest_default_documents_when_ready(
                         document_service,
                         task_service,
                         langflow_file_service,
@@ -1094,6 +1097,7 @@ async def onboarding(
             edited=True,  # Confirm that config is now marked as edited
             sample_data_ingested=should_ingest_sample_data,
             openrag_docs_filter_id=openrag_docs_filter_id,
+            task_id=task_id,
         )
 
     except Exception as e:

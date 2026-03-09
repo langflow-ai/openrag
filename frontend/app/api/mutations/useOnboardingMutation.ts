@@ -27,6 +27,7 @@ interface OnboardingResponse {
   message: string;
   edited: boolean;
   openrag_docs_filter_id?: string;
+  task_id?: string;
 }
 
 export const useOnboardingMutation = (
