@@ -1,5 +1,3 @@
-import os
-
 import httpx
 from typing import Dict, List
 from config.model_constants import (
