@@ -1214,11 +1214,19 @@ async def _update_langflow_global_variables(config):
 
         # Ollama global variables
         if config.providers.ollama.endpoint:
-            endpoint = transform_localhost_url(config.providers.ollama.endpoint)
-            await clients._create_langflow_global_variable(
-                "OLLAMA_BASE_URL", endpoint, modify=True
-            )
-            logger.info("Set OLLAMA_BASE_URL global variable in Langflow")
+
+            try:
+                endpoint = transform_localhost_url(config.providers.ollama.endpoint, is_langflow=True, is_podman=True)
+                await clients._create_langflow_global_variable(
+                    "OLLAMA_BASE_URL", endpoint, modify=True
+                )
+                logger.info("Set OLLAMA_BASE_URL global variable in Langflow (Podman)")
+            except Exception:
+                endpoint = transform_localhost_url(config.providers.ollama.endpoint, is_langflow=True, is_podman=False)
+                await clients._create_langflow_global_variable(
+                    "OLLAMA_BASE_URL", endpoint, modify=True
+                )   
+                logger.info("Set OLLAMA_BASE_URL global variable in Langflow (Docker)")
 
         if config.knowledge.embedding_model:
             await clients._create_langflow_global_variable(

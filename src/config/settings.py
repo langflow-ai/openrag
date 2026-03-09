@@ -697,6 +697,7 @@ class AppClients:
                 variable_name=name,
                 error=str(e),
             )
+            raise e
 
     async def _update_langflow_global_variable(self, name: str, value: str):
         """Update an existing global variable in Langflow via API"""

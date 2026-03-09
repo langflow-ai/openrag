@@ -1330,6 +1330,19 @@ class FlowsService:
                 except Exception as e:
                     logger.error(f"Error calling custom_component/update: {str(e)}")
                     # Continue with manual updates even if API call fails
-            
+
+        if provider_name == "ollama" and "api_base" in template:
+            template["api_base"]["value"] = "OLLAMA_BASE_URL"
+            template["api_base"]["load_from_db"] = True
+        
+        if provider == "watsonx" and "api_base" in template:
+            # Watson uses "url" field
+            template["api_base"]["value"] = "WATSONX_URL"
+            template["api_base"]["load_from_db"] = True
+            updated = True
+
+        if provider == "watsonx" and "project_id" in template:
+            template["project_id"]["value"] = "WATSONX_PROJECT_ID"
+            template["project_id"]["load_from_db"] = True
             updated = True
         return updated
