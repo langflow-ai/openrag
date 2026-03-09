@@ -11,9 +11,9 @@ import PartialDockerRemoveAndCleanupSteps from '@site/docs/_partial-docker-remov
 If you want to reset your OpenRAG containers without removing OpenRAG entirely, see [Reset OpenRAG containers](/manage-services) and [Reinstall OpenRAG](/reinstall).
 :::
 
-## Uninstall TUI-managed deployments
+## Uninstall terminal-managed deployments
 
-If you used the [automated installer script](/install) or [`uvx`](/install-uvx) to install OpenRAG, clear your `uv` cache (`uv cache clean`) to remove the TUI environment, and then delete the `~/.openrag` directory.
+If you used [`uvx`](/install-uvx) to install OpenRAG, clear your `uv` cache (`uv cache clean`), and then delete the `~/.openrag` directory.
 
 If you used [`uv`](/install-uv) to install OpenRAG, run `uv remove openrag` in your Python project, and then delete the `~/.openrag` directory.
 

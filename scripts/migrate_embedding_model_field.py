@@ -55,11 +55,13 @@ from opensearchpy._async.http_aiohttp import AIOHttpConnection
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from config.settings import (
+    KNN_EF_CONSTRUCTION,
+    KNN_M,
     OPENSEARCH_HOST,
     OPENSEARCH_PORT,
     OPENSEARCH_USERNAME,
     OPENSEARCH_PASSWORD,
-    INDEX_NAME,
+    get_index_name,
 )
 from utils.logging_config import get_logger
 from utils.embedding_fields import get_embedding_field_name
@@ -83,7 +85,7 @@ async def ensure_new_field_exists(
                     "name": "disk_ann",
                     "engine": "jvector",
                     "space_type": "l2",
-                    "parameters": {"ef_construction": 100, "m": 16},
+                    "parameters": {"ef_construction": KNN_EF_CONSTRUCTION, "m": KNN_M},
                 },
             },
             "embedding_model": {
@@ -231,7 +233,7 @@ async def migrate_legacy_embeddings(
 ) -> bool:
     """Main migration function."""
     if index_name is None:
-        index_name = INDEX_NAME
+        index_name = get_index_name()
 
     new_field_name = get_embedding_field_name(model_name)
 
@@ -359,7 +361,7 @@ Examples:
     parser.add_argument(
         '--index',
         default=None,
-        help=f'Index name (default: {INDEX_NAME})'
+        help=f'Index name (default: {get_index_name()})'
     )
 
     args = parser.parse_args()

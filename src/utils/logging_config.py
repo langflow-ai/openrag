@@ -5,6 +5,20 @@ import structlog
 from structlog import processors
 
 
+LOC_WIDTH_SHORT = 30
+LOC_WIDTH_LONG = 60
+
+LEVEL_COLORS = {
+    "DEBUG": "\033[36m",       # Cyan
+    "INFO": "\033[32m",        # Green
+    "WARNING": "\033[33m",     # Yellow
+    "ERROR": "\033[31m",       # Red
+    "CRITICAL": "\033[1;31m",  # Bold red
+}
+DIM = "\033[38;5;244m"  # Medium grey
+RESET = "\033[0m"
+
+
 def configure_logging(
     log_level: str = "INFO",
     json_logs: bool = False,
@@ -48,24 +62,30 @@ def configure_logging(
         console_renderer = structlog.processors.JSONRenderer()
     else:
         # Custom clean format: timestamp path/file:loc logentry
+        use_colors = "NO_COLOR" not in os.environ and hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
+
         def custom_formatter(logger, log_method, event_dict):
             timestamp = event_dict.pop("timestamp", "")
             pathname = event_dict.pop("pathname", "")
             filename = event_dict.pop("filename", "")
             lineno = event_dict.pop("lineno", "")
-            level = event_dict.pop("level", "")
+            level = event_dict.pop("level", "").upper()
 
-            # Build file location - prefer pathname for full path, fallback to filename
-            if pathname and lineno:
-                location = f"{pathname}:{lineno}"
-            elif filename and lineno:
+            if filename and lineno:
                 location = f"{filename}:{lineno}"
-            elif pathname:
-                location = pathname
+                loc_width = LOC_WIDTH_SHORT
+            elif pathname and lineno:
+                location = f"{pathname}:{lineno}"
+                loc_width = LOC_WIDTH_LONG
             elif filename:
                 location = filename
+                loc_width = LOC_WIDTH_SHORT
+            elif pathname:
+                location = pathname
+                loc_width = LOC_WIDTH_LONG
             else:
                 location = "unknown"
+                loc_width = LOC_WIDTH_SHORT
 
             # Build the main message
             message_parts = []
@@ -73,14 +93,28 @@ def configure_logging(
             if event:
                 message_parts.append(event)
 
-            # Add any remaining context
-            for key, value in event_dict.items():
-                if key not in ["service", "func_name"]:  # Skip internal fields
-                    message_parts.append(f"{key}={value}")
+            if use_colors:
+                colored_timestamp = f"{DIM}{timestamp}{RESET}"
+                color = LEVEL_COLORS.get(level, "")
+                colored_level = f"{color}{level:<7}{RESET}"
+            else:
+                colored_timestamp = timestamp
+                colored_level = f"{level:<7}"
 
-            message = " ".join(message_parts)
+            header = f"[{colored_timestamp}] [{colored_level}] [{location:<{loc_width}}] "
+            # Visible width excludes ANSI escape codes for correct padding
+            visible_header = f"[{timestamp}] [{level:<7}] [{location:<{loc_width}}] "
 
-            return f"{timestamp} {location} {message}"
+            # Add any remaining context as indented multi-line fields
+            extra = {k: v for k, v in event_dict.items() if k not in ["service", "func_name"]}
+            if extra:
+                padding = " " * len(visible_header)
+                for key, value in extra.items():
+                    message_parts.append(f"\n{padding}- {key}: {value}")
+
+            message = "".join(message_parts)
+
+            return f"{header}{message}"
 
         console_renderer = custom_formatter
 

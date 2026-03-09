@@ -1,7 +1,7 @@
+import { Minus, Plus } from "lucide-react";
 import { LabelWrapper } from "@/components/label-wrapper";
 import { Button } from "../button";
 import { Input } from "../input";
-import { Minus, Plus } from "lucide-react";
 
 interface NumberInputProps {
   id: string;

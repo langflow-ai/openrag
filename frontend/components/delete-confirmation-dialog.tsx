@@ -1,6 +1,8 @@
 "use client";
 
-import React from "react";
+import { AlertTriangle } from "lucide-react";
+import React, { ReactNode } from "react";
+import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,8 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
-import { Button } from "./ui/button";
-import { AlertTriangle } from "lucide-react";
 
 /**
  * Formats a list of files to be deleted, truncating if necessary.
@@ -21,15 +21,28 @@ import { AlertTriangle } from "lucide-react";
 export function formatFilesToDelete(
   files: Array<{ filename: string }>,
   maxVisible = 5,
-): string {
+): ReactNode {
   const visibleFiles = files.slice(0, maxVisible);
   const remainingCount = files.length - maxVisible;
-  const fileList = visibleFiles.map((file) => `• ${file.filename}`).join("\n");
-  return remainingCount > 0
-    ? `${fileList}\n• ... and ${remainingCount} more document${
-        remainingCount > 1 ? "s" : ""
-      }`
-    : fileList;
+  return (
+    <ul className="list-disc pl-5">
+      {visibleFiles.map((file) => (
+        <li key={file.filename} className="my-2" title={file.filename}>
+          <p className="overflow-hidden text-ellipsis whitespace-nowrap max-w-[200px]">
+            {file.filename}
+          </p>
+        </li>
+      ))}
+      {remainingCount > 0 ? (
+        <li>
+          &hellip; and {remainingCount} more document
+          {remainingCount > 1 ? "s" : ""}
+        </li>
+      ) : (
+        ""
+      )}
+    </ul>
+  );
 }
 
 interface DeleteConfirmationDialogProps {
@@ -42,6 +55,7 @@ interface DeleteConfirmationDialogProps {
   onConfirm: () => void | Promise<void>;
   isLoading?: boolean;
   variant?: "destructive" | "default";
+  children?: ReactNode;
 }
 
 export const DeleteConfirmationDialog: React.FC<
@@ -56,6 +70,7 @@ export const DeleteConfirmationDialog: React.FC<
   onConfirm,
   isLoading = false,
   variant = "destructive",
+  children,
 }) => {
   const handleConfirm = async () => {
     try {
@@ -80,7 +95,7 @@ export const DeleteConfirmationDialog: React.FC<
           </div>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-
+        <div className="text-sm text-muted-foreground">{children}</div>
         <DialogFooter>
           <Button
             type="button"

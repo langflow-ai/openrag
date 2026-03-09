@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -19,7 +20,6 @@ import {
   WatsonxSettingsForm,
   type WatsonxSettingsFormData,
 } from "./watsonx-settings-form";
-import { useRouter } from "next/navigation";
 
 const WatsonxSettingsDialog = ({
   open,

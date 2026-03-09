@@ -1,7 +1,7 @@
 import {
+  type UseQueryOptions,
   useQuery,
   useQueryClient,
-  type UseQueryOptions,
 } from "@tanstack/react-query";
 
 export interface FacetBucket {

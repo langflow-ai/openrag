@@ -33,6 +33,8 @@ export interface ChunkResult {
   embedding_model?: string;
   embedding_dimensions?: number;
   index?: number;
+  allowed_users?: string[];
+  allowed_groups?: string[];
 }
 
 export interface File {
@@ -57,6 +59,8 @@ export interface File {
     | "sync";
   error?: string;
   chunks?: ChunkResult[];
+  allowed_users?: string[];
+  allowed_groups?: string[];
 }
 
 export const useGetSearchQuery = (
@@ -73,10 +77,11 @@ export const useGetSearchQuery = (
     try {
       // For wildcard queries, use a high limit to get all files
       // Otherwise use the limit from queryData or default to 100
-      const isWildcardQuery = effectiveQuery.trim() === "*" || effectiveQuery.trim() === "";
+      const isWildcardQuery =
+        effectiveQuery.trim() === "*" || effectiveQuery.trim() === "";
       const searchLimit = isWildcardQuery
         ? SEARCH_CONSTANTS.WILDCARD_QUERY_LIMIT
-        : (queryData?.limit || 100);
+        : queryData?.limit || 100;
 
       const searchPayload: SearchPayload = {
         query: effectiveQuery,
@@ -129,8 +134,12 @@ export const useGetSearchQuery = (
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorData.error || `Search failed with status ${response.status}`);
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(
+          errorData.error || `Search failed with status ${response.status}`,
+        );
       }
 
       const data = await response.json();
@@ -150,6 +159,8 @@ export const useGetSearchQuery = (
           connector_type?: string;
           embedding_model?: string;
           embedding_dimensions?: number;
+          allowed_users?: string[];
+          allowed_groups?: string[];
         }
       >();
 
@@ -181,6 +192,8 @@ export const useGetSearchQuery = (
             connector_type: chunk.connector_type,
             embedding_model: chunk.embedding_model,
             embedding_dimensions: chunk.embedding_dimensions,
+            allowed_users: chunk.allowed_users || [],
+            allowed_groups: chunk.allowed_groups || [],
           });
         }
       });
@@ -199,6 +212,8 @@ export const useGetSearchQuery = (
         embedding_model: file.embedding_model,
         embedding_dimensions: file.embedding_dimensions,
         chunks: file.chunks,
+        allowed_users: file.allowed_users || [],
+        allowed_groups: file.allowed_groups || [],
       }));
 
       return files;

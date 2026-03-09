@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional
+import json
 
 from config.settings import LANGFLOW_INGEST_FLOW_ID, clients
 from utils.logging_config import get_logger
@@ -68,6 +69,10 @@ class LangflowFileService:
         owner_name: Optional[str] = None,
         owner_email: Optional[str] = None,
         connector_type: Optional[str] = None,
+        document_id: Optional[str] = None,
+        source_url: Optional[str] = None,
+        allowed_users: Optional[List[str]] = None,
+        allowed_groups: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Trigger the ingestion flow with provided file paths.
@@ -147,17 +152,30 @@ class LangflowFileService:
         config = get_openrag_config()
         embedding_model = config.knowledge.embedding_model
 
-        headers={
-                "X-Langflow-Global-Var-JWT": str(jwt_token),
-                "X-Langflow-Global-Var-OWNER": str(owner),
-                "X-Langflow-Global-Var-OWNER_NAME": str(owner_name),
-                "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
-                "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
-                "X-Langflow-Global-Var-FILENAME": filename,
-                "X-Langflow-Global-Var-MIMETYPE": mimetype,
-                "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
-                "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
-            }
+        headers = {
+            "X-Langflow-Global-Var-JWT": str(jwt_token),
+            "X-Langflow-Global-Var-OWNER": str(owner),
+            "X-Langflow-Global-Var-OWNER_NAME": str(owner_name),
+            "X-Langflow-Global-Var-OWNER_EMAIL": str(owner_email),
+            "X-Langflow-Global-Var-CONNECTOR_TYPE": str(connector_type),
+            "X-Langflow-Global-Var-FILENAME": filename,
+            "X-Langflow-Global-Var-MIMETYPE": mimetype,
+            "X-Langflow-Global-Var-FILESIZE": str(file_size_bytes),
+            "X-Langflow-Global-Var-SELECTED_EMBEDDING_MODEL": str(embedding_model),
+            "X-Langflow-Global-Var-DOCUMENT_ID": str(document_id) if document_id else "",
+            "X-Langflow-Global-Var-SOURCE_URL": str(source_url) if source_url else "",
+        }
+
+        # Serialize ACL lists as JSON strings for Langflow global vars
+        # (flows will parse these back into lists before indexing)
+        if allowed_users is not None:
+            headers["X-Langflow-Global-Var-ALLOWED_USERS"] = json.dumps(
+                allowed_users or []
+            )
+        if allowed_groups is not None:
+            headers["X-Langflow-Global-Var-ALLOWED_GROUPS"] = json.dumps(
+                allowed_groups or []
+            )
         
         # Add provider credentials as global variables for ingestion
         add_provider_credentials_to_headers(headers, config)

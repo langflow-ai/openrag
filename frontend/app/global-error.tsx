@@ -37,15 +37,17 @@ export default function GlobalError({
             }}
           >
             <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>
-              {isChunkError ? "Application loading error" : "Component rendering error"}
+              {isChunkError
+                ? "Application loading error"
+                : "Component rendering error"}
             </h2>
             <p style={{ color: "#888", margin: 0 }}>
               {isChunkError ? (
                 <>
-                  Some application resources failed to load.
-                  This can occur due to a bad / slow Internet connection,
-                  the application server not being fully initialized,
-                  or the browser cache containing old code chunk references.
+                  Some application resources failed to load. This can occur due
+                  to a bad / slow Internet connection, the application server
+                  not being fully initialized, or the browser cache containing
+                  old code chunk references.
                 </>
               ) : (
                 "An unexpected component error occurred. See JavaScript Console for further details."

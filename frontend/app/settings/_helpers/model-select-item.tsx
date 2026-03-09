@@ -1,8 +1,8 @@
 import { SelectItem } from "@/components/ui/select";
 import {
   getModelLogo,
-  type ModelProvider,
   type ModelOption,
+  type ModelProvider,
 } from "./model-helpers";
 
 interface ModelSelectItemProps {

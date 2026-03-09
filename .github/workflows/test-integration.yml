@@ -8,6 +8,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'sdks/**'
+      - 'flows/**'
       - '.github/workflows/test-integration.yml'
   workflow_dispatch:
     inputs:

@@ -1,14 +1,22 @@
 import os
 
-from starlette.requests import Request
-from starlette.responses import JSONResponse
-import json
+from fastapi import Depends, Request
+from pydantic import BaseModel
+from fastapi.responses import JSONResponse
 import base64
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+from dependencies import get_session_manager
 
 
-async def oidc_discovery(request: Request, session_manager):
+class TokenIntrospectBody(BaseModel):
+    token: str
+
+
+async def oidc_discovery(
+    request: Request,
+    session_manager=Depends(get_session_manager),
+):
     """OIDC discovery endpoint"""
     openrag_fqdn = os.getenv("OPENRAG_FQDN")
     if openrag_fqdn:
@@ -28,43 +36,31 @@ async def oidc_discovery(request: Request, session_manager):
         "scopes_supported": ["openid", "email", "profile"],
         "token_endpoint_auth_methods_supported": ["client_secret_basic"],
         "claims_supported": [
-            "sub",
-            "iss",
-            "aud",
-            "exp",
-            "iat",
-            "auth_time",
-            "email",
-            "email_verified",
-            "name",
-            "preferred_username",
+            "sub", "iss", "aud", "exp", "iat", "auth_time",
+            "email", "email_verified", "name", "preferred_username",
         ],
     }
 
     return JSONResponse(discovery_config)
 
 
-async def jwks_endpoint(request: Request, session_manager):
+async def jwks_endpoint(
+    session_manager=Depends(get_session_manager),
+):
     """JSON Web Key Set endpoint"""
     try:
-        # Get the public key from session manager
         public_key_pem = session_manager.public_key_pem
 
         if public_key_pem is None:
-            # Symmetric key in use - no JWKS available
             return JSONResponse({"keys": []})
 
-        # Parse the PEM to extract key components
         public_key = serialization.load_pem_public_key(public_key_pem.encode())
 
-        # Convert RSA components to base64url
         def int_to_base64url(value):
-            # Convert integer to bytes, then to base64url
             byte_length = (value.bit_length() + 7) // 8
             value_bytes = value.to_bytes(byte_length, byteorder="big")
             return base64.urlsafe_b64encode(value_bytes).decode("ascii").rstrip("=")
 
-        # Get public key components
         public_numbers = public_key.public_numbers()
 
         jwk = {
@@ -76,9 +72,7 @@ async def jwks_endpoint(request: Request, session_manager):
             "e": int_to_base64url(public_numbers.e),
         }
 
-        jwks = {"keys": [jwk]}
-
-        return JSONResponse(jwks)
+        return JSONResponse({"keys": [jwk]})
 
     except Exception as e:
         return JSONResponse(
@@ -86,17 +80,13 @@ async def jwks_endpoint(request: Request, session_manager):
         )
 
 
-async def token_introspection(request: Request, session_manager):
-    """Token introspection endpoint (optional)"""
+async def token_introspection(
+    body: TokenIntrospectBody,
+    session_manager=Depends(get_session_manager),
+):
+    """Token introspection endpoint"""
     try:
-        data = await request.json()
-        token = data.get("token")
-
-        if not token:
-            return JSONResponse({"active": False})
-
-        # Verify the token
-        payload = session_manager.verify_token(token)
+        payload = session_manager.verify_token(body.token)
 
         if payload:
             return JSONResponse(

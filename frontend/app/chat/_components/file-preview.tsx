@@ -23,7 +23,11 @@ const getFilePreviewUrl = (file: File): string => {
   return "";
 };
 
-export const FilePreview = ({ uploadedFile, onClear, isUploading = false }: FilePreviewProps) => {
+export const FilePreview = ({
+  uploadedFile,
+  onClear,
+  isUploading = false,
+}: FilePreviewProps) => {
   return (
     <div className="max-w-[250px] flex items-center gap-2 p-2 bg-muted rounded-lg">
       {/* File Image Preview */}

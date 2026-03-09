@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import {
   Bell,
   CheckCircle,
-  XCircle,
-  Clock,
-  Loader2,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Loader2,
   X,
+  XCircle,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,8 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { useTask, Task } from "@/contexts/task-context";
+import { Task, useTask } from "@/contexts/task-context";
 
 export function TaskNotificationMenu() {
   const { tasks, isFetching, isMenuOpen, isRecentTasksExpanded, cancelTask } =

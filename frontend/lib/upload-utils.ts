@@ -53,7 +53,7 @@ export async function uploadFileForContext(
     let payload: unknown;
     try {
       payload = await uploadResponse.json();
-    } catch (error) {
+    } catch (_error) {
       throw new Error("Upload failed: unable to parse server response");
     }
 
@@ -120,6 +120,46 @@ export async function uploadFileForContext(
   }
 }
 
+export async function uploadFiles(
+  files: File[],
+  replace = false,
+): Promise<{ taskId: string; fileCount: number }> {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("file", file);
+  }
+  formData.append("replace_duplicates", replace.toString());
+
+  const uploadResponse = await fetch("/api/router/upload_ingest", {
+    method: "POST",
+    body: formData,
+  });
+
+  let payload: unknown;
+  try {
+    payload = await uploadResponse.json();
+  } catch {
+    throw new Error("Upload failed: unable to parse server response");
+  }
+
+  const json = typeof payload === "object" && payload !== null ? payload : {};
+
+  if (!uploadResponse.ok) {
+    const errorMessage = (json as { error?: string }).error || "Upload failed";
+    throw new Error(errorMessage);
+  }
+
+  const taskId = (json as { task_id?: string }).task_id;
+  const fileCount =
+    (json as { file_count?: number }).file_count ?? files.length;
+
+  if (!taskId) {
+    throw new Error("Upload successful but no task ID returned");
+  }
+
+  return { taskId, fileCount };
+}
+
 export async function uploadFile(
   file: File,
   replace = false,
@@ -141,7 +181,7 @@ export async function uploadFile(
     let payload: unknown;
     try {
       payload = await uploadResponse.json();
-    } catch (error) {
+    } catch (_error) {
       throw new Error("Upload failed: unable to parse server response");
     }
 
@@ -187,8 +227,7 @@ export async function uploadFile(
 
     const shouldCreateFilter = (uploadIngestJson as { create_filter?: boolean })
       .create_filter;
-    const filename = (uploadIngestJson as { filename?: string })
-      .filename;
+    const filename = (uploadIngestJson as { filename?: string }).filename;
 
     const result: UploadFileResult = {
       fileId,

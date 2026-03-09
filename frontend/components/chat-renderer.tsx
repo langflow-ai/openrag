@@ -4,17 +4,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import {
   type ChatConversation,
   useGetConversationsQuery,
 } from "@/app/api/queries/useGetConversationsQuery";
 import { getFilterById } from "@/app/api/queries/useGetFilterByIdQuery";
 import type { Settings } from "@/app/api/queries/useGetSettingsQuery";
-import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import { OnboardingContent } from "@/app/onboarding/_components/onboarding-content";
 import { ProgressBar } from "@/app/onboarding/_components/progress-bar";
 import { AnimatedConditional } from "@/components/animated-conditional";
-import { Header } from "@/components/header";
 import { Navigation } from "@/components/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useChat } from "@/contexts/chat-context";
@@ -91,14 +90,16 @@ export function ChatRenderer({
     async (preferUserDoc: boolean, settingsToUse?: Settings) => {
       // Use provided settings or fall back to prop
       const currentSettings = settingsToUse || settings;
-      
+
       if (typeof window === "undefined") {
         return;
       }
 
       // Check if we already have a default filter set
-      const existingDefault = localStorage.getItem("default_conversation_filter_id");
-      
+      const existingDefault = localStorage.getItem(
+        "default_conversation_filter_id",
+      );
+
       if (existingDefault) {
         // Try to apply it to context state (don't save to localStorage to avoid overwriting)
         try {
@@ -109,7 +110,10 @@ export function ChatRenderer({
             return; // Successfully loaded and set, we're done
           }
         } catch (error) {
-          console.error("Failed to load existing default filter, will set new one:", error);
+          console.error(
+            "Failed to load existing default filter, will set new one:",
+            error,
+          );
           // Filter doesn't exist anymore, clear it and continue to set a new one
           localStorage.removeItem("default_conversation_filter_id");
         }
@@ -128,7 +132,6 @@ export function ChatRenderer({
         filterId = currentSettings?.onboarding?.openrag_docs_filter_id || null;
       }
 
-
       if (filterId) {
         // Store this as the default filter for new conversations
         localStorage.setItem("default_conversation_filter_id", filterId);
@@ -146,7 +149,11 @@ export function ChatRenderer({
         }
       }
     },
-    [setConversationFilter, settings?.onboarding?.user_doc_filter_id, settings?.onboarding?.openrag_docs_filter_id]
+    [
+      setConversationFilter,
+      settings?.onboarding?.user_doc_filter_id,
+      settings?.onboarding?.openrag_docs_filter_id,
+    ],
   );
 
   // Note: Current step is now saved to backend via handleStepComplete
@@ -161,13 +168,14 @@ export function ChatRenderer({
       // Save step to backend
       await updateOnboardingMutation.mutateAsync({ current_step: nextStep });
     } else {
-
       // IMPORTANT: Refetch settings to get the latest filter IDs that were saved during onboarding
       // The filter IDs are saved asynchronously by mutations, so we need fresh data
       await queryClient.refetchQueries({ queryKey: ["settings"] });
-      
+
       // Get the fresh settings after refetch
-      const freshSettings = queryClient.getQueryData(["settings"]) as Settings | undefined;
+      const freshSettings = queryClient.getQueryData(["settings"]) as
+        | Settings
+        | undefined;
 
       // Store the user document filter as default for new conversations
       // Pass fresh settings to ensure we have the latest filter IDs
@@ -215,7 +223,7 @@ export function ChatRenderer({
       openrag_docs_filter_id: null,
       user_doc_filter_id: null,
     });
-    
+
     // Mark onboarding as complete in context
     setOnboardingComplete(true);
     // Store the OpenRAG docs filter as default for new conversations
@@ -237,33 +245,28 @@ export function ChatRenderer({
   // For all other pages, render with Langflow-styled navigation and task menu
   return (
     <>
-      <AnimatedConditional
-        className="[grid-area:header] bg-background border-b"
-        vertical
-        slide
-        isOpen={showLayout}
-        delay={ANIMATION_DURATION / 2}
-      >
-        <Header />
-      </AnimatedConditional>
-
       {/* Sidebar Navigation */}
-      <AnimatedConditional
-        isOpen={showLayout}
-        slide
-        className={`border-r bg-background overflow-hidden [grid-area:nav] w-[${SIDEBAR_WIDTH}px]`}
+      <div
+        className="shrink-0 overflow-hidden"
+        style={{ width: SIDEBAR_WIDTH }}
       >
-        {showLayout && (
-          <Navigation
-            conversations={conversations}
-            isConversationsLoading={isConversationsLoading}
-            onNewConversation={handleNewConversation}
-          />
-        )}
-      </AnimatedConditional>
+        <AnimatedConditional
+          isOpen={showLayout}
+          slide
+          className="border-r bg-background overflow-hidden h-full w-full"
+        >
+          {showLayout && (
+            <Navigation
+              conversations={conversations}
+              isConversationsLoading={isConversationsLoading}
+              onNewConversation={handleNewConversation}
+            />
+          )}
+        </AnimatedConditional>
+      </div>
 
       {/* Main Content */}
-      <main className="overflow-hidden w-full flex items-center justify-center [grid-area:main]">
+      <main className="overflow-hidden flex-1 flex items-center justify-center">
         <motion.div
           initial={{
             width: showLayout ? "100%" : "100vw",
@@ -298,7 +301,7 @@ export function ChatRenderer({
             className={cn(
               "h-full bg-background w-full",
               showLayout && !isOnChatPage && "p-6 container",
-              showLayout && isSmallWidthPath && "max-w-[850px] ml-0",
+              showLayout && isSmallWidthPath && "max-w-content mx-auto",
               !showLayout && "p-0 py-2",
             )}
           >

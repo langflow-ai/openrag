@@ -6,8 +6,10 @@ slug: /docker
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import PartialOnboarding from '@site/docs/_partial-onboarding.mdx';
-import PartialPrereqCommon from '@site/docs/_partial-prereq-common.mdx';
-import PartialPrereqNoScript from '@site/docs/_partial-prereq-no-script.mdx';
+import PartialPrereqModels from '@site/docs/_partial-prereq-models.mdx';
+import PartialPrereqUv from '@site/docs/_partial-prereq-uv.mdx';
+import PartialPrereqGpu from '@site/docs/_partial-prereq-gpu.mdx';
+import PartialPrereqDocker from '@site/docs/_partial-prereq-docker.mdx';
 import PartialPrereqWindows from '@site/docs/_partial-prereq-windows.mdx';
 import PartialPrereqPython from '@site/docs/_partial-prereq-python.mdx';
 import PartialInstallNextSteps from '@site/docs/_partial-install-next-steps.mdx';
@@ -18,7 +20,7 @@ import PartialOAuthCredentials from '@site/docs/_partial-oauth-credentials.mdx';
 
 To manage your own OpenRAG services, deploy OpenRAG with Docker or Podman.
 
-Use this installation method if you don't want to [use the Terminal User Interface (TUI)](/tui), or you need to run OpenRAG in an environment where using the TUI is unfeasible.
+Use this installation method if you don't want to [use an OpenRAG terminal session](/tui), or you need to run OpenRAG in an environment where terminal interaction is unavailable.
 
 ## Prerequisites
 
@@ -26,9 +28,13 @@ Use this installation method if you don't want to [use the Terminal User Interfa
 
 <PartialPrereqPython />
 
-<PartialPrereqNoScript />
+<PartialPrereqUv />
 
-<PartialPrereqCommon />
+<PartialPrereqDocker />
+
+<PartialPrereqModels />
+
+<PartialPrereqGpu />
 
 ## Prepare your deployment {#setup}
 
@@ -80,7 +86,7 @@ The following variables are required or recommended:
       * `WATSONX_ENDPOINT`
       * `WATSONX_PROJECT_ID`
 
-6. To enable [OAuth mode](/knowledge#auth) or [cloud storage connectors](/ingestion#oauth-ingestion), do the following:
+6. To enable [OAuth mode or cloud storage connectors](/knowledge-connectors), do the following:
 
    1. Register OpenRAG as an OAuth application in your cloud provider, and then obtain the app's OAuth credentials, such as a client ID and secret key. To enable multiple connectors, you must register an app and generate credentials for each provider.
 
@@ -131,7 +137,7 @@ The following variables are required or recommended:
    Additionally, this enables the [MLX framework](https://opensource.apple.com/projects/mlx/) for accelerated performance on Apple Silicon Mac machines.
 
    :::tip
-   If you don't want to use the default Docling Serve implementation, see [Select a Docling implementation](/knowledge#select-a-docling-implementation).
+   If you don't want to use the default Docling Serve implementation, see [Select a Docling implementation](/ingestion-configure#select-a-docling-implementation).
    :::
 
 2. Confirm `docling serve` is running.

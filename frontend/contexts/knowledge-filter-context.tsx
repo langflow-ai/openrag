@@ -1,13 +1,14 @@
 "use client";
 
-import { FilterColor, IconKey } from "@/components/filter-icon-popover";
 import React, {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useState,
 } from "react";
+import { FilterColor, IconKey } from "@/components/filter-icon-popover";
 
 interface KnowledgeFilter {
   id: string;
@@ -127,9 +128,9 @@ export function KnowledgeFilterProvider({
     setSelectedFilter(null); // This will also close the panel
   };
 
-  const closePanelOnly = () => {
+  const closePanelOnly = useCallback(() => {
     setIsPanelOpen(false); // Close panel but keep filter selected
-  };
+  }, []);
 
   const startCreateMode = () => {
     // Initialize defaults

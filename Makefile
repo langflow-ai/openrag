@@ -1,13 +1,13 @@
-# OpenRAG Development Makefile
-# Provides easy commands for development workflow
+# Environment file location (can be overridden via command line)
+ENV_FILE ?= .env
 
-# Load variables from .env if present so `make` commands pick them up
+# Load variables from $(ENV_FILE) if present so `make` commands pick them up
 # Strip quotes from values to avoid issues with tools that don't handle them like python-dotenv does
-ifneq (,$(wildcard .env))
-  include .env
-  export $(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env)
+ifneq (,$(wildcard $(ENV_FILE)))
+  include $(ENV_FILE)
+  export $(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' $(ENV_FILE))
   # Strip single quotes from all exported variables
-  $(foreach var,$(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .env),$(eval $(var):=$(shell echo $($(var)) | sed "s/^'//;s/'$$//")))
+  $(foreach var,$(shell sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' $(ENV_FILE)),$(eval $(var):=$(shell echo $($(var)) | sed "s/^'//;s/'$$//")))
 endif
 
 hostname ?= 0.0.0.0
@@ -19,7 +19,12 @@ REPO ?= https://github.com/langflow-ai/langflow.git
 
 # Auto-detect container runtime: prefer docker, fall back to podman
 CONTAINER_RUNTIME := $(shell command -v docker >/dev/null 2>&1 && echo "docker" || echo "podman")
-COMPOSE_CMD := $(CONTAINER_RUNTIME) compose
+# Only pass --env-file if the file actually exists
+ifneq (,$(wildcard $(ENV_FILE)))
+  COMPOSE_CMD := $(CONTAINER_RUNTIME) compose --env-file $(ENV_FILE)
+else
+  COMPOSE_CMD := $(CONTAINER_RUNTIME) compose
+endif
 
 ######################
 # COLOR DEFINITIONS
@@ -70,8 +75,8 @@ endef
 .PHONY: help check_tools help_docker help_dev help_test help_local help_utils \
        dev dev-cpu dev-local dev-local-cpu stop clean build logs \
        shell-backend shell-frontend install \
-       test test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
-       backend frontend docling docling-stop install-be install-fe build-be build-fe logs-be logs-fe logs-lf logs-os \
+       test test-unit test-integration test-ci test-ci-local test-sdk test-os-jwt lint \
+       backend frontend docling docling-stop install-be install-fe build-be build-fe build-os build-lf logs-be logs-fe logs-lf logs-os \
        shell-be shell-lf shell-os restart status health db-reset clear-os-data flow-upload setup factory-reset \
        dev-branch build-langflow-dev stop-dev clean-dev logs-dev logs-lf-dev shell-lf-dev restart-dev status-dev
 
@@ -197,8 +202,10 @@ help_docker: ## Show Docker and container commands
 	@echo ''
 	@echo "$(PURPLE)Build Images:$(NC)"
 	@echo "  $(PURPLE)make build$(NC)           - Build all Docker images locally"
+	@echo "  $(PURPLE)make build-os$(NC)        - Build OpenSearch Docker image only"
 	@echo "  $(PURPLE)make build-be$(NC)        - Build backend Docker image only"
 	@echo "  $(PURPLE)make build-fe$(NC)        - Build frontend Docker image only"
+	@echo "  $(PURPLE)make build-lf$(NC)        - Build Langflow Docker image only"
 	@echo ''
 	@echo "$(PURPLE)Container Management:$(NC)"
 	@echo "  $(PURPLE)make stop$(NC)            - Stop and remove all OpenRAG containers"
@@ -224,6 +231,7 @@ help_test: ## Show testing commands
 	@echo ''
 	@echo "$(PURPLE)Unit & Integration Tests:$(NC)"
 	@echo "  $(PURPLE)make test$(NC)            - Run all backend tests"
+	@echo "  $(PURPLE)make test-unit$(NC)       - Run unit tests only (tests/unit/)"
 	@echo "  $(PURPLE)make test-integration$(NC) - Run integration tests (requires infra)"
 	@echo ''
 	@echo "$(PURPLE)CI Tests:$(NC)"
@@ -455,10 +463,13 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	echo "  - Delete JWT keys (private_key.pem, public_key.pem)"; \
 	echo "  - Remove local OpenRAG images"; \
 	echo ""; \
-	read -p "Are you sure? Type 'yes' to continue: " confirm; \
-	if [ "$$confirm" != "yes" ]; then \
-		echo "$(CYAN)Factory reset cancelled.$(NC)"; \
-		exit 0; \
+	echo ""; \
+	if [ "$(FORCE)" != "true" ]; then \
+		read -p "Are you sure? Type 'yes' to continue: " confirm; \
+		if [ "$$confirm" != "yes" ]; then \
+			echo "$(CYAN)Factory reset cancelled.$(NC)"; \
+			exit 0; \
+		fi; \
 	fi; \
 	echo ""; \
 	echo "$(YELLOW)Stopping all services and removing volumes...$(NC)"; \
@@ -469,7 +480,6 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 		uv run python scripts/clear_opensearch_data.py 2>/dev/null || \
 		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/opensearch-data:/data" alpine sh -c "rm -rf /data/*" 2>/dev/null || \
 		rm -rf opensearch-data/* 2>/dev/null || true; \
-		rm -rf opensearch-data 2>/dev/null || true; \
 		echo "$(PURPLE)opensearch-data removed$(NC)"; \
 	fi; \
 	if [ -d "config" ]; then \
@@ -494,7 +504,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 
 backend: ## Run backend locally
 	@echo "$(YELLOW)Starting backend locally...$(NC)"
-	@if [ ! -f .env ]; then echo "$(RED).env file not found. Copy .env.example to .env first$(NC)"; exit 1; fi
+	@if [ ! -f $(ENV_FILE) ]; then echo "$(RED)$(ENV_FILE) file not found. Copy .env.example to it first$(NC)"; exit 1; fi
 	uv run python src/main.py
 
 frontend: ## Run frontend locally
@@ -534,17 +544,13 @@ install-fe: ## Install frontend dependencies
 # DOCKER BUILD
 ######################
 
-build: ## Build all Docker images locally
-	@echo "$(YELLOW)Building all Docker images locally...$(NC)"
-	@echo "$(CYAN)Building OpenSearch image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .
-	@echo "$(CYAN)Building Backend image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-backend:latest -f Dockerfile.backend .
-	@echo "$(CYAN)Building Frontend image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
-	@echo "$(CYAN)Building Langflow image...$(NC)"
-	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
+build: build-os build-be build-fe build-lf ## Build all Docker images locally
 	@echo "$(PURPLE)All images built successfully!$(NC)"
+
+build-os: ## Build OpenSearch Docker image
+	@echo "$(YELLOW)Building OpenSearch image...$(NC)"
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-opensearch:latest -f Dockerfile .
+	@echo "$(PURPLE)OpenSearch image built.$(NC)"
 
 build-be: ## Build backend Docker image
 	@echo "$(YELLOW)Building backend image...$(NC)"
@@ -555,6 +561,11 @@ build-fe: ## Build frontend Docker image
 	@echo "$(YELLOW)Building frontend image...$(NC)"
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .
 	@echo "$(PURPLE)Frontend image built.$(NC)"
+
+build-lf: ## Build Langflow Docker image
+	@echo "$(YELLOW)Building Langflow image...$(NC)"
+	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .
+	@echo "$(PURPLE)Langflow image built.$(NC)"
 
 ######################
 # LOGGING
@@ -605,6 +616,11 @@ test: ## Run all backend tests
 	uv run pytest tests/ -v
 	@echo "$(PURPLE)Tests complete.$(NC)"
 
+test-unit: ## Run unit tests only
+	@echo "$(YELLOW)Running unit tests...$(NC)"
+	uv run pytest tests/unit/ -v
+	@echo "$(PURPLE)Unit tests complete.$(NC)"
+
 test-integration: ## Run integration tests (requires infrastructure)
 	@echo "$(YELLOW)Running integration tests (requires infrastructure)...$(NC)"
 	@echo "$(CYAN)Make sure to run 'make dev-local' first!$(NC)"
@@ -629,10 +645,26 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 	echo "$(YELLOW)Building OpenSearch image override...$(NC)"; \
 	$(CONTAINER_RUNTIME) build --no-cache -t langflowai/openrag-opensearch:latest -f Dockerfile .; \
 	echo "$(YELLOW)Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
-	$(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	echo "$(CYAN)Architecture: $$(uname -m), Platform: $$(uname -s)$(NC)"; \
 	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
-	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
+	DOCLING_START_FAILED=0; \
+	DOCLING_START_OUTPUT=$$(uv run python scripts/docling_ctl.py start --port 5001 --timeout 180 2>&1) || DOCLING_START_FAILED=1; \
+	echo "$$DOCLING_START_OUTPUT"; \
+	if [ "$$DOCLING_START_FAILED" = "1" ]; then \
+		echo "$(RED)ERROR: docling_ctl.py start failed. Output above.$(NC)"; \
+		uv run python scripts/docling_ctl.py status 2>&1 || true; \
+		$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+		exit 1; \
+	fi; \
+	DOCLING_ENDPOINT=$$(echo "$$DOCLING_START_OUTPUT" | grep "Endpoint:" | awk '{print $$2}'); \
+	if [ -z "$$DOCLING_ENDPOINT" ]; then \
+		echo "$(RED)WARNING: docling-serve did not report an endpoint. Defaulting to http://localhost:5001$(NC)"; \
+		DOCLING_ENDPOINT="http://localhost:5001"; \
+	fi; \
 	echo "$(PURPLE)Docling-serve started at $$DOCLING_ENDPOINT$(NC)"; \
+	echo "$(YELLOW)Docling-serve status check:$(NC)"; \
+	uv run python scripts/docling_ctl.py status 2>&1 || true; \
 	echo "$(YELLOW)Waiting for backend OIDC endpoint...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		$(CONTAINER_RUNTIME) exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
@@ -646,16 +678,20 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 		sleep 2; \
 	done; \
 	echo "$(YELLOW)Verifying OIDC authenticator is active in OpenSearch...$(NC)"; \
-	AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null); \
-	if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
-		echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
-		echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
-	else \
-		echo "$(RED)OIDC authenticator NOT found in security config!$(NC)"; \
-		echo "Security config:"; \
-		echo "$$AUTHC_CONFIG" | head -50; \
-		exit 1; \
-	fi; \
+	for i in $$(seq 1 30); do \
+		AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null || true); \
+		if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
+			echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
+			echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then \
+			echo "$(RED)OIDC authenticator NOT found or unreachable in time!$(NC)"; \
+			echo "Security config output: $$AUTHC_CONFIG"; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done; \
 	echo "$(YELLOW)Waiting for Langflow...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
@@ -664,6 +700,15 @@ test-ci: ## Start infra, run integration + SDK tests, tear down (uses DockerHub 
 	for i in $$(seq 1 60); do \
 		curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1 && break || sleep 2; \
 	done; \
+	if ! curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1; then \
+		echo "$(RED)ERROR: docling-serve is not healthy at $$DOCLING_ENDPOINT after waiting$(NC)"; \
+		echo "$(YELLOW)Docling status:$(NC)"; \
+		uv run python scripts/docling_ctl.py status 2>&1 || true; \
+		echo "$(RED)Aborting: docling-serve is required for integration tests.$(NC)"; \
+		uv run python scripts/docling_ctl.py stop || true; \
+		$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+		exit 1; \
+	fi; \
 	echo "$(PURPLE)Running integration tests$(NC)"; \
 	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
 	GOOGLE_OAUTH_CLIENT_ID="" \
@@ -716,10 +761,26 @@ test-ci-local: ## Same as test-ci but builds all images locally
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-frontend:latest -f Dockerfile.frontend .; \
 	$(CONTAINER_RUNTIME) build -t langflowai/openrag-langflow:latest -f Dockerfile.langflow .; \
 	echo "$(YELLOW)Starting infra (OpenSearch + Dashboards + Langflow + Backend + Frontend) with CPU containers$(NC)"; \
-	$(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
+	echo "$(CYAN)Architecture: $$(uname -m), Platform: $$(uname -s)$(NC)"; \
+	OPENSEARCH_HOST=opensearch $(COMPOSE_CMD) up -d opensearch dashboards langflow openrag-backend openrag-frontend; \
 	echo "$(YELLOW)Starting docling-serve...$(NC)"; \
-	DOCLING_ENDPOINT=$$(uv run python scripts/docling_ctl.py start --port 5001 | grep "Endpoint:" | awk '{print $$2}'); \
+	DOCLING_START_FAILED=0; \
+	DOCLING_START_OUTPUT=$$(uv run python scripts/docling_ctl.py start --port 5001 --timeout 180 2>&1) || DOCLING_START_FAILED=1; \
+	echo "$$DOCLING_START_OUTPUT"; \
+	if [ "$$DOCLING_START_FAILED" = "1" ]; then \
+		echo "$(RED)ERROR: docling_ctl.py start failed. Output above.$(NC)"; \
+		uv run python scripts/docling_ctl.py status 2>&1 || true; \
+		$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+		exit 1; \
+	fi; \
+	DOCLING_ENDPOINT=$$(echo "$$DOCLING_START_OUTPUT" | grep "Endpoint:" | awk '{print $$2}'); \
+	if [ -z "$$DOCLING_ENDPOINT" ]; then \
+		echo "$(RED)WARNING: docling-serve did not report an endpoint. Defaulting to http://localhost:5001$(NC)"; \
+		DOCLING_ENDPOINT="http://localhost:5001"; \
+	fi; \
 	echo "$(PURPLE)Docling-serve started at $$DOCLING_ENDPOINT$(NC)"; \
+	echo "$(YELLOW)Docling-serve status check:$(NC)"; \
+	uv run python scripts/docling_ctl.py status 2>&1 || true; \
 	echo "$(YELLOW)Waiting for backend OIDC endpoint...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		$(CONTAINER_RUNTIME) exec openrag-backend curl -s http://localhost:8000/.well-known/openid-configuration >/dev/null 2>&1 && break || sleep 2; \
@@ -733,16 +794,20 @@ test-ci-local: ## Same as test-ci but builds all images locally
 		sleep 2; \
 	done; \
 	echo "$(YELLOW)Verifying OIDC authenticator is active in OpenSearch...$(NC)"; \
-	AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null); \
-	if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
-		echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
-		echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
-	else \
-		echo "$(RED)OIDC authenticator NOT found in security config!$(NC)"; \
-		echo "Security config:"; \
-		echo "$$AUTHC_CONFIG" | head -50; \
-		exit 1; \
-	fi; \
+	for i in $$(seq 1 30); do \
+		AUTHC_CONFIG=$$(curl -k -s -u admin:$${OPENSEARCH_PASSWORD} https://localhost:9200/_opendistro/_security/api/securityconfig 2>/dev/null || true); \
+		if echo "$$AUTHC_CONFIG" | grep -q "openid_auth_domain"; then \
+			echo "$(PURPLE)OIDC authenticator configured$(NC)"; \
+			echo "$$AUTHC_CONFIG" | grep -A 5 "openid_auth_domain"; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then \
+			echo "$(RED)OIDC authenticator NOT found or unreachable in time!$(NC)"; \
+			echo "Security config output: $$AUTHC_CONFIG"; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done; \
 	echo "$(YELLOW)Waiting for Langflow...$(NC)"; \
 	for i in $$(seq 1 60); do \
 		curl -s http://localhost:7860/ >/dev/null 2>&1 && break || sleep 2; \
@@ -751,6 +816,15 @@ test-ci-local: ## Same as test-ci but builds all images locally
 	for i in $$(seq 1 60); do \
 		curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1 && break || sleep 2; \
 	done; \
+	if ! curl -s $${DOCLING_ENDPOINT}/health >/dev/null 2>&1; then \
+		echo "$(RED)ERROR: docling-serve is not healthy at $$DOCLING_ENDPOINT after waiting$(NC)"; \
+		echo "$(YELLOW)Docling status:$(NC)"; \
+		uv run python scripts/docling_ctl.py status 2>&1 || true; \
+		echo "$(RED)Aborting: docling-serve is required for integration tests.$(NC)"; \
+		uv run python scripts/docling_ctl.py stop || true; \
+		$(COMPOSE_CMD) down -v 2>/dev/null || true; \
+		exit 1; \
+	fi; \
 	echo "$(PURPLE)Running integration tests$(NC)"; \
 	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
 	GOOGLE_OAUTH_CLIENT_ID="" \
