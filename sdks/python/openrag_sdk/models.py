@@ -97,6 +97,12 @@ class DeleteDocumentResponse(BaseModel):
     deleted_chunks: int = 0
 
 
+class FilenameExistsResponse(BaseModel):
+    """Response from checking if a filename exists."""
+
+    exists: bool
+
+
 # Chat history models
 class Message(BaseModel):
     """A message in a conversation."""

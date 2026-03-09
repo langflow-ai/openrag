@@ -835,6 +835,7 @@ async def create_app():
     app.add_api_route("/v1/documents/ingest", v1_documents.ingest_endpoint, methods=["POST"], tags=["public"])
     app.add_api_route("/v1/tasks/{task_id}", v1_documents.task_status_endpoint, methods=["GET"], tags=["public"])
     app.add_api_route("/v1/documents", v1_documents.delete_document_endpoint, methods=["DELETE"], tags=["public"])
+    app.add_api_route("/v1/documents/check-filename", v1_documents.check_filename_exists_endpoint, methods=["GET"], tags=["public"])
 
     # Settings endpoints
     app.add_api_route("/v1/settings", v1_settings.get_settings_endpoint, methods=["GET"], tags=["public"])
