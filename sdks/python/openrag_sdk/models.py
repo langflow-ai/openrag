@@ -178,6 +178,7 @@ class SettingsUpdateOptions(BaseModel):
     table_structure: bool | None = None
     ocr: bool | None = None
     picture_descriptions: bool | None = None
+    index_name: str | None = None
 
 
 class SettingsUpdateResponse(BaseModel):
