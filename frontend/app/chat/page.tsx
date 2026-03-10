@@ -1155,30 +1155,30 @@ function ChatPage() {
                         }-${index}-${message.timestamp?.getTime()}`}
                         className="space-y-6 group"
                       >
-												{message.error ? (
-													<ErrorMessage
-														content={message.content}
-														animate={false}
-													/>
-												) : (
-	                        <AssistantMessage
-	                          content={message.content}
-	                          functionCalls={message.functionCalls}
-	                          messageIndex={index}
-	                          expandedFunctionCalls={expandedFunctionCalls}
-	                          onToggle={toggleFunctionCall}
-	                          showForkButton={endpoint === "chat"}
-	                          onFork={(e) => handleForkConversation(index, e)}
-	                          animate={false}
-	                          isInactive={index < messages.length - 1}
-	                          isInitialGreeting={
-	                            index === 0 &&
-	                            messages.length === 1 &&
-	                            message.content === "How can I assist?"
-	                          }
-	                          usage={message.usage}
-                        />
-												)}
+                        {message.error ? (
+                          <ErrorMessage
+                            content={message.content}
+                            animate={false}
+                          />
+                        ) : (
+                          <AssistantMessage
+                            content={message.content}
+                            functionCalls={message.functionCalls}
+                            messageIndex={index}
+                            expandedFunctionCalls={expandedFunctionCalls}
+                            onToggle={toggleFunctionCall}
+                            showForkButton={endpoint === "chat"}
+                            onFork={(e) => handleForkConversation(index, e)}
+                            animate={false}
+                            isInactive={index < messages.length - 1}
+                            isInitialGreeting={
+                              index === 0 &&
+                              messages.length === 1 &&
+                              message.content === "How can I assist?"
+                            }
+                            usage={message.usage}
+                          />
+                        )}
                       </div>
                     ),
               )}
