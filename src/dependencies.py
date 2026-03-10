@@ -162,6 +162,7 @@ def get_optional_user(
 async def get_api_key_user_async(
     request: Request,
     api_key_service=Depends(get_api_key_service),
+    session_manager=Depends(get_session_manager),
 ) -> User:
     """
     Async dependency: require API key authentication.
@@ -200,6 +201,8 @@ async def get_api_key_user_async(
             },
         )
 
+    effective_token = session_manager.get_effective_jwt_token(None, None)
+
     user = User(
         user_id=user_info["user_id"],
         email=user_info["user_email"],
@@ -208,9 +211,7 @@ async def get_api_key_user_async(
         provider="api_key",
     )
 
-    # API Key users don't typically have a JWT for OpenSearch OIDC, 
-    # but we can try to get an effective one if needed
-    user_with_token = dataclasses.replace(user, jwt_token=None)
+    user_with_token = dataclasses.replace(user, jwt_token=effective_token)
 
     request.state.user = user_with_token
     request.state.api_key_id = user_info["key_id"]
