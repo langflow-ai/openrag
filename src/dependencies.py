@@ -201,7 +201,8 @@ async def get_api_key_user_async(
             },
         )
 
-    effective_token = session_manager.get_effective_jwt_token(None, None)
+    # For calls authenticated with API key, the user is None but a generic JWT token is still needed.
+    effective_token = session_manager.get_effective_jwt_token(None, None) # Pass effective JWT token to the User.
 
     user = User(
         user_id=user_info["user_id"],
