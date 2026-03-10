@@ -40,7 +40,7 @@ from api import (
 from api.connector_router import ConnectorRouter
 from services.api_key_service import APIKeyService
 from api import keys as api_keys
-from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings, models as v1_models, knowledge_filters as v1_knowledge_filters
+from api.v1 import chat as v1_chat, search as v1_search, documents as v1_documents, settings as v1_settings, models as v1_models, knowledge_filters as v1_knowledge_filters, onboarding as v1_onboarding
 
 # Configuration and setup
 from config.settings import (
@@ -850,6 +850,9 @@ async def create_app():
     app.add_api_route("/v1/knowledge-filters/{filter_id}", v1_knowledge_filters.get_endpoint, methods=["GET"], tags=["public"])
     app.add_api_route("/v1/knowledge-filters/{filter_id}", v1_knowledge_filters.update_endpoint, methods=["PUT"], tags=["public"])
     app.add_api_route("/v1/knowledge-filters/{filter_id}", v1_knowledge_filters.delete_endpoint, methods=["DELETE"], tags=["public"])
+
+    # Onboarding endpoint
+    app.add_api_route("/v1/onboarding", v1_onboarding.onboarding_endpoint, methods=["POST"], tags=["public"])
 
     # Add startup event handler
     @app.on_event("startup")

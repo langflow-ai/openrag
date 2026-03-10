@@ -105,7 +105,7 @@ class OnboardingClient:
 
         body: dict[str, Any] = {"embedding_model": embedding_model}
 
-        response = await self._client._request("POST", "/onboarding", json=body)
+        response = await self._client._request("POST", "/api/v1/onboarding", json=body)
         data = response.json()
         return OnboardingResponse(**data)
 
