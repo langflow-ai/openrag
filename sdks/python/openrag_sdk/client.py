@@ -85,6 +85,31 @@ class SettingsClient:
         return SettingsUpdateResponse(message=data.get("message", "Settings updated"))
 
 
+class OnboardingClient:
+    """Client for onboarding operations."""
+
+    def __init__(self, client: "OpenRAGClient"):
+        self._client = client
+
+    async def onboarding(self, embedding_model: str):
+        """
+        Initialize OpenRAG with embedding model configuration.
+
+        Args:
+            embedding_model: Embedding model identifier (e.g., 'text-embedding-3-small').
+
+        Returns:
+            OnboardingResponse with success message.
+        """
+        from .models import OnboardingResponse
+
+        body: dict[str, Any] = {"embedding_model": embedding_model}
+
+        response = await self._client._request("POST", "/onboarding", json=body)
+        data = response.json()
+        return OnboardingResponse(**data)
+
+
 class OpenRAGClient:
     """
     OpenRAG API client.
@@ -159,6 +184,7 @@ class OpenRAGClient:
         self.settings = SettingsClient(self)
         self.models = ModelsClient(self)
         self.knowledge_filters = KnowledgeFiltersClient(self)
+        self.onboarding = OnboardingClient(self)
 
     @property
     def _headers(self) -> dict[str, str]:

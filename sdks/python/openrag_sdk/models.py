@@ -285,3 +285,11 @@ class DeleteKnowledgeFilterResponse(BaseModel):
 
     success: bool
     error: str | None = None
+
+
+# Onboarding models
+class OnboardingResponse(BaseModel):
+    """Response from onboarding endpoint."""
+
+    message: str
+    success: bool = True
