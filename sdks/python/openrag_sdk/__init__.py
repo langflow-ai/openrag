@@ -57,6 +57,7 @@ from .models import (
     KnowledgeFilterSearchResponse,
     KnowledgeSettings,
     Message,
+    OnboardingResponse,
     SearchFilters,
     SearchResponse,
     SearchResult,
@@ -105,6 +106,7 @@ __all__ = [
     "SettingsUpdateResponse",
     "AgentSettings",
     "KnowledgeSettings",
+    "OnboardingResponse",
     # Knowledge filter models
     "KnowledgeFilter",
     "KnowledgeFilterQueryData",
