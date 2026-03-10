@@ -463,8 +463,8 @@ export function useChatStreaming({
                   // Mark this as an error message and complete the stream
                   isError = true;
                   
-                  // Break out of the loop to complete the stream with error flag
-                  break;
+                  // Exit the streaming loop by throwing so the reader stops promptly on error
+                  throw new Error("Error detected in stream");
                 }
                 // Handle text output streaming (Realtime API)
                 else if (chunk.type === "response.output_text.delta") {
