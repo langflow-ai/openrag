@@ -1,51 +1,63 @@
-FROM python:3.13-slim
+# syntax=docker/dockerfile:1.4
+# BuildKit: enables cache mounts and better layer reuse.
+#
+# Build: docker build -t openrag-backend .
 
-# Install curl for uv installation and openssl for RSA key generation
-# Also install git for potential dependencies and build-essential for native compilations
-RUN apt-get update && apt-get install -y \
+# -----------------------------------------------------------------------------
+# Stage: base (system + uv)
+# -----------------------------------------------------------------------------
+FROM python:3.13-slim AS base
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    ca-certificates \
     openssl \
+    \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/root/.local/bin:$PATH"
+
+# -----------------------------------------------------------------------------
+# Stage: builder (deps + app)
+# -----------------------------------------------------------------------------
+FROM base AS builder
+
+# Build-time deps only (not in final image)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:$PATH"
-
-# Set working directory
 WORKDIR /app
 
-# Copy Python dependencies
+# Dependency layer: reuse as long as lockfile and pyproject don't change
 COPY pyproject.toml uv.lock ./
-RUN uv sync
+RUN --mount=type=cache,target=/root/.cache/uv,uid=0,gid=0 \
+    uv sync
 
-# Copy sample document and warmup script for docling
-COPY openrag-documents/warmup_ocr.pdf ./
-COPY warm_up_docling.py ./
-RUN uv run docling-tools models download 
-RUN uv run python - <<'PY'
-import pathlib, easyocr
-cache = pathlib.Path("/root/.EasyOCR/model")
-cache.mkdir(parents=True, exist_ok=True)
-# Prewarm the detector + recog for Docling’s default langs
-easyocr.Reader(['fr','de','es','en'],
-               download_enabled=True,
-               model_storage_directory=str(cache))
-print("EasyOCR cache ready at", cache)
-PY
-
-# RUN uv run python warm_up_docling.py && rm warm_up_docling.py warmup_ocr.pdf
-
-
-#ENV EASYOCR_MODULE_PATH=~/.cache/docling/models/EasyOcr/
-
-# Copy Python source and flows
+# Application (invalidates after deps only when src/flows change)
 COPY src/ ./src/
 COPY flows/ ./flows/
 
-# Expose backend port
+# -----------------------------------------------------------------------------
+# Stage: runtime (minimal image)
+# -----------------------------------------------------------------------------
+FROM python:3.13-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /app /app
+
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
 EXPOSE 8000
 
-# Start backend in foreground
-CMD ["uv", "run", "python", "src/main.py"]
+CMD ["python", "src/main.py"]

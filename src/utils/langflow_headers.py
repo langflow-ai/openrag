@@ -28,7 +28,7 @@ def add_provider_credentials_to_headers(headers: Dict[str, str], config) -> None
     
     # Add Ollama endpoint (with localhost transformation)
     if config.providers.ollama.endpoint:
-        ollama_endpoint = transform_localhost_url(config.providers.ollama.endpoint)
+        ollama_endpoint = transform_localhost_url(config.providers.ollama.endpoint, is_langflow=True)
         headers["X-LANGFLOW-GLOBAL-VAR-OLLAMA_BASE_URL"] = str(ollama_endpoint)
 
 
@@ -60,7 +60,7 @@ def build_mcp_global_vars_from_config(config) -> Dict[str, str]:
     
     # Add Ollama endpoint (with localhost transformation)
     if config.providers.ollama.endpoint:
-        ollama_endpoint = transform_localhost_url(config.providers.ollama.endpoint)
+        ollama_endpoint = transform_localhost_url(config.providers.ollama.endpoint, is_langflow=True)
         global_vars["OLLAMA_BASE_URL"] = ollama_endpoint
     
     # Add selected embedding model

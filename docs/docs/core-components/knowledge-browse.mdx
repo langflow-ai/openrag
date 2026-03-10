@@ -1,0 +1,91 @@
+---
+title: Browse and manage knowledge
+slug: /knowledge-browse
+---
+
+import Icon from "@site/src/components/icon/icon";
+import PartialAnonymousUserOwner from '@site/docs/_partial-anonymous-user-owner.mdx';
+
+The **Knowledge** page lists the documents that have been [ingested](/ingestion) into your [OpenSearch knowledge base](/knowledge), specifically in an [OpenSearch index](/knowledge#index).
+
+To explore the contents of your knowledge base, click <Icon name="Library" aria-hidden="true"/> **Knowledge** to get a list of all ingested documents.
+
+## Inspect knowledge
+
+For each document, the **Knowledge** page provides the following information:
+
+* **Source**: Name of the ingested content, such as the file name.
+
+* **Size**
+
+* **Type**
+
+* **Owner**: User that uploaded the document.
+
+   <PartialAnonymousUserOwner />
+
+* **Chunks**: Number of chunks created by splitting the document during ingestion.
+
+   Click a document to view the individual chunks and technical details related to chunking.
+   If the chunks seem incorrect or incomplete, see [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues).
+
+* **Avg score**: Average similarity score across all chunks of the document.
+
+   If you [search the knowledge base](#search-knowledge), the **Avg score** column shows the similarity score for your search query or filter.
+
+* **Embedding model** and **Dimensions**: The embedding model and dimensions used to embed the chunks.
+The embedding model, dimensions, chunks, and other ingestion behaviors are determined by the [knowledge ingestion settings](/ingestion-configure) that you set before uploading a document.
+
+* **Status**: Status of document ingestion.
+If ingestion is complete and successful, then the status is **Active**.
+For more information, see [Monitor ingestion](/ingestion#monitor-ingestion).
+
+## Search knowledge {#search-knowledge}
+
+You can use the search field on the **Knowledge** page to find documents using semantic search and knowledge filters:
+
+To search all documents, enter a search string in the search field, and then press <kbd>Enter</kbd>.
+
+To apply a [knowledge filter](/knowledge-filters), select the filter from the **Knowledge Filters** list.
+The filter settings pane opens, and the filter appears in the search field.
+To remove the filter, close the filter settings pane or clear the filter from the search field.
+
+You can use the filter alone or in combination with a search string.
+If a knowledge filter has a **Search Query**, that query is applied in addition to any text string you enter in the search field.
+
+Only one filter can be applied at a time.
+
+## Default documents {#default-documents}
+
+By default, OpenRAG includes some initial documents about OpenRAG.
+These documents are ingested automatically during the [application onboarding process](/install-uvx#application-onboarding) if you use the [default local documents path](/ingestion-configure#set-the-local-documents-path).
+
+You can use these documents to ask OpenRAG about itself, or to test the [**Chat**](/chat) feature before uploading your own documents.
+
+If you [delete these documents](#delete-knowledge), then you won't be able to ask OpenRAG about itself and its own functionality unless you re-ingest those documents.
+It is recommended that you keep these documents, and use [filters](/knowledge-filters) to separate them from your other knowledge.
+An **OpenRAG Docs** filter is created automatically for these documents.
+
+## Add knowledge
+
+Add knowledge to your knowledge base by [ingesting documents](/ingestion).
+
+## Delete knowledge {#delete-knowledge}
+
+:::warning
+This is a destructive operation that cannot be undone.
+:::
+
+To delete documents from your knowledge base, click <Icon name="Library" aria-hidden="true"/> **Knowledge**, use the checkboxes to select one or more documents, and then click **Delete**.
+If you select the checkbox at the top of the list, all documents are selected and your entire knowledge base will be deleted.
+
+To delete an individual document, you can also click <Icon name="Ellipsis" aria-hidden="true"/> **More** next to that document, and then select **Delete**.
+
+To completely clear your entire knowledge base and OpenSearch index, [reset your OpenRAG containers](/manage-services#reset-containers) or [reinstall OpenRAG](/reinstall).
+
+## See also
+
+* [About knowledge](/knowledge)
+* [Ingest knowledge](/ingestion)
+* [Filter knowledge](/knowledge-filters)
+* [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues)

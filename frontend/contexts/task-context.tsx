@@ -12,12 +12,12 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { useCancelTaskMutation } from "@/app/api/mutations/useCancelTaskMutation";
+import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import {
   type Task,
   type TaskFileEntry,
   useGetTasksQuery,
 } from "@/app/api/queries/useGetTasksQuery";
-import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
 import { useAuth } from "@/contexts/auth-context";
 
 // Task interface is now imported from useGetTasksQuery
@@ -48,6 +48,7 @@ interface TaskContextType {
   isFetching: boolean;
   isMenuOpen: boolean;
   toggleMenu: () => void;
+  closeMenu: () => void;
   isRecentTasksExpanded: boolean;
   setRecentTasksExpanded: (expanded: boolean) => void;
   // React Query states
@@ -78,7 +79,23 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   });
 
   const cancelTaskMutation = useCancelTaskMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      // Immediately remove from React Query cache
+      queryClient.setQueryData(["tasks"], (oldTasks: Task[] | undefined) => {
+        if (!oldTasks) return [];
+        return oldTasks.filter((task) => task.task_id !== variables.taskId);
+      });
+
+      // Update file to display as cancelled
+      setFiles((prevFiles) =>
+        prevFiles.map((file) => {
+          if (file.task_id === variables.taskId) {
+            return { ...file, status: "failed" };
+          }
+          return file;
+        }),
+      );
+
       toast.success("Task cancelled", {
         description: "Task has been cancelled successfully",
       });
@@ -92,7 +109,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   // Get settings to check if onboarding is active
   const { data: settings } = useGetSettingsQuery();
-  
+
   // Helper function to check if onboarding is active
   const isOnboardingActive = useCallback(() => {
     const TOTAL_ONBOARDING_STEPS = 4;
@@ -330,7 +347,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               currentTask.error || "Unknown error"
             }`,
           });
-          
+
           // Set chat error flag to trigger test_completion=true on health checks
           // Only for ingestion-related tasks (tasks with files are ingestion tasks)
           if (currentTask.files && Object.keys(currentTask.files).length > 0) {
@@ -383,6 +400,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     setIsMenuOpen((prev) => !prev);
   }, []);
 
+  const closeMenu = useCallback(() => {
+    setIsMenuOpen(false);
+  }, []);
+
   // Determine if we're polling based on React Query's refetch interval
   const isPolling =
     isFetching &&
@@ -404,6 +425,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     isFetching,
     isMenuOpen,
     toggleMenu,
+    closeMenu,
     isRecentTasksExpanded,
     setRecentTasksExpanded: setIsRecentTasksExpanded,
     isLoading,

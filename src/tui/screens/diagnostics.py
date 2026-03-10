@@ -397,12 +397,17 @@ class DiagnosticsScreen(Screen):
             log.write("")
             return
 
+        # Get OpenSearch host and port from environment
+        opensearch_host = os.getenv("OPENSEARCH_HOST", "localhost")
+        opensearch_port = os.getenv("OPENSEARCH_PORT", "9200")
+        opensearch_url = f"https://{opensearch_host}:{opensearch_port}"
+
         # Test basic authentication
         log.write("Testing basic authentication...")
         cmd = [
             "curl", "-s", "-k", "-w", "%{http_code}",
             "-u", f"admin:{opensearch_password}",
-            "https://localhost:9200"
+            opensearch_url
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -436,7 +441,7 @@ class DiagnosticsScreen(Screen):
         cmd = [
             "curl", "-s", "-k", "-w", "%{http_code}",
             "-u", f"admin:{opensearch_password}",
-            "https://localhost:9200/_plugins/_security/api/account"
+            f"{opensearch_url}/_plugins/_security/api/account"
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -472,7 +477,7 @@ class DiagnosticsScreen(Screen):
         cmd = [
             "curl", "-s", "-k", "-w", "%{http_code}",
             "-u", f"admin:{opensearch_password}",
-            "https://localhost:9200/_plugins/_security/api/internalusers"
+            f"{opensearch_url}/_plugins/_security/api/internalusers"
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -506,7 +511,7 @@ class DiagnosticsScreen(Screen):
         cmd = [
             "curl", "-s", "-k", "-w", "%{http_code}",
             "-u", f"admin:{opensearch_password}",
-            "https://localhost:9200/_plugins/_security/api/securityconfig"
+            f"{opensearch_url}/_plugins/_security/api/securityconfig"
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -554,7 +559,7 @@ class DiagnosticsScreen(Screen):
         cmd = [
             "curl", "-s", "-k", "-w", "%{http_code}",
             "-u", f"admin:{opensearch_password}",
-            "https://localhost:9200/_cat/indices?v"
+            f"{opensearch_url}/_cat/indices?v"
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE

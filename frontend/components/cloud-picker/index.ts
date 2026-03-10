@@ -1,7 +1,7 @@
-export { UnifiedCloudPicker } from "./unified-cloud-picker";
-export { PickerHeader } from "./picker-header";
-export { FileList } from "./file-list";
 export { FileItem } from "./file-item";
+export { FileList } from "./file-list";
 export { IngestSettings } from "./ingest-settings";
-export * from "./types";
+export { PickerHeader } from "./picker-header";
 export * from "./provider-handlers";
+export * from "./types";
+export { UnifiedCloudPicker } from "./unified-cloud-picker";

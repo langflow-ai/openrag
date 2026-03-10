@@ -3,8 +3,8 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { Settings } from "../queries/useGetSettingsQuery";
 import { useGetCurrentProviderModelsQuery } from "../queries/useGetModelsQuery";
+import type { Settings } from "../queries/useGetSettingsQuery";
 
 export interface UpdateSettingsRequest {
   // Agent settings

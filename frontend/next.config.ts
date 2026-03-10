@@ -1,5 +1,5 @@
-import type { NextConfig } from "next";
 import dotenv from "dotenv";
+import type { NextConfig } from "next";
 import path from "path";
 
 // Load environment variables from root .env file

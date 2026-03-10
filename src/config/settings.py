@@ -1,9 +1,8 @@
 import asyncio
 import os
-import time
+from utils.env_utils import get_env_int, get_env_float
 
 import httpx
-import requests
 from agentd.patch import patch_openai_with_mcp
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
@@ -11,20 +10,18 @@ from opensearchpy import AsyncOpenSearch
 from opensearchpy._async.http_aiohttp import AIOHttpConnection
 
 from utils.container_utils import get_container_host
-from utils.document_processing import create_document_converter
 from utils.logging_config import get_logger
+# Import configuration manager
+from .config_manager import config_manager
 
 load_dotenv(override=False)
 load_dotenv("../", override=False)
 
 logger = get_logger(__name__)
 
-# Import configuration manager
-from .config_manager import config_manager
-
 # Environment variables
 OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
-OPENSEARCH_PORT = int(os.getenv("OPENSEARCH_PORT", "9200"))
+OPENSEARCH_PORT = get_env_int("OPENSEARCH_PORT", 9200)
 OPENSEARCH_USERNAME = os.getenv("OPENSEARCH_USERNAME", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 LANGFLOW_URL = os.getenv("LANGFLOW_URL", "http://localhost:7860")
@@ -59,11 +56,24 @@ DISABLE_INGEST_WITH_LANGFLOW = os.getenv(
     "DISABLE_INGEST_WITH_LANGFLOW", "false"
 ).lower() in ("true", "1", "yes")
 
+# Ingest sample data configuration
+INGEST_SAMPLE_DATA = os.getenv(
+    "INGEST_SAMPLE_DATA", "true"
+).lower() in ("true", "1", "yes")
+
+# Maximum number of files to upload / ingest (in batch) per task when adding knowledge via folder
+UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
+
 # Langflow HTTP timeout configuration (in seconds)
 # For large documents (300+ pages), ingestion can take 30+ minutes
 # Default: 40 minutes total, 40 minutes read timeout
-LANGFLOW_TIMEOUT = float(os.getenv("LANGFLOW_TIMEOUT", "2400"))  # 40 minutes
-LANGFLOW_CONNECT_TIMEOUT = float(os.getenv("LANGFLOW_CONNECT_TIMEOUT", "30"))  # 30 seconds
+LANGFLOW_TIMEOUT = get_env_float("LANGFLOW_TIMEOUT", 2400.0)  # 40 minutes
+LANGFLOW_CONNECT_TIMEOUT = get_env_float("LANGFLOW_CONNECT_TIMEOUT", 30.0)  # 30 seconds
+
+# Per-file processing timeout for document ingestion tasks (in seconds)
+# Should be >= LANGFLOW_TIMEOUT to allow long-running ingestion to complete
+# Default: 3600 seconds (60 minutes)
+INGESTION_TIMEOUT = get_env_int("INGESTION_TIMEOUT", 3600)
 
 
 def is_no_auth_mode():
@@ -78,8 +88,9 @@ WEBHOOK_BASE_URL = os.getenv(
 )  # No default - must be explicitly configured
 
 # OpenSearch configuration
-INDEX_NAME = "documents"
 VECTOR_DIM = 1536
+KNN_EF_CONSTRUCTION = 100
+KNN_M = 16
 EMBED_MODEL = "text-embedding-3-small"
 
 OPENAI_EMBEDDING_DIMENSIONS = {
@@ -90,7 +101,7 @@ OPENAI_EMBEDDING_DIMENSIONS = {
 
 WATSONX_EMBEDDING_DIMENSIONS = {
 # IBM Models
-"ibm/granite-embedding-107m-multilingual": 384,  
+"ibm/granite-embedding-107m-multilingual": 384,
 "ibm/granite-embedding-278m-multilingual": 1024,
 "ibm/slate-125m-english-rtrvr": 768,
 "ibm/slate-125m-english-rtrvr-v2": 768,
@@ -123,7 +134,7 @@ INDEX_BODY = {
                     "name": "disk_ann",
                     "engine": "jvector",
                     "space_type": "l2",
-                    "parameters": {"ef_construction": 100, "m": 16},
+                    "parameters": {"ef_construction": KNN_EF_CONSTRUCTION, "m": KNN_M},
                 },
             },
             # Track which embedding model was used for this chunk
@@ -210,8 +221,8 @@ async def get_langflow_api_key(force_regenerate: bool = False):
 
     try:
         logger.info("Generating Langflow API key using superuser credentials")
-        max_attempts = int(os.getenv("LANGFLOW_KEY_RETRIES", "15"))
-        delay_seconds = float(os.getenv("LANGFLOW_KEY_RETRY_DELAY", "2.0"))
+        max_attempts = get_env_int("LANGFLOW_KEY_RETRIES", 15)
+        delay_seconds = get_env_float("LANGFLOW_KEY_RETRY_DELAY", 2.0)
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             for attempt in range(1, max_attempts + 1):
@@ -294,12 +305,9 @@ class AppClients:
         self.langflow_http_client = None
         self._patched_async_client = None  # Private attribute - single client for all providers
         self._client_init_lock = __import__('threading').Lock()  # Lock for thread-safe initialization
-        self.converter = None
+        self.docling_http_client = None
 
     async def initialize(self):
-        # Generate Langflow API key first
-        await get_langflow_api_key()
-
         # Initialize OpenSearch client
         self.opensearch = AsyncOpenSearch(
             hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
@@ -311,6 +319,53 @@ class AppClients:
             http_auth=(OPENSEARCH_USERNAME, OPENSEARCH_PASSWORD),
             http_compress=True,
         )
+
+        # Initialize patched OpenAI client if API key is available
+        # This allows the app to start even if OPENAI_API_KEY is not set yet
+        # (e.g., when it will be provided during onboarding)
+        # The property will handle lazy initialization with probe when first accessed
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            logger.info("OpenAI API key found in environment - will be initialized lazily on first use with HTTP/2 probe")
+        else:
+            logger.info("OpenAI API key not found in environment - will be initialized on first use if needed")
+
+        # Initialize docling-serve HTTP client for document conversion
+        self.docling_http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                timeout=INGESTION_TIMEOUT,
+                connect=30.0,
+                read=INGESTION_TIMEOUT,
+                write=30.0,
+                pool=30.0,
+            )
+        )
+
+        # Initialize Langflow HTTP client with extended timeouts for large documents
+        # Must be created before wait_for_langflow / get_langflow_api_key
+        # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
+        self.langflow_http_client = httpx.AsyncClient(
+            base_url=LANGFLOW_URL,
+            timeout=httpx.Timeout(
+                timeout=LANGFLOW_TIMEOUT,  # Total timeout
+                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
+                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
+                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
+                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
+            )
+        )
+        logger.info(
+            "Initialized Langflow HTTP client with extended timeouts",
+            timeout_seconds=LANGFLOW_TIMEOUT,
+            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
+        )
+
+        # Wait for Langflow to be healthy before generating API key
+        from utils.langflow_utils import wait_for_langflow
+        await wait_for_langflow(langflow_http_client=self.langflow_http_client)
+
+        # Generate Langflow API key now that Langflow is confirmed ready
+        await get_langflow_api_key()
 
         # Initialize Langflow client with generated/provided API key
         if LANGFLOW_KEY and self.langflow_client is None:
@@ -331,37 +386,6 @@ class AppClients:
             logger.warning(
                 "No Langflow client initialized yet, will attempt later on first use"
             )
-
-        # Initialize patched OpenAI client if API key is available
-        # This allows the app to start even if OPENAI_API_KEY is not set yet
-        # (e.g., when it will be provided during onboarding)
-        # The property will handle lazy initialization with probe when first accessed
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key:
-            logger.info("OpenAI API key found in environment - will be initialized lazily on first use with HTTP/2 probe")
-        else:
-            logger.info("OpenAI API key not found in environment - will be initialized on first use if needed")
-
-        # Initialize document converter
-        self.converter = create_document_converter(ocr_engine=DOCLING_OCR_ENGINE)
-
-        # Initialize Langflow HTTP client with extended timeouts for large documents
-        # Use explicit timeout configuration to handle large PDF ingestion (300+ pages)
-        self.langflow_http_client = httpx.AsyncClient(
-            base_url=LANGFLOW_URL,
-            timeout=httpx.Timeout(
-                timeout=LANGFLOW_TIMEOUT,  # Total timeout
-                connect=LANGFLOW_CONNECT_TIMEOUT,  # Connection timeout
-                read=LANGFLOW_TIMEOUT,  # Read timeout (most important for large PDFs)
-                write=LANGFLOW_CONNECT_TIMEOUT,  # Write timeout
-                pool=LANGFLOW_CONNECT_TIMEOUT,  # Pool timeout
-            )
-        )
-        logger.info(
-            "Initialized Langflow HTTP client with extended timeouts",
-            timeout_seconds=LANGFLOW_TIMEOUT,
-            connect_timeout_seconds=LANGFLOW_CONNECT_TIMEOUT,
-        )
 
         return self
 
@@ -410,17 +434,17 @@ class AppClients:
             # LiteLLM routes based on model name prefixes (openai/, ollama/, watsonx/, etc.)
             try:
                 config = get_openrag_config()
-                
+
                 # Set OpenAI credentials
                 if config.providers.openai.api_key:
                     os.environ["OPENAI_API_KEY"] = config.providers.openai.api_key
                     logger.debug("Loaded OpenAI API key from config")
-                
+
                 # Set Anthropic credentials
                 if config.providers.anthropic.api_key:
                     os.environ["ANTHROPIC_API_KEY"] = config.providers.anthropic.api_key
                     logger.debug("Loaded Anthropic API key from config")
-                
+
                 # Set WatsonX credentials
                 if config.providers.watsonx.api_key:
                     os.environ["WATSONX_API_KEY"] = config.providers.watsonx.api_key
@@ -431,13 +455,13 @@ class AppClients:
                     os.environ["WATSONX_PROJECT_ID"] = config.providers.watsonx.project_id
                 if config.providers.watsonx.api_key:
                     logger.debug("Loaded WatsonX credentials from config")
-                
+
                 # Set Ollama endpoint
                 if config.providers.ollama.endpoint:
                     os.environ["OLLAMA_BASE_URL"] = config.providers.ollama.endpoint
                     os.environ["OLLAMA_ENDPOINT"] = config.providers.ollama.endpoint
                     logger.debug("Loaded Ollama endpoint from config")
-                    
+
             except Exception as e:
                 logger.debug("Could not load provider credentials from config", error=str(e))
 
@@ -447,55 +471,67 @@ class AppClients:
             import concurrent.futures
             import threading
 
-            async def probe_and_initialize():
-                # Try HTTP/2 first (default)
-                client_http2 = patch_openai_with_mcp(AsyncOpenAI())
-                logger.info("Probing OpenAI client with HTTP/2...")
+            async def probe_http2():
+                """Returns True if HTTP/2 works, False to fall back to HTTP/1.1.
 
+                Closes the probe client before returning so all connections are
+                drained within the probe thread's event loop.  The actual
+                production client is created after this thread exits, in the
+                caller's event loop, avoiding cross-loop SSL transport errors.
+                """
+                client = AsyncOpenAI()
+                logger.info("Probing OpenAI client with HTTP/2...")
                 try:
-                    # Probe with a small embedding and short timeout
                     await asyncio.wait_for(
-                        client_http2.embeddings.create(
+                        client.embeddings.create(
                             model='text-embedding-3-small',
                             input=['test']
                         ),
                         timeout=5.0
                     )
-                    logger.info("OpenAI client initialized with HTTP/2 (probe successful)")
-                    return client_http2
+                    logger.info("HTTP/2 probe successful")
+                    return True
                 except (asyncio.TimeoutError, Exception) as probe_error:
                     logger.warning("HTTP/2 probe failed, falling back to HTTP/1.1", error=str(probe_error))
-                    # Close the HTTP/2 client
+                    return False
+                finally:
+                    # Always close the probe client so its connections are fully
+                    # torn down before the thread's event loop is closed.
                     try:
-                        await client_http2.close()
+                        await client.close()
                     except Exception:
                         pass
-
-                    # Fall back to HTTP/1.1 with explicit timeout settings
-                    http_client = httpx.AsyncClient(
-                        http2=False,
-                        timeout=httpx.Timeout(60.0, connect=10.0)
-                    )
-                    client_http1 = patch_openai_with_mcp(
-                        AsyncOpenAI(http_client=http_client)
-                    )
-                    logger.info("OpenAI client initialized with HTTP/1.1 (fallback)")
-                    return client_http1
 
             def run_probe_in_thread():
                 """Run the async probe in a new thread with its own event loop"""
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
-                    return loop.run_until_complete(probe_and_initialize())
+                    return loop.run_until_complete(probe_http2())
                 finally:
                     loop.close()
 
             try:
-                # Run the probe in a separate thread with its own event loop
+                # Run the probe in a separate thread with its own event loop.
+                # Only the probe result (bool) crosses the thread boundary;
+                # the production client is created here so its connections are
+                # bound to the caller's event loop, not the (now closed) probe loop.
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(run_probe_in_thread)
-                    self._patched_async_client = future.result(timeout=15)
+                    use_http2 = future.result(timeout=15)
+
+                if use_http2:
+                    self._patched_async_client = patch_openai_with_mcp(AsyncOpenAI())
+                    logger.info("OpenAI client initialized with HTTP/2")
+                else:
+                    http_client = httpx.AsyncClient(
+                        http2=False,
+                        timeout=httpx.Timeout(60.0, connect=10.0)
+                    )
+                    self._patched_async_client = patch_openai_with_mcp(
+                        AsyncOpenAI(http_client=http_client)
+                    )
+                    logger.info("OpenAI client initialized with HTTP/1.1 (fallback)")
                 logger.info("Successfully initialized OpenAI client")
             except Exception as e:
                 logger.error(f"Failed to initialize OpenAI client: {e.__class__.__name__}: {str(e)}")
@@ -545,6 +581,16 @@ class AppClients:
                 logger.error("Failed to close Langflow HTTP client", error=str(e))
             finally:
                 self.langflow_http_client = None
+
+        # Close docling-serve HTTP client if it exists
+        if self.docling_http_client is not None:
+            try:
+                await self.docling_http_client.aclose()
+                logger.info("Closed docling-serve HTTP client")
+            except Exception as e:
+                logger.error("Failed to close docling-serve HTTP client", error=str(e))
+            finally:
+                self.docling_http_client = None
 
         # Close OpenSearch client if it exists
         if self.opensearch is not None:
@@ -651,6 +697,7 @@ class AppClients:
                 variable_name=name,
                 error=str(e),
             )
+            raise e
 
     async def _update_langflow_global_variable(self, name: str, value: str):
         """Update an existing global variable in Langflow via API"""
@@ -817,3 +864,8 @@ def get_agent_config():
 def get_embedding_model() -> str:
     """Return the currently configured embedding model."""
     return get_openrag_config().knowledge.embedding_model or EMBED_MODEL if DISABLE_INGEST_WITH_LANGFLOW else ""
+
+
+def get_index_name() -> str:
+    """Return the currently configured index name."""
+    return get_openrag_config().knowledge.index_name

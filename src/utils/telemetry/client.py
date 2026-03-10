@@ -1,5 +1,6 @@
 """Telemetry client for OpenRAG backend using Scarf."""
 
+from utils.version_utils import OPENRAG_VERSION
 import asyncio
 import os
 import platform
@@ -17,41 +18,6 @@ SCARF_BASE_URL_DEFAULT = "https://langflow.gateway.scarf.sh"
 SCARF_PATH = "openrag"
 CLIENT_TYPE = "backend"
 PLATFORM_TYPE = "backend"
-
-
-def _get_openrag_version() -> str:
-    """Get OpenRAG version from package metadata."""
-    try:
-        from importlib.metadata import version, PackageNotFoundError
-        
-        try:
-            return version("openrag")
-        except PackageNotFoundError:
-            # Fallback: try to read from pyproject.toml if package not installed (dev mode)
-            try:
-                import tomllib
-                from pathlib import Path
-                
-                # Try to find pyproject.toml relative to this file
-                current_file = Path(__file__)
-                project_root = current_file.parent.parent.parent.parent
-                pyproject_path = project_root / "pyproject.toml"
-                
-                if pyproject_path.exists():
-                    with open(pyproject_path, "rb") as f:
-                        data = tomllib.load(f)
-                        return data.get("project", {}).get("version", "dev")
-            except Exception:
-                pass
-            
-            return "dev"
-    except Exception as e:
-        logger.warning(f"Failed to get OpenRAG version: {e}")
-        return "unknown"
-
-
-# Get version dynamically
-OPENRAG_VERSION = _get_openrag_version()
 
 # HTTP timeouts
 HTTP_REQUEST_TIMEOUT = 15.0

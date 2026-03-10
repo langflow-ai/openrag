@@ -6,12 +6,10 @@ import IBMLogo from "@/components/icons/ibm-logo";
 import OllamaLogo from "@/components/icons/ollama-logo";
 import OpenAILogo from "@/components/icons/openai-logo";
 import { useProviderHealth } from "@/components/provider-health-banner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/auth-context";
-import { cn } from "@/lib/utils";
 import type { ModelProvider } from "../_helpers/model-helpers";
 import AnthropicSettingsDialog from "./anthropic-settings-dialog";
+import ModelProviderCard from "./model-provider-card";
 import OllamaSettingsDialog from "./ollama-settings-dialog";
 import OpenAISettingsDialog from "./openai-settings-dialog";
 import WatsonxSettingsDialog from "./watsonx-settings-dialog";
@@ -100,76 +98,20 @@ export const ModelProviders = () => {
     <>
       <div className="grid gap-6 xs:grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         {allProviderKeys.map((providerKey) => {
-          const {
-            name,
-            logo: Logo,
-            logoColor,
-            logoBgColor,
-          } = modelProvidersMap[providerKey];
           const isLlmProvider = providerKey === currentLlmProvider;
           const isEmbeddingProvider = providerKey === currentEmbeddingProvider;
-
-          // Check if this specific provider is unhealthy
-          const hasLlmError = isLlmProvider && health?.llm_error;
-          const hasEmbeddingError =
-            isEmbeddingProvider && health?.embedding_error;
-          const isProviderUnhealthy = hasLlmError || hasEmbeddingError;
+          const isProviderUnhealthy =
+            (isLlmProvider && health?.llm_error) ||
+            (isEmbeddingProvider && health?.embedding_error);
 
           return (
-            <Card
+            <ModelProviderCard
               key={providerKey}
-              className={cn(
-                "relative flex flex-col",
-                !settings.providers?.[providerKey]?.configured &&
-                  "text-muted-foreground",
-                isProviderUnhealthy && "border-destructive",
-              )}
-            >
-              <CardHeader>
-                <div className="flex flex-col items-start justify-between">
-                  <div className="flex flex-col gap-3">
-                    <div className="mb-1">
-                      <div
-                        className={cn(
-                          "w-8 h-8 rounded flex items-center justify-center border",
-                          settings.providers?.[providerKey]?.configured
-                            ? logoBgColor
-                            : "bg-muted",
-                        )}
-                      >
-                        {
-                          <Logo
-                            className={
-                              settings.providers?.[providerKey]?.configured
-                                ? logoColor
-                                : "text-muted-foreground"
-                            }
-                          />
-                        }
-                      </div>
-                    </div>
-                    <CardTitle className="flex flex-row items-center gap-2">
-                      {name}
-                      {isProviderUnhealthy && (
-                        <span className="h-2 w-2 rounded-full bg-destructive" />
-                      )}
-                    </CardTitle>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-end space-y-4">
-                <Button
-                  variant={isProviderUnhealthy ? "default" : "outline"}
-                  onClick={() => setDialogOpen(providerKey)}
-                >
-                  {isProviderUnhealthy
-                    ? "Fix Setup"
-                    : settings.providers?.[providerKey]?.configured
-                      ? "Edit Setup"
-                      : "Configure"}
-                </Button>
-              </CardContent>
-            </Card>
+              provider={{ providerKey, ...modelProvidersMap[providerKey] }}
+              isConfigured={!!settings.providers?.[providerKey]?.configured}
+              isUnhealthy={!!isProviderUnhealthy}
+              onConfigure={setDialogOpen}
+            />
           );
         })}
       </div>

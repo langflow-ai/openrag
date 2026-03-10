@@ -51,8 +51,39 @@ class ServiceInfo:
             self.ports = []
 
 
+def format_port_conflict_message(conflicts: List[tuple[str, int, str]], max_shown: int = 3) -> str:
+    """Format port conflicts into a user-facing error message."""
+    shown = [f"{name} (port {port})" for name, port, _ in conflicts[:max_shown]]
+    conflict_str = ", ".join(shown)
+    if len(conflicts) > max_shown:
+        conflict_str += f" and {len(conflicts) - max_shown} more"
+
+    msg = f"Cannot start services: Port conflicts detected for {conflict_str}."
+
+    configurable = any(
+        "frontend" in name.lower() or "langflow" in name.lower()
+        for name, _, _ in conflicts
+    )
+    if configurable:
+        msg += " You can set FRONTEND_PORT or LANGFLOW_PORT in your .env file to use different ports."
+    else:
+        msg += " Please stop the conflicting services first."
+    return msg
+
+
 class ContainerManager:
     """Manages Docker/Podman container lifecycle for OpenRAG."""
+
+    OPENRAG_IMAGE_REPOS = {
+        "langflowai/openrag-backend",
+        "langflowai/openrag-frontend",
+        "langflowai/openrag-langflow",
+        "langflowai/openrag-opensearch",
+        "langflowai/openrag-dashboards",
+        "langflow/langflow",
+        "opensearchproject/opensearch",
+        "opensearchproject/opensearch-dashboards",
+    }
 
     def __init__(self, compose_file: Optional[Path] = None):
         self.platform_detector = PlatformDetector()
@@ -85,6 +116,16 @@ class ContainerManager:
             "osdash": "dashboards",
             "langflow": "langflow",
         }
+
+    @staticmethod
+    def _extract_repository(image_tag: str) -> str:
+        """Extract repository name from <repository>:<tag> image reference."""
+        return image_tag.rsplit(":", 1)[0] if ":" in image_tag else image_tag
+
+    def _is_openrag_repository(self, repository: str) -> bool:
+        """Check whether repository is OpenRAG-related, with optional registry prefix."""
+        repo = repository.lower()
+        return any(repo == known or repo.endswith(f"/{known}") for known in self.OPENRAG_IMAGE_REPOS)
 
     def _find_compose_file(self, filename: str) -> Path:
         """Find compose file in centralized TUI directory, current directory, or package resources."""
@@ -233,12 +274,19 @@ class ContainerManager:
                     
                     # Extract port mappings
                     if in_ports_section and current_service:
-                        # Match patterns like: - "3000:3000", - "9200:9200", - 7860:7860
-                        port_match = re.search(r'["\']?(\d+):\d+["\']?', line)
-                        if port_match:
-                            host_port = int(port_match.group(1))
-                            if host_port not in service_ports[current_service]:
-                                service_ports[current_service].append(host_port)
+                        host_port = None
+                        # Match env var patterns like: - "${FRONTEND_PORT:-3000}:3000"
+                        env_match = re.search(r'\$\{(\w+):-(\d+)\}:\d+', line)
+                        if env_match:
+                            var_name, default_port = env_match.group(1), env_match.group(2)
+                            host_port = int(os.getenv(var_name, default_port))
+                        else:
+                            # Match literal patterns like: - "3000:3000", - 9200:9200
+                            port_match = re.search(r'["\']?(\d+):\d+["\']?', line)
+                            if port_match:
+                                host_port = int(port_match.group(1))
+                        if host_port is not None and host_port not in service_ports[current_service]:
+                            service_ports[current_service].append(host_port)
                                 
             except Exception as e:
                 logger.debug(f"Error parsing {compose_file} for ports: {e}")
@@ -528,6 +576,51 @@ class ContainerManager:
 
         except Exception as e:
             return False, "", f"Command execution failed: {e}"
+
+    async def _list_openrag_images(
+        self, include_created: bool = False
+    ) -> tuple[bool, List[Dict[str, str]], str]:
+        """List OpenRAG-related images available in the container runtime."""
+        format_parts = ["{{.Repository}}:{{.Tag}}", "{{.ID}}"]
+        if include_created:
+            format_parts.append("{{.CreatedAt}}")
+
+        success, stdout, stderr = await self._run_runtime_command(
+            ["images", "--format", "\t".join(format_parts)]
+        )
+        if not success:
+            return False, [], stderr
+
+        images: List[Dict[str, str]] = []
+        for raw_line in stdout.strip().splitlines():
+            if not raw_line.strip():
+                continue
+
+            parts = raw_line.split("\t")
+            if len(parts) < 2:
+                continue
+
+            image_tag = parts[0].strip()
+            image_id = parts[1].strip()
+
+            # Skip untagged entries to avoid broad cleanup touching unrelated images.
+            if "<none>" in image_tag:
+                continue
+
+            repository = self._extract_repository(image_tag)
+            if not self._is_openrag_repository(repository):
+                continue
+
+            image_data = {
+                "full_tag": image_tag,
+                "repo": repository,
+                "id": image_id,
+            }
+            if include_created and len(parts) >= 3:
+                image_data["created"] = parts[2].strip()
+            images.append(image_data)
+
+        return True, images, ""
 
     def _process_service_json(
         self, service: Dict, services: Dict[str, ServiceInfo]
@@ -1012,8 +1105,8 @@ class ContainerManager:
             yield False, "ERROR: Port conflicts detected:", False
             for service_name, port, error_msg in conflicts:
                 yield False, f"  - {service_name}: {error_msg}", False
-            yield False, "Please stop the conflicting services and try again.", False
-            yield False, "Services not started due to port conflicts.", False
+            yield False, "", False
+            yield False, format_port_conflict_message(conflicts), False
             return
 
         yield False, "Starting OpenRAG services...", False
@@ -1036,11 +1129,28 @@ class ContainerManager:
             if not pull_success["value"]:
                 yield False, "Some images failed to pull; attempting to start services anyway...", False
 
-        yield False, "Creating and starting containers...", False
+        # Check if containers already exist (stopped or otherwise)
+        # Use compose ps -q to check for any existing containers in the project
+        success, stdout, stderr = await self._run_compose_command(["ps", "-q"])
+        containers_exist = success and stdout.strip() != ""
+
+        if containers_exist:
+            yield False, "Starting existing containers...", False
+            if self.runtime_info.runtime_type == RuntimeType.PODMAN:
+                # Podman doesn't support --no-recreate; force-recreate to avoid
+                # "name already in use" and dependency graph errors
+                compose_cmd = ["up", "-d", "--force-recreate"]
+            else:
+                # Use --no-recreate to start existing containers without recreating
+                compose_cmd = ["up", "-d", "--no-recreate"]
+        else:
+            yield False, "Creating and starting containers...", False
+            compose_cmd = ["up", "-d", "--no-build"]
+
         up_success = {"value": True}
         error_messages = []
-        
-        async for message, replace_last in self._stream_compose_command(["up", "-d", "--no-build"], up_success, cpu_mode):
+
+        async for message, replace_last in self._stream_compose_command(compose_cmd, up_success, cpu_mode):
             # Detect error patterns in the output
             lower_msg = message.lower()
             
@@ -1199,15 +1309,37 @@ class ContainerManager:
             yield False, f"Failed to stop services: {stderr}"
             return
 
-        yield False, "Cleaning up container data..."
+        yield False, "Removing OpenRAG images..."
+        success, images, stderr = await self._list_openrag_images()
+        if not success:
+            yield False, f"Failed to list OpenRAG images: {stderr}"
+            return
 
-        # Additional cleanup - remove any remaining containers/volumes
-        # This is more thorough than just compose down
-        await self._run_runtime_command(["system", "prune", "-f"])
+        if not images:
+            yield True, "System reset completed - OpenRAG containers and volumes removed"
+            return
+
+        # Deduplicate by image ID (same ID can have multiple tags)
+        image_ids = []
+        seen = set()
+        for image in images:
+            image_id = image["id"]
+            if image_id in seen:
+                continue
+            seen.add(image_id)
+            image_ids.append((image_id, image["full_tag"]))
+
+        removed = 0
+        for image_id, image_tag in image_ids:
+            success, _, stderr = await self._run_runtime_command(["rmi", image_id])
+            if success:
+                removed += 1
+            else:
+                yield False, f"Could not remove {image_tag}: {stderr.strip()}"
 
         yield (
             True,
-            "System reset completed - all containers, volumes, and local images removed",
+            f"System reset completed - removed {removed} OpenRAG image(s)",
         )
 
     async def get_service_logs(
@@ -1347,7 +1479,6 @@ class ContainerManager:
         2. Identifies OpenRAG-related images (openrag-backend, openrag-frontend, langflow, opensearch, dashboards)
         3. For each repository, keeps only the latest/currently used image
         4. Removes old images
-        5. Prunes dangling images
         
         Yields:
             Tuples of (success, message) for progress updates
@@ -1358,69 +1489,20 @@ class ContainerManager:
 
         yield False, "Scanning for OpenRAG images..."
 
-        # Get list of all images
-        success, stdout, stderr = await self._run_runtime_command(
-            ["images", "--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}"]
-        )
-
+        success, images, stderr = await self._list_openrag_images(include_created=True)
         if not success:
             yield False, f"Failed to list images: {stderr}"
             return
 
-        # Parse images and group by repository
-        openrag_repos = {
-            "langflowai/openrag-backend",
-            "langflowai/openrag-frontend",
-            "langflowai/openrag-langflow",
-            "langflowai/openrag-opensearch",
-            "langflowai/openrag-dashboards",
-            "langflow/langflow",  # Also include base langflow images
-            "opensearchproject/opensearch",
-            "opensearchproject/opensearch-dashboards",
-        }
-
         images_by_repo = {}
-        for line in stdout.strip().split("\n"):
-            if not line.strip():
-                continue
-            
-            parts = line.split("\t")
-            if len(parts) < 3:
-                continue
-            
-            image_tag, image_id, created_at = parts[0], parts[1], parts[2]
-            
-            # Skip <none> tags (dangling images will be handled separately)
-            if "<none>" in image_tag:
-                continue
-            
-            # Extract repository name (without tag)
-            if ":" in image_tag:
-                repo = image_tag.rsplit(":", 1)[0]
-            else:
-                repo = image_tag
-            
-            # Check if this is an OpenRAG-related image
-            if any(openrag_repo in repo for openrag_repo in openrag_repos):
-                if repo not in images_by_repo:
-                    images_by_repo[repo] = []
-                images_by_repo[repo].append({
-                    "full_tag": image_tag,
-                    "id": image_id,
-                    "created": created_at,
-                })
+        for image in images:
+            repo = image["repo"]
+            if repo not in images_by_repo:
+                images_by_repo[repo] = []
+            images_by_repo[repo].append(image)
 
         if not images_by_repo:
             yield True, "No OpenRAG images found to prune"
-            # Still run dangling image cleanup
-            yield False, "Cleaning up dangling images..."
-            success, stdout, stderr = await self._run_runtime_command(
-                ["image", "prune", "-f"]
-            )
-            if success:
-                yield True, "Dangling images cleaned up"
-            else:
-                yield False, f"Failed to prune dangling images: {stderr}"
             return
 
         # Get currently used images (from running/stopped containers)
@@ -1478,21 +1560,6 @@ class ContainerManager:
         else:
             yield True, "No old images were removed"
 
-        # Clean up dangling images (untagged images)
-        yield False, "Cleaning up dangling images..."
-        success, stdout, stderr = await self._run_runtime_command(
-            ["image", "prune", "-f"]
-        )
-        
-        if success:
-            # Parse output to see if anything was removed
-            if stdout.strip():
-                yield True, f"Dangling images cleaned: {stdout.strip()}"
-            else:
-                yield True, "No dangling images to clean"
-        else:
-            yield False, f"Failed to prune dangling images: {stderr}"
-
         yield True, "Image pruning completed"
 
     async def prune_all_images(self) -> AsyncIterator[tuple[bool, str]]:
@@ -1501,7 +1568,6 @@ class ContainerManager:
         This is a more aggressive pruning that:
         1. Stops all running services
         2. Removes ALL OpenRAG-related images (not just old versions)
-        3. Prunes dangling images
         
         This frees up maximum disk space but requires re-downloading images on next start.
         
@@ -1526,54 +1592,10 @@ class ContainerManager:
 
         yield False, "Scanning for OpenRAG images..."
 
-        # Get list of all images
-        success, stdout, stderr = await self._run_runtime_command(
-            ["images", "--format", "{{.Repository}}:{{.Tag}}\t{{.ID}}"]
-        )
-
+        success, images_to_remove, stderr = await self._list_openrag_images()
         if not success:
             yield False, f"Failed to list images: {stderr}"
             return
-
-        # Parse images and identify ALL OpenRAG-related images
-        openrag_repos = {
-            "langflowai/openrag-backend",
-            "langflowai/openrag-frontend",
-            "langflowai/openrag-langflow",
-            "langflowai/openrag-opensearch",
-            "langflowai/openrag-dashboards",
-            "langflow/langflow",
-            "opensearchproject/opensearch",
-            "opensearchproject/opensearch-dashboards",
-        }
-
-        images_to_remove = []
-        for line in stdout.strip().split("\n"):
-            if not line.strip():
-                continue
-            
-            parts = line.split("\t")
-            if len(parts) < 2:
-                continue
-            
-            image_tag, image_id = parts[0], parts[1]
-            
-            # Skip <none> tags (will be handled by prune)
-            if "<none>" in image_tag:
-                continue
-            
-            # Extract repository name (without tag)
-            if ":" in image_tag:
-                repo = image_tag.rsplit(":", 1)[0]
-            else:
-                repo = image_tag
-            
-            # Check if this is an OpenRAG-related image
-            if any(openrag_repo in repo for openrag_repo in openrag_repos):
-                images_to_remove.append({
-                    "full_tag": image_tag,
-                    "id": image_id,
-                })
 
         if not images_to_remove:
             yield True, "No OpenRAG images found to remove"
@@ -1598,19 +1620,4 @@ class ContainerManager:
             else:
                 yield False, "No images were removed"
 
-        # Clean up dangling images
-        yield False, "Cleaning up dangling images..."
-        success, stdout, stderr = await self._run_runtime_command(
-            ["image", "prune", "-f"]
-        )
-        
-        if success:
-            if stdout.strip():
-                yield True, f"Dangling images cleaned: {stdout.strip()}"
-            else:
-                yield True, "No dangling images to clean"
-        else:
-            yield False, f"Failed to prune dangling images: {stderr}"
-
         yield True, "All OpenRAG images removed successfully"
-

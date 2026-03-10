@@ -46,7 +46,7 @@ async def wait_for_service_ready(client: httpx.AsyncClient, timeout_s: float = 3
     - POST /search with query "*" avoids embeddings and checks OpenSearch/index readiness.
     """
     # First test OpenSearch JWT directly
-    from src.session_manager import SessionManager, AnonymousUser
+    from session_manager import SessionManager, AnonymousUser
     import os
     import hashlib
     import jwt as jwt_lib
@@ -124,31 +124,24 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
     import sys
     # Clear cached modules so settings pick up env and router sees new flag
     for mod in [
-        "src.api.router",
-        "api.router",  # Also clear the non-src path
-        "src.api.connector_router",
+        "api.router",
         "api.connector_router",
-        "src.config.settings",
         "config.settings",
-        "src.auth_middleware",
         "auth_middleware",
-        "src.main",
-        "api",  # Clear the api package itself
-        "src.api",
-        "services",  # Clear services that import clients
-        "src.services",
+        "main",
+        "api",
+        "services",
         "services.search_service",
-        "src.services.search_service",
     ]:
         sys.modules.pop(mod, None)
-    from src.main import create_app, startup_tasks
-    import src.api.router as upload_router
-    from src.config.settings import clients, INDEX_NAME, DISABLE_INGEST_WITH_LANGFLOW
+    from main import create_app, startup_tasks
+    import api.router as upload_router
+    from config.settings import clients, get_index_name, DISABLE_INGEST_WITH_LANGFLOW
 
     # Ensure a clean index before startup
     await clients.initialize()
     try:
-        await clients.opensearch.indices.delete(index=INDEX_NAME)
+        await clients.opensearch.indices.delete(index=get_index_name())
         # Wait for deletion to complete
         await asyncio.sleep(1)
     except Exception:
@@ -159,12 +152,12 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
     await startup_tasks(app.state.services)
 
     # Ensure index exists for tests (startup_tasks only creates it if DISABLE_INGEST_WITH_LANGFLOW=True)
-    from src.main import _ensure_opensearch_index
+    from main import _ensure_opensearch_index
     await _ensure_opensearch_index()
 
     # Verify index is truly empty after startup
     try:
-        count_response = await clients.opensearch.count(index=INDEX_NAME)
+        count_response = await clients.opensearch.count(index=get_index_name())
         doc_count = count_response.get('count', 0)
         assert doc_count == 0, f"Index should be empty after startup but contains {doc_count} documents"
     except Exception as e:
@@ -242,7 +235,7 @@ async def test_upload_and_search_endpoint(tmp_path: Path, disable_langflow_inges
                 assert "testing" in text.lower()
     finally:
         # Explicitly close global clients to avoid aiohttp warnings
-        from src.config.settings import clients
+        from config.settings import clients
         try:
             await clients.close()
         except Exception:
@@ -349,32 +342,22 @@ async def test_langflow_chat_and_nudges_endpoints():
     import sys
 
     for mod in [
-        "src.api.chat",
         "api.chat",
-        "src.api.nudges",
         "api.nudges",
-        "src.api.router",
         "api.router",
-        "src.api.connector_router",
         "api.connector_router",
-        "src.config.settings",
         "config.settings",
-        "src.auth_middleware",
         "auth_middleware",
-        "src.main",
+        "main",
         "api",
-        "src.api",
         "services",
-        "src.services",
         "services.search_service",
-        "src.services.search_service",
         "services.chat_service",
-        "src.services.chat_service",
     ]:
         sys.modules.pop(mod, None)
 
-    from src.main import create_app, startup_tasks
-    from src.config.settings import clients, LANGFLOW_CHAT_FLOW_ID, NUDGES_FLOW_ID
+    from main import create_app, startup_tasks
+    from config.settings import clients, LANGFLOW_CHAT_FLOW_ID, NUDGES_FLOW_ID
 
     assert LANGFLOW_CHAT_FLOW_ID, "LANGFLOW_CHAT_FLOW_ID must be configured for integration test"
     assert NUDGES_FLOW_ID, "NUDGES_FLOW_ID must be configured for integration test"
@@ -443,7 +426,7 @@ async def test_langflow_chat_and_nudges_endpoints():
                 assert isinstance(nudges_thread_data.get("response"), str)
                 assert nudges_thread_data["response"].strip()
     finally:
-        from src.config.settings import clients
+        from config.settings import clients
 
         try:
             await clients.close()
@@ -465,26 +448,21 @@ async def test_search_multi_embedding_models(
     import sys
 
     for mod in [
-        "src.api.router",
         "api.router",
-        "src.api.connector_router",
         "api.connector_router",
-        "src.config.settings",
         "config.settings",
-        "src.auth_middleware",
         "auth_middleware",
-        "src.main",
+        "main",
         "services.search_service",
-        "src.services.search_service",
     ]:
         sys.modules.pop(mod, None)
 
-    from src.main import create_app, startup_tasks
-    from src.config.settings import clients, INDEX_NAME
+    from main import create_app, startup_tasks
+    from config.settings import clients, get_index_name
 
     await clients.initialize()
     try:
-        await clients.opensearch.indices.delete(index=INDEX_NAME)
+        await clients.opensearch.indices.delete(index=get_index_name())
         await asyncio.sleep(1)
     except Exception:
         pass
@@ -492,7 +470,7 @@ async def test_search_multi_embedding_models(
     app = await create_app()
     await startup_tasks(app.state.services)
 
-    from src.main import _ensure_opensearch_index
+    from main import _ensure_opensearch_index
 
     await _ensure_opensearch_index()
 
@@ -588,7 +566,7 @@ async def test_search_multi_embedding_models(
             }
             assert {"text-embedding-3-small", "text-embedding-3-large"} <= result_models
     finally:
-        from src.config.settings import clients
+        from config.settings import clients
 
         try:
             await clients.close()
@@ -607,31 +585,24 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
 
     import sys
     for mod in [
-        "src.api.router",
-        "api.router",  # Also clear the non-src path
-        "src.api.connector_router",
+        "api.router",
         "api.connector_router",
-        "src.config.settings",
         "config.settings",
-        "src.auth_middleware",
         "auth_middleware",
-        "src.main",
-        "api",  # Clear the api package itself
-        "src.api",
-        "services",  # Clear services that import clients
-        "src.services",
+        "main",
+        "api",
+        "services",
         "services.search_service",
-        "src.services.search_service",
     ]:
         sys.modules.pop(mod, None)
-    from src.main import create_app, startup_tasks
-    import src.api.router as upload_router
-    from src.config.settings import clients, INDEX_NAME, DISABLE_INGEST_WITH_LANGFLOW
+    from main import create_app, startup_tasks
+    import api.router as upload_router
+    from config.settings import clients, get_index_name, DISABLE_INGEST_WITH_LANGFLOW
 
     # Ensure a clean index before startup
     await clients.initialize()
     try:
-        await clients.opensearch.indices.delete(index=INDEX_NAME)
+        await clients.opensearch.indices.delete(index=get_index_name())
         # Wait for deletion to complete
         await asyncio.sleep(1)
     except Exception:
@@ -641,12 +612,12 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
     await startup_tasks(app.state.services)
 
     # Ensure index exists for tests (startup_tasks only creates it if DISABLE_INGEST_WITH_LANGFLOW=True)
-    from src.main import _ensure_opensearch_index
+    from main import _ensure_opensearch_index
     await _ensure_opensearch_index()
 
     # Verify index is truly empty after startup
     try:
-        count_response = await clients.opensearch.count(index=INDEX_NAME)
+        count_response = await clients.opensearch.count(index=get_index_name())
         doc_count = count_response.get('count', 0)
         assert doc_count == 0, f"Index should be empty after startup but contains {doc_count} documents"
     except Exception as e:
@@ -681,7 +652,7 @@ async def test_router_upload_ingest_traditional(tmp_path: Path, disable_langflow
                 assert isinstance(data.get("task_id"), str)
                 assert data.get("file_count") == 1
     finally:
-        from src.config.settings import clients
+        from config.settings import clients
         try:
             await clients.close()
         except Exception:

@@ -403,7 +403,8 @@ export function Navigation({
                         // 2. currentConversationId exists but isn't in conversations yet (gap between response and list update)
                         const conversationExists = currentConversationId
                           ? conversations.some(
-                              (conv) => conv.response_id === currentConversationId,
+                              (conv) =>
+                                conv.response_id === currentConversationId,
                             )
                           : false;
 
@@ -416,26 +417,25 @@ export function Navigation({
                         // Use placeholderConversation if available
                         // Otherwise create a placeholder with currentConversationId if it exists
                         // Or use a temporary ID if we're loading but don't have an ID yet
-                        const placeholderToShow =
-                          placeholderConversation
-                            ? placeholderConversation
-                            : currentConversationId
+                        const placeholderToShow = placeholderConversation
+                          ? placeholderConversation
+                          : currentConversationId
+                            ? {
+                                response_id: currentConversationId,
+                                title: "",
+                                endpoint: endpoint,
+                                messages: [],
+                                total_messages: 0,
+                              }
+                            : loading
                               ? {
-                                  response_id: currentConversationId,
+                                  response_id: `loading-${Date.now()}`,
                                   title: "",
                                   endpoint: endpoint,
                                   messages: [],
                                   total_messages: 0,
                                 }
-                              : loading
-                                ? {
-                                    response_id: `loading-${Date.now()}`,
-                                    title: "",
-                                    endpoint: endpoint,
-                                    messages: [],
-                                    total_messages: 0,
-                                  }
-                                : null;
+                              : null;
 
                         return (
                           shouldShowPlaceholder &&
@@ -459,81 +459,81 @@ export function Navigation({
                       })()}
                       {conversations.map((conversation) => (
                         <button
-                        key={conversation.response_id}
-                        type="button"
-                        className={`w-full px-3 h-11 rounded-lg group relative text-left ${
-                          loading || isConversationsLoading
-                            ? "opacity-50 cursor-not-allowed"
-                            : "hover:bg-accent cursor-pointer"
-                        } ${
-                          currentConversationId === conversation.response_id
-                            ? "bg-accent"
-                            : ""
-                        }`}
-                        onClick={() => {
-                          if (loading || isConversationsLoading) return;
-                          loadConversation(conversation);
-                          // Don't refresh - just loading an existing conversation
-                        }}
-                        disabled={loading || isConversationsLoading}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-foreground truncate">
-                              {conversation.title}
-                            </div>
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              disabled={
-                                loading ||
-                                isConversationsLoading ||
-                                deleteSessionMutation.isPending
-                              }
-                              asChild
-                            >
-                              <div
-                                className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
-                                title="More options"
-                                role="button"
-                                tabIndex={0}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                  }
-                                }}
-                              >
-                                <EllipsisVertical className="h-4 w-4" />
+                          key={conversation.response_id}
+                          type="button"
+                          className={`w-full px-3 h-11 rounded-lg group relative text-left ${
+                            loading || isConversationsLoading
+                              ? "opacity-50 cursor-not-allowed"
+                              : "hover:bg-accent cursor-pointer"
+                          } ${
+                            currentConversationId === conversation.response_id
+                              ? "bg-accent"
+                              : ""
+                          }`}
+                          onClick={() => {
+                            if (loading || isConversationsLoading) return;
+                            loadConversation(conversation);
+                            // Don't refresh - just loading an existing conversation
+                          }}
+                          disabled={loading || isConversationsLoading}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-foreground truncate">
+                                {conversation.title}
                               </div>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              side="bottom"
-                              align="end"
-                              className="w-48"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleContextMenuAction(
-                                    "delete",
-                                    conversation,
-                                  );
-                                }}
-                                className="cursor-pointer text-destructive focus:text-destructive"
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                disabled={
+                                  loading ||
+                                  isConversationsLoading ||
+                                  deleteSessionMutation.isPending
+                                }
+                                asChild
                               >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete conversation
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </button>
-                    ))}
+                                <div
+                                  className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 data-[state=open]:text-foreground transition-opacity p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground ml-2 flex-shrink-0 cursor-pointer"
+                                  title="More options"
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }
+                                  }}
+                                >
+                                  <EllipsisVertical className="h-4 w-4" />
+                                </div>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                side="bottom"
+                                align="end"
+                                className="w-48"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleContextMenuAction(
+                                      "delete",
+                                      conversation,
+                                    );
+                                  }}
+                                  className="cursor-pointer text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete conversation
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </button>
+                      ))}
                     </>
                   )}
                 </>

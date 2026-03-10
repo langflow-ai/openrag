@@ -6,7 +6,6 @@ slug: /chat
 import Icon from "@site/src/components/icon/icon";
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
-import PartialIntegrateChat from '@site/docs/_partial-integrate-chat.mdx';
 import PartialTempKnowledge from '@site/docs/_partial-temp-knowledge.mdx';
 
 After you [upload documents to your knowledge base](/ingestion), you can use the OpenRAG <Icon name="MessageSquare" aria-hidden="true"/> **Chat** feature to interact with your knowledge through natural language queries.
@@ -94,23 +93,43 @@ For example, if your knowledge base contains documents about cybersecurity, poss
 
 During the chat, you'll see information about the agent's process. For more detail, you can inspect individual tool calls. This is helpful for troubleshooting because it shows you how the agent used particular tools. For example, click <Icon name="Gear" aria-hidden="true"/> **Function Call: search_documents (tool_call)** to view the log of tool calls made by the agent to the **OpenSearch** component.
 
-If documents in your knowledge base seem to be missing or interpreted incorrectly, see [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
+If documents in your knowledge base seem to be missing or interpreted incorrectly, see [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues).
 
 If tool calls and knowledge appear normal, but the agent's responses seem off-topic or incorrect, consider changing the agent's language model or prompt, as explained in [Inspect and modify flows](/agents#inspect-and-modify-flows).
 
 ## Integrate OpenRAG chat into an application
 
-You can integrate OpenRAG flows into your applications using the [Langflow API](https://docs.langflow.org/api-reference-api-examples).
-To simplify this integration, you can get pre-configured code snippets directly from the embedded Langflow visual editor.
+You can integrate OpenRAG flows into your applications using the OpenRAG SDKs (recommended) or the Langflow API.
+
+### Use the OpenRAG SDKs (Recommended)
+
+It is strongly recommended that you use the OpenRAG SDKs to interact with OpenRAG programmatically or integrate OpenRAG into an application.
+This is because OpenRAG passes specific configuration settings to the Langflow API when it runs a flow or conducts a chat session.
+For more information, see the following:
+
+* [Python SDK README](https://github.com/langflow-ai/openrag/tree/main/sdks/python)
+* [TypeScript/JavaScript SDK README](https://github.com/langflow-ai/openrag/tree/main/sdks/typescript)
+
+### Use the Langflow API (Not recommended)
+
+To trigger a flow with the [Langflow API](https://docs.langflow.org/api-reference-api-examples), you can get pre-configured code snippets directly from the embedded Langflow visual editor.
+However, these snippets don't include OpenRAG-specific configuration settings, so the behavior won't be identical to using OpenRAG directly.
 
 The following example demonstrates how to generate and use code snippets for the **OpenRAG OpenSearch Agent** flow:
 
-<PartialIntegrateChat />
+1. Open the **OpenRAG OpenSearch Agent** flow in the Langflow visual editor:
 
-## Troubleshoot chat {#troubleshoot-chat}
+   1. In OpenRAG, click <Icon name="Settings2" aria-hidden="true"/> **Settings**.
+   2. Click **Edit in Langflow**, and then click **Proceed** to launch the Langflow visual editor.
+   3. If Langflow requests login information, enter the `LANGFLOW_SUPERUSER` and `LANGFLOW_SUPERUSER_PASSWORD` from your [OpenRAG `.env` file](/reference/configuration).
 
-The following issues can occur when using the OpenRAG **Chat** feature:
+2. Optional: If you don't want to use the Langflow API key that is generated automatically when you install OpenRAG, you can [create a Langflow API key](https://docs.langflow.org/api-keys-and-authentication).
+This key is used to authenticate with the Langflow API; it doesn't grant access to your entire OpenRAG deployment.
 
-* Documents seem to be missing or interpreted incorrectly: See [Troubleshoot ingestion](/ingestion#troubleshoot-ingestion).
-* Service is suddenly unavailable when it was working previously: If there is no other obvious cause, such as the service or container VM being stopped or disconnected, there might be a problem with the flow configuration. Use the [**Restore flow** option](/agents#revert-a-built-in-flow-to-its-original-configuration) to revert the **OpenRAG OpenSearch Agent** flow to its original configuration.
-If you made customizations to the flow, make sure to [export your flow](https://docs.langflow.org/concepts-flows-import) before restoring the flow.
+3. In the Langflow visual [generate Langflow API code snippets](https://docs.langflow.org/concepts-publish#generate-api-code-snippets) that you can use to run the flow programmatically.
+For an example, see the [Langflow quickstart](https://docs.langflow.org/get-started-quickstart#extract-data-from-the-response).
+
+## See also
+
+* [Troubleshoot chat issues](/support/troubleshoot#chat-issues)
+* [Troubleshoot document ingestion or similarity search issues](/support/troubleshoot#document-ingestion-or-similarity-search-issues)

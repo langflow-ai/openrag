@@ -28,20 +28,27 @@ def detect_gpu_devices():
 
 
 def get_worker_count():
-    """Get optimal worker count based on GPU availability"""
+    """Get optimal worker count based on downstream service capacity.
+
+    The worker count controls concurrent ingestion requests to Langflow/Docling.
+    The bottleneck is not the backend CPU (which is I/O-bound waiting on HTTP),
+    but rather Langflow and Docling's processing capacity (default: 1 worker each).
+
+    Uses min(4, cpu_count // 2) for both GPU and CPU modes to maintain a
+    reasonable ratio with downstream services (4 backend : 1 Langflow worker).
+    """
     has_gpu_devices, gpu_count = detect_gpu_devices()
 
-    if has_gpu_devices:
-        default_workers = min(4, multiprocessing.cpu_count() // 2)
-        logger.info(
-            "GPU mode enabled with limited concurrency",
-            gpu_count=gpu_count,
-            worker_count=default_workers,
-        )
-    else:
-        default_workers = multiprocessing.cpu_count()
-        logger.info(
-            "CPU-only mode enabled with full concurrency", worker_count=default_workers
-        )
+    # Same formula for both modes: cap at 4, use half of available CPUs
+    default_worker_count = max(1, min(4, multiprocessing.cpu_count() // 2))
+    worker_count = max(1, int(os.getenv("MAX_WORKERS", default_worker_count)))
+    mode = "GPU" if has_gpu_devices else "CPU-only"
 
-    return int(os.getenv("MAX_WORKERS", default_workers))
+    logger.info(
+        f"{mode} mode enabled",
+        gpu_count=gpu_count,
+        worker_count=worker_count,
+        default_worker_count=default_worker_count,
+    )
+
+    return worker_count

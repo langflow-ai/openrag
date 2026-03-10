@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { StickToBottom } from "use-stick-to-bottom";
+import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import { getFilterById } from "@/app/api/queries/useGetFilterByIdQuery";
 import { useGetSettingsQuery } from "@/app/api/queries/useGetSettingsQuery";
-import { useUpdateOnboardingStateMutation } from "@/app/api/mutations/useUpdateOnboardingStateMutation";
 import { AssistantMessage } from "@/app/chat/_components/assistant-message";
 import Nudges from "@/app/chat/_components/nudges";
 import { UserMessage } from "@/app/chat/_components/user-message";
@@ -37,12 +37,12 @@ export function OnboardingContent({
   const updateOnboardingMutation = useUpdateOnboardingStateMutation();
   const parseFailedRef = useRef(false);
   const [responseId, setResponseId] = useState<string | null>(null);
-  
+
   // Initialize from backend settings
   const [selectedNudge, setSelectedNudge] = useState<string>(() => {
     return settings?.onboarding?.selected_nudge || "";
   });
-  
+
   const [assistantMessage, setAssistantMessage] = useState<Message | null>(
     () => {
       // Get from backend settings
@@ -91,7 +91,7 @@ export function OnboardingContent({
           timestamp: message.timestamp.toISOString(),
         },
       });
-      
+
       if (newResponseId) {
         setResponseId(newResponseId);
 
@@ -99,7 +99,8 @@ export function OnboardingContent({
         setCurrentConversationId(newResponseId);
 
         // Get filter ID from backend settings
-        const openragDocsFilterId = settings?.onboarding?.openrag_docs_filter_id;
+        const openragDocsFilterId =
+          settings?.onboarding?.openrag_docs_filter_id;
         if (openragDocsFilterId) {
           try {
             // Load the filter and set it in the context with explicit responseId
@@ -108,10 +109,18 @@ export function OnboardingContent({
             if (filter) {
               // Pass explicit newResponseId to ensure correct localStorage association
               setConversationFilter(filter, newResponseId);
-              console.log("[ONBOARDING] Saved filter association:", `conversation_filter_${newResponseId}`, "=", openragDocsFilterId);
+              console.log(
+                "[ONBOARDING] Saved filter association:",
+                `conversation_filter_${newResponseId}`,
+                "=",
+                openragDocsFilterId,
+              );
             }
           } catch (error) {
-            console.error("Failed to associate filter with conversation:", error);
+            console.error(
+              "Failed to associate filter with conversation:",
+              error,
+            );
           }
         }
       }
@@ -132,13 +141,13 @@ export function OnboardingContent({
   const handleNudgeClick = async (nudge: string) => {
     setSelectedNudge(nudge);
     setAssistantMessage(null);
-    
+
     // Save selected nudge to backend and clear assistant message
     await updateOnboardingMutation.mutateAsync({
       selected_nudge: nudge,
       assistant_message: null,
     });
-    
+
     setTimeout(async () => {
       // Check if we have the OpenRAG docs filter ID (sample data was ingested)
       const openragDocsFilterId = settings?.onboarding?.openrag_docs_filter_id;
@@ -160,7 +169,10 @@ export function OnboardingContent({
         }
       }
 
-      console.log("[ONBOARDING] Sending message with filter_id:", filterToUse?.id);
+      console.log(
+        "[ONBOARDING] Sending message with filter_id:",
+        filterToUse?.id,
+      );
       await sendMessage({
         prompt: nudge,
         previousResponseId: responseId || undefined,
@@ -188,7 +200,10 @@ export function OnboardingContent({
       mass={1}
     >
       <StickToBottom.Content className="flex flex-col min-h-full overflow-x-hidden px-8 py-6">
-        <div className="flex flex-col place-self-center w-full space-y-6">
+        <div
+          className="flex flex-col place-self-center w-full space-y-6"
+          data-testid="onboarding-content"
+        >
           {/* Step 1 - LLM Provider */}
           <OnboardingStep
             isVisible={currentStep >= 0}

@@ -2,6 +2,8 @@
 
 import asyncio
 import inspect
+import os
+import webbrowser
 from typing import Callable, Optional, AsyncIterator
 
 from rich.text import Text
@@ -71,6 +73,7 @@ class CommandOutputModal(ModalScreen):
         align: center middle;
         padding: 1;
         margin-top: 1;
+        layout: horizontal;
     }
 
     #button-row Button {
@@ -174,6 +177,7 @@ class CommandOutputModal(ModalScreen):
         title: str,
         command_generator: AsyncIterator[tuple[bool, str]],
         on_complete: Optional[Callable] = None,
+        show_launch_button: bool = False,
     ):
         """Initialize the modal dialog.
 
@@ -181,11 +185,13 @@ class CommandOutputModal(ModalScreen):
             title: Title of the modal dialog
             command_generator: Async generator that yields (is_complete, message) or (is_complete, message, replace_last) tuples
             on_complete: Optional callback to run when command completes
+            show_launch_button: Whether to show the Launch OpenRAG button on success
         """
         super().__init__()
         self.title_text = title
         self.command_generator = command_generator
         self.on_complete = on_complete
+        self.show_launch_button = show_launch_button
         self._output_lines: list[str] = []
         self._layer_line_map: dict[str, int] = {}  # Maps layer ID to line index
         self._status_task: Optional[asyncio.Task] = None
@@ -203,7 +209,7 @@ class CommandOutputModal(ModalScreen):
                 show_line_numbers=False,
                 id="command-output",
             )
-            with Container(id="button-row"):
+            with Horizontal(id="button-row"):
                 yield Button("Copy Output", variant="default", id="copy-btn")
                 yield Button(
                     "Close", variant="primary", id="close-btn", disabled=True
@@ -228,6 +234,16 @@ class CommandOutputModal(ModalScreen):
             self.dismiss()
         elif event.button.id == "copy-btn":
             self.copy_to_clipboard()
+        elif event.button.id == "launch-btn":
+            self._launch_openrag()
+
+    def _launch_openrag(self) -> None:
+        """Open the OpenRAG app in the default browser."""
+        try:
+            webbrowser.open(f"http://localhost:{os.getenv('FRONTEND_PORT', '3000')}")
+            self.notify("Opening OpenRAG app in browser...", severity="information")
+        except Exception as e:
+            self.notify(f"Error opening app: {e}", severity="error")
 
     def action_add_wave(self) -> None:
         """Add a wave to the animation."""
@@ -305,6 +321,15 @@ class CommandOutputModal(ModalScreen):
                     output.text = "\n".join(self._output_lines)
                     output.move_cursor((len(self._output_lines), 0))
 
+                    # Add Launch button on success (no errors) if enabled
+                    if self.show_launch_button and not self._error_detected:
+                        button_row = self.query_one("#button-row", Horizontal)
+                        close_btn = self.query_one("#close-btn", Button)
+                        launch_btn = Button(
+                            "Launch OpenRAG", variant="success", id="launch-btn"
+                        )
+                        button_row.mount(launch_btn, before=close_btn)
+
                     # Call the completion callback if provided
                     if self.on_complete:
                         await asyncio.sleep(0.5)  # Small delay for better UX
@@ -323,11 +348,16 @@ class CommandOutputModal(ModalScreen):
             output.text = "\n".join(self._output_lines)
             output.move_cursor((len(self._output_lines), 0))
         finally:
-            # Enable the close button and focus it (if modal still exists)
+            # Enable buttons and focus appropriately (if modal still exists)
             try:
                 close_btn = self.query_one("#close-btn", Button)
                 close_btn.disabled = False
-                close_btn.focus()
+                # Focus launch button if it exists (success), otherwise close
+                try:
+                    launch_btn = self.query_one("#launch-btn", Button)
+                    launch_btn.focus()
+                except Exception:
+                    close_btn.focus()
             except Exception:
                 # Modal was already dismissed
                 pass

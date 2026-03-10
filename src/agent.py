@@ -196,6 +196,18 @@ async def async_response_stream(
                             sample_data=str(potential_tool_fields)[:500]
                         )
 
+                # Detect response.completed event and log usage
+                if isinstance(chunk_data, dict) and chunk_data.get("type") == "response.completed":
+                    response_data = chunk_data.get("response", {})
+                    usage = response_data.get("usage")
+                    if usage:
+                        logger.info(
+                            "Stream usage data",
+                            input_tokens=usage.get("input_tokens"),
+                            output_tokens=usage.get("output_tokens"),
+                            total_tokens=usage.get("total_tokens"),
+                        )
+
                 # Middleware: Detect implicit tool calls and inject standardized events
                 # This helps Granite 3.3 8b and other models that don't emit standard markers
                 if isinstance(chunk_data, dict) and not detected_tool_call:
@@ -486,6 +498,7 @@ async def async_chat_stream(
 
     full_response = ""
     response_id = None
+    usage_data = None
     async for chunk in async_stream(
         async_client,
         prompt,
@@ -505,6 +518,10 @@ async def async_chat_stream(
                 response_id = chunk_data["id"]
             elif "response_id" in chunk_data:
                 response_id = chunk_data["response_id"]
+            # Capture usage from response.completed event
+            if chunk_data.get("type") == "response.completed":
+                response_obj = chunk_data.get("response", {})
+                usage_data = response_obj.get("usage")
         except:
             pass
         yield chunk
@@ -517,6 +534,9 @@ async def async_chat_stream(
             "response_id": response_id,
             "timestamp": datetime.now(),
         }
+        # Store usage data if available (from response.completed event)
+        if usage_data:
+            assistant_message["response_data"] = {"usage": usage_data}
         conversation_state["messages"].append(assistant_message)
 
         # Store the conversation thread with its response_id
@@ -675,6 +695,7 @@ async def async_langflow_chat_stream(
 
     full_response = ""
     response_id = None
+    usage_data = None
     collected_chunks = []  # Store all chunks for function call data
     error_occurred = False
 
@@ -706,6 +727,10 @@ async def async_langflow_chat_stream(
                 if chunk_data.get("finish_reason") == "error" or chunk_data.get("status") == "failed":
                     error_occurred = True
                     logger.error("Error detected in Langflow stream chunk")
+                # Capture usage from response.completed event
+                if chunk_data.get("type") == "response.completed":
+                    response_obj = chunk_data.get("response", {})
+                    usage_data = response_obj.get("usage")
             except:
                 pass
             yield chunk
@@ -720,25 +745,28 @@ async def async_langflow_chat_stream(
                 "chunks": collected_chunks,  # Store complete chunk data for function calls
                 "error": error_occurred,  # Mark if this was an error response
             }
-            conversation_state["messages"].append(assistant_message)
+            # Store usage data if available (from response.completed event)
+        if usage_data:
+            assistant_message["response_data"] = {"usage": usage_data}
+        conversation_state["messages"].append(assistant_message)
 
-            # Store the conversation thread with its response_id
-            if response_id:
-                conversation_state["last_activity"] = datetime.now()
-                await store_conversation_thread(user_id, response_id, conversation_state)
+        # Store the conversation thread with its response_id
+        if response_id:
+            conversation_state["last_activity"] = datetime.now()
+            await store_conversation_thread(user_id, response_id, conversation_state)
 
-                # Claim session ownership for this user
-            try:
-                from services.session_ownership_service import session_ownership_service
+            # Claim session ownership for this user
+        try:
+            from services.session_ownership_service import session_ownership_service
 
-                session_ownership_service.claim_session(user_id, response_id)
-                logger.debug(f"Claimed session {response_id} for user {user_id}")
-            except Exception as e:
-                logger.warning(f"Failed to claim session ownership: {e}")
+            session_ownership_service.claim_session(user_id, response_id)
+            logger.debug(f"Claimed session {response_id} for user {user_id}")
+        except Exception as e:
+            logger.warning(f"Failed to claim session ownership: {e}")
 
-                logger.debug(
-                    f"Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
-                )
+            logger.debug(
+                f"Stored langflow conversation thread for user {user_id} with response_id: {response_id}"
+            )
     except Exception as e:
         # Log the error
         logger.error(f"Error in langflow chat stream: {e}", exc_info=True)

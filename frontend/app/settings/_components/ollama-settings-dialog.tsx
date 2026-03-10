@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -21,7 +22,6 @@ import {
   OllamaSettingsForm,
   type OllamaSettingsFormData,
 } from "./ollama-settings-form";
-import { useRouter } from "next/navigation";
 
 const OllamaSettingsDialog = ({
   open,

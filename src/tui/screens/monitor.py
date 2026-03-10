@@ -17,7 +17,7 @@ from textual.timer import Timer
 from rich.text import Text
 from rich.table import Table
 
-from ..managers.container_manager import ContainerManager, ServiceStatus, ServiceInfo
+from ..managers.container_manager import ContainerManager, ServiceStatus, ServiceInfo, format_port_conflict_message
 from ..managers.docling_manager import DoclingManager
 from ..utils.platform import RuntimeType
 from ..widgets.command_modal import CommandOutputModal
@@ -338,20 +338,10 @@ class MonitorScreen(Screen):
                 conflicts,
             ) = await self.container_manager.check_ports_available()
             if not ports_available:
-                # Show error notification instead of modal
-                conflict_msgs = []
-                for service_name, port, error_msg in conflicts[:3]:  # Show first 3
-                    conflict_msgs.append(f"{service_name} (port {port})")
-
-                conflict_str = ", ".join(conflict_msgs)
-                if len(conflicts) > 3:
-                    conflict_str += f" and {len(conflicts) - 3} more"
-
                 self.notify(
-                    f"Cannot start services: Port conflicts detected for {conflict_str}. "
-                    f"Please stop the conflicting services first.",
+                    format_port_conflict_message(conflicts),
                     severity="error",
-                    timeout=10,
+                    timeout=15,
                 )
                 # Refresh to show current state
                 await self._refresh_services()

@@ -15,11 +15,26 @@ class OneDriveOAuth:
     # Reserved scopes that must NOT be sent on token or silent calls
     RESERVED_SCOPES = {"openid", "profile", "offline_access"}
 
-    # For PERSONAL Microsoft Accounts (OneDrive consumer):
+    # For Microsoft Accounts (OneDrive consumer & work/school):
     # - Use AUTH_SCOPES for interactive auth (consent + refresh token issuance)
     # - Use RESOURCE_SCOPES for acquire_token_silent / refresh paths
-    AUTH_SCOPES = ["User.Read", "Files.Read.All", "offline_access"]
-    RESOURCE_SCOPES = ["User.Read", "Files.Read.All"]
+    # NOTE: Including Sites.Read.All for SharePoint/OneDrive for Business access.
+    # Sites.Read.All requires admin consent for work/school accounts.
+    AUTH_SCOPES = [
+        "User.Read",
+        "Files.Read",
+        "Files.Read.All",  # Access all files user can access
+        "Files.Read.Selected",
+        "Sites.Read.All",  # Read SharePoint sites (for File Picker and OneDrive for Business)
+        "offline_access"
+    ]
+    RESOURCE_SCOPES = [
+        "User.Read",
+        "Files.Read",
+        "Files.Read.All",
+        "Files.Read.Selected",
+        "Sites.Read.All"
+    ]
     SCOPES = AUTH_SCOPES  # Backward-compat alias if something references .SCOPES
 
     # Kept for reference; MSAL derives endpoints from `authority`
@@ -202,7 +217,7 @@ class OneDriveOAuth:
             # Interactive auth includes offline_access
             "scopes": self.AUTH_SCOPES,
             "redirect_uri": redirect_uri,
-            "prompt": "consent",  # ensure refresh token on first run
+            "prompt": "select_account",  # Let user pick account without forcing consent
         }
         if state:
             kwargs["state"] = state  # Optional CSRF protection
@@ -244,54 +259,78 @@ class OneDriveOAuth:
 
     async def is_authenticated(self) -> bool:
         """Check if we have valid credentials."""
+        logger.info(f"OneDrive is_authenticated: Starting check, token_file={self.token_file}")
         try:
             # First try to load credentials if we haven't already
             if not self._current_account:
-                await self.load_credentials()
+                logger.info("OneDrive is_authenticated: No current account, loading credentials")
+                load_result = await self.load_credentials()
+                logger.info(f"OneDrive is_authenticated: load_credentials returned {load_result}")
 
+            logger.info(f"OneDrive is_authenticated: current_account={self._current_account is not None}")
+            
             # Try to get a token (MSAL will refresh if needed)
             if self._current_account:
+                logger.info(f"OneDrive is_authenticated: Trying acquire_token_silent with account {self._current_account.get('username', 'unknown')}")
+                logger.info(f"OneDrive is_authenticated: RESOURCE_SCOPES={self.RESOURCE_SCOPES}")
                 result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=self._current_account)
                 if result and "access_token" in result:
+                    logger.info("OneDrive is_authenticated: Successfully acquired token with account")
                     return True
                 else:
-                    error_msg = (result or {}).get("error") or "No result returned"
-                    logger.debug(f"Token acquisition failed for current account: {error_msg}")
+                    error_msg = (result or {}).get("error") or (result or {}).get("error_description") or "No result returned"
+                    logger.warning(f"OneDrive is_authenticated: Token acquisition failed for current account: {error_msg}")
+                    logger.warning(f"OneDrive is_authenticated: Full result: {result}")
 
             # Fallback: try without specific account
+            logger.info("OneDrive is_authenticated: Fallback - trying acquire_token_silent without account")
             result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=None)
             if result and "access_token" in result:
                 accounts = self.app.get_accounts()
+                logger.info(f"OneDrive is_authenticated: Fallback succeeded, found {len(accounts)} accounts")
                 if accounts:
                     self._current_account = accounts[0]
                 return True
 
+            logger.warning(f"OneDrive is_authenticated: Fallback also failed, result: {result}")
             return False
 
         except Exception as e:
-            logger.error(f"Authentication check failed: {e}")
+            logger.error(f"OneDrive is_authenticated: Exception: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def get_access_token(self) -> str:
         """Get an access token for Microsoft Graph."""
+        logger.info(f"OneDrive get_access_token: Starting, current_account={self._current_account is not None}")
         try:
             # Try with current account first
             if self._current_account:
+                logger.info(f"OneDrive get_access_token: Trying with account {self._current_account.get('username', 'unknown')}")
                 result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=self._current_account)
                 if result and "access_token" in result:
+                    logger.info("OneDrive get_access_token: Success with current account")
                     return result["access_token"]
+                else:
+                    logger.warning(f"OneDrive get_access_token: Failed with account, result: {result}")
 
             # Fallback: try without specific account
+            logger.info("OneDrive get_access_token: Fallback - trying without account")
             result = self.app.acquire_token_silent(self.RESOURCE_SCOPES, account=None)
             if result and "access_token" in result:
+                logger.info("OneDrive get_access_token: Fallback success")
                 return result["access_token"]
 
             # If we get here, authentication has failed
             error_msg = (result or {}).get("error_description") or (result or {}).get("error") or "No valid authentication"
+            logger.error(f"OneDrive get_access_token: All attempts failed, error: {error_msg}")
             raise ValueError(f"Failed to acquire access token: {error_msg}")
 
         except Exception as e:
-            logger.error(f"Failed to get access token: {e}")
+            logger.error(f"OneDrive get_access_token: Exception: {e}")
+            import traceback
+            traceback.print_exc()
             raise
 
     async def revoke_credentials(self):

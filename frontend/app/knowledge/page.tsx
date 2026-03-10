@@ -8,7 +8,8 @@ import {
   type ValueFormatterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { Cloud, FileIcon, Globe } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KnowledgeDropdown } from "@/components/knowledge-dropdown";
@@ -28,9 +29,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { type Status, StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
   TooltipContent,
@@ -44,6 +44,7 @@ import GoogleDriveIcon from "../../components/icons/google-drive-logo";
 import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
 
 // Function to get the appropriate icon for a connector type
 function getSourceIcon(connectorType?: string) {
@@ -69,29 +70,42 @@ function getSourceIcon(connectorType?: string) {
   }
 }
 
+interface IngestionStatus {
+  status: Status;
+  error?: string;
+  data?: File;
+}
+
 function SearchPage() {
+  const queryClient = useQueryClient();
   const router = useRouter();
   const { files: taskFiles, refreshTasks } = useTask();
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const lastErrorRef = useRef<string | null>(null);
+  const [ingestionStatus, setIngestionStatus] =
+    useState<IngestionStatus | null>(null);
 
   const deleteDocumentMutation = useDeleteDocument();
+  const syncAllConnectorsMutation = useSyncAllConnectors();
 
   useEffect(() => {
     refreshTasks();
   }, [refreshTasks]);
 
-  const { data: searchData = [], isFetching, error, isError } = useGetSearchQuery(
-    queryOverride,
-    parsedFilterData,
-  );
+  const {
+    data: searchData = [],
+    isFetching,
+    error,
+    isError,
+  } = useGetSearchQuery(queryOverride, parsedFilterData);
 
   // Show toast notification for search errors
   useEffect(() => {
     if (isError && error) {
-      const errorMessage = error instanceof Error ? error.message : "Search failed";
+      const errorMessage =
+        error instanceof Error ? error.message : "Search failed";
       // Avoid showing duplicate toasts for the same error
       if (lastErrorRef.current !== errorMessage) {
         lastErrorRef.current = errorMessage;
@@ -261,31 +275,16 @@ function SearchPage() {
             : undefined;
         if (status === "failed" && error) {
           return (
-            <Dialog>
-              <DialogTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
-                  aria-label="View ingestion error"
-                >
-                  <StatusBadge
-                    status={status}
-                    className="pointer-events-none"
-                  />
-                </button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Ingestion failed</DialogTitle>
-                  <DialogDescription className="text-sm text-muted-foreground">
-                    {data?.filename || "Unknown file"}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
-                  {error}
-                </div>
-              </DialogContent>
-            </Dialog>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
+              aria-label="View ingestion error"
+              onClick={() => {
+                setIngestionStatus({ status, error, data });
+              }}
+            >
+              <StatusBadge status={status} className="pointer-events-none" />
+            </button>
           );
         }
         return <StatusBadge status={status} />;
@@ -297,7 +296,12 @@ function SearchPage() {
         if (status !== "active") {
           return null;
         }
-        return <KnowledgeActionsDropdown filename={data?.filename || ""} />;
+        return (
+          <KnowledgeActionsDropdown
+            filename={data?.filename || ""}
+            connectorType={data?.connector_type}
+          />
+        );
       },
       cellStyle: {
         alignItems: "center",
@@ -339,6 +343,9 @@ function SearchPage() {
       );
 
       await Promise.all(deletePromises);
+      await refreshTasks();
+      await queryClient.invalidateQueries({ queryKey: ["search"] });
+      await queryClient.refetchQueries({ queryKey: ["search"] });
 
       toast.success(
         `Successfully deleted ${selectedRows.length} document${
@@ -380,15 +387,51 @@ function SearchPage() {
         {/* Search Input Area */}
         <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
           <KnowledgeSearchInput />
-          {/* //TODO: Implement sync button */}
-          {/* <Button
-              type="button"
-              variant="outline"
-              className="rounded-lg flex-shrink-0"
-              onClick={() => alert("Not implemented")}
-            >
-              Sync
-            </Button> */}
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-lg flex-shrink-0"
+            disabled={syncAllConnectorsMutation.isPending}
+            onClick={async () => {
+              try {
+                toast.info("Syncing all cloud connectors...");
+                const result = await syncAllConnectorsMutation.mutateAsync();
+                if (result.status === "no_files") {
+                  toast.info(
+                    result.message ||
+                      "No cloud files to sync. Add files from cloud connectors first.",
+                  );
+                } else if (
+                  result.synced_connectors &&
+                  result.synced_connectors.length > 0
+                ) {
+                  toast.success(
+                    `Sync started for ${result.synced_connectors.join(", ")}. Check task notifications for progress.`,
+                  );
+                } else if (result.errors && result.errors.length > 0) {
+                  toast.error("Some connectors failed to sync");
+                }
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to sync connectors",
+                );
+              }
+            }}
+          >
+            {syncAllConnectorsMutation.isPending ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync
+              </>
+            )}
+          </Button>
           {selectedRows.length > 0 && (
             <Button
               type="button"
@@ -433,23 +476,43 @@ function SearchPage() {
         />
       </div>
 
+      {/* Status dialog */}
+      {ingestionStatus && (
+        <Dialog
+          open={!!ingestionStatus}
+          onOpenChange={(open) => !open && setIngestionStatus(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Ingestion failed</DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
+                {ingestionStatus.data?.filename || "Unknown file"}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+              {ingestionStatus.error}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Bulk Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
         open={showBulkDeleteDialog}
         onOpenChange={setShowBulkDeleteDialog}
-        title={selectedRows.length > 1 ? "Delete Documents" : "Delete Document"}
-        description={`Are you sure you want to delete ${
-          selectedRows.length
-        } document${
-          selectedRows.length > 1 ? "s" : ""
-        }? This will remove all chunks and data associated with these documents. This action cannot be undone.
-
-Documents to be deleted:
-${formatFilesToDelete(selectedRows)}`}
-        confirmText={selectedRows.length > 1 ? "Delete All" : "Delete"}
+        title={selectedRows.length > 1 ? "Delete documents" : "Delete document"}
+        description={`Are you sure you want to delete ${selectedRows.length} document${selectedRows.length > 1 ? "s" : ""}?`}
+        confirmText={selectedRows.length > 1 ? "Delete all" : "Delete"}
         onConfirm={handleBulkDelete}
         isLoading={deleteDocumentMutation.isPending}
-      />
+      >
+        <p className="my-2">
+          This will remove all chunks and data associated with these documents.
+          This action cannot be undone.
+        </p>
+        <p className="my-2">Documents to be deleted:</p>
+        {formatFilesToDelete(selectedRows)}
+      </DeleteConfirmationDialog>
     </>
   );
 }

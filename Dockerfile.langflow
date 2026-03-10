@@ -1,4 +1,6 @@
-FROM langflowai/langflow-nightly:1.7.0.dev21
+FROM langflowai/langflow:1.8.0
+
+RUN pip install uv
 
 EXPOSE 7860
 

@@ -1,9 +1,14 @@
-from starlette.requests import Request
-from starlette.responses import JSONResponse
+from typing import Optional, Any, List
+
+from fastapi import Depends, Request
+from pydantic import BaseModel
+from fastapi.responses import JSONResponse
 import uuid
 import json
 from datetime import datetime
 from utils.logging_config import get_logger
+from dependencies import get_knowledge_filter_service, get_monitor_service, get_session_manager, get_current_user
+from session_manager import User
 
 logger = get_logger(__name__)
 
@@ -13,7 +18,6 @@ def normalize_query_data(query_data: str | dict) -> str:
     Normalize query_data to ensure all required fields exist with defaults.
     This prevents frontend crashes when API-created filters have incomplete data.
     """
-    # Parse if string
     if isinstance(query_data, str):
         try:
             data = json.loads(query_data)
@@ -22,7 +26,6 @@ def normalize_query_data(query_data: str | dict) -> str:
     else:
         data = query_data or {}
 
-    # Ensure filters object exists with all required fields
     filters = data.get("filters") or {}
     normalized_filters = {
         "data_sources": filters.get("data_sources", ["*"]),
@@ -31,7 +34,6 @@ def normalize_query_data(query_data: str | dict) -> str:
         "connector_types": filters.get("connector_types", ["*"]),
     }
 
-    # Build normalized query_data with defaults
     normalized = {
         "query": data.get("query", ""),
         "filters": normalized_filters,
@@ -44,45 +46,61 @@ def normalize_query_data(query_data: str | dict) -> str:
     return json.dumps(normalized)
 
 
+class CreateFilterBody(BaseModel):
+    name: str
+    description: str = ""
+    queryData: Optional[Any] = None
+    allowedUsers: List[str] = []
+    allowedGroups: List[str] = []
+
+
+class SearchFiltersBody(BaseModel):
+    query: str = ""
+    limit: int = 20
+
+
+class UpdateFilterBody(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    queryData: Optional[Any] = None
+    allowedUsers: Optional[List[str]] = None
+    allowedGroups: Optional[List[str]] = None
+
+
+class SubscribeBody(BaseModel):
+    notification_config: Optional[dict] = None
+
+
 async def create_knowledge_filter(
-    request: Request, knowledge_filter_service, session_manager
+    body: CreateFilterBody,
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
 ):
     """Create a new knowledge filter"""
-    payload = await request.json()
+    if not body.name:
+        return JSONResponse({"error": "Knowledge filter name is required"}, status_code=400)
 
-    name = payload.get("name")
-    if not name:
-        return JSONResponse(
-            {"error": "Knowledge filter name is required"}, status_code=400
-        )
-
-    description = payload.get("description", "")
-    query_data = payload.get("queryData")
-    if not query_data:
+    if not body.queryData:
         return JSONResponse({"error": "Query data is required"}, status_code=400)
 
-    # Normalize query_data to ensure all required fields exist
     try:
-        normalized_query_data = normalize_query_data(query_data)
+        normalized_query_data = normalize_query_data(body.queryData)
     except Exception as e:
         logger.error(f"Failed to normalize query_data: {e}")
-        return JSONResponse(
-            {"error": f"Invalid queryData format: {str(e)}"}, status_code=400
-        )
+        return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
 
-    user = request.state.user
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
+    jwt_token = user.jwt_token
 
-    # Create knowledge filter document
     filter_id = str(uuid.uuid4())
     filter_doc = {
         "id": filter_id,
-        "name": name,
-        "description": description,
-        "query_data": normalized_query_data,  # Store normalized query JSON with defaults
+        "name": body.name,
+        "description": body.description,
+        "query_data": normalized_query_data,
         "owner": user.user_id,
-        "allowed_users": payload.get("allowedUsers", []),  # ACL field for future use
-        "allowed_groups": payload.get("allowedGroups", []),  # ACL field for future use
+        "allowed_users": body.allowedUsers,
+        "allowed_groups": body.allowedGroups,
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
     }
@@ -91,245 +109,182 @@ async def create_knowledge_filter(
         filter_doc, user_id=user.user_id, jwt_token=jwt_token
     )
 
-    # Return appropriate HTTP status codes
     if result.get("success"):
-        return JSONResponse(result, status_code=201)  # Created
+        return JSONResponse(result, status_code=201)
     else:
         error_msg = result.get("error", "")
-        if (
-            "AuthenticationException" in error_msg
-            or "access denied" in error_msg.lower()
-        ):
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             return JSONResponse(result, status_code=403)
         else:
             return JSONResponse(result, status_code=500)
 
 
 async def search_knowledge_filters(
-    request: Request, knowledge_filter_service, session_manager
+    body: SearchFiltersBody,
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
 ):
     """Search for knowledge filters by name, description, or query content"""
-    payload = await request.json()
-
-    query = payload.get("query", "")
-    limit = payload.get("limit", 20)
-
-    user = request.state.user
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
-
+    jwt_token = user.jwt_token
     result = await knowledge_filter_service.search_knowledge_filters(
-        query, user_id=user.user_id, jwt_token=jwt_token, limit=limit
+        body.query, user_id=user.user_id, jwt_token=jwt_token, limit=body.limit
     )
 
-    # Return appropriate HTTP status codes
     if result.get("success"):
         return JSONResponse(result, status_code=200)
     else:
         error_msg = result.get("error", "")
-        if (
-            "AuthenticationException" in error_msg
-            or "access denied" in error_msg.lower()
-        ):
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             return JSONResponse(result, status_code=403)
         else:
             return JSONResponse(result, status_code=500)
 
 
 async def get_knowledge_filter(
-    request: Request, knowledge_filter_service, session_manager
+    filter_id: str,
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
 ):
     """Get a specific knowledge filter by ID"""
-    filter_id = request.path_params.get("filter_id")
-    if not filter_id:
-        return JSONResponse(
-            {"error": "Knowledge filter ID is required"}, status_code=400
-        )
-
-    user = request.state.user
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
-
+    jwt_token = user.jwt_token
     result = await knowledge_filter_service.get_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
 
-    # Return appropriate HTTP status codes
     if result.get("success"):
         return JSONResponse(result, status_code=200)
     else:
         error_msg = result.get("error", "")
         if "not found" in error_msg.lower():
             return JSONResponse(result, status_code=404)
-        elif (
-            "AuthenticationException" in error_msg
-            or "access denied" in error_msg.lower()
-        ):
+        elif "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             return JSONResponse(result, status_code=403)
         else:
             return JSONResponse(result, status_code=500)
 
 
 async def update_knowledge_filter(
-    request: Request, knowledge_filter_service, session_manager
+    filter_id: str,
+    body: UpdateFilterBody,
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
 ):
-    """Update an existing knowledge filter by delete + recreate (due to DLS limitations)"""
-    filter_id = request.path_params.get("filter_id")
-    if not filter_id:
-        return JSONResponse(
-            {"error": "Knowledge filter ID is required"}, status_code=400
-        )
+    """Update an existing knowledge filter by delete + recreate"""
+    jwt_token = user.jwt_token
 
-    payload = await request.json()
-
-    user = request.state.user
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
-
-    # First, get the existing knowledge filter
     existing_result = await knowledge_filter_service.get_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
     if not existing_result.get("success"):
-        return JSONResponse(
-            {"error": "Knowledge filter not found or access denied"}, status_code=404
-        )
+        return JSONResponse({"error": "Knowledge filter not found or access denied"}, status_code=404)
 
     existing_filter = existing_result["filter"]
 
-    # Delete the existing knowledge filter
     delete_result = await knowledge_filter_service.delete_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
     if not delete_result.get("success"):
-        return JSONResponse(
-            {"error": "Failed to delete existing knowledge filter"}, status_code=500
-        )
+        return JSONResponse({"error": "Failed to delete existing knowledge filter"}, status_code=500)
 
-    # Normalize query_data if provided, otherwise use existing
-    query_data = payload.get("queryData", existing_filter["query_data"])
+    query_data = body.queryData if body.queryData is not None else existing_filter["query_data"]
     try:
         normalized_query_data = normalize_query_data(query_data)
     except Exception as e:
         logger.error(f"Failed to normalize query_data: {e}")
-        return JSONResponse(
-            {"error": f"Invalid queryData format: {str(e)}"}, status_code=400
-        )
+        return JSONResponse({"error": f"Invalid queryData format: {str(e)}"}, status_code=400)
 
-    # Create updated knowledge filter document with same ID
     updated_filter = {
         "id": filter_id,
-        "name": payload.get("name", existing_filter["name"]),
-        "description": payload.get("description", existing_filter["description"]),
+        "name": body.name if body.name is not None else existing_filter["name"],
+        "description": body.description if body.description is not None else existing_filter["description"],
         "query_data": normalized_query_data,
         "owner": existing_filter["owner"],
-        "allowed_users": payload.get(
-            "allowedUsers", existing_filter.get("allowed_users", [])
-        ),
-        "allowed_groups": payload.get(
-            "allowedGroups", existing_filter.get("allowed_groups", [])
-        ),
-        "created_at": existing_filter["created_at"],  # Preserve original creation time
+        "allowed_users": body.allowedUsers if body.allowedUsers is not None else existing_filter.get("allowed_users", []),
+        "allowed_groups": body.allowedGroups if body.allowedGroups is not None else existing_filter.get("allowed_groups", []),
+        "created_at": existing_filter["created_at"],
         "updated_at": datetime.utcnow().isoformat(),
     }
 
-    # Recreate the knowledge filter
     result = await knowledge_filter_service.create_knowledge_filter(
         updated_filter, user_id=user.user_id, jwt_token=jwt_token
     )
 
-    # Return appropriate HTTP status codes
     if result.get("success"):
-        return JSONResponse(result, status_code=200)  # Updated successfully
+        return JSONResponse(result, status_code=200)
     else:
         error_msg = result.get("error", "")
-        if (
-            "AuthenticationException" in error_msg
-            or "access denied" in error_msg.lower()
-        ):
+        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
             return JSONResponse(result, status_code=403)
         else:
             return JSONResponse(result, status_code=500)
 
 
 async def delete_knowledge_filter(
-    request: Request, knowledge_filter_service, session_manager
+    filter_id: str,
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
 ):
     """Delete a knowledge filter"""
-    filter_id = request.path_params.get("filter_id")
-    if not filter_id:
-        return JSONResponse(
-            {"error": "Knowledge filter ID is required"}, status_code=400
-        )
-
-    user = request.state.user
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
-
+    jwt_token = user.jwt_token
     result = await knowledge_filter_service.delete_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
 
-    # Return appropriate HTTP status codes
     if result.get("success"):
         return JSONResponse(result, status_code=200)
     else:
         error_msg = result.get("error", "")
         if "not found" in error_msg.lower() or "already deleted" in error_msg.lower():
             return JSONResponse(result, status_code=404)
-        elif (
-            "access denied" in error_msg.lower()
-            or "insufficient permissions" in error_msg.lower()
-        ):
+        elif "access denied" in error_msg.lower() or "insufficient permissions" in error_msg.lower():
             return JSONResponse(result, status_code=403)
         else:
             return JSONResponse(result, status_code=500)
 
 
 async def subscribe_to_knowledge_filter(
-    request: Request, knowledge_filter_service, monitor_service, session_manager
+    filter_id: str,
+    body: SubscribeBody,
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
+    monitor_service=Depends(get_monitor_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
 ):
     """Create a subscription to a knowledge filter"""
-    filter_id = request.path_params.get("filter_id")
-    if not filter_id:
-        return JSONResponse(
-            {"error": "Knowledge filter ID is required"}, status_code=400
-        )
+    jwt_token = user.jwt_token
 
-    payload = await request.json()
-    user = request.state.user
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
-
-    # Get the knowledge filter to validate it exists and get its details
     filter_result = await knowledge_filter_service.get_knowledge_filter(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
     if not filter_result.get("success"):
-        return JSONResponse(
-            {"error": "Knowledge filter not found or access denied"}, status_code=404
-        )
+        return JSONResponse({"error": "Knowledge filter not found or access denied"}, status_code=404)
 
     filter_doc = filter_result["filter"]
 
-    # Create the monitor for this subscription
     monitor_result = await monitor_service.create_knowledge_filter_monitor(
         filter_id=filter_id,
         filter_name=filter_doc["name"],
         query_data=filter_doc["query_data"],
         user_id=user.user_id,
         jwt_token=jwt_token,
-        notification_config=payload.get("notification_config"),
+        notification_config=body.notification_config,
     )
 
     if not monitor_result.get("success"):
         return JSONResponse(monitor_result, status_code=500)
 
-    # Store subscription info in the knowledge filter document
     subscription_data = {
         "subscription_id": monitor_result["subscription_id"],
         "monitor_id": monitor_result["monitor_id"],
         "webhook_url": monitor_result["webhook_url"],
         "created_at": datetime.utcnow().isoformat(),
-        "notification_config": payload.get("notification_config", {}),
+        "notification_config": body.notification_config or {},
     }
 
-    # Add subscription to the filter document
     update_result = await knowledge_filter_service.add_subscription(
         filter_id, subscription_data, user_id=user.user_id, jwt_token=jwt_token
     )
@@ -346,26 +301,18 @@ async def subscribe_to_knowledge_filter(
             status_code=201,
         )
     else:
-        # If we can't update the filter doc, clean up the monitor
-        await monitor_service.delete_monitor(
-            monitor_result["monitor_id"], user.user_id, jwt_token
-        )
+        await monitor_service.delete_monitor(monitor_result["monitor_id"], user.user_id, jwt_token)
         return JSONResponse({"error": "Failed to create subscription"}, status_code=500)
 
 
 async def list_knowledge_filter_subscriptions(
-    request: Request, knowledge_filter_service, session_manager
+    filter_id: str,
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
 ):
     """List subscriptions for a knowledge filter"""
-    filter_id = request.path_params.get("filter_id")
-    if not filter_id:
-        return JSONResponse(
-            {"error": "Knowledge filter ID is required"}, status_code=400
-        )
-
-    user = request.state.user
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
-
+    jwt_token = user.jwt_token
     result = await knowledge_filter_service.get_filter_subscriptions(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
@@ -383,31 +330,22 @@ async def list_knowledge_filter_subscriptions(
 
 
 async def cancel_knowledge_filter_subscription(
-    request: Request, knowledge_filter_service, monitor_service, session_manager
+    filter_id: str,
+    subscription_id: str,
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
+    monitor_service=Depends(get_monitor_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
 ):
     """Cancel a subscription to a knowledge filter"""
-    filter_id = request.path_params.get("filter_id")
-    subscription_id = request.path_params.get("subscription_id")
+    jwt_token = user.jwt_token
 
-    if not filter_id or not subscription_id:
-        return JSONResponse(
-            {"error": "Knowledge filter ID and subscription ID are required"},
-            status_code=400,
-        )
-
-    user = request.state.user
-    jwt_token = session_manager.get_effective_jwt_token(user.user_id, request.state.jwt_token)
-
-    # Get subscription details to find the monitor ID
     subscriptions_result = await knowledge_filter_service.get_filter_subscriptions(
         filter_id, user_id=user.user_id, jwt_token=jwt_token
     )
     if not subscriptions_result.get("success"):
-        return JSONResponse(
-            {"error": "Knowledge filter not found or access denied"}, status_code=404
-        )
+        return JSONResponse({"error": "Knowledge filter not found or access denied"}, status_code=404)
 
-    # Find the specific subscription
     subscription = None
     for sub in subscriptions_result.get("subscriptions", []):
         if sub.get("subscription_id") == subscription_id:
@@ -417,37 +355,27 @@ async def cancel_knowledge_filter_subscription(
     if not subscription:
         return JSONResponse({"error": "Subscription not found"}, status_code=404)
 
-    # Delete the monitor
-    monitor_result = await monitor_service.delete_monitor(
-        subscription["monitor_id"], user.user_id, jwt_token
-    )
+    await monitor_service.delete_monitor(subscription["monitor_id"], user.user_id, jwt_token)
 
-    # Remove subscription from the filter document
     remove_result = await knowledge_filter_service.remove_subscription(
         filter_id, subscription_id, user_id=user.user_id, jwt_token=jwt_token
     )
 
     if remove_result.get("success"):
-        return JSONResponse(
-            {"success": True, "message": "Subscription cancelled successfully"},
-            status_code=200,
-        )
+        return JSONResponse({"success": True, "message": "Subscription cancelled successfully"}, status_code=200)
     else:
         return JSONResponse({"error": "Failed to cancel subscription"}, status_code=500)
 
 
 async def knowledge_filter_webhook(
-    request: Request, knowledge_filter_service, session_manager
+    filter_id: str,
+    subscription_id: str,
+    request: Request,
+    knowledge_filter_service=Depends(get_knowledge_filter_service),
+    session_manager=Depends(get_session_manager),
 ):
     """Handle webhook notifications from OpenSearch monitors"""
-    filter_id = request.path_params.get("filter_id")
-    subscription_id = request.path_params.get("subscription_id")
-
-    if not filter_id or not subscription_id:
-        return JSONResponse({"error": "Invalid webhook URL"}, status_code=400)
-
     try:
-        # Get the webhook payload
         payload = await request.json()
 
         logger.info(
@@ -457,18 +385,13 @@ async def knowledge_filter_webhook(
             payload_size=len(str(payload)),
         )
 
-        # Extract findings from the payload
         findings = payload.get("findings", [])
         if not findings:
-            logger.info(
-                "No findings in webhook payload", subscription_id=subscription_id
-            )
+            logger.info("No findings in webhook payload", subscription_id=subscription_id)
             return JSONResponse({"status": "no_findings"})
 
-        # Process the findings - these are the documents that matched the knowledge filter
         matched_documents = []
         for finding in findings:
-            # Extract document information from the finding
             matched_documents.append(
                 {
                     "document_id": finding.get("_id"),
@@ -478,25 +401,11 @@ async def knowledge_filter_webhook(
                 }
             )
 
-        # Log the matched documents
         logger.info(
             "Knowledge filter matched documents",
             filter_id=filter_id,
             matched_count=len(matched_documents),
         )
-        for doc in matched_documents:
-            logger.debug(
-                "Matched document",
-                document_id=doc["document_id"],
-                index=doc["index"],
-                score=doc.get("score"),
-            )
-
-        # Here you could add additional processing:
-        # - Send notifications to external webhooks
-        # - Email notifications
-        # - Store alerts in a database
-        # - Trigger other workflows
 
         return JSONResponse(
             {
@@ -516,8 +425,5 @@ async def knowledge_filter_webhook(
             error=str(e),
         )
         import traceback
-
         traceback.print_exc()
-        return JSONResponse(
-            {"error": f"Webhook processing failed: {str(e)}"}, status_code=500
-        )
+        return JSONResponse({"error": f"Webhook processing failed: {str(e)}"}, status_code=500)

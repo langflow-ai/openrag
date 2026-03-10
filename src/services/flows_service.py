@@ -6,28 +6,15 @@ from config.settings import (
     LANGFLOW_URL,
     LANGFLOW_CHAT_FLOW_ID,
     LANGFLOW_INGEST_FLOW_ID,
-    OLLAMA_LLM_TEXT_COMPONENT_PATH,
     OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
     OPENAI_LLM_COMPONENT_DISPLAY_NAME,
-    WATSONX_LLM_TEXT_COMPONENT_PATH,
     clients,
-    WATSONX_LLM_COMPONENT_PATH,
-    WATSONX_EMBEDDING_COMPONENT_PATH,
-    OLLAMA_LLM_COMPONENT_PATH,
-    OLLAMA_EMBEDDING_COMPONENT_PATH,
-    WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME,
-    WATSONX_LLM_COMPONENT_DISPLAY_NAME,
-    OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME,
-    OLLAMA_LLM_COMPONENT_DISPLAY_NAME,
     get_openrag_config,
 )
 import json
 import os
-import re
-import copy
 from datetime import datetime
 from utils.logging_config import get_logger
-from utils.container_utils import transform_localhost_url
 from utils.telemetry import TelemetryClient, Category, MessageId
 
 logger = get_logger(__name__)
@@ -418,10 +405,6 @@ class FlowsService:
                         llm_provider = config.agent.llm_provider.lower()
                         embedding_provider = config.knowledge.embedding_provider.lower()
 
-                        # Get provider-specific endpoint if needed
-                        llm_provider_config = config.get_llm_provider_config()
-                        endpoint = getattr(llm_provider_config, "endpoint", None)
-
                         # Step 2: Update model values for the specific flow being reset
                         single_flow_config = [
                             {
@@ -439,12 +422,10 @@ class FlowsService:
                         if flow_type == "retrieval":
                             # Retrieval flow uses both LLM and embedding models
                             # Update LLM first
-                            llm_endpoint = getattr(llm_provider_config, "endpoint", None)
                             llm_result = await self.change_langflow_model_value(
                                 provider=llm_provider,
                                 embedding_model=None,
                                 llm_model=config.agent.llm_model,
-                                endpoint=llm_endpoint,
                                 flow_configs=single_flow_config,
                             )
                             if not llm_result.get("success"):
@@ -453,13 +434,10 @@ class FlowsService:
                                 )
                             
                             # Update embedding model
-                            embedding_provider_config = config.get_embedding_provider_config()
-                            embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
                             embedding_result = await self.change_langflow_model_value(
                                 provider=embedding_provider,
                                 embedding_model=config.knowledge.embedding_model,
                                 llm_model=None,
-                                endpoint=embedding_endpoint,
                                 flow_configs=single_flow_config,
                             )
                             if not embedding_result.get("success"):
@@ -475,23 +453,18 @@ class FlowsService:
                             }
                         elif flow_type in ["ingest", "url_ingest"]:
                             # Ingest flows only need embedding model
-                            embedding_provider_config = config.get_embedding_provider_config()
-                            embedding_endpoint = getattr(embedding_provider_config, "endpoint", None)
                             update_result = await self.change_langflow_model_value(
                                 provider=embedding_provider,
                                 embedding_model=config.knowledge.embedding_model,
                                 llm_model=None,
-                                endpoint=embedding_endpoint,
                                 flow_configs=single_flow_config,
                             )
                         else:
                             # Other flows (nudges) only need LLM model
-                            llm_endpoint = getattr(llm_provider_config, "endpoint", None)
                             update_result = await self.change_langflow_model_value(
                                 provider=llm_provider,
                                 embedding_model=None,
                                 llm_model=config.agent.llm_model,
-                                endpoint=llm_endpoint,
                                 flow_configs=single_flow_config,
                             )
 
@@ -1107,7 +1080,6 @@ class FlowsService:
         provider: str,
         embedding_model: str = None,
         llm_model: str = None,
-        endpoint: str = None,
         flow_configs: list = None,
     ):
         """
@@ -1126,12 +1098,9 @@ class FlowsService:
         if provider not in ["watsonx", "ollama", "openai", "anthropic"]:
             raise ValueError("provider must be 'watsonx', 'ollama', 'openai', or 'anthropic'")
 
-        if provider == "watsonx" and not endpoint:
-            raise ValueError("endpoint is required for watsonx provider")
-
         try:
             logger.info(
-                f"Changing dropdown values for provider {provider}, embedding: {embedding_model}, llm: {llm_model}, endpoint: {endpoint}"
+                f"Changing dropdown values for provider {provider}, embedding: {embedding_model}, llm: {llm_model}"
             )
 
             # Use provided flow_configs or default to all flows
@@ -1167,7 +1136,6 @@ class FlowsService:
                         provider,
                         embedding_model,
                         llm_model,
-                        endpoint,
                     )
                     results.append(result)
                     logger.info(
@@ -1190,7 +1158,6 @@ class FlowsService:
                 "provider": provider,
                 "embedding_model": embedding_model,
                 "llm_model": llm_model,
-                "endpoint": endpoint,
                 "results": results,
             }
 
@@ -1204,25 +1171,12 @@ class FlowsService:
                 "error": f"Failed to change provider models: {str(e)}",
             }
 
-    # def _get_provider_component_ids(self, provider: str):
-    #     """Get the component IDs for a specific provider"""
-    #     if provider == "watsonx":
-    #         return WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME, WATSONX_LLM_COMPONENT_DISPLAY_NAME
-    #     elif provider == "ollama":
-    #         return OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME, OLLAMA_LLM_COMPONENT_DISPLAY_NAME
-    #     elif provider == "openai":
-    #         # OpenAI components are the default ones
-    #         return OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME, OPENAI_LLM_COMPONENT_DISPLAY_NAME
-    #     else:
-    #         raise ValueError(f"Unsupported provider: {provider}")
-
     async def _update_provider_components(
         self,
         config,
         provider: str,
         embedding_model: str = None,
         llm_model: str = None,
-        endpoint: str = None,
     ):
         """Update provider components and their dropdown values in a flow"""
         flow_name = config["name"]
@@ -1245,7 +1199,7 @@ class FlowsService:
             embedding_node, _ = self._find_node_in_flow(flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME)
             if embedding_node:
                 if await self._update_component_fields(
-                    embedding_node, provider, embedding_model, endpoint
+                    embedding_node, provider, embedding_model
                 ):
                     updates_made.append(f"embedding model: {embedding_model}")
 
@@ -1254,14 +1208,14 @@ class FlowsService:
             llm_node, _ = self._find_node_in_flow(flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME)
             if llm_node:
                 if await self._update_component_fields(
-                    llm_node, provider, llm_model, endpoint
+                    llm_node, provider, llm_model
                 ):
                     updates_made.append(f"llm model: {llm_model}")
             # Update LLM component (if exists in this flow)
             agent_node, _ = self._find_node_in_flow(flow_data, display_name=AGENT_COMPONENT_DISPLAY_NAME)
             if agent_node:
                 if await self._update_component_fields(
-                    agent_node, provider, llm_model, endpoint
+                    agent_node, provider, llm_model
                 ):
                     updates_made.append(f"agent model: {llm_model}")
 
@@ -1293,12 +1247,46 @@ class FlowsService:
             "flow_id": flow_id,
         }
 
+    async def _update_component_langflow(self, template, model: str):
+        # Call custom_component/update endpoint to get updated template
+        # Only call if code field exists (custom components should have code)
+        if "code" in template and "value" in template["code"]:
+            code_value = template["code"]["value"]
+                            
+            try:
+                update_payload = {
+                    "code": code_value,
+                    "template": template,
+                    "field": "model",
+                    "field_value": model,
+                    "tool_mode": False,
+                }
+                
+                response = await clients.langflow_request(
+                    "POST", "/api/v1/custom_component/update", json=update_payload
+                )
+                
+                if response.status_code == 200:
+                    response_data = response.json()
+                    # Update template with the new template from response.data
+                    if "template" in response_data:
+                        # Update the template in component_node
+                        return response_data["template"]
+                    else:
+                        logger.warning("Response from custom_component/update missing 'data' field")
+                else:
+                    logger.warning(
+                        f"Failed to call custom_component/update: HTTP {response.status_code} - {response.text}"
+                    )
+            except Exception as e:
+                logger.error(f"Error calling custom_component/update: {str(e)}")
+                # Continue with manual updates even if API call fails
+
     async def _update_component_fields(
         self,
         component_node,
         provider: str,
         model_value: str,
-        endpoint: str = None,
     ):
         """Update fields in a component node based on provider and component type"""
         template = component_node.get("data", {}).get("node", {}).get("template", {})
@@ -1308,144 +1296,73 @@ class FlowsService:
 
         updated = False
 
-        provider_name = "IBM watsonx.ai" if provider == "watsonx" else "Ollama" if provider == "ollama" else "Anthropic" if provider == "anthropic" else "OpenAI"
+        provider_name = "IBM WatsonX" if provider == "watsonx" else "Ollama" if provider == "ollama" else "Anthropic" if provider == "anthropic" else "OpenAI"
 
-        field_name = "provider" if "provider" in template else "agent_llm"
+        try:
+            enable_payload = [{
+                "provider": provider_name,
+                "model_id": model_value,
+                "enabled": True
+            }]
+            
+            enable_response = await clients.langflow_request(
+                "POST", "/api/v1/models/enabled_models", json=enable_payload
+            )
+            
+            if enable_response.status_code == 200:
+                logger.info(f"Successfully enabled model {model_value} for provider {provider_name}")
+            else:
+                logger.warning(
+                    f"Failed to enable model: HTTP {enable_response.status_code} - {enable_response.text}"
+                )
+        except Exception as e:
+            logger.error(f"Error enabling model {model_value}: {str(e)}")
         
         # Update provider field and call custom_component/update endpoint
-        if field_name in template:
-            # First, update the provider value
-            template[field_name]["value"] = provider_name
-            
-            # Call custom_component/update endpoint to get updated template
-            # Only call if code field exists (custom components should have code)
-            if "code" in template and "value" in template["code"]:
-                code_value = template["code"]["value"]
-                field_value = provider_name
-                                
-                try:
-                    update_payload = {
-                        "code": code_value,
-                        "template": template,
-                        "field": field_name,
-                        "field_value": field_value,
-                        "tool_mode": False,
-                    }
-                    
-                    response = await clients.langflow_request(
-                        "POST", "/api/v1/custom_component/update", json=update_payload
-                    )
-                    
-                    if response.status_code == 200:
-                        response_data = response.json()
-                        # Update template with the new template from response.data
-                        if "template" in response_data:
-                            # Update the template in component_node
-                            component_node["data"]["node"]["template"] = response_data["template"]
-                            # Update local template reference
-                            template = response_data["template"]
-                            logger.info(f"Successfully updated template via custom_component/update for provider: {provider_name}")
-                        else:
-                            logger.warning("Response from custom_component/update missing 'data' field")
-                    else:
-                        logger.warning(
-                            f"Failed to call custom_component/update: HTTP {response.status_code} - {response.text}"
-                        )
-                except Exception as e:
-                    logger.error(f"Error calling custom_component/update: {str(e)}")
-                    # Continue with manual updates even if API call fails
-            
-            updated = True
-        
-
-        # Update model_name field (common to all providers)
         if "model" in template:
-            template["model"]["value"] = model_value
-            template["model"]["options"] = [model_value]
-            template["model"]["advanced"] = False
-            updated = True
-        elif "model_name" in template:
-            template["model_name"]["value"] = model_value
-            template["model_name"]["options"] = [model_value]
-            template["model_name"]["advanced"] = False
-            updated = True
+            if "options" not in template["model"]:
+                return False
 
-        # Update endpoint/URL field based on provider
-        if endpoint:
-            if provider == "watsonx" and "base_url" in template:
+            model = [template["model"]["options"][0]]
+
+            template = await self._update_component_langflow(template, model_value)
+
+            component_node["data"]["node"]["template"] = template
+            
+            model = [item for item in template["model"]["options"] if item["provider"] == provider_name and item["name"] == model_value]
+
+            template = await self._update_component_langflow(template, model_value)
+
+            template["model"]["value"] = model
+
+            component_node["data"]["node"]["template"] = template
+
+            if len(model) == 0:
+                logger.warning(f"Model {model_value} not found for provider {provider_name}")
+                return False
+
+            updated = True
+                
+
+        if "api_base" in template:
+            if provider == "ollama":
+                template["api_base"]["value"] = "OLLAMA_BASE_URL"
+                template["api_base"]["load_from_db"] = True
+            elif provider == "watsonx":
                 # Watson uses "url" field
-                template["base_url"]["value"] = endpoint
-                template["base_url"]["options"] = [endpoint]
-                template["base_url"]["show"] = True
-                template["base_url"]["advanced"] = False
-                updated = True
-            if provider == "watsonx" and "base_url_ibm_watsonx" in template:
-                # Watson uses "url" field
-                template["base_url_ibm_watsonx"]["value"] = endpoint
-                template["base_url_ibm_watsonx"]["show"] = True
-                template["base_url_ibm_watsonx"]["advanced"] = False
-                updated = True
-
-        if provider == "openai" and "api_key" in template:
-            template["api_key"]["value"] = "OPENAI_API_KEY"
-            template["api_key"]["load_from_db"] = True
-            template["api_key"]["show"] = True
-            template["api_key"]["advanced"] = False
-            updated = True
-        if provider == "openai" and "api_base" in template:
-            template["api_base"]["value"] = ""
-            template["api_base"]["load_from_db"] = False
-            template["api_base"]["show"] = True
-            template["api_base"]["advanced"] = False
+                template["api_base"]["value"] = "WATSONX_URL"
+                template["api_base"]["load_from_db"] = True
+            else:
+                template["api_base"]["value"] = ""
+                template["api_base"]["load_from_db"] = False
             updated = True
 
-        if provider == "anthropic" and "api_key" in template:
-            template["api_key"]["value"] = "ANTHROPIC_API_KEY"
-            template["api_key"]["load_from_db"] = True
-            template["api_key"]["show"] = True
-            template["api_key"]["advanced"] = False
+        if "project_id" in template:
+            if provider == "watsonx":
+                template["project_id"]["value"] = "WATSONX_PROJECT_ID"
+                template["project_id"]["load_from_db"] = True
+            else:
+                template["project_id"]["value"] = ""
+                template["project_id"]["load_from_db"] = False
             updated = True
-        
-        if provider == "anthropic" and "base_url" in template:
-            template["base_url"]["value"] = "https://api.anthropic.com"
-            template["base_url"]["load_from_db"] = False
-            template["base_url"]["show"] = True
-            template["base_url"]["advanced"] = True
-            updated = True
-
-        if provider == "ollama" and "base_url" in template:
-            template["base_url"]["value"] = "OLLAMA_BASE_URL"
-            template["base_url"]["load_from_db"] = True
-            template["base_url"]["show"] = True
-            template["base_url"]["advanced"] = False
-            updated = True
-        
-        if provider == "ollama" and "api_base" in template:
-            template["api_base"]["value"] = "OLLAMA_BASE_URL"
-            template["api_base"]["load_from_db"] = True
-            template["api_base"]["show"] = True
-            template["api_base"]["advanced"] = False
-            updated = True
-
-        if provider == "ollama" and "ollama_base_url" in template:
-            template["ollama_base_url"]["value"] = "OLLAMA_BASE_URL"
-            template["ollama_base_url"]["load_from_db"] = True
-            template["ollama_base_url"]["show"] = True
-            template["ollama_base_url"]["advanced"] = False
-            updated = True
-
-        if provider == "watsonx" and "project_id" in template:
-            template["project_id"]["value"] = "WATSONX_PROJECT_ID"
-            template["project_id"]["load_from_db"] = True
-            template["project_id"]["show"] = True
-            template["project_id"]["advanced"] = False
-            updated = True
-        
-        if provider == "watsonx" and "api_key" in template:
-            template["api_key"]["value"] = "WATSONX_API_KEY"
-            template["api_key"]["load_from_db"] = True
-            template["api_key"]["show"] = True
-            template["api_key"]["advanced"] = False
-            updated = True
-
         return updated

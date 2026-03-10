@@ -1,47 +1,47 @@
 "use client";
 
+import {
+  Archive,
+  Bolt,
+  Book,
+  Cable,
+  Check,
+  Database,
+  FileImage,
+  Filter,
+  Folder,
+  Gem,
+  Ghost,
+  Globe,
+  Hammer,
+  HardDrive,
+  Layers3,
+  Library,
+  Map as MapIcon,
+  MessagesSquare,
+  Scroll,
+  Shield,
+  ShoppingBag,
+  ShoppingCart,
+  SquareStack,
+  Swords,
+  Upload,
+} from "lucide-react";
 import React, { type SVGProps } from "react";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Book,
-  Scroll,
-  Library,
-  Map,
-  FileImage,
-  Layers3,
-  Database,
-  Folder,
-  Archive,
-  MessagesSquare,
-  SquareStack,
-  Ghost,
-  Gem,
-  Swords,
-  Bolt,
-  Shield,
-  Hammer,
-  Globe,
-  HardDrive,
-  Upload,
-  Cable,
-  ShoppingCart,
-  ShoppingBag,
-  Check,
-  Filter,
-} from "lucide-react";
-import { filterAccentClasses } from "./knowledge-filter-panel";
 import { cn } from "@/lib/utils";
+import { filterAccentClasses } from "./knowledge-filter-panel";
 
 const ICON_MAP = {
   filter: Filter,
   book: Book,
   scroll: Scroll,
   library: Library,
-  map: Map,
+  map: MapIcon,
   image: FileImage,
   layers3: Layers3,
   database: Database,
