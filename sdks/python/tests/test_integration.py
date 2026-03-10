@@ -425,7 +425,7 @@ class TestChat:
 
     @pytest.mark.asyncio
     async def test_chat_with_sources(self, client, test_file: Path):
-        """Test chat with sources after document ingestion."""
+        """Test chat uses embedded knowledge (RAG), not just pure LLM."""
         # 1. Ingest document
         await client.documents.ingest(file_path=str(test_file))
 
@@ -434,15 +434,12 @@ class TestChat:
         await asyncio.sleep(2)
 
         # 3. Chat about document content
-        async with client.chat.stream(
+        response = await client.chat.create(
             message="What is the color of the dancing animals mentioned in my documents?"
-        ) as stream:
-            async for _ in stream:
-                pass
+        )
 
-            # 4. Verify sources
-            # The agent should have used the document to answer
-            assert len(stream.sources) > 0
-            # Check if one of the sources is our test file
-            source_names = [s.name for s in stream.sources]
-            assert any(test_file.name in name for name in source_names)
+        # 4. Verify sources — proves RAG retrieval worked
+        assert response.sources is not None
+        assert len(response.sources) > 0
+        source_filenames = [s.filename for s in response.sources]
+        assert any(test_file.name in name for name in source_filenames)

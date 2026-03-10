@@ -28,6 +28,21 @@ class ChatV1Body(BaseModel):
     filter_id: Optional[str] = None
 
 
+def _extract_sources(item: dict) -> list[dict]:
+    """Extract sources from a retrieval tool call item."""
+    sources = []
+    for result in item.get("results", []):
+        if isinstance(result, dict) and "text" in result:
+            sources.append({
+                "filename": result.get("filename", ""),
+                "text": result.get("text", ""),
+                "score": result.get("score", 0),
+                "page": result.get("page"),
+                "mimetype": result.get("mimetype"),
+            })
+    return sources
+
+
 async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
     """Transform raw Langflow streaming format to clean SSE events for v1 API."""
     full_text = ""
@@ -63,6 +78,13 @@ async def _transform_stream_to_sse(raw_stream, chat_id_container: dict):
             if delta_text:
                 full_text += delta_text
                 yield f"data: {json.dumps({'type': 'content', 'delta': delta_text})}\n\n"
+
+            # Emit sources from retrieval tool calls
+            item = chunk_data.get("item", {})
+            if item.get("type") in ("retrieval_call", "tool_call") and item.get("results"):
+                sources = _extract_sources(item)
+                if sources:
+                    yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
 
             if not chat_id:
                 chat_id = chunk_data.get("id") or chunk_data.get("response_id")

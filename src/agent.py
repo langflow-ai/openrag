@@ -625,8 +625,25 @@ async def async_langflow_chat(
             message_count=len(conversation_state["messages"]),
         )
 
+    # Extract sources from retrieval tool calls in the response
+    sources = []
+    if hasattr(response_obj, "output") and response_obj.output:
+        for output_item in response_obj.output:
+            item_type = getattr(output_item, "type", None)
+            if item_type in ("tool_call", "retrieval_call"):
+                for result in getattr(output_item, "results", None) or []:
+                    rd = result.model_dump() if hasattr(result, "model_dump") else (result if isinstance(result, dict) else {})
+                    if "text" in rd:
+                        sources.append({
+                            "filename": rd.get("filename", ""),
+                            "text": rd.get("text", ""),
+                            "score": rd.get("score", 0),
+                            "page": rd.get("page"),
+                            "mimetype": rd.get("mimetype"),
+                        })
+
     if not store_conversation:
-        return response_text, response_id
+        return response_text, response_id, sources
 
     # Store the conversation thread with its response_id
     if response_id:
@@ -662,7 +679,7 @@ async def async_langflow_chat(
     else:
         logger.warning("No response_id received from langflow, conversation not stored")
 
-    return response_text, response_id
+    return response_text, response_id, sources
 
 
 # Async langflow function with conversation storage (streaming)
