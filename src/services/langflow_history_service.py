@@ -71,19 +71,27 @@ class LangflowHistoryService:
         
         for msg in langflow_messages:
             try:
+                content = msg.get("text", "")
+                
+                # Detect error messages - check explicit error flag or common error patterns
+                is_error = msg.get("error", False) or (
+                    msg.get("sender") != "User" and content.startswith("Error:")
+                )
+                
                 # Map Langflow message format to OpenRAG format
                 converted_msg = {
                     "role": "user" if msg.get("sender") == "User" else "assistant",
-                    "content": msg.get("text", ""),
+                    "content": content,
                     "timestamp": msg.get("timestamp"),
                     "langflow_message_id": msg.get("id"),
                     "langflow_session_id": msg.get("session_id"),
                     "langflow_flow_id": msg.get("flow_id"),
                     "sender": msg.get("sender"),
                     "sender_name": msg.get("sender_name"),
+                    "source": "langflow",
                     "files": msg.get("files", []),
                     "properties": msg.get("properties", {}),
-                    "error": msg.get("error", False),
+                    "error": is_error,
                     "edit": msg.get("edit", False)
                 }
                 

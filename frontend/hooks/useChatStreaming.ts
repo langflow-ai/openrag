@@ -134,6 +134,7 @@ export function useChatStreaming({
       let currentContent = "";
       const currentFunctionCalls: FunctionCall[] = [];
       let newResponseId: string | null = null;
+      let isError = false;
       let usageData: TokenUsage | undefined;
 
       // Initialize streaming message
@@ -454,6 +455,17 @@ export function useChatStreaming({
                     currentFunctionCalls.push(newFunctionCall);
                   }
                 }
+                
+                // Check for error status from Langflow
+                if (chunk.finish_reason === "error" || chunk.status === "failed") {
+                  console.error("Error detected in stream");
+                  
+                  // Mark this as an error message and complete the stream
+                  isError = true;
+                  
+                  // Exit the streaming loop by throwing so the reader stops promptly on error
+                  throw new Error("Error detected in stream");
+                }
                 // Handle text output streaming (Realtime API)
                 else if (chunk.type === "response.output_text.delta") {
                   currentContent += chunk.delta || "";
@@ -468,15 +480,15 @@ export function useChatStreaming({
                 // Handle OpenRAG backend format
                 else if (chunk.output_text) {
                   currentContent += chunk.output_text;
-                } else if (chunk.delta) {
+                }
+                // Note: chunk.delta.content is already handled in the OpenAI format section above (line 271)
+                // Only handle delta if it's a string or has text (not content)
+                else if (chunk.delta) {
                   if (typeof chunk.delta === "string") {
                     currentContent += chunk.delta;
-                  } else if (typeof chunk.delta === "object") {
-                    if (chunk.delta.content) {
-                      currentContent += chunk.delta.content;
-                    } else if (chunk.delta.text) {
-                      currentContent += chunk.delta.text;
-                    }
+                  } else if (typeof chunk.delta === "object" && chunk.delta.text && !chunk.delta.content) {
+                    // Only add text if content wasn't already processed
+                    currentContent += chunk.delta.text;
                   }
                 }
 
@@ -605,6 +617,7 @@ export function useChatStreaming({
           currentFunctionCalls.length > 0 ? currentFunctionCalls : undefined,
         timestamp: new Date(),
         isStreaming: false,
+        error: isError, // Mark as error if Langflow returned error status
         usage: usageData,
       };
 
@@ -633,10 +646,10 @@ export function useChatStreaming({
       setStreamingMessage(null);
 
       // Create user-friendly error message
-      let errorContent =
-        "Sorry, I couldn't connect to the chat service. Please try again.";
-
       const errorMessage = (error as Error).message;
+      let errorContent = errorMessage; // Default to the actual error message
+      
+      // Only override with generic messages for specific infrastructure errors
       if (errorMessage?.includes("timed out")) {
         errorContent =
           "The request timed out. The server took too long to respond. Please try again.";
@@ -648,9 +661,8 @@ export function useChatStreaming({
       ) {
         errorContent =
           "Network error. Please check your connection and try again.";
-      } else if (errorMessage?.includes("Server error")) {
-        errorContent = errorMessage; // Use the detailed server error message
       }
+      // For all other errors (including Langflow errors), use the actual error message
 
       onError?.(error as Error);
 
@@ -659,7 +671,14 @@ export function useChatStreaming({
         content: errorContent,
         timestamp: new Date(),
         isStreaming: false,
+        error: true,
       };
+
+      // Pass error message to onComplete so it gets added to chat history
+      // This ensures errors appear immediately and persist on page refresh
+      if (!streamAbortRef.current?.signal.aborted) {
+        onComplete?.(errorMessageObj, null);
+      }
 
       return errorMessageObj;
     } finally {

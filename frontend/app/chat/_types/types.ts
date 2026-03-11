@@ -17,6 +17,7 @@ export interface Message {
   functionCalls?: FunctionCall[];
   isStreaming?: boolean;
   source?: "langflow" | "chat";
+  error?: boolean;
   usage?: TokenUsage;
 }
 

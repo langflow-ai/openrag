@@ -102,7 +102,7 @@ def get_container_host() -> str | None:
     return None
 
 
-def transform_localhost_url(url: str) -> str:
+def transform_localhost_url(url: str, is_langflow: bool = False, is_podman: bool = True) -> str:
     """Transform localhost URLs to container-accessible hosts when running in a container.
 
     Automatically detects if running inside a container and finds the appropriate host
@@ -113,6 +113,8 @@ def transform_localhost_url(url: str) -> str:
 
     Args:
         url: The original URL
+        is_langflow: Detect the container host for the langflow container, not the current one, if True.
+        is_podman: Use host.containers.internal instead of host.docker.internal if True.
 
     Returns:
         Transformed URL with container-accessible host if applicable, otherwise the original URL.
@@ -123,7 +125,10 @@ def transform_localhost_url(url: str) -> str:
         # Returns "http://172.17.0.1:5001" if running in Docker on Linux (gateway IP fallback)
         # Returns "http://localhost:5001" if not in a container
     """
-    container_host = get_container_host()
+    if is_langflow :
+        container_host = "host.containers.internal" if is_podman else "host.docker.internal"
+    else:
+        container_host = get_container_host()
 
     if not container_host:
         return url

@@ -171,6 +171,8 @@ const OnboardingCard = ({
 
   const [error, setError] = useState<string | null>(null);
 
+  const [onboardingTaskId, setOnboardingTaskId] = useState<string | null>(null);
+
   // Track which tasks we've already handled to prevent infinite loops
   const handledFailedTasksRef = useRef<Set<string>>(new Set());
 
@@ -199,14 +201,58 @@ const OnboardingCard = ({
     },
   });
 
+  // Mutations
+  const onboardingMutation = useOnboardingMutation({
+    onSuccess: (data) => {
+      console.log("Onboarding completed successfully", data);
+
+      if (data.task_id) {
+        setOnboardingTaskId(data.task_id);
+      }
+
+      // Update provider health cache to healthy since backend just validated
+      const provider =
+        (isEmbedding ? settings.embedding_provider : settings.llm_provider) ||
+        modelProvider;
+      const healthData: ProviderHealthResponse = {
+        status: "healthy",
+        message: "Provider is configured and working correctly",
+        provider: provider,
+      };
+      queryClient.setQueryData(["provider", "health"], healthData);
+      setError(null);
+      if (!isEmbedding) {
+        setCurrentStep(totalSteps);
+        setTimeout(() => {
+          onComplete();
+        }, 1000);
+      } else {
+        setCurrentStep(0);
+      }
+    },
+    onError: (error) => {
+      setError(error.message);
+      setCurrentStep(totalSteps);
+      rollbackMutation.mutate();
+    },
+  });
+
   // Monitor tasks and call onComplete when all tasks are done
   useEffect(() => {
     if (currentStep === null || !tasks || !isEmbedding) {
       return;
     }
 
+    if (!onboardingMutation.isSuccess) {
+      return;
+    }
+
+    const relevantTasks = onboardingTaskId
+      ? tasks.filter((task) => task.task_id === onboardingTaskId)
+      : [];
+
     // Check if there are any active tasks (pending, running, or processing)
-    const activeTasks = tasks.find(
+    const activeTasks = relevantTasks.find(
       (task) =>
         task.status === "pending" ||
         task.status === "running" ||
@@ -214,12 +260,12 @@ const OnboardingCard = ({
     );
 
     // Check if any task failed at the top level
-    const failedTask = tasks.find(
+    const failedTask = relevantTasks.find(
       (task) => task.status === "failed" || task.status === "error",
     );
 
     // Check if any completed task has at least one failed file
-    const completedTaskWithFailedFile = tasks.find((task) => {
+    const completedTaskWithFailedFile = relevantTasks.find((task) => {
       // Must have files object
       if (!task.files || typeof task.files !== "object") {
         return false;
@@ -286,13 +332,17 @@ const OnboardingCard = ({
       return;
     }
 
+    const hasSuccessfulTasks = relevantTasks.length > 0 &&
+      (!activeTasks || (activeTasks.successful_files ?? 0) > 0);
+
+    const hasIngestionDisabledOrDone = !onboardingTaskId && currentStep === totalSteps - 1;
+
     // If at least one processed file, no failures, and we've started onboarding, complete it
     if (
-      (((!activeTasks || (activeTasks.successful_files ?? 0) > 0) &&
-        tasks.length > 0) ||
-        (tasks.length === 0 && currentStep === totalSteps - 1)) && // Complete because no files were ingested
+      (hasSuccessfulTasks || hasIngestionDisabledOrDone) &&
       !isCompleted &&
-      !taskWithFailure
+      !taskWithFailure &&
+      currentStep === totalSteps - 1
     ) {
       // Set to final step to show "Done"
       setCurrentStep(totalSteps);
@@ -309,39 +359,9 @@ const OnboardingCard = ({
     isEmbedding,
     totalSteps,
     rollbackMutation,
+    onboardingMutation.isSuccess,
+    onboardingTaskId,
   ]);
-
-  // Mutations
-  const onboardingMutation = useOnboardingMutation({
-    onSuccess: (data) => {
-      console.log("Onboarding completed successfully", data);
-
-      // Update provider health cache to healthy since backend just validated
-      const provider =
-        (isEmbedding ? settings.embedding_provider : settings.llm_provider) ||
-        modelProvider;
-      const healthData: ProviderHealthResponse = {
-        status: "healthy",
-        message: "Provider is configured and working correctly",
-        provider: provider,
-      };
-      queryClient.setQueryData(["provider", "health"], healthData);
-      setError(null);
-      if (!isEmbedding) {
-        setCurrentStep(totalSteps);
-        setTimeout(() => {
-          onComplete();
-        }, 1000);
-      } else {
-        setCurrentStep(0);
-      }
-    },
-    onError: (error) => {
-      setError(error.message);
-      setCurrentStep(totalSteps);
-      rollbackMutation.mutate();
-    },
-  });
 
   const handleComplete = () => {
     const currentProvider = isEmbedding
