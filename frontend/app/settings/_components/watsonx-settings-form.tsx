@@ -122,6 +122,7 @@ export function WatsonxSettingsForm({
             }
             id="api-key"
             type="password"
+            autoComplete="new-password"
             placeholder="your-api-key"
           />
         </LabelWrapper>
