@@ -1244,15 +1244,13 @@ class FlowsService:
             provider_count = len(configured_providers)
             logger.info(f"Configured embedding providers: {configured_providers} (count: {provider_count})")
             
-            # Determine target nodes based on provider count
+            # Determine slot mapping context
             if provider_count == 1:
-                target_count = 3
+                logger.info("Configuration mode: all 3 slots belong to the single active provider")
             elif provider_count == 2:
-                target_count = 2
+                logger.info("Configuration mode: first 2 slots assigned to providers 1 and 2")
             elif provider_count == 3:
-                target_count = 1
-            else:
-                target_count = 0
+                logger.info("Configuration mode: slots 1, 2, and 3 assigned to their respective providers")
 
             # 1. Check if any node is already this provider - always update those first
             matched_nodes = []
@@ -1267,28 +1265,36 @@ class FlowsService:
                     if await self._update_component_fields(node, provider, embedding_model):
                         updates_made.append(f"embedding model: {embedding_model} (updated existing {provider} node)")
             else:
-                # 2. No existing node matched, use the slot-based logic
+                # 2. No existing node matched, use slot-based logic
                 try:
                     p_index = configured_providers.index(provider)
-                    
+                    logger.info(f"Using slot-based logic for provider '{provider}' (p_index: {p_index}, total configured: {provider_count})")
+
                     if provider_count == 1:
-                        # Set all 3 nodes if only one provider
-                        logger.info(f"Single provider mode: attempt to update up to 3 nodes (available: {len(embedding_nodes)})")
+                        # Single provider mode: update all available nodes (up to 3)
+                        logger.info(f"Single provider mode: updating all available embedding nodes (available: {len(embedding_nodes)})")
                         for i in range(min(3, len(embedding_nodes))):
                             node, idx = embedding_nodes[i]
                             if await self._update_component_fields(node, provider, embedding_model):
                                 updates_made.append(
                                     f"embedding model: {embedding_model} (set node {i+1})"
                                 )
-                    elif p_index < target_count and p_index < len(embedding_nodes):
-                        # Set corresponding node based on index
-                        node, idx = embedding_nodes[p_index]
-                        if await self._update_component_fields(node, provider, embedding_model):
-                            updates_made.append(
-                                f"embedding model: {embedding_model} (set node {p_index+1})"
-                            )
+                    else:
+                        # Multiple providers: each gets one slot based on its list index
+                        # This satisfies:
+                        # - 2 providers -> node 0 and node 1 updated ("two first nodes")
+                        # - 3 providers -> node 0, 1, 2 updated ("each gets its first one")
+                        if p_index < len(embedding_nodes):
+                            node, idx = embedding_nodes[p_index]
+                            logger.info(f"Multiple provider mode: assigning provider '{provider}' to node slot {p_index} (node {p_index+1})")
+                            if await self._update_component_fields(node, provider, embedding_model):
+                                updates_made.append(
+                                    f"embedding model: {embedding_model} (set node {p_index+1})"
+                                )
+                        else:
+                            logger.info(f"Provider index {p_index} exceeds available embedding nodes ({len(embedding_nodes)}) - skipping automatic assignment")
                 except ValueError:
-                    pass
+                    logger.warning(f"Current provider '{provider}' not found in configured providers list: {configured_providers}")
 
         # Update LLM component (if exists in this flow)
         if llm_model:
