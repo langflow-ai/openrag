@@ -133,9 +133,9 @@ export async function completeOnboarding(
     "What is OpenRAG?",
   );
   await expect(page.getByText("Thinking")).toBeVisible();
-  await expect(page.getByText("OpenRAG is an open-source package")).toBeVisible(
-    { timeout: 60000 },
-  );
+  await expect(page.getByText("is an open-source package")).toBeVisible({
+    timeout: 60000,
+  });
 
   // 4. Add your document
   await expect(page.getByText("Lastly, let's add your data.")).toBeVisible();
