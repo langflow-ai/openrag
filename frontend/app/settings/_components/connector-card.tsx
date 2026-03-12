@@ -85,7 +85,7 @@ export default function ConnectorCard({
                   variant="default"
                   onClick={() => onNavigateToKnowledge(connector)}
                   disabled={isDisconnecting || isConnecting}
-                  className="cursor-pointer !text-sm truncate rounded-md"
+                  className="cursor-pointer !text-sm truncate rounded-md flex-1"
                   size="md"
                 >
                   <Plus className="h-4 w-4" />
@@ -138,18 +138,15 @@ export default function ConnectorCard({
           </div>
         ) : (
           <div className="text-sm text-muted-foreground">
-            <p>
-              See our{" "}
-              <Link
-                className="text-accent-pink-foreground"
-                href="https://docs.openr.ag/knowledge#oauth-ingestion"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Cloud Connectors installation guide
-              </Link>{" "}
-              for more detail.
-            </p>
+            <p>For more details see our</p>
+            <Link
+              className="text-accent-pink-foreground"
+              href="https://docs.openr.ag/knowledge#oauth-ingestion"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Cloud Connectors guide
+            </Link>
           </div>
         )}
       </CardContent>
