@@ -1398,7 +1398,7 @@ class FlowsService:
                 return False
 
             # Update template via Langflow API to get latest options
-            template = await self._update_component_langflow(template, model_value) or template
+            template = await self._update_component_langflow(template, template["model"]["value"]) or template
             component_node["data"]["node"]["template"] = template
 
             # Find the specific model option for the provider
@@ -1412,6 +1412,10 @@ class FlowsService:
                 return False
 
             template["model"]["value"] = model_options
+
+            template = await self._update_component_langflow(template, model_options) or template
+            component_node["data"]["node"]["template"] = template
+
             updated = True
 
         # Update provider-specific fields
