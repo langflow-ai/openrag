@@ -3,6 +3,8 @@ from typing import Dict, List
 from config.model_constants import (
     ANTHROPIC_DEFAULT_LANGUAGE_MODEL,
     ANTHROPIC_VALIDATION_MODELS,
+    MINIMAX_DEFAULT_LANGUAGE_MODEL,
+    MINIMAX_VALIDATION_MODELS,
     OLLAMA_DEFAULT_LANGUAGE_MODEL_PATTERN,
     OPENAI_DEFAULT_EMBEDDING_MODEL,
     OPENAI_DEFAULT_LANGUAGE_MODEL,
@@ -418,4 +420,59 @@ class ModelsService:
 
         except Exception as e:
             logger.error(f"Error fetching IBM models: {str(e)}")
+            raise
+
+    async def get_minimax_models(self, api_key: str) -> Dict[str, List[Dict[str, str]]]:
+        """Fetch available models from MiniMax API"""
+        try:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+
+            # MiniMax does not expose a /v1/models endpoint, so validate
+            # the API key with a minimal completion request instead.
+            payload = {
+                "model": MINIMAX_DEFAULT_LANGUAGE_MODEL,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1,
+                "temperature": 1.0,
+            }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.minimax.io/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=15.0,
+                )
+
+            if response.status_code == 200:
+                language_models = []
+                for model_id in MINIMAX_VALIDATION_MODELS:
+                    language_models.append(
+                        {
+                            "value": model_id,
+                            "label": model_id,
+                            "default": model_id == MINIMAX_DEFAULT_LANGUAGE_MODEL,
+                        }
+                    )
+
+                language_models.sort(
+                    key=lambda x: (not x.get("default", False), x["value"])
+                )
+
+                logger.info("MiniMax API key validated successfully")
+                return {
+                    "language_models": language_models,
+                    "embedding_models": [],
+                }
+            else:
+                logger.error(f"Failed to validate MiniMax API key: {response.status_code}")
+                raise Exception(
+                    f"MiniMax API returned status code {response.status_code}, {response.text}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error fetching MiniMax models: {str(e)}")
             raise

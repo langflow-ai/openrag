@@ -41,12 +41,20 @@ class OllamaConfig:
 
 
 @dataclass
+class MiniMaxConfig:
+    """MiniMax provider configuration."""
+    api_key: str = ""
+    configured: bool = False
+
+
+@dataclass
 class ProvidersConfig:
     """All provider configurations."""
     openai: OpenAIConfig
     anthropic: AnthropicConfig
     watsonx: WatsonXConfig
     ollama: OllamaConfig
+    minimax: MiniMaxConfig
 
     def get_provider_config(self, provider: str):
         """Get configuration for a specific provider."""
@@ -59,6 +67,8 @@ class ProvidersConfig:
             return self.watsonx
         elif provider_lower == "ollama":
             return self.ollama
+        elif provider_lower == "minimax":
+            return self.minimax
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -119,6 +129,7 @@ class OpenRAGConfig:
                 anthropic=AnthropicConfig(**providers_data.get("anthropic", {})),
                 watsonx=WatsonXConfig(**providers_data.get("watsonx", {})),
                 ollama=OllamaConfig(**providers_data.get("ollama", {})),
+                minimax=MiniMaxConfig(**providers_data.get("minimax", {})),
             ),
             knowledge=KnowledgeConfig(**data.get("knowledge", {})),
             agent=AgentConfig(**data.get("agent", {})),
@@ -169,6 +180,7 @@ class ConfigManager:
                 "anthropic": {},
                 "watsonx": {},
                 "ollama": {},
+                "minimax": {},
             },
             "knowledge": {},
             "agent": {},
@@ -183,7 +195,7 @@ class ConfigManager:
 
                 # Merge file config
                 if "providers" in file_config:
-                    for provider in ["openai", "anthropic", "watsonx", "ollama"]:
+                    for provider in ["openai", "anthropic", "watsonx", "ollama", "minimax"]:
                         if provider in file_config["providers"]:
                             config_data["providers"][provider].update(
                                 file_config["providers"][provider]
@@ -240,6 +252,10 @@ class ConfigManager:
         # Ollama provider settings
         if os.getenv("OLLAMA_ENDPOINT"):
             config_data["providers"]["ollama"]["endpoint"] = os.getenv("OLLAMA_ENDPOINT")
+
+        # MiniMax provider settings
+        if os.getenv("MINIMAX_API_KEY"):
+            config_data["providers"]["minimax"]["api_key"] = os.getenv("MINIMAX_API_KEY")
 
         # Knowledge settings
         if os.getenv("EMBEDDING_MODEL"):
