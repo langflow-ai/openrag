@@ -33,8 +33,8 @@ export default function Nudges({
                       className={cn(
                         onboarding
                           ? "text-foreground"
-                          : "text-placeholder-foreground hover:text-foreground",
-                        "bg-background border hover:bg-background/50 px-2 py-1.5 rounded-lg text-sm transition-colors whitespace-nowrap",
+                          : "text-muted-foreground hover:text-foreground",
+                        "bg-background border px-2 py-1.5 rounded-lg text-sm transition-colors whitespace-nowrap hover:bg-accent",
                       )}
                     >
                       {suggestion}
