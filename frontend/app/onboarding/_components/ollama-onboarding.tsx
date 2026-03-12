@@ -133,7 +133,7 @@ export function OllamaOnboarding({
       </div>
       {isEmbedding && setEmbeddingModel && (
         <LabelWrapper
-          label="Embedding model"
+          label="Embedding Model"
           helperText="Model used for knowledge ingest and retrieval"
           id="embedding-model"
           required={true}
@@ -153,7 +153,7 @@ export function OllamaOnboarding({
       )}
       {!isEmbedding && setLanguageModel && (
         <LabelWrapper
-          label="Language model"
+          label="Language Model"
           helperText="Model used for chat"
           id="embedding-model"
           required={true}

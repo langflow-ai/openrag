@@ -662,7 +662,7 @@ function KnowledgeSourcesPage() {
               <ConfirmationDialog
                 trigger={
                   <Button ignoreTitleCase={true} variant="outline">
-                    Restore flow
+                    Restore Flow
                   </Button>
                 }
                 title="Restore default Agent flow"
@@ -733,7 +733,7 @@ function KnowledgeSourcesPage() {
           <div className="space-y-6">
             <div className="space-y-2">
               <LabelWrapper
-                label="Language model"
+                label="Language Model"
                 helperText="Model used for chat"
                 id="language-model"
                 required={true}
@@ -810,7 +810,7 @@ function KnowledgeSourcesPage() {
               <ConfirmationDialog
                 trigger={
                   <Button ignoreTitleCase={true} variant="outline">
-                    Restore flow
+                    Restore Flow
                   </Button>
                 }
                 title="Restore default Ingest flow"
@@ -883,7 +883,7 @@ function KnowledgeSourcesPage() {
               <LabelWrapper
                 helperText="Model used for knowledge ingest and retrieval"
                 id="embedding-model-select"
-                label="Embedding model"
+                label="Embedding Model"
                 required={true}
               >
                 <ModelSelector
@@ -900,7 +900,7 @@ function KnowledgeSourcesPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <LabelWrapper id="chunk-size" label="Chunk size">
+                <LabelWrapper id="chunk-size" label="Chunk Size">
                   <div className="relative [&:has(input:hover):not(:has(input:focus))_button]:border-muted-foreground [&:has(input:focus)_button]:border-foreground">
                     <Input
                       id="chunk-size"
@@ -943,7 +943,7 @@ function KnowledgeSourcesPage() {
                 </LabelWrapper>
               </div>
               <div className="space-y-2">
-                <LabelWrapper id="chunk-overlap" label="Chunk overlap">
+                <LabelWrapper id="chunk-overlap" label="Chunk Overlap">
                   <div className="relative [&:has(input:hover):not(:has(input:focus))_button]:border-muted-foreground [&:has(input:focus)_button]:border-foreground">
                     <Input
                       id="chunk-overlap"
@@ -1156,7 +1156,7 @@ function KnowledgeSourcesPage() {
                   size="sm"
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Create your first API key
+                  Create Your First API Key
                 </Button>
               </div>
             )}

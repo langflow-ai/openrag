@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   type CheckboxSelectionCallbackParams,
   type ColDef,
@@ -8,7 +9,6 @@ import {
   type ValueFormatterParams,
 } from "ag-grid-community";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Cloud, FileIcon, Globe, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -233,7 +233,7 @@ function SearchPage() {
     },
     {
       field: "avgScore",
-      headerName: "Avg score",
+      headerName: "Avg. Score",
       cellRenderer: ({ value }: CustomCellRendererProps<File>) => {
         return (
           <span className="text-xs text-accent-emerald-foreground bg-accent-emerald px-2 py-1 rounded">
@@ -244,7 +244,7 @@ function SearchPage() {
     },
     {
       field: "embedding_model",
-      headerName: "Embedding model",
+      headerName: "Embedding Model",
       minWidth: 200,
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => (
         <span className="text-xs text-muted-foreground">

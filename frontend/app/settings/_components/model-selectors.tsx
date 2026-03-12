@@ -64,7 +64,7 @@ export function ModelSelectors({
       {embeddingModels !== undefined && (
         <div className="space-y-2">
           <LabelWrapper
-            label="Embedding model"
+            label="Embedding Model"
             helperText="Model used for knowledge ingest and retrieval"
             id="embedding-model"
             required={true}
@@ -72,7 +72,7 @@ export function ModelSelectors({
             <Controller
               control={control}
               name={embeddingModelName}
-              rules={{ required: "Embedding model is required" }}
+              rules={{ required: "Embedding Model is required" }}
               render={({ field }) => (
                 <ModelSelector
                   options={embeddingModels}
@@ -99,7 +99,7 @@ export function ModelSelectors({
       {languageModels !== undefined && (
         <div className="space-y-2">
           <LabelWrapper
-            label="Language model"
+            label="Language Model"
             helperText="Model used for chat"
             id="language-model"
             required={true}
@@ -107,7 +107,7 @@ export function ModelSelectors({
             <Controller
               control={control}
               name={languageModelName}
-              rules={{ required: "Language model is required" }}
+              rules={{ required: "Language Model is required" }}
               render={({ field }) => (
                 <ModelSelector
                   options={languageModels}
