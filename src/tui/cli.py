@@ -344,7 +344,10 @@ def _start_services_cli(
     console.print()
     console.print("Starting OpenRAG services...", style="bold")
 
-    async def _inner():
+    async def _inner() -> tuple[bool | None, bool]:
+        container_started: bool | None = None
+        docling_started = docling_manager.is_running()
+
         # Start container services
         if container_manager.is_available():
             async for item in container_manager.start_services():
@@ -358,22 +361,43 @@ def _start_services_cli(
                 else:
                     console.print(f"  {message}")
 
-                if not success and "error" in message.lower():
+                if success and message == "Services started successfully":
+                    container_started = True
+                elif not success and message == "Failed to start services. See output above for details.":
+                    container_started = False
+                elif not success and "error" in message.lower():
                     console.print(f"  [red]✗ {message}[/red]")
         else:
             console.print("  [yellow]No container runtime available[/yellow]")
 
         # Start docling
-        if not docling_manager.is_running():
+        if not docling_started:
             success, message = await docling_manager.start()
             if success:
                 console.print(f"  {message}")
+                docling_started = docling_manager.is_running()
             else:
                 console.print(f"  [yellow]{message}[/yellow]")
+                docling_started = False
+
+        return container_started, docling_started
 
     try:
-        asyncio.run(_inner())
-        console.print("[green]✓ All services started[/green]")
+        container_started, docling_started = asyncio.run(_inner())
+        if container_started is False and not docling_started:
+            console.print(
+                "[yellow]⚠ Services only started partially: containers failed and docling-serve is not running.[/yellow]"
+            )
+        elif container_started is False:
+            console.print(
+                "[yellow]⚠ Containers did not start cleanly. Run Show status for details.[/yellow]"
+            )
+        elif not docling_started:
+            console.print(
+                "[yellow]⚠ Containers started, but docling-serve is not running. Run Show status for details.[/yellow]"
+            )
+        else:
+            console.print("[green]✓ All services started[/green]")
     except Exception as e:
         console.print(f"[red]✗ Error starting services: {e}[/red]")
 
