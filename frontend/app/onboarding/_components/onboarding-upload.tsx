@@ -243,6 +243,7 @@ const OnboardingUpload = ({ onComplete }: OnboardingUploadProps) => {
           <Button
             size="sm"
             variant="outline"
+            data-testid="upload-button"
             onClick={handleUploadClick}
             disabled={isUploading}
           >

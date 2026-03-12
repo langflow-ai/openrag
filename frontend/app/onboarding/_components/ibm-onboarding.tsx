@@ -200,6 +200,7 @@ export function IBMOnboarding({
               <div>
                 <Switch
                   checked={getFromEnv}
+                  data-testid="get-from-env-switch"
                   onCheckedChange={handleGetFromEnvChange}
                   disabled={!hasEnvApiKey || alreadyConfigured}
                 />
