@@ -345,6 +345,9 @@ def _start_services_cli(
     console.print("Starting OpenRAG services...", style="bold")
 
     async def _inner():
+        all_success = True
+        failed_services = []
+        
         # Start container services
         if container_manager.is_available():
             async for item in container_manager.start_services():
@@ -359,7 +362,8 @@ def _start_services_cli(
                     console.print(f"  {message}")
 
                 if not success and "error" in message.lower():
-                    console.print(f"  [red]✗ {message}[/red]")
+                    all_success = False
+                    failed_services.append(message)
         else:
             console.print("  [yellow]No container runtime available[/yellow]")
 
@@ -369,11 +373,19 @@ def _start_services_cli(
             if success:
                 console.print(f"  {message}")
             else:
-                console.print(f"  [yellow]{message}[/yellow]")
+                all_success = False
+                failed_services.append(f"docling: {message}")
+                console.print(f"  [red]✗ {message}[/red]")
+        
+        return all_success, failed_services
 
     try:
-        asyncio.run(_inner())
-        console.print("[green]✓ All services started[/green]")
+        all_success, failed_services = asyncio.run(_inner())
+        if all_success:
+            console.print("[green]✓ All services started[/green]")
+        else:
+            console.print(f"[yellow]⚠ Partial startup: {len(failed_services)} service(s) failed[/yellow]")
+            console.print("[yellow]  Run 'Show status' for details[/yellow]")
     except Exception as e:
         console.print(f"[red]✗ Error starting services: {e}[/red]")
 
