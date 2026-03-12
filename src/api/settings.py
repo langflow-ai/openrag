@@ -1299,9 +1299,9 @@ async def _update_langflow_global_variables(config):
         # WatsonX global variables
         if config.providers.watsonx.api_key:
             await clients._create_langflow_global_variable(
-                "WATSONX_API_KEY", config.providers.watsonx.api_key, modify=True
+                "WATSONX_APIKEY", config.providers.watsonx.api_key, modify=True
             )
-            logger.info("Set WATSONX_API_KEY global variable in Langflow")
+            logger.info("Set WATSONX_APIKEY global variable in Langflow")
 
         if config.providers.watsonx.project_id:
             await clients._create_langflow_global_variable(
