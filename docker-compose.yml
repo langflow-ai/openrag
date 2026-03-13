@@ -119,6 +119,7 @@ services:
   langflow:
     volumes:
       - ${OPENRAG_FLOWS_PATH:-./flows}:/app/flows:U,z
+      - ${LANGFLOW_DATA_PATH:-./langflow-data}:/root/.langflow:U,z
     image: langflowai/openrag-langflow:${OPENRAG_VERSION:-latest}
     build:
       context: .
@@ -138,6 +139,7 @@ services:
       - WATSONX_PROJECT_ID=${WATSONX_PROJECT_ID}
       - OLLAMA_BASE_URL=${OLLAMA_ENDPOINT}
       - LANGFLOW_LOAD_FLOWS_PATH=/app/flows
+      - LANGFLOW_DATABASE_URL=sqlite:////root/.langflow/langflow.db
       - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
       - JWT=None
       - OWNER=None
