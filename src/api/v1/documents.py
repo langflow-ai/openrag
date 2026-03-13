@@ -9,6 +9,7 @@ from typing import List, Optional
 from fastapi import Depends, File, Form, UploadFile
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
+from api.documents import delete_documents_by_filename_core
 
 from api.router import upload_ingest_router
 from utils.logging_config import get_logger
@@ -83,31 +84,10 @@ async def delete_document_endpoint(
     user: User = Depends(get_api_key_user_async),
 ):
     """Delete a document from the knowledge base. DELETE /v1/documents"""
-    filename = body.filename.strip()
-    if not filename:
-        return JSONResponse({"error": "Filename is required"}, status_code=400)
-
-    try:
-        from config.settings import get_index_name
-        from utils.opensearch_queries import build_filename_delete_body
-
-        opensearch_client = session_manager.get_user_opensearch_client(user.user_id, None)
-        delete_query = build_filename_delete_body(filename)
-
-        result = await opensearch_client.delete_by_query(
-            index=get_index_name(),
-            body=delete_query,
-            conflicts="proceed",
-        )
-
-        deleted_count = result.get("deleted", 0)
-        logger.info(f"Deleted {deleted_count} chunks for filename {filename}", user_id=user.user_id)
-        return JSONResponse({"success": True, "deleted_chunks": deleted_count})
-
-    except Exception as e:
-        error_msg = str(e)
-        logger.error("Document deletion failed", error=error_msg, filename=filename)
-        if "AuthenticationException" in error_msg or "access denied" in error_msg.lower():
-            return JSONResponse({"error": error_msg}, status_code=403)
-        else:
-            return JSONResponse({"error": error_msg}, status_code=500)
+    payload, status_code = await delete_documents_by_filename_core(
+        filename=body.filename,
+        session_manager=session_manager,
+        user_id=user.user_id,
+        jwt_token=None,
+    )
+    return JSONResponse(payload, status_code=status_code)

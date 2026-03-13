@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
+from .exceptions import NotFoundError
 from .models import DeleteDocumentResponse, IngestResponse, IngestTaskStatus
 
 if TYPE_CHECKING:
@@ -136,11 +137,23 @@ class DocumentsClient:
         Returns:
             DeleteDocumentResponse with deleted chunk count.
         """
-        response = await self._client._request(
-            "DELETE",
-            "/api/v1/documents",
-            json={"filename": filename},
-        )
+        try:
+            response = await self._client._request(
+                "DELETE",
+                "/api/v1/documents",
+                json={"filename": filename},
+            )
+        except NotFoundError as e:
+            # Keep delete idempotent for SDK callers: a missing document is not an exception.
+            if getattr(e, "status_code", None) == 404:
+                return DeleteDocumentResponse(
+                    success=False,
+                    deleted_chunks=0,
+                    filename=filename,
+                    message=None,
+                    error=getattr(e, "message", "Resource not found"),
+                )
+            raise
 
         data = response.json()
         return DeleteDocumentResponse(**data)
