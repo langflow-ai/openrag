@@ -345,8 +345,13 @@ def _start_services_cli(
     console.print("Starting OpenRAG services...", style="bold")
 
     async def _inner():
+        containers_ok = not container_manager.is_available()
+        docling_ok = docling_manager.is_running()
+        docling_message = "Docling serve is already running" if docling_ok else ""
+
         # Start container services
         if container_manager.is_available():
+            containers_ok = True
             async for item in container_manager.start_services():
                 # start_services yields (success, message) or (success, message, replace_last)
                 success = item[0]
@@ -358,6 +363,9 @@ def _start_services_cli(
                 else:
                     console.print(f"  {message}")
 
+                if not success:
+                    containers_ok = False
+
                 if not success and "error" in message.lower():
                     console.print(f"  [red]✗ {message}[/red]")
         else:
@@ -365,14 +373,26 @@ def _start_services_cli(
 
         # Start docling
         if not docling_manager.is_running():
-            success, message = await docling_manager.start()
-            if success:
-                console.print(f"  {message}")
+            docling_ok, docling_message = await docling_manager.start()
+            if docling_ok:
+                console.print(f"  {docling_message}")
             else:
-                console.print(f"  [yellow]{message}[/yellow]")
+                console.print(f"  [yellow]{docling_message}[/yellow]")
+
+        return containers_ok, docling_ok, docling_message
 
     try:
-        asyncio.run(_inner())
+        containers_ok, docling_ok, docling_message = asyncio.run(_inner())
+        if not containers_ok:
+            console.print(
+                "[red]Startup incomplete. Run 'Show status' for details.[/red]"
+            )
+            return
+        if not docling_ok:
+            console.print(
+                f"[yellow]Containers started, but docling-serve did not start: {docling_message}[/yellow]"
+            )
+            return
         console.print("[green]✓ All services started[/green]")
     except Exception as e:
         console.print(f"[red]✗ Error starting services: {e}[/red]")
@@ -507,3 +527,4 @@ def _validate_password_strength(password: str) -> str | None:
     if hint:
         msg += f" — {hint}"
     return msg
+
