@@ -74,6 +74,9 @@ export interface IngestTaskStatus {
 export interface DeleteDocumentResponse {
   success: boolean;
   deleted_chunks: number;
+  filename?: string | null;
+  message?: string | null;
+  error?: string | null;
 }
 
 // Chat history types

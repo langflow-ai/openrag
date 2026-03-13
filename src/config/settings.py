@@ -61,6 +61,20 @@ INGEST_SAMPLE_DATA = os.getenv(
     "INGEST_SAMPLE_DATA", "true"
 ).lower() in ("true", "1", "yes")
 
+# Default OpenRAG docs sample ingestion source
+# - "url": crawl DEFAULT_DOCS_URL with URL ingestion flow
+# - "files": ingest files from the openrag-documents directory
+
+DEFAULT_DOCS_INGEST_SOURCE = os.getenv("DEFAULT_DOCS_INGEST_SOURCE", "url").lower()
+DEFAULT_DOCS_URL = os.getenv("DEFAULT_DOCS_URL", "https://docs.openr.ag/")
+#TODO: Enable this when the flow is updated to use the new variables
+
+DEFAULT_DOCS_CRAWL_DEPTH = get_env_int("DEFAULT_DOCS_CRAWL_DEPTH", 2)
+
+FETCH_OPENRAG_DOCS_AT_STARTUP = os.getenv(
+    "FETCH_OPENRAG_DOCS_AT_STARTUP", "false"
+).lower() in ("true", "1", "yes")
+
 # Maximum number of files to upload / ingest (in batch) per task when adding knowledge via folder
 UPLOAD_BATCH_SIZE = get_env_int("UPLOAD_BATCH_SIZE", 25)
 

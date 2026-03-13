@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 from utils.container_utils import transform_localhost_url
 from utils.logging_config import get_logger
 from utils.telemetry import TelemetryClient, Category, MessageId
+from utils.version_utils import OPENRAG_VERSION
 from config.settings import (
+    DEFAULT_DOCS_URL,
     DISABLE_INGEST_WITH_LANGFLOW,
     INGEST_SAMPLE_DATA,
     LANGFLOW_URL,
@@ -88,6 +90,8 @@ class OnboardingStateBody(BaseModel):
     upload_steps: Optional[Dict[str, Any]] = None
     openrag_docs_filter_id: Optional[str] = None
     user_doc_filter_id: Optional[str] = None
+    openrag_docs_ingested_version: Optional[str] = None
+    openrag_docs_remote_signature: Optional[str] = None
 
 
 class DoclingPresetBody(BaseModel):
@@ -105,6 +109,8 @@ class OnboardingStateConfig(BaseModel):
     upload_steps: Optional[Dict[str, Any]]
     openrag_docs_filter_id: Optional[str]
     user_doc_filter_id: Optional[str]
+    openrag_docs_ingested_version: Optional[str]
+    openrag_docs_remote_signature: Optional[str]
 
 class OpenAIProviderConfig(BaseModel):
     has_api_key: bool
@@ -173,6 +179,11 @@ class OnboardingResponse(BaseModel):
     sample_data_ingested: bool
     openrag_docs_filter_id: Optional[str] = None
     task_id: Optional[str] = None
+
+
+class RefreshOpenRAGDocsResponse(BaseModel):
+    message: str
+    refreshed: bool
 
 class DoclingConfig(BaseModel):
     do_ocr: bool
@@ -316,6 +327,8 @@ async def get_settings(
                 upload_steps=openrag_config.onboarding.upload_steps,
                 openrag_docs_filter_id=openrag_config.onboarding.openrag_docs_filter_id,
                 user_doc_filter_id=openrag_config.onboarding.user_doc_filter_id,
+                openrag_docs_ingested_version=openrag_config.onboarding.openrag_docs_ingested_version,
+                openrag_docs_remote_signature=openrag_config.onboarding.openrag_docs_remote_signature,
             ),
             providers=ProvidersConfig(
                 openai=OpenAIProviderConfig(
@@ -1126,6 +1139,18 @@ async def onboarding(
                         langflow_file_service,
                         session_manager,
                     )
+                    current_config.onboarding.openrag_docs_ingested_version = OPENRAG_VERSION
+                    from main import (
+                        _get_remote_docs_signature,
+                        _should_use_url_default_docs_ingest,
+                    )
+
+                    if _should_use_url_default_docs_ingest():
+                        current_config.onboarding.openrag_docs_remote_signature = (
+                            await _get_remote_docs_signature(DEFAULT_DOCS_URL)
+                        )
+                    else:
+                        current_config.onboarding.openrag_docs_remote_signature = None
                     logger.info("Sample data ingestion completed successfully")
 
                 except Exception as e:
@@ -1252,10 +1277,12 @@ async def _create_openrag_docs_filter(
     query_data = json.dumps({
         "query": "",
         "filters": {
-            "data_sources": ["openrag-documentation.pdf"],
+            # URL-based docs ingestion produces many source URLs.
+            # Filter by connector type to target OpenRAG docs only.
+            "data_sources": ["*"],
             "document_types": ["*"],
             "owners": ["*"],
-            "connector_types": ["*"],
+            "connector_types": ["openrag_docs"],
         },
         "limit": 10,
         "scoreThreshold": 0,
@@ -1655,6 +1682,8 @@ async def rollback_onboarding(
         # Clear embedding provider and model settings
         current_config.knowledge.embedding_provider = "openai"  # Reset to default
         current_config.knowledge.embedding_model = ""
+        current_config.onboarding.openrag_docs_ingested_version = None
+        current_config.onboarding.openrag_docs_remote_signature = None
 
         # Mark config as not edited so user can go through onboarding again
         current_config.edited = False
@@ -1772,3 +1801,38 @@ async def update_docling_preset(
     except Exception as e:
         logger.error("Failed to update docling settings", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to update docling settings: {str(e)}")
+
+
+async def refresh_openrag_docs(
+    document_service=Depends(get_document_service),
+    task_service=Depends(get_task_service),
+    langflow_file_service=Depends(get_langflow_file_service),
+    session_manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> RefreshOpenRAGDocsResponse:
+    """Manually refresh OpenRAG docs ingestion on demand."""
+    try:
+        from main import refresh_default_openrag_docs
+
+        refreshed = await refresh_default_openrag_docs(
+            document_service=document_service,
+            task_service=task_service,
+            langflow_file_service=langflow_file_service,
+            session_manager=session_manager,
+            force=True,
+            reason="manual",
+        )
+        return RefreshOpenRAGDocsResponse(
+            message=(
+                "OpenRAG docs were refreshed."
+                if refreshed
+                else "OpenRAG docs refresh was skipped by current configuration."
+            ),
+            refreshed=refreshed,
+        )
+    except Exception as e:
+        logger.error("Failed to refresh OpenRAG docs on demand", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refresh OpenRAG docs: {str(e)}",
+        )

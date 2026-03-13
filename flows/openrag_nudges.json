@@ -2822,7 +2822,7 @@
                 "title_case": false,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "8$8@SqVR&ZvbGBrd"
+                "value": ""
               },
               "request_timeout": {
                 "_input_type": "StrInput",

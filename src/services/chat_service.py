@@ -100,6 +100,7 @@ class ChatService:
                 "data_sources": "filename",
                 "document_types": "mimetype",
                 "owners": "owner",
+                "connector_types": "connector_type",
             }
 
             for filter_key, values in filters.items():
@@ -215,6 +216,7 @@ class ChatService:
                 "data_sources": "filename",
                 "document_types": "mimetype",
                 "owners": "owner",
+                "connector_types": "connector_type",
             }
 
             for filter_key, values in filters.items():

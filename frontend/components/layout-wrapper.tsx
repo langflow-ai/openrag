@@ -30,7 +30,7 @@ import FailedTasksInfo from "./tasks_details";
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { tasks, isMenuOpen, closeMenu } = useTask();
+  const { tasks, isMenuOpen } = useTask();
   const { isPanelOpen, panelMode, closePanelOnly } = useKnowledgeFilter();
   const failedTasks = tasks.filter(isFailureLikeTask);
 
@@ -42,11 +42,6 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       closePanelOnly();
     }
   }, [isMenuOpen, closePanelOnly]);
-  useEffect(() => {
-    if (isPanelOpen) {
-      closeMenu();
-    }
-  }, [isPanelOpen, closeMenu]);
 
   const { isLoading, isAuthenticated, isNoAuthMode } = useAuth();
   const { isOnboardingComplete } = useChat();
