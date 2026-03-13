@@ -58,6 +58,13 @@ chmod 777 langflow-data
 echo "Starting infrastructure..."
 make dev-local-cpu ENV_FILE=$E2E_ENV
 
+# On Linux/CI, Docker volumes are root-owned. Fix them so the host runner can write to them.
+if [ "$CI" = "true" ] && [[ "$OSTYPE" != "darwin"* ]]; then
+    echo "Fixing volume permissions for CI..."
+    ${CONTAINER_RUNTIME} run --rm -v "$(pwd):/work" alpine sh -c "chown -R $(id -u):$(id -g) /work/config /work/data /work/keys /work/opensearch-data /work/openrag-documents || true"
+    chmod -R 777 config data keys opensearch-data openrag-documents 2>/dev/null || true
+fi
+
 echo "Waiting for OpenSearch..."
 TIMEOUT=300
 ELAPSED=0

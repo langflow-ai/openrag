@@ -556,6 +556,7 @@ factory-reset: ## Complete reset (stop, remove volumes, clear data, remove image
 	fi; \
 	if [ -d "config" ]; then \
 		echo "Removing config..."; \
+		$(CONTAINER_RUNTIME) run --rm -v "$$(pwd)/config:/data" alpine sh -c "rm -rf /data/*" 2>/dev/null || true; \
 		rm -rf config; \
 		echo "$(PURPLE)config removed$(NC)"; \
 	fi; \
