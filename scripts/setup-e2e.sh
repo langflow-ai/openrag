@@ -15,7 +15,7 @@ fi
 
 # Auto-generate a strong OpenSearch password if not already set in the env file or environment.
 # OpenSearch requires: uppercase, lowercase, digit, special char, min 8 chars.
-CURRENT_PASSWORD=$(grep -E '^OPENSEARCH_PASSWORD=' "$E2E_ENV" | cut -d'=' -f2-)
+CURRENT_PASSWORD=$(grep -E '^OPENSEARCH_PASSWORD=' "$E2E_ENV" | cut -d'=' -f2- | sed -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//')
 if [ -n "$OPENSEARCH_PASSWORD" ]; then
     echo "Using OpenSearch password from environment."
     GENERATED_PASSWORD="$OPENSEARCH_PASSWORD"
@@ -29,11 +29,11 @@ else
     GENERATED_PASSWORD="$CURRENT_PASSWORD"
 fi
 
-# Write the password into the env file
+# Write the password into the env file, wrapping in single quotes to prevent issues with characters like '#'
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${GENERATED_PASSWORD}|" "$E2E_ENV"
+    sed -i '' "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD='${GENERATED_PASSWORD}'|" "$E2E_ENV"
 else
-    sed -i "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${GENERATED_PASSWORD}|" "$E2E_ENV"
+    sed -i "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD='${GENERATED_PASSWORD}'|" "$E2E_ENV"
 fi
 
 export OPENSEARCH_PASSWORD="$GENERATED_PASSWORD"
@@ -76,6 +76,7 @@ until curl -s -k https://localhost:9200 >/dev/null; do
     ELAPSED=$((ELAPSED + 5))
     if [ $ELAPSED -ge $TIMEOUT ]; then
         echo "ERROR: OpenSearch did not become ready within ${TIMEOUT}s"
+        ${CONTAINER_RUNTIME:-docker} logs os 2>&1 | tail -n 100
         exit 1
     fi
     echo "Waiting for OpenSearch... (${ELAPSED}s/${TIMEOUT}s)"
