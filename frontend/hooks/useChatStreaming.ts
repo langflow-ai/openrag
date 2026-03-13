@@ -2,10 +2,11 @@ import { useRef, useState } from "react";
 import type {
   FunctionCall,
   Message,
-  SelectedFilters,
   TokenUsage,
 } from "@/app/chat/_types/types";
 import { useChat } from "@/contexts/chat-context";
+import type { FilterInput } from "@/lib/filter-normalization";
+import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
 interface UseChatStreamingOptions {
   endpoint?: string;
@@ -16,7 +17,7 @@ interface UseChatStreamingOptions {
 interface SendMessageOptions {
   prompt: string;
   previousResponseId?: string;
-  filters?: SelectedFilters;
+  filters?: FilterInput;
   filter_id?: string;
   limit?: number;
   scoreThreshold?: number;
@@ -78,7 +79,7 @@ export function useChatStreaming({
         prompt: string;
         stream: boolean;
         previous_response_id?: string;
-        filters?: SelectedFilters;
+        filters?: FilterInput;
         filter_id?: string;
         limit?: number;
         scoreThreshold?: number;
@@ -94,7 +95,10 @@ export function useChatStreaming({
       }
 
       if (filters) {
-        requestBody.filters = filters;
+        const payloadFilters = buildSearchPayloadFilters(filters);
+        if (payloadFilters) {
+          requestBody.filters = payloadFilters;
+        }
       }
 
       if (filter_id) {

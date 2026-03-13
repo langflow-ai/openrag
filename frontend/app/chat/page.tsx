@@ -9,6 +9,7 @@ import { type EndpointType, useChat } from "@/contexts/chat-context";
 import { useTask } from "@/contexts/task-context";
 import { useChatStreaming } from "@/hooks/useChatStreaming";
 import { FILE_CONFIRMATION, FILES_REGEX } from "@/lib/constants";
+import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { useGetConversationsQuery } from "../api/queries/useGetConversationsQuery";
 import { useGetNudgesQuery } from "../api/queries/useGetNudgesQuery";
@@ -23,7 +24,6 @@ import type {
   KnowledgeFilterData,
   Message,
   RequestBody,
-  SelectedFilters,
   ToolCallResult,
 } from "./_types/types";
 
@@ -666,25 +666,7 @@ function ChatPage() {
   // Prepare filters for nudges (same as chat)
   const processedFiltersForNudges = parsedFilterData?.filters
     ? (() => {
-        const filters = parsedFilterData.filters;
-        const processed: SelectedFilters = {
-          data_sources: [],
-          document_types: [],
-          owners: [],
-        };
-        processed.data_sources = filters.data_sources.includes("*")
-          ? []
-          : filters.data_sources;
-        processed.document_types = filters.document_types.includes("*")
-          ? []
-          : filters.document_types;
-        processed.owners = filters.owners.includes("*") ? [] : filters.owners;
-
-        const hasFilters =
-          processed.data_sources.length > 0 ||
-          processed.document_types.length > 0 ||
-          processed.owners.length > 0;
-        return hasFilters ? processed : undefined;
+        return buildSearchPayloadFilters(parsedFilterData.filters);
       })()
     : undefined;
 
@@ -707,25 +689,7 @@ function ChatPage() {
     // Prepare filters
     const processedFilters = parsedFilterData?.filters
       ? (() => {
-          const filters = parsedFilterData.filters;
-          const processed: SelectedFilters = {
-            data_sources: [],
-            document_types: [],
-            owners: [],
-          };
-          processed.data_sources = filters.data_sources.includes("*")
-            ? []
-            : filters.data_sources;
-          processed.document_types = filters.document_types.includes("*")
-            ? []
-            : filters.document_types;
-          processed.owners = filters.owners.includes("*") ? [] : filters.owners;
-
-          const hasFilters =
-            processed.data_sources.length > 0 ||
-            processed.document_types.length > 0 ||
-            processed.owners.length > 0;
-          return hasFilters ? processed : undefined;
+          return buildSearchPayloadFilters(parsedFilterData.filters);
         })()
       : undefined;
 
@@ -788,32 +752,14 @@ function ChatPage() {
 
         const requestBody: RequestBody = {
           prompt: userMessage.content,
-          ...(parsedFilterData?.filters &&
-            (() => {
-              const filters = parsedFilterData.filters;
-              const processed: SelectedFilters = {
-                data_sources: [],
-                document_types: [],
-                owners: [],
-              };
-              // Only copy non-wildcard arrays
-              processed.data_sources = filters.data_sources.includes("*")
-                ? []
-                : filters.data_sources;
-              processed.document_types = filters.document_types.includes("*")
-                ? []
-                : filters.document_types;
-              processed.owners = filters.owners.includes("*")
-                ? []
-                : filters.owners;
-
-              // Only include filters if any array has values
-              const hasFilters =
-                processed.data_sources.length > 0 ||
-                processed.document_types.length > 0 ||
-                processed.owners.length > 0;
-              return hasFilters ? { filters: processed } : {};
-            })()),
+          ...(parsedFilterData?.filters
+            ? (() => {
+                const processedFilters = buildSearchPayloadFilters(
+                  parsedFilterData.filters,
+                );
+                return processedFilters ? { filters: processedFilters } : {};
+              })()
+            : {}),
           limit: parsedFilterData?.limit ?? 10,
           scoreThreshold: parsedFilterData?.scoreThreshold ?? 0,
         };

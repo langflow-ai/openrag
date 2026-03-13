@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import type { ParsedQueryData } from "@/contexts/knowledge-filter-context";
 import { SEARCH_CONSTANTS } from "@/lib/constants";
+import { buildSearchPayloadFilters } from "@/lib/filter-normalization";
 
 export interface SearchPayload {
   query: string;
@@ -70,6 +71,20 @@ export const useGetSearchQuery = (
 ) => {
   const queryClient = useQueryClient();
 
+  const getFileIdentity = (chunk: ChunkResult): string => {
+    const normalizedFilename = chunk.filename?.trim();
+    if (normalizedFilename) {
+      return normalizedFilename;
+    }
+
+    const normalizedSourceUrl = chunk.source_url?.trim();
+    if (normalizedSourceUrl) {
+      return normalizedSourceUrl;
+    }
+
+    return "Untitled source";
+  };
+
   // Normalize the query to match what will actually be searched
   const effectiveQuery = query || queryData?.query || "*";
 
@@ -89,40 +104,8 @@ export const useGetSearchQuery = (
         scoreThreshold: queryData?.scoreThreshold || 0,
       };
       if (queryData?.filters) {
-        const filters = queryData.filters;
-
-        // Only include filters if they're not wildcards (not "*")
-        const hasSpecificFilters =
-          !filters.data_sources.includes("*") ||
-          !filters.document_types.includes("*") ||
-          !filters.owners.includes("*") ||
-          (filters.connector_types && !filters.connector_types.includes("*"));
-
-        if (hasSpecificFilters) {
-          const processedFilters: SearchPayload["filters"] = {};
-
-          // Only add filter arrays that don't contain wildcards
-          if (!filters.data_sources.includes("*")) {
-            processedFilters.data_sources = filters.data_sources;
-          }
-          if (!filters.document_types.includes("*")) {
-            processedFilters.document_types = filters.document_types;
-          }
-          if (!filters.owners.includes("*")) {
-            processedFilters.owners = filters.owners;
-          }
-          if (
-            filters.connector_types &&
-            !filters.connector_types.includes("*")
-          ) {
-            processedFilters.connector_types = filters.connector_types;
-          }
-
-          // Only add filters object if it has any actual filters
-          if (Object.keys(processedFilters).length > 0) {
-            searchPayload.filters = processedFilters;
-          }
-        }
+        searchPayload.filters =
+          buildSearchPayloadFilters(queryData.filters) ?? undefined;
       }
 
       const response = await fetch(`/api/search`, {
@@ -165,7 +148,8 @@ export const useGetSearchQuery = (
       >();
 
       (data.results || []).forEach((chunk: ChunkResult) => {
-        const existing = fileMap.get(chunk.filename);
+        const fileIdentity = getFileIdentity(chunk);
+        const existing = fileMap.get(fileIdentity);
         if (existing) {
           existing.chunks.push(chunk);
           existing.totalScore += chunk.score;
@@ -179,8 +163,8 @@ export const useGetSearchQuery = (
             existing.embedding_dimensions = chunk.embedding_dimensions;
           }
         } else {
-          fileMap.set(chunk.filename, {
-            filename: chunk.filename,
+          fileMap.set(fileIdentity, {
+            filename: fileIdentity,
             mimetype: chunk.mimetype,
             chunks: [chunk],
             totalScore: chunk.score,

@@ -171,13 +171,25 @@ class TaskProcessor:
             acl: DocumentACL instance with access control information
         """
         import datetime
-        from config.settings import clients, get_embedding_model, get_index_name
+        from config.settings import (
+            clients,
+            get_embedding_model,
+            get_index_name,
+            get_openrag_config,
+        )
         from services.document_service import chunk_texts_for_embeddings
         from utils.document_processing import extract_relevant
         from utils.embedding_fields import get_embedding_field_name, ensure_embedding_field_exists
 
-        # Use provided embedding model or fall back to default
-        embedding_model = embedding_model or get_embedding_model()
+        # Use provided embedding model or configured model.
+        # get_embedding_model() returns empty string when Langflow ingest is enabled,
+        # but OpenRAG processors still need a concrete embedding model.
+        configured_embedding_model = get_openrag_config().knowledge.embedding_model
+        embedding_model = (
+            embedding_model
+            or configured_embedding_model
+            or get_embedding_model()
+        )
 
         # Get user's OpenSearch client with JWT for OIDC auth
         opensearch_client = self.document_service.session_manager.get_user_opensearch_client(
@@ -323,6 +335,7 @@ class DocumentFileProcessor(TaskProcessor):
         owner_name: str = None,
         owner_email: str = None,
         is_sample_data: bool = False,
+        connector_type: str = "local",
     ):
         super().__init__(document_service)
         self.owner_user_id = owner_user_id
@@ -330,6 +343,7 @@ class DocumentFileProcessor(TaskProcessor):
         self.owner_name = owner_name
         self.owner_email = owner_email
         self.is_sample_data = is_sample_data
+        self.connector_type = connector_type
 
     async def process_item(
         self, upload_task: UploadTask, item: str, file_task: FileTask
@@ -363,7 +377,7 @@ class DocumentFileProcessor(TaskProcessor):
                 owner_name=self.owner_name,
                 owner_email=self.owner_email,
                 file_size=file_size,
-                connector_type="local",
+                connector_type=self.connector_type,
                 is_sample_data=self.is_sample_data,
             )
 
@@ -803,3 +817,6 @@ class LangflowFileProcessor(TaskProcessor):
             file_task.updated_at = time.time()
             upload_task.failed_files += 1
             raise
+
+
+from .url import LangflowUrlProcessor

@@ -401,71 +401,31 @@ class FlowsService:
                             f"Updating {flow_type} flow with current configuration settings"
                         )
 
-                        # Get LLM provider (used for most flows)
-                        llm_provider = config.agent.llm_provider.lower()
-                        embedding_provider = config.knowledge.embedding_provider.lower()
+                        # Update current LLM provider
+                        update_result = await self._update_provider_components(
+                            {"name": flow_type, "flow_id": flow_id},
+                            config.agent.llm_provider.lower(),
+                            llm_model=config.agent.llm_model,
+                            force_llm_update=True
+                        )
 
-                        # Step 2: Update model values for the specific flow being reset
-                        single_flow_config = [
-                            {
-                                "name": flow_type,
-                                "flow_id": flow_id,
-                            }
-                        ]
+                        # Update all configured embedding providers
+                        embedding_providers = []
+                        if config.providers.openai.configured:
+                            embedding_providers.append("openai")
+                        if config.providers.watsonx.configured:
+                            embedding_providers.append("watsonx")
+                        if config.providers.ollama.configured:
+                            embedding_providers.append("ollama")
 
-                        logger.info(f"Updating {flow_type} flow model values")
-                        
-                        # For retrieval flow: need to update both LLM and embedding (potentially different providers)
-                        # For ingest flows: only update embedding
-                        # For other flows: only update LLM
-                        
-                        if flow_type == "retrieval":
-                            # Retrieval flow uses both LLM and embedding models
-                            # Update LLM first
-                            llm_result = await self.change_langflow_model_value(
-                                provider=llm_provider,
-                                embedding_model=None,
-                                llm_model=config.agent.llm_model,
-                                flow_configs=single_flow_config,
-                            )
-                            if not llm_result.get("success"):
-                                logger.warning(
-                                    f"Failed to update LLM in {flow_type} flow: {llm_result.get('error', 'Unknown error')}"
-                                )
-                            
-                            # Update embedding model
-                            embedding_result = await self.change_langflow_model_value(
-                                provider=embedding_provider,
-                                embedding_model=config.knowledge.embedding_model,
-                                llm_model=None,
-                                flow_configs=single_flow_config,
-                            )
-                            if not embedding_result.get("success"):
-                                logger.warning(
-                                    f"Failed to update embedding in {flow_type} flow: {embedding_result.get('error', 'Unknown error')}"
-                                )
-                            
-                            # Consider it successful if either update succeeded
-                            update_result = {
-                                "success": llm_result.get("success") or embedding_result.get("success"),
-                                "llm_result": llm_result,
-                                "embedding_result": embedding_result,
-                            }
-                        elif flow_type in ["ingest", "url_ingest"]:
-                            # Ingest flows only need embedding model
-                            update_result = await self.change_langflow_model_value(
-                                provider=embedding_provider,
-                                embedding_model=config.knowledge.embedding_model,
-                                llm_model=None,
-                                flow_configs=single_flow_config,
-                            )
-                        else:
-                            # Other flows (nudges) only need LLM model
-                            update_result = await self.change_langflow_model_value(
-                                provider=llm_provider,
-                                embedding_model=None,
-                                llm_model=config.agent.llm_model,
-                                flow_configs=single_flow_config,
+                        current_emb_provider = config.knowledge.embedding_provider.lower()
+                        for provider in embedding_providers:
+                            model = config.knowledge.embedding_model if provider == current_emb_provider else None
+                            await self._update_provider_components(
+                                {"name": flow_type, "flow_id": flow_id},
+                                provider,
+                                embedding_model=model,
+                                force_embedding_update=True
                             )
 
                         if update_result.get("success"):
@@ -509,294 +469,6 @@ class FlowsService:
             logger.error(f"Error while resetting {flow_type} flow", error=str(e))
             return {"success": False, "error": f"Error: {str(e)}"}
 
-    # async def assign_model_provider(self, provider: str, is_embedding: bool = False):
-    #     """
-    #     Replace OpenAI components with the specified provider components in all flows
-
-    #     Args:
-    #         provider: "watsonx", "ollama", "openai" or "anthropic"
-
-    #     Returns:
-    #         dict: Success/error response with details for each flow
-    #     """
-    #     if provider not in ["watsonx", "ollama", "openai", "anthropic"]:
-    #         raise ValueError("provider must be 'watsonx', 'ollama', 'openai', or 'anthropic'")
-
-    #     if provider == "openai":
-    #         logger.info("Provider is already OpenAI, no changes needed")
-    #         return {
-    #             "success": True,
-    #             "message": "Provider is already OpenAI, no changes needed",
-    #         }
-
-    #     try:
-    #         # Load component templates based on provider
-    #         llm_template, embedding_template, llm_text_template = (
-    #             self._load_component_templates(provider)
-    #         )
-
-    #         logger.info(f"Assigning {provider} components")
-
-    #         # Define flow configurations (removed hardcoded file paths)
-    #         flow_configs = [
-    #             {
-    #                 "name": "nudges",
-    #                 "flow_id": NUDGES_FLOW_ID,
-    #                 "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
-    #                 "llm_text_name": OPENAI_LLM_COMPONENT_DISPLAY_NAME,
-    #                 "llm_name": None,
-    #             },
-    #             {
-    #                 "name": "retrieval",
-    #                 "flow_id": LANGFLOW_CHAT_FLOW_ID,
-    #                 "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
-    #                 "llm_name": OPENAI_LLM_COMPONENT_DISPLAY_NAME,
-    #                 "llm_text_name": None,
-    #             },
-    #             {
-    #                 "name": "ingest",
-    #                 "flow_id": LANGFLOW_INGEST_FLOW_ID,
-    #                 "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
-    #                 "llm_name": None,  # Ingestion flow might not have LLM
-    #                 "llm_text_name": None,
-    #             },
-    #             {
-    #                 "name": "url_ingest",
-    #                 "flow_id": LANGFLOW_URL_INGEST_FLOW_ID,
-    #                 "embedding_name": OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
-    #                 "llm_name": None,
-    #                 "llm_text_name": None,
-    #             },
-    #         ]
-
-    #         results = []
-
-    #         # Process each flow sequentially
-    #         for config in flow_configs:
-    #             try:
-    #                 result = await self._update_flow_components(
-    #                     config, llm_template, embedding_template, llm_text_template, is_embedding
-    #                 )
-    #                 results.append(result)
-    #                 logger.info(f"Successfully updated {config['name']} flow")
-    #             except Exception as e:
-    #                 error_msg = f"Failed to update {config['name']} flow: {str(e)}"
-    #                 logger.error(error_msg)
-    #                 results.append(
-    #                     {"flow": config["name"], "success": False, "error": error_msg}
-    #                 )
-    #                 # Continue with other flows even if one fails
-
-    #         # Check if all flows were successful
-    #         all_success = all(r.get("success", False) for r in results)
-
-    #         return {
-    #             "success": all_success,
-    #             "message": f"Model provider assignment to {provider} {'completed' if all_success else 'completed with errors'}",
-    #             "provider": provider,
-    #             "results": results,
-    #         }
-
-    #     except Exception as e:
-    #         logger.error(f"Error assigning model provider {provider}", error=str(e))
-    #         return {
-    #             "success": False,
-    #             "error": f"Failed to assign model provider: {str(e)}",
-    #         }
-
-    # def _load_component_templates(self, provider: str):
-    #     """Load component templates for the specified provider"""
-    #     if provider == "watsonx":
-    #         llm_path = WATSONX_LLM_COMPONENT_PATH
-    #         embedding_path = WATSONX_EMBEDDING_COMPONENT_PATH
-    #         llm_text_path = WATSONX_LLM_TEXT_COMPONENT_PATH
-    #     elif provider == "ollama":
-    #         llm_path = OLLAMA_LLM_COMPONENT_PATH
-    #         embedding_path = OLLAMA_EMBEDDING_COMPONENT_PATH
-    #         llm_text_path = OLLAMA_LLM_TEXT_COMPONENT_PATH
-    #     else:
-    #         raise ValueError(f"Unsupported provider: {provider}")
-
-    #     # Get the project root directory (same logic as reset_langflow_flow)
-    #     current_file_dir = os.path.dirname(os.path.abspath(__file__))  # src/services/
-    #     src_dir = os.path.dirname(current_file_dir)  # src/
-    #     project_root = os.path.dirname(src_dir)  # project root
-
-    #     # Load LLM template
-    #     llm_full_path = os.path.join(project_root, llm_path)
-    #     if not os.path.exists(llm_full_path):
-    #         raise FileNotFoundError(
-    #             f"LLM component template not found at: {llm_full_path}"
-    #         )
-
-    #     with open(llm_full_path, "r") as f:
-    #         llm_template = json.load(f)
-
-    #     # Load embedding template
-    #     embedding_full_path = os.path.join(project_root, embedding_path)
-    #     if not os.path.exists(embedding_full_path):
-    #         raise FileNotFoundError(
-    #             f"Embedding component template not found at: {embedding_full_path}"
-    #         )
-
-    #     with open(embedding_full_path, "r") as f:
-    #         embedding_template = json.load(f)
-
-    #     # Load LLM Text template
-    #     llm_text_full_path = os.path.join(project_root, llm_text_path)
-    #     if not os.path.exists(llm_text_full_path):
-    #         raise FileNotFoundError(
-    #             f"LLM Text component template not found at: {llm_text_full_path}"
-    #         )
-
-    #     with open(llm_text_full_path, "r") as f:
-    #         llm_text_template = json.load(f)
-
-    #     logger.info(f"Loaded component templates for {provider}")
-    #     return llm_template, embedding_template, llm_text_template
-
-    # async def _update_flow_components(
-    #     self, config, llm_template, embedding_template, llm_text_template, is_embedding: bool = False
-    # ):
-    #     """Update components in a specific flow"""
-    #     flow_name = config["name"]
-    #     flow_id = config["flow_id"]
-    #     old_embedding_name = config["embedding_name"]
-    #     old_llm_name = config["llm_name"]
-    #     old_llm_text_name = config["llm_text_name"]
-    #     # Extract IDs from templates
-    #     new_llm_id = llm_template["data"]["id"]
-    #     new_embedding_id = embedding_template["data"]["id"]
-    #     new_llm_text_id = llm_text_template["data"]["id"]
-
-    #     # Dynamically find the flow file by ID
-    #     flow_path = self._find_flow_file_by_id(flow_id)
-    #     if not flow_path:
-    #         raise FileNotFoundError(f"Flow file not found for flow ID: {flow_id}")
-
-    #     # Load flow JSON
-    #     with open(flow_path, "r") as f:
-    #         flow_data = json.load(f)
-
-    #     # Find and replace components
-    #     components_updated = []
-
-    #     # Replace embedding component
-    #     if not DISABLE_INGEST_WITH_LANGFLOW and is_embedding:
-    #         embedding_node, _ = self._find_node_in_flow(flow_data, display_name=old_embedding_name)
-    #         if embedding_node:
-    #             # Preserve position
-    #             original_position = embedding_node.get("position", {})
-
-    #             # Replace with new template
-    #             new_embedding_node = embedding_template.copy()
-    #             new_embedding_node["position"] = original_position
-
-    #             # Replace in flow
-    #             self._replace_node_in_flow(flow_data, old_embedding_name, new_embedding_node)
-    #             components_updated.append(
-    #                 f"embedding: {old_embedding_name} -> {new_embedding_id}"
-    #             )
-
-    #     # Replace LLM component (if exists in this flow)
-    #     if old_llm_name and not is_embedding:
-    #         llm_node, _ = self._find_node_in_flow(flow_data, display_name=old_llm_name)
-    #         if llm_node:
-    #             # Preserve position
-    #             original_position = llm_node.get("position", {})
-
-    #             # Replace with new template
-    #             new_llm_node = llm_template.copy()
-    #             new_llm_node["position"] = original_position
-
-    #             # Replace in flow
-    #             self._replace_node_in_flow(flow_data, old_llm_name, new_llm_node)
-    #             components_updated.append(f"llm: {old_llm_name} -> {new_llm_id}")
-
-    #     # Replace LLM component (if exists in this flow)
-    #     if old_llm_text_name and not is_embedding:
-    #         llm_text_node, _ = self._find_node_in_flow(flow_data, display_name=old_llm_text_name)
-    #         if llm_text_node:
-    #             # Preserve position
-    #             original_position = llm_text_node.get("position", {})
-
-    #             # Replace with new template
-    #             new_llm_text_node = llm_text_template.copy()
-    #             new_llm_text_node["position"] = original_position
-
-    #             # Replace in flow
-    #             self._replace_node_in_flow(flow_data, old_llm_text_name, new_llm_text_node)
-    #             components_updated.append(f"llm: {old_llm_text_name} -> {new_llm_text_id}")
-
-
-    #     old_embedding_id = None
-    #     old_llm_id = None
-    #     old_llm_text_id = None
-    #     if embedding_node:
-    #         old_embedding_id = embedding_node.get("data", {}).get("id")
-    #     if old_llm_name and llm_node:
-    #         old_llm_id = llm_node.get("data", {}).get("id")
-    #     if old_llm_text_name and llm_text_node:
-    #         old_llm_text_id = llm_text_node.get("data", {}).get("id")
-
-    #     # Update all edge references using regex replacement
-    #     flow_json_str = json.dumps(flow_data)
-
-    #     # Replace embedding ID references
-    #     if not DISABLE_INGEST_WITH_LANGFLOW and is_embedding:
-    #         flow_json_str = re.sub(
-    #             re.escape(old_embedding_id), new_embedding_id, flow_json_str
-    #         )
-    #         flow_json_str = re.sub(
-    #             re.escape(old_embedding_id.split("-")[0]),
-    #             new_embedding_id.split("-")[0],
-    #             flow_json_str,
-    #         )
-
-    #     # Replace LLM ID references (if applicable)
-    #     if old_llm_id and not is_embedding:
-    #         flow_json_str = re.sub(
-    #             re.escape(old_llm_id), new_llm_id, flow_json_str
-    #         )
-
-    #         flow_json_str = re.sub(
-    #             re.escape(old_llm_id.split("-")[0]),
-    #             new_llm_id.split("-")[0],
-    #             flow_json_str,
-    #         )
-        
-    #     # Replace text LLM ID references (if applicable)
-    #     if old_llm_text_id and not is_embedding:
-    #         flow_json_str = re.sub(
-    #             re.escape(old_llm_text_id), new_llm_text_id, flow_json_str
-    #         )
-
-    #         flow_json_str = re.sub(
-    #             re.escape(old_llm_text_id.split("-")[0]),
-    #             new_llm_text_id.split("-")[0],
-    #             flow_json_str,
-    #         )
-
-    #     # Convert back to JSON
-    #     flow_data = json.loads(flow_json_str)
-
-    #     # PATCH the updated flow
-    #     response = await clients.langflow_request(
-    #         "PATCH", f"/api/v1/flows/{flow_id}", json=flow_data
-    #     )
-
-    #     if response.status_code != 200:
-    #         raise Exception(
-    #             f"Failed to update flow: HTTP {response.status_code} - {response.text}"
-    #         )
-
-    #     return {
-    #         "flow": flow_name,
-    #         "success": True,
-    #         "components_updated": components_updated,
-    #         "flow_id": flow_id,
-    #     }
-
     def _find_node_in_flow(self, flow_data, node_id=None, display_name=None):
         """
         Helper function to find a node in flow data by ID or display name.
@@ -817,6 +489,34 @@ class FlowsService:
                 return node, i
 
         return None, None
+
+    def _find_nodes_in_flow(self, flow_data, display_name=None):
+        """Find all nodes in flow data by display name."""
+        nodes = flow_data.get("data", {}).get("nodes", [])
+        found = []
+        for i, node in enumerate(nodes):
+            node_data = node.get("data", {})
+            node_template = node_data.get("node", {})
+            if display_name and node_template.get("display_name") == display_name:
+                found.append((node, i))
+        return found
+
+    def _get_node_provider(self, node):
+        """Get the provider name currently set in a node."""
+        template = node.get("data", {}).get("node", {}).get("template", {})
+        model_val = template.get("model", {}).get("value")
+        if isinstance(model_val, list) and len(model_val) > 0:
+            return model_val[0].get("provider")
+        return None
+
+    def _get_provider_name_display(self, provider: str):
+        if provider == "watsonx":
+            return "IBM WatsonX"
+        if provider == "ollama":
+            return "Ollama"
+        if provider == "anthropic":
+            return "Anthropic"
+        return "OpenAI"
 
     async def _update_flow_field(self, flow_id: str, field_name: str, field_value: str, node_display_name: str = None):
         """
@@ -1074,12 +774,14 @@ class FlowsService:
                 logger.info(f"Flow {flow_type} (ID: {flow_id}) does not match reset state")
 
         return reset_flows
-
+        
     async def change_langflow_model_value(
         self,
         provider: str,
         embedding_model: str = None,
         llm_model: str = None,
+        force_embedding_update: bool = False,
+        force_llm_update: bool = False,
         flow_configs: list = None,
     ):
         """
@@ -1089,87 +791,48 @@ class FlowsService:
             provider: The provider ("watsonx", "ollama", "openai", "anthropic")
             embedding_model: The embedding model name to set
             llm_model: The LLM model name to set
-            endpoint: The endpoint URL (required for watsonx/ibm provider)
-            flow_configs: Optional list of specific flow configs to update. If None, updates all flows.
-
-        Returns:
-            dict: Success/error response with details for each flow
+            force_embedding_update: If True, update embeddings even if model is None
+            force_llm_update: If True, update LLM even if model is None
+            flow_configs: Optional list of flow configs to update
         """
         if provider not in ["watsonx", "ollama", "openai", "anthropic"]:
             raise ValueError("provider must be 'watsonx', 'ollama', 'openai', or 'anthropic'")
 
         try:
-            logger.info(
-                f"Changing dropdown values for provider {provider}, embedding: {embedding_model}, llm: {llm_model}"
-            )
-
             # Use provided flow_configs or default to all flows
             if flow_configs is None:
                 flow_configs = [
-                    {
-                        "name": "nudges",
-                        "flow_id": NUDGES_FLOW_ID,
-                    },
-                    {
-                        "name": "retrieval",
-                        "flow_id": LANGFLOW_CHAT_FLOW_ID,
-                    },
-                    {
-                        "name": "ingest",
-                        "flow_id": LANGFLOW_INGEST_FLOW_ID,
-                    },
-                    {
-                        "name": "url_ingest",
-                        "flow_id": LANGFLOW_URL_INGEST_FLOW_ID,
-                    },
+                    {"name": "nudges", "flow_id": NUDGES_FLOW_ID},
+                    {"name": "retrieval", "flow_id": LANGFLOW_CHAT_FLOW_ID},
+                    {"name": "ingest", "flow_id": LANGFLOW_INGEST_FLOW_ID},
+                    {"name": "url_ingest", "flow_id": LANGFLOW_URL_INGEST_FLOW_ID},
                 ]
 
-            # Determine target component IDs based on provider
-
             results = []
-
-            # Process each flow sequentially
             for config in flow_configs:
                 try:
                     result = await self._update_provider_components(
                         config,
                         provider,
-                        embedding_model,
-                        llm_model,
+                        embedding_model=embedding_model,
+                        llm_model=llm_model,
+                        force_embedding_update=force_embedding_update,
+                        force_llm_update=force_llm_update,
                     )
                     results.append(result)
-                    logger.info(
-                        f"Successfully updated {config['name']} flow with {provider} models"
-                    )
                 except Exception as e:
-                    error_msg = f"Failed to update {config['name']} flow with {provider} models: {str(e)}"
-                    logger.error(error_msg)
-                    results.append(
-                        {"flow": config["name"], "success": False, "error": error_msg}
-                    )
-                    # Continue with other flows even if one fails
-
-            # Check if all flows were successful
-            all_success = all(r.get("success", False) for r in results)
+                    logger.error(f"Error updating {config['name']} flow: {str(e)}")
+                    results.append({"flow": config["name"], "success": False, "error": str(e)})
 
             return {
-                "success": all_success,
-                "message": f"Provider model update {'completed' if all_success else 'completed with errors'}",
-                "provider": provider,
-                "embedding_model": embedding_model,
-                "llm_model": llm_model,
+                "success": all(r.get("success", False) for r in results),
                 "results": results,
             }
-
         except Exception as e:
-            logger.error(
-                f"Error changing provider models for {provider}",
-                error=str(e),
-            )
-            return {
-                "success": False,
-                "error": f"Failed to change provider models: {str(e)}",
-            }
+            logger.error(f"Error in change_langflow_model_value: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+
 
     async def _update_provider_components(
         self,
@@ -1177,6 +840,8 @@ class FlowsService:
         provider: str,
         embedding_model: str = None,
         llm_model: str = None,
+        force_embedding_update: bool = False,
+        force_llm_update: bool = False,
     ):
         """Update provider components and their dropdown values in a flow"""
         flow_name = config["name"]
@@ -1195,16 +860,81 @@ class FlowsService:
         updates_made = []
 
         # Update embedding component
-        if not DISABLE_INGEST_WITH_LANGFLOW and embedding_model:
-            embedding_node, _ = self._find_node_in_flow(flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME)
-            if embedding_node:
-                if await self._update_component_fields(
-                    embedding_node, provider, embedding_model
-                ):
-                    updates_made.append(f"embedding model: {embedding_model}")
+        if not DISABLE_INGEST_WITH_LANGFLOW and (embedding_model or force_embedding_update):
+            # Get all embedding nodes in the flow
+            embedding_nodes = self._find_nodes_in_flow(flow_data, display_name=OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME)
+            logger.info(f"Found {len(embedding_nodes)} embedding nodes in flow {flow_name} with display name '{OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME}'")
+            
+            # Count configured embedding-enabled providers
+            config_obj = get_openrag_config()
+            configured_providers = []
+            if config_obj.providers.openai.configured: configured_providers.append("openai")
+            if config_obj.providers.watsonx.configured: configured_providers.append("watsonx")
+            if config_obj.providers.ollama.configured: configured_providers.append("ollama")
+            
+            # Ensure current provider is in the list for counting purposes if it's being configured
+            if provider in ["openai", "watsonx", "ollama"] and provider not in configured_providers:
+                configured_providers.append(provider)
+            
+            all_possible = ["openai", "watsonx", "ollama"]
+            configured_providers = [p for p in all_possible if p in configured_providers]
+            provider_count = len(configured_providers)
+            logger.info(f"Configured embedding providers: {configured_providers} (count: {provider_count})")
+            
+            # Determine slot mapping context
+            if provider_count == 1:
+                logger.info("Configuration mode: all 3 slots belong to the single active provider")
+            elif provider_count == 2:
+                logger.info("Configuration mode: first 2 slots assigned to providers 1 and 2")
+            elif provider_count == 3:
+                logger.info("Configuration mode: slots 1, 2, and 3 assigned to their respective providers")
+
+            # 1. Check if any node is already this provider - always update those first
+            matched_nodes = []
+            provider_display = self._get_provider_name_display(provider)
+            for node, idx in embedding_nodes:
+                if self._get_node_provider(node) == provider_display:
+                    matched_nodes.append((node, idx))
+            
+            if matched_nodes:
+                logger.info(f"Found {len(matched_nodes)} nodes already configured for provider '{provider}'")
+                for node, idx in matched_nodes:
+                    if await self._update_component_fields(node, provider, embedding_model):
+                        updates_made.append(f"embedding model: {embedding_model} (updated existing {provider} node)")
+            else:
+                # 2. No existing node matched, use slot-based logic
+                try:
+                    p_index = configured_providers.index(provider)
+                    logger.info(f"Using slot-based logic for provider '{provider}' (p_index: {p_index}, total configured: {provider_count})")
+
+                    if provider_count == 1:
+                        # Single provider mode: update all available nodes (up to 3)
+                        logger.info(f"Single provider mode: updating all available embedding nodes (available: {len(embedding_nodes)})")
+                        for i in range(min(3, len(embedding_nodes))):
+                            node, idx = embedding_nodes[i]
+                            if await self._update_component_fields(node, provider, embedding_model):
+                                updates_made.append(
+                                    f"embedding model: {embedding_model} (set node {i+1})"
+                                )
+                    else:
+                        # Multiple providers: each gets one slot based on its list index
+                        # This satisfies:
+                        # - 2 providers -> node 0 and node 1 updated ("two first nodes")
+                        # - 3 providers -> node 0, 1, 2 updated ("each gets its first one")
+                        if p_index < len(embedding_nodes):
+                            node, idx = embedding_nodes[p_index]
+                            logger.info(f"Multiple provider mode: assigning provider '{provider}' to node slot {p_index} (node {p_index+1})")
+                            if await self._update_component_fields(node, provider, embedding_model):
+                                updates_made.append(
+                                    f"embedding model: {embedding_model} (set node {p_index+1})"
+                                )
+                        else:
+                            logger.info(f"Provider index {p_index} exceeds available embedding nodes ({len(embedding_nodes)}) - skipping automatic assignment")
+                except ValueError:
+                    logger.warning(f"Current provider '{provider}' not found in configured providers list: {configured_providers}")
 
         # Update LLM component (if exists in this flow)
-        if llm_model:
+        if llm_model or force_llm_update:
             llm_node, _ = self._find_node_in_flow(flow_data, display_name=OPENAI_LLM_COMPONENT_DISPLAY_NAME)
             if llm_node:
                 if await self._update_component_fields(
@@ -1290,14 +1020,76 @@ class FlowsService:
     ):
         """Update fields in a component node based on provider and component type"""
         template = component_node.get("data", {}).get("node", {}).get("template", {})
-
         if not template:
             return False
 
         updated = False
+        provider_name = self._get_provider_name_display(provider)
 
-        provider_name = "IBM WatsonX" if provider == "watsonx" else "Ollama" if provider == "ollama" else "Anthropic" if provider == "anthropic" else "OpenAI"
+        # Enable the model in Langflow first
+        await self._enable_model_in_langflow(provider_name, model_value)
 
+        # Update model field and call custom_component/update endpoint
+        if "model" in template:
+            if "options" not in template["model"]:
+                return False
+
+            # Update template via Langflow API to get latest options
+            template = await self._update_component_langflow(template, template["model"]["value"]) or template
+            component_node["data"]["node"]["template"] = template
+
+            # Find the specific model option for the provider
+            if model_value:
+                model_options = [
+                    item for item in template["model"].get("options", [])
+                    if item.get("provider") == provider_name and item.get("name") == model_value
+                ]
+            else:
+                # If no specific model provided, pick the first available one for this provider
+                model_options = [
+                    item for item in template["model"].get("options", [])
+                    if item.get("provider") == provider_name
+                ][:1]
+                if model_options:
+                    logger.info(f"Using first available model '{model_options[0].get('name')}' for provider {provider_name}")
+
+            if not model_options:
+                logger.warning(f"Model {model_value or 'ANY'} not found for provider {provider_name}")
+                return False
+
+            template["model"]["value"] = model_options
+
+            template = await self._update_component_langflow(template, model_options) or template
+            component_node["data"]["node"]["template"] = template
+
+            updated = True
+
+        # Update provider-specific fields
+        field_mappings = {
+            "api_base": {
+                "ollama": "OLLAMA_BASE_URL",
+                "watsonx": "WATSONX_URL"
+            },
+            "project_id": {
+                "watsonx": "WATSONX_PROJECT_ID"
+            }
+        }
+
+        for field, mapping in field_mappings.items():
+            if field in template:
+                target_value = mapping.get(provider)
+                if target_value:
+                    template[field]["value"] = target_value
+                    template[field]["load_from_db"] = True
+                else:
+                    template[field]["value"] = ""
+                    template[field]["load_from_db"] = False
+                updated = True
+
+        return updated
+
+    async def _enable_model_in_langflow(self, provider_name: str, model_value: str):
+        """Ensure the specified model is enabled in Langflow."""
         try:
             enable_payload = [{
                 "provider": provider_name,
@@ -1305,64 +1097,35 @@ class FlowsService:
                 "enabled": True
             }]
             
-            enable_response = await clients.langflow_request(
+            response = await clients.langflow_request(
                 "POST", "/api/v1/models/enabled_models", json=enable_payload
             )
             
-            if enable_response.status_code == 200:
+            if response.status_code == 200:
                 logger.info(f"Successfully enabled model {model_value} for provider {provider_name}")
             else:
                 logger.warning(
-                    f"Failed to enable model: HTTP {enable_response.status_code} - {enable_response.text}"
+                    f"Failed to enable model: HTTP {response.status_code} - {response.text}"
                 )
         except Exception as e:
             logger.error(f"Error enabling model {model_value}: {str(e)}")
-        
-        # Update provider field and call custom_component/update endpoint
-        if "model" in template:
-            if "options" not in template["model"]:
-                return False
 
-            model = [template["model"]["options"][0]]
-
-            template = await self._update_component_langflow(template, model_value)
-
-            component_node["data"]["node"]["template"] = template
-            
-            model = [item for item in template["model"]["options"] if item["provider"] == provider_name and item["name"] == model_value]
-
-            template = await self._update_component_langflow(template, model_value)
-
-            template["model"]["value"] = model
-
-            component_node["data"]["node"]["template"] = template
-
-            if len(model) == 0:
-                logger.warning(f"Model {model_value} not found for provider {provider_name}")
-                return False
-
-            updated = True
-                
-
-        if "api_base" in template:
-            if provider == "ollama":
-                template["api_base"]["value"] = "OLLAMA_BASE_URL"
-                template["api_base"]["load_from_db"] = True
-            elif provider == "watsonx":
-                # Watson uses "url" field
-                template["api_base"]["value"] = "WATSONX_URL"
-                template["api_base"]["load_from_db"] = True
-            else:
-                template["api_base"]["value"] = ""
-                template["api_base"]["load_from_db"] = False
-            updated = True
-
-        if "project_id" in template:
-            if provider == "watsonx":
-                template["project_id"]["value"] = "WATSONX_PROJECT_ID"
-                template["project_id"]["load_from_db"] = True
-            else:
-                template["project_id"]["value"] = ""
-                template["project_id"]["load_from_db"] = False
-            updated = True
-        return updated
+    def _get_provider_component_ids(self, provider: str):
+        """Helper to get component display names for various providers."""
+        from config.settings import (
+            OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME,
+            OPENAI_LLM_COMPONENT_DISPLAY_NAME,
+            WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME,
+            WATSONX_LLM_COMPONENT_DISPLAY_NAME,
+            OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME,
+            OLLAMA_LLM_COMPONENT_DISPLAY_NAME,
+        )
+        if provider == "openai":
+            return (OPENAI_EMBEDDING_COMPONENT_DISPLAY_NAME, OPENAI_LLM_COMPONENT_DISPLAY_NAME)
+        elif provider == "watsonx":
+            return (WATSONX_EMBEDDING_COMPONENT_DISPLAY_NAME, WATSONX_LLM_COMPONENT_DISPLAY_NAME)
+        elif provider == "ollama":
+            return (OLLAMA_EMBEDDING_COMPONENT_DISPLAY_NAME, OLLAMA_LLM_COMPONENT_DISPLAY_NAME)
+        elif provider == "anthropic":
+            return (None, "Anthropic")
+        return (None, None)

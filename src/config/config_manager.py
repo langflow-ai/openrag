@@ -97,6 +97,8 @@ class OnboardingState:
     upload_steps: Optional[Dict[str, Any]] = field(default=None)
     openrag_docs_filter_id: Optional[str] = field(default=None)
     user_doc_filter_id: Optional[str] = field(default=None)
+    openrag_docs_ingested_version: Optional[str] = field(default=None)
+    openrag_docs_remote_signature: Optional[str] = field(default=None)
 
 
 @dataclass

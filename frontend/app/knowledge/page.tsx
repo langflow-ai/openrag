@@ -44,6 +44,7 @@ import GoogleDriveIcon from "../../components/icons/google-drive-logo";
 import OneDriveIcon from "../../components/icons/one-drive-logo";
 import SharePointIcon from "../../components/icons/share-point-logo";
 import { useDeleteDocument } from "../api/mutations/useDeleteDocument";
+import { useRefreshOpenragDocs } from "../api/mutations/useRefreshOpenragDocs";
 import { useSyncAllConnectors } from "../api/mutations/useSyncConnector";
 
 // Function to get the appropriate icon for a connector type
@@ -59,6 +60,7 @@ function getSourceIcon(connectorType?: string) {
       return (
         <SharePointIcon className="h-4 w-4 text-foreground flex-shrink-0" />
       );
+    case "openrag_docs":
     case "url":
       return <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
     case "s3":
@@ -79,7 +81,7 @@ interface IngestionStatus {
 function SearchPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const { files: taskFiles, refreshTasks } = useTask();
+  const { files: taskFiles, tasks, refreshTasks } = useTask();
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
@@ -89,6 +91,7 @@ function SearchPage() {
 
   const deleteDocumentMutation = useDeleteDocument();
   const syncAllConnectorsMutation = useSyncAllConnectors();
+  const refreshOpenragDocsMutation = useRefreshOpenragDocs();
 
   useEffect(() => {
     refreshTasks();
@@ -100,6 +103,51 @@ function SearchPage() {
     error,
     isError,
   } = useGetSearchQuery(queryOverride, parsedFilterData);
+
+  const isOpenragDocsRow = useCallback((file?: File) => {
+    return (
+      file?.connector_type === "openrag_docs" ||
+      file?.connector_type === "system_default"
+    );
+  }, []);
+
+  const getFileIdentity = useCallback((file?: File) => {
+    if (!file) {
+      return "";
+    }
+
+    const normalizedFilename = file.filename?.trim();
+    if (normalizedFilename) {
+      return normalizedFilename;
+    }
+
+    const normalizedSourceUrl = file.source_url?.trim();
+    if (normalizedSourceUrl) {
+      return normalizedSourceUrl;
+    }
+
+    return "";
+  }, []);
+
+  const hasOpenragRefreshCueFromTasks = tasks.some((task) => {
+    const isTaskActive =
+      task.status === "pending" ||
+      task.status === "running" ||
+      task.status === "processing";
+    if (!isTaskActive || !task.files) {
+      return false;
+    }
+
+    return Object.entries(task.files).some(([fileKey, fileInfo]) => {
+      const filename = (fileInfo as { filename?: string })?.filename ?? "";
+      return (
+        filename === "OpenRAG docs refresh" ||
+        fileKey.includes("openr.ag")
+      );
+    });
+  });
+  const hasOpenragRefreshCue =
+    refreshOpenragDocsMutation.isPending || hasOpenragRefreshCueFromTasks;
 
   // Show toast notification for search errors
   useEffect(() => {
@@ -121,10 +169,13 @@ function SearchPage() {
   }, [isError, error]);
   // Convert TaskFiles to File format and merge with backend results
   const taskFilesAsFiles: File[] = taskFiles.map((taskFile) => {
+    const normalizedFilename =
+      taskFile.filename?.trim() || taskFile.source_url?.trim() || "Untitled source";
+
     return {
-      filename: taskFile.filename,
+      filename: normalizedFilename,
       mimetype: taskFile.mimetype,
-      source_url: taskFile.source_url,
+      source_url: taskFile.source_url || "",
       size: taskFile.size,
       connector_type: taskFile.connector_type,
       status: taskFile.status,
@@ -135,11 +186,16 @@ function SearchPage() {
   });
   // Create a map of task files by filename for quick lookup
   const taskFileMap = new Map(
-    taskFilesAsFiles.map((file) => [file.filename, file]),
+    taskFilesAsFiles.map((file) => [getFileIdentity(file), file]),
   );
-  // Override backend files with task file status if they exist
+  // Override backend files with task file status if they exist.
+  // Keep openrag_docs rows sourced from indexed search results so
+  // OpenRAG docs do not appear as pending in the table.
   const backendFiles = (searchData as File[]).map((file) => {
-    const taskFile = taskFileMap.get(file.filename);
+    if (file.connector_type === "openrag_docs") {
+      return file;
+    }
+    const taskFile = taskFileMap.get(getFileIdentity(file));
     if (taskFile) {
       // Override backend file with task file data (includes status)
       return { ...file, ...taskFile };
@@ -148,15 +204,30 @@ function SearchPage() {
   });
 
   const filteredTaskFiles = taskFilesAsFiles.filter((taskFile) => {
+    // Ignore the synthetic refresh task row from docs URL ingestion.
+    // The table should only show indexed docs, not orchestration task labels.
+    if (
+      taskFile.filename === "OpenRAG docs refresh" ||
+      taskFile.source_url.includes("openr.ag")
+    ) {
+      return false;
+    }
+    // Do not render task-only openrag_docs placeholder rows in the table.
+    // OpenRAG default docs should be represented only by indexed search results.
+    if (taskFile.connector_type === "openrag_docs") {
+      return false;
+    }
     return (
       taskFile.status !== "active" &&
       !backendFiles.some(
-        (backendFile) => backendFile.filename === taskFile.filename,
+        (backendFile) => getFileIdentity(backendFile) === getFileIdentity(taskFile),
       )
     );
   });
   // Combine task files first, then backend files
   const fileResults = [...backendFiles, ...filteredTaskFiles];
+ 
+  const gridRows = fileResults;
   const gridRef = useRef<AgGridReact>(null);
 
   const columnDefs: ColDef<File>[] = [
@@ -172,6 +243,8 @@ function SearchPage() {
         // Read status directly from data on each render
         const status = data?.status || "active";
         const isActive = status === "active";
+        const showOpenragSourceAnimation =
+          isOpenragDocsRow(data) && hasOpenragRefreshCue;
         return (
           <div className="flex items-center overflow-hidden w-full">
             <div
@@ -196,7 +269,13 @@ function SearchPage() {
               {getSourceIcon(data?.connector_type)}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="font-medium text-foreground truncate">
+                  <span
+                    className={`font-medium truncate ${
+                      showOpenragSourceAnimation
+                        ? "text-primary animate-pulse"
+                        : "text-foreground"
+                    }`}
+                  >
                     {value}
                   </span>
                 </TooltipTrigger>
@@ -269,10 +348,21 @@ function SearchPage() {
       headerName: "Status",
       cellRenderer: ({ data }: CustomCellRendererProps<File>) => {
         const status = data?.status || "active";
+        const showOpenragRefreshCue = isOpenragDocsRow(data) && hasOpenragRefreshCue;
         const error =
           typeof data?.error === "string" && data.error.trim().length > 0
             ? data.error.trim()
             : undefined;
+        if (showOpenragRefreshCue) {
+          return (
+            <div className="inline-flex items-center justify-center h-5 w-5">
+              <RefreshCw
+                className="h-4 w-4 text-primary animate-spin"
+                aria-label="OpenRAG doc is refreshing"
+              />
+            </div>
+          );
+        }
         if (status === "failed" && error) {
           return (
             <button
@@ -342,16 +432,38 @@ function SearchPage() {
         deleteDocumentMutation.mutateAsync({ filename: row.filename }),
       );
 
-      await Promise.all(deletePromises);
+      const deleteResults = await Promise.all(deletePromises);
       await refreshTasks();
       await queryClient.invalidateQueries({ queryKey: ["search"] });
       await queryClient.refetchQueries({ queryKey: ["search"] });
 
-      toast.success(
-        `Successfully deleted ${selectedRows.length} document${
-          selectedRows.length > 1 ? "s" : ""
-        }`,
+      const totalDeletedChunks = deleteResults.reduce(
+        (sum, result) => sum + (result.deleted_chunks || 0),
+        0,
       );
+      const filesWithNoDeletion = deleteResults.filter(
+        (result) => (result.deleted_chunks || 0) === 0,
+      );
+
+      if (totalDeletedChunks > 0) {
+        toast.success(
+          `Successfully deleted ${selectedRows.length} document${
+            selectedRows.length > 1 ? "s" : ""
+          }`,
+        );
+      } else {
+        toast.warning(
+          "No document chunks were deleted. Files may be owned by another context or already removed.",
+        );
+      }
+
+      if (filesWithNoDeletion.length > 0 && totalDeletedChunks > 0) {
+        toast.warning(
+          `${filesWithNoDeletion.length} selected file${
+            filesWithNoDeletion.length > 1 ? "s were" : " was"
+          } not deleted (0 chunks matched).`,
+        );
+      }
       setSelectedRows([]);
       setShowBulkDeleteDialog(false);
 
@@ -387,6 +499,7 @@ function SearchPage() {
         {/* Search Input Area */}
         <div className="flex-1 flex items-center flex-shrink-0 flex-wrap-reverse gap-3 mb-6">
           <KnowledgeSearchInput />
+
           <Button
             type="button"
             variant="outline"
@@ -432,6 +545,35 @@ function SearchPage() {
               </>
             )}
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-lg flex-shrink-0"
+            disabled={refreshOpenragDocsMutation.isPending}
+            onClick={async () => {
+              try {
+                toast.info("Refreshing OpenRAG docs...");
+                const result = await refreshOpenragDocsMutation.mutateAsync();
+                toast.success(result.message);
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to refresh OpenRAG docs",
+                );
+              }
+            }}
+          >
+            {refreshOpenragDocsMutation.isPending ? (
+              <>
+                Refreshing docs...
+              </>
+            ) : (
+              <>
+                Fetch latest docs
+              </>
+            )}
+          </Button>
           {selectedRows.length > 0 && (
             <Button
               type="button"
@@ -453,11 +595,11 @@ function SearchPage() {
           loading={isFetching}
           ref={gridRef}
           theme={themeQuartz.withParams({ browserColorScheme: "inherit" })}
-          rowData={fileResults}
+          rowData={gridRows}
           rowSelection="multiple"
           rowMultiSelectWithClick={false}
           suppressRowClickSelection={true}
-          getRowId={(params: GetRowIdParams<File>) => params.data?.filename}
+          getRowId={(params: GetRowIdParams<File>) => getFileIdentity(params.data)}
           domLayout="normal"
           onSelectionChanged={onSelectionChanged}
           pagination={pagination}

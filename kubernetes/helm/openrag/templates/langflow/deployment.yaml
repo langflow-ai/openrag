@@ -251,7 +251,7 @@ spec:
             {{- end }}
 
             {{- if .Values.llmProviders.watsonx.enabled }}
-            - name: WATSONX_API_KEY
+            - name: WATSONX_APIKEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "openrag.fullname" . }}-llm-providers
@@ -267,7 +267,7 @@ spec:
                   name: {{ include "openrag.fullname" . }}-llm-providers
                   key: watsonx-project-id
             {{- else }}
-            - name: WATSONX_API_KEY
+            - name: WATSONX_APIKEY
               value: "None"
             - name: WATSONX_URL
               value: "None"

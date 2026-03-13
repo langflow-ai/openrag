@@ -157,6 +157,38 @@ class TaskService:
         )
         return await self.create_custom_task(user_id, file_paths, processor, original_filenames)
 
+    async def create_langflow_url_upload_task(
+        self,
+        owner_user_id: str,
+        docs_url: str,
+        crawl_depth: int,
+        langflow_file_service,
+        session_manager,
+        jwt_token: str = None,
+        owner_name: str = None,
+        owner_email: str = None,
+        connector_type: str = "openrag_docs",
+        prevent_outside: bool = True,
+        tweaks: dict = None,
+    ) -> str:
+        """Create a new upload task for Langflow URL ingestion."""
+        from models.url import LangflowUrlProcessor
+
+        processor = LangflowUrlProcessor(
+            langflow_file_service=langflow_file_service,
+            session_manager=session_manager,
+            docs_url=docs_url,
+            crawl_depth=crawl_depth,
+            owner_user_id=owner_user_id,
+            jwt_token=jwt_token,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            connector_type=connector_type,
+            prevent_outside=prevent_outside,
+            tweaks=tweaks,
+        )
+        return await self.create_custom_task(owner_user_id, [docs_url], processor)
+
     async def create_custom_task(self, user_id: str, items: list, processor, original_filenames: dict | None = None) -> str:
         """Create a new task with custom processor for any type of items"""
         import os
