@@ -55,6 +55,8 @@ interface TaskContextType {
   setRecentTasksExpanded: (expanded: boolean) => void;
   selectedTaskId: string | null;
   setSelectedTaskId: (taskId: string | null) => void;
+  selectedTaskTrigger: number;
+  selectTask: (taskId: string | null) => void;
   // React Query states
   isLoading: boolean;
   error: Error | null;
@@ -67,7 +69,15 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRecentTasksExpanded, setIsRecentTasksExpanded] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedTaskTrigger, setSelectedTaskTrigger] = useState(0);
   const previousTasksRef = useRef<Task[]>([]);
+  const selectTask = useCallback((taskId: string | null) => {
+    setSelectedTaskId(taskId);
+    if (taskId) {
+      setSelectedTaskTrigger((prev) => prev + 1);
+    }
+  }, []);
+
   const { isAuthenticated, isNoAuthMode } = useAuth();
 
   const queryClient = useQueryClient();
@@ -241,9 +251,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
               setFiles((prevFiles) => {
                 const existingFileIndex = prevFiles.findIndex(
-                  (f) =>
-                    f.source_url === filePath &&
-                    f.task_id === currentTask.task_id,
+                  (f) => f.source_url === filePath,
                 );
 
                 // Detect connector type based on file path or other indicators
@@ -281,7 +289,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
                 };
 
                 if (existingFileIndex >= 0) {
-                  // Update existing file
+                  // Update by file identity so newer task attempts replace older
+                  // failed/success overlays for the same file.
                   const updatedFiles = [...prevFiles];
                   updatedFiles[existingFileIndex] = fileEntry;
                   return updatedFiles;
@@ -321,7 +330,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
               action: {
                 label: "View",
                 onClick: () => {
-                  setSelectedTaskId(currentTask.task_id);
+                  selectTask(currentTask.task_id);
                   setIsMenuOpen(true);
                   setIsRecentTasksExpanded(true);
                 },
@@ -350,7 +359,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           !isTerminalFailedTask(previousTask) &&
           isTerminalFailedTask(currentTask)
         ) {
-          setSelectedTaskId(currentTask.task_id);
+          selectTask(currentTask.task_id);
           setIsMenuOpen(true);
           setIsRecentTasksExpanded(true);
           // Task just failed - show error toast
@@ -448,6 +457,8 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     setRecentTasksExpanded: setIsRecentTasksExpanded,
     selectedTaskId,
     setSelectedTaskId,
+    selectedTaskTrigger,
+    selectTask,
     isLoading,
     error,
   };

@@ -9,7 +9,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TaskCollapsibleSection } from "@/components/task-collapsible-section";
 import { TaskErrorContent } from "@/components/task-error-content";
 import { TaskPanelHeader } from "@/components/task-panel-header";
@@ -33,11 +33,21 @@ export function TaskNotificationMenu() {
     isMenuOpen,
     isRecentTasksExpanded,
     selectedTaskId,
+    selectedTaskTrigger,
     cancelTask,
     closeMenu,
   } = useTask();
-  const [isRecentOpen, setIsRecentOpen] = useState(false);
+  const [isRecentOpen, setIsRecentOpen] = useState(true);
   const [isPastOpen, setIsPastOpen] = useState(false);
+  const lastHandledSelectionTriggerRef = useRef(0);
+
+  // Reset section defaults whenever panel is opened.
+  useEffect(() => {
+    if (isMenuOpen) {
+      setIsRecentOpen(true);
+      setIsPastOpen(false);
+    }
+  }, [isMenuOpen]);
 
   // Sync local state with context state
   useEffect(() => {
@@ -53,12 +63,20 @@ export function TaskNotificationMenu() {
   );
   const fiveMinutesMs = 5 * 60 * 1000;
   const nowMs = Date.now();
-  const terminalTasks = tasks.filter(
-    (task) =>
-      task.status === "completed" ||
-      task.status === "failed" ||
-      task.status === "error",
-  );
+  const terminalTasks = tasks
+    .filter(
+      (task) =>
+        task.status === "completed" ||
+        task.status === "failed" ||
+        task.status === "error",
+    )
+    .sort((a, b) => {
+      const aMs =
+        parseTimestampMs(a.updated_at) ?? parseTimestampMs(a.created_at) ?? 0;
+      const bMs =
+        parseTimestampMs(b.updated_at) ?? parseTimestampMs(b.created_at) ?? 0;
+      return bMs - aMs;
+    });
   const recentTasks: Task[] = [];
   const pastTasks: Task[] = [];
   terminalTasks.forEach((task) => {
@@ -75,9 +93,16 @@ export function TaskNotificationMenu() {
     pastTasks.push(task);
   });
 
+  const mostRecentFailureTaskId =
+    recentTasks.find(
+      (task) => isTerminalFailedTask(task) || hasFailedFileEntries(task),
+    )?.task_id ?? null;
+
   // Ensure selected task is visible in the correct section.
   useEffect(() => {
     if (!selectedTaskId) return;
+    if (selectedTaskTrigger <= lastHandledSelectionTriggerRef.current) return;
+    lastHandledSelectionTriggerRef.current = selectedTaskTrigger;
 
     const isInRecent = recentTasks.some(
       (task) => task.task_id === selectedTaskId,
@@ -258,7 +283,7 @@ export function TaskNotificationMenu() {
   };
 
   return (
-    <div className="h-full bg-background border-l">
+    <div className="h-full bg-background">
       <div className="flex flex-col h-full">
         <TaskPanelHeader
           activeCount={activeTasks.length}
@@ -270,7 +295,7 @@ export function TaskNotificationMenu() {
         <div className="flex-1 overflow-y-auto">
           {/* Active Tasks */}
           {activeTasks.length > 0 && (
-            <div className="space-y-3">
+            <div className="px-4 py-2 space-y-3">
               <h4 className="text-sm font-medium text-muted-foreground">
                 Active Tasks
               </h4>
@@ -282,7 +307,10 @@ export function TaskNotificationMenu() {
                   task.status === "processing";
 
                 return (
-                  <Card key={task.task_id} className="bg-card/50">
+                  <Card
+                    key={task.task_id}
+                    className="bg-card/50 border-0 shadow-none"
+                  >
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-sm flex items-center gap-2">
@@ -361,7 +389,7 @@ export function TaskNotificationMenu() {
           )}
 
           {/* Recent Tasks */}
-          <div className="border-t border-border/40">
+          <div>
             <TaskCollapsibleSection
               title="Recent Tasks"
               items={recentTasks}
@@ -373,7 +401,9 @@ export function TaskNotificationMenu() {
               renderItem={(task) => {
                 const progress = formatTaskProgress(task);
                 const hasFailedFiles = hasFailedFileEntries(task);
-                const shouldExpandDetails = selectedTaskId === task.task_id;
+                const shouldExpandDetails =
+                  selectedTaskId === task.task_id ||
+                  (!selectedTaskId && task.task_id === mostRecentFailureTaskId);
 
                 if (isTerminalFailedTask(task)) {
                   return (
@@ -382,6 +412,9 @@ export function TaskNotificationMenu() {
                       task={task}
                       mode="recent"
                       defaultExpanded={shouldExpandDetails}
+                      expandTrigger={
+                        shouldExpandDetails ? selectedTaskTrigger : 0
+                      }
                     />
                   );
                 }
@@ -430,6 +463,9 @@ export function TaskNotificationMenu() {
                           mode="recent"
                           showHeader={false}
                           defaultExpanded={shouldExpandDetails}
+                          expandTrigger={
+                            shouldExpandDetails ? selectedTaskTrigger : 0
+                          }
                         />
                       </div>
                     )}
@@ -440,7 +476,7 @@ export function TaskNotificationMenu() {
           </div>
 
           {/* Past Tasks */}
-          <div className="border-t border-border/40">
+          <div>
             <TaskCollapsibleSection
               title="Past Tasks"
               items={pastTasks}
@@ -461,6 +497,9 @@ export function TaskNotificationMenu() {
                       task={task}
                       mode="past"
                       defaultExpanded={shouldExpandDetails}
+                      expandTrigger={
+                        shouldExpandDetails ? selectedTaskTrigger : 0
+                      }
                     />
                   );
                 }
@@ -509,6 +548,9 @@ export function TaskNotificationMenu() {
                           mode="past"
                           showHeader={false}
                           defaultExpanded={shouldExpandDetails}
+                          expandTrigger={
+                            shouldExpandDetails ? selectedTaskTrigger : 0
+                          }
                         />
                       </div>
                     )}

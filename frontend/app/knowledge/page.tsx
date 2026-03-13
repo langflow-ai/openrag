@@ -29,6 +29,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { parseTimestampMs } from "@/lib/time-utils";
 import {
   DeleteConfirmationDialog,
   formatFilesToDelete,
@@ -74,7 +75,7 @@ function SearchPage() {
     refreshTasks,
     openMenu,
     setRecentTasksExpanded,
-    setSelectedTaskId,
+    selectTask,
   } = useTask();
   const { parsedFilterData, queryOverride } = useKnowledgeFilter();
   const [selectedRows, setSelectedRows] = useState<File[]>([]);
@@ -102,14 +103,45 @@ function SearchPage() {
       if (!file) return null;
       const sourceUrl = file.source_url || "";
       const filename = file.filename || "";
-      const match = taskFiles.find(
+      const matches = taskFiles.filter(
         (taskFile) =>
           (sourceUrl && taskFile.source_url === sourceUrl) ||
           taskFile.filename === filename,
       );
-      return match?.task_id || null;
+      if (matches.length === 0) return null;
+
+      const failedMatches =
+        file.status === "failed"
+          ? matches.filter((taskFile) => taskFile.status === "failed")
+          : matches;
+      const candidates = failedMatches.length > 0 ? failedMatches : matches;
+
+      const taskTimestampMsById = new Map(
+        tasks.map((task) => [
+          task.task_id,
+          parseTimestampMs(task.updated_at) ??
+            parseTimestampMs(task.created_at) ??
+            0,
+        ]),
+      );
+
+      const mostRecent = [...candidates].sort((a, b) => {
+        const aMs =
+          taskTimestampMsById.get(a.task_id) ??
+          parseTimestampMs(a.updated_at) ??
+          parseTimestampMs(a.created_at) ??
+          0;
+        const bMs =
+          taskTimestampMsById.get(b.task_id) ??
+          parseTimestampMs(b.updated_at) ??
+          parseTimestampMs(b.created_at) ??
+          0;
+        return bMs - aMs;
+      })[0];
+
+      return mostRecent?.task_id || null;
     },
-    [taskFiles],
+    [taskFiles, tasks],
   );
 
   // Auto-open unified task panel only when a NEW task file transitions to failed
@@ -141,7 +173,7 @@ function SearchPage() {
 
     if (hasNewFailure) {
       if (firstNewFailureTaskId) {
-        setSelectedTaskId(firstNewFailureTaskId);
+        selectTask(firstNewFailureTaskId);
       }
       openMenu();
       setRecentTasksExpanded(true);
@@ -150,7 +182,7 @@ function SearchPage() {
     taskFiles,
     openMenu,
     setRecentTasksExpanded,
-    setSelectedTaskId,
+    selectTask,
     getFailedFileKey,
   ]);
 
@@ -423,10 +455,11 @@ function SearchPage() {
           return (
             <button
               type="button"
-              className="inline-flex items-center gap-1 text-red-500 transition hover:text-red-400"
+              className="inline-flex h-full w-full items-center justify-center gap-1 px-1 text-red-500 transition hover:text-red-400"
               aria-label="View ingestion error"
+              data-testid="failed-status-cell-trigger"
               onClick={() => {
-                setSelectedTaskId(getTaskIdForRow(data));
+                selectTask(getTaskIdForRow(data));
                 openMenu();
                 setRecentTasksExpanded(true);
               }}

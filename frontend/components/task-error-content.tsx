@@ -18,6 +18,7 @@ interface TaskErrorContentProps {
   nowMs?: number;
   showHeader?: boolean;
   defaultExpanded?: boolean;
+  expandTrigger?: number;
 }
 
 export function TaskErrorContent({
@@ -26,13 +27,14 @@ export function TaskErrorContent({
   nowMs = Date.now(),
   showHeader = true,
   defaultExpanded = false,
+  expandTrigger = 0,
 }: TaskErrorContentProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   useEffect(() => {
     if (defaultExpanded) {
       setIsExpanded(true);
     }
-  }, [defaultExpanded]);
+  }, [defaultExpanded, expandTrigger]);
   const failedEntries = useMemo(() => getFailedFileEntries(task), [task]);
 
   const failedCount = task.failed_files ?? failedEntries.length;

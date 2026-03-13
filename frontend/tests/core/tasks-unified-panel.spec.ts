@@ -28,6 +28,9 @@ interface MockTask {
   files: Record<string, MockTaskFileEntry>;
 }
 
+const isoMinutesAgo = (minutes: number): string =>
+  new Date(Date.now() - minutes * 60_000).toISOString();
+
 const buildTask = (
   overrides: Partial<MockTask> & { task_id: string; status: MockTaskStatus },
 ): MockTask => {
@@ -65,6 +68,10 @@ const wireTasksState = async (page: Page, initialTasks: MockTask[]) => {
 };
 
 const expandFirstFailureAccordion = async (page: Page) => {
+  const failureLog = page.getByText("Failure Log").first();
+  if (await failureLog.isVisible()) {
+    return;
+  }
   await page
     .getByRole("button", { name: /\d+\s*success,\s*\d+\s*failed/i })
     .first()
@@ -73,8 +80,21 @@ const expandFirstFailureAccordion = async (page: Page) => {
 
 const openTasksPanel = async (page: Page) => {
   const panelTitle = page.getByTestId("tasks-panel-title");
-  if (!(await panelTitle.isVisible())) {
-    await page.getByTestId("task-menu-toggle").click();
+  try {
+    await expect(panelTitle).toBeVisible({ timeout: 2000 });
+    return;
+  } catch {
+    // Fall through to manual toggle open.
+  }
+
+  const toggle = page.getByTestId("task-menu-toggle");
+  await toggle.click();
+  try {
+    await expect(panelTitle).toBeVisible({ timeout: 8000 });
+    return;
+  } catch {
+    // If auto-open raced with our click and closed it, click once more.
+    await toggle.click();
   }
   await expect(panelTitle).toBeVisible({ timeout: 15000 });
 };
@@ -247,4 +267,59 @@ test("new failed task auto-opens tasks panel", async ({ page }) => {
   await expandFirstFailureAccordion(page);
   await expect(page.getByText("Failure Log")).toBeVisible();
   await expect(page.getByText("Auto-open on failed task")).toBeVisible();
+});
+
+test("unified panel groups terminal tasks into recent and past", async ({
+  page,
+}) => {
+  const recentFailedTask = buildTask({
+    task_id: "task-recent-failed",
+    status: "failed",
+    created_at: isoMinutesAgo(1),
+    updated_at: isoMinutesAgo(1),
+    total_files: 1,
+    processed_files: 1,
+    failed_files: 1,
+    files: {
+      "/tmp/recent-failed.pdf": {
+        status: "failed",
+        filename: "recent-failed.pdf",
+        error: "Recent failure log",
+      },
+    },
+  });
+
+  const pastFailedTask = buildTask({
+    task_id: "task-past-failed",
+    status: "failed",
+    created_at: isoMinutesAgo(8),
+    updated_at: isoMinutesAgo(8),
+    total_files: 1,
+    processed_files: 1,
+    failed_files: 1,
+    files: {
+      "/tmp/past-failed.pdf": {
+        status: "failed",
+        filename: "past-failed.pdf",
+        error: "Past failure log",
+      },
+    },
+  });
+
+  await wireTasksState(page, [recentFailedTask, pastFailedTask]);
+  await page.goto("/knowledge");
+  await page.waitForResponse((response) =>
+    response.url().includes("/api/tasks"),
+  );
+
+  await openTasksPanel(page);
+  await expect(page.getByText("Task task-rec...")).toBeVisible();
+  await expect(page.getByText("Recent failure log")).toBeVisible();
+  await page
+    .getByRole("button", { name: /Past Tasks/i })
+    .first()
+    .click();
+
+  await expect(page.getByText("Task task-pas...")).toBeVisible();
+  await expect(page.getByText("INCOMPLETE")).toHaveCount(1);
 });
